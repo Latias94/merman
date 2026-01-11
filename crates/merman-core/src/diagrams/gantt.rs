@@ -2076,7 +2076,7 @@ fn parse_gantt_statement(
         db.set_diagram_title(v.trim());
         return Ok(());
     }
-    if let Some(v) = parse_keyword_arg(stripped, "section") {
+    if let Some(v) = parse_keyword_arg_full_line(stripped, "section") {
         db.add_section(v.trim());
         return Ok(());
     }
@@ -3016,5 +3016,17 @@ todayMarker stoke:stroke-width:5px,stroke:#00f,opacity:0.5
             model["todayMarker"].as_str().unwrap(),
             "stoke:stroke-width:5px,stroke:#00f,opacity:0.5"
         );
+    }
+
+    #[test]
+    fn gantt_section_allows_hash_character() {
+        let model = parse(
+            r#"
+gantt
+section A #1
+test: id1,2013-01-01,1d
+"#,
+        );
+        assert_eq!(model["sections"][0].as_str().unwrap(), "A #1");
     }
 }
