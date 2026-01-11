@@ -45,6 +45,7 @@ impl DiagramRegistry {
         reg.insert("gantt", crate::diagrams::gantt::parse_gantt);
         reg.insert("timeline", crate::diagrams::timeline::parse_timeline);
         reg.insert("journey", crate::diagrams::journey::parse_journey);
+        reg.insert("kanban", crate::diagrams::kanban::parse_kanban);
 
         reg
     }
