@@ -2692,4 +2692,265 @@ t1: id1,20,1s
         assert_eq!(t0["startTime"].as_i64().unwrap(), 20_000);
         assert_eq!(t0["endTime"].as_i64().unwrap(), 21_000);
     }
+
+    #[test]
+    fn gantt_ignore_weekends_matches_upstream() {
+        let model = parse(
+            r#"
+gantt
+dateFormat YYYY-MM-DD
+excludes weekends 2019-02-06,friday
+section weekends skip test
+test1: id1,2019-02-01,1d
+test2: id2,after id1,2d
+test3: id3,after id2,7d
+test4: id4,2019-02-01,2019-02-20
+test5: id5,after id4,1d
+section full ending task on last day
+test6: id6,2019-02-13,2d
+test7: id7,after id6,1d
+"#,
+        );
+        let tasks = model["tasks"].as_array().unwrap();
+        assert_eq!(tasks.len(), 7);
+
+        assert_eq!(
+            tasks[0]["startTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 1, 0, 0, 0)
+        );
+        assert_eq!(
+            tasks[0]["endTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 4, 0, 0, 0)
+        );
+        assert_eq!(
+            tasks[0]["renderEndTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 2, 0, 0, 0)
+        );
+        assert_eq!(tasks[0]["id"].as_str().unwrap(), "id1");
+        assert_eq!(tasks[0]["task"].as_str().unwrap(), "test1");
+
+        assert_eq!(
+            tasks[1]["startTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 4, 0, 0, 0)
+        );
+        assert_eq!(
+            tasks[1]["endTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 7, 0, 0, 0)
+        );
+        assert_eq!(
+            tasks[1]["renderEndTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 6, 0, 0, 0)
+        );
+        assert_eq!(tasks[1]["id"].as_str().unwrap(), "id2");
+        assert_eq!(tasks[1]["task"].as_str().unwrap(), "test2");
+
+        assert_eq!(
+            tasks[2]["startTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 7, 0, 0, 0)
+        );
+        assert_eq!(
+            tasks[2]["endTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 20, 0, 0, 0)
+        );
+        assert_eq!(
+            tasks[2]["renderEndTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 20, 0, 0, 0)
+        );
+        assert_eq!(tasks[2]["id"].as_str().unwrap(), "id3");
+        assert_eq!(tasks[2]["task"].as_str().unwrap(), "test3");
+
+        assert_eq!(
+            tasks[3]["startTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 1, 0, 0, 0)
+        );
+        assert_eq!(
+            tasks[3]["endTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 20, 0, 0, 0)
+        );
+        assert!(tasks[3]["renderEndTime"].is_null());
+        assert!(tasks[3]["manualEndTime"].as_bool().unwrap());
+        assert_eq!(tasks[3]["id"].as_str().unwrap(), "id4");
+        assert_eq!(tasks[3]["task"].as_str().unwrap(), "test4");
+
+        assert_eq!(
+            tasks[4]["startTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 20, 0, 0, 0)
+        );
+        assert_eq!(
+            tasks[4]["endTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 21, 0, 0, 0)
+        );
+        assert_eq!(
+            tasks[4]["renderEndTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 21, 0, 0, 0)
+        );
+        assert_eq!(tasks[4]["id"].as_str().unwrap(), "id5");
+        assert_eq!(tasks[4]["task"].as_str().unwrap(), "test5");
+
+        assert_eq!(
+            tasks[5]["startTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 13, 0, 0, 0)
+        );
+        assert_eq!(
+            tasks[5]["endTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 18, 0, 0, 0)
+        );
+        assert_eq!(
+            tasks[5]["renderEndTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 15, 0, 0, 0)
+        );
+        assert_eq!(tasks[5]["id"].as_str().unwrap(), "id6");
+        assert_eq!(tasks[5]["task"].as_str().unwrap(), "test6");
+
+        assert_eq!(
+            tasks[6]["startTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 18, 0, 0, 0)
+        );
+        assert_eq!(
+            tasks[6]["endTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 19, 0, 0, 0)
+        );
+        assert_eq!(tasks[6]["id"].as_str().unwrap(), "id7");
+        assert_eq!(tasks[6]["task"].as_str().unwrap(), "test7");
+    }
+
+    #[test]
+    fn gantt_maintains_task_creation_order_matches_upstream_sample() {
+        let model = parse(
+            r#"
+gantt
+accTitle: Project Execution
+dateFormat YYYY-MM-DD
+section section A section
+Completed task: done,    des1, 2014-01-06,2014-01-08
+Active task: active,  des2, 2014-01-09, 3d
+Future task: des3, after des2, 5d
+Future task2: des4, after des3, 5d
+
+section section Critical tasks
+Completed task in the critical line: crit, done, 2014-01-06,24h
+Implement parser and jison: crit, done, after des1, 2d
+Create tests for parser: crit, active, 3d
+Future task in critical line: crit, 5d
+Create tests for renderer: 2d
+Add to mermaid: 1d
+
+section section Documentation
+Describe gantt syntax: active, a1, after des1, 3d
+Add gantt diagram to demo page: after a1  , 20h
+Add another diagram to demo page: doc1, after a1  , 48h
+
+section section Last section
+Describe gantt syntax: after doc1, 3d
+Add gantt diagram to demo page: 20h
+Add another diagram to demo page: 48h
+"#,
+        );
+
+        let tasks = model["tasks"].as_array().unwrap();
+        assert_eq!(tasks.len(), 16);
+
+        for (i, t) in tasks.iter().enumerate() {
+            assert_eq!(t["order"].as_i64().unwrap(), i as i64);
+        }
+
+        assert_eq!(tasks[0]["id"].as_str().unwrap(), "des1");
+        assert_eq!(tasks[0]["task"].as_str().unwrap(), "Completed task");
+        assert_eq!(
+            tasks[0]["startTime"].as_i64().unwrap(),
+            local_ms(2014, 0, 6, 0, 0, 0)
+        );
+        assert_eq!(
+            tasks[0]["endTime"].as_i64().unwrap(),
+            local_ms(2014, 0, 8, 0, 0, 0)
+        );
+
+        assert_eq!(tasks[1]["id"].as_str().unwrap(), "des2");
+        assert_eq!(tasks[1]["task"].as_str().unwrap(), "Active task");
+        assert_eq!(
+            tasks[1]["startTime"].as_i64().unwrap(),
+            local_ms(2014, 0, 9, 0, 0, 0)
+        );
+        assert_eq!(
+            tasks[1]["endTime"].as_i64().unwrap(),
+            local_ms(2014, 0, 12, 0, 0, 0)
+        );
+
+        assert_eq!(
+            tasks[11]["task"].as_str().unwrap(),
+            "Add gantt diagram to demo page"
+        );
+        assert_eq!(
+            tasks[11]["startTime"].as_i64().unwrap(),
+            local_ms(2014, 0, 11, 0, 0, 0)
+        );
+        assert_eq!(
+            tasks[11]["endTime"].as_i64().unwrap(),
+            local_ms(2014, 0, 11, 20, 0, 0)
+        );
+
+        assert_eq!(
+            tasks[14]["task"].as_str().unwrap(),
+            "Add gantt diagram to demo page"
+        );
+        assert_eq!(
+            tasks[14]["startTime"].as_i64().unwrap(),
+            local_ms(2014, 0, 16, 0, 0, 0)
+        );
+        assert_eq!(
+            tasks[14]["endTime"].as_i64().unwrap(),
+            local_ms(2014, 0, 16, 20, 0, 0)
+        );
+
+        assert_eq!(
+            tasks[15]["task"].as_str().unwrap(),
+            "Add another diagram to demo page"
+        );
+        assert_eq!(
+            tasks[15]["startTime"].as_i64().unwrap(),
+            local_ms(2014, 0, 16, 20, 0, 0)
+        );
+        assert_eq!(
+            tasks[15]["endTime"].as_i64().unwrap(),
+            local_ms(2014, 0, 18, 20, 0, 0)
+        );
+    }
+
+    #[test]
+    fn gantt_end_date_on_31st_matches_upstream() {
+        let model = parse(
+            r#"
+gantt
+dateFormat YYYY-MM-DD
+section Task endTime is on the 31st day of the month
+test1: id1,2019-09-30,11d
+test2: id2,after id1,20d
+"#,
+        );
+        let tasks = model["tasks"].as_array().unwrap();
+        assert_eq!(tasks.len(), 2);
+
+        assert_eq!(
+            tasks[0]["startTime"].as_i64().unwrap(),
+            local_ms(2019, 8, 30, 0, 0, 0)
+        );
+        assert_eq!(
+            tasks[0]["endTime"].as_i64().unwrap(),
+            local_ms(2019, 9, 11, 0, 0, 0)
+        );
+        assert_eq!(tasks[0]["id"].as_str().unwrap(), "id1");
+        assert_eq!(tasks[0]["task"].as_str().unwrap(), "test1");
+
+        assert_eq!(
+            tasks[1]["startTime"].as_i64().unwrap(),
+            local_ms(2019, 9, 11, 0, 0, 0)
+        );
+        assert_eq!(
+            tasks[1]["endTime"].as_i64().unwrap(),
+            local_ms(2019, 9, 31, 0, 0, 0)
+        );
+        assert!(tasks[1]["renderEndTime"].is_null());
+        assert_eq!(tasks[1]["id"].as_str().unwrap(), "id2");
+        assert_eq!(tasks[1]["task"].as_str().unwrap(), "test2");
+    }
 }
