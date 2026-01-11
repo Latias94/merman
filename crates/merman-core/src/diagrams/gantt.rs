@@ -1725,6 +1725,17 @@ fn split_statement_suffix(s: &str) -> &str {
     &s[..end]
 }
 
+fn split_statement_suffix_semi_only(s: &str) -> &str {
+    let mut end = s.len();
+    for (i, c) in s.char_indices() {
+        if c == ';' {
+            end = i;
+            break;
+        }
+    }
+    &s[..end]
+}
+
 fn starts_with_ci(s: &str, prefix: &str) -> bool {
     s.len() >= prefix.len() && s[..prefix.len()].eq_ignore_ascii_case(prefix)
 }
@@ -1743,6 +1754,37 @@ fn parse_keyword_arg<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
     }
     let rest = &after[ws.len_utf8()..];
     Some(split_statement_suffix(rest))
+}
+
+fn parse_keyword_arg_full_line<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
+    let t = line.trim_start();
+    if !starts_with_ci(t, keyword) {
+        return None;
+    }
+    let after = &t[keyword.len()..];
+    let Some(ws) = after.chars().next() else {
+        return None;
+    };
+    if !ws.is_whitespace() {
+        return None;
+    }
+    Some(&after[ws.len_utf8()..])
+}
+
+fn parse_keyword_arg_semi_only<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
+    let t = line.trim_start();
+    if !starts_with_ci(t, keyword) {
+        return None;
+    }
+    let after = &t[keyword.len()..];
+    let Some(ws) = after.chars().next() else {
+        return None;
+    };
+    if !ws.is_whitespace() {
+        return None;
+    }
+    let rest = &after[ws.len_utf8()..];
+    Some(split_statement_suffix_semi_only(rest))
 }
 
 fn parse_key_colon_value(line: &str, key: &str) -> Option<String> {
@@ -2018,7 +2060,7 @@ fn parse_gantt_statement(
         db.set_excludes(v);
         return Ok(());
     }
-    if let Some(v) = parse_keyword_arg(stripped, "todayMarker") {
+    if let Some(v) = parse_keyword_arg_semi_only(stripped, "todayMarker") {
         db.set_today_marker(v.trim());
         return Ok(());
     }
@@ -2030,7 +2072,7 @@ fn parse_gantt_statement(
         db.set_weekend(v.trim().to_lowercase().as_str());
         return Ok(());
     }
-    if let Some(v) = parse_keyword_arg(stripped, "title") {
+    if let Some(v) = parse_keyword_arg_full_line(stripped, "title") {
         db.set_diagram_title(v.trim());
         return Ok(());
     }
@@ -2952,5 +2994,27 @@ test2: id2,after id1,20d
         assert!(tasks[1]["renderEndTime"].is_null());
         assert_eq!(tasks[1]["id"].as_str().unwrap(), "id2");
         assert_eq!(tasks[1]["task"].as_str().unwrap(), "test2");
+    }
+
+    #[test]
+    fn gantt_today_marker_is_stored() {
+        let model = parse(
+            r#"
+gantt
+todayMarker off
+"#,
+        );
+        assert_eq!(model["todayMarker"].as_str().unwrap(), "off");
+
+        let model = parse(
+            r#"
+gantt
+todayMarker stoke:stroke-width:5px,stroke:#00f,opacity:0.5
+"#,
+        );
+        assert_eq!(
+            model["todayMarker"].as_str().unwrap(),
+            "stoke:stroke-width:5px,stroke:#00f,opacity:0.5"
+        );
     }
 }
