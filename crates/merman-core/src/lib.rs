@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 pub mod common;
+pub mod common_db;
 pub mod config;
 pub mod detect;
 pub mod diagram;
@@ -98,12 +99,13 @@ impl Engine {
         let Some((code, meta)) = self.preprocess_and_detect(text, options)? else {
             return Ok(None);
         };
-        let model = diagram::parse_or_unsupported(
+        let mut model = diagram::parse_or_unsupported(
             &self.diagram_registry,
             &meta.diagram_type,
             &code,
             &meta,
         )?;
+        common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
         Ok(Some(ParsedDiagram { meta, model }))
     }
 
@@ -2227,6 +2229,24 @@ Alice->Bob:Hello"#;
         assert_eq!(res.model["title"], json!("Diagram Title"));
         assert_eq!(res.model["accTitle"], json!("Accessible Title"));
         assert_eq!(res.model["accDescr"], json!("Accessible Description"));
+    }
+
+    #[test]
+    fn parse_sanitizes_common_db_fields_in_strict_mode() {
+        let engine = Engine::new();
+        let text = r#"info
+title <script>alert(1)</script><b>t</b>
+accTitle: <script>alert(1)</script><b>a</b>
+accDescr: <script>alert(1)</script><b>d</b>
+"#;
+
+        let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(res.model["title"], json!("<b>t</b>"));
+        assert_eq!(res.model["accTitle"], json!("<b>a</b>"));
+        assert_eq!(res.model["accDescr"], json!("<b>d</b>"));
     }
 
     #[test]

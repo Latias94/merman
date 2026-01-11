@@ -2542,4 +2542,21 @@ click id1 call myFn2()
         assert_eq!(ev2["function_args"][1].as_str().unwrap(), "c");
         assert_eq!(ev2["raw_function_args"].as_str().unwrap(), "\"a,b\", c");
     }
+
+    #[test]
+    fn gantt_common_db_sanitizes_title_and_accessibility_fields() {
+        let model = parse(
+            r#"
+gantt
+title <script>alert(1)</script><b>ok</b>
+accTitle: <script>alert(1)</script><b>AT</b>
+accDescr { <script>alert(1)</script>line1
+    line2
+}
+"#,
+        );
+        assert_eq!(model["title"], json!("<b>ok</b>"));
+        assert_eq!(model["accTitle"], json!("<b>AT</b>"));
+        assert_eq!(model["accDescr"], json!("line1\nline2"));
+    }
 }

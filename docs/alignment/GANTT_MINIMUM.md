@@ -23,6 +23,10 @@ Baseline: Mermaid `@11.12.2`.
     - `accTitle: ...`
     - `accDescr: ...`
     - `accDescr { ... }` (multi-line, ends at `}`)
+    - Text sanitization matches Mermaid `commonDb.ts`:
+      - `title` and `accDescr/accTitle` are passed through `sanitizeText(getConfig())`.
+      - `accTitle` removes leading whitespace (`/^\s+/`).
+      - `accDescr` collapses indentation after newlines (`/\n\s+/g -> "\n"`).
   - interactivity:
     - `click <id[,id...]> href "<url>"`
     - `click <id[,id...]> call <fn>(<args>)`
