@@ -1,5 +1,7 @@
 use crate::{Error, ParseMetadata, Result, utils};
-use chrono::{Datelike, Duration, FixedOffset, Local, NaiveDate, NaiveDateTime, TimeZone};
+use chrono::{
+    Datelike, Duration, FixedOffset, Local, NaiveDate, NaiveDateTime, TimeZone, Timelike,
+};
 use regex::Regex;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -314,7 +316,9 @@ impl GanttDb {
             return Ok(());
         };
 
-        let start_time = start_time + Duration::days(1);
+        let Some(start_time) = add_days_local(start_time, 1) else {
+            return Ok(());
+        };
         let (fixed_end_time, render_end_time) =
             fix_task_dates(self, start_time, end_time, &self.date_format)?;
         self.raw_tasks[pos].end_time = Some(fixed_end_time);
@@ -471,32 +475,624 @@ fn local_from_naive(naive: NaiveDateTime) -> DateTimeFixed {
     }
 }
 
+fn add_days_local(dt: DateTimeFixed, days: i64) -> Option<DateTimeFixed> {
+    let local = dt.with_timezone(&Local);
+    let naive = local.naive_local();
+    let date = naive.date();
+    let time = naive.time();
+
+    let new_date = if days >= 0 {
+        date.checked_add_days(chrono::Days::new(days as u64))?
+    } else {
+        date.checked_sub_days(chrono::Days::new((-days) as u64))?
+    };
+    Some(local_from_naive(NaiveDateTime::new(new_date, time)))
+}
+
+fn add_months_local(dt: DateTimeFixed, months: i64) -> Option<DateTimeFixed> {
+    let local = dt.with_timezone(&Local);
+    let naive = local.naive_local();
+    let mut year = naive.year();
+    let mut month0 = naive.month0() as i64; // 0..=11
+
+    month0 += months;
+    year += month0.div_euclid(12) as i32;
+    month0 = month0.rem_euclid(12);
+
+    let month = (month0 as u32) + 1;
+    let day = naive.day().min(last_day_of_month(year, month));
+    let date = NaiveDate::from_ymd_opt(year, month, day)?;
+    Some(local_from_naive(NaiveDateTime::new(date, naive.time())))
+}
+
+fn add_years_local(dt: DateTimeFixed, years: i64) -> Option<DateTimeFixed> {
+    let local = dt.with_timezone(&Local);
+    let naive = local.naive_local();
+    let year = naive.year().checked_add(years as i32)?;
+    let month = naive.month();
+    let day = naive.day().min(last_day_of_month(year, month));
+    let date = NaiveDate::from_ymd_opt(year, month, day)?;
+    Some(local_from_naive(NaiveDateTime::new(date, naive.time())))
+}
+
+fn last_day_of_month(year: i32, month: u32) -> u32 {
+    let (next_year, next_month) = if month == 12 {
+        (year + 1, 1)
+    } else {
+        (year, month + 1)
+    };
+    let first_next = NaiveDate::from_ymd_opt(next_year, next_month, 1)
+        .unwrap_or_else(|| NaiveDate::from_ymd_opt(1970, 1, 1).unwrap());
+    let last = first_next
+        .pred_opt()
+        .unwrap_or_else(|| NaiveDate::from_ymd_opt(1970, 1, 1).unwrap());
+    last.day()
+}
+
+#[derive(Debug, Clone)]
+enum DayjsFormatItem {
+    Literal(String),
+    Token(DayjsToken),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DayjsToken {
+    Year4,
+    Year2,
+    Month2,
+    Month1,
+    MonthNameShort,
+    MonthNameLong,
+    Day2,
+    Day1,
+    DayOrdinal,
+    Hour24_2,
+    Hour24_1,
+    Hour12_2,
+    Hour12_1,
+    Minute2,
+    Minute1,
+    Second2,
+    Second1,
+    Millis3,
+    Millis2,
+    Millis1,
+    OffsetColon,
+    OffsetNoColon,
+    AmPmUpper,
+    AmPmLower,
+    UnixMs,
+    UnixSec,
+    WeekdayLong,
+    WeekdayShort,
+}
+
+fn tokenize_dayjs_format(fmt: &str) -> Vec<DayjsFormatItem> {
+    let mut out: Vec<DayjsFormatItem> = Vec::new();
+
+    fn push_lit(out: &mut Vec<DayjsFormatItem>, s: &str) {
+        if s.is_empty() {
+            return;
+        }
+        match out.last_mut() {
+            Some(DayjsFormatItem::Literal(prev)) => prev.push_str(s),
+            _ => out.push(DayjsFormatItem::Literal(s.to_string())),
+        }
+    }
+
+    let tokens: &[(&str, DayjsToken)] = &[
+        ("YYYY", DayjsToken::Year4),
+        ("MMMM", DayjsToken::MonthNameLong),
+        ("MMM", DayjsToken::MonthNameShort),
+        ("MM", DayjsToken::Month2),
+        ("M", DayjsToken::Month1),
+        ("Do", DayjsToken::DayOrdinal),
+        ("DD", DayjsToken::Day2),
+        ("D", DayjsToken::Day1),
+        ("HH", DayjsToken::Hour24_2),
+        ("H", DayjsToken::Hour24_1),
+        ("hh", DayjsToken::Hour12_2),
+        ("h", DayjsToken::Hour12_1),
+        ("mm", DayjsToken::Minute2),
+        ("m", DayjsToken::Minute1),
+        ("ss", DayjsToken::Second2),
+        ("s", DayjsToken::Second1),
+        ("SSS", DayjsToken::Millis3),
+        ("SS", DayjsToken::Millis2),
+        ("S", DayjsToken::Millis1),
+        ("ZZ", DayjsToken::OffsetNoColon),
+        ("Z", DayjsToken::OffsetColon),
+        ("A", DayjsToken::AmPmUpper),
+        ("a", DayjsToken::AmPmLower),
+        ("x", DayjsToken::UnixMs),
+        ("X", DayjsToken::UnixSec),
+        ("dddd", DayjsToken::WeekdayLong),
+        ("ddd", DayjsToken::WeekdayShort),
+        ("YY", DayjsToken::Year2),
+    ];
+
+    let bytes = fmt.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'[' {
+            if let Some(end_rel) = fmt[i + 1..].find(']') {
+                let inside = &fmt[i + 1..i + 1 + end_rel];
+                push_lit(&mut out, inside);
+                i = i + 1 + end_rel + 1;
+                continue;
+            }
+        }
+
+        let rest = &fmt[i..];
+        let mut matched: Option<(&str, DayjsToken)> = None;
+        for (pat, tok) in tokens {
+            if rest.starts_with(pat) {
+                matched = Some((*pat, *tok));
+                break;
+            }
+        }
+        if let Some((pat, tok)) = matched {
+            out.push(DayjsFormatItem::Token(tok));
+            i += pat.len();
+        } else {
+            let ch = rest.chars().next().unwrap();
+            push_lit(&mut out, &ch.to_string());
+            i += ch.len_utf8();
+        }
+    }
+
+    out
+}
+
+#[derive(Debug, Clone, Default)]
+struct DayjsParsedParts {
+    year: Option<i32>,
+    month: Option<u32>,
+    day: Option<u32>,
+    hour24: Option<u32>,
+    hour12: Option<u32>,
+    minute: Option<u32>,
+    second: Option<u32>,
+    millis: Option<u32>,
+    ampm_is_pm: Option<bool>,
+    offset_minutes: Option<i32>,
+    unix_ms: Option<i64>,
+}
+
 fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<DateTimeFixed> {
     let fmt = date_format.trim();
     if fmt.is_empty() {
         return None;
     }
 
-    match fmt {
-        "YYYY-MM-DD" => {
-            let d = NaiveDate::parse_from_str(s, "%Y-%m-%d").ok()?;
-            Some(local_from_naive(d.and_hms_opt(0, 0, 0)?))
+    let items = tokenize_dayjs_format(fmt);
+
+    fn parse_int_exact(s: &str, digits: usize) -> Option<(u32, &str)> {
+        if s.len() < digits {
+            return None;
         }
-        "YYYY-MM-DD HH:mm:ss" => {
-            let dt = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").ok()?;
-            Some(local_from_naive(dt))
+        let (head, tail) = s.split_at(digits);
+        if !head.chars().all(|c| c.is_ascii_digit()) {
+            return None;
         }
-        "YYYYMMDD" => {
-            let d = NaiveDate::parse_from_str(s, "%Y%m%d").ok()?;
-            Some(local_from_naive(d.and_hms_opt(0, 0, 0)?))
+        let v = head.parse().ok()?;
+        Some((v, tail))
+    }
+
+    fn parse_int_var(s: &str, min: usize, max: usize) -> Vec<(u32, &str)> {
+        let mut out = Vec::new();
+        for digits in (min..=max).rev() {
+            if let Some((v, tail)) = parse_int_exact(s, digits) {
+                out.push((v, tail));
+            }
         }
-        "ss" => {
-            let sec: u32 = s.trim().parse().ok()?;
-            let sec = sec.min(59);
-            let d = NaiveDate::from_ymd_opt(1970, 1, 1)?;
-            Some(local_from_naive(d.and_hms_opt(0, 0, sec)?))
+        out
+    }
+
+    fn parse_offset(s: &str, with_colon: bool) -> Option<(i32, &str)> {
+        let s = s.strip_prefix(|c| c == ' ' || c == '\t').unwrap_or(s);
+        if let Some(tail) = s.strip_prefix('Z') {
+            return Some((0, tail));
         }
-        _ => None,
+        let (sign, rest) = if let Some(tail) = s.strip_prefix('+') {
+            (1i32, tail)
+        } else if let Some(tail) = s.strip_prefix('-') {
+            (-1i32, tail)
+        } else {
+            return None;
+        };
+
+        let (hh, rest) = parse_int_exact(rest, 2)?;
+        let (mm, rest) = if with_colon {
+            let rest = rest.strip_prefix(':')?;
+            parse_int_exact(rest, 2)?
+        } else {
+            parse_int_exact(rest, 2)?
+        };
+        let hh: i32 = hh.try_into().ok()?;
+        let mm: i32 = mm.try_into().ok()?;
+        if hh > 23 || mm > 59 {
+            return None;
+        }
+        Some((sign * (hh * 60 + mm), rest))
+    }
+
+    fn parse_month_name(s: &str) -> Option<(u32, &str)> {
+        const MONTHS: [&str; 12] = [
+            "january",
+            "february",
+            "march",
+            "april",
+            "may",
+            "june",
+            "july",
+            "august",
+            "september",
+            "october",
+            "november",
+            "december",
+        ];
+        const MONTHS_SHORT: [&str; 12] = [
+            "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+        ];
+
+        let lower = s.to_lowercase();
+        for (i, name) in MONTHS.iter().enumerate() {
+            if lower.starts_with(name) {
+                let tail = &s[name.len()..];
+                return Some(((i as u32) + 1, tail));
+            }
+        }
+        for (i, name) in MONTHS_SHORT.iter().enumerate() {
+            if lower.starts_with(name) {
+                let tail = &s[name.len()..];
+                return Some(((i as u32) + 1, tail));
+            }
+        }
+        None
+    }
+
+    fn parse_weekday_name(s: &str) -> Option<&str> {
+        const DAYS: [&str; 7] = [
+            "sunday",
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+            "saturday",
+        ];
+        const DAYS_SHORT: [&str; 7] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+        let lower = s.to_lowercase();
+        for name in DAYS {
+            if lower.starts_with(name) {
+                return Some(&s[name.len()..]);
+            }
+        }
+        for name in DAYS_SHORT {
+            if lower.starts_with(name) {
+                return Some(&s[name.len()..]);
+            }
+        }
+        None
+    }
+
+    fn parse_day_ordinal(s: &str) -> Option<(u32, &str)> {
+        let candidates = parse_int_var(s, 1, 2);
+        for (day, tail) in candidates {
+            let tail_lower = tail.to_lowercase();
+            for suffix in ["st", "nd", "rd", "th"] {
+                if tail_lower.starts_with(suffix) {
+                    return Some((day, &tail[suffix.len()..]));
+                }
+            }
+        }
+        None
+    }
+
+    fn parse_ampm(s: &str) -> Option<(bool, &str)> {
+        let lower = s.to_lowercase();
+        if lower.starts_with("am") {
+            return Some((false, &s[2..]));
+        }
+        if lower.starts_with("pm") {
+            return Some((true, &s[2..]));
+        }
+        None
+    }
+
+    fn parse_items<'a>(
+        items: &[DayjsFormatItem],
+        input: &'a str,
+        parts: &DayjsParsedParts,
+    ) -> Option<(&'a str, DayjsParsedParts)> {
+        if items.is_empty() {
+            return Some((input, parts.clone()));
+        }
+
+        match &items[0] {
+            DayjsFormatItem::Literal(lit) => {
+                let input = input.strip_prefix(lit.as_str())?;
+                parse_items(&items[1..], input, parts)
+            }
+            DayjsFormatItem::Token(tok) => match tok {
+                DayjsToken::Year4 => {
+                    let (y, rest) = parse_int_exact(input, 4)?;
+                    let mut next = parts.clone();
+                    next.year = Some(y as i32);
+                    parse_items(&items[1..], rest, &next)
+                }
+                DayjsToken::Year2 => {
+                    let (y2, rest) = parse_int_exact(input, 2)?;
+                    let y2 = y2 as i32;
+                    let year = if y2 <= 68 { 2000 + y2 } else { 1900 + y2 };
+                    let mut next = parts.clone();
+                    next.year = Some(year);
+                    parse_items(&items[1..], rest, &next)
+                }
+                DayjsToken::Month2 => {
+                    let (m, rest) = parse_int_exact(input, 2)?;
+                    if m < 1 || m > 12 {
+                        return None;
+                    }
+                    let mut next = parts.clone();
+                    next.month = Some(m);
+                    parse_items(&items[1..], rest, &next)
+                }
+                DayjsToken::Month1 => {
+                    for (m, rest) in parse_int_var(input, 1, 2) {
+                        if m < 1 || m > 12 {
+                            continue;
+                        }
+                        let mut next = parts.clone();
+                        next.month = Some(m);
+                        if let Some(r) = parse_items(&items[1..], rest, &next) {
+                            return Some(r);
+                        }
+                    }
+                    None
+                }
+                DayjsToken::MonthNameShort | DayjsToken::MonthNameLong => {
+                    let (m, rest) = parse_month_name(input)?;
+                    let mut next = parts.clone();
+                    next.month = Some(m);
+                    parse_items(&items[1..], rest, &next)
+                }
+                DayjsToken::Day2 => {
+                    let (d, rest) = parse_int_exact(input, 2)?;
+                    if d < 1 || d > 31 {
+                        return None;
+                    }
+                    let mut next = parts.clone();
+                    next.day = Some(d);
+                    parse_items(&items[1..], rest, &next)
+                }
+                DayjsToken::Day1 => {
+                    for (d, rest) in parse_int_var(input, 1, 2) {
+                        if d < 1 || d > 31 {
+                            continue;
+                        }
+                        let mut next = parts.clone();
+                        next.day = Some(d);
+                        if let Some(r) = parse_items(&items[1..], rest, &next) {
+                            return Some(r);
+                        }
+                    }
+                    None
+                }
+                DayjsToken::DayOrdinal => {
+                    let (d, rest) = parse_day_ordinal(input)?;
+                    if d < 1 || d > 31 {
+                        return None;
+                    }
+                    let mut next = parts.clone();
+                    next.day = Some(d);
+                    parse_items(&items[1..], rest, &next)
+                }
+                DayjsToken::Hour24_2 => {
+                    let (h, rest) = parse_int_exact(input, 2)?;
+                    if h > 23 {
+                        return None;
+                    }
+                    let mut next = parts.clone();
+                    next.hour24 = Some(h);
+                    parse_items(&items[1..], rest, &next)
+                }
+                DayjsToken::Hour24_1 => {
+                    for (h, rest) in parse_int_var(input, 1, 2) {
+                        if h > 23 {
+                            continue;
+                        }
+                        let mut next = parts.clone();
+                        next.hour24 = Some(h);
+                        if let Some(r) = parse_items(&items[1..], rest, &next) {
+                            return Some(r);
+                        }
+                    }
+                    None
+                }
+                DayjsToken::Hour12_2 => {
+                    let (h, rest) = parse_int_exact(input, 2)?;
+                    if h < 1 || h > 12 {
+                        return None;
+                    }
+                    let mut next = parts.clone();
+                    next.hour12 = Some(h);
+                    parse_items(&items[1..], rest, &next)
+                }
+                DayjsToken::Hour12_1 => {
+                    for (h, rest) in parse_int_var(input, 1, 2) {
+                        if h < 1 || h > 12 {
+                            continue;
+                        }
+                        let mut next = parts.clone();
+                        next.hour12 = Some(h);
+                        if let Some(r) = parse_items(&items[1..], rest, &next) {
+                            return Some(r);
+                        }
+                    }
+                    None
+                }
+                DayjsToken::Minute2 => {
+                    let (m, rest) = parse_int_exact(input, 2)?;
+                    if m > 59 {
+                        return None;
+                    }
+                    let mut next = parts.clone();
+                    next.minute = Some(m);
+                    parse_items(&items[1..], rest, &next)
+                }
+                DayjsToken::Minute1 => {
+                    for (m, rest) in parse_int_var(input, 1, 2) {
+                        if m > 59 {
+                            continue;
+                        }
+                        let mut next = parts.clone();
+                        next.minute = Some(m);
+                        if let Some(r) = parse_items(&items[1..], rest, &next) {
+                            return Some(r);
+                        }
+                    }
+                    None
+                }
+                DayjsToken::Second2 => {
+                    let (sec, rest) = parse_int_exact(input, 2)?;
+                    if sec > 59 {
+                        return None;
+                    }
+                    let mut next = parts.clone();
+                    next.second = Some(sec);
+                    parse_items(&items[1..], rest, &next)
+                }
+                DayjsToken::Second1 => {
+                    for (sec, rest) in parse_int_var(input, 1, 2) {
+                        if sec > 59 {
+                            continue;
+                        }
+                        let mut next = parts.clone();
+                        next.second = Some(sec);
+                        if let Some(r) = parse_items(&items[1..], rest, &next) {
+                            return Some(r);
+                        }
+                    }
+                    None
+                }
+                DayjsToken::Millis3 => {
+                    let (ms, rest) = parse_int_exact(input, 3)?;
+                    if ms > 999 {
+                        return None;
+                    }
+                    let mut next = parts.clone();
+                    next.millis = Some(ms);
+                    parse_items(&items[1..], rest, &next)
+                }
+                DayjsToken::Millis2 => {
+                    let (ms, rest) = parse_int_exact(input, 2)?;
+                    if ms > 99 {
+                        return None;
+                    }
+                    let mut next = parts.clone();
+                    next.millis = Some(ms * 10);
+                    parse_items(&items[1..], rest, &next)
+                }
+                DayjsToken::Millis1 => {
+                    let (ms, rest) = parse_int_exact(input, 1)?;
+                    if ms > 9 {
+                        return None;
+                    }
+                    let mut next = parts.clone();
+                    next.millis = Some(ms * 100);
+                    parse_items(&items[1..], rest, &next)
+                }
+                DayjsToken::OffsetColon => {
+                    let (mins, rest) = parse_offset(input, true)?;
+                    let mut next = parts.clone();
+                    next.offset_minutes = Some(mins);
+                    parse_items(&items[1..], rest, &next)
+                }
+                DayjsToken::OffsetNoColon => {
+                    let (mins, rest) = parse_offset(input, false)?;
+                    let mut next = parts.clone();
+                    next.offset_minutes = Some(mins);
+                    parse_items(&items[1..], rest, &next)
+                }
+                DayjsToken::AmPmUpper | DayjsToken::AmPmLower => {
+                    let (is_pm, rest) = parse_ampm(input)?;
+                    let mut next = parts.clone();
+                    next.ampm_is_pm = Some(is_pm);
+                    parse_items(&items[1..], rest, &next)
+                }
+                DayjsToken::UnixMs => {
+                    let nums: String = input.chars().take_while(|c| c.is_ascii_digit()).collect();
+                    if nums.is_empty() {
+                        return None;
+                    }
+                    let ms: i64 = nums.parse().ok()?;
+                    let rest = &input[nums.len()..];
+                    let mut next = parts.clone();
+                    next.unix_ms = Some(ms);
+                    parse_items(&items[1..], rest, &next)
+                }
+                DayjsToken::UnixSec => {
+                    let nums: String = input.chars().take_while(|c| c.is_ascii_digit()).collect();
+                    if nums.is_empty() {
+                        return None;
+                    }
+                    let sec: i64 = nums.parse().ok()?;
+                    let rest = &input[nums.len()..];
+                    let mut next = parts.clone();
+                    next.unix_ms = Some(sec.saturating_mul(1000));
+                    parse_items(&items[1..], rest, &next)
+                }
+                DayjsToken::WeekdayLong | DayjsToken::WeekdayShort => {
+                    let rest = parse_weekday_name(input)?;
+                    parse_items(&items[1..], rest, parts)
+                }
+            },
+        }
+    }
+
+    let parts = DayjsParsedParts::default();
+    let (rest, parts) = parse_items(&items, s, &parts)?;
+    if !rest.is_empty() {
+        return None;
+    }
+
+    if let Some(ms) = parts.unix_ms {
+        let dt = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
+        return Some(dt.with_timezone(&FixedOffset::east_opt(0).unwrap()));
+    }
+
+    let base_date = Local::now().date_naive();
+
+    let year = parts.year.unwrap_or(base_date.year());
+    let month = parts.month.unwrap_or(base_date.month());
+    let day = parts.day.unwrap_or(base_date.day());
+
+    let mut hour = parts.hour24.unwrap_or(0);
+    if parts.hour24.is_none() {
+        if let Some(h12) = parts.hour12 {
+            let mut h = (h12 % 12) as u32;
+            if parts.ampm_is_pm.unwrap_or(false) {
+                h += 12;
+            }
+            hour = h;
+        }
+    }
+
+    let minute = parts.minute.unwrap_or(0);
+    let second = parts.second.unwrap_or(0);
+    let millis = parts.millis.unwrap_or(0);
+
+    let date = NaiveDate::from_ymd_opt(year, month, day)?;
+    let naive = date.and_hms_milli_opt(hour, minute, second, millis)?;
+
+    if let Some(mins) = parts.offset_minutes {
+        let offset = FixedOffset::east_opt(mins * 60)?;
+        offset.from_local_datetime(&naive).single()
+    } else {
+        Some(local_from_naive(naive))
     }
 }
 
@@ -651,17 +1247,41 @@ fn add_duration(dt: DateTimeFixed, value: f64, unit: &str) -> Option<DateTimeFix
     if !value.is_finite() {
         return None;
     }
-    let ms = match unit {
-        "ms" => value,
-        "s" => value * 1_000.0,
-        "m" => value * 60_000.0,
-        "h" => value * 3_600_000.0,
-        "d" => value * 86_400_000.0,
-        "w" => value * 604_800_000.0,
-        "M" | "y" => return None,
-        _ => return None,
-    };
-    Some(dt + Duration::milliseconds(ms.trunc() as i64))
+    match unit {
+        "ms" => Some(dt + Duration::milliseconds(value.trunc() as i64)),
+        "s" => Some(dt + Duration::milliseconds((value * 1_000.0).trunc() as i64)),
+        "m" => Some(dt + Duration::milliseconds((value * 60_000.0).trunc() as i64)),
+        "h" => Some(dt + Duration::milliseconds((value * 3_600_000.0).trunc() as i64)),
+        "d" => {
+            if value.fract() == 0.0 {
+                add_days_local(dt, value as i64)
+            } else {
+                Some(dt + Duration::milliseconds((value * 86_400_000.0).trunc() as i64))
+            }
+        }
+        "w" => {
+            if value.fract() == 0.0 {
+                add_days_local(dt, (value as i64).saturating_mul(7))
+            } else {
+                Some(dt + Duration::milliseconds((value * 604_800_000.0).trunc() as i64))
+            }
+        }
+        "M" => {
+            if value.fract() == 0.0 {
+                add_months_local(dt, value as i64)
+            } else {
+                None
+            }
+        }
+        "y" => {
+            if value.fract() == 0.0 {
+                add_years_local(dt, value as i64)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
 }
 
 fn get_end_date(
@@ -707,16 +1327,13 @@ fn get_end_date(
 
     if let Some(mut dt) = parse_dayjs_like_strict(date_format, s) {
         if inclusive {
-            dt = dt + Duration::days(1);
+            dt = add_days_local(dt, 1).unwrap_or(dt);
         }
         return Ok(Some(dt));
     }
 
     let (value, unit) = parse_duration(s);
     if value.is_finite() {
-        if unit == "M" || unit == "y" {
-            return Ok(Some(prev_time));
-        }
         if let Some(new_dt) = add_duration(prev_time, value, &unit) {
             return Ok(Some(new_dt));
         }
@@ -733,18 +1350,171 @@ fn is_strict_yyyy_mm_dd(s: &str) -> bool {
     NaiveDate::parse_from_str(s, "%Y-%m-%d").is_ok()
 }
 
-fn format_dayjs_like(dt: DateTimeFixed, fmt: &str) -> String {
-    match fmt.trim() {
-        "YYYY-MM-DD" => dt.format("%Y-%m-%d").to_string(),
-        "YYYYMMDD" => dt.format("%Y%m%d").to_string(),
-        "ss" => dt.format("%S").to_string(),
-        _ => dt.format("%Y-%m-%d").to_string(),
+fn weekday_full_name(weekday: chrono::Weekday) -> &'static str {
+    match weekday {
+        chrono::Weekday::Mon => "Monday",
+        chrono::Weekday::Tue => "Tuesday",
+        chrono::Weekday::Wed => "Wednesday",
+        chrono::Weekday::Thu => "Thursday",
+        chrono::Weekday::Fri => "Friday",
+        chrono::Weekday::Sat => "Saturday",
+        chrono::Weekday::Sun => "Sunday",
     }
+}
+
+fn weekday_short_name(weekday: chrono::Weekday) -> &'static str {
+    match weekday {
+        chrono::Weekday::Mon => "Mon",
+        chrono::Weekday::Tue => "Tue",
+        chrono::Weekday::Wed => "Wed",
+        chrono::Weekday::Thu => "Thu",
+        chrono::Weekday::Fri => "Fri",
+        chrono::Weekday::Sat => "Sat",
+        chrono::Weekday::Sun => "Sun",
+    }
+}
+
+fn month_short_name(month: u32) -> &'static str {
+    match month {
+        1 => "Jan",
+        2 => "Feb",
+        3 => "Mar",
+        4 => "Apr",
+        5 => "May",
+        6 => "Jun",
+        7 => "Jul",
+        8 => "Aug",
+        9 => "Sep",
+        10 => "Oct",
+        11 => "Nov",
+        12 => "Dec",
+        _ => "",
+    }
+}
+
+fn month_long_name(month: u32) -> &'static str {
+    match month {
+        1 => "January",
+        2 => "February",
+        3 => "March",
+        4 => "April",
+        5 => "May",
+        6 => "June",
+        7 => "July",
+        8 => "August",
+        9 => "September",
+        10 => "October",
+        11 => "November",
+        12 => "December",
+        _ => "",
+    }
+}
+
+fn ordinal_suffix(n: u32) -> &'static str {
+    let n_mod_100 = n % 100;
+    if (11..=13).contains(&n_mod_100) {
+        return "th";
+    }
+    match n % 10 {
+        1 => "st",
+        2 => "nd",
+        3 => "rd",
+        _ => "th",
+    }
+}
+
+fn format_dayjs_like(dt: DateTimeFixed, fmt: &str) -> String {
+    let fmt = fmt.trim();
+    if fmt.is_empty() {
+        return String::new();
+    }
+
+    let items = tokenize_dayjs_format(fmt);
+    let local = dt.with_timezone(&Local);
+    let naive = local.naive_local();
+
+    let mut out = String::new();
+    for item in items {
+        match item {
+            DayjsFormatItem::Literal(s) => out.push_str(&s),
+            DayjsFormatItem::Token(tok) => match tok {
+                DayjsToken::Year4 => out.push_str(&format!("{:04}", naive.year())),
+                DayjsToken::Year2 => {
+                    out.push_str(&format!("{:02}", (naive.year().rem_euclid(100))))
+                }
+                DayjsToken::Month2 => out.push_str(&format!("{:02}", naive.month())),
+                DayjsToken::Month1 => out.push_str(&format!("{}", naive.month())),
+                DayjsToken::MonthNameShort => out.push_str(month_short_name(naive.month())),
+                DayjsToken::MonthNameLong => out.push_str(month_long_name(naive.month())),
+                DayjsToken::Day2 => out.push_str(&format!("{:02}", naive.day())),
+                DayjsToken::Day1 => out.push_str(&format!("{}", naive.day())),
+                DayjsToken::DayOrdinal => {
+                    let d = naive.day();
+                    out.push_str(&format!("{d}{}", ordinal_suffix(d)));
+                }
+                DayjsToken::Hour24_2 => out.push_str(&format!("{:02}", naive.hour())),
+                DayjsToken::Hour24_1 => out.push_str(&format!("{}", naive.hour())),
+                DayjsToken::Hour12_2 => {
+                    let mut h = naive.hour() % 12;
+                    if h == 0 {
+                        h = 12;
+                    }
+                    out.push_str(&format!("{:02}", h));
+                }
+                DayjsToken::Hour12_1 => {
+                    let mut h = naive.hour() % 12;
+                    if h == 0 {
+                        h = 12;
+                    }
+                    out.push_str(&format!("{}", h));
+                }
+                DayjsToken::Minute2 => out.push_str(&format!("{:02}", naive.minute())),
+                DayjsToken::Minute1 => out.push_str(&format!("{}", naive.minute())),
+                DayjsToken::Second2 => out.push_str(&format!("{:02}", naive.second())),
+                DayjsToken::Second1 => out.push_str(&format!("{}", naive.second())),
+                DayjsToken::Millis3 => {
+                    out.push_str(&format!("{:03}", local.timestamp_subsec_millis()))
+                }
+                DayjsToken::Millis2 => {
+                    out.push_str(&format!("{:02}", local.timestamp_subsec_millis() / 10))
+                }
+                DayjsToken::Millis1 => {
+                    out.push_str(&format!("{}", local.timestamp_subsec_millis() / 100))
+                }
+                DayjsToken::OffsetColon | DayjsToken::OffsetNoColon => {
+                    let secs = local.offset().local_minus_utc();
+                    let sign = if secs < 0 { '-' } else { '+' };
+                    let secs = secs.abs();
+                    let hh = secs / 3600;
+                    let mm = (secs % 3600) / 60;
+                    match tok {
+                        DayjsToken::OffsetColon => out.push_str(&format!("{sign}{hh:02}:{mm:02}")),
+                        DayjsToken::OffsetNoColon => out.push_str(&format!("{sign}{hh:02}{mm:02}")),
+                        _ => {}
+                    }
+                }
+                DayjsToken::AmPmUpper | DayjsToken::AmPmLower => {
+                    let is_pm = naive.hour() >= 12;
+                    let s = if is_pm { "PM" } else { "AM" };
+                    match tok {
+                        DayjsToken::AmPmUpper => out.push_str(s),
+                        DayjsToken::AmPmLower => out.push_str(&s.to_lowercase()),
+                        _ => {}
+                    }
+                }
+                DayjsToken::UnixMs => out.push_str(&dt.timestamp_millis().to_string()),
+                DayjsToken::UnixSec => out.push_str(&(dt.timestamp_millis() / 1000).to_string()),
+                DayjsToken::WeekdayLong => out.push_str(weekday_full_name(naive.weekday())),
+                DayjsToken::WeekdayShort => out.push_str(weekday_short_name(naive.weekday())),
+            },
+        }
+    }
+    out
 }
 
 fn is_invalid_date(db: &GanttDb, date: DateTimeFixed, date_format: &str) -> bool {
     let formatted = format_dayjs_like(date, date_format);
-    let date_only = date.format("%Y-%m-%d").to_string();
+    let date_only = format_dayjs_like(date, "YYYY-MM-DD");
 
     if db
         .includes
@@ -759,13 +1529,13 @@ fn is_invalid_date(db: &GanttDb, date: DateTimeFixed, date_format: &str) -> bool
             "friday" => 5u32,
             _ => 6u32,
         };
-        let iso = date.weekday().number_from_monday(); // 1..=7
+        let iso = date.with_timezone(&Local).weekday().number_from_monday(); // 1..=7
         if iso == weekend_start || iso == weekend_start + 1 {
             return true;
         }
     }
 
-    let weekday = date.weekday().to_string().to_lowercase();
+    let weekday = weekday_full_name(date.with_timezone(&Local).weekday()).to_lowercase();
     if db.excludes.iter().any(|v| v == &weekday) {
         return true;
     }
@@ -789,9 +1559,9 @@ fn fix_task_dates(
         }
         invalid = is_invalid_date(db, start_time, date_format);
         if invalid {
-            end_time = end_time + Duration::days(1);
+            end_time = add_days_local(end_time, 1).unwrap_or(end_time);
         }
-        start_time = start_time + Duration::days(1);
+        start_time = add_days_local(start_time, 1).unwrap_or(start_time);
     }
     Ok((end_time, render_end_time))
 }
@@ -1176,6 +1946,7 @@ fn parse_gantt_statement(
 mod tests {
     use super::*;
     use crate::{Engine, ParseOptions};
+    use chrono::TimeZone;
     use futures::executor::block_on;
 
     fn parse(text: &str) -> Value {
@@ -1450,6 +2221,71 @@ Future task: des3, after des2, 5d
         assert_eq!(tasks[0]["id"].as_str().unwrap(), "des1");
         assert_eq!(tasks[1]["id"].as_str().unwrap(), "des2");
         assert_eq!(tasks[2]["id"].as_str().unwrap(), "des3");
+    }
+
+    #[test]
+    fn gantt_date_format_custom_separators_parse_strict() {
+        let model = parse(
+            r#"
+gantt
+dateFormat YYYY/MM/DD
+section testa1
+test1: id1,2013/01/01,2013/01/12
+"#,
+        );
+        let t0 = &model["tasks"][0];
+        assert_eq!(t0["id"].as_str().unwrap(), "id1");
+        assert_eq!(
+            t0["startTime"].as_i64().unwrap(),
+            local_ms(2013, 0, 1, 0, 0, 0)
+        );
+        assert_eq!(
+            t0["endTime"].as_i64().unwrap(),
+            local_ms(2013, 0, 12, 0, 0, 0)
+        );
+    }
+
+    #[test]
+    fn dayjs_strict_parses_month_names_and_offsets() {
+        let dt = parse_dayjs_like_strict("YYYY-MMM-DD", "2013-Jan-02").unwrap();
+        assert_eq!(dt.timestamp_millis(), local_ms(2013, 0, 2, 0, 0, 0));
+
+        let dt =
+            parse_dayjs_like_strict("YYYY-MM-DDTHH:mm:ssZ", "2013-01-01T00:00:00+00:00").unwrap();
+        assert_eq!(
+            dt.timestamp_millis(),
+            chrono::Utc
+                .with_ymd_and_hms(2013, 1, 1, 0, 0, 0)
+                .single()
+                .unwrap()
+                .timestamp_millis()
+        );
+    }
+
+    #[test]
+    fn gantt_excludes_weekday_names_use_full_names() {
+        let model = parse(
+            r#"
+gantt
+dateFormat YYYY-MM-DD
+excludes friday
+section A
+test1: id1,2019-02-07,2d
+"#,
+        );
+        let t0 = &model["tasks"][0];
+        assert_eq!(
+            t0["startTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 7, 0, 0, 0)
+        );
+        assert_eq!(
+            t0["endTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 10, 0, 0, 0)
+        );
+        assert_eq!(
+            t0["renderEndTime"].as_i64().unwrap(),
+            local_ms(2019, 1, 10, 0, 0, 0)
+        );
     }
 
     #[test]

@@ -56,8 +56,7 @@ Baseline: Mermaid `@11.12.2`.
 
 ## Not yet implemented (Mermaid-supported)
 
-- Full `dayjs` format token parity for arbitrary `dateFormat` values.
-- Calendar duration units (`M`, `y`) for `parseDuration`/`add` parity (months/years).
+- Full `dayjs` format token parity for arbitrary `dateFormat` values (locale-specific tokens, escaping edge cases, and broader parsing/formatting coverage).
 - Full `Date.parse()` compatibility for all JS date string variants.
 
 ## Alignment goal
