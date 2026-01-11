@@ -38,10 +38,14 @@ Baseline: Mermaid `@11.12.2`.
     - `after <id...>` selects the latest referenced `endTime` (fallback: today midnight)
     - `until <id...>` selects the earliest referenced `startTime` (fallback: today midnight)
     - Forward references are resolved via iterative compilation (max 10 passes), mirroring Mermaid.
-  - End expressions:
-    - strict date parsing for `YYYY-MM-DD`, `YYYYMMDD`, `YYYY-MM-DD HH:mm:ss`, `ss`
-    - duration parsing for `ms|s|m|h|d|w` (floats supported)
-    - JS-like fallback parsing for date strings that fail strict parsing, including the “ridiculous year” rejection.
+- End expressions:
+  - strict date parsing for `YYYY-MM-DD`, `YYYYMMDD`, `YYYY-MM-DD HH:mm:ss`, `ss`
+  - duration parsing for `ms|s|m|h|d|w` (floats supported)
+  - JS-like fallback parsing for date strings that fail strict parsing, including the “ridiculous year” rejection and common ISO-like inputs:
+    - `YYYY-MM-DD` (UTC semantics like JS)
+    - `YYYY-MM-DDTHH:mm:ss` / `YYYY-MM-DD HH:mm:ss` (local semantics like JS)
+    - `YYYY/MM/DD` and `YYYY/MM/DD HH:mm:ss` (local semantics like JS)
+    - timezone offsets like `+0800` / `+08:00`
   - Excludes adjustment:
     - For non-fixed end tasks (i.e. `manualEndTime == false`), `excludes` can extend `endTime` and populate `renderEndTime` (Mermaid `fixTaskDates` parity).
 

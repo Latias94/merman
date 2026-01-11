@@ -1099,37 +1099,15 @@ fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<DateTimeFixed> 
 fn parse_js_date_fallback(s: &str) -> Result<DateTimeFixed> {
     let s = s.trim();
 
-    if Regex::new(r"^\d{1,4}-\d{2}-\d{2}$").unwrap().is_match(s) {
-        let mut it = s.split('-');
-        let year: i32 = it
-            .next()
-            .unwrap()
-            .parse()
-            .map_err(|_| Error::DiagramParse {
+    if let Some(dt) = parse_js_like_ymd_datetime(s) {
+        let year = dt.year();
+        if year < -10000 || year > 10000 {
+            return Err(Error::DiagramParse {
                 diagram_type: "gantt".to_string(),
                 message: format!("Invalid date:{s}"),
-            })?;
-        let month: u32 = it
-            .next()
-            .unwrap()
-            .parse()
-            .map_err(|_| Error::DiagramParse {
-                diagram_type: "gantt".to_string(),
-                message: format!("Invalid date:{s}"),
-            })?;
-        let day: u32 = it
-            .next()
-            .unwrap()
-            .parse()
-            .map_err(|_| Error::DiagramParse {
-                diagram_type: "gantt".to_string(),
-                message: format!("Invalid date:{s}"),
-            })?;
-        let d = NaiveDate::from_ymd_opt(year, month, day).ok_or_else(|| Error::DiagramParse {
-            diagram_type: "gantt".to_string(),
-            message: format!("Invalid date:{s}"),
-        })?;
-        return Ok(local_from_naive(d.and_hms_opt(0, 0, 0).unwrap()));
+            });
+        }
+        return Ok(dt);
     }
 
     if Regex::new(r"^\d+$").unwrap().is_match(s) {
@@ -1166,6 +1144,165 @@ fn parse_js_date_fallback(s: &str) -> Result<DateTimeFixed> {
         diagram_type: "gantt".to_string(),
         message: format!("Invalid date:{s}"),
     })
+}
+
+fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
+    fn parse_u32(s: &str) -> Option<u32> {
+        if s.is_empty() || !s.chars().all(|c| c.is_ascii_digit()) {
+            return None;
+        }
+        s.parse().ok()
+    }
+
+    fn split_once<'a>(s: &'a str, ch: char) -> Option<(&'a str, &'a str)> {
+        let idx = s.find(ch)?;
+        Some((&s[..idx], &s[idx + 1..]))
+    }
+
+    fn parse_timezone_offset_minutes(s: &str) -> Option<(i32, &str)> {
+        let s = s.trim_start();
+        if let Some(rest) = s.strip_prefix('Z') {
+            return Some((0, rest));
+        }
+        let (sign, rest) = if let Some(rest) = s.strip_prefix('+') {
+            (1i32, rest)
+        } else if let Some(rest) = s.strip_prefix('-') {
+            (-1i32, rest)
+        } else {
+            return None;
+        };
+
+        let (hh_str, rest) = rest.split_at(2.min(rest.len()));
+        let hh = parse_u32(hh_str)? as i32;
+
+        let (mm, rest) = if let Some(rest) = rest.strip_prefix(':') {
+            let (mm_str, rest) = rest.split_at(2.min(rest.len()));
+            (parse_u32(mm_str)? as i32, rest)
+        } else {
+            let (mm_str, rest) = rest.split_at(2.min(rest.len()));
+            (parse_u32(mm_str)? as i32, rest)
+        };
+
+        if hh > 23 || mm > 59 {
+            return None;
+        }
+        Some((sign * (hh * 60 + mm), rest))
+    }
+
+    fn js_year_len_is_iso_utc(year_str: &str) -> bool {
+        year_str.len() == 4
+    }
+
+    let (date_part, mut rest) = {
+        let mut end = s.len();
+        for (i, c) in s.char_indices() {
+            if c == 'T' || c.is_whitespace() {
+                end = i;
+                break;
+            }
+        }
+        (&s[..end], &s[end..])
+    };
+
+    let sep = if date_part.contains('-') {
+        '-'
+    } else if date_part.contains('/') {
+        '/'
+    } else {
+        return None;
+    };
+
+    let (year_str, rest1) = split_once(date_part, sep)?;
+    let (month_str, day_str) = split_once(rest1, sep)?;
+    if year_str.is_empty() || year_str.len() > 4 {
+        return None;
+    }
+    if !year_str.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let year: i32 = year_str.parse().ok()?;
+    let month = parse_u32(month_str)?;
+    let day = parse_u32(day_str)?;
+    let date = NaiveDate::from_ymd_opt(year, month, day)?;
+
+    let mut second: u32 = 0;
+    let mut millis: u32 = 0;
+    let mut tz_minutes: Option<i32> = None;
+
+    rest = rest.trim_start();
+    if rest.is_empty() {
+        let naive = date.and_hms_milli_opt(0, 0, 0, 0)?;
+        if sep == '-' && js_year_len_is_iso_utc(year_str) {
+            let dt_utc =
+                chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive, chrono::Utc);
+            return Some(dt_utc.with_timezone(&FixedOffset::east_opt(0)?));
+        }
+        return Some(local_from_naive(naive));
+    }
+
+    if let Some(r) = rest.strip_prefix('T') {
+        rest = r;
+    }
+    rest = rest.trim_start();
+
+    let (hh_str, rest2) = split_once(rest, ':')?;
+    let hour = parse_u32(hh_str)?;
+    let (mm_str, mut rest3) = {
+        let (mm_str, rest) = rest2.split_at(2.min(rest2.len()));
+        (mm_str, rest)
+    };
+    let minute = parse_u32(mm_str)?;
+
+    if let Some(r) = rest3.strip_prefix(':') {
+        let (ss_str, mut rest4) = {
+            let (ss_str, rest) = r.split_at(2.min(r.len()));
+            (ss_str, rest)
+        };
+        second = parse_u32(ss_str)?;
+
+        if let Some(r) = rest4.strip_prefix('.') {
+            let ms_digits: String = r
+                .chars()
+                .take_while(|c| c.is_ascii_digit())
+                .take(3)
+                .collect();
+            if ms_digits.is_empty() {
+                return None;
+            }
+            millis = match ms_digits.len() {
+                1 => parse_u32(&ms_digits)? * 100,
+                2 => parse_u32(&ms_digits)? * 10,
+                _ => parse_u32(&ms_digits)?,
+            };
+            rest4 = &r[ms_digits.len()..];
+        }
+
+        rest3 = rest4;
+    }
+
+    rest3 = rest3.trim_start();
+    if !rest3.is_empty() {
+        if let Some((mins, tail)) = parse_timezone_offset_minutes(rest3) {
+            tz_minutes = Some(mins);
+            if !tail.trim().is_empty() {
+                return None;
+            }
+        } else {
+            return None;
+        }
+    }
+
+    if hour > 23 || minute > 59 || second > 59 {
+        return None;
+    }
+    let naive = date.and_hms_milli_opt(hour, minute, second, millis)?;
+
+    if let Some(mins) = tz_minutes {
+        let offset = FixedOffset::east_opt(mins * 60)?;
+        return offset.from_local_datetime(&naive).single();
+    }
+
+    Some(local_from_naive(naive))
 }
 
 fn get_start_date(db: &GanttDb, date_format: &str, raw: &str) -> Result<Option<DateTimeFixed>> {
@@ -2260,6 +2397,84 @@ test1: id1,2013/01/01,2013/01/12
                 .unwrap()
                 .timestamp_millis()
         );
+    }
+
+    #[test]
+    fn gantt_js_date_fallback_parses_iso_date_only_as_utc() {
+        let model = parse(
+            r#"
+gantt
+dateFormat YYYYMMDD
+section A
+test1: id1,2013-01-01,1d
+"#,
+        );
+        let t0 = &model["tasks"][0];
+        assert_eq!(
+            t0["startTime"].as_i64().unwrap(),
+            chrono::Utc
+                .with_ymd_and_hms(2013, 1, 1, 0, 0, 0)
+                .single()
+                .unwrap()
+                .timestamp_millis()
+        );
+        assert_eq!(
+            t0["endTime"].as_i64().unwrap(),
+            chrono::Utc
+                .with_ymd_and_hms(2013, 1, 2, 0, 0, 0)
+                .single()
+                .unwrap()
+                .timestamp_millis()
+        );
+    }
+
+    #[test]
+    fn gantt_js_date_fallback_parses_iso_datetime_without_tz_as_local() {
+        let model = parse(
+            r#"
+gantt
+dateFormat YYYYMMDD
+section A
+test1: id1,2013-01-01T00:00:00,1d
+"#,
+        );
+        let t0 = &model["tasks"][0];
+        assert_eq!(
+            t0["startTime"].as_i64().unwrap(),
+            local_ms(2013, 0, 1, 0, 0, 0)
+        );
+    }
+
+    #[test]
+    fn gantt_js_date_fallback_parses_timezone_offsets_with_or_without_colon() {
+        let dt = parse_js_date_fallback("2013-01-01T00:00:00+0800").unwrap();
+        assert_eq!(
+            dt.timestamp_millis(),
+            chrono::Utc
+                .with_ymd_and_hms(2012, 12, 31, 16, 0, 0)
+                .single()
+                .unwrap()
+                .timestamp_millis()
+        );
+
+        let dt = parse_js_date_fallback("2013-01-01T00:00:00+08:00").unwrap();
+        assert_eq!(
+            dt.timestamp_millis(),
+            chrono::Utc
+                .with_ymd_and_hms(2012, 12, 31, 16, 0, 0)
+                .single()
+                .unwrap()
+                .timestamp_millis()
+        );
+    }
+
+    #[test]
+    fn gantt_js_date_fallback_parses_slash_dates_as_local() {
+        let dt = parse_js_date_fallback("2013/01/01").unwrap();
+        assert_eq!(dt.timestamp_millis(), local_ms(2013, 0, 1, 0, 0, 0));
+
+        let dt = parse_js_date_fallback("2013/01/01 00:00:00").unwrap();
+        assert_eq!(dt.timestamp_millis(), local_ms(2013, 0, 1, 0, 0, 0));
     }
 
     #[test]
