@@ -347,6 +347,7 @@ pub fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
 
     let mut lines = code.lines();
     let mut found_header = false;
+    let mut header_tail: Option<String> = None;
     while let Some(line) = lines.next() {
         let t = strip_inline_comment(line);
         let trimmed = t.trim();
@@ -355,6 +356,25 @@ pub fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
         }
         if trimmed.eq_ignore_ascii_case("mindmap") {
             found_header = true;
+            break;
+        }
+        if starts_with_case_insensitive(trimmed, "mindmap")
+            && trimmed.len() > "mindmap".len()
+            && trimmed["mindmap".len()..]
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_whitespace())
+        {
+            found_header = true;
+            let after_keyword = &trimmed["mindmap".len()..];
+            let indent = after_keyword
+                .chars()
+                .take_while(|c| c.is_whitespace())
+                .count();
+            let rest = after_keyword.trim_start();
+            if !rest.is_empty() {
+                header_tail = Some(format!("{}{}", " ".repeat(indent), rest));
+            }
             break;
         }
         break;
@@ -367,31 +387,31 @@ pub fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
         });
     }
 
-    for line in lines {
+    let mut handle_line = |line: &str| -> Result<()> {
         let line = strip_inline_comment(line);
         if line.trim().is_empty() {
-            continue;
+            return Ok(());
         }
 
         let (indent, rest) = split_indent(line);
         let rest = rest.trim_end();
         if rest.is_empty() {
-            continue;
+            return Ok(());
         }
 
         if starts_with_case_insensitive(rest, "::icon(") {
             let after = &rest["::icon(".len()..];
             let Some(end) = after.find(')') else {
-                continue;
+                return Ok(());
             };
             let icon = after[..end].to_string();
             db.decorate_last(None, Some(icon), &meta.effective_config);
-            continue;
+            return Ok(());
         }
 
         if let Some(after) = rest.strip_prefix(":::") {
             db.decorate_last(Some(after.trim().to_string()), None, &meta.effective_config);
-            continue;
+            return Ok(());
         }
 
         let (id_raw, descr_raw, ty) =
@@ -407,6 +427,14 @@ pub fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
             &meta.diagram_type,
             &meta.effective_config,
         )?;
+        Ok(())
+    };
+
+    if let Some(tail) = &header_tail {
+        handle_line(tail)?;
+    }
+    for line in lines {
+        handle_line(line)?;
     }
 
     let mut final_config = meta.effective_config.as_value().clone();
@@ -948,6 +976,15 @@ mod tests {
         assert_eq!(child["nodeId"].as_str().unwrap(), "Child");
         assert_eq!(child["children"].as_array().unwrap().len(), 2);
         assert_eq!(child["children"][1]["nodeId"].as_str().unwrap(), "b");
+    }
+
+    #[test]
+    fn mindmap_header_can_share_line_with_root_node() {
+        let model = parse("mindmap root\n  child1\n");
+        let mm = &model["rootNode"];
+        assert_eq!(mm["descr"].as_str().unwrap(), "root");
+        assert_eq!(mm["children"].as_array().unwrap().len(), 1);
+        assert_eq!(mm["children"][0]["descr"].as_str().unwrap(), "child1");
     }
 
     #[test]
