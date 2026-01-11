@@ -7,3 +7,4 @@ pub mod mindmap;
 pub mod pie;
 pub mod sequence;
 pub mod state;
+pub mod timeline;

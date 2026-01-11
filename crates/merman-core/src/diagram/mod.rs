@@ -43,6 +43,7 @@ impl DiagramRegistry {
 
         reg.insert("mindmap", crate::diagrams::mindmap::parse_mindmap);
         reg.insert("gantt", crate::diagrams::gantt::parse_gantt);
+        reg.insert("timeline", crate::diagrams::timeline::parse_timeline);
 
         reg
     }
