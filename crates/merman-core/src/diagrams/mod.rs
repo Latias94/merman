@@ -1,0 +1,8 @@
+pub mod class;
+pub mod er;
+pub mod flowchart;
+pub mod info;
+pub mod mindmap;
+pub mod pie;
+pub mod sequence;
+pub mod state;

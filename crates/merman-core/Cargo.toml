@@ -1,0 +1,29 @@
+[package]
+name = "merman-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[features]
+default = ["large-features"]
+large-features = []
+
+[dependencies]
+lalrpop-util.workspace = true
+logos.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+lol_html.workspace = true
+url.workspace = true
+uuid.workspace = true
+
+[build-dependencies]
+lalrpop.workspace = true
+
+[dev-dependencies]
+futures.workspace = true
