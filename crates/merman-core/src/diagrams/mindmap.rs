@@ -349,13 +349,15 @@ pub fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let mut found_header = false;
     while let Some(line) = lines.next() {
         let t = strip_inline_comment(line);
-        if t.trim().is_empty() {
+        let trimmed = t.trim();
+        if trimmed.is_empty() {
             continue;
         }
-        if t.trim_end().eq_ignore_ascii_case("mindmap") {
+        if trimmed.eq_ignore_ascii_case("mindmap") {
             found_header = true;
             break;
         }
+        break;
     }
 
     if !found_header {
@@ -913,6 +915,39 @@ mod tests {
         let model = parse("%% comment\n\nmindmap\nroot\n A\n B");
         assert_eq!(model["rootNode"]["nodeId"].as_str().unwrap(), "root");
         assert_eq!(model["rootNode"]["children"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn mindmap_root_without_indent_child_with_indent() {
+        let model = parse("mindmap\nroot\n      theId(child1)");
+        let mm = &model["rootNode"];
+        assert_eq!(mm["nodeId"].as_str().unwrap(), "root");
+        assert_eq!(mm["children"].as_array().unwrap().len(), 1);
+        let child = &mm["children"][0];
+        assert_eq!(child["descr"].as_str().unwrap(), "child1");
+        assert_eq!(child["nodeId"].as_str().unwrap(), "theId");
+    }
+
+    #[test]
+    fn mindmap_rows_with_only_spaces_do_not_interfere() {
+        let model = parse("mindmap\nroot\n A\n \n\n B");
+        let mm = &model["rootNode"];
+        assert_eq!(mm["nodeId"].as_str().unwrap(), "root");
+        assert_eq!(mm["children"].as_array().unwrap().len(), 2);
+        assert_eq!(mm["children"][0]["nodeId"].as_str().unwrap(), "A");
+        assert_eq!(mm["children"][1]["nodeId"].as_str().unwrap(), "B");
+    }
+
+    #[test]
+    fn mindmap_meaningless_empty_rows_do_not_interfere() {
+        let model =
+            parse("mindmap\n  root(Root)\n    Child(Child)\n      a(a)\n\n      b[New Stuff]");
+        let mm = &model["rootNode"];
+        assert_eq!(mm["nodeId"].as_str().unwrap(), "root");
+        let child = &mm["children"][0];
+        assert_eq!(child["nodeId"].as_str().unwrap(), "Child");
+        assert_eq!(child["children"].as_array().unwrap().len(), 2);
+        assert_eq!(child["children"][1]["nodeId"].as_str().unwrap(), "b");
     }
 
     #[test]
