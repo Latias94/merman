@@ -667,6 +667,29 @@ fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<DateTimeFixed> 
 
     let items = tokenize_dayjs_format(fmt);
 
+    fn parse_signed_i64_prefix(input: &str) -> Option<(i64, &str)> {
+        let bytes = input.as_bytes();
+        if bytes.is_empty() {
+            return None;
+        }
+        let mut i = 0usize;
+        let sign: i64 = if bytes[0] == b'-' {
+            i = 1;
+            -1
+        } else {
+            1
+        };
+        let start_digits = i;
+        while i < bytes.len() && bytes[i].is_ascii_digit() {
+            i += 1;
+        }
+        if i == start_digits {
+            return None;
+        }
+        let v: i64 = input[start_digits..i].parse().ok()?;
+        Some((sign.saturating_mul(v), &input[i..]))
+    }
+
     fn parse_int_exact(s: &str, digits: usize) -> Option<(u32, &str)> {
         if s.len() < digits {
             return None;
@@ -1024,23 +1047,13 @@ fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<DateTimeFixed> 
                     parse_items(&items[1..], rest, &next)
                 }
                 DayjsToken::UnixMs => {
-                    let nums: String = input.chars().take_while(|c| c.is_ascii_digit()).collect();
-                    if nums.is_empty() {
-                        return None;
-                    }
-                    let ms: i64 = nums.parse().ok()?;
-                    let rest = &input[nums.len()..];
+                    let (ms, rest) = parse_signed_i64_prefix(input)?;
                     let mut next = parts.clone();
                     next.unix_ms = Some(ms);
                     parse_items(&items[1..], rest, &next)
                 }
                 DayjsToken::UnixSec => {
-                    let nums: String = input.chars().take_while(|c| c.is_ascii_digit()).collect();
-                    if nums.is_empty() {
-                        return None;
-                    }
-                    let sec: i64 = nums.parse().ok()?;
-                    let rest = &input[nums.len()..];
+                    let (sec, rest) = parse_signed_i64_prefix(input)?;
                     let mut next = parts.clone();
                     next.unix_ms = Some(sec.saturating_mul(1000));
                     parse_items(&items[1..], rest, &next)
@@ -1307,21 +1320,6 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
 
 fn get_start_date(db: &GanttDb, date_format: &str, raw: &str) -> Result<Option<DateTimeFixed>> {
     let s = raw.trim();
-
-    let is_timestamp_format = matches!(date_format.trim(), "x" | "X");
-    if is_timestamp_format && Regex::new(r"^\d+$").unwrap().is_match(s) {
-        let ms: i64 = s.parse().map_err(|_| Error::DiagramParse {
-            diagram_type: "gantt".to_string(),
-            message: format!("Invalid date:{s}"),
-        })?;
-        let dt = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms).ok_or_else(|| {
-            Error::DiagramParse {
-                diagram_type: "gantt".to_string(),
-                message: format!("Invalid date:{s}"),
-            }
-        })?;
-        return Ok(Some(dt.with_timezone(&FixedOffset::east_opt(0).unwrap())));
-    }
 
     let after_re = Regex::new(r"(?i)^after\s+(?<ids>[\d\w -]+)").unwrap();
     if let Some(caps) = after_re.captures(s) {
@@ -2558,5 +2556,140 @@ accDescr { <script>alert(1)</script>line1
         assert_eq!(model["title"], json!("<b>ok</b>"));
         assert_eq!(model["accTitle"], json!("<b>AT</b>"));
         assert_eq!(model["accDescr"], json!("line1\nline2"));
+    }
+
+    #[test]
+    fn gantt_duration_minutes_and_seconds_match_upstream() {
+        let model = parse(
+            r#"
+gantt
+dateFormat YYYY-MM-DD
+section testa1
+test1: id1,2013-01-01,2m
+test2: id2,2013-01-01,2s
+"#,
+        );
+        let tasks = model["tasks"].as_array().unwrap();
+        assert_eq!(
+            tasks[0]["endTime"].as_i64().unwrap(),
+            local_ms(2013, 0, 1, 0, 2, 0)
+        );
+        assert_eq!(
+            tasks[1]["endTime"].as_i64().unwrap(),
+            local_ms(2013, 0, 1, 0, 0, 2)
+        );
+    }
+
+    #[test]
+    fn gantt_fixed_dates_without_id_match_upstream() {
+        let model = parse(
+            r#"
+gantt
+dateFormat YYYY-MM-DD
+section testa1
+test1: 2013-01-01,2013-01-12
+"#,
+        );
+        let t0 = &model["tasks"][0];
+        assert_eq!(t0["id"].as_str().unwrap(), "task1");
+        assert_eq!(
+            t0["startTime"].as_i64().unwrap(),
+            local_ms(2013, 0, 1, 0, 0, 0)
+        );
+        assert_eq!(
+            t0["endTime"].as_i64().unwrap(),
+            local_ms(2013, 0, 12, 0, 0, 0)
+        );
+    }
+
+    #[test]
+    fn gantt_relative_refs_work_across_sections_like_upstream() {
+        let model = parse(
+            r#"
+gantt
+dateFormat YYYY-MM-DD
+section sec1
+test1: id1,2013-01-01,2w
+test2: id2,after id3,1d
+section sec2
+test3: id3,after id1,2d
+"#,
+        );
+        let tasks = model["tasks"].as_array().unwrap();
+        assert_eq!(
+            tasks[1]["startTime"].as_i64().unwrap(),
+            local_ms(2013, 0, 17, 0, 0, 0)
+        );
+        assert_eq!(
+            tasks[1]["endTime"].as_i64().unwrap(),
+            local_ms(2013, 0, 18, 0, 0, 0)
+        );
+    }
+
+    #[test]
+    fn gantt_relative_after_multiple_ids_uses_latest_end_like_upstream() {
+        let model = parse(
+            r#"
+gantt
+dateFormat YYYY-MM-DD
+section sec1
+task1: id1,after id2 id3 id4,1d
+task2: id2,2013-01-01,1d
+task3: id3,2013-02-01,3d
+task4: id4,2013-02-01,2d
+"#,
+        );
+        let tasks = model["tasks"].as_array().unwrap();
+        assert_eq!(
+            tasks[0]["endTime"].as_i64().unwrap(),
+            local_ms(2013, 1, 5, 0, 0, 0)
+        );
+    }
+
+    #[test]
+    fn gantt_relative_until_multiple_ids_uses_earliest_start_like_upstream() {
+        let model = parse(
+            r#"
+gantt
+dateFormat YYYY-MM-DD
+section sec1
+task1: id1,2013-01-01,until id2 id3 id4
+task2: id2,2013-01-11,1d
+task3: id3,2013-02-10,1d
+task4: id4,2013-02-12,1d
+"#,
+        );
+        let tasks = model["tasks"].as_array().unwrap();
+        assert_eq!(
+            tasks[0]["endTime"].as_i64().unwrap(),
+            local_ms(2013, 0, 11, 0, 0, 0)
+        );
+    }
+
+    #[test]
+    fn gantt_timestamp_formats_x_and_x_support_signed_and_seconds() {
+        let model = parse(
+            r#"
+gantt
+dateFormat x
+section T
+t1: id1,-1,1ms
+"#,
+        );
+        let t0 = &model["tasks"][0];
+        assert_eq!(t0["startTime"].as_i64().unwrap(), -1);
+        assert_eq!(t0["endTime"].as_i64().unwrap(), 0);
+
+        let model = parse(
+            r#"
+gantt
+dateFormat X
+section T
+t1: id1,20,1s
+"#,
+        );
+        let t0 = &model["tasks"][0];
+        assert_eq!(t0["startTime"].as_i64().unwrap(), 20_000);
+        assert_eq!(t0["endTime"].as_i64().unwrap(), 21_000);
     }
 }

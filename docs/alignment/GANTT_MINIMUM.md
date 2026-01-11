@@ -44,6 +44,9 @@ Baseline: Mermaid `@11.12.2`.
     - Forward references are resolved via iterative compilation (max 10 passes), mirroring Mermaid.
 - End expressions:
   - strict date parsing for `YYYY-MM-DD`, `YYYYMMDD`, `YYYY-MM-DD HH:mm:ss`, `ss`
+  - timestamp formats:
+    - `x` = Unix epoch milliseconds (Day.js `x`)
+    - `X` = Unix epoch seconds (Day.js `X`)
   - duration parsing for `ms|s|m|h|d|w` (floats supported)
   - JS-like fallback parsing for date strings that fail strict parsing, including the “ridiculous year” rejection and common ISO-like inputs:
     - `YYYY-MM-DD` (UTC semantics like JS)
