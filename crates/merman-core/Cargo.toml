@@ -21,6 +21,7 @@ tracing.workspace = true
 lol_html.workspace = true
 url.workspace = true
 uuid.workspace = true
+chrono.workspace = true
 
 [build-dependencies]
 lalrpop.workspace = true

@@ -1,6 +1,7 @@
 pub mod class;
 pub mod er;
 pub mod flowchart;
+pub mod gantt;
 pub mod info;
 pub mod mindmap;
 pub mod pie;

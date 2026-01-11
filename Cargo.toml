@@ -26,3 +26,4 @@ futures = "0.3.31"
 lol_html = "2.7.1"
 url = "2.5.4"
 uuid = { version = "1.12.1", features = ["v4"] }
+chrono = { version = "0.4.40", features = ["clock"] }
