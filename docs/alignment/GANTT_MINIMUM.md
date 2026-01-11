@@ -51,6 +51,8 @@ Baseline: Mermaid `@11.12.2`.
   - `tasks[*].startTime/endTime/renderEndTime` are epoch milliseconds (`i64`)
   - `tasks[*].raw` mirrors Mermaid’s compilation inputs (`raw.startTime/raw.endTime`)
   - `links` and `clickEvents` are emitted for integration layers
+    - `clickEvents[*].function_args` is parsed like Mermaid (split on commas, ignoring commas inside double quotes; outer quotes are removed)
+    - if no callback args are provided, defaults to `[taskId]` (Mermaid behavior)
 
 ## Not yet implemented (Mermaid-supported)
 
@@ -62,4 +64,3 @@ Baseline: Mermaid `@11.12.2`.
 
 This is an incremental slice. The ultimate goal is full Mermaid `gantt` grammar and DB behavior
 compatibility at the pinned baseline tag.
-

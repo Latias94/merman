@@ -44,7 +44,8 @@ struct RawTask {
 #[derive(Debug, Clone, serde::Serialize)]
 struct ClickEvent {
     function_name: String,
-    function_args: Option<String>,
+    function_args: Vec<String>,
+    raw_function_args: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -191,11 +192,18 @@ impl GanttDb {
             for id in ids.split(',') {
                 let id = id.trim();
                 if self.find_task_by_id(id).is_some() {
+                    let args = parse_callback_args(function_args).unwrap_or_default();
+                    let args = if args.is_empty() {
+                        vec![id.to_string()]
+                    } else {
+                        args
+                    };
                     self.click_events.insert(
                         id.to_string(),
                         ClickEvent {
                             function_name: function_name.to_string(),
-                            function_args: function_args.map(|s| s.to_string()),
+                            function_args: args,
+                            raw_function_args: function_args.map(|s| s.to_string()),
                         },
                     );
                 }
@@ -926,6 +934,41 @@ fn parse_click_statement(
     Some((ids, href, call))
 }
 
+fn parse_callback_args(raw: Option<&str>) -> Option<Vec<String>> {
+    let raw = raw?;
+    let mut out: Vec<String> = Vec::new();
+
+    let mut cur = String::new();
+    let mut in_quotes = false;
+    for ch in raw.chars() {
+        match ch {
+            '"' => {
+                in_quotes = !in_quotes;
+                cur.push(ch);
+            }
+            ',' if !in_quotes => {
+                out.push(cur);
+                cur = String::new();
+            }
+            _ => cur.push(ch),
+        }
+    }
+    out.push(cur);
+
+    let out: Vec<String> = out
+        .into_iter()
+        .map(|s| {
+            let mut item = s.trim().to_string();
+            if item.starts_with('"') && item.ends_with('"') && item.len() >= 2 {
+                item = item[1..item.len() - 1].to_string();
+            }
+            item
+        })
+        .collect();
+
+    Some(out)
+}
+
 pub fn parse_gantt(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let mut db = GanttDb::default();
     db.clear();
@@ -1407,5 +1450,45 @@ Future task: des3, after des2, 5d
         assert_eq!(tasks[0]["id"].as_str().unwrap(), "des1");
         assert_eq!(tasks[1]["id"].as_str().unwrap(), "des2");
         assert_eq!(tasks[2]["id"].as_str().unwrap(), "des3");
+    }
+
+    #[test]
+    fn gantt_click_call_is_ignored_unless_security_level_loose() {
+        let model = parse(
+            r#"
+gantt
+dateFormat YYYY-MM-DD
+section A
+task: id1, 2013-01-01, 1d
+click id1 call myFn("a,b", c)
+"#,
+        );
+        assert!(model["clickEvents"].as_object().unwrap().is_empty());
+    }
+
+    #[test]
+    fn gantt_click_call_parses_args_and_defaults_to_id() {
+        let model = parse(
+            r#"
+%%{init: {"securityLevel":"loose"}}%%
+gantt
+dateFormat YYYY-MM-DD
+section A
+task: id1, 2013-01-01, 1d
+task2: id2, 2013-01-02, 1d
+click id2 call myFn("a,b", c)
+click id1 call myFn2()
+"#,
+        );
+        let ev1 = &model["clickEvents"]["id1"];
+        assert_eq!(ev1["function_name"].as_str().unwrap(), "myFn2");
+        assert_eq!(ev1["function_args"][0].as_str().unwrap(), "id1");
+        assert!(ev1["raw_function_args"].is_null());
+
+        let ev2 = &model["clickEvents"]["id2"];
+        assert_eq!(ev2["function_name"].as_str().unwrap(), "myFn");
+        assert_eq!(ev2["function_args"][0].as_str().unwrap(), "a,b");
+        assert_eq!(ev2["function_args"][1].as_str().unwrap(), "c");
+        assert_eq!(ev2["raw_function_args"].as_str().unwrap(), "\"a,b\", c");
     }
 }
