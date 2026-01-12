@@ -1,0 +1,95 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {
+      "IPC::Sender": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-IPC::Sender-2",
+        "haveCallback": false,
+        "id": "IPC::Sender",
+        "label": "IPC::Sender",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": "A::B",
+        "styles": [],
+        "text": "IPC::Sender",
+        "tooltip": null,
+        "type": ""
+      },
+      "__proto__": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-__proto__-0",
+        "haveCallback": false,
+        "id": "__proto__",
+        "label": "__proto__",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "__proto__",
+        "tooltip": null,
+        "type": ""
+      },
+      "constructor": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-constructor-1",
+        "haveCallback": false,
+        "id": "constructor",
+        "label": "constructor",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "constructor",
+        "tooltip": null,
+        "type": ""
+      }
+    },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {
+      "A::B": {
+        "classIds": [
+          "IPC::Sender"
+        ],
+        "domId": "classId-A::B-0",
+        "id": "A::B"
+      }
+    },
+    "notes": [],
+    "relations": [],
+    "styleClasses": {},
+    "type": "classDiagram"
+  }
+}

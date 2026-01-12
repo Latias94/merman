@@ -1,0 +1,28 @@
+classDiagram
+accTitle: My Title
+accDescr {
+  This is my multi
+  line description
+}
+
+namespace Company.Project {
+  class User {
+    +login(username: String, password: String)
+    +logout()
+  }
+}
+
+namespace Company.Project.Module {
+  class GenericClass~T~ {
+    +addItem(item: T)
+    +getItem() T
+  }
+  class Admin {
+    +addUser(user: User)
+    +removeUser(user: User)
+  }
+}
+
+direction LR
+Admin --> User : manages
+

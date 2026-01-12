@@ -1,0 +1,180 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "accDescr": "This is my multi\nline description",
+    "accTitle": "My Title",
+    "classes": {
+      "Admin": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Admin-2",
+        "haveCallback": false,
+        "id": "Admin",
+        "label": "Admin",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+addUser(user: User)",
+            "id": "addUser",
+            "memberType": "method",
+            "parameters": "user: User",
+            "returnType": "",
+            "visibility": "+"
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+removeUser(user: User)",
+            "id": "removeUser",
+            "memberType": "method",
+            "parameters": "user: User",
+            "returnType": "",
+            "visibility": "+"
+          }
+        ],
+        "parent": "Company.Project.Module",
+        "styles": [],
+        "text": "Admin",
+        "tooltip": null,
+        "type": ""
+      },
+      "GenericClass": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-GenericClass-1",
+        "haveCallback": false,
+        "id": "GenericClass",
+        "label": "GenericClass",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+addItem(item: T)",
+            "id": "addItem",
+            "memberType": "method",
+            "parameters": "item: T",
+            "returnType": "",
+            "visibility": "+"
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+getItem() : T",
+            "id": "getItem",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "T",
+            "visibility": "+"
+          }
+        ],
+        "parent": "Company.Project.Module",
+        "styles": [],
+        "text": "GenericClass&lt;T&gt;",
+        "tooltip": null,
+        "type": "T"
+      },
+      "User": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-User-0",
+        "haveCallback": false,
+        "id": "User",
+        "label": "User",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+login(username: String, password: String)",
+            "id": "login",
+            "memberType": "method",
+            "parameters": "username: String, password: String",
+            "returnType": "",
+            "visibility": "+"
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+logout()",
+            "id": "logout",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
+          }
+        ],
+        "parent": "Company.Project",
+        "styles": [],
+        "text": "User",
+        "tooltip": null,
+        "type": ""
+      }
+    },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "LR",
+    "interfaces": [],
+    "namespaces": {
+      "Company.Project": {
+        "classIds": [
+          "User"
+        ],
+        "domId": "classId-Company.Project-0",
+        "id": "Company.Project"
+      },
+      "Company.Project.Module": {
+        "classIds": [
+          "GenericClass",
+          "Admin"
+        ],
+        "domId": "classId-Company.Project.Module-1",
+        "id": "Company.Project.Module"
+      }
+    },
+    "notes": [],
+    "relations": [
+      {
+        "id": "0",
+        "id1": "Admin",
+        "id2": "User",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 3
+        },
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "manages"
+      }
+    ],
+    "styleClasses": {},
+    "type": "classDiagram"
+  }
+}

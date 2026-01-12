@@ -1,0 +1,115 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {
+      "Class01": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default exClass exClass",
+        "domId": "classId-Class01-0",
+        "haveCallback": false,
+        "id": "Class01",
+        "label": "Class01",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [
+          "fill:#f9f",
+          "stroke:#333",
+          "stroke-width:4px"
+        ],
+        "text": "Class01",
+        "tooltip": null,
+        "type": ""
+      },
+      "Class02": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default exClass",
+        "domId": "classId-Class02-1",
+        "haveCallback": false,
+        "id": "Class02",
+        "label": "Class02",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Class02",
+        "tooltip": null,
+        "type": ""
+      },
+      "Class03": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default pink",
+        "domId": "classId-Class03-2",
+        "haveCallback": false,
+        "id": "Class03",
+        "label": "Class03",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Class03",
+        "tooltip": null,
+        "type": ""
+      }
+    },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
+    "relations": [
+      {
+        "id": "0",
+        "id1": "Class01",
+        "id2": "Class02",
+        "relation": {
+          "lineType": 0,
+          "type1": 1,
+          "type2": -1
+        },
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": ""
+      }
+    ],
+    "styleClasses": {
+      "pink": {
+        "id": "pink",
+        "styles": [
+          "fill:#f9f",
+          "stroke:#333",
+          "stroke-width:6px"
+        ],
+        "textStyles": []
+      }
+    },
+    "type": "classDiagram"
+  }
+}
