@@ -34,6 +34,8 @@ enum XtaskError {
     ParseDompurify(String),
     #[error("verification failed:\n{0}")]
     VerifyFailed(String),
+    #[error("snapshot update failed: {0}")]
+    SnapshotUpdateFailed(String),
 }
 
 fn main() -> Result<(), XtaskError> {
@@ -46,6 +48,7 @@ fn main() -> Result<(), XtaskError> {
         "gen-default-config" => gen_default_config(args.collect()),
         "gen-dompurify-defaults" => gen_dompurify_defaults(args.collect()),
         "verify-generated" => verify_generated(args.collect()),
+        "update-snapshots" => update_snapshots(args.collect()),
         other => Err(XtaskError::UnknownCommand(other.to_string())),
     }
 }
@@ -162,6 +165,111 @@ fn verify_generated(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     Err(XtaskError::VerifyFailed(failures.join("\n")))
+}
+
+fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
+    if !args.is_empty() && !(args.len() == 1 && (args[0] == "--help" || args[0] == "-h")) {
+        return Err(XtaskError::Usage);
+    }
+    if args.len() == 1 {
+        return Err(XtaskError::Usage);
+    }
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+    let fixtures_root = workspace_root.join("fixtures");
+
+    let mut mmd_files = Vec::new();
+    let mut stack = vec![fixtures_root.clone()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().is_some_and(|e| e == "mmd") {
+                mmd_files.push(path);
+            }
+        }
+    }
+    mmd_files.sort();
+    if mmd_files.is_empty() {
+        return Err(XtaskError::SnapshotUpdateFailed(format!(
+            "no .mmd fixtures found under {}",
+            fixtures_root.display()
+        )));
+    }
+
+    let engine = merman::Engine::new();
+    let mut failures = Vec::new();
+
+    for mmd_path in mmd_files {
+        let text = match fs::read_to_string(&mmd_path) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!("failed to read {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
+
+        let parsed = match futures::executor::block_on(
+            engine.parse_diagram(&text, merman::ParseOptions::default()),
+        ) {
+            Ok(Some(v)) => v,
+            Ok(None) => {
+                failures.push(format!("no diagram detected in {}", mmd_path.display()));
+                continue;
+            }
+            Err(err) => {
+                failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
+
+        let mut model = parsed.model;
+        if let JsonValue::Object(obj) = &mut model {
+            obj.remove("config");
+        }
+
+        let out = serde_json::json!({
+            "diagramType": parsed.meta.diagram_type,
+            "model": model,
+        });
+
+        let pretty = match serde_json::to_string_pretty(&out) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!(
+                    "failed to serialize JSON for {}: {err}",
+                    mmd_path.display()
+                ));
+                continue;
+            }
+        };
+
+        let out_path = mmd_path.with_extension("golden.json");
+        if let Some(parent) = out_path.parent() {
+            if let Err(err) = fs::create_dir_all(parent) {
+                failures.push(format!("failed to create dir {}: {err}", parent.display()));
+                continue;
+            }
+        }
+        if let Err(err) = fs::write(&out_path, format!("{pretty}\n")) {
+            failures.push(format!("failed to write {}: {err}", out_path.display()));
+            continue;
+        }
+    }
+
+    if failures.is_empty() {
+        return Ok(());
+    }
+
+    Err(XtaskError::SnapshotUpdateFailed(failures.join("\n")))
 }
 
 fn read_text(path: &Path) -> Result<String, XtaskError> {

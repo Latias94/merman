@@ -1,0 +1,80 @@
+{
+  "diagramType": "kanban",
+  "model": {
+    "edges": [],
+    "nodes": [
+      {
+        "id": "Todo",
+        "isGroup": true,
+        "label": "Todo",
+        "level": 2,
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
+      },
+      {
+        "assigned": null,
+        "cssStyles": [
+          "text-align: left"
+        ],
+        "icon": null,
+        "id": "item1",
+        "isGroup": false,
+        "label": "item1",
+        "level": 4,
+        "parentId": "Todo",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
+      },
+      {
+        "id": "Doing",
+        "isGroup": true,
+        "label": "Doing",
+        "level": 2,
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
+      },
+      {
+        "assigned": null,
+        "cssStyles": [
+          "text-align: left"
+        ],
+        "icon": null,
+        "id": "item2",
+        "isGroup": false,
+        "label": "item2",
+        "level": 4,
+        "parentId": "Doing",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
+      }
+    ],
+    "other": {},
+    "sections": [
+      {
+        "id": "Todo",
+        "isGroup": false,
+        "label": "Todo",
+        "level": 2,
+        "padding": 10,
+        "width": 200
+      },
+      {
+        "id": "Doing",
+        "isGroup": false,
+        "label": "Doing",
+        "level": 2,
+        "padding": 10,
+        "width": 200
+      }
+    ],
+    "type": "kanban"
+  }
+}

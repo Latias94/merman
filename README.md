@@ -24,6 +24,8 @@ git submodule update --init --recursive
   - `cargo fmt`
 - Tests (preferred):
   - `cargo nextest run -p merman-core`
+- Update golden fixtures:
+  - `cargo run -p xtask -- update-snapshots`
 
 ## CLI (headless JSON)
 

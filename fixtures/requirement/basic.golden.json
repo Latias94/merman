@@ -1,0 +1,26 @@
+{
+  "diagramType": "requirement",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {},
+    "direction": "TB",
+    "elements": [],
+    "relationships": [],
+    "requirements": [
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "req1",
+        "requirementId": "1",
+        "risk": "High",
+        "text": "A requirement",
+        "type": "Requirement",
+        "verifyMethod": "Analysis"
+      }
+    ],
+    "type": "requirement"
+  }
+}
