@@ -1,4 +1,5 @@
 use merman_core::{Engine, ParseOptions};
+use regex::Regex;
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
 
@@ -90,6 +91,35 @@ fn normalize_model(diagram_type: &str, model: &mut Value) {
                 }
             }
         }
+    }
+
+    // Mermaid gitGraph auto-generates commit ids using random hex suffixes.
+    // Normalize these ids so snapshots are stable across runs.
+    if diagram_type == "gitGraph" {
+        let re = Regex::new(r"\b(\d+)-[0-9a-f]{7}\b").expect("gitGraph id regex must compile");
+
+        fn walk(re: &Regex, v: &mut Value) {
+            match v {
+                Value::String(s) => {
+                    if re.is_match(s) {
+                        *s = re.replace_all(s, "$1-<dynamic>").to_string();
+                    }
+                }
+                Value::Array(arr) => {
+                    for item in arr {
+                        walk(re, item);
+                    }
+                }
+                Value::Object(map) => {
+                    for (_k, val) in map.iter_mut() {
+                        walk(re, val);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        walk(&re, model);
     }
 }
 

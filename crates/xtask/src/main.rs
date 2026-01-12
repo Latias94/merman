@@ -4,6 +4,8 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use regex::Regex;
+
 #[derive(Debug, thiserror::Error)]
 enum XtaskError {
     #[error("usage: xtask <command> ...")]
@@ -280,6 +282,35 @@ fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
                     }
                 }
             }
+        }
+
+        if parsed.meta.diagram_type == "gitGraph" {
+            let re = Regex::new(r"\b(\d+)-[0-9a-f]{7}\b").map_err(|e| {
+                XtaskError::SnapshotUpdateFailed(format!("invalid gitGraph id regex: {e}"))
+            })?;
+
+            fn walk(re: &Regex, v: &mut JsonValue) {
+                match v {
+                    JsonValue::String(s) => {
+                        if re.is_match(s) {
+                            *s = re.replace_all(s, "$1-<dynamic>").to_string();
+                        }
+                    }
+                    JsonValue::Array(arr) => {
+                        for item in arr {
+                            walk(re, item);
+                        }
+                    }
+                    JsonValue::Object(map) => {
+                        for (_k, val) in map.iter_mut() {
+                            walk(re, val);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            walk(&re, &mut model);
         }
 
         let out = serde_json::json!({
