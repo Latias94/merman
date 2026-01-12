@@ -2956,6 +2956,22 @@ foo["batman"]
     }
 
     #[test]
+    fn parse_diagram_er_allows_multiple_statements_without_newlines_like_upstream_jison() {
+        let engine = Engine::new();
+        let text = r#"erDiagram
+foo ||--o{ bar : rel
+buzz foo["batman"]
+"#;
+        let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(res.model["entities"]["foo"]["alias"], json!("batman"));
+        assert_eq!(res.model["entities"]["bar"]["alias"], json!(""));
+        assert!(res.model["entities"].get("buzz").is_some());
+    }
+
+    #[test]
     fn parse_diagram_er_self_relationship_does_not_duplicate_entity() {
         let engine = Engine::new();
         let text = r#"erDiagram

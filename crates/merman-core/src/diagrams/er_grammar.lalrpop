@@ -65,20 +65,11 @@ Newlines1: () = {
 
 Statements: Vec<Action> = {
   => Vec::new(),
-  <s:Statement> <rest:StatementRest> => {
-    let mut v = s;
-    v.extend(rest);
-    v
-  }
-};
-
-StatementRest: Vec<Action> = {
-  <_n:Newlines1> <s:Statement> <rest:StatementRest> => {
+  <s:Statement> <_n:Newlines> <rest:Statements> => {
     let mut v = s;
     v.extend(rest);
     v
   },
-  Newlines => Vec::new(),
 };
 
 Statement: Vec<Action> = {
