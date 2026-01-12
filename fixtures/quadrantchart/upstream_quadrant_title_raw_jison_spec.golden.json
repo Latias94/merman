@@ -1,0 +1,23 @@
+{
+  "diagramType": "quadrantChart",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "axes": {
+      "xAxisLeftText": "",
+      "xAxisRightText": "",
+      "yAxisBottomText": "",
+      "yAxisTopText": ""
+    },
+    "classes": {},
+    "points": [],
+    "quadrants": {
+      "quadrant1Text": "",
+      "quadrant2Text": "",
+      "quadrant3Text": "",
+      "quadrant4Text": ""
+    },
+    "title": "\"this is title (* +=[?",
+    "type": "quadrantChart"
+  }
+}
