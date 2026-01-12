@@ -1,0 +1,31 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "accDescr": "This is a description\nusing multiple lines",
+    "accTitle": "This is a title",
+    "branches": [
+      {
+        "name": "main"
+      }
+    ],
+    "commits": [
+      {
+        "branch": "main",
+        "id": "working on MDR",
+        "message": "",
+        "parents": [
+          "working on MDR"
+        ],
+        "seq": 1,
+        "tags": [],
+        "type": 0
+      }
+    ],
+    "currentBranch": "main",
+    "direction": "LR",
+    "type": "gitGraph",
+    "warnings": [
+      "Commit ID working on MDR already exists"
+    ]
+  }
+}

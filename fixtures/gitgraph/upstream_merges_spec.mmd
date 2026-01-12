@@ -1,0 +1,27 @@
+gitGraph:
+%% Merge is a noop scenario (still creates a merge commit in upstream)
+commit
+branch newbranch
+checkout newbranch
+commit
+commit
+merge main
+
+%% Merge with two parents (merge into main)
+checkout main
+commit
+merge newbranch tag: "merge-tag"
+
+%% Merge with custom ids, tags and override type
+branch testBranch
+checkout testBranch
+commit id:"A"
+checkout main
+merge testBranch tag: "merge-tag2" id: "2-222"
+
+branch testBranch2
+checkout testBranch2
+commit id:"B"
+checkout main
+merge testBranch2 id: "4-444" tag: "merge-tag3" type:HIGHLIGHT
+

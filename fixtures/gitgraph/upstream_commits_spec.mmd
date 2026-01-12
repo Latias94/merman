@@ -1,0 +1,23 @@
+gitGraph:
+%% Message variants
+commit "a commit"
+commit msg: "test commit"
+
+%% Custom fields
+commit id:"1111"
+commit tag:"test"
+commit type: HIGHLIGHT
+commit type: REVERSE
+commit type: NORMAL
+
+%% Mixed ordering / spacing
+commit id:"C1" type:REVERSE tag: "test tag" msg:"test msg"
+commit type:REVERSE tag: "test tag" msg: "test msg" id: "C2"
+commit  tag: "test tag" msg:"test msg" id:"C3" type:REVERSE
+commit msg:"test msg" id:"C4" type:REVERSE tag: "test tag"
+
+%% 3 straight commits
+commit
+commit
+commit
+

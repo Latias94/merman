@@ -1,0 +1,16 @@
+gitGraph
+commit id: "ZERO"
+branch feature
+branch release
+checkout feature
+commit id: "A"
+commit id: "B"
+checkout main
+merge feature id: "M"
+checkout release
+commit id: "C"
+cherry-pick id: "M" tag: "v2.1:ZERO" parent:"ZERO"
+commit id: "D"
+cherry-pick id:"M" parent: "ZERO" tag:""
+cherry-pick id:"M" tag:"" parent: "B"
+

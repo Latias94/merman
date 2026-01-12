@@ -1,0 +1,150 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "newbranch"
+      },
+      {
+        "name": "testBranch"
+      },
+      {
+        "name": "testBranch2"
+      }
+    ],
+    "commits": [
+      {
+        "branch": "main",
+        "id": "0-<dynamic>",
+        "message": "",
+        "parents": [],
+        "seq": 0,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "newbranch",
+        "id": "1-<dynamic>",
+        "message": "",
+        "parents": [
+          "0-<dynamic>"
+        ],
+        "seq": 1,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "newbranch",
+        "id": "2-<dynamic>",
+        "message": "",
+        "parents": [
+          "1-<dynamic>"
+        ],
+        "seq": 2,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "newbranch",
+        "customId": false,
+        "id": "3-<dynamic>",
+        "message": "merged branch main into newbranch",
+        "parents": [
+          "2-<dynamic>",
+          "0-<dynamic>"
+        ],
+        "seq": 3,
+        "tags": [],
+        "type": 3
+      },
+      {
+        "branch": "main",
+        "id": "4-<dynamic>",
+        "message": "",
+        "parents": [
+          "0-<dynamic>"
+        ],
+        "seq": 4,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "customId": false,
+        "id": "5-<dynamic>",
+        "message": "merged branch newbranch into main",
+        "parents": [
+          "4-<dynamic>",
+          "3-<dynamic>"
+        ],
+        "seq": 5,
+        "tags": [
+          "merge-tag"
+        ],
+        "type": 3
+      },
+      {
+        "branch": "testBranch",
+        "id": "A",
+        "message": "",
+        "parents": [
+          "5-<dynamic>"
+        ],
+        "seq": 6,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "customId": true,
+        "id": "2-222",
+        "message": "merged branch testBranch into main",
+        "parents": [
+          "5-<dynamic>",
+          "A"
+        ],
+        "seq": 7,
+        "tags": [
+          "merge-tag2"
+        ],
+        "type": 3
+      },
+      {
+        "branch": "testBranch2",
+        "id": "B",
+        "message": "",
+        "parents": [
+          "2-222"
+        ],
+        "seq": 8,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "customId": true,
+        "customType": 2,
+        "id": "4-444",
+        "message": "merged branch testBranch2 into main",
+        "parents": [
+          "2-222",
+          "B"
+        ],
+        "seq": 9,
+        "tags": [
+          "merge-tag3"
+        ],
+        "type": 3
+      }
+    ],
+    "currentBranch": "main",
+    "direction": "LR",
+    "type": "gitGraph",
+    "warnings": []
+  }
+}

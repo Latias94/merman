@@ -1,0 +1,26 @@
+gitGraph:
+commit id:"ZERO"
+
+%% Quoted branch names
+branch "branch"
+checkout "branch"
+commit id:"B1"
+checkout main
+merge "branch" id:"M_QUOTED"
+
+%% Character coverage
+branch azAZ_-./test
+branch 1.0.1
+branch branch01
+branch checkout02
+branch cherry-pick03
+branch branch/example-branch
+branch merge/test_merge
+branch A
+
+%% Order sorting
+checkout main
+branch test1 order: 3
+branch test2 order: 2
+branch test3 order: 1
+

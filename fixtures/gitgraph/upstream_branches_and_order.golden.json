@@ -1,0 +1,87 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "branch"
+      },
+      {
+        "name": "azAZ_-./test"
+      },
+      {
+        "name": "1.0.1"
+      },
+      {
+        "name": "branch01"
+      },
+      {
+        "name": "checkout02"
+      },
+      {
+        "name": "cherry-pick03"
+      },
+      {
+        "name": "branch/example-branch"
+      },
+      {
+        "name": "merge/test_merge"
+      },
+      {
+        "name": "A"
+      },
+      {
+        "name": "test3"
+      },
+      {
+        "name": "test2"
+      },
+      {
+        "name": "test1"
+      }
+    ],
+    "commits": [
+      {
+        "branch": "main",
+        "id": "ZERO",
+        "message": "",
+        "parents": [],
+        "seq": 0,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "branch",
+        "id": "B1",
+        "message": "",
+        "parents": [
+          "ZERO"
+        ],
+        "seq": 1,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "customId": true,
+        "id": "M_QUOTED",
+        "message": "merged branch branch into main",
+        "parents": [
+          "ZERO",
+          "B1"
+        ],
+        "seq": 2,
+        "tags": [],
+        "type": 3
+      }
+    ],
+    "currentBranch": "test3",
+    "direction": "LR",
+    "type": "gitGraph",
+    "warnings": []
+  }
+}

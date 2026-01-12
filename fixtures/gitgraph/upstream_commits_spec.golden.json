@@ -1,0 +1,180 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "branches": [
+      {
+        "name": "main"
+      }
+    ],
+    "commits": [
+      {
+        "branch": "main",
+        "id": "0-<dynamic>",
+        "message": "a commit",
+        "parents": [],
+        "seq": 0,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "id": "1-<dynamic>",
+        "message": "test commit",
+        "parents": [
+          "0-<dynamic>"
+        ],
+        "seq": 1,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "id": "1111",
+        "message": "",
+        "parents": [
+          "1-<dynamic>"
+        ],
+        "seq": 2,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "id": "3-<dynamic>",
+        "message": "",
+        "parents": [
+          "1111"
+        ],
+        "seq": 3,
+        "tags": [
+          "test"
+        ],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "id": "4-<dynamic>",
+        "message": "",
+        "parents": [
+          "3-<dynamic>"
+        ],
+        "seq": 4,
+        "tags": [],
+        "type": 2
+      },
+      {
+        "branch": "main",
+        "id": "5-<dynamic>",
+        "message": "",
+        "parents": [
+          "4-<dynamic>"
+        ],
+        "seq": 5,
+        "tags": [],
+        "type": 1
+      },
+      {
+        "branch": "main",
+        "id": "6-<dynamic>",
+        "message": "",
+        "parents": [
+          "5-<dynamic>"
+        ],
+        "seq": 6,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "id": "C1",
+        "message": "test msg",
+        "parents": [
+          "6-<dynamic>"
+        ],
+        "seq": 7,
+        "tags": [
+          "test tag"
+        ],
+        "type": 1
+      },
+      {
+        "branch": "main",
+        "id": "C2",
+        "message": "test msg",
+        "parents": [
+          "C1"
+        ],
+        "seq": 8,
+        "tags": [
+          "test tag"
+        ],
+        "type": 1
+      },
+      {
+        "branch": "main",
+        "id": "C3",
+        "message": "test msg",
+        "parents": [
+          "C2"
+        ],
+        "seq": 9,
+        "tags": [
+          "test tag"
+        ],
+        "type": 1
+      },
+      {
+        "branch": "main",
+        "id": "C4",
+        "message": "test msg",
+        "parents": [
+          "C3"
+        ],
+        "seq": 10,
+        "tags": [
+          "test tag"
+        ],
+        "type": 1
+      },
+      {
+        "branch": "main",
+        "id": "11-<dynamic>",
+        "message": "",
+        "parents": [
+          "C4"
+        ],
+        "seq": 11,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "id": "12-<dynamic>",
+        "message": "",
+        "parents": [
+          "11-<dynamic>"
+        ],
+        "seq": 12,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "id": "13-<dynamic>",
+        "message": "",
+        "parents": [
+          "12-<dynamic>"
+        ],
+        "seq": 13,
+        "tags": [],
+        "type": 0
+      }
+    ],
+    "currentBranch": "main",
+    "direction": "LR",
+    "type": "gitGraph",
+    "warnings": []
+  }
+}
