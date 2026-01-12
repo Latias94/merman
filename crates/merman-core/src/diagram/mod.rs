@@ -30,6 +30,10 @@ impl DiagramRegistry {
 
         reg.insert("info", crate::diagrams::info::parse_info);
         reg.insert("pie", crate::diagrams::pie::parse_pie);
+        reg.insert(
+            "requirement",
+            crate::diagrams::requirement::parse_requirement,
+        );
         reg.insert("sequence", crate::diagrams::sequence::parse_sequence);
 
         reg.insert("classDiagram", crate::diagrams::class::parse_class);
