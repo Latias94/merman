@@ -2333,6 +2333,21 @@ test1: id1,202304,1d
     }
 
     #[test]
+    fn gantt_js_date_fallback_year_bounds_match_upstream_guardrail() {
+        let dt = parse_js_date_fallback("10000").unwrap();
+        assert_eq!(dt.year(), 10000);
+
+        let err = parse_js_date_fallback("10001").unwrap_err();
+        assert!(err.to_string().contains("Invalid date:10001"));
+    }
+
+    #[test]
+    fn gantt_js_date_fallback_rejects_invalid_calendar_dates() {
+        let err = parse_js_date_fallback("2019-02-30").unwrap_err();
+        assert!(err.to_string().contains("Invalid date:2019-02-30"));
+    }
+
+    #[test]
     fn gantt_parse_duration_matches_upstream_examples() {
         assert_eq!(parse_duration("1d"), (1.0, "d".to_string()));
         assert!(parse_duration("1f").0.is_nan());
@@ -2462,6 +2477,38 @@ test1: id1,2013/01/01,2013/01/12
                 .unwrap()
                 .timestamp_millis()
         );
+
+        let dt =
+            parse_dayjs_like_strict("YYYY-MM-DDTHH:mm:ssZ", "2013-01-01T00:00:00+08:00").unwrap();
+        assert_eq!(
+            dt.timestamp_millis(),
+            chrono::Utc
+                .with_ymd_and_hms(2012, 12, 31, 16, 0, 0)
+                .single()
+                .unwrap()
+                .timestamp_millis()
+        );
+
+        let dt =
+            parse_dayjs_like_strict("YYYY-MM-DDTHH:mm:ssZZ", "2013-01-01T00:00:00+0800").unwrap();
+        assert_eq!(
+            dt.timestamp_millis(),
+            chrono::Utc
+                .with_ymd_and_hms(2012, 12, 31, 16, 0, 0)
+                .single()
+                .unwrap()
+                .timestamp_millis()
+        );
+
+        let dt = parse_dayjs_like_strict("YYYY-MM-DDTHH:mm:ssZ", "2013-01-01T00:00:00Z").unwrap();
+        assert_eq!(
+            dt.timestamp_millis(),
+            chrono::Utc
+                .with_ymd_and_hms(2013, 1, 1, 0, 0, 0)
+                .single()
+                .unwrap()
+                .timestamp_millis()
+        );
     }
 
     #[test]
@@ -2527,6 +2574,16 @@ test1: id1,2013-01-01T00:00:00,1d
             dt.timestamp_millis(),
             chrono::Utc
                 .with_ymd_and_hms(2012, 12, 31, 16, 0, 0)
+                .single()
+                .unwrap()
+                .timestamp_millis()
+        );
+
+        let dt = parse_js_date_fallback("2013-01-01T00:00:00Z").unwrap();
+        assert_eq!(
+            dt.timestamp_millis(),
+            chrono::Utc
+                .with_ymd_and_hms(2013, 1, 1, 0, 0, 0)
                 .single()
                 .unwrap()
                 .timestamp_millis()
