@@ -1,3 +1,4 @@
+pub mod architecture;
 pub mod class;
 pub mod er;
 pub mod flowchart;
