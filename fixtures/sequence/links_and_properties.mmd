@@ -1,0 +1,8 @@
+sequenceDiagram
+participant a as Alice
+links a: { "Repo": "https://repo.contoso.com/", "Dashboard": "https://dashboard.contoso.com/" }
+link a: Endpoint @ https://alice.contoso.com
+properties a: { "role": "admin", "level": 3 }
+details a: svc-a
+a->>a: ok
+

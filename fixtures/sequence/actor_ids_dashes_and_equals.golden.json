@@ -1,0 +1,84 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "actors": {
+      "Alice-in-Wonderland": {
+        "description": "Alice-in-Wonderland",
+        "links": {},
+        "name": "Alice-in-Wonderland",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "Alice=Wonderland": {
+        "description": "Alice=Wonderland",
+        "links": {},
+        "name": "Alice=Wonderland",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "Bob": {
+        "description": "Bob",
+        "links": {},
+        "name": "Bob",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      }
+    },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "Alice-in-Wonderland",
+        "id": "0",
+        "message": "Hello Bob, how are - you?",
+        "to": "Bob",
+        "type": 5,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "1",
+        "message": "I am good thanks!",
+        "to": "Alice-in-Wonderland",
+        "type": 6,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice=Wonderland",
+        "id": "2",
+        "message": "Hello Bob, how are - you?",
+        "to": "Bob",
+        "type": 5,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "3",
+        "message": "I am good thanks!",
+        "to": "Alice=Wonderland",
+        "type": 6,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
+  }
+}

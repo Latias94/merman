@@ -1,0 +1,193 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "actors": {
+      "Alice": {
+        "description": "Alice",
+        "links": {},
+        "name": "Alice",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "Bob": {
+        "description": "Bob",
+        "links": {},
+        "name": "Bob",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      }
+    },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "0",
+        "message": "Hello Bob, how are you?",
+        "to": "Bob",
+        "type": 5,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "1",
+        "message": "",
+        "to": null,
+        "type": 10,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "2",
+        "message": "I am good thanks!",
+        "to": "Alice",
+        "type": 6,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "3",
+        "message": "",
+        "to": null,
+        "type": 11,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "4",
+        "message": "",
+        "to": null,
+        "type": 15,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "5",
+        "message": "I am good thanks!",
+        "to": "Alice",
+        "type": 6,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "6",
+        "message": "",
+        "to": null,
+        "type": 16,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "7",
+        "message": "",
+        "to": null,
+        "type": 12,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "8",
+        "message": "I am good thanks!",
+        "to": "Alice",
+        "type": 6,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "9",
+        "message": "",
+        "to": null,
+        "type": 13,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "10",
+        "message": "I am good thanks!",
+        "to": "Alice",
+        "type": 6,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "11",
+        "message": "",
+        "to": null,
+        "type": 14,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "12",
+        "message": "",
+        "to": null,
+        "type": 19,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "13",
+        "message": "I am good thanks!",
+        "to": "Alice",
+        "type": 6,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "14",
+        "message": "",
+        "to": null,
+        "type": 20,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "15",
+        "message": "I am good thanks!",
+        "to": "Alice",
+        "type": 6,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "16",
+        "message": "",
+        "to": null,
+        "type": 21,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
+  }
+}

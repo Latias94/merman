@@ -1,0 +1,84 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "actors": {
+      "Alice": {
+        "description": "Alice",
+        "links": {},
+        "name": "Alice",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "Bob": {
+        "description": "Bob",
+        "links": {},
+        "name": "Bob",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      }
+    },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "0",
+        "message": "Hello Bob, how are you?",
+        "to": "Bob",
+        "type": 5,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "1",
+        "message": "Bob thinks",
+        "placement": 1,
+        "to": "Bob",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "2",
+        "message": "I am good thanks!",
+        "to": "Alice",
+        "type": 6,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "3",
+        "message": "Done",
+        "to": "Bob",
+        "type": 5,
+        "wrap": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": "Bob",
+        "message": "Bob thinks",
+        "placement": 1,
+        "wrap": false
+      }
+    ],
+    "title": null,
+    "type": "sequence"
+  }
+}

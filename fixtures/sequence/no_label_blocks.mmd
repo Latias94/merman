@@ -1,0 +1,19 @@
+sequenceDiagram
+Alice->Bob: Hello Bob, how are you?
+loop
+  Bob-->Alice: I am good thanks!
+end
+opt # comment
+  Bob-->Alice: I am good thanks!
+end
+alt
+  Bob-->Alice: I am good thanks!
+else # comment
+  Bob-->Alice: I am good thanks!
+end
+par
+  Bob-->Alice: I am good thanks!
+and # comment
+  Bob-->Alice: I am good thanks!
+end
+

@@ -1,0 +1,120 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "actors": {
+      "Alice": {
+        "description": "Alice",
+        "links": {},
+        "name": "Alice",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "Bob": {
+        "description": "Bob",
+        "links": {},
+        "name": "Bob",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "Carol": {
+        "description": "Carol",
+        "links": {},
+        "name": "Carol",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      }
+    },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": true,
+        "from": "Alice",
+        "id": "0",
+        "message": "Hello Bob, how are you?",
+        "to": "Bob",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "1",
+        "message": "",
+        "to": null,
+        "type": 17,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "from": "Bob",
+        "id": "2",
+        "message": "Carol, let me introduce Alice?",
+        "to": "Carol",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Carol",
+        "id": "3",
+        "message": "",
+        "to": null,
+        "type": 17,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "4",
+        "message": "Hello Alice, please meet Carol?",
+        "to": "Alice",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "5",
+        "message": "",
+        "to": null,
+        "type": 18,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Carol",
+        "id": "6",
+        "message": "Oh Bob, I'm so happy to be here!",
+        "to": "Bob",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Carol",
+        "id": "7",
+        "message": "",
+        "to": null,
+        "type": 18,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
+  }
+}

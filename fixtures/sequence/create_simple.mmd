@@ -1,0 +1,9 @@
+sequenceDiagram
+participant a as Alice
+a ->>b: Hello Bob?
+create participant c
+b-->>c: Hello c!
+c ->> b: Hello b?
+create actor d as Donald
+a ->> d: Hello Donald?
+

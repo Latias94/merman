@@ -1,0 +1,87 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "actors": {
+      "a": {
+        "description": "Alice",
+        "links": {},
+        "name": "a",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "b": {
+        "description": "b",
+        "links": {},
+        "name": "b",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "c": {
+        "description": "c",
+        "links": {},
+        "name": "c",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      }
+    },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {
+      "a": 1,
+      "c": 3
+    },
+    "messages": [
+      {
+        "activate": false,
+        "from": "a",
+        "id": "0",
+        "message": "Hello Bob?",
+        "to": "b",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "b",
+        "id": "1",
+        "message": "Hello Alice!",
+        "to": "a",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "b",
+        "id": "2",
+        "message": "Where is Alice?",
+        "to": "c",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "b",
+        "id": "3",
+        "message": "Where are you?",
+        "to": "c",
+        "type": 0,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
+  }
+}

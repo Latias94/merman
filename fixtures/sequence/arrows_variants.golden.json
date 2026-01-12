@@ -1,0 +1,130 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "actors": {
+      "A": {
+        "description": "A",
+        "links": {},
+        "name": "A",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "B": {
+        "description": "B",
+        "links": {},
+        "name": "B",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      }
+    },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "A",
+        "id": "0",
+        "message": "solid",
+        "to": "B",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "1",
+        "message": "dotted",
+        "to": "B",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "2",
+        "message": "solid_open",
+        "to": "B",
+        "type": 5,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "3",
+        "message": "dotted_open",
+        "to": "B",
+        "type": 6,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "4",
+        "message": "solid_cross",
+        "to": "B",
+        "type": 3,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "5",
+        "message": "dotted_cross",
+        "to": "B",
+        "type": 4,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "6",
+        "message": "solid_point",
+        "to": "B",
+        "type": 24,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "7",
+        "message": "dotted_point",
+        "to": "B",
+        "type": 25,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "8",
+        "message": "bidirectional_solid",
+        "to": "B",
+        "type": 33,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "9",
+        "message": "bidirectional_dotted",
+        "to": "B",
+        "type": 34,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
+  }
+}

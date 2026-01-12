@@ -1,0 +1,128 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "actors": {
+      "Alice": {
+        "description": "Alice",
+        "links": {},
+        "name": "Alice",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "Bob": {
+        "description": "Bob",
+        "links": {},
+        "name": "Bob",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "Carl": {
+        "description": "Carl",
+        "links": {},
+        "name": "Carl",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      }
+    },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "0",
+        "message": "left note",
+        "placement": 0,
+        "to": "Alice",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "1",
+        "message": "right note",
+        "placement": 1,
+        "to": "Bob",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Carl",
+        "id": "2",
+        "message": "over single",
+        "placement": 2,
+        "to": "Carl",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "3",
+        "message": "over two",
+        "placement": 2,
+        "to": "Bob",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "4",
+        "message": "message",
+        "to": "Bob",
+        "type": 5,
+        "wrap": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": "Alice",
+        "message": "left note",
+        "placement": 0,
+        "wrap": false
+      },
+      {
+        "actor": "Bob",
+        "message": "right note",
+        "placement": 1,
+        "wrap": false
+      },
+      {
+        "actor": [
+          "Carl",
+          "Carl"
+        ],
+        "message": "over single",
+        "placement": 2,
+        "wrap": false
+      },
+      {
+        "actor": [
+          "Alice",
+          "Bob"
+        ],
+        "message": "over two",
+        "placement": 2,
+        "wrap": false
+      }
+    ],
+    "title": null,
+    "type": "sequence"
+  }
+}

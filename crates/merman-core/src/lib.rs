@@ -2575,6 +2575,32 @@ E ->> E: process
     }
 
     #[test]
+    fn parse_diagram_sequence_deactivate_inactive_participant_fails_like_upstream() {
+        let engine = Engine::new();
+        let text = r#"sequenceDiagram
+participant user as End User
+participant Server as Server
+participant System as System
+participant System2 as System2
+
+user->>+Server: Test
+user->>+Server: Test2
+user->>System: Test
+Server->>-user: Test
+Server->>-user: Test2
+
+%% The following deactivation of Server will fail
+Server->>-user: Test3"#;
+
+        let err = block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Trying to inactivate an inactive participant (Server)"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
     fn parse_diagram_class_text_label_member_annotation_and_css_classes() {
         let engine = Engine::new();
         let text = r#"classDiagram

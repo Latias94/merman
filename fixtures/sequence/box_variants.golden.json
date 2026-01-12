@@ -1,0 +1,97 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "actors": {
+      "a": {
+        "description": "Alice",
+        "links": {},
+        "name": "a",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "b": {
+        "description": "Bob",
+        "links": {},
+        "name": "b",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "c": {
+        "description": "Charlie",
+        "links": {},
+        "name": "c",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "d": {
+        "description": "Donald",
+        "links": {},
+        "name": "d",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "e": {
+        "description": "Eve",
+        "links": {},
+        "name": "e",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      }
+    },
+    "boxes": [
+      {
+        "actorKeys": [
+          "a",
+          "b"
+        ],
+        "fill": "aqua",
+        "name": null,
+        "wrap": false
+      },
+      {
+        "actorKeys": [
+          "c"
+        ],
+        "fill": "green",
+        "name": null,
+        "wrap": false
+      },
+      {
+        "actorKeys": [
+          "d"
+        ],
+        "fill": "transparent",
+        "name": null,
+        "wrap": false
+      },
+      {
+        "actorKeys": [
+          "e"
+        ],
+        "fill": "rgb(255, 0, 0)",
+        "name": "Red Box",
+        "wrap": false
+      }
+    ],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
+  }
+}

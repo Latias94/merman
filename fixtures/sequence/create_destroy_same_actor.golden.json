@@ -1,0 +1,88 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "actors": {
+      "a": {
+        "description": "a",
+        "links": {},
+        "name": "a",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "b": {
+        "description": "b",
+        "links": {},
+        "name": "b",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "c": {
+        "description": "c",
+        "links": {},
+        "name": "c",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      }
+    },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {
+      "c": 1
+    },
+    "destroyedActors": {
+      "c": 3
+    },
+    "messages": [
+      {
+        "activate": false,
+        "from": "a",
+        "id": "0",
+        "message": "Hello Bob?",
+        "to": "b",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "b",
+        "id": "1",
+        "message": "Hello c!",
+        "to": "c",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "c",
+        "id": "2",
+        "message": "Hello b?",
+        "to": "b",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "b",
+        "id": "3",
+        "message": "Bye c !",
+        "to": "c",
+        "type": 0,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
+  }
+}
