@@ -1,0 +1,143 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "axisFormat": "",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
+    "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
+    "sections": [
+      "testa1"
+    ],
+    "tasks": [
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2013-01-03T00:00:00.000",
+        "id": "d1",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
+        "raw": {
+          "data": ": d1,2013-01-01,2d",
+          "endTime": {
+            "data": "2d"
+          },
+          "startTime": {
+            "startData": "2013-01-01",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "testa1",
+        "startTime": "2013-01-01T00:00:00.000",
+        "task": "days",
+        "type": "testa1",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2013-01-01T02:00:00.000",
+        "id": "h1",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "d1",
+        "processed": true,
+        "raw": {
+          "data": ": h1,2013-01-01,2h",
+          "endTime": {
+            "data": "2h"
+          },
+          "startTime": {
+            "startData": "2013-01-01",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "testa1",
+        "startTime": "2013-01-01T00:00:00.000",
+        "task": "hours",
+        "type": "testa1",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2013-01-01T00:02:00.000",
+        "id": "m1",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 2,
+        "prevTaskId": "h1",
+        "processed": true,
+        "raw": {
+          "data": ": m1,2013-01-01,2m",
+          "endTime": {
+            "data": "2m"
+          },
+          "startTime": {
+            "startData": "2013-01-01",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "testa1",
+        "startTime": "2013-01-01T00:00:00.000",
+        "task": "minutes",
+        "type": "testa1",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2013-01-01T00:00:02.000",
+        "id": "s1",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 3,
+        "prevTaskId": "m1",
+        "processed": true,
+        "raw": {
+          "data": ": s1,2013-01-01,2s",
+          "endTime": {
+            "data": "2s"
+          },
+          "startTime": {
+            "startData": "2013-01-01",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "testa1",
+        "startTime": "2013-01-01T00:00:00.000",
+        "task": "seconds",
+        "type": "testa1",
+        "vert": false
+      }
+    ],
+    "tickInterval": null,
+    "title": "Duration units",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
+  }
+}

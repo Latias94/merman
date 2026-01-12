@@ -1,0 +1,56 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "axisFormat": "",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
+    "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
+    "sections": [
+      "Line1<br>Line2<br/>Line3</br />Line4<br\t/>Line5"
+    ],
+    "tasks": [
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2024-01-02T00:00:00.000",
+        "id": "a1",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
+        "raw": {
+          "data": ":a1, 2024-01-01, 1d",
+          "endTime": {
+            "data": "1d"
+          },
+          "startTime": {
+            "startData": "2024-01-01",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "Line1<br>Line2<br/>Line3</br />Line4<br\t/>Line5",
+        "startTime": "2024-01-01T00:00:00.000",
+        "task": "Task1",
+        "type": "Line1<br>Line2<br/>Line3</br />Line4<br\t/>Line5",
+        "vert": false
+      }
+    ],
+    "tickInterval": null,
+    "title": "Multiline section title",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
+  }
+}

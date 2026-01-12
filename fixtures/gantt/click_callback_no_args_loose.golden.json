@@ -1,0 +1,99 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "axisFormat": "",
+    "clickEvents": {
+      "cl2": {
+        "function_args": [
+          "cl2"
+        ],
+        "function_name": "ganttTestClick",
+        "raw_function_args": null
+      }
+    },
+    "dateFormat": "YYYY-MM-DD",
+    "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {
+      "cl1": "https://mermaidjs.github.io/"
+    },
+    "sections": [
+      "Clickable"
+    ],
+    "tasks": [
+      {
+        "active": true,
+        "classes": [
+          "clickable"
+        ],
+        "crit": false,
+        "done": false,
+        "endTime": "2014-01-10T00:00:00.000",
+        "id": "cl1",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
+        "raw": {
+          "data": ":active, cl1, 2014-01-07, 3d",
+          "endTime": {
+            "data": "3d"
+          },
+          "startTime": {
+            "startData": "2014-01-07",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "Clickable",
+        "startTime": "2014-01-07T00:00:00.000",
+        "task": "Visit mermaidjs",
+        "type": "Clickable",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [
+          "clickable"
+        ],
+        "crit": false,
+        "done": false,
+        "endTime": "2014-01-13T00:00:00.000",
+        "id": "cl2",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "cl1",
+        "processed": true,
+        "raw": {
+          "data": ":cl2, after cl1, 3d",
+          "endTime": {
+            "data": "3d"
+          },
+          "startTime": {
+            "startData": "after cl1",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "Clickable",
+        "startTime": "2014-01-10T00:00:00.000",
+        "task": "Calling a callback",
+        "type": "Clickable",
+        "vert": false
+      }
+    ],
+    "tickInterval": null,
+    "title": "Callback no args",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
+  }
+}
