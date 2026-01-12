@@ -27,9 +27,10 @@ Baseline: Mermaid `@11.12.2`.
       - `title` and `accDescr/accTitle` are passed through `sanitizeText(getConfig())`.
       - `accTitle` removes leading whitespace (`/^\s+/`).
       - `accDescr` collapses indentation after newlines (`/\n\s+/g -> "\n"`).
-  - interactivity:
+- interactivity:
     - `click <id[,id...]> href "<url>"`
     - `click <id[,id...]> call <fn>(<args>)`
+    - `href` and `call` can be combined on the same `click` line in any order (Mermaid gantt.jison `clickStatement` grammar).
     - Behavior: `href` is URL-sanitized unless `securityLevel == "loose"`. Callback metadata is recorded only when `securityLevel == "loose"`.
 - Tasks:
   - Line form: `<taskTxt>: <taskData>`
