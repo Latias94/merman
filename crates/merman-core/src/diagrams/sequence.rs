@@ -407,6 +407,26 @@ impl SequenceDb {
         });
     }
 
+    fn activation_count(&self, actor: &str) -> i32 {
+        if actor.is_empty() {
+            return 0;
+        }
+        let mut count = 0;
+        for msg in &self.messages {
+            if msg.message_type == LINETYPE_ACTIVE_START
+                && msg.from.as_deref().is_some_and(|a| a == actor)
+            {
+                count += 1;
+            }
+            if msg.message_type == LINETYPE_ACTIVE_END
+                && msg.from.as_deref().is_some_and(|a| a == actor)
+            {
+                count -= 1;
+            }
+        }
+        count
+    }
+
     fn add_autonumber(&mut self, start: Option<i64>, step: Option<i64>, visible: bool) {
         let mut msg = serde_json::Map::new();
         if let Some(s) = start {
@@ -578,6 +598,11 @@ impl SequenceDb {
                 Ok(())
             }
             Action::ActiveEnd { actor } => {
+                if self.activation_count(&actor) < 1 {
+                    return Err(format!(
+                        "Trying to inactivate an inactive participant ({actor})"
+                    ));
+                }
                 self.add_signal(Some(actor), None, None, LINETYPE_ACTIVE_END, false, None);
                 Ok(())
             }

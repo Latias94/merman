@@ -149,12 +149,17 @@ AccDescrStatement: String = {
   <t:AccDescrMultiline> => t,
 };
 
+ActorId: String = {
+  <a:Actor> => a,
+  <n:Num> => n.to_string(),
+};
+
 ParticipantDecl: (String, Option<String>, String, Option<String>) = {
-  "participant" <id:Actor> "as" <desc:RestOfLine> => (id, Some(desc), "participant".to_string(), None),
-  "participant" <id:Actor> <cfg:Config> => (id, None, "participant".to_string(), Some(cfg)),
-  "participant" <id:Actor> => (id, None, "participant".to_string(), None),
-  "actor" <id:Actor> "as" <desc:RestOfLine> => (id, Some(desc), "actor".to_string(), None),
-  "actor" <id:Actor> => (id, None, "actor".to_string(), None),
+  "participant" <id:ActorId> "as" <desc:RestOfLine> => (id, Some(desc), "participant".to_string(), None),
+  "participant" <id:ActorId> <cfg:Config> => (id, None, "participant".to_string(), Some(cfg)),
+  "participant" <id:ActorId> => (id, None, "participant".to_string(), None),
+  "actor" <id:ActorId> "as" <desc:RestOfLine> => (id, Some(desc), "actor".to_string(), None),
+  "actor" <id:ActorId> => (id, None, "actor".to_string(), None),
 };
 
 ParticipantStatement: Vec<Action> = {
@@ -170,7 +175,7 @@ CreateStatement: Vec<Action> = {
 };
 
 DestroyStatement: Vec<Action> = {
-  "destroy" <a:Actor> => vec![Action::DestroyParticipant { id: a }],
+  "destroy" <a:ActorId> => vec![Action::DestroyParticipant { id: a }],
 };
 
 BlockStatement: Vec<Action> = {
@@ -299,47 +304,47 @@ BoxBody: Vec<Action> = {
 };
 
 LinksStatement: Vec<Action> = {
-  "links" <a:Actor> <t:Text> => vec![
+  "links" <a:ActorId> <t:Text> => vec![
     Action::EnsureParticipant { id: a.clone() },
     Action::AddLinks { actor: a, text: t },
   ],
 };
 
 LinkStatement: Vec<Action> = {
-  "link" <a:Actor> <t:Text> => vec![
+  "link" <a:ActorId> <t:Text> => vec![
     Action::EnsureParticipant { id: a.clone() },
     Action::AddLink { actor: a, text: t },
   ],
 };
 
 PropertiesStatement: Vec<Action> = {
-  "properties" <a:Actor> <t:Text> => vec![
+  "properties" <a:ActorId> <t:Text> => vec![
     Action::EnsureParticipant { id: a.clone() },
     Action::AddProperties { actor: a, text: t },
   ],
 };
 
 DetailsStatement: Vec<Action> = {
-  "details" <a:Actor> <t:Text> => vec![
+  "details" <a:ActorId> <t:Text> => vec![
     Action::EnsureParticipant { id: a.clone() },
     Action::AddDetails { actor: a, text: t },
   ],
 };
 
 SignalStatement: Vec<Action> = {
-  <from:Actor> <ty:SignalType> Plus <to:Actor> <text:Text> => vec![
+  <from:ActorId> <ty:SignalType> Plus <to:ActorId> <text:Text> => vec![
     Action::EnsureParticipant { id: from.clone() },
     Action::EnsureParticipant { id: to.clone() },
     Action::AddMessage { from: from.clone(), to: to.clone(), signal_type: ty, text, activate: true },
     Action::ActiveStart { actor: to },
   ],
-  <from:Actor> <ty:SignalType> Minus <to:Actor> <text:Text> => vec![
+  <from:ActorId> <ty:SignalType> Minus <to:ActorId> <text:Text> => vec![
     Action::EnsureParticipant { id: from.clone() },
     Action::EnsureParticipant { id: to.clone() },
     Action::AddMessage { from: from.clone(), to: to.clone(), signal_type: ty, text, activate: false },
     Action::ActiveEnd { actor: from },
   ],
-  <from:Actor> <ty:SignalType> <to:Actor> <text:Text> => vec![
+  <from:ActorId> <ty:SignalType> <to:ActorId> <text:Text> => vec![
     Action::EnsureParticipant { id: from.clone() },
     Action::EnsureParticipant { id: to.clone() },
     Action::AddMessage { from, to, signal_type: ty, text, activate: false },
@@ -347,16 +352,16 @@ SignalStatement: Vec<Action> = {
 };
 
 NoteStatement: Vec<Action> = {
-  "note" <p:Placement> <a:Actor> <t:Text> => vec![
+  "note" <p:Placement> <a:ActorId> <t:Text> => vec![
     Action::EnsureParticipant { id: a.clone() },
     Action::AddNote { actors: vec![a], placement: p, text: t },
   ],
-  "note" "over" <a:Actor> Comma <b:Actor> <t:Text> => vec![
+  "note" "over" <a:ActorId> Comma <b:ActorId> <t:Text> => vec![
     Action::EnsureParticipant { id: a.clone() },
     Action::EnsureParticipant { id: b.clone() },
     Action::AddNote { actors: vec![a, b], placement: 2, text: t },
   ],
-  "note" "over" <a:Actor> <t:Text> => vec![
+  "note" "over" <a:ActorId> <t:Text> => vec![
     Action::EnsureParticipant { id: a.clone() },
     Action::AddNote { actors: vec![a.clone(), a], placement: 2, text: t },
   ],
@@ -375,9 +380,9 @@ AutonumberStatement: Action = {
 };
 
 ActivateStatement: Action = {
-  "activate" <a:Actor> => Action::ActiveStart { actor: a },
+  "activate" <a:ActorId> => Action::ActiveStart { actor: a },
 };
 
 DeactivateStatement: Action = {
-  "deactivate" <a:Actor> => Action::ActiveEnd { actor: a },
+  "deactivate" <a:ActorId> => Action::ActiveEnd { actor: a },
 };
