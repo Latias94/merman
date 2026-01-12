@@ -2065,12 +2065,29 @@ fn parse_gantt_statement(
         db.set_today_marker(v.trim());
         return Ok(());
     }
-    if let Some(v) = parse_keyword_arg(stripped, "weekday") {
-        db.set_weekday(v.trim().to_lowercase().as_str());
+    if let Some(v) = parse_keyword_arg_full_line(stripped, "weekday") {
+        let day = v.trim().to_lowercase();
+        if !matches!(
+            day.as_str(),
+            "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday"
+        ) {
+            return Err(Error::DiagramParse {
+                diagram_type: "gantt".to_string(),
+                message: format!("invalid weekday: {day}"),
+            });
+        }
+        db.set_weekday(&day);
         return Ok(());
     }
-    if let Some(v) = parse_keyword_arg(stripped, "weekend") {
-        db.set_weekend(v.trim().to_lowercase().as_str());
+    if let Some(v) = parse_keyword_arg_full_line(stripped, "weekend") {
+        let day = v.trim().to_lowercase();
+        if !matches!(day.as_str(), "friday" | "saturday") {
+            return Err(Error::DiagramParse {
+                diagram_type: "gantt".to_string(),
+                message: format!("invalid weekend: {day}"),
+            });
+        }
+        db.set_weekend(&day);
         return Ok(());
     }
     if let Some(v) = parse_keyword_arg_full_line(stripped, "title") {
@@ -3036,5 +3053,33 @@ test: id1,2013-01-01,1d
 "#,
         );
         assert_eq!(model["sections"][0].as_str().unwrap(), "A #1");
+    }
+
+    #[test]
+    fn gantt_weekday_rejects_unknown_values() {
+        let engine = Engine::new();
+        let err = block_on(engine.parse_diagram(
+            r#"
+gantt
+weekday foo
+"#,
+            ParseOptions::default(),
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("invalid weekday"));
+    }
+
+    #[test]
+    fn gantt_weekend_rejects_unknown_values() {
+        let engine = Engine::new();
+        let err = block_on(engine.parse_diagram(
+            r#"
+gantt
+weekend monday
+"#,
+            ParseOptions::default(),
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("invalid weekend"));
     }
 }

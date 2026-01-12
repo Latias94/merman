@@ -18,7 +18,7 @@ Baseline: Mermaid `@11.12.2`.
   - `tickInterval <interval>` (stored, not interpreted in Phase 1)
   - `includes <list>`
   - `excludes <list>` (stored as lowercased tokens like Mermaid; commonly includes `weekends`, weekday names, `YYYY-MM-DD`, and Mermaid also accepts tokens like `weekdays`)
-  - `weekday <name>` / `weekend <friday|saturday>`
+  - `weekday <monday|tuesday|wednesday|thursday|friday|saturday|sunday>` / `weekend <friday|saturday>`
   - accessibility:
     - `accTitle: ...`
     - `accDescr: ...`
