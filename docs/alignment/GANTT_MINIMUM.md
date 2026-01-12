@@ -50,6 +50,7 @@ Baseline: Mermaid `@11.12.2`.
   - timestamp formats:
     - `x` = Unix epoch milliseconds (Day.js `x`)
     - `X` = Unix epoch seconds (Day.js `X`)
+  - `ss` (seconds-only) uses the current local date for year/month/day in Mermaid’s gantt DB logic, so snapshot fixtures would be date-dependent; this case is locked via unit tests instead of goldens.
   - duration parsing for `ms|s|m|h|d|w` (floats supported)
   - JS-like fallback parsing for date strings that fail strict parsing, including the “ridiculous year” rejection and common ISO-like inputs:
     - `YYYY-MM-DD` (UTC semantics like JS)
