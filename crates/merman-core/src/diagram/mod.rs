@@ -56,6 +56,7 @@ impl DiagramRegistry {
             "quadrantChart",
             crate::diagrams::quadrant_chart::parse_quadrant_chart,
         );
+        reg.insert("packet", crate::diagrams::packet::parse_packet);
 
         reg
     }
