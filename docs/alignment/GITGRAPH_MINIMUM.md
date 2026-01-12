@@ -38,7 +38,7 @@ Upstream references:
 - Default branch name/order comes from `gitGraph.mainBranchName` / `gitGraph.mainBranchOrder`.
 - `branch` creates a new branch at the current `head` (or empty if no commits) and switches to it.
 - `commit`:
-  - Auto-generates a read-only id when not provided (prefix includes sequence number).
+  - Auto-generates a read-only id when not provided (`<seq>-<randomHex7>` in Mermaid@11.12.2).
   - Creates a parent link to the current head when present.
   - Warns when a commit id is reused (`Commit ID <id> already exists`).
 - `merge`:
@@ -64,4 +64,3 @@ Upstream references:
 
 This is an incremental slice. The ultimate goal is full Mermaid `gitGraph` parsing and DB behavior
 compatibility at the pinned baseline tag.
-

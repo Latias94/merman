@@ -2,6 +2,7 @@ use crate::sanitize::sanitize_text;
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
+use uuid::Uuid;
 
 const COMMIT_TYPE_NORMAL: i64 = 0;
 const COMMIT_TYPE_REVERSE: i64 = 1;
@@ -71,7 +72,6 @@ struct GitGraphDb {
     warnings: Vec<String>,
     acc_title: String,
     acc_descr: String,
-    id_suffix: i64,
 }
 
 impl GitGraphDb {
@@ -87,7 +87,6 @@ impl GitGraphDb {
         self.warnings.clear();
         self.acc_title.clear();
         self.acc_descr.clear();
-        self.id_suffix = 0;
 
         let main = config
             .get_str("gitGraph.mainBranchName")
@@ -107,8 +106,8 @@ impl GitGraphDb {
     }
 
     fn next_id(&mut self) -> String {
-        self.id_suffix += 1;
-        format!("id{}", self.id_suffix)
+        let hex = Uuid::new_v4().simple().to_string();
+        hex.chars().take(7).collect()
     }
 
     fn commit(&mut self, mut commit_db: CommitDb, config: &MermaidConfig) {
@@ -712,7 +711,6 @@ pub fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
         warnings: Vec::new(),
         acc_title: String::new(),
         acc_descr: String::new(),
-        id_suffix: 0,
     };
     db.clear(&meta.effective_config);
     if let Some(d) = direction {
