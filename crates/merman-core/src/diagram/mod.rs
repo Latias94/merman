@@ -58,6 +58,7 @@ impl DiagramRegistry {
         );
         reg.insert("packet", crate::diagrams::packet::parse_packet);
         reg.insert("radar", crate::diagrams::radar::parse_radar);
+        reg.insert("treemap", crate::diagrams::treemap::parse_treemap);
 
         reg
     }

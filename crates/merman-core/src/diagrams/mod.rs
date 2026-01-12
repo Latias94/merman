@@ -16,3 +16,4 @@ pub mod radar;
 pub mod sequence;
 pub mod state;
 pub mod timeline;
+pub mod treemap;
