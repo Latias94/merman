@@ -1,0 +1,114 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "axisFormat": "",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
+    "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
+    "sections": [
+      "A"
+    ],
+    "tasks": [
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2019-02-03T00:00:00.000",
+        "id": "a1",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
+        "raw": {
+          "data": ":a1, 2019-02-01, 2d",
+          "endTime": {
+            "data": "2d"
+          },
+          "startTime": {
+            "startData": "2019-02-01",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "A",
+        "startTime": "2019-02-01T00:00:00.000",
+        "task": "A",
+        "type": "A",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2019-02-04T00:00:00.000",
+        "id": "a2",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "a1",
+        "processed": true,
+        "raw": {
+          "data": ":a2, after a1, 1d",
+          "endTime": {
+            "data": "1d"
+          },
+          "startTime": {
+            "startData": "after a1",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "A",
+        "startTime": "2019-02-03T00:00:00.000",
+        "task": "B",
+        "type": "A",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2019-02-03T00:00:00.000",
+        "id": "a3",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 2,
+        "prevTaskId": "a2",
+        "processed": true,
+        "raw": {
+          "data": ":a3, 2019-02-01, until a2",
+          "endTime": {
+            "data": "until a2"
+          },
+          "startTime": {
+            "startData": "2019-02-01",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "A",
+        "startTime": "2019-02-01T00:00:00.000",
+        "task": "C",
+        "type": "A",
+        "vert": false
+      }
+    ],
+    "tickInterval": null,
+    "title": "References",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
+  }
+}

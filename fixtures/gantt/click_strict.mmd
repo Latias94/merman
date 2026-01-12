@@ -1,0 +1,9 @@
+gantt
+  title Click behavior strict
+  dateFormat YYYY-MM-DD
+  section A
+  Task1 :a1, 2024-01-01, 1d
+
+  click a1 href "javascript:alert(1)" "bad"
+  click a1 call doThing("a", "b")
+
