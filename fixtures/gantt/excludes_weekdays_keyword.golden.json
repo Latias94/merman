@@ -1,0 +1,59 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "axisFormat": "",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
+    "displayMode": "",
+    "excludes": [
+      "weekdays",
+      "2019-02-01"
+    ],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
+    "sections": [
+      "Demo"
+    ],
+    "tasks": [
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2019-02-02T00:00:00.000",
+        "id": "t1",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
+        "raw": {
+          "data": ": t1, 2019-02-01, 1d",
+          "endTime": {
+            "data": "1d"
+          },
+          "startTime": {
+            "startData": "2019-02-01",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": "2019-02-02T00:00:00.000",
+        "section": "Demo",
+        "startTime": "2019-02-01T00:00:00.000",
+        "task": "Task1",
+        "type": "Demo",
+        "vert": false
+      }
+    ],
+    "tickInterval": null,
+    "title": "Excludes weekdays keyword is accepted",
+    "todayMarker": "off",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
+  }
+}
