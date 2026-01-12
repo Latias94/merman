@@ -813,6 +813,9 @@ fn parse_args_csv(input: &str) -> Result<Vec<Value>> {
     let mut out = Vec::new();
     let mut cur = input;
     loop {
+        if cur.trim().is_empty() {
+            break;
+        }
         let (seg, rest) = split_next_arg(cur);
         out.push(parse_arg(seg.trim())?);
         if rest.is_none() {
@@ -1284,5 +1287,41 @@ UpdateRelStyle(a, b, $textColor="red")
         );
         assert_eq!(model["shapes"].as_array().unwrap().len(), 0);
         assert_eq!(model["rels"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn c4_techn_and_descr_can_be_kv_objects() {
+        let model = parse(
+            r#"C4Context
+Container(c1, "C1", $techn="Rust", $descr="Fast")
+"#,
+        );
+        assert_eq!(model["shapes"].as_array().unwrap().len(), 1);
+        assert_eq!(model["shapes"][0]["techn"]["text"], json!("Rust"));
+        assert_eq!(model["shapes"][0]["descr"]["text"], json!("Fast"));
+    }
+
+    #[test]
+    fn c4_boundary_type_can_be_kv_object() {
+        let model = parse(
+            r#"C4Context
+Boundary(b1, "B", $type="company") {
+}
+"#,
+        );
+        assert_eq!(model["boundaries"].as_array().unwrap().len(), 2);
+        assert_eq!(model["boundaries"][1]["type"]["text"], json!("company"));
+    }
+
+    #[test]
+    fn c4_empty_args_are_allowed() {
+        let model = parse(
+            r#"C4Context
+Person(a, , "D")
+"#,
+        );
+        assert_eq!(model["shapes"].as_array().unwrap().len(), 1);
+        assert_eq!(model["shapes"][0]["label"]["text"], json!(""));
+        assert_eq!(model["shapes"][0]["descr"]["text"], json!("D"));
     }
 }

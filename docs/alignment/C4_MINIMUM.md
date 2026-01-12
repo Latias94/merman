@@ -50,6 +50,9 @@ Baseline: Mermaid `@11.12.2`.
   - No escape processing (aligning with Mermaid’s C4 lexer behavior).
 - Key/value attributes are supported:
   - `$key="value"` becomes `{ "key": "value" }`
+  - If such an object is passed in a positional slot like `type`/`techn`/`descr`, Mermaid’s DB
+    stores it under the provided key as `{ key: { text: value } }` (e.g. `$techn="Rust"` becomes
+    `techn: { text: "Rust" }`).
 
 ## Output shape (Phase 1)
 
