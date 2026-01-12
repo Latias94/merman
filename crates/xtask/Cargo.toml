@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+chrono.workspace = true
 futures.workspace = true
 merman = { path = "../merman" }
 serde_json.workspace = true

@@ -20,6 +20,10 @@ it as JSON, which makes it practical to adopt snapshot-style regression tests.
   - `diagramType`: detected diagram type string.
   - `model`: the semantic headless JSON model, with the top-level `config` field removed to keep
     snapshots smaller and avoid duplicating separately-verified generated defaults.
+  - Additionally normalize known non-portable/dynamic fields:
+    - `mindmap.model.diagramId` is replaced with `"<dynamic>"` (upstream uses UUID v4).
+    - `gantt.model.tasks[*].{startTime,endTime,renderEndTime}` are converted from epoch millis into
+      local ISO strings (`YYYY-MM-DDTHH:mm:ss.SSS`) so snapshots are stable across timezones.
 - Add an integration test in `merman-core` that:
   - parses every fixture with `Engine::parse_diagram`
   - compares the snapshot JSON `Value` to the golden JSON `Value`
@@ -34,4 +38,3 @@ it as JSON, which makes it practical to adopt snapshot-style regression tests.
   upstream parity fix).
 - Because `config` is excluded from snapshots, changes to generated defaults remain covered by
   `xtask verify-generated`.
-

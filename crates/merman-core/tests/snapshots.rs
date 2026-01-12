@@ -2,6 +2,15 @@ use merman_core::{Engine, ParseOptions};
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
 
+fn ms_to_local_iso(ms: i64) -> Option<String> {
+    let dt = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
+    Some(
+        dt.with_timezone(&chrono::Local)
+            .format("%Y-%m-%dT%H:%M:%S%.3f")
+            .to_string(),
+    )
+}
+
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
 }
@@ -32,10 +41,52 @@ fn list_fixture_mmd_files(root: &Path) -> Vec<PathBuf> {
     out
 }
 
-fn snapshot_value(diagram_type: &str, mut model: Value) -> Value {
-    if let Value::Object(obj) = &mut model {
-        obj.remove("config");
+fn normalize_model(diagram_type: &str, model: &mut Value) {
+    let Value::Object(obj) = model else {
+        return;
+    };
+
+    obj.remove("config");
+
+    // Mermaid mindmap includes a random UUID v4-based diagram id.
+    if diagram_type == "mindmap" && obj.get("diagramId").is_some() {
+        obj.insert(
+            "diagramId".to_string(),
+            Value::String("<dynamic>".to_string()),
+        );
     }
+
+    // Mermaid gantt uses local time; epoch millis are timezone-dependent and not portable as goldens.
+    // Normalize task timestamps into local ISO strings so snapshots are stable across timezones.
+    if diagram_type == "gantt" {
+        let Some(tasks) = obj.get_mut("tasks").and_then(Value::as_array_mut) else {
+            return;
+        };
+        for task in tasks {
+            let Value::Object(task_obj) = task else {
+                continue;
+            };
+            for key in ["startTime", "endTime", "renderEndTime"] {
+                let Some(v) = task_obj.get_mut(key) else {
+                    continue;
+                };
+                let Some(ms) = v
+                    .as_i64()
+                    .or_else(|| v.as_u64().and_then(|n| i64::try_from(n).ok()))
+                else {
+                    continue;
+                };
+                if let Some(s) = ms_to_local_iso(ms) {
+                    *v = Value::String(s);
+                }
+            }
+        }
+    }
+}
+
+fn snapshot_value(diagram_type: &str, mut model: Value) -> Value {
+    normalize_model(diagram_type, &mut model);
+
     let mut out = Map::new();
     out.insert(
         "diagramType".to_string(),

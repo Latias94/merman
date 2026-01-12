@@ -208,6 +208,15 @@ fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
     let engine = merman::Engine::new();
     let mut failures = Vec::new();
 
+    fn ms_to_local_iso(ms: i64) -> Option<String> {
+        let dt = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
+        Some(
+            dt.with_timezone(&chrono::Local)
+                .format("%Y-%m-%dT%H:%M:%S%.3f")
+                .to_string(),
+        )
+    }
+
     for mmd_path in mmd_files {
         let text = match fs::read_to_string(&mmd_path) {
             Ok(v) => v,
@@ -234,6 +243,36 @@ fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
         let mut model = parsed.model;
         if let JsonValue::Object(obj) = &mut model {
             obj.remove("config");
+            if parsed.meta.diagram_type == "mindmap" && obj.get("diagramId").is_some() {
+                obj.insert(
+                    "diagramId".to_string(),
+                    JsonValue::String("<dynamic>".to_string()),
+                );
+            }
+
+            if parsed.meta.diagram_type == "gantt" {
+                if let Some(tasks) = obj.get_mut("tasks").and_then(JsonValue::as_array_mut) {
+                    for task in tasks {
+                        let JsonValue::Object(task_obj) = task else {
+                            continue;
+                        };
+                        for key in ["startTime", "endTime", "renderEndTime"] {
+                            let Some(v) = task_obj.get_mut(key) else {
+                                continue;
+                            };
+                            let Some(ms) = v
+                                .as_i64()
+                                .or_else(|| v.as_u64().and_then(|n| i64::try_from(n).ok()))
+                            else {
+                                continue;
+                            };
+                            if let Some(s) = ms_to_local_iso(ms) {
+                                *v = JsonValue::String(s);
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         let out = serde_json::json!({
