@@ -1,0 +1,24 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "axisFormat": "",
+    "clickEvents": {},
+    "dateFormat": "",
+    "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
+    "sections": [],
+    "tasks": [],
+    "tickInterval": null,
+    "title": "Weekday friday",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "friday",
+    "weekend": "saturday"
+  }
+}
