@@ -1,0 +1,112 @@
+{
+  "diagramType": "er",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {
+      "core": {
+        "id": "core",
+        "styles": [
+          "fill:#f96",
+          "stroke:#333",
+          "stroke-width:2px",
+          "color:#fff"
+        ],
+        "textStyles": [
+          "color:#fff"
+        ]
+      }
+    },
+    "constants": {
+      "cardinality": {
+        "mdParent": "MD_PARENT",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
+      },
+      "identification": {
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
+      }
+    },
+    "direction": "TB",
+    "entities": {
+      "BOOK": {
+        "alias": "Book",
+        "attributes": [
+          {
+            "comment": "Title",
+            "keys": [
+              "PK"
+            ],
+            "name": "*title",
+            "type": "string"
+          },
+          {
+            "comment": "Author ref",
+            "keys": [
+              "FK"
+            ],
+            "name": "author-ref[name](1)",
+            "type": "string[]"
+          },
+          {
+            "comment": "Generic",
+            "keys": [
+              "UK"
+            ],
+            "name": "generic",
+            "type": "type~T~"
+          },
+          {
+            "comment": "Short code",
+            "keys": [],
+            "name": "code",
+            "type": "varchar(5)"
+          }
+        ],
+        "cssClasses": "default core core",
+        "cssStyles": [
+          "fill:#f9f",
+          "stroke:#333",
+          "stroke-width:2px"
+        ],
+        "id": "entity-BOOK-0",
+        "label": "BOOK",
+        "shape": "erBox"
+      },
+      "PAGE": {
+        "alias": "",
+        "attributes": [
+          {
+            "comment": "",
+            "keys": [
+              "PK"
+            ],
+            "name": "number",
+            "type": "int"
+          }
+        ],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-PAGE-1",
+        "label": "PAGE",
+        "shape": "erBox"
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-BOOK-0",
+        "entityB": "entity-PAGE-1",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        },
+        "roleA": "has"
+      }
+    ],
+    "type": "er"
+  }
+}

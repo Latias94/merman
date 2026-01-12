@@ -1,0 +1,7 @@
+erDiagram
+  HOUSE ||--|{ ROOM : contains
+  PERSON many optionally to many POSSESSION : owns
+  CUSTOMER one or zero optionally to zero or many ORDER : places
+  PROJECT u--o{ TEAM_MEMBER : "parent"
+  CUSTOMER ||--|{ ORDER : ""
+

@@ -1,0 +1,15 @@
+erDiagram
+  BOOK["Book"]:::core {
+    string *title PK "Title"
+    string[] author-ref[name](1) FK "Author ref"
+    type~T~ generic UK "Generic"
+    varchar(5) code "Short code"
+  }
+  style BOOK fill:#f9f,stroke:#333,stroke-width:2px
+  classDef core fill:#f96,stroke:#333,stroke-width:2px,color:#fff
+  class BOOK core
+  BOOK ||--o{ PAGE : has
+  PAGE {
+    int number PK
+  }
+

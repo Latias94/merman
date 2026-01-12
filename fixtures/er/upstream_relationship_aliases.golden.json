@@ -1,0 +1,149 @@
+{
+  "diagramType": "er",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "mdParent": "MD_PARENT",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
+      },
+      "identification": {
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
+      }
+    },
+    "direction": "TB",
+    "entities": {
+      "CUSTOMER": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-CUSTOMER-4",
+        "label": "CUSTOMER",
+        "shape": "erBox"
+      },
+      "HOUSE": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-HOUSE-0",
+        "label": "HOUSE",
+        "shape": "erBox"
+      },
+      "ORDER": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-ORDER-5",
+        "label": "ORDER",
+        "shape": "erBox"
+      },
+      "PERSON": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-PERSON-2",
+        "label": "PERSON",
+        "shape": "erBox"
+      },
+      "POSSESSION": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-POSSESSION-3",
+        "label": "POSSESSION",
+        "shape": "erBox"
+      },
+      "PROJECT": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-PROJECT-6",
+        "label": "PROJECT",
+        "shape": "erBox"
+      },
+      "ROOM": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-ROOM-1",
+        "label": "ROOM",
+        "shape": "erBox"
+      },
+      "TEAM_MEMBER": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-TEAM_MEMBER-7",
+        "label": "TEAM_MEMBER",
+        "shape": "erBox"
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-HOUSE-0",
+        "entityB": "entity-ROOM-1",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        },
+        "roleA": "contains"
+      },
+      {
+        "entityA": "entity-PERSON-2",
+        "entityB": "entity-POSSESSION-3",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ZERO_OR_MORE",
+          "relType": "NON_IDENTIFYING"
+        },
+        "roleA": "owns"
+      },
+      {
+        "entityA": "entity-CUSTOMER-4",
+        "entityB": "entity-ORDER-5",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ZERO_OR_ONE",
+          "relType": "NON_IDENTIFYING"
+        },
+        "roleA": "places"
+      },
+      {
+        "entityA": "entity-PROJECT-6",
+        "entityB": "entity-TEAM_MEMBER-7",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "MD_PARENT",
+          "relType": "IDENTIFYING"
+        },
+        "roleA": "parent"
+      },
+      {
+        "entityA": "entity-CUSTOMER-4",
+        "entityB": "entity-ORDER-5",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        },
+        "roleA": ""
+      }
+    ],
+    "type": "er"
+  }
+}

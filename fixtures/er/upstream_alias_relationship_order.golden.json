@@ -1,0 +1,92 @@
+{
+  "diagramType": "er",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "mdParent": "MD_PARENT",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
+      },
+      "identification": {
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
+      }
+    },
+    "direction": "TB",
+    "entities": {
+      "CUSTOMER": {
+        "alias": "Customer Alias",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-CUSTOMER-0",
+        "label": "CUSTOMER",
+        "shape": "erBox"
+      },
+      "LINE_ITEM": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-LINE_ITEM-3",
+        "label": "LINE_ITEM",
+        "shape": "erBox"
+      },
+      "ORDER": {
+        "alias": "Order Alias",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-ORDER-1",
+        "label": "ORDER",
+        "shape": "erBox"
+      },
+      "buzz": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-buzz-2",
+        "label": "buzz",
+        "shape": "erBox"
+      },
+      "fizz": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-fizz-4",
+        "label": "fizz",
+        "shape": "erBox"
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-CUSTOMER-0",
+        "entityB": "entity-ORDER-1",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        },
+        "roleA": "places"
+      },
+      {
+        "entityA": "entity-ORDER-1",
+        "entityB": "entity-LINE_ITEM-3",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        },
+        "roleA": "contains"
+      }
+    ],
+    "type": "er"
+  }
+}

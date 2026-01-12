@@ -1,0 +1,44 @@
+{
+  "diagramType": "er",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "mdParent": "MD_PARENT",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
+      },
+      "identification": {
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
+      }
+    },
+    "direction": "TB",
+    "entities": {
+      "ISLAND": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-ISLAND-0",
+        "label": "ISLAND",
+        "shape": "erBox"
+      },
+      "MAINLAND": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-MAINLAND-1",
+        "label": "MAINLAND",
+        "shape": "erBox"
+      }
+    },
+    "relationships": [],
+    "type": "er"
+  }
+}
