@@ -3082,4 +3082,20 @@ weekend monday
         .unwrap_err();
         assert!(err.to_string().contains("invalid weekend"));
     }
+
+    #[test]
+    fn gantt_after_missing_id_defaults_to_today_midnight_like_upstream() {
+        let model = parse(
+            r#"
+gantt
+dateFormat YYYY-MM-DD
+section testa1
+test1: id1,2013-01-01,2w
+test2: id2,after missing,1d
+"#,
+        );
+        let tasks = model["tasks"].as_array().unwrap();
+        let expected = today_midnight_local().timestamp_millis();
+        assert_eq!(tasks[1]["startTime"].as_i64().unwrap(), expected);
+    }
 }
