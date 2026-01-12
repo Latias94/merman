@@ -39,6 +39,9 @@ Upstream references:
 - Click/link statements:
   - `click <id> "<url>" "<tooltip>"`
   - `click <id> href "<url>"`
+- Legacy directives (parsed and ignored, matching upstream runtime behavior):
+  - `hide empty description`
+  - `scale <n> width`
 
 ## Output shape (current)
 
@@ -60,5 +63,5 @@ The parser returns a headless semantic model:
 - `stateDomId` / `graphItemCount` parity beyond the covered edge+note scenarios (e.g. more nested/doc translator cases).
 - Full Mermaid default config parity (defaults are generated from the pinned config schema, but the generator does not yet implement every JSON-schema feature; remaining mismatches should be captured by parity tests and fixed iteratively).
 - Click/link security-level behavior and renderer-specific handling (e.g. target/sandbox rules).
-- Scale/hide-empty-description directives and other statement forms in the upstream grammar.
+- Other statement forms in the upstream grammar.
 - Diagnostics alignment (error messages and offsets).

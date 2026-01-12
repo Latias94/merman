@@ -28,6 +28,8 @@ pub(crate) enum Tok {
     Join(String),
     Choice(String),
     Concurrent,
+    HideEmptyDescription,
+    ScaleWidth(usize),
     ClassDef,
     ClassDefId(String),
     ClassDefStyleOpts(String),
@@ -280,6 +282,49 @@ impl<'input> Lexer<'input> {
 
     fn lex_stmt_line(&mut self) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
         let start = self.pos;
+
+        if self.starts_with_ci("hide empty description") {
+            self.pos += "hide empty description".len();
+            let _ = self.read_to_newline();
+            return Some(Ok((start, Tok::HideEmptyDescription, self.pos)));
+        }
+
+        if self.starts_with_word_ci("scale") {
+            self.pos += "scale".len();
+            self.skip_ws();
+
+            let width_start = self.pos;
+            while let Some(b) = self.peek() {
+                if b.is_ascii_digit() {
+                    self.pos += 1;
+                    continue;
+                }
+                break;
+            }
+            if self.pos == width_start {
+                return Some(Err(LexError {
+                    message: "Expected a width number after 'scale'".to_string(),
+                }));
+            }
+            let width: usize = match self.input[width_start..self.pos].parse() {
+                Ok(v) => v,
+                Err(_) => {
+                    return Some(Err(LexError {
+                        message: "Invalid width number after 'scale'".to_string(),
+                    }));
+                }
+            };
+
+            self.skip_ws();
+            if !self.starts_with_word_ci("width") {
+                return Some(Err(LexError {
+                    message: "Expected 'width' after `scale <n>`".to_string(),
+                }));
+            }
+            self.pos += "width".len();
+            let _ = self.read_to_newline();
+            return Some(Ok((start, Tok::ScaleWidth(width), self.pos)));
+        }
 
         if self.starts_with_word_ci("click") {
             self.pos += "click".len();

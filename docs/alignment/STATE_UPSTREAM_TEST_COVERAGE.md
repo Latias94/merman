@@ -43,3 +43,18 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/state/parser/state-style
   - comma-separated ids: `fixtures/state/upstream_state_style_spec.mmd`
   - multiple css attributes: `fixtures/state/upstream_state_style_spec.mmd`
 
+## `stateDiagram.spec.js`
+
+Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/state/stateDiagram.spec.js`
+
+- `hide empty description`: `fixtures/state/upstream_stateDiagram_spec.mmd`
+- `scale <n> width`: `fixtures/state/upstream_stateDiagram_spec.mmd`
+- relation/state descriptions containing `-`: `fixtures/state/upstream_stateDiagram_spec.mmd`
+
+## `stateDiagram-v2.spec.js`
+
+Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/state/stateDiagram-v2.spec.js`
+
+- `hide empty description`: `fixtures/state/upstream_stateDiagram_v2_spec.mmd`
+- `scale <n> width`: `fixtures/state/upstream_stateDiagram_v2_spec.mmd`
+- relationship label extraction (`id1 --> id2 : label`): `fixtures/state/upstream_stateDiagram_v2_spec.mmd`
