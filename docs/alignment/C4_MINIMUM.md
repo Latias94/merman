@@ -53,6 +53,10 @@ Baseline: Mermaid `@11.12.2`.
   - If such an object is passed in a positional slot like `type`/`techn`/`descr`, Mermaid’s DB
     stores it under the provided key as `{ key: { text: value } }` (e.g. `$techn="Rust"` becomes
     `techn: { text: "Rust" }`).
+  - If such an object is passed in the `label` slot, it is preserved under `label.text` (e.g.
+    `Person(p1, $sprite="users")` yields `label.text.sprite = "users"`).
+  - Sprite/tags/link can also be provided in their dedicated positional slots (e.g.
+    `Person(p1, "P", "D", $sprite="users", $tags="t1", $link="...")`).
 
 ## Output shape (Phase 1)
 
@@ -79,3 +83,4 @@ compatibility at the pinned baseline tag.
 - `Enterprise_Boundary` / `System_Boundary` / `Container_Boundary` inject a fixed `type` (respectively
   `ENTERPRISE` / `SYSTEM` / `CONTAINER`) into the boundary object, matching Mermaid’s grammar splice.
 - Deployment nodes ignore the `sprite` argument (`c4Db.js` accepts it but does not store it).
+- `accDescr` is subject to Mermaid common DB sanitization (`\n\s+` is collapsed to `\n`).

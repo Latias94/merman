@@ -694,37 +694,33 @@ fn try_parse_acc_descr<'a>(
 
     if rest.starts_with('{') {
         let mut buf = String::new();
+
+        // Mermaid's lexer consumes whitespace after '{' (`accDescr\s*"{"\s*`),
+        // and the parser applies a single `.trim()` to the whole token.
         let mut after = rest[1..].to_string();
         if let Some(end) = after.find('}') {
             after.truncate(end);
             return Ok(Some(after.trim().to_string()));
         }
-        if !after.trim().is_empty() {
-            buf.push_str(after.trim_end());
+        let after = after.trim_start();
+        if !after.is_empty() {
+            buf.push_str(after);
         }
 
         while let Some(raw) = lines.next() {
-            let t = raw.trim_end();
-            if let Some(pos) = t.find('}') {
-                let part = t[..pos].trim_end();
-                if !part.is_empty() {
-                    if !buf.is_empty() {
-                        buf.push('\n');
-                    }
-                    buf.push_str(part.trim_start());
-                }
-                break;
-            }
-
-            let content = t.trim_end();
-            if !content.trim().is_empty() {
+            if let Some(pos) = raw.find('}') {
+                let part = &raw[..pos];
                 if !buf.is_empty() {
                     buf.push('\n');
                 }
-                buf.push_str(content.trim_start());
-            } else if !buf.is_empty() {
+                buf.push_str(part);
+                break;
+            }
+
+            if !buf.is_empty() {
                 buf.push('\n');
             }
+            buf.push_str(raw);
         }
 
         return Ok(Some(buf.trim().to_string()));
@@ -1323,5 +1319,166 @@ Person(a, , "D")
         assert_eq!(model["shapes"].as_array().unwrap().len(), 1);
         assert_eq!(model["shapes"][0]["label"]["text"], json!(""));
         assert_eq!(model["shapes"][0]["descr"]["text"], json!("D"));
+    }
+
+    #[test]
+    fn c4_rel_direction_macros_are_parsed() {
+        let model = parse(
+            r#"C4Context
+Rel(a, b, "l1")
+BiRel(a, b, "l2")
+Rel_Up(a, b, "l3")
+Rel_U(a, b, "l4")
+Rel_Down(a, b, "l5")
+Rel_D(a, b, "l6")
+Rel_Left(a, b, "l7")
+Rel_L(a, b, "l8")
+Rel_Right(a, b, "l9")
+Rel_R(a, b, "l10")
+Rel_Back(a, b, "l11")
+"#,
+        );
+        let rels = model["rels"].as_array().unwrap();
+        assert_eq!(rels.len(), 1, "rels are deduped by (from,to)");
+        assert_eq!(model["rels"][0]["from"], json!("a"));
+        assert_eq!(model["rels"][0]["to"], json!("b"));
+        assert_eq!(model["rels"][0]["type"], json!("rel_b"));
+        assert_eq!(model["rels"][0]["label"]["text"], json!("l11"));
+    }
+
+    #[test]
+    fn c4_rel_without_label_is_ignored_like_mermaid_db() {
+        let model = parse(
+            r#"C4Context
+Rel(a, b)
+Rel(a, b, )
+"#,
+        );
+        assert_eq!(model["rels"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn c4_rel_inline_comment_is_ignored_but_not_inside_quotes() {
+        let model = parse(
+            r#"C4Context
+Rel(a, b, "label %% not a comment") %% actual comment
+"#,
+        );
+        assert_eq!(model["rels"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            model["rels"][0]["label"]["text"],
+            json!("label %% not a comment")
+        );
+    }
+
+    #[test]
+    fn c4_label_supports_sprite_link_tags_via_kv_objects() {
+        let model = parse(
+            r#"C4Context
+Person(p1, $sprite="users")
+System(s1, $link="https://github.com/mermaidjs")
+Container(c1, $tags="tag1,tag2")
+"#,
+        );
+        assert_eq!(model["shapes"].as_array().unwrap().len(), 3);
+        assert_eq!(
+            model["shapes"][0]["label"]["text"]["sprite"],
+            json!("users")
+        );
+        assert_eq!(
+            model["shapes"][1]["label"]["text"]["link"],
+            json!("https://github.com/mermaidjs")
+        );
+        assert_eq!(
+            model["shapes"][2]["label"]["text"]["tags"],
+            json!("tag1,tag2")
+        );
+    }
+
+    #[test]
+    fn c4_sprite_link_tags_can_be_provided_as_positional_fields() {
+        let model = parse(
+            r#"C4Context
+Person(p1, "P", "D", $sprite="users", $tags="tag1,tag2", $link="https://example.com")
+"#,
+        );
+        assert_eq!(model["shapes"].as_array().unwrap().len(), 1);
+        assert_eq!(model["shapes"][0]["sprite"], json!("users"));
+        assert_eq!(model["shapes"][0]["tags"], json!("tag1,tag2"));
+        assert_eq!(model["shapes"][0]["link"], json!("https://example.com"));
+    }
+
+    #[test]
+    fn c4_boundary_supports_sprite_link_tags_via_kv_objects_or_positional_fields() {
+        let model = parse(
+            r#"C4Context
+Boundary(b1, $link="https://example.com") {
+  Person(p1, "P1")
+}
+Boundary(b2, "B2", "company", $tags="tag1,tag2", $link="https://example.com") {
+  Person(p2, "P2")
+}
+"#,
+        );
+        assert_eq!(model["boundaries"].as_array().unwrap().len(), 3);
+        assert_eq!(
+            model["boundaries"][1]["label"]["text"]["link"],
+            json!("https://example.com")
+        );
+        assert_eq!(model["boundaries"][2]["type"]["text"], json!("company"));
+        assert_eq!(model["boundaries"][2]["tags"], json!("tag1,tag2"));
+        assert_eq!(model["boundaries"][2]["link"], json!("https://example.com"));
+    }
+
+    #[test]
+    fn c4_update_element_style_applies_all_supported_fields() {
+        let model = parse(
+            r#"C4Context
+Person(p1, "P1")
+Boundary(b1, "B1") {
+  Person(p2, "P2")
+}
+UpdateElementStyle(p1, $bgColor="red", $fontColor="white", $borderColor="black", $shadowing="true", $shape="rounded", $sprite="users", $techn="Rust", $legendText="Legend", $legendSprite="book")
+UpdateElementStyle(b1, $bgColor="blue")
+"#,
+        );
+        assert_eq!(model["shapes"].as_array().unwrap().len(), 2);
+        assert_eq!(model["shapes"][0]["bgColor"], json!("red"));
+        assert_eq!(model["shapes"][0]["fontColor"], json!("white"));
+        assert_eq!(model["shapes"][0]["borderColor"], json!("black"));
+        assert_eq!(model["shapes"][0]["shadowing"], json!("true"));
+        assert_eq!(model["shapes"][0]["shape"], json!("rounded"));
+        assert_eq!(model["shapes"][0]["sprite"], json!("users"));
+        assert_eq!(model["shapes"][0]["techn"], json!("Rust"));
+        assert_eq!(model["shapes"][0]["legendText"], json!("Legend"));
+        assert_eq!(model["shapes"][0]["legendSprite"], json!("book"));
+
+        assert_eq!(model["boundaries"].as_array().unwrap().len(), 2);
+        assert_eq!(model["boundaries"][1]["bgColor"], json!("blue"));
+    }
+
+    #[test]
+    fn c4_acc_title_is_mapped_to_title_like_mermaid_grammar() {
+        let model = parse(
+            r#"C4Context
+accTitle: A11y title
+"#,
+        );
+        assert_eq!(model["title"], json!("A11y title"));
+        assert!(model["accTitle"].is_null());
+    }
+
+    #[test]
+    fn c4_acc_descr_multiline_collapses_newline_whitespace_like_common_db() {
+        let model = parse(
+            r#"C4Context
+accDescr{
+first
+  second
+third
+}
+"#,
+        );
+        assert_eq!(model["accDescr"], json!("first\nsecond\nthird"));
     }
 }
