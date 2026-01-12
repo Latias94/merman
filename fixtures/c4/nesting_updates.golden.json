@@ -1,0 +1,113 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
+        "type": {
+          "text": "global"
+        }
+      },
+      {
+        "alias": "n1",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "Node 1"
+        },
+        "nodeType": "node",
+        "parentBoundary": "global",
+        "type": {
+          "text": "node"
+        },
+        "wrap": true
+      },
+      {
+        "alias": "b1",
+        "label": {
+          "text": "Boundary 1"
+        },
+        "parentBoundary": "n1",
+        "type": {
+          "text": "system"
+        },
+        "wrap": true
+      }
+    ],
+    "c4Type": "C4Deployment",
+    "layout": {
+      "c4BoundaryInRow": 1,
+      "c4ShapeInRow": 1
+    },
+    "rels": [
+      {
+        "descr": {
+          "text": ""
+        },
+        "from": "p1",
+        "label": {
+          "text": "override"
+        },
+        "lineColor": "blue",
+        "offsetX": 10,
+        "offsetY": 20,
+        "techn": {
+          "text": ""
+        },
+        "textColor": "red",
+        "to": "p2",
+        "type": "rel_b",
+        "wrap": true
+      }
+    ],
+    "shapes": [
+      {
+        "alias": "p1",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": {
+            "sprite": "users"
+          }
+        },
+        "parentBoundary": "b1",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": true
+      },
+      {
+        "alias": "p2",
+        "bgColor": "red",
+        "descr": {
+          "text": "D2"
+        },
+        "label": {
+          "text": "P2"
+        },
+        "link": "https://example.com",
+        "parentBoundary": "n1",
+        "shape": "rounded",
+        "sprite": "user",
+        "tags": "t1",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": true
+      }
+    ],
+    "title": "Deployment Diagram",
+    "type": "c4",
+    "wrap": true
+  }
+}

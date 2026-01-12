@@ -1,0 +1,17 @@
+%%{wrap}%%
+C4Deployment
+title Deployment Diagram
+
+Node(n1, "Node 1") {
+  Boundary(b1, "Boundary 1") {
+    Person(p1, $sprite="users")
+  }
+  Person(p2, "P2", "D2", $sprite="user", $tags="t1", $link="https://example.com")
+}
+
+Rel(p1, p2, "talks")
+Rel_Back(p1, p2, "override")
+UpdateRelStyle(p1, p2, $textColor="red", $lineColor="blue", $offsetX="10", $offsetY="20")
+UpdateLayoutConfig($c4ShapeInRow="1", $c4BoundaryInRow="1")
+UpdateElementStyle(p2, $bgColor="red", $shape="rounded")
+

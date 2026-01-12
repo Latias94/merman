@@ -1,0 +1,16 @@
+requirementDiagram
+
+requirement req2 {
+  id: 2
+  text: Do thing
+  risk: medium
+  verifymethod: test
+}
+
+element e1 {
+  type: system
+  docref: "https://example.com"
+}
+
+req2 - satisfies -> e1
+

@@ -1,0 +1,90 @@
+{
+  "diagramType": "flowchart-v2",
+  "model": {
+    "classDefs": {},
+    "direction": "TD",
+    "edgeDefaults": {
+      "interpolate": null,
+      "style": []
+    },
+    "edges": [
+      {
+        "animate": null,
+        "animation": null,
+        "arrow": "-->",
+        "classes": [],
+        "from": "A",
+        "id": "L_A_B_0",
+        "interpolate": null,
+        "isUserDefinedId": false,
+        "label": null,
+        "labelType": "text",
+        "length": 1,
+        "stroke": "normal",
+        "style": [],
+        "to": "B",
+        "type": "arrow_point"
+      }
+    ],
+    "keyword": "flowchart",
+    "nodes": [
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [
+          "clickable"
+        ],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "A",
+        "img": null,
+        "label": "A",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": "https://example.com/",
+        "linkTarget": null,
+        "pos": null,
+        "shape": null,
+        "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "B",
+        "img": null,
+        "label": "B",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": null,
+        "styles": []
+      }
+    ],
+    "subgraphs": [
+      {
+        "classes": [],
+        "dir": null,
+        "id": "S",
+        "labelType": "text",
+        "nodes": [
+          "B",
+          "A"
+        ],
+        "title": "S"
+      }
+    ],
+    "tooltips": {
+      "A": "A link"
+    },
+    "type": "flowchart-v2"
+  }
+}

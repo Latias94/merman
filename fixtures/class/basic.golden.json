@@ -1,0 +1,115 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {
+      "Animal": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Animal-0",
+        "haveCallback": false,
+        "id": "Animal",
+        "label": "Animal",
+        "link": null,
+        "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+String name",
+            "id": "String name",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
+          }
+        ],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+eat()",
+            "id": "eat",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
+          }
+        ],
+        "parent": null,
+        "styles": [],
+        "text": "Animal",
+        "tooltip": null,
+        "type": ""
+      },
+      "Dog": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Dog-1",
+        "haveCallback": false,
+        "id": "Dog",
+        "label": "Dog",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+bark()",
+            "id": "bark",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
+          }
+        ],
+        "parent": null,
+        "styles": [],
+        "text": "Dog",
+        "tooltip": null,
+        "type": ""
+      }
+    },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
+    "relations": [
+      {
+        "id": "0",
+        "id1": "Animal",
+        "id2": "Dog",
+        "relation": {
+          "lineType": 0,
+          "type1": 1,
+          "type2": -1
+        },
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": ""
+      }
+    ],
+    "styleClasses": {},
+    "type": "classDiagram"
+  }
+}

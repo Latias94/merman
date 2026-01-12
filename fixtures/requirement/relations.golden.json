@@ -1,0 +1,42 @@
+{
+  "diagramType": "requirement",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {},
+    "direction": "TB",
+    "elements": [
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "docRef": "https://example.com",
+        "name": "e1",
+        "type": "system"
+      }
+    ],
+    "relationships": [
+      {
+        "dst": "e1",
+        "src": "req2",
+        "type": "satisfies"
+      }
+    ],
+    "requirements": [
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "req2",
+        "requirementId": "2",
+        "risk": "Medium",
+        "text": "Do thing",
+        "type": "Requirement",
+        "verifyMethod": "Test"
+      }
+    ],
+    "type": "requirement"
+  }
+}
