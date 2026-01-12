@@ -704,6 +704,8 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "merman",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

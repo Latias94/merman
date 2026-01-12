@@ -25,3 +25,11 @@ git submodule update --init --recursive
 - Tests (preferred):
   - `cargo nextest run -p merman-core`
 
+## CLI (headless JSON)
+
+- Parse a diagram and print the semantic JSON model:
+  - `cargo run -p merman-cli -- parse path/to/diagram.mmd --pretty`
+- Read from stdin:
+  - `cat path/to/diagram.mmd | cargo run -p merman-cli -- parse --pretty -`
+- Detect diagram type:
+  - `cargo run -p merman-cli -- detect path/to/diagram.mmd`
