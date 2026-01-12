@@ -4,6 +4,7 @@ pub mod class;
 pub mod er;
 pub mod flowchart;
 pub mod gantt;
+pub mod git_graph;
 pub mod info;
 pub mod journey;
 pub mod kanban;
