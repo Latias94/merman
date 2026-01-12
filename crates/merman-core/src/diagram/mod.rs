@@ -50,6 +50,7 @@ impl DiagramRegistry {
             "architecture",
             crate::diagrams::architecture::parse_architecture,
         );
+        reg.insert("block", crate::diagrams::block::parse_block);
 
         reg
     }
