@@ -1581,7 +1581,6 @@ fn build_layout_data(
         let db_state = states.get(&item_id);
         let class_str = db_state.map(|s| s.classes.join(" ")).unwrap_or_default();
         let styles = db_state.map(|s| s.styles.clone()).unwrap_or_default();
-        let descriptions = db_state.map(|s| s.descriptions.clone()).unwrap_or_default();
 
         let entry = node_db.entry(item_id.clone()).or_insert_with(|| {
             let mut css_classes = String::new();
@@ -1591,10 +1590,20 @@ fn build_layout_data(
             }
             css_classes.push_str(CSS_DIAGRAM_STATE);
 
+            let mut shape = SHAPE_STATE.to_string();
+            if parsed_item.start == Some(true) {
+                shape = SHAPE_START.to_string();
+            } else if parsed_item.start == Some(false) {
+                shape = SHAPE_END.to_string();
+            }
+            if parsed_item.ty != "default" {
+                shape = parsed_item.ty.clone();
+            }
+
             NodeScratch {
                 id: item_id.clone(),
-                shape: SHAPE_STATE.to_string(),
-                label: json!(item_id),
+                shape,
+                label: json!(sanitize_text(&item_id, config)),
                 css_classes,
                 css_styles: styles.clone(),
                 node_type: None,
@@ -1604,28 +1613,51 @@ fn build_layout_data(
             }
         });
 
-        // Determine base shape
-        let mut shape = SHAPE_STATE.to_string();
-        if parsed_item.start == Some(true) {
-            shape = SHAPE_START.to_string();
-        } else if parsed_item.start == Some(false) {
-            shape = SHAPE_END.to_string();
-        }
-        if parsed_item.ty != "default" {
-            shape = parsed_item.ty.clone();
-        }
-        entry.shape = shape;
+        // Apply description statements like Mermaid's `dataFetcher.ts`.
+        if let Some(descr) = parsed_item.description.as_deref() {
+            let base_label = sanitize_text(&item_id, config);
 
-        // Apply descriptions from DB (sanitized like Mermaid's dataFetcher)
-        if descriptions.is_empty() {
-            entry.label = json!(sanitize_text(&item_id, config));
-            entry.shape = SHAPE_STATE.to_string();
-        } else if descriptions.len() == 1 {
-            entry.label = json!(sanitize_text(&descriptions[0], config));
-            entry.shape = SHAPE_STATE.to_string();
-        } else {
-            entry.label = sanitize_text_or_array(&json!(descriptions.clone()), config);
-            entry.shape = SHAPE_STATE_WITH_DESC.to_string();
+            match &mut entry.label {
+                Value::Array(arr) => {
+                    entry.shape = SHAPE_STATE_WITH_DESC.to_string();
+                    arr.push(Value::String(descr.to_string()));
+                }
+                Value::String(s) => {
+                    if !s.is_empty() {
+                        entry.shape = SHAPE_STATE_WITH_DESC.to_string();
+                        if *s == base_label {
+                            entry.label = Value::Array(vec![Value::String(descr.to_string())]);
+                        } else {
+                            entry.label = Value::Array(vec![
+                                Value::String(s.clone()),
+                                Value::String(descr.to_string()),
+                            ]);
+                        }
+                    } else {
+                        entry.shape = SHAPE_STATE.to_string();
+                        entry.label = Value::String(descr.to_string());
+                    }
+                }
+                _ => {
+                    entry.shape = SHAPE_STATE.to_string();
+                    entry.label = Value::String(descr.to_string());
+                }
+            }
+
+            entry.label = sanitize_text_or_array(&entry.label, config);
+        }
+
+        // If there's only 1 description entry, just use a regular state shape.
+        if entry.shape == SHAPE_STATE_WITH_DESC {
+            if let Some(arr) = entry.label.as_array() {
+                if arr.len() == 1 {
+                    entry.shape = if entry.node_type.as_deref() == Some("group") {
+                        SHAPE_GROUP.to_string()
+                    } else {
+                        SHAPE_STATE.to_string()
+                    };
+                }
+            }
         }
 
         // Group handling (composite states)

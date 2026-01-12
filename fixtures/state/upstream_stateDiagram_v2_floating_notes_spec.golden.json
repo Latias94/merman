@@ -43,6 +43,7 @@
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "description": [],
         "dir": null,
         "domId": "state-foo-0",
         "id": "foo",

@@ -56,7 +56,7 @@
         "parentId": null,
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
+        "shape": "stateStart",
         "type": null
       },
       {
@@ -94,7 +94,7 @@
         "parentId": null,
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
+        "shape": "stateEnd",
         "type": null
       }
     ],

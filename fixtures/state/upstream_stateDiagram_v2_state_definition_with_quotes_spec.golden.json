@@ -200,7 +200,7 @@
         "parentId": null,
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
+        "shape": "stateStart",
         "type": null
       },
       {
@@ -257,7 +257,7 @@
         "parentId": null,
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
+        "shape": "stateEnd",
         "type": null
       },
       {
@@ -276,7 +276,7 @@
         "parentId": null,
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
+        "shape": "roundedWithTitle",
         "type": "group"
       },
       {
@@ -284,18 +284,21 @@
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "description": [
+          "Just a test"
+        ],
         "dir": null,
         "domId": "state-long1-7",
         "id": "long1",
         "isGroup": false,
-        "label": "long1",
+        "label": "Accumulate Enough Data\nLong State Name",
         "labelStyle": "",
         "look": "classic",
         "padding": 8,
         "parentId": "State3",
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
+        "shape": "rectWithTitle",
         "type": null
       },
       {
@@ -314,7 +317,7 @@
         "parentId": "State3",
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
+        "shape": "stateStart",
         "type": null
       },
       {

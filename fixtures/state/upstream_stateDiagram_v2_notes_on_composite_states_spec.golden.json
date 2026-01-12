@@ -103,7 +103,7 @@
         "parentId": null,
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
+        "shape": "stateStart",
         "type": null
       },
       {
@@ -111,6 +111,7 @@
         "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "description": [],
         "dir": "TB",
         "domId": "state-NotShooting-4",
         "id": "NotShooting",
@@ -122,7 +123,7 @@
         "parentId": null,
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
+        "shape": "roundedWithTitle",
         "type": "group"
       },
       {
@@ -130,11 +131,12 @@
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "description": [],
         "dir": null,
         "domId": "state-Idle-3",
         "id": "Idle",
         "isGroup": false,
-        "label": "Idle",
+        "label": "Idle mode",
         "labelStyle": "",
         "look": "classic",
         "padding": 8,
@@ -149,11 +151,12 @@
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "description": [],
         "dir": null,
         "domId": "state-Configuring-3",
         "id": "Configuring",
         "isGroup": false,
-        "label": "Configuring",
+        "label": "Configuring mode",
         "labelStyle": "",
         "look": "classic",
         "padding": 8,
@@ -179,7 +182,7 @@
         "parentId": "NotShooting",
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
+        "shape": "stateStart",
         "type": null
       },
       {

@@ -184,7 +184,7 @@
         "parentId": null,
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
+        "shape": "stateStart",
         "type": null
       },
       {
@@ -215,14 +215,14 @@
         "domId": "state-divider-id-1-7",
         "id": "divider-id-1",
         "isGroup": true,
-        "label": "divider-id-1",
+        "label": "",
         "labelStyle": "",
         "look": "classic",
         "padding": 8,
         "parentId": "Active",
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
+        "shape": "divider",
         "type": "group"
       },
       {
@@ -241,7 +241,7 @@
         "parentId": "divider-id-1",
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
+        "shape": "stateStart",
         "type": null
       },
       {
@@ -317,7 +317,7 @@
         "parentId": "divider-id-2",
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
+        "shape": "stateStart",
         "type": null
       },
       {
