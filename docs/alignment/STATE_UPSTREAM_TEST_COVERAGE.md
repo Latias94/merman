@@ -58,3 +58,12 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/state/stateDiagram-v2.sp
 - `hide empty description`: `fixtures/state/upstream_stateDiagram_v2_spec.mmd`
 - `scale <n> width`: `fixtures/state/upstream_stateDiagram_v2_spec.mmd`
 - relationship label extraction (`id1 --> id2 : label`): `fixtures/state/upstream_stateDiagram_v2_spec.mmd`
+- fork/join typed states (`state <id> <<fork>>` / `<<join>>`): `fixtures/state/upstream_stateDiagram_v2_fork_join_spec.mmd`
+- concurrent state divider (`--` inside `state <id> { ... }`): `fixtures/state/upstream_stateDiagram_v2_concurrent_state_spec.mmd`
+- note statements (left/right + `end note` block): `fixtures/state/upstream_stateDiagram_v2_note_statements_spec.mmd`
+- multiline note `<br>` normalization: `fixtures/state/upstream_stateDiagram_v2_multiline_notes_spec.mmd`
+- floating notes (`note "..." as <id>`): `fixtures/state/upstream_stateDiagram_v2_floating_notes_spec.mmd`
+- note on composite state: `fixtures/state/upstream_stateDiagram_v2_notes_on_composite_states_spec.mmd`
+- composite state self-link (`Active --> Active`): `fixtures/state/upstream_stateDiagram_v2_composite_self_link_spec.mmd`
+- default diagram direction when unspecified: `fixtures/state/upstream_stateDiagram_direction_default_spec.mmd`
+- explicit diagram direction (`direction LR`): `fixtures/state/upstream_stateDiagram_direction_lr_spec.mmd`

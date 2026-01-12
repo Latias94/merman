@@ -1,0 +1,161 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
+    "edges": [
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Idle",
+        "id": "edge0",
+        "label": "ACT",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "Inactive",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Active",
+        "id": "edge1",
+        "label": "LOG",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "Active",
+        "style": "fill:none",
+        "thickness": "normal"
+      }
+    ],
+    "links": {},
+    "nodes": [
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": "TB",
+        "domId": "state-Active-1",
+        "id": "Active",
+        "isGroup": true,
+        "label": "Active",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": "group"
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-Idle-0",
+        "id": "Idle",
+        "isGroup": false,
+        "label": "Idle",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": "Active",
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-Inactive-0",
+        "id": "Inactive",
+        "isGroup": false,
+        "label": "Inactive",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null
+      }
+    ],
+    "other": {},
+    "relations": [
+      {
+        "id1": "Inactive",
+        "id2": "Idle",
+        "relationTitle": "ACT"
+      },
+      {
+        "id1": "Active",
+        "id2": "Active",
+        "relationTitle": "LOG"
+      }
+    ],
+    "states": {
+      "Active": {
+        "classes": [],
+        "descriptions": [],
+        "doc": [
+          {
+            "classes": [],
+            "description": null,
+            "doc": null,
+            "id": "Idle",
+            "stmt": "state",
+            "type": "default"
+          }
+        ],
+        "id": "Active",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "Idle": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "Idle",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "Inactive": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "Inactive",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      }
+    },
+    "styleClasses": {},
+    "type": "stateDiagram"
+  }
+}

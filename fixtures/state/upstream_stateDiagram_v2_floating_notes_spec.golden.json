@@ -1,0 +1,209 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
+    "edges": [
+      {
+        "arrowTypeEnd": "",
+        "arrowhead": "none",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition note-edge",
+        "end": "N1----note-0",
+        "id": "N1-N1----note-0",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "N1",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "",
+        "arrowhead": "none",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition note-edge",
+        "end": "N2----note-1",
+        "id": "N2-N2----note-1",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "N2",
+        "style": "fill:none",
+        "thickness": "normal"
+      }
+    ],
+    "links": {},
+    "nodes": [
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-foo-0",
+        "id": "foo",
+        "isGroup": false,
+        "label": "bar",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null
+      },
+      {
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "domId": "state-N1----parent-0",
+        "id": "N1----parent",
+        "isGroup": true,
+        "label": "This is a floating note",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 16,
+        "position": null,
+        "shape": "noteGroup",
+        "type": "group"
+      },
+      {
+        "cssClasses": "statediagram-note",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "domId": "state-N1----note-0",
+        "id": "N1----note-0",
+        "isGroup": false,
+        "label": "This is a floating note",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 15,
+        "parentId": "N1----parent",
+        "position": null,
+        "shape": "note",
+        "type": null
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-N1-0",
+        "id": "N1",
+        "isGroup": false,
+        "label": "N1",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null
+      },
+      {
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "domId": "state-N2----parent-1",
+        "id": "N2----parent",
+        "isGroup": true,
+        "label": "This is a floating note",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 16,
+        "position": null,
+        "shape": "noteGroup",
+        "type": "group"
+      },
+      {
+        "cssClasses": "statediagram-note",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "domId": "state-N2----note-1",
+        "id": "N2----note-1",
+        "isGroup": false,
+        "label": "This is a floating note",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 15,
+        "parentId": "N2----parent",
+        "position": null,
+        "shape": "note",
+        "type": null
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-N2-1",
+        "id": "N2",
+        "isGroup": false,
+        "label": "N2",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null
+      }
+    ],
+    "other": {},
+    "relations": [],
+    "states": {
+      "N1": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "N1",
+        "note": {
+          "position": null,
+          "text": "This is a floating note"
+        },
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "N2": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "N2",
+        "note": {
+          "position": null,
+          "text": "This is a floating note"
+        },
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "foo": {
+        "classes": [],
+        "descriptions": [
+          "bar"
+        ],
+        "doc": null,
+        "id": "foo",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      }
+    },
+    "styleClasses": {},
+    "type": "stateDiagram"
+  }
+}

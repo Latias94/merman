@@ -1,0 +1,98 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
+    "edges": [
+      {
+        "arrowTypeEnd": "",
+        "arrowhead": "none",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition note-edge",
+        "end": "State1----note-0",
+        "id": "State1-State1----note-0",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "State1",
+        "style": "fill:none",
+        "thickness": "normal"
+      }
+    ],
+    "links": {},
+    "nodes": [
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-State1-0",
+        "id": "State1",
+        "isGroup": false,
+        "label": "State1",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null
+      },
+      {
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "domId": "state-State1----parent-0",
+        "id": "State1----parent",
+        "isGroup": true,
+        "label": "Line1<br>Line2<br/>Line3<br />Line4<br\t/>Line5",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 16,
+        "position": "right of",
+        "shape": "noteGroup",
+        "type": "group"
+      },
+      {
+        "cssClasses": "statediagram-note",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "domId": "state-State1----note-0",
+        "id": "State1----note-0",
+        "isGroup": false,
+        "label": "Line1<br>Line2<br/>Line3<br />Line4<br\t/>Line5",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 15,
+        "parentId": "State1----parent",
+        "position": "right of",
+        "shape": "note",
+        "type": null
+      }
+    ],
+    "other": {},
+    "relations": [],
+    "states": {
+      "State1": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "State1",
+        "note": {
+          "position": "right of",
+          "text": "Line1<br>Line2<br/>Line3<br />Line4<br\t/>Line5"
+        },
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      }
+    },
+    "styleClasses": {},
+    "type": "stateDiagram"
+  }
+}
