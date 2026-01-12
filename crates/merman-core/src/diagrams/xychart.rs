@@ -19,7 +19,7 @@ enum AxisData {
 struct Plot {
     plot_type: &'static str,
     values: Vec<f64>,
-    data: Vec<(String, f64)>,
+    data: Vec<(String, Option<f64>)>,
 }
 
 #[derive(Debug, Clone)]
@@ -130,7 +130,7 @@ impl XyChartState {
         };
     }
 
-    fn transform_data_without_category(&mut self, data: &[f64]) -> Vec<(String, f64)> {
+    fn transform_data_without_category(&mut self, data: &[f64]) -> Vec<(String, Option<f64>)> {
         if data.is_empty() {
             return Vec::new();
         }
@@ -151,7 +151,7 @@ impl XyChartState {
             AxisData::Band { categories, .. } => categories
                 .iter()
                 .enumerate()
-                .filter_map(|(i, c)| data.get(i).copied().map(|v| (c.clone(), v)))
+                .map(|(i, c)| (c.clone(), data.get(i).copied()))
                 .collect(),
             AxisData::Linear { min, max, .. } => {
                 let denom = (data.len() as f64) - 1.0;
@@ -167,7 +167,7 @@ impl XyChartState {
                 }
                 cats.into_iter()
                     .enumerate()
-                    .filter_map(|(idx, c)| data.get(idx).copied().map(|v| (c, v)))
+                    .map(|(idx, c)| (c, data.get(idx).copied()))
                     .collect()
             }
         }
@@ -220,9 +220,14 @@ pub fn parse_xychart(code: &str, meta: &ParseMetadata) -> Result<Value> {
             continue;
         }
         if let Some(rest) = strip_keyword(stmt, "accTitle") {
-            let v = rest.trim_start();
-            let v = v.strip_prefix(':').unwrap_or(v).trim();
-            acc_title = Some(v.to_string());
+            let rest = rest.trim_start();
+            let Some(v) = rest.strip_prefix(':') else {
+                return Err(Error::DiagramParse {
+                    diagram_type: "xychart".to_string(),
+                    message: "expected ':' after accTitle".to_string(),
+                });
+            };
+            acc_title = Some(v.trim().to_string());
             continue;
         }
         if let Some(rest) = strip_keyword(stmt, "accDescr") {
@@ -238,9 +243,20 @@ pub fn parse_xychart(code: &str, meta: &ParseMetadata) -> Result<Value> {
                         message: "unterminated accDescr block".to_string(),
                     });
                 };
+                let trailing = &after[end + 1..];
+                if !trailing.trim().is_empty() {
+                    return Err(Error::DiagramParse {
+                        diagram_type: "xychart".to_string(),
+                        message: "unexpected trailing tokens after accDescr block".to_string(),
+                    });
+                }
                 acc_descr = Some(after[..end].trim().to_string());
                 continue;
             }
+            return Err(Error::DiagramParse {
+                diagram_type: "xychart".to_string(),
+                message: "expected ':' or '{' after accDescr".to_string(),
+            });
         }
 
         if let Some(rest) = strip_keyword(stmt, "x-axis") {
@@ -358,15 +374,7 @@ fn strip_keyword<'a>(stmt: &'a str, kw: &str) -> Option<&'a str> {
     if !lower.starts_with(&kw_lower) {
         return None;
     }
-    let rest = &s[kw.len()..];
-    if !rest.is_empty()
-        && !rest.starts_with(char::is_whitespace)
-        && kw != "accTitle"
-        && kw != "accDescr"
-    {
-        return None;
-    }
-    Some(rest)
+    Some(&s[kw.len()..])
 }
 
 fn parse_text(input: &str) -> Result<String> {
@@ -986,5 +994,17 @@ line lineTitle1 [11, 45.5, 67, 23]
         assert!(err.contains("empty"));
         let err = parse_err("xychart\nline \"t\"");
         assert!(err.contains("missing") || err.contains("requires"));
+    }
+
+    #[test]
+    fn xychart_accepts_line_without_whitespace_after_keyword() {
+        let model = parse("xychart\nline[1,2,3]");
+        assert_eq!(model["plots"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn xychart_acc_title_requires_colon() {
+        let err = parse_err("xychart\naccTitle hello");
+        assert!(err.contains("accTitle"));
     }
 }

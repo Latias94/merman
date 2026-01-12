@@ -4,6 +4,12 @@ This document defines the initial, test-driven minimum slice for XYChart parsing
 
 Baseline: Mermaid `@11.12.2`.
 
+Upstream references:
+
+- Parser grammar: `repo-ref/mermaid/packages/mermaid/src/diagrams/xychart/parser/xychart.jison`
+- Parser tests: `repo-ref/mermaid/packages/mermaid/src/diagrams/xychart/parser/xychart.jison.spec.ts`
+- DB/model: `repo-ref/mermaid/packages/mermaid/src/diagrams/xychart/xychartDb.ts`
+
 ## Supported (current)
 
 - Header:
@@ -59,4 +65,3 @@ Baseline: Mermaid `@11.12.2`.
 
 This is an incremental slice. The ultimate goal is full Mermaid `xychart` grammar and DB behavior
 compatibility at the pinned baseline tag.
-
