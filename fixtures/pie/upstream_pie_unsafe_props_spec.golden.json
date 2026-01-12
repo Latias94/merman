@@ -1,0 +1,24 @@
+{
+  "diagramType": "pie",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "sections": [
+      {
+        "label": "__proto__",
+        "value": 386.0
+      },
+      {
+        "label": "constructor",
+        "value": 85.0
+      },
+      {
+        "label": "prototype",
+        "value": 15.0
+      }
+    ],
+    "showData": false,
+    "title": "Unsafe props test",
+    "type": "pie"
+  }
+}

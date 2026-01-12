@@ -1,0 +1,20 @@
+{
+  "diagramType": "pie",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "sections": [
+      {
+        "label": "ash",
+        "value": 60.0
+      },
+      {
+        "label": "bat",
+        "value": 40.0
+      }
+    ],
+    "showData": true,
+    "title": null,
+    "type": "pie"
+  }
+}
