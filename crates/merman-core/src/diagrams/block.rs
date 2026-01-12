@@ -49,6 +49,7 @@ struct ClassDef {
 struct BlockDb {
     root_id: String,
     block_database: HashMap<String, Block>,
+    block_database_order: Vec<String>,
     blocks: Vec<Block>,
     edges: Vec<Block>,
     edge_count: HashMap<String, i64>,
@@ -61,6 +62,7 @@ impl BlockDb {
     fn clear(&mut self) {
         self.root_id = "root".to_string();
         self.block_database.clear();
+        self.block_database_order.clear();
         self.blocks.clear();
         self.edges.clear();
         self.edge_count.clear();
@@ -76,7 +78,24 @@ impl BlockDb {
             label: Some("".to_string()),
             ..Default::default()
         };
-        self.block_database.insert(self.root_id.clone(), root);
+        self.insert_block(self.root_id.clone(), root);
+    }
+
+    fn insert_block(&mut self, id: String, block: Block) {
+        let existed = self.block_database.contains_key(&id);
+        self.block_database.insert(id.clone(), block);
+        if !existed {
+            self.block_database_order.push(id);
+        }
+    }
+
+    fn ensure_block_exists(&mut self, id: &str) -> &mut Block {
+        if !self.block_database.contains_key(id) {
+            self.insert_block(id.to_string(), Block::new(id.to_string()));
+        }
+        self.block_database
+            .get_mut(id)
+            .expect("block must exist after ensure_block_exists")
     }
 
     #[allow(dead_code)]
@@ -124,7 +143,7 @@ impl BlockDb {
 
         let mut placeholder = Block::new(id.to_string());
         placeholder.styles = Some(parts);
-        self.block_database.insert(id.to_string(), placeholder);
+        self.insert_block(id.to_string(), placeholder);
     }
 
     fn set_css_class(&mut self, item_ids: &str, css_class_name: &str) {
@@ -134,10 +153,7 @@ impl BlockDb {
                 continue;
             }
 
-            let entry = self
-                .block_database
-                .entry(id.to_string())
-                .or_insert_with(|| Block::new(id.to_string()));
+            let entry = self.ensure_block_exists(id);
             entry.classes.push(css_class_name.to_string());
         }
     }
@@ -230,7 +246,7 @@ impl BlockDb {
 
             let existed = self.block_database.contains_key(&block.id);
             if !existed {
-                self.block_database.insert(block.id.clone(), block.clone());
+                self.insert_block(block.id.clone(), block.clone());
             } else {
                 let mut existing = self
                     .block_database
@@ -257,7 +273,7 @@ impl BlockDb {
                 if let Some(dirs) = &block.directions {
                     existing.directions = Some(dirs.clone());
                 }
-                self.block_database.insert(block.id.clone(), existing);
+                self.insert_block(block.id.clone(), existing);
             }
 
             if !parsed_children.is_empty() {
@@ -270,7 +286,7 @@ impl BlockDb {
                     let id = format!("{}-{}", block.id, j);
                     let mut new_block = block.clone();
                     new_block.id = id.clone();
-                    self.block_database.insert(id.clone(), new_block);
+                    self.insert_block(id.clone(), new_block);
                     child_ids.push(id);
                 }
                 continue;
@@ -293,7 +309,10 @@ impl BlockDb {
     }
 
     fn blocks_flat(&self) -> Vec<Block> {
-        self.block_database.values().cloned().collect()
+        self.block_database_order
+            .iter()
+            .filter_map(|id| self.block_database.get(id).cloned())
+            .collect()
     }
 }
 
