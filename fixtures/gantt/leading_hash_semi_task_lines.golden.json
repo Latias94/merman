@@ -1,0 +1,85 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "axisFormat": "",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
+    "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
+    "sections": [
+      "Documentation"
+    ],
+    "tasks": [
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2014-01-04T00:00:00.000",
+        "id": "des1",
+        "manualEndTime": true,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
+        "raw": {
+          "data": ":des1, 2014-01-01, 2014-01-04",
+          "endTime": {
+            "data": "2014-01-04"
+          },
+          "startTime": {
+            "startData": "2014-01-01",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "Documentation",
+        "startTime": "2014-01-01T00:00:00.000",
+        "task": "Design jison grammar",
+        "type": "Documentation",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2014-01-04T00:00:00.000",
+        "id": "des2",
+        "manualEndTime": true,
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "des1",
+        "processed": true,
+        "raw": {
+          "data": ":des2, 2014-01-01, 2014-01-04",
+          "endTime": {
+            "data": "2014-01-04"
+          },
+          "startTime": {
+            "startData": "2014-01-01",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "Documentation",
+        "startTime": "2014-01-01T00:00:00.000",
+        "task": "Design jison grammar",
+        "type": "Documentation",
+        "vert": false
+      }
+    ],
+    "tickInterval": null,
+    "title": "Leading markers in tasks",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
+  }
+}

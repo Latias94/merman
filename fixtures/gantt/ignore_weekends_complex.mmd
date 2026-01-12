@@ -1,0 +1,16 @@
+gantt
+  title Ignore weekends complex
+  dateFormat YYYY-MM-DD
+  excludes weekends 2019-02-06,friday
+
+  section weekends skip test
+  test1: id1,2019-02-01,1d
+  test2: id2,after id1,2d
+  test3: id3,after id2,7d
+  test4: id4,2019-02-01,2019-02-20
+  test5: id5,after id4,1d
+
+  section full ending task on last day
+  test6: id6,2019-02-13,2d
+  test7: id7,after id6,1d
+

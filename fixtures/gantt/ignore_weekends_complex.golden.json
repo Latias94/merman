@@ -1,0 +1,235 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "axisFormat": "",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
+    "displayMode": "",
+    "excludes": [
+      "weekends",
+      "2019-02-06",
+      "friday"
+    ],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
+    "sections": [
+      "weekends skip test",
+      "full ending task on last day"
+    ],
+    "tasks": [
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2019-02-04T00:00:00.000",
+        "id": "id1",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
+        "raw": {
+          "data": ": id1,2019-02-01,1d",
+          "endTime": {
+            "data": "1d"
+          },
+          "startTime": {
+            "startData": "2019-02-01",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": "2019-02-02T00:00:00.000",
+        "section": "weekends skip test",
+        "startTime": "2019-02-01T00:00:00.000",
+        "task": "test1",
+        "type": "weekends skip test",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2019-02-07T00:00:00.000",
+        "id": "id2",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "id1",
+        "processed": true,
+        "raw": {
+          "data": ": id2,after id1,2d",
+          "endTime": {
+            "data": "2d"
+          },
+          "startTime": {
+            "startData": "after id1",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": "2019-02-06T00:00:00.000",
+        "section": "weekends skip test",
+        "startTime": "2019-02-04T00:00:00.000",
+        "task": "test2",
+        "type": "weekends skip test",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2019-02-20T00:00:00.000",
+        "id": "id3",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 2,
+        "prevTaskId": "id2",
+        "processed": true,
+        "raw": {
+          "data": ": id3,after id2,7d",
+          "endTime": {
+            "data": "7d"
+          },
+          "startTime": {
+            "startData": "after id2",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": "2019-02-20T00:00:00.000",
+        "section": "weekends skip test",
+        "startTime": "2019-02-07T00:00:00.000",
+        "task": "test3",
+        "type": "weekends skip test",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2019-02-20T00:00:00.000",
+        "id": "id4",
+        "manualEndTime": true,
+        "milestone": false,
+        "order": 3,
+        "prevTaskId": "id3",
+        "processed": true,
+        "raw": {
+          "data": ": id4,2019-02-01,2019-02-20",
+          "endTime": {
+            "data": "2019-02-20"
+          },
+          "startTime": {
+            "startData": "2019-02-01",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "weekends skip test",
+        "startTime": "2019-02-01T00:00:00.000",
+        "task": "test4",
+        "type": "weekends skip test",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2019-02-21T00:00:00.000",
+        "id": "id5",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 4,
+        "prevTaskId": "id4",
+        "processed": true,
+        "raw": {
+          "data": ": id5,after id4,1d",
+          "endTime": {
+            "data": "1d"
+          },
+          "startTime": {
+            "startData": "after id4",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": "2019-02-21T00:00:00.000",
+        "section": "weekends skip test",
+        "startTime": "2019-02-20T00:00:00.000",
+        "task": "test5",
+        "type": "weekends skip test",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2019-02-18T00:00:00.000",
+        "id": "id6",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 5,
+        "prevTaskId": "id5",
+        "processed": true,
+        "raw": {
+          "data": ": id6,2019-02-13,2d",
+          "endTime": {
+            "data": "2d"
+          },
+          "startTime": {
+            "startData": "2019-02-13",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": "2019-02-15T00:00:00.000",
+        "section": "full ending task on last day",
+        "startTime": "2019-02-13T00:00:00.000",
+        "task": "test6",
+        "type": "full ending task on last day",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2019-02-19T00:00:00.000",
+        "id": "id7",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 6,
+        "prevTaskId": "id6",
+        "processed": true,
+        "raw": {
+          "data": ": id7,after id6,1d",
+          "endTime": {
+            "data": "1d"
+          },
+          "startTime": {
+            "startData": "after id6",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": "2019-02-19T00:00:00.000",
+        "section": "full ending task on last day",
+        "startTime": "2019-02-18T00:00:00.000",
+        "task": "test7",
+        "type": "full ending task on last day",
+        "vert": false
+      }
+    ],
+    "tickInterval": null,
+    "title": "Ignore weekends complex",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
+  }
+}
