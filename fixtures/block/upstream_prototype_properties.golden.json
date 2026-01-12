@@ -1,0 +1,126 @@
+{
+  "diagramType": "block",
+  "model": {
+    "blocks": [
+      {
+        "children": [],
+        "id": "__proto__",
+        "label": "__proto__",
+        "type": "na",
+        "widthInColumns": 1
+      },
+      {
+        "children": [],
+        "id": "constructor",
+        "label": "constructor",
+        "type": "na",
+        "widthInColumns": 1
+      },
+      {
+        "children": [],
+        "id": "A;",
+        "label": "A;",
+        "type": "na",
+        "widthInColumns": 1
+      },
+      {
+        "children": [],
+        "id": "B;",
+        "label": "B;",
+        "type": "na",
+        "widthInColumns": 1
+      }
+    ],
+    "blocksFlat": [
+      {
+        "children": [
+          {
+            "children": [],
+            "id": "__proto__",
+            "label": "__proto__",
+            "type": "na",
+            "widthInColumns": 1
+          },
+          {
+            "children": [],
+            "id": "constructor",
+            "label": "constructor",
+            "type": "na",
+            "widthInColumns": 1
+          },
+          {
+            "children": [],
+            "id": "A;",
+            "label": "A;",
+            "type": "na",
+            "widthInColumns": 1
+          },
+          {
+            "children": [],
+            "id": "B;",
+            "label": "B;",
+            "type": "na",
+            "widthInColumns": 1
+          }
+        ],
+        "columns": -1,
+        "id": "root",
+        "label": "",
+        "type": "composite"
+      },
+      {
+        "children": [],
+        "id": "__proto__",
+        "label": "__proto__",
+        "type": "na",
+        "widthInColumns": 1
+      },
+      {
+        "children": [],
+        "id": "constructor",
+        "label": "constructor",
+        "type": "na",
+        "widthInColumns": 1
+      },
+      {
+        "children": [],
+        "id": "A;",
+        "label": "A;",
+        "type": "na",
+        "widthInColumns": 1
+      },
+      {
+        "children": [],
+        "id": "B;",
+        "label": "B;",
+        "type": "na",
+        "widthInColumns": 1
+      }
+    ],
+    "classes": {
+      "__proto__": {
+        "id": "__proto__",
+        "styles": [
+          "color:#ffffff",
+          "fill:#000000"
+        ],
+        "textStyles": [
+          "fill:#ffffff"
+        ]
+      },
+      "constructor": {
+        "id": "constructor",
+        "styles": [
+          "color:#ffffff",
+          "fill:#000000"
+        ],
+        "textStyles": [
+          "fill:#ffffff"
+        ]
+      }
+    },
+    "edges": [],
+    "type": "block",
+    "warnings": []
+  }
+}

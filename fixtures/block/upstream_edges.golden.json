@@ -1,0 +1,84 @@
+{
+  "diagramType": "block",
+  "model": {
+    "blocks": [
+      {
+        "children": [],
+        "id": "id1",
+        "label": "first",
+        "type": "square",
+        "widthInColumns": 1
+      },
+      {
+        "children": [],
+        "id": "id2",
+        "label": "second",
+        "type": "square",
+        "widthInColumns": 1
+      }
+    ],
+    "blocksFlat": [
+      {
+        "children": [
+          {
+            "children": [],
+            "id": "id1",
+            "label": "first",
+            "type": "square",
+            "widthInColumns": 1
+          },
+          {
+            "children": [],
+            "id": "id2",
+            "label": "second",
+            "type": "square",
+            "widthInColumns": 1
+          }
+        ],
+        "columns": -1,
+        "id": "root",
+        "label": "",
+        "type": "composite"
+      },
+      {
+        "children": [],
+        "id": "id1",
+        "label": "first",
+        "type": "square",
+        "widthInColumns": 1
+      },
+      {
+        "children": [],
+        "id": "id2",
+        "label": "second",
+        "type": "square",
+        "widthInColumns": 1
+      }
+    ],
+    "classes": {},
+    "edges": [
+      {
+        "arrowTypeEnd": "arrow_point",
+        "arrowTypeStart": "arrow_open",
+        "children": [],
+        "end": "id2",
+        "id": "1-id1-id2",
+        "label": "",
+        "start": "id1",
+        "type": "edge"
+      },
+      {
+        "arrowTypeEnd": "arrow_point",
+        "arrowTypeStart": "arrow_open",
+        "children": [],
+        "end": "id2",
+        "id": "2-id1-id2",
+        "label": "a label",
+        "start": "id1",
+        "type": "edge"
+      }
+    ],
+    "type": "block",
+    "warnings": []
+  }
+}

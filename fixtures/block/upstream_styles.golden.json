@@ -1,0 +1,62 @@
+{
+  "diagramType": "block",
+  "model": {
+    "blocks": [
+      {
+        "children": [],
+        "classes": [
+          "black"
+        ],
+        "id": "mc",
+        "label": "Memcache",
+        "type": "square",
+        "widthInColumns": 1
+      }
+    ],
+    "blocksFlat": [
+      {
+        "children": [
+          {
+            "children": [],
+            "classes": [
+              "black"
+            ],
+            "id": "mc",
+            "label": "Memcache",
+            "type": "square",
+            "widthInColumns": 1
+          }
+        ],
+        "columns": -1,
+        "id": "root",
+        "label": "",
+        "type": "composite"
+      },
+      {
+        "children": [],
+        "classes": [
+          "black"
+        ],
+        "id": "mc",
+        "label": "Memcache",
+        "type": "square",
+        "widthInColumns": 1
+      }
+    ],
+    "classes": {
+      "black": {
+        "id": "black",
+        "styles": [
+          "color:#ffffff",
+          "fill:#000000"
+        ],
+        "textStyles": [
+          "fill:#ffffff"
+        ]
+      }
+    },
+    "edges": [],
+    "type": "block",
+    "warnings": []
+  }
+}
