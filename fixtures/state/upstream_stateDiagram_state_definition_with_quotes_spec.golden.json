@@ -1,0 +1,505 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
+    "edges": [
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "State1",
+        "id": "edge0",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "root_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "State2",
+        "id": "edge1",
+        "label": "Succeeded",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "State1",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "root_end",
+        "id": "edge2",
+        "label": "Aborted",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "State1",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "State3",
+        "id": "edge3",
+        "label": "Succeeded",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "State2",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "root_end",
+        "id": "edge4",
+        "label": "Aborted",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "State2",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "long1",
+        "id": "edge5",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "State3_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "long1",
+        "id": "edge6",
+        "label": "New Data",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "long1",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "ProcessData",
+        "id": "edge7",
+        "label": "Enough Data",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "long1",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "State3",
+        "id": "edge8",
+        "label": "Failed",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "State3",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "root_end",
+        "id": "edge9",
+        "label": "Succeeded / Save Result",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "State3",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "root_end",
+        "id": "edge10",
+        "label": "Aborted",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "State3",
+        "style": "fill:none",
+        "thickness": "normal"
+      }
+    ],
+    "links": {},
+    "nodes": [
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-root_start-0",
+        "id": "root_start",
+        "isGroup": false,
+        "label": "root_start",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "stateStart",
+        "type": null
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-State1-2",
+        "id": "State1",
+        "isGroup": false,
+        "label": "State1",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-State2-4",
+        "id": "State2",
+        "isGroup": false,
+        "label": "State2",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-root_end-10",
+        "id": "root_end",
+        "isGroup": false,
+        "label": "root_end",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "stateEnd",
+        "type": null
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": "TB",
+        "domId": "state-State3-10",
+        "id": "State3",
+        "isGroup": true,
+        "label": "State3",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "roundedWithTitle",
+        "type": "group"
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "description": [
+          "Just a test"
+        ],
+        "dir": null,
+        "domId": "state-long1-7",
+        "id": "long1",
+        "isGroup": false,
+        "label": "Accumulate Enough Data\nLong State Name",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": "State3",
+        "rx": 10,
+        "ry": 10,
+        "shape": "rectWithTitle",
+        "type": null
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-State3_start-5",
+        "id": "State3_start",
+        "isGroup": false,
+        "label": "State3_start",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": "State3",
+        "rx": 10,
+        "ry": 10,
+        "shape": "stateStart",
+        "type": null
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-ProcessData-7",
+        "id": "ProcessData",
+        "isGroup": false,
+        "label": "ProcessData",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": "State3",
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null
+      }
+    ],
+    "other": {},
+    "relations": [
+      {
+        "id1": "root_start",
+        "id2": "State1",
+        "relationTitle": null
+      },
+      {
+        "id1": "State1",
+        "id2": "State2",
+        "relationTitle": "Succeeded"
+      },
+      {
+        "id1": "State1",
+        "id2": "root_end",
+        "relationTitle": "Aborted"
+      },
+      {
+        "id1": "State2",
+        "id2": "State3",
+        "relationTitle": "Succeeded"
+      },
+      {
+        "id1": "State2",
+        "id2": "root_end",
+        "relationTitle": "Aborted"
+      },
+      {
+        "id1": "State3",
+        "id2": "State3",
+        "relationTitle": "Failed"
+      },
+      {
+        "id1": "State3",
+        "id2": "root_end",
+        "relationTitle": "Succeeded / Save Result"
+      },
+      {
+        "id1": "State3",
+        "id2": "root_end",
+        "relationTitle": "Aborted"
+      }
+    ],
+    "states": {
+      "State1": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "State1",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "State2": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "State2",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "State3": {
+        "classes": [],
+        "descriptions": [],
+        "doc": [
+          {
+            "classes": [],
+            "description": "Accumulate Enough Data\nLong State Name",
+            "doc": null,
+            "id": "long1",
+            "stmt": "state",
+            "type": "default"
+          },
+          {
+            "classes": [],
+            "description": "Just a test",
+            "doc": null,
+            "id": "long1",
+            "stmt": "state",
+            "type": "default"
+          },
+          {
+            "description": null,
+            "state1": {
+              "classes": [],
+              "id": "State3_start",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "long1",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": "New Data",
+            "state1": {
+              "classes": [],
+              "id": "long1",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "long1",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": "Enough Data",
+            "state1": {
+              "classes": [],
+              "id": "long1",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "ProcessData",
+              "type": "default"
+            },
+            "stmt": "relation"
+          }
+        ],
+        "id": "State3",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "root_end": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "root_end",
+        "note": null,
+        "start": false,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "root_start": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "root_start",
+        "note": null,
+        "start": true,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      }
+    },
+    "styleClasses": {},
+    "type": "stateDiagram"
+  }
+}

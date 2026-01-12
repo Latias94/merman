@@ -50,6 +50,15 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/state/stateDiagram.spec.
 - `hide empty description`: `fixtures/state/upstream_stateDiagram_spec.mmd`
 - `scale <n> width`: `fixtures/state/upstream_stateDiagram_spec.mmd`
 - relation/state descriptions containing `-`: `fixtures/state/upstream_stateDiagram_spec.mmd`
+- `accTitle: ...`: `fixtures/state/upstream_stateDiagram_acc_title_spec.mmd`
+- composite state with `state "..." as <id> { ... }`: `fixtures/state/upstream_stateDiagram_state_definition_separation_spec.mmd`
+- state definition with quoted multiline description: `fixtures/state/upstream_stateDiagram_state_definition_with_quotes_spec.mmd`
+- fork/join typed states (`state <id> <<fork>>` / `<<join>>`): `fixtures/state/upstream_stateDiagram_fork_join_spec.mmd`
+- concurrent state divider (`--` inside `state <id> { ... }`): `fixtures/state/upstream_stateDiagram_concurrent_state_spec.mmd`
+- note statements (left/right + `end note` block): `fixtures/state/upstream_stateDiagram_note_statements_spec.mmd`
+- multiline note `<br>` normalization: `fixtures/state/upstream_stateDiagram_multiline_notes_spec.mmd`
+- floating notes (`note "..." as <id>`): `fixtures/state/upstream_stateDiagram_floating_notes_spec.mmd`
+- note on composite state: `fixtures/state/upstream_stateDiagram_notes_on_composite_states_spec.mmd`
 
 ## `stateDiagram-v2.spec.js`
 
