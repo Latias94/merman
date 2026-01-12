@@ -191,7 +191,6 @@ impl C4Db {
         let label = args.get(1).cloned().unwrap_or_else(|| json!(""));
         let node_label_type = args.get(2).cloned();
         let descr = args.get(3).cloned();
-        let sprite = args.get(4).cloned();
         let tags = args.get(5).cloned();
         let link = args.get(6).cloned();
 
@@ -213,7 +212,6 @@ impl C4Db {
         let ty = node_label_type.unwrap_or_else(|| json!("node"));
         apply_text_field_or_kv(obj, "type", ty)?;
         apply_text_field_or_kv(obj, "descr", descr.unwrap_or_else(|| json!("")))?;
-        apply_kv_value(obj, "sprite", sprite.as_ref())?;
         apply_kv_value(obj, "tags", tags.as_ref())?;
         apply_kv_value(obj, "link", link.as_ref())?;
 
@@ -1087,5 +1085,74 @@ Person(a, "A", "D")
         );
         assert_eq!(model["wrap"], json!(true));
         assert_eq!(model["shapes"][0]["wrap"], json!(true));
+    }
+
+    #[test]
+    fn c4_update_element_style_updates_shape_fields() {
+        let model = parse(
+            r#"C4Context
+Person(a, "A", "D")
+UpdateElementStyle(a, $bgColor="red", $borderColor="blue")
+"#,
+        );
+        assert_eq!(model["shapes"][0]["bgColor"], json!("red"));
+        assert_eq!(model["shapes"][0]["borderColor"], json!("blue"));
+    }
+
+    #[test]
+    fn c4_update_element_style_can_target_boundaries() {
+        let model = parse(
+            r#"C4Context
+Boundary(b1, "B") {
+}
+UpdateElementStyle(b1, $bgColor="red")
+"#,
+        );
+        assert_eq!(model["boundaries"][1]["bgColor"], json!("red"));
+    }
+
+    #[test]
+    fn c4_update_rel_style_updates_rel_fields() {
+        let model = parse(
+            r#"C4Context
+Rel(a, b, "label")
+UpdateRelStyle(a, b, $textColor="red", $lineColor="blue", $offsetX="10", $offsetY="20")
+"#,
+        );
+        assert_eq!(model["rels"][0]["textColor"], json!("red"));
+        assert_eq!(model["rels"][0]["lineColor"], json!("blue"));
+        assert_eq!(model["rels"][0]["offsetX"], json!(10));
+        assert_eq!(model["rels"][0]["offsetY"], json!(20));
+    }
+
+    #[test]
+    fn c4_update_layout_config_enforces_minimum_one() {
+        let model = parse(
+            r#"C4Context
+UpdateLayoutConfig(0, 0)
+"#,
+        );
+        assert_eq!(model["layout"]["c4ShapeInRow"], json!(4));
+        assert_eq!(model["layout"]["c4BoundaryInRow"], json!(2));
+
+        let model = parse(
+            r#"C4Context
+UpdateLayoutConfig(3, 2)
+"#,
+        );
+        assert_eq!(model["layout"]["c4ShapeInRow"], json!(3));
+        assert_eq!(model["layout"]["c4BoundaryInRow"], json!(2));
+    }
+
+    #[test]
+    fn c4_deployment_node_ignores_sprite_param_like_mermaid_db() {
+        let model = parse(
+            r#"C4Deployment
+Node(n1, "Node", "type", "descr", $sprite="users") {
+}
+"#,
+        );
+        assert_eq!(model["boundaries"].as_array().unwrap().len(), 2);
+        assert!(model["boundaries"][1].get("sprite").is_none());
     }
 }
