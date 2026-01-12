@@ -4,6 +4,14 @@ This document defines the initial, test-driven minimum slice for Sankey parsing 
 
 Baseline: Mermaid `@11.12.2`.
 
+Upstream references:
+
+- Parser grammar: `repo-ref/mermaid/packages/mermaid/src/diagrams/sankey/parser/sankey.jison`
+- Parser tests: `repo-ref/mermaid/packages/mermaid/src/diagrams/sankey/parser/sankey.spec.ts`
+- DB/model: `repo-ref/mermaid/packages/mermaid/src/diagrams/sankey/sankeyDB.ts`
+- Pre-parsing normalization: `repo-ref/mermaid/packages/mermaid/src/diagrams/sankey/sankeyUtils.ts`
+- Comment cleanup: `repo-ref/mermaid/packages/mermaid/src/diagram-api/comments.ts`
+
 ## Supported (current)
 
 - Header:
@@ -40,4 +48,3 @@ Baseline: Mermaid `@11.12.2`.
 
 This is an incremental slice. The ultimate goal is full Mermaid `sankey` grammar and DB behavior
 compatibility at the pinned baseline tag.
-

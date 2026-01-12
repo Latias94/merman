@@ -1,0 +1,31 @@
+{
+  "diagramType": "sankey",
+  "model": {
+    "graph": {
+      "links": [
+        {
+          "source": "Agricultural 'waste'",
+          "target": "Bio-conversion",
+          "value": 124.729
+        },
+        {
+          "source": "Bio-conversion",
+          "target": "Liquid",
+          "value": 0.597
+        }
+      ],
+      "nodes": [
+        {
+          "id": "Agricultural 'waste'"
+        },
+        {
+          "id": "Bio-conversion"
+        },
+        {
+          "id": "Liquid"
+        }
+      ]
+    },
+    "type": "sankey"
+  }
+}

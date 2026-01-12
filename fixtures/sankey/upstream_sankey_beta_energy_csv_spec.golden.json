@@ -1,0 +1,130 @@
+{
+  "diagramType": "sankey",
+  "model": {
+    "graph": {
+      "links": [
+        {
+          "source": "Agricultural 'waste'",
+          "target": "Bio-conversion",
+          "value": 124.729
+        },
+        {
+          "source": "Bio-conversion",
+          "target": "Liquid",
+          "value": 0.597
+        },
+        {
+          "source": "sankey",
+          "target": "target",
+          "value": 10
+        },
+        {
+          "source": "sankey",
+          "target": "target",
+          "value": 10
+        },
+        {
+          "source": "Bio-conversion",
+          "target": "Losses",
+          "value": 26.862
+        },
+        {
+          "source": "Bio-conversion",
+          "target": "Solid",
+          "value": 280
+        },
+        {
+          "source": "Bio-conversion",
+          "target": "Gas",
+          "value": 81.144
+        },
+        {
+          "source": "Biofuel imports",
+          "target": "Liquid",
+          "value": 35
+        },
+        {
+          "source": "\"Biomass imports\"",
+          "target": "Solid",
+          "value": 35
+        },
+        {
+          "source": "District heating",
+          "target": "Heating and cooling, commercial",
+          "value": 22.505
+        },
+        {
+          "source": "District heating",
+          "target": "Heating and cooling, homes",
+          "value": 46.184
+        },
+        {
+          "source": "Coal imports",
+          "target": "Coal",
+          "value": 11.606
+        },
+        {
+          "source": "Coal reserves",
+          "target": "Coal",
+          "value": 63.965
+        },
+        {
+          "source": "Coal",
+          "target": "Solid",
+          "value": 75.571
+        }
+      ],
+      "nodes": [
+        {
+          "id": "Agricultural 'waste'"
+        },
+        {
+          "id": "Bio-conversion"
+        },
+        {
+          "id": "Liquid"
+        },
+        {
+          "id": "sankey"
+        },
+        {
+          "id": "target"
+        },
+        {
+          "id": "Losses"
+        },
+        {
+          "id": "Solid"
+        },
+        {
+          "id": "Gas"
+        },
+        {
+          "id": "Biofuel imports"
+        },
+        {
+          "id": "\"Biomass imports\""
+        },
+        {
+          "id": "District heating"
+        },
+        {
+          "id": "Heating and cooling, commercial"
+        },
+        {
+          "id": "Heating and cooling, homes"
+        },
+        {
+          "id": "Coal imports"
+        },
+        {
+          "id": "Coal"
+        },
+        {
+          "id": "Coal reserves"
+        }
+      ]
+    },
+    "type": "sankey"
+  }
+}

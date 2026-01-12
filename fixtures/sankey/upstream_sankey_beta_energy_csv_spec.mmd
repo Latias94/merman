@@ -1,0 +1,42 @@
+sankey-beta
+
+%% There are leading and trailing spaces, do not crop
+    Agricultural 'waste',Bio-conversion,124.729   
+%% line with a comment
+
+%% Normal line
+Bio-conversion,Liquid,0.597
+
+%% Line with unquoted sankey keyword
+sankey,target,10
+
+%% Quoted sankey keyword
+"sankey",target,10
+
+%% Another normal line
+Bio-conversion,Losses,26.862
+
+%% Line with integer amount
+Bio-conversion,Solid,280
+
+%% Some blank lines in the middle of CSV
+
+
+%% Another normal line
+Bio-conversion,Gas,81.144
+
+%% Quoted line
+"Biofuel imports",Liquid,35
+
+%% Quoted line with escaped quotes inside
+"""Biomass imports""",Solid,35
+
+%% Lines containing commas inside
+%% Quoted and unquoted values should be equal in terms of graph
+"District heating","Heating and cooling, commercial",22.505
+District heating,"Heating and cooling, homes",46.184
+
+%% A bunch of lines, normal CSV
+Coal imports,Coal,11.606
+Coal reserves,Coal,63.965
+Coal,Solid,75.571
