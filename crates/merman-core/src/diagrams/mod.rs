@@ -13,6 +13,7 @@ pub mod packet;
 pub mod pie;
 pub mod quadrant_chart;
 pub mod radar;
+pub mod sankey;
 pub mod sequence;
 pub mod state;
 pub mod timeline;
