@@ -1,0 +1,34 @@
+stateDiagram-v2
+state "Small State 1" as namedState1
+
+namedState2 : Small State 2
+namedState3:Small State 3
+
+assemble
+assemblies
+state assemble
+state assemblies
+
+state "as" as as
+
+state "Big State 1" as bigState1 {
+  bigState1InternalState
+}
+namedState1 --> bigState1: should point to \nBig State 1 container
+
+state "Small State 4" as namedState4
+state bigState2 {
+  bigState2InternalState
+}
+namedState4 --> bigState2: should point to \nbigState2 container
+
+state "Big State 2" as bigState3 {
+  state "inner state 1" as inner1
+  inner2: inner state 2
+  inner1 --> inner2
+}
+
+[*] --> __proto__
+__proto__ --> [*]
+[*] --> constructor
+constructor --> [*]

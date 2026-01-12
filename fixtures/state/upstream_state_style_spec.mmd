@@ -1,0 +1,48 @@
+stateDiagram-v2
+
+%% classDef parsing
+classDef exampleClass background:#bbb;
+classDef exampleClass2 background:#bbb, font-weight:bold, font-style:italic;
+classDef exampleStyleClass background:#bbb,border:1.5px solid red;
+classDef exampleStyleClass2 background:  #bbb,border:1.5px solid red;
+classDef __proto__ background:#bbb,border:1.5px solid red;
+classDef constructor background:#bbb,border:1.5px solid red;
+
+%% class application (class ...)
+a --> b
+class a exampleStyleClass
+
+a_a --> b_b
+class a_a exampleStyleClass
+
+%% ::: inline class syntax
+a:::exampleStyleClass --> b
+[*]:::exampleStyleClass --> b
+
+%% comma-separated lists (spaces optional)
+a-->b
+class a,b exampleStyleClass
+
+a-->b
+class a,b,c, d, e exampleStyleClass
+
+%% comments inside composite blocks
+[*] --> Moving
+Moving --> Still
+Moving --> Crash
+state Moving {
+  %% comment inside state
+  slow --> fast
+}
+
+%% style statement
+id1
+style id1 background:#bbb
+
+id2
+style id1,id2 background:#bbb
+
+id3
+id4
+style id3,id4 background:#bbb, font-weight:bold, font-style:italic;
+
