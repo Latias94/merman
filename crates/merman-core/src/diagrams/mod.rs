@@ -18,3 +18,4 @@ pub mod sequence;
 pub mod state;
 pub mod timeline;
 pub mod treemap;
+pub mod xychart;

@@ -60,6 +60,7 @@ impl DiagramRegistry {
         reg.insert("radar", crate::diagrams::radar::parse_radar);
         reg.insert("treemap", crate::diagrams::treemap::parse_treemap);
         reg.insert("sankey", crate::diagrams::sankey::parse_sankey);
+        reg.insert("xychart", crate::diagrams::xychart::parse_xychart);
 
         reg
     }
