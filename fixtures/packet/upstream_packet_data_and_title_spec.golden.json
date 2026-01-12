@@ -1,0 +1,19 @@
+{
+  "diagramType": "packet",
+  "model": {
+    "accDescr": "Packet accDescription",
+    "accTitle": "Packet accTitle",
+    "packet": [
+      [
+        {
+          "bits": 11,
+          "end": 10,
+          "label": "test",
+          "start": 0
+        }
+      ]
+    ],
+    "title": "Packet diagram",
+    "type": "packet"
+  }
+}

@@ -4,6 +4,12 @@ This document defines the initial, test-driven minimum slice for Packet parsing 
 
 Baseline: Mermaid `@11.12.2`.
 
+Upstream references:
+
+- Parser: `repo-ref/mermaid/packages/mermaid/src/diagrams/packet/parser.ts`
+- DB/model: `repo-ref/mermaid/packages/mermaid/src/diagrams/packet/db.ts`
+- Parser tests: `repo-ref/mermaid/packages/mermaid/src/diagrams/packet/packet.spec.ts`
+
 ## Supported (current)
 
 - Header:
@@ -43,4 +49,3 @@ Baseline: Mermaid `@11.12.2`.
 
 This is an incremental slice. The ultimate goal is full Mermaid `packet` grammar and DB behavior
 compatibility at the pinned baseline tag.
-
