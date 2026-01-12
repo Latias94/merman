@@ -65,5 +65,6 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/state/stateDiagram-v2.sp
 - floating notes (`note "..." as <id>`): `fixtures/state/upstream_stateDiagram_v2_floating_notes_spec.mmd`
 - note on composite state: `fixtures/state/upstream_stateDiagram_v2_notes_on_composite_states_spec.mmd`
 - composite state self-link (`Active --> Active`): `fixtures/state/upstream_stateDiagram_v2_composite_self_link_spec.mmd`
+- state definition with quoted multiline description: `fixtures/state/upstream_stateDiagram_v2_state_definition_with_quotes_spec.mmd`
 - default diagram direction when unspecified: `fixtures/state/upstream_stateDiagram_direction_default_spec.mmd`
 - explicit diagram direction (`direction LR`): `fixtures/state/upstream_stateDiagram_direction_lr_spec.mmd`
