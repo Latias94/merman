@@ -1,0 +1,47 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "sections": [
+      "abc-123",
+      "abc-456"
+    ],
+    "tasks": [
+      {
+        "events": [],
+        "id": 0,
+        "score": 0,
+        "section": "abc-123",
+        "task": "task1",
+        "type": "abc-123"
+      },
+      {
+        "events": [],
+        "id": 1,
+        "score": 0,
+        "section": "abc-123",
+        "task": "task2",
+        "type": "abc-123"
+      },
+      {
+        "events": [],
+        "id": 2,
+        "score": 0,
+        "section": "abc-456",
+        "task": "task3",
+        "type": "abc-456"
+      },
+      {
+        "events": [],
+        "id": 3,
+        "score": 0,
+        "section": "abc-456",
+        "task": "task4",
+        "type": "abc-456"
+      }
+    ],
+    "title": null,
+    "type": "timeline"
+  }
+}
