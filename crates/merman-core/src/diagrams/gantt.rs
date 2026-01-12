@@ -1794,7 +1794,8 @@ fn parse_key_colon_value(line: &str, key: &str) -> Option<String> {
     }
     let rest = t[key.len()..].trim_start();
     let rest = rest.strip_prefix(':')?;
-    Some(split_statement_suffix(rest).trim().to_string())
+    // Mermaid gantt's `accTitle:` / `accDescr:` values are end-of-line tokens (not `;`/`#`-terminated).
+    Some(rest.trim().to_string())
 }
 
 fn parse_acc_descr_block(lines: &mut std::str::Lines<'_>, first_line: &str) -> Option<String> {

@@ -27,6 +27,7 @@ Baseline: Mermaid `@11.12.2`.
       - `title` and `accDescr/accTitle` are passed through `sanitizeText(getConfig())`.
       - `accTitle` removes leading whitespace (`/^\s+/`).
       - `accDescr` collapses indentation after newlines (`/\n\s+/g -> "\n"`).
+    - `accTitle:` / `accDescr:` values are not `;`/`#`-terminated (unlike many other gantt statements).
 - interactivity:
     - `click <id[,id...]> href "<url>"`
     - `click <id[,id...]> call <fn>(<args>)`
