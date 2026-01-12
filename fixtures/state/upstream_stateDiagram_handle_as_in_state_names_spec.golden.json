@@ -1,0 +1,111 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
+    "edges": [],
+    "links": {},
+    "nodes": [
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-assemble-0",
+        "id": "assemble",
+        "isGroup": false,
+        "label": "assemble",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-assemblies-0",
+        "id": "assemblies",
+        "isGroup": false,
+        "label": "assemblies",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "description": [],
+        "dir": null,
+        "domId": "state-as-0",
+        "id": "as",
+        "isGroup": false,
+        "label": "as",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null
+      }
+    ],
+    "other": {},
+    "relations": [],
+    "states": {
+      "as": {
+        "classes": [],
+        "descriptions": [
+          "as"
+        ],
+        "doc": null,
+        "id": "as",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "assemble": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "assemble",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "assemblies": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "assemblies",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      }
+    },
+    "styleClasses": {},
+    "type": "stateDiagram"
+  }
+}

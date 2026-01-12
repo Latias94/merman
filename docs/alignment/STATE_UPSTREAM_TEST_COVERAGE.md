@@ -50,15 +50,25 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/state/stateDiagram.spec.
 - `hide empty description`: `fixtures/state/upstream_stateDiagram_spec.mmd`
 - `scale <n> width`: `fixtures/state/upstream_stateDiagram_spec.mmd`
 - relation/state descriptions containing `-`: `fixtures/state/upstream_stateDiagram_spec.mmd`
+- state ids that include `as` (e.g. `assemble`, `assemblies`): `fixtures/state/upstream_stateDiagram_handle_as_in_state_names_spec.mmd`
+- `state "as" as as` (quoted description equals keyword): `fixtures/state/upstream_stateDiagram_handle_as_in_state_names_spec.mmd`
 - `accTitle: ...`: `fixtures/state/upstream_stateDiagram_acc_title_spec.mmd`
+- `state "Long state description" as state1`: `fixtures/state/upstream_stateDiagram_state_definition_sep_id_simple_spec.mmd`
 - composite state with `state "..." as <id> { ... }`: `fixtures/state/upstream_stateDiagram_state_definition_separation_spec.mmd`
 - state definition with quoted multiline description: `fixtures/state/upstream_stateDiagram_state_definition_with_quotes_spec.mmd`
 - fork/join typed states (`state <id> <<fork>>` / `<<join>>`): `fixtures/state/upstream_stateDiagram_fork_join_spec.mmd`
 - concurrent state divider (`--` inside `state <id> { ... }`): `fixtures/state/upstream_stateDiagram_concurrent_state_spec.mmd`
+- concurrent state divider (minimal): `fixtures/state/upstream_stateDiagram_concurrent_state_minimal_spec.mmd`
 - note statements (left/right + `end note` block): `fixtures/state/upstream_stateDiagram_note_statements_spec.mmd`
 - multiline note `<br>` normalization: `fixtures/state/upstream_stateDiagram_multiline_notes_spec.mmd`
 - floating notes (`note "..." as <id>`): `fixtures/state/upstream_stateDiagram_floating_notes_spec.mmd`
 - note on composite state: `fixtures/state/upstream_stateDiagram_notes_on_composite_states_spec.mmd`
+- edge label after second state (`[*] --> State1 : ...`): `fixtures/state/upstream_stateDiagram_edge_label_after_second_state_spec.mmd`
+- edge label containing minus signs (`+-!`): `fixtures/state/upstream_stateDiagram_edge_label_including_minus_signs_spec.mmd`
+- state statements (`state <id> { ... }`): `fixtures/state/upstream_stateDiagram_state_statements_spec.mmd`
+- recursive state definitions: `fixtures/state/upstream_stateDiagram_recursive_state_definitions_spec.mmd`
+- multiple recursive state definitions: `fixtures/state/upstream_stateDiagram_multiple_recursive_state_definitions_spec.mmd`
+- click directives (`click <id> ...`): `fixtures/state/upstream_stateDiagram_click_directive_spec.mmd`
 
 ## `stateDiagram-v2.spec.js`
 

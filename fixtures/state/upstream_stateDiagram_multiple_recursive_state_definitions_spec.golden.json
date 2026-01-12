@@ -1,0 +1,515 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
+    "edges": [
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "NotShooting",
+        "id": "edge0",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "root_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Idle",
+        "id": "edge1",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "NotShooting_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Configuring",
+        "id": "edge2",
+        "label": "EvConfig",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "Idle",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Idle",
+        "id": "edge3",
+        "label": "EvConfig",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "Configuring",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "NewValueSelection",
+        "id": "edge4",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "Configuring_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "NewValuePreview",
+        "id": "edge5",
+        "label": "EvNewValue",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "NewValueSelection",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "NewValueSelection",
+        "id": "edge6",
+        "label": "EvNewValueRejected",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "NewValuePreview",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "NewValueSelection",
+        "id": "edge7",
+        "label": "EvNewValueSaved",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "NewValuePreview",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "State2",
+        "id": "edge8",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "classic",
+        "start": "State1",
+        "style": "fill:none",
+        "thickness": "normal"
+      }
+    ],
+    "links": {},
+    "nodes": [
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-root_start-0",
+        "id": "root_start",
+        "isGroup": false,
+        "label": "root_start",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "stateStart",
+        "type": null
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": "TB",
+        "domId": "state-NotShooting-1",
+        "id": "NotShooting",
+        "isGroup": true,
+        "label": "NotShooting",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "roundedWithTitle",
+        "type": "group"
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-NotShooting_start-1",
+        "id": "NotShooting_start",
+        "isGroup": false,
+        "label": "NotShooting_start",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": "NotShooting",
+        "rx": 10,
+        "ry": 10,
+        "shape": "stateStart",
+        "type": null
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-Idle-3",
+        "id": "Idle",
+        "isGroup": false,
+        "label": "Idle",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": "NotShooting",
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": "TB",
+        "domId": "state-Configuring-4",
+        "id": "Configuring",
+        "isGroup": true,
+        "label": "Configuring",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": "NotShooting",
+        "rx": 10,
+        "ry": 10,
+        "shape": "roundedWithTitle",
+        "type": "group"
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-Configuring_start-4",
+        "id": "Configuring_start",
+        "isGroup": false,
+        "label": "Configuring_start",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": "Configuring",
+        "rx": 10,
+        "ry": 10,
+        "shape": "stateStart",
+        "type": null
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-NewValueSelection-7",
+        "id": "NewValueSelection",
+        "isGroup": false,
+        "label": "NewValueSelection",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": "Configuring",
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state statediagram-cluster",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": "TB",
+        "domId": "state-NewValuePreview-8",
+        "id": "NewValuePreview",
+        "isGroup": true,
+        "label": "NewValuePreview",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": "Configuring",
+        "rx": 10,
+        "ry": 10,
+        "shape": "roundedWithTitle",
+        "type": "group"
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-State1-8",
+        "id": "State1",
+        "isGroup": false,
+        "label": "State1",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": "NewValuePreview",
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-State2-8",
+        "id": "State2",
+        "isGroup": false,
+        "label": "State2",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": "NewValuePreview",
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null
+      }
+    ],
+    "other": {},
+    "relations": [
+      {
+        "id1": "root_start",
+        "id2": "NotShooting",
+        "relationTitle": null
+      }
+    ],
+    "states": {
+      "Configuring": {
+        "classes": [],
+        "descriptions": [],
+        "doc": [
+          {
+            "description": null,
+            "state1": {
+              "classes": [],
+              "id": "Configuring_start",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "NewValueSelection",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": "EvNewValue",
+            "state1": {
+              "classes": [],
+              "id": "NewValueSelection",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "NewValuePreview",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": "EvNewValueRejected",
+            "state1": {
+              "classes": [],
+              "id": "NewValuePreview",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "NewValueSelection",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": "EvNewValueSaved",
+            "state1": {
+              "classes": [],
+              "id": "NewValuePreview",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "NewValueSelection",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "classes": [],
+            "description": null,
+            "doc": [
+              {
+                "description": null,
+                "state1": {
+                  "classes": [],
+                  "id": "State1",
+                  "type": "default"
+                },
+                "state2": {
+                  "classes": [],
+                  "id": "State2",
+                  "type": "default"
+                },
+                "stmt": "relation"
+              }
+            ],
+            "id": "NewValuePreview",
+            "stmt": "state",
+            "type": "default"
+          }
+        ],
+        "id": "Configuring",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "NotShooting": {
+        "classes": [],
+        "descriptions": [],
+        "doc": [
+          {
+            "description": null,
+            "state1": {
+              "classes": [],
+              "id": "NotShooting_start",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "Idle",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": "EvConfig",
+            "state1": {
+              "classes": [],
+              "id": "Idle",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "Configuring",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": "EvConfig",
+            "state1": {
+              "classes": [],
+              "id": "Configuring",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "Idle",
+              "type": "default"
+            },
+            "stmt": "relation"
+          }
+        ],
+        "id": "NotShooting",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "root_start": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "root_start",
+        "note": null,
+        "start": true,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      }
+    },
+    "styleClasses": {},
+    "type": "stateDiagram"
+  }
+}
