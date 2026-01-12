@@ -52,6 +52,10 @@ impl DiagramRegistry {
         );
         reg.insert("block", crate::diagrams::block::parse_block);
         reg.insert("gitGraph", crate::diagrams::git_graph::parse_git_graph);
+        reg.insert(
+            "quadrantChart",
+            crate::diagrams::quadrant_chart::parse_quadrant_chart,
+        );
 
         reg
     }

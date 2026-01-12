@@ -10,6 +10,7 @@ pub mod journey;
 pub mod kanban;
 pub mod mindmap;
 pub mod pie;
+pub mod quadrant_chart;
 pub mod sequence;
 pub mod state;
 pub mod timeline;
