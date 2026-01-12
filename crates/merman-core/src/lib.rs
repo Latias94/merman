@@ -218,10 +218,9 @@ graph TD;A-->B;"#;
     fn parse_diagram_pie_basic() {
         let engine = Engine::new();
         let text = r#"pie showData
-title A pie
-"Cats": 2
-'Dogs': 3
-"#;
+ "Cats": 2
+ 'Dogs': 3
+ "#;
         let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
             .unwrap();
@@ -231,7 +230,7 @@ title A pie
             json!({
                 "type": "pie",
                 "showData": true,
-                "title": "A pie",
+                "title": null,
                 "accTitle": null,
                 "accDescr": null,
                 "sections": [
@@ -245,12 +244,7 @@ title A pie
     #[test]
     fn parse_diagram_info_basic() {
         let engine = Engine::new();
-        let text = r#"info
-showInfo
-title Hello
-accTitle: AT
-accDescr: AD
-"#;
+        let text = "info showInfo\n";
         let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
             .unwrap();
@@ -259,11 +253,37 @@ accDescr: AD
             res.model,
             json!({
                 "type": "info",
-                "showInfo": true,
-                "title": "Hello",
-                "accTitle": "AT",
-                "accDescr": "AD"
+                "showInfo": true
             })
+        );
+    }
+
+    #[test]
+    fn parse_diagram_info_rejects_unsupported_grammar_like_upstream() {
+        let engine = Engine::new();
+        let text = "info unsupported\n";
+        let err = block_on(engine.parse_diagram(text, ParseOptions::default()))
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            err,
+            "Diagram parse error (info): Parsing failed: unexpected character: ->u<- at offset: 5, skipped 11 characters."
+        );
+    }
+
+    #[test]
+    fn parse_diagram_pie_rejects_negative_slice_values_like_upstream() {
+        let engine = Engine::new();
+        let text = r#"pie title Default text position: Animal adoption
+         "dogs" : -60.67
+        "rats" : 40.12
+        "#;
+        let err = block_on(engine.parse_diagram(text, ParseOptions::default()))
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            err,
+            "Diagram parse error (pie): \"dogs\" has invalid value: -60.67. Negative values are not allowed in pie charts. All slice values must be >= 0."
         );
     }
 
@@ -2234,11 +2254,11 @@ Alice->Bob:Hello"#;
     #[test]
     fn parse_sanitizes_common_db_fields_in_strict_mode() {
         let engine = Engine::new();
-        let text = r#"info
-title <script>alert(1)</script><b>t</b>
+        let text = r#"sequenceDiagram
+title: <script>alert(1)</script><b>t</b>
 accTitle: <script>alert(1)</script><b>a</b>
 accDescr: <script>alert(1)</script><b>d</b>
-"#;
+Alice->Bob:Hello"#;
 
         let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()

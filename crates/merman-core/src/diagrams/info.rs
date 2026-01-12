@@ -1,61 +1,66 @@
-use crate::{ParseMetadata, Result};
+use crate::{Error, ParseMetadata, Result};
 use serde_json::{Value, json};
 
 pub fn parse_info(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let mut lines = code.lines();
-    let mut first = None;
-    for line in &mut lines {
-        let t = strip_inline_comment(line).trim();
-        if !t.is_empty() {
-            first = Some(t.to_string());
-            break;
-        }
-    }
+    let mut header: Option<String> = None;
+    let mut rest_lines = Vec::new();
 
-    let Some(first) = first else {
-        return Ok(json!({}));
-    };
-    if !first.starts_with("info") {
-        return Ok(json!({
-            "error": "expected info"
-        }));
-    }
-
-    let mut show_info = first.split_whitespace().any(|w| w == "showInfo");
-    let mut acc_title = None;
-    let mut acc_descr = None;
-    let mut title = None;
-
-    for line in lines {
+    for line in code.lines() {
         let t = strip_inline_comment(line).trim();
         if t.is_empty() {
             continue;
         }
-        if t == "showInfo" {
-            show_info = true;
-            continue;
-        }
-        if let Some(v) = parse_key_value(t, "accTitle") {
-            acc_title = Some(v);
-            continue;
-        }
-        if let Some(v) = parse_acc_descr(t) {
-            acc_descr = Some(v);
-            continue;
-        }
-        if let Some(v) = parse_title(t) {
-            title = Some(v);
-            continue;
+        if header.is_none() {
+            header = Some(t.to_string());
+        } else {
+            rest_lines.push(t.to_string());
         }
     }
 
-    Ok(json!({
-        "type": meta.diagram_type,
-        "showInfo": show_info,
-        "title": title,
-        "accTitle": acc_title,
-        "accDescr": acc_descr,
-    }))
+    let Some(header) = header else {
+        return Ok(json!({}));
+    };
+
+    let mut tokens = header.split_whitespace();
+    let Some(first) = tokens.next() else {
+        return Ok(json!({}));
+    };
+
+    if first != "info" {
+        return Ok(json!({ "error": "expected info" }));
+    }
+
+    let mut show_info = false;
+    let mut unsupported: Option<&str> = None;
+    for tok in tokens {
+        if tok == "showInfo" {
+            show_info = true;
+            continue;
+        }
+        unsupported = Some(tok);
+        break;
+    }
+
+    if unsupported.is_none() && rest_lines.is_empty() {
+        return Ok(json!({
+            "type": meta.diagram_type,
+            "showInfo": show_info,
+        }));
+    }
+
+    let bad = unsupported
+        .or_else(|| rest_lines.first().map(|s| s.as_str()))
+        .unwrap();
+    let ch = bad.chars().next().unwrap_or('?');
+    let skipped = bad.chars().count();
+    let offset = code.find(bad).unwrap_or(5);
+
+    Err(Error::DiagramParse {
+        diagram_type: meta.diagram_type.clone(),
+        message: format!(
+            "Parsing failed: unexpected character: ->{ch}<- at offset: {offset}, skipped {skipped} characters."
+        ),
+    })
 }
 
 fn strip_inline_comment(line: &str) -> &str {
@@ -63,39 +68,4 @@ fn strip_inline_comment(line: &str) -> &str {
         Some(idx) => &line[..idx],
         None => line,
     }
-}
-
-fn parse_title(line: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t.starts_with("title") {
-        return None;
-    }
-    let rest = t.strip_prefix("title")?.trim_start();
-    Some(rest.to_string())
-}
-
-fn parse_key_value(line: &str, key: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t.starts_with(key) {
-        return None;
-    }
-    let rest = t.strip_prefix(key)?.trim_start();
-    let rest = rest.strip_prefix(':')?.trim_start();
-    Some(rest.to_string())
-}
-
-fn parse_acc_descr(line: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t.starts_with("accDescr") {
-        return None;
-    }
-    let rest = t.strip_prefix("accDescr")?.trim_start();
-    if let Some(rest) = rest.strip_prefix(':') {
-        return Some(rest.trim_start().to_string());
-    }
-    if let Some(rest) = rest.strip_prefix('{') {
-        let end = rest.find('}')?;
-        return Some(rest[..end].to_string());
-    }
-    None
 }

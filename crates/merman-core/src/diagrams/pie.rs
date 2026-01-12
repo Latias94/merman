@@ -1,10 +1,12 @@
-use crate::{ParseMetadata, Result};
+use crate::{Error, ParseMetadata, Result};
 use serde_json::{Value, json};
+use std::collections::HashSet;
 
 pub fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let mut lines = code.lines();
-    let mut header = None;
-    for line in &mut lines {
+    let mut raw_lines = code.lines();
+
+    let mut header: Option<String> = None;
+    for line in &mut raw_lines {
         let t = strip_inline_comment(line).trim();
         if !t.is_empty() {
             header = Some(t.to_string());
@@ -15,41 +17,119 @@ pub fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let Some(header) = header else {
         return Ok(json!({}));
     };
-    let mut it = header.split_whitespace();
-    let Some(first) = it.next() else {
+
+    let mut it0 = header.split_whitespace();
+    let Some(first) = it0.next() else {
         return Ok(json!({}));
     };
     if first != "pie" {
         return Ok(json!({ "error": "expected pie" }));
     }
-    let show_data = it.any(|w| w == "showData");
+
+    let mut show_data = false;
+    let mut title: Option<String> = None;
+    let mut unsupported: Option<String> = None;
+
+    fn token_boundary_ok(s: &str, token_len: usize) -> bool {
+        let Some(rest) = s.get(token_len..) else {
+            return true;
+        };
+        match rest.chars().next() {
+            None => true,
+            Some(c) => c.is_whitespace(),
+        }
+    }
+
+    let header_after = header
+        .trim_start_matches(|c: char| c.is_whitespace())
+        .strip_prefix("pie")
+        .unwrap_or("");
+    let mut rest = header_after.trim_start();
+    while !rest.is_empty() {
+        if rest.starts_with("showData") && token_boundary_ok(rest, "showData".len()) {
+            show_data = true;
+            rest = rest["showData".len()..].trim_start();
+            continue;
+        }
+        if rest.starts_with("title") && token_boundary_ok(rest, "title".len()) {
+            let after = rest["title".len()..].trim_start();
+            title = Some(after.to_string());
+            rest = "";
+            continue;
+        }
+        unsupported = Some(rest.split_whitespace().next().unwrap_or(rest).to_string());
+        break;
+    }
+
+    if let Some(tok) = unsupported {
+        return Err(Error::DiagramParse {
+            diagram_type: meta.diagram_type.clone(),
+            message: format!("unexpected pie header token: {tok}"),
+        });
+    }
 
     let mut acc_title = None;
     let mut acc_descr = None;
-    let mut title = None;
     let mut sections: Vec<Value> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
 
-    for line in lines {
+    let mut lines = raw_lines.peekable();
+    while let Some(line) = lines.next() {
         let t = strip_inline_comment(line).trim();
         if t.is_empty() {
             continue;
         }
+
         if let Some(v) = parse_key_value(t, "accTitle") {
             acc_title = Some(v);
             continue;
         }
-        if let Some(v) = parse_acc_descr(t) {
+
+        if let Some(v) = parse_acc_descr_inline(t) {
             acc_descr = Some(v);
             continue;
         }
-        if let Some(v) = parse_title(t) {
-            title = Some(v);
+
+        if starts_acc_descr_block(t) {
+            let mut parts: Vec<String> = Vec::new();
+            while let Some(next_line) = lines.next() {
+                let s = strip_inline_comment(next_line);
+                if s.contains('}') {
+                    let before = s.split('}').next().unwrap_or("").trim();
+                    if !before.is_empty() {
+                        parts.push(before.to_string());
+                    }
+                    break;
+                }
+                let trimmed = s.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                parts.push(trimmed.to_string());
+            }
+            acc_descr = Some(parts.join("\n"));
             continue;
         }
+
         if let Some((label, value)) = parse_section(t) {
-            sections.push(json!({ "label": label, "value": value }));
+            if value < 0.0 {
+                return Err(Error::DiagramParse {
+                    diagram_type: meta.diagram_type.clone(),
+                    message: format!(
+                        "\"{label}\" has invalid value: {value}. Negative values are not allowed in pie charts. All slice values must be >= 0."
+                    ),
+                });
+            }
+            if seen.insert(label.clone()) {
+                sections.push(json!({ "label": label, "value": value }));
+            }
             continue;
         }
+
+        return Err(Error::DiagramParse {
+            diagram_type: meta.diagram_type.clone(),
+            message: format!("unexpected pie statement: {t}"),
+        });
     }
 
     Ok(json!({
@@ -69,15 +149,6 @@ fn strip_inline_comment(line: &str) -> &str {
     }
 }
 
-fn parse_title(line: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t.starts_with("title") {
-        return None;
-    }
-    let rest = t.strip_prefix("title")?.trim_start();
-    Some(rest.to_string())
-}
-
 fn parse_key_value(line: &str, key: &str) -> Option<String> {
     let t = line.trim_start();
     if !t.starts_with(key) {
@@ -88,7 +159,7 @@ fn parse_key_value(line: &str, key: &str) -> Option<String> {
     Some(rest.to_string())
 }
 
-fn parse_acc_descr(line: &str) -> Option<String> {
+fn parse_acc_descr_inline(line: &str) -> Option<String> {
     let t = line.trim_start();
     if !t.starts_with("accDescr") {
         return None;
@@ -97,11 +168,16 @@ fn parse_acc_descr(line: &str) -> Option<String> {
     if let Some(rest) = rest.strip_prefix(':') {
         return Some(rest.trim_start().to_string());
     }
-    if let Some(rest) = rest.strip_prefix('{') {
-        let end = rest.find('}')?;
-        return Some(rest[..end].to_string());
-    }
     None
+}
+
+fn starts_acc_descr_block(line: &str) -> bool {
+    let t = line.trim_start();
+    if !t.starts_with("accDescr") {
+        return false;
+    }
+    let rest = t.trim_start_matches("accDescr").trim_start();
+    rest.starts_with('{')
 }
 
 fn parse_section(line: &str) -> Option<(String, f64)> {
