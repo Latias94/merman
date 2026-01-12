@@ -1,0 +1,58 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "axisFormat": "",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
+    "displayMode": "",
+    "excludes": [
+      "weekends"
+    ],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
+    "sections": [
+      "friday-saturday weekends skip test"
+    ],
+    "tasks": [
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2024-03-04T00:00:00.000",
+        "id": "id1",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
+        "raw": {
+          "data": ": id1,2024-02-28,3d",
+          "endTime": {
+            "data": "3d"
+          },
+          "startTime": {
+            "startData": "2024-02-28",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": "2024-03-04T00:00:00.000",
+        "section": "friday-saturday weekends skip test",
+        "startTime": "2024-02-28T00:00:00.000",
+        "task": "test1",
+        "type": "friday-saturday weekends skip test",
+        "vert": false
+      }
+    ],
+    "tickInterval": null,
+    "title": "Weekends start Friday",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "friday"
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "axisFormat": "",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
+    "displayMode": "",
+    "excludes": [
+      "weekends",
+      "2019-02-06",
+      "friday"
+    ],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
+    "sections": [
+      "weekends skip test"
+    ],
+    "tasks": [
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2019-02-04T00:00:00.000",
+        "id": "id1",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
+        "raw": {
+          "data": ": id1,2019-02-01,1d",
+          "endTime": {
+            "data": "1d"
+          },
+          "startTime": {
+            "startData": "2019-02-01",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": "2019-02-02T00:00:00.000",
+        "section": "weekends skip test",
+        "startTime": "2019-02-01T00:00:00.000",
+        "task": "test1",
+        "type": "weekends skip test",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2019-02-07T00:00:00.000",
+        "id": "id2",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "id1",
+        "processed": true,
+        "raw": {
+          "data": ": id2,after id1,2d",
+          "endTime": {
+            "data": "2d"
+          },
+          "startTime": {
+            "startData": "after id1",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": "2019-02-06T00:00:00.000",
+        "section": "weekends skip test",
+        "startTime": "2019-02-04T00:00:00.000",
+        "task": "test2",
+        "type": "weekends skip test",
+        "vert": false
+      }
+    ],
+    "tickInterval": null,
+    "title": "Excludes weekends + specific days",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
+  }
+}

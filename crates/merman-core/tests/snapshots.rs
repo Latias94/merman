@@ -59,6 +59,15 @@ fn normalize_model(diagram_type: &str, model: &mut Value) {
     // Mermaid gantt uses local time; epoch millis are timezone-dependent and not portable as goldens.
     // Normalize task timestamps into local ISO strings so snapshots are stable across timezones.
     if diagram_type == "gantt" {
+        let date_format = obj
+            .get("dateFormat")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim();
+        if matches!(date_format, "x" | "X") {
+            return;
+        }
+
         let Some(tasks) = obj.get_mut("tasks").and_then(Value::as_array_mut) else {
             return;
         };

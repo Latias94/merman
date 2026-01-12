@@ -1,0 +1,115 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "axisFormat": "",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
+    "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
+    "sections": [
+      "A",
+      "B"
+    ],
+    "tasks": [
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": true,
+        "endTime": "2014-01-08T00:00:00.000",
+        "id": "des1",
+        "manualEndTime": true,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
+        "raw": {
+          "data": ": done, des1, 2014-01-06,2014-01-08",
+          "endTime": {
+            "data": "2014-01-08"
+          },
+          "startTime": {
+            "startData": "2014-01-06",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "A",
+        "startTime": "2014-01-06T00:00:00.000",
+        "task": "Completed task",
+        "type": "A",
+        "vert": false
+      },
+      {
+        "active": true,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2014-01-12T00:00:00.000",
+        "id": "des2",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "des1",
+        "processed": true,
+        "raw": {
+          "data": ": active, des2, 2014-01-09, 3d",
+          "endTime": {
+            "data": "3d"
+          },
+          "startTime": {
+            "startData": "2014-01-09",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "A",
+        "startTime": "2014-01-09T00:00:00.000",
+        "task": "Active task",
+        "type": "A",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2014-01-17T00:00:00.000",
+        "id": "des3",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 2,
+        "prevTaskId": "des2",
+        "processed": true,
+        "raw": {
+          "data": ": des3, after des2, 5d",
+          "endTime": {
+            "data": "5d"
+          },
+          "startTime": {
+            "startData": "after des2",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "B",
+        "startTime": "2014-01-12T00:00:00.000",
+        "task": "Future task",
+        "type": "B",
+        "vert": false
+      }
+    ],
+    "tickInterval": null,
+    "title": "Order and tags",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
+  }
+}

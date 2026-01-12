@@ -1,0 +1,143 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "axisFormat": "",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
+    "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
+    "sections": [
+      "sec1"
+    ],
+    "tasks": [
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2013-02-05T00:00:00.000",
+        "id": "id1",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
+        "raw": {
+          "data": ": id1,after id2 id3 id4,1d",
+          "endTime": {
+            "data": "1d"
+          },
+          "startTime": {
+            "startData": "after id2 id3 id4",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "sec1",
+        "startTime": "2013-02-04T00:00:00.000",
+        "task": "task1",
+        "type": "sec1",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2013-01-02T00:00:00.000",
+        "id": "id2",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "id1",
+        "processed": true,
+        "raw": {
+          "data": ": id2,2013-01-01,1d",
+          "endTime": {
+            "data": "1d"
+          },
+          "startTime": {
+            "startData": "2013-01-01",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "sec1",
+        "startTime": "2013-01-01T00:00:00.000",
+        "task": "task2",
+        "type": "sec1",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2013-02-04T00:00:00.000",
+        "id": "id3",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 2,
+        "prevTaskId": "id2",
+        "processed": true,
+        "raw": {
+          "data": ": id3,2013-02-01,3d",
+          "endTime": {
+            "data": "3d"
+          },
+          "startTime": {
+            "startData": "2013-02-01",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "sec1",
+        "startTime": "2013-02-01T00:00:00.000",
+        "task": "task3",
+        "type": "sec1",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2013-02-03T00:00:00.000",
+        "id": "id4",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 3,
+        "prevTaskId": "id3",
+        "processed": true,
+        "raw": {
+          "data": ": id4,2013-02-01,2d",
+          "endTime": {
+            "data": "2d"
+          },
+          "startTime": {
+            "startData": "2013-02-01",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "sec1",
+        "startTime": "2013-02-01T00:00:00.000",
+        "task": "task4",
+        "type": "sec1",
+        "vert": false
+      }
+    ],
+    "tickInterval": null,
+    "title": "After multiple ids",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
+  }
+}

@@ -251,23 +251,30 @@ fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
             }
 
             if parsed.meta.diagram_type == "gantt" {
-                if let Some(tasks) = obj.get_mut("tasks").and_then(JsonValue::as_array_mut) {
-                    for task in tasks {
-                        let JsonValue::Object(task_obj) = task else {
-                            continue;
-                        };
-                        for key in ["startTime", "endTime", "renderEndTime"] {
-                            let Some(v) = task_obj.get_mut(key) else {
+                let date_format = obj
+                    .get("dateFormat")
+                    .and_then(JsonValue::as_str)
+                    .unwrap_or("")
+                    .trim();
+                if !matches!(date_format, "x" | "X") {
+                    if let Some(tasks) = obj.get_mut("tasks").and_then(JsonValue::as_array_mut) {
+                        for task in tasks {
+                            let JsonValue::Object(task_obj) = task else {
                                 continue;
                             };
-                            let Some(ms) = v
-                                .as_i64()
-                                .or_else(|| v.as_u64().and_then(|n| i64::try_from(n).ok()))
-                            else {
-                                continue;
-                            };
-                            if let Some(s) = ms_to_local_iso(ms) {
-                                *v = JsonValue::String(s);
+                            for key in ["startTime", "endTime", "renderEndTime"] {
+                                let Some(v) = task_obj.get_mut(key) else {
+                                    continue;
+                                };
+                                let Some(ms) = v
+                                    .as_i64()
+                                    .or_else(|| v.as_u64().and_then(|n| i64::try_from(n).ok()))
+                                else {
+                                    continue;
+                                };
+                                if let Some(s) = ms_to_local_iso(ms) {
+                                    *v = JsonValue::String(s);
+                                }
                             }
                         }
                     }
