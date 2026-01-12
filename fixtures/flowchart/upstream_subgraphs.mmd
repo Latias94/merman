@@ -1,0 +1,21 @@
+flowchart TB
+subgraph A
+  a --> b
+end
+
+subgraph id1[Title with dashes - ok]
+  c --> d
+end
+
+subgraph "Title With Spaces"
+  direction RL
+  e --> f
+end
+
+subgraph parent["Parent"]
+  subgraph child["Child"]
+    direction BT
+    g --> h
+  end
+end
+
