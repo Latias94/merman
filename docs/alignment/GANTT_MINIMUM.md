@@ -46,7 +46,7 @@ Baseline: Mermaid `@11.12.2`.
     - `until <id...>` selects the earliest referenced `startTime` (fallback: today midnight)
     - Forward references are resolved via iterative compilation (max 10 passes), mirroring Mermaid.
 - End expressions:
-  - strict date parsing for `YYYY-MM-DD`, `YYYYMMDD`, `YYYY-MM-DD HH:mm:ss`, `ss`
+  - strict date parsing supports a growing subset of Day.js tokens (Mermaid `dayjs(str, dateFormat, true)`), including `YYYY`, `MM`, `DD`, `Do`, `HH`, `hh`, `mm`, `ss`, `SSS`, `A/a`, `ddd/dddd`, `Z/ZZ`, `MMM/MMMM`, `x/X`.
   - timestamp formats:
     - `x` = Unix epoch milliseconds (Day.js `x`)
     - `X` = Unix epoch seconds (Day.js `X`)
