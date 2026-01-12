@@ -1,0 +1,140 @@
+{
+  "diagramType": "kanban",
+  "model": {
+    "edges": [],
+    "nodes": [
+      {
+        "id": "rootPriority",
+        "isGroup": true,
+        "label": "rootPriority",
+        "level": 2,
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
+      },
+      {
+        "id": "rootAssigned",
+        "isGroup": true,
+        "label": "rootAssigned",
+        "level": 2,
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
+      },
+      {
+        "id": "rootIcon",
+        "isGroup": true,
+        "label": "rootIcon",
+        "level": 2,
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
+      },
+      {
+        "id": "rootMulti",
+        "isGroup": true,
+        "label": "rootMulti",
+        "level": 2,
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
+      },
+      {
+        "id": "rootOneLine",
+        "isGroup": true,
+        "label": "rootOneLine",
+        "level": 2,
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
+      },
+      {
+        "id": "rootLabel",
+        "isGroup": true,
+        "label": "fix things",
+        "level": 2,
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
+      },
+      {
+        "id": "rootTicket",
+        "isGroup": true,
+        "label": "rootTicket",
+        "level": 2,
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": "MC-1234"
+      }
+    ],
+    "other": {},
+    "sections": [
+      {
+        "id": "rootPriority",
+        "isGroup": false,
+        "label": "rootPriority",
+        "level": 2,
+        "padding": 10,
+        "priority": "high",
+        "width": 200
+      },
+      {
+        "assigned": "knsv",
+        "id": "rootAssigned",
+        "isGroup": false,
+        "label": "rootAssigned",
+        "level": 2,
+        "padding": 10,
+        "width": 200
+      },
+      {
+        "icon": "star",
+        "id": "rootIcon",
+        "isGroup": false,
+        "label": "rootIcon",
+        "level": 2,
+        "padding": 10,
+        "width": 200
+      },
+      {
+        "assigned": "knsv",
+        "icon": "star",
+        "id": "rootMulti",
+        "isGroup": false,
+        "label": "rootMulti",
+        "level": 2,
+        "padding": 10,
+        "width": 200
+      },
+      {
+        "assigned": "knsv",
+        "icon": "star",
+        "id": "rootOneLine",
+        "isGroup": false,
+        "label": "rootOneLine",
+        "level": 2,
+        "padding": 10,
+        "width": 200
+      },
+      {
+        "icon": "star",
+        "id": "rootLabel",
+        "isGroup": false,
+        "label": "fix things",
+        "level": 2,
+        "padding": 10,
+        "width": 200
+      },
+      {
+        "id": "rootTicket",
+        "isGroup": false,
+        "label": "rootTicket",
+        "level": 2,
+        "padding": 10,
+        "ticket": "MC-1234",
+        "width": 200
+      }
+    ],
+    "type": "kanban"
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "diagramType": "kanban",
+  "model": {
+    "edges": [],
+    "nodes": [
+      {
+        "id": "root",
+        "isGroup": true,
+        "label": "Root",
+        "level": 0,
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
+      },
+      {
+        "assigned": null,
+        "cssStyles": [
+          "text-align: left"
+        ],
+        "icon": null,
+        "id": "Child",
+        "isGroup": false,
+        "label": "Child",
+        "level": 1,
+        "parentId": "root",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
+      },
+      {
+        "assigned": null,
+        "cssStyles": [
+          "text-align: left"
+        ],
+        "icon": null,
+        "id": "a",
+        "isGroup": false,
+        "label": "a",
+        "level": 3,
+        "parentId": "root",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
+      },
+      {
+        "assigned": null,
+        "cssStyles": [
+          "text-align: left"
+        ],
+        "icon": null,
+        "id": "b",
+        "isGroup": false,
+        "label": "New Stuff",
+        "level": 3,
+        "parentId": "root",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
+      },
+      {
+        "assigned": null,
+        "cssStyles": [
+          "text-align: left"
+        ],
+        "icon": null,
+        "id": "A",
+        "isGroup": false,
+        "label": "A",
+        "level": 1,
+        "parentId": "root",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
+      },
+      {
+        "assigned": null,
+        "cssStyles": [
+          "text-align: left"
+        ],
+        "icon": null,
+        "id": "B",
+        "isGroup": false,
+        "label": "B",
+        "level": 1,
+        "parentId": "root",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
+      }
+    ],
+    "other": {},
+    "sections": [
+      {
+        "id": "root",
+        "isGroup": false,
+        "label": "Root",
+        "level": 0,
+        "padding": 20,
+        "width": 200
+      }
+    ],
+    "type": "kanban"
+  }
+}

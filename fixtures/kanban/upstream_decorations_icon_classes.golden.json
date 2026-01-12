@@ -1,0 +1,86 @@
+{
+  "diagramType": "kanban",
+  "model": {
+    "edges": [],
+    "nodes": [
+      {
+        "id": "rootIcon",
+        "isGroup": true,
+        "label": "The root",
+        "level": 2,
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
+      },
+      {
+        "id": "rootClasses",
+        "isGroup": true,
+        "label": "The root",
+        "level": 2,
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
+      },
+      {
+        "id": "rootBoth1",
+        "isGroup": true,
+        "label": "The root",
+        "level": 2,
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
+      },
+      {
+        "id": "rootBoth2",
+        "isGroup": true,
+        "label": "The root",
+        "level": 2,
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
+      }
+    ],
+    "other": {},
+    "sections": [
+      {
+        "icon": "bomb",
+        "id": "rootIcon",
+        "isGroup": false,
+        "label": "The root",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      },
+      {
+        "cssClasses": "m-4 p-8",
+        "id": "rootClasses",
+        "isGroup": false,
+        "label": "The root",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      },
+      {
+        "cssClasses": "m-4 p-8",
+        "icon": "bomb",
+        "id": "rootBoth1",
+        "isGroup": false,
+        "label": "The root",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      },
+      {
+        "cssClasses": "m-4 p-8",
+        "icon": "bomb",
+        "id": "rootBoth2",
+        "isGroup": false,
+        "label": "The root",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      }
+    ],
+    "type": "kanban"
+  }
+}

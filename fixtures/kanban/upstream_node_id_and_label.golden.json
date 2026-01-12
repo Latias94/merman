@@ -1,0 +1,29 @@
+{
+  "diagramType": "kanban",
+  "model": {
+    "edges": [],
+    "nodes": [
+      {
+        "id": "root",
+        "isGroup": true,
+        "label": "The root",
+        "level": 2,
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
+      }
+    ],
+    "other": {},
+    "sections": [
+      {
+        "id": "root",
+        "isGroup": false,
+        "label": "The root",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      }
+    ],
+    "type": "kanban"
+  }
+}

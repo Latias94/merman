@@ -1,0 +1,46 @@
+{
+  "diagramType": "kanban",
+  "model": {
+    "edges": [],
+    "nodes": [
+      {
+        "id": "section1",
+        "isGroup": true,
+        "label": "section1",
+        "level": 2,
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
+      },
+      {
+        "id": "section2",
+        "isGroup": true,
+        "label": "section2",
+        "level": 2,
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
+      }
+    ],
+    "other": {},
+    "sections": [
+      {
+        "id": "section1",
+        "isGroup": false,
+        "label": "section1",
+        "level": 2,
+        "padding": 10,
+        "width": 200
+      },
+      {
+        "id": "section2",
+        "isGroup": false,
+        "label": "section2",
+        "level": 2,
+        "padding": 10,
+        "width": 200
+      }
+    ],
+    "type": "kanban"
+  }
+}
