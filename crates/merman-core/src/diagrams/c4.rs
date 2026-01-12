@@ -241,25 +241,36 @@ impl C4Db {
     fn add_rel(&mut self, rel_type: &str, args: Vec<Value>) -> Result<()> {
         let from = arg_to_string(args.get(0))?;
         let to = arg_to_string(args.get(1))?;
-        let label = args.get(2).cloned().unwrap_or_else(|| json!(""));
+        let Some(label) = args.get(2).cloned() else {
+            return Ok(());
+        };
 
-        let mut rel = Map::new();
+        let existing_idx = self
+            .rels
+            .iter()
+            .position(|r| r.get("from") == Some(&json!(from)) && r.get("to") == Some(&json!(to)));
+
+        let rel = if let Some(idx) = existing_idx {
+            self.rels.get_mut(idx).unwrap()
+        } else {
+            self.rels.push(Map::new());
+            self.rels.last_mut().unwrap()
+        };
+
         rel.insert("type".to_string(), json!(rel_type));
         rel.insert("from".to_string(), json!(from));
         rel.insert("to".to_string(), json!(to));
         rel.insert("label".to_string(), wrap_text(label));
 
         let techn = args.get(3).cloned().unwrap_or_else(|| json!(""));
-        apply_text_field_or_kv(&mut rel, "techn", techn)?;
+        apply_text_field_or_kv(rel, "techn", techn)?;
         let descr = args.get(4).cloned().unwrap_or_else(|| json!(""));
-        apply_text_field_or_kv(&mut rel, "descr", descr)?;
+        apply_text_field_or_kv(rel, "descr", descr)?;
 
-        apply_kv_value(&mut rel, "sprite", args.get(5))?;
-        apply_kv_value(&mut rel, "tags", args.get(6))?;
-        apply_kv_value(&mut rel, "link", args.get(7))?;
+        apply_kv_value(rel, "sprite", args.get(5))?;
+        apply_kv_value(rel, "tags", args.get(6))?;
+        apply_kv_value(rel, "link", args.get(7))?;
         rel.insert("wrap".to_string(), json!(self.wrap_enabled));
-
-        self.rels.push(rel);
         Ok(())
     }
 
@@ -1039,5 +1050,42 @@ Person(customerA, $sprite="users")
             model["shapes"][0]["label"]["text"]["sprite"],
             json!("users")
         );
+    }
+
+    #[test]
+    fn c4_rel_is_deduped_by_from_to_like_mermaid_db() {
+        let model = parse(
+            r#"C4Context
+Rel(a, b, "first")
+Rel(a, b, "second")
+"#,
+        );
+        assert_eq!(model["rels"].as_array().unwrap().len(), 1);
+        assert_eq!(model["rels"][0]["label"]["text"], json!("second"));
+    }
+
+    #[test]
+    fn c4_relindex_ignores_index_arg() {
+        let model = parse(
+            r#"C4Context
+RelIndex(123, a, b, "label")
+"#,
+        );
+        assert_eq!(model["rels"].as_array().unwrap().len(), 1);
+        assert_eq!(model["rels"][0]["from"], json!("a"));
+        assert_eq!(model["rels"][0]["to"], json!("b"));
+        assert_eq!(model["rels"][0]["label"]["text"], json!("label"));
+    }
+
+    #[test]
+    fn c4_wrap_directive_sets_wrap_true_on_nodes() {
+        let model = parse(
+            r#"%%{wrap}%%
+C4Context
+Person(a, "A", "D")
+"#,
+        );
+        assert_eq!(model["wrap"], json!(true));
+        assert_eq!(model["shapes"][0]["wrap"], json!(true));
     }
 }

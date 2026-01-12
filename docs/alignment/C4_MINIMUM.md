@@ -34,7 +34,7 @@ Baseline: Mermaid `@11.12.2`.
   - Deployment nodes (nested blocks):
     - `Node(...) { ... }`, `Node_L(...) { ... }`, `Node_R(...) { ... }`
     - `Deployment_Node(...) { ... }` (alias of `Node`)
-  - Relationships:
+- Relationships:
     - `Rel`, `BiRel`, `Rel_Up/Rel_U`, `Rel_Down/Rel_D`, `Rel_Left/Rel_L`, `Rel_Right/Rel_R`, `Rel_Back`
     - `RelIndex(index, ...)` (index is ignored, matching Mermaid’s parser splice)
   - Style / layout updates:
@@ -69,3 +69,7 @@ Baseline: Mermaid `@11.12.2`.
 This is an incremental slice. The ultimate goal is full Mermaid C4 grammar and DB behavior
 compatibility at the pinned baseline tag.
 
+## Notes on DB behavior
+
+- Relationships are de-duplicated by `(from,to)` and later statements override earlier ones,
+  matching Mermaid’s `c4Db.js` behavior.
