@@ -2102,15 +2102,22 @@ fn parse_gantt_statement(
         return Ok(());
     }
 
-    let Some(colon) = stripped.find(':') else {
+    let mut task_stmt = stripped.trim_start();
+    // Mermaid's gantt lexer allows leading ';' / '#' before a task definition line.
+    // Example upstream spec: `;Design jison grammar:...` / `#Design jison grammar:...`
+    if task_stmt.starts_with(';') || task_stmt.starts_with('#') {
+        task_stmt = task_stmt[1..].trim_start();
+    }
+
+    let Some(colon) = task_stmt.find(':') else {
         return Err(Error::DiagramParse {
             diagram_type: "gantt".to_string(),
             message: format!("unrecognized statement: {t}"),
         });
     };
 
-    let task_txt = stripped[..colon].trim();
-    let mut task_data = stripped[colon + 1..].to_string();
+    let task_txt = task_stmt[..colon].trim();
+    let mut task_data = task_stmt[colon + 1..].to_string();
     task_data = split_statement_suffix(&task_data).to_string();
     if task_txt.is_empty() || task_data.trim().is_empty() {
         return Ok(());
