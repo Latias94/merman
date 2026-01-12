@@ -1,0 +1,85 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "axisFormat": "",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD hh:mm:ss A",
+    "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
+    "sections": [
+      "A"
+    ],
+    "tasks": [
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2014-01-01T13:00:00.000",
+        "id": "n1",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
+        "raw": {
+          "data": ": n1, 2014-01-01 12:00:00 PM, 1h",
+          "endTime": {
+            "data": "1h"
+          },
+          "startTime": {
+            "startData": "2014-01-01 12:00:00 PM",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "A",
+        "startTime": "2014-01-01T12:00:00.000",
+        "task": "Noon",
+        "type": "A",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2014-01-02T01:00:00.000",
+        "id": "n2",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "n1",
+        "processed": true,
+        "raw": {
+          "data": ": n2, 2014-01-02 12:00:00 AM, 1h",
+          "endTime": {
+            "data": "1h"
+          },
+          "startTime": {
+            "startData": "2014-01-02 12:00:00 AM",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "A",
+        "startTime": "2014-01-02T00:00:00.000",
+        "task": "Midnight",
+        "type": "A",
+        "vert": false
+      }
+    ],
+    "tickInterval": null,
+    "title": "12h AM/PM (A)",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
+  }
+}
