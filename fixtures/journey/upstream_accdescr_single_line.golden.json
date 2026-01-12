@@ -1,0 +1,14 @@
+{
+  "diagramType": "journey",
+  "model": {
+    "accDescr": "A user journey for family shopping",
+    "accTitle": null,
+    "actors": [],
+    "sections": [
+      "Order from website"
+    ],
+    "tasks": [],
+    "title": "Adding journey diagram functionality to mermaid",
+    "type": "journey"
+  }
+}

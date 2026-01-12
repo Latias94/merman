@@ -1,0 +1,95 @@
+{
+  "diagramType": "journey",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "actors": [
+      "",
+      "Alice",
+      "Bob",
+      "Charlie"
+    ],
+    "sections": [
+      "Documentation",
+      "Another section"
+    ],
+    "tasks": [
+      {
+        "people": [
+          "Alice",
+          "Bob",
+          "Charlie"
+        ],
+        "score": 5,
+        "section": "Documentation",
+        "task": "A task",
+        "type": "Documentation"
+      },
+      {
+        "people": [
+          "Bob",
+          "Charlie"
+        ],
+        "score": 3,
+        "section": "Documentation",
+        "task": "B task",
+        "type": "Documentation"
+      },
+      {
+        "people": [],
+        "score": 5,
+        "section": "Documentation",
+        "task": "C task",
+        "type": "Documentation"
+      },
+      {
+        "people": [
+          "Charlie",
+          "Alice"
+        ],
+        "score": 5,
+        "section": "Documentation",
+        "task": "D task",
+        "type": "Documentation"
+      },
+      {
+        "people": [
+          ""
+        ],
+        "score": 5,
+        "section": "Documentation",
+        "task": "E task",
+        "type": "Documentation"
+      },
+      {
+        "people": [
+          ""
+        ],
+        "score": 5,
+        "section": "Another section",
+        "task": "P task",
+        "type": "Another section"
+      },
+      {
+        "people": [
+          ""
+        ],
+        "score": 5,
+        "section": "Another section",
+        "task": "Q task",
+        "type": "Another section"
+      },
+      {
+        "people": [
+          ""
+        ],
+        "score": 5,
+        "section": "Another section",
+        "task": "R task",
+        "type": "Another section"
+      }
+    ],
+    "title": "Adding journey diagram functionality to mermaid",
+    "type": "journey"
+  }
+}

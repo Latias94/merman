@@ -1,0 +1,58 @@
+{
+  "diagramType": "journey",
+  "model": {
+    "accDescr": "A user journey for family shopping",
+    "accTitle": "Shopping",
+    "actors": [
+      "Child",
+      "Dad",
+      "Mum"
+    ],
+    "sections": [
+      "Journey to the shops",
+      "Do shopping"
+    ],
+    "tasks": [
+      {
+        "people": [
+          "Dad"
+        ],
+        "score": 5,
+        "section": "Journey to the shops",
+        "task": "Get car keys",
+        "type": "Journey to the shops"
+      },
+      {
+        "people": [
+          "Dad",
+          "Mum",
+          "Child"
+        ],
+        "score": 3,
+        "section": "Journey to the shops",
+        "task": "Go to car",
+        "type": "Journey to the shops"
+      },
+      {
+        "people": [
+          "Dad"
+        ],
+        "score": 4,
+        "section": "Journey to the shops",
+        "task": "Drive to supermarket",
+        "type": "Journey to the shops"
+      },
+      {
+        "people": [
+          "Mum"
+        ],
+        "score": 5,
+        "section": "Do shopping",
+        "task": "Go shopping",
+        "type": "Do shopping"
+      }
+    ],
+    "title": null,
+    "type": "journey"
+  }
+}

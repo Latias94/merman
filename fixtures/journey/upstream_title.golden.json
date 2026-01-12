@@ -1,0 +1,12 @@
+{
+  "diagramType": "journey",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "actors": [],
+    "sections": [],
+    "tasks": [],
+    "title": "Adding journey diagram functionality to mermaid",
+    "type": "journey"
+  }
+}
