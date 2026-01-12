@@ -17,7 +17,7 @@ Baseline: Mermaid `@11.12.2`.
   - `axisFormat <fmt>` (stored, not interpreted in Phase 1)
   - `tickInterval <interval>` (stored, not interpreted in Phase 1)
   - `includes <list>`
-  - `excludes <list>` (supports `weekends`, weekday names, `YYYY-MM-DD`)
+  - `excludes <list>` (stored as lowercased tokens like Mermaid; commonly includes `weekends`, weekday names, `YYYY-MM-DD`, and Mermaid also accepts tokens like `weekdays`)
   - `weekday <name>` / `weekend <friday|saturday>`
   - accessibility:
     - `accTitle: ...`
