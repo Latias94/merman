@@ -1,0 +1,60 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "axisFormat": "",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
+    "displayMode": "",
+    "excludes": [
+      "weekends",
+      "2019-02-06",
+      "friday"
+    ],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
+    "sections": [
+      "full ending task on last day"
+    ],
+    "tasks": [
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2019-02-18T00:00:00.000",
+        "id": "id6",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
+        "raw": {
+          "data": ": id6,2019-02-13,2d",
+          "endTime": {
+            "data": "2d"
+          },
+          "startTime": {
+            "startData": "2019-02-13",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": "2019-02-15T00:00:00.000",
+        "section": "full ending task on last day",
+        "startTime": "2019-02-13T00:00:00.000",
+        "task": "test6",
+        "type": "full ending task on last day",
+        "vert": false
+      }
+    ],
+    "tickInterval": null,
+    "title": "Ignore weekends - full ending task on last day",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
+  }
+}

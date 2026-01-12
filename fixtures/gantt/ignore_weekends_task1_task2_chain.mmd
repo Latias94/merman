@@ -1,0 +1,8 @@
+gantt
+  title Ignore weekends - after chain (1d -> 2d)
+  dateFormat YYYY-MM-DD
+  excludes weekends 2019-02-06,friday
+
+  section weekends skip test
+  test1: id1,2019-02-01,1d
+  test2: id2,after id1,2d

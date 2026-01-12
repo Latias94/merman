@@ -1,0 +1,8 @@
+gantt
+  title Ignore weekends - after fixed end (1d)
+  dateFormat YYYY-MM-DD
+  excludes weekends 2019-02-06,friday
+
+  section weekends skip test
+  test4: id4,2019-02-01,2019-02-20
+  test5: id5,after id4,1d

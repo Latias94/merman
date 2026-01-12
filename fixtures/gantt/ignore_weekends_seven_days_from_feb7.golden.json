@@ -1,0 +1,60 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "axisFormat": "",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
+    "displayMode": "",
+    "excludes": [
+      "weekends",
+      "2019-02-06",
+      "friday"
+    ],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
+    "sections": [
+      "weekends skip test"
+    ],
+    "tasks": [
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2019-02-20T00:00:00.000",
+        "id": "id3",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
+        "raw": {
+          "data": ": id3,2019-02-07,7d",
+          "endTime": {
+            "data": "7d"
+          },
+          "startTime": {
+            "startData": "2019-02-07",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": "2019-02-20T00:00:00.000",
+        "section": "weekends skip test",
+        "startTime": "2019-02-07T00:00:00.000",
+        "task": "test3",
+        "type": "weekends skip test",
+        "vert": false
+      }
+    ],
+    "tickInterval": null,
+    "title": "Ignore weekends - 7d from 2019-02-07",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
+  }
+}
