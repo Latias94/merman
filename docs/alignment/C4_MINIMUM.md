@@ -73,3 +73,6 @@ compatibility at the pinned baseline tag.
 
 - Relationships are de-duplicated by `(from,to)` and later statements override earlier ones,
   matching Mermaid’s `c4Db.js` behavior.
+- `Enterprise_Boundary` / `System_Boundary` / `Container_Boundary` inject a fixed `type` (respectively
+  `ENTERPRISE` / `SYSTEM` / `CONTAINER`) into the boundary object, matching Mermaid’s grammar splice.
+- Deployment nodes ignore the `sprite` argument (`c4Db.js` accepts it but does not store it).

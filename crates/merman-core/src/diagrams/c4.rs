@@ -474,6 +474,7 @@ fn parse_c4_impl(code: &str, meta: &ParseMetadata) -> Result<Value> {
     db.set_c4_type(header, &meta.effective_config);
 
     while let Some(raw) = lines.next() {
+        let raw = strip_inline_comment(raw);
         let t = raw.trim();
         if t.is_empty() {
             continue;
@@ -603,6 +604,25 @@ fn parse_c4_impl(code: &str, meta: &ParseMetadata) -> Result<Value> {
     }
 
     Ok(db.to_model(meta))
+}
+
+fn strip_inline_comment(line: &str) -> String {
+    let mut in_quotes = false;
+    let mut idx = 0usize;
+    let bytes = line.as_bytes();
+    while idx < bytes.len() {
+        let b = bytes[idx];
+        if b == b'"' {
+            in_quotes = !in_quotes;
+            idx += 1;
+            continue;
+        }
+        if !in_quotes && b == b'%' && idx + 1 < bytes.len() && bytes[idx + 1] == b'%' {
+            return line[..idx].to_string();
+        }
+        idx += 1;
+    }
+    line.to_string()
 }
 
 fn is_direction_stmt(t: &str) -> bool {
@@ -1154,5 +1174,115 @@ Node(n1, "Node", "type", "descr", $sprite="users") {
         );
         assert_eq!(model["boundaries"].as_array().unwrap().len(), 2);
         assert!(model["boundaries"][1].get("sprite").is_none());
+    }
+
+    #[test]
+    fn c4_boundary_brace_can_be_on_next_line() {
+        let model = parse(
+            r#"C4Context
+Boundary(b1, "B")
+{
+  Person(p1, "P")
+}
+"#,
+        );
+        assert_eq!(model["boundaries"].as_array().unwrap().len(), 2);
+        assert_eq!(model["boundaries"][1]["alias"], json!("b1"));
+        assert_eq!(model["shapes"].as_array().unwrap().len(), 1);
+        assert_eq!(model["shapes"][0]["parentBoundary"], json!("b1"));
+    }
+
+    #[test]
+    fn c4_nested_boundaries_keep_parent_boundary_correct() {
+        let model = parse(
+            r#"C4Context
+Enterprise_Boundary(ent, "Enterprise") {
+  System_Boundary(sys, "System") {
+    Person(p1, "P")
+  }
+  Person(p2, "P2")
+}
+"#,
+        );
+
+        assert_eq!(model["boundaries"].as_array().unwrap().len(), 3);
+        assert_eq!(model["boundaries"][1]["alias"], json!("ent"));
+        assert_eq!(model["boundaries"][1]["type"]["text"], json!("ENTERPRISE"));
+        assert_eq!(model["boundaries"][1]["parentBoundary"], json!("global"));
+
+        assert_eq!(model["boundaries"][2]["alias"], json!("sys"));
+        assert_eq!(model["boundaries"][2]["type"]["text"], json!("SYSTEM"));
+        assert_eq!(model["boundaries"][2]["parentBoundary"], json!("ent"));
+
+        assert_eq!(model["shapes"].as_array().unwrap().len(), 2);
+        assert_eq!(model["shapes"][0]["alias"], json!("p1"));
+        assert_eq!(model["shapes"][0]["parentBoundary"], json!("sys"));
+        assert_eq!(model["shapes"][1]["alias"], json!("p2"));
+        assert_eq!(model["shapes"][1]["parentBoundary"], json!("ent"));
+    }
+
+    #[test]
+    fn c4_container_boundary_injects_container_type() {
+        let model = parse(
+            r#"C4Container
+Container_Boundary(cb, "CB") {
+  Container(c1, "C1", "Tech", "Desc")
+}
+"#,
+        );
+        assert_eq!(model["boundaries"].as_array().unwrap().len(), 2);
+        assert_eq!(model["boundaries"][1]["alias"], json!("cb"));
+        assert_eq!(model["boundaries"][1]["type"]["text"], json!("CONTAINER"));
+        assert_eq!(model["shapes"].as_array().unwrap().len(), 1);
+        assert_eq!(model["shapes"][0]["parentBoundary"], json!("cb"));
+    }
+
+    #[test]
+    fn c4_nested_nodes_push_and_pop_like_boundaries() {
+        let model = parse(
+            r#"C4Deployment
+Node(n1, "N1") {
+  Node_L(n2, "N2") {
+    Person(p1, "P1")
+  }
+  Person(p2, "P2")
+}
+"#,
+        );
+        assert_eq!(model["boundaries"].as_array().unwrap().len(), 3);
+        assert_eq!(model["boundaries"][1]["alias"], json!("n1"));
+        assert_eq!(model["boundaries"][1]["nodeType"], json!("node"));
+        assert_eq!(model["boundaries"][2]["alias"], json!("n2"));
+        assert_eq!(model["boundaries"][2]["nodeType"], json!("nodeL"));
+        assert_eq!(model["boundaries"][2]["parentBoundary"], json!("n1"));
+
+        assert_eq!(model["shapes"].as_array().unwrap().len(), 2);
+        assert_eq!(model["shapes"][0]["alias"], json!("p1"));
+        assert_eq!(model["shapes"][0]["parentBoundary"], json!("n2"));
+        assert_eq!(model["shapes"][1]["alias"], json!("p2"));
+        assert_eq!(model["shapes"][1]["parentBoundary"], json!("n1"));
+    }
+
+    #[test]
+    fn c4_update_layout_config_accepts_kv_objects() {
+        let model = parse(
+            r#"C4Context
+UpdateLayoutConfig($c4ShapeInRow="1", $c4BoundaryInRow="1")
+"#,
+        );
+        assert_eq!(model["layout"]["c4ShapeInRow"], json!(1));
+        assert_eq!(model["layout"]["c4BoundaryInRow"], json!(1));
+    }
+
+    #[test]
+    fn c4_update_macros_are_noop_when_target_missing() {
+        let model = parse(
+            r#"C4Context
+UpdateElementStyle(missing, $bgColor="red")
+UpdateRelStyle(a, b, $textColor="red")
+"#,
+        );
+        assert_eq!(model["shapes"].as_array().unwrap().len(), 0);
+        assert_eq!(model["rels"].as_array().unwrap().len(), 0);
     }
 }

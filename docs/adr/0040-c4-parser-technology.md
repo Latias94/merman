@@ -38,6 +38,8 @@ Implement C4 parsing in `merman-core` as a handwritten macro parser plus a DB-li
   `merman` mirrors this behavior in the headless parser for parity.
 - Mermaid’s grammar includes `direction TB|BT|LR|RL`. The upstream C4 DB does not expose a direction
   setter; `merman` accepts the statement as a no-op to avoid unnecessary parse failures.
+- Mermaid’s `addDeploymentNode(...)` signature includes `sprite`, but the implementation does not
+  store it. `merman` ignores `sprite` on deployment nodes for parity.
 
 ## Consequences
 
@@ -45,4 +47,3 @@ Implement C4 parsing in `merman-core` as a handwritten macro parser plus a DB-li
   (SVG, layout routing, theme palette) is out of scope for this phase.
 - If C4 grammar evolves to require exact token-stream behavior (e.g., escaping rules inside strings),
   revisit implementing a dedicated lexer.
-
