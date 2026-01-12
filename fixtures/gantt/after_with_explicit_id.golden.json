@@ -1,0 +1,85 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "axisFormat": "",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
+    "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
+    "sections": [
+      "testa1"
+    ],
+    "tasks": [
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2013-01-15T00:00:00.000",
+        "id": "id1",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
+        "raw": {
+          "data": ": id1,2013-01-01,2w",
+          "endTime": {
+            "data": "2w"
+          },
+          "startTime": {
+            "startData": "2013-01-01",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "testa1",
+        "startTime": "2013-01-01T00:00:00.000",
+        "task": "test1",
+        "type": "testa1",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2013-01-16T00:00:00.000",
+        "id": "id2",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "id1",
+        "processed": true,
+        "raw": {
+          "data": ": id2,after id1,1d",
+          "endTime": {
+            "data": "1d"
+          },
+          "startTime": {
+            "startData": "after id1",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "testa1",
+        "startTime": "2013-01-15T00:00:00.000",
+        "task": "test2",
+        "type": "testa1",
+        "vert": false
+      }
+    ],
+    "tickInterval": null,
+    "title": "After with explicit id",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
+  }
+}

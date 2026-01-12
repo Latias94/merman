@@ -1,0 +1,56 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "axisFormat": "",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
+    "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
+    "sections": [
+      "testa1"
+    ],
+    "tasks": [
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2013-01-05T00:00:00.000",
+        "id": "task1",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
+        "raw": {
+          "data": ": 2013-01-01,4d",
+          "endTime": {
+            "data": "4d"
+          },
+          "startTime": {
+            "startData": "2013-01-01",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "testa1",
+        "startTime": "2013-01-01T00:00:00.000",
+        "task": "test1",
+        "type": "testa1",
+        "vert": false
+      }
+    ],
+    "tickInterval": null,
+    "title": "Duration without id",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
+  }
+}
