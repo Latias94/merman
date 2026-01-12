@@ -1,0 +1,56 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "axisFormat": "",
+    "clickEvents": {},
+    "dateFormat": "x",
+    "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
+    "sections": [
+      "T"
+    ],
+    "tasks": [
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": -500,
+        "id": "id1",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
+        "raw": {
+          "data": ": id1,-1000,500ms",
+          "endTime": {
+            "data": "500ms"
+          },
+          "startTime": {
+            "startData": "-1000",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "T",
+        "startTime": -1000,
+        "task": "t1",
+        "type": "T",
+        "vert": false
+      }
+    ],
+    "tickInterval": null,
+    "title": "Negative epoch ms (dateFormat x)",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
+  }
+}
