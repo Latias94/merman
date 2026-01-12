@@ -1,0 +1,114 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "axisFormat": "",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
+    "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
+    "sections": [
+      "A"
+    ],
+    "tasks": [
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2013-01-10T00:00:00.000",
+        "id": "a",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
+        "raw": {
+          "data": ": a, after b, until c",
+          "endTime": {
+            "data": "until c"
+          },
+          "startTime": {
+            "startData": "after b",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "A",
+        "startTime": "2013-01-03T00:00:00.000",
+        "task": "task1",
+        "type": "A",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2013-01-03T00:00:00.000",
+        "id": "b",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "a",
+        "processed": true,
+        "raw": {
+          "data": ": b, 2013-01-01, 2d",
+          "endTime": {
+            "data": "2d"
+          },
+          "startTime": {
+            "startData": "2013-01-01",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "A",
+        "startTime": "2013-01-01T00:00:00.000",
+        "task": "task2",
+        "type": "A",
+        "vert": false
+      },
+      {
+        "active": false,
+        "classes": [],
+        "crit": false,
+        "done": false,
+        "endTime": "2013-01-11T00:00:00.000",
+        "id": "c",
+        "manualEndTime": false,
+        "milestone": false,
+        "order": 2,
+        "prevTaskId": "b",
+        "processed": true,
+        "raw": {
+          "data": ": c, 2013-01-10, 1d",
+          "endTime": {
+            "data": "1d"
+          },
+          "startTime": {
+            "startData": "2013-01-10",
+            "type": "getStartDate"
+          }
+        },
+        "renderEndTime": null,
+        "section": "A",
+        "startTime": "2013-01-10T00:00:00.000",
+        "task": "task3",
+        "type": "A",
+        "vert": false
+      }
+    ],
+    "tickInterval": null,
+    "title": "Forward refs after/until complex",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
+  }
+}
