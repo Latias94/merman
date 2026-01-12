@@ -1,0 +1,12 @@
+C4Context
+title Container diagram for Internet Banking Container
+Container(ContainerAA, "Internet Banking Container", "Technology", "Allows customers to view information about their bank accounts, and make payments.")
+ContainerDb(ContainerDbA, "Container DB", "Postgres", "Database container")
+ContainerQueue(ContainerQueueA, "Container Queue", "RabbitMQ", "Queue container")
+Container_Ext(ContainerExtA, "External Container", "Tech", "External container")
+ContainerDb_Ext(ContainerDbExtA, "External Container DB", "Tech", "External database container")
+ContainerQueue_Ext(ContainerQueueExtA, "External Container Queue", "Tech", "External queue container")
+Container(ContainerSprite, $sprite="users")
+Container(ContainerLink, $link="https://github.com/mermaidjs")
+Container(ContainerTags, $tags="tag1,tag2")
+

@@ -1,0 +1,136 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
+        "type": {
+          "text": "global"
+        }
+      },
+      {
+        "alias": "b1",
+        "label": {
+          "text": "BankBoundary"
+        },
+        "parentBoundary": "global",
+        "type": {
+          "text": "system"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "bType",
+        "label": {
+          "text": ""
+        },
+        "parentBoundary": "global",
+        "type": {
+          "text": "company"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "bLink",
+        "label": {
+          "text": {
+            "link": "https://github.com/mermaidjs"
+          }
+        },
+        "parentBoundary": "global",
+        "type": {
+          "text": "system"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "bTags",
+        "label": {
+          "text": {
+            "tags": "tag1,tag2"
+          }
+        },
+        "parentBoundary": "global",
+        "type": {
+          "text": "system"
+        },
+        "wrap": false
+      }
+    ],
+    "c4Type": "C4Context",
+    "layout": {
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
+    },
+    "rels": [],
+    "shapes": [
+      {
+        "alias": "SystemAA",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "Internet Banking System"
+        },
+        "parentBoundary": "b1",
+        "typeC4Shape": {
+          "text": "system"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "s1",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "S1"
+        },
+        "parentBoundary": "bType",
+        "typeC4Shape": {
+          "text": "system"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "s2",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "S2"
+        },
+        "parentBoundary": "bLink",
+        "typeC4Shape": {
+          "text": "system"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "s3",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "S3"
+        },
+        "parentBoundary": "bTags",
+        "typeC4Shape": {
+          "text": "system"
+        },
+        "wrap": false
+      }
+    ],
+    "title": "System Context diagram for Internet Banking System",
+    "type": "c4",
+    "wrap": false
+  }
+}

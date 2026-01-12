@@ -1,0 +1,164 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
+        "type": {
+          "text": "global"
+        }
+      }
+    ],
+    "c4Type": "C4Context",
+    "layout": {
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
+    },
+    "rels": [],
+    "shapes": [
+      {
+        "alias": "SystemAA",
+        "descr": {
+          "text": "Allows customers to view information about their bank accounts, and make payments."
+        },
+        "label": {
+          "text": "Internet Banking System"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "system"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "SystemDbA",
+        "descr": {
+          "text": "Database system"
+        },
+        "label": {
+          "text": "System DB"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "system_db"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "SystemQueueA",
+        "descr": {
+          "text": "Queue system"
+        },
+        "label": {
+          "text": "System Queue"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "system_queue"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "SystemExtA",
+        "descr": {
+          "text": "External system"
+        },
+        "label": {
+          "text": "External System"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "external_system"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "SystemDbExtA",
+        "descr": {
+          "text": "External database system"
+        },
+        "label": {
+          "text": "External System DB"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "external_system_db"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "SystemQueueExtA",
+        "descr": {
+          "text": "External queue system"
+        },
+        "label": {
+          "text": "External System Queue"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "external_system_queue"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "SystemSprite",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": {
+            "sprite": "users"
+          }
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "system"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "SystemLink",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": {
+            "link": "https://github.com/mermaidjs"
+          }
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "system"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "SystemTags",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": {
+            "tags": "tag1,tag2"
+          }
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "system"
+        },
+        "wrap": false
+      }
+    ],
+    "title": "System Context diagram for Internet Banking System",
+    "type": "c4",
+    "wrap": false
+  }
+}

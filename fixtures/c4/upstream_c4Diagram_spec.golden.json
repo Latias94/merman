@@ -1,0 +1,60 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
+        "type": {
+          "text": "global"
+        }
+      }
+    ],
+    "c4Type": "C4Context",
+    "layout": {
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
+    },
+    "rels": [],
+    "shapes": [
+      {
+        "alias": "Person",
+        "descr": {
+          "text": "Person"
+        },
+        "label": {
+          "text": "Person"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "default",
+        "descr": {
+          "text": "default"
+        },
+        "label": {
+          "text": "default"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      }
+    ],
+    "title": "title",
+    "type": "c4",
+    "wrap": false
+  }
+}
