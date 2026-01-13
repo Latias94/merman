@@ -356,6 +356,16 @@ where
         true
     }
 
+    pub fn remove_edge(&mut self, v: &str, w: &str, name: Option<&str>) -> bool {
+        let (v, w) = self.canonicalize_endpoints(v.to_string(), w.to_string());
+        let key = EdgeKey {
+            v,
+            w,
+            name: self.canonicalize_name(name.map(|s| s.to_string())),
+        };
+        self.remove_edge_key(&key)
+    }
+
     pub fn remove_node(&mut self, id: &str) -> bool {
         let Some(idx) = self.node_index.remove(id) else {
             return false;
@@ -576,6 +586,72 @@ where
 pub mod alg {
     use super::Graph;
     use std::collections::{BTreeMap, BTreeSet, VecDeque};
+
+    pub fn preorder<N, E, G>(g: &Graph<N, E, G>, roots: &[&str]) -> Vec<String>
+    where
+        N: Default + 'static,
+        E: Default + 'static,
+        G: Default,
+    {
+        fn dfs<N, E, G>(
+            g: &Graph<N, E, G>,
+            v: &str,
+            visited: &mut BTreeSet<String>,
+            out: &mut Vec<String>,
+        ) where
+            N: Default + 'static,
+            E: Default + 'static,
+            G: Default,
+        {
+            if !visited.insert(v.to_string()) {
+                return;
+            }
+            out.push(v.to_string());
+            for w in g.successors(v) {
+                dfs(g, w, visited, out);
+            }
+        }
+
+        let mut visited: BTreeSet<String> = BTreeSet::new();
+        let mut out: Vec<String> = Vec::new();
+        for r in roots {
+            dfs(g, r, &mut visited, &mut out);
+        }
+        out
+    }
+
+    pub fn postorder<N, E, G>(g: &Graph<N, E, G>, roots: &[&str]) -> Vec<String>
+    where
+        N: Default + 'static,
+        E: Default + 'static,
+        G: Default,
+    {
+        fn dfs<N, E, G>(
+            g: &Graph<N, E, G>,
+            v: &str,
+            visited: &mut BTreeSet<String>,
+            out: &mut Vec<String>,
+        ) where
+            N: Default + 'static,
+            E: Default + 'static,
+            G: Default,
+        {
+            if !visited.insert(v.to_string()) {
+                return;
+            }
+            for w in g.successors(v) {
+                dfs(g, w, visited, out);
+            }
+            out.push(v.to_string());
+        }
+
+        let mut visited: BTreeSet<String> = BTreeSet::new();
+        let mut out: Vec<String> = Vec::new();
+        for r in roots {
+            dfs(g, r, &mut visited, &mut out);
+        }
+        out
+    }
 
     pub fn components<N, E, G>(g: &Graph<N, E, G>) -> Vec<Vec<String>>
     where
