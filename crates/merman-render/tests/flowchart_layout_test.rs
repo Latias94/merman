@@ -119,6 +119,66 @@ fn flowchart_layout_includes_clusters_with_title_placeholders() {
         // Cluster width should be large enough to fit the title placeholder.
         assert!(c.width + 1e-6 >= c.title_label.width);
     }
+
+    fn rect_from_layout_node(n: &merman_render::model::LayoutNode) -> (f64, f64, f64, f64) {
+        let hw = n.width / 2.0;
+        let hh = n.height / 2.0;
+        (n.x - hw, n.y - hh, n.x + hw, n.y + hh)
+    }
+
+    fn rect_from_layout_cluster(c: &merman_render::model::LayoutCluster) -> (f64, f64, f64, f64) {
+        let hw = c.width / 2.0;
+        let hh = c.height / 2.0;
+        (c.x - hw, c.y - hh, c.x + hw, c.y + hh)
+    }
+
+    let nodes_by_id = layout
+        .nodes
+        .iter()
+        .map(|n| (n.id.as_str(), n))
+        .collect::<std::collections::HashMap<_, _>>();
+    let clusters_by_id = layout
+        .clusters
+        .iter()
+        .map(|c| (c.id.as_str(), c))
+        .collect::<std::collections::HashMap<_, _>>();
+
+    let subgraphs = out
+        .semantic
+        .get("subgraphs")
+        .and_then(|v| v.as_array())
+        .expect("semantic subgraphs");
+    for sg in subgraphs {
+        let id = sg.get("id").and_then(|v| v.as_str()).expect("subgraph id");
+        let members = sg
+            .get("nodes")
+            .and_then(|v| v.as_array())
+            .expect("subgraph nodes");
+        let cluster = clusters_by_id.get(id).expect("cluster output");
+        let (cmin_x, cmin_y, cmax_x, cmax_y) = rect_from_layout_cluster(cluster);
+
+        for m in members {
+            let mid = m.as_str().expect("member id");
+
+            let (min_x, min_y, max_x, max_y) = if let Some(child_cluster) = clusters_by_id.get(mid)
+            {
+                rect_from_layout_cluster(child_cluster)
+            } else if let Some(node) = nodes_by_id.get(mid) {
+                rect_from_layout_node(node)
+            } else {
+                continue;
+            };
+
+            assert!(
+                min_x + 1e-6 >= cmin_x && max_x <= cmax_x + 1e-6,
+                "member {mid} should fit horizontally in cluster {id}"
+            );
+            assert!(
+                min_y + 1e-6 >= cmin_y && max_y <= cmax_y + 1e-6,
+                "member {mid} should fit vertically in cluster {id}"
+            );
+        }
+    }
 }
 
 #[test]

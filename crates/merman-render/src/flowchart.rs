@@ -95,6 +95,7 @@ pub fn layout_flowchart_v2(
     )
     .unwrap_or(0.0);
     let title_total_margin = title_margin_top + title_margin_bottom;
+    let y_shift = title_total_margin / 2.0;
 
     let font_family = config_string(effective_config, &["fontFamily"]);
     let font_size = config_f64(effective_config, &["fontSize"]).unwrap_or(16.0);
@@ -115,7 +116,8 @@ pub fn layout_flowchart_v2(
         rankdir: rank_dir_from_flow(&model.direction),
         nodesep,
         ranksep,
-        edgesep: 10.0,
+        // Dagre layout defaults `edgesep` to 20 when unspecified.
+        edgesep: 20.0,
         ..Default::default()
     });
 
@@ -166,6 +168,8 @@ pub fn layout_flowchart_v2(
             width: lw,
             height: lh,
             labelpos: LabelPos::C,
+            // Dagre layout defaults `labeloffset` to 10 when unspecified.
+            labeloffset: 10.0,
             minlen: e.length.max(1),
             weight: 1.0,
             ..Default::default()
@@ -175,6 +179,51 @@ pub fn layout_flowchart_v2(
 
     dugong::layout(&mut g);
 
+    #[derive(Debug, Clone, Copy)]
+    struct Rect {
+        min_x: f64,
+        min_y: f64,
+        max_x: f64,
+        max_y: f64,
+    }
+
+    impl Rect {
+        fn from_center(x: f64, y: f64, width: f64, height: f64) -> Self {
+            let hw = width / 2.0;
+            let hh = height / 2.0;
+            Self {
+                min_x: x - hw,
+                min_y: y - hh,
+                max_x: x + hw,
+                max_y: y + hh,
+            }
+        }
+
+        fn width(&self) -> f64 {
+            self.max_x - self.min_x
+        }
+
+        fn height(&self) -> f64 {
+            self.max_y - self.min_y
+        }
+
+        fn center(&self) -> (f64, f64) {
+            (
+                (self.min_x + self.max_x) / 2.0,
+                (self.min_y + self.max_y) / 2.0,
+            )
+        }
+
+        fn union(&mut self, other: Rect) {
+            self.min_x = self.min_x.min(other.min_x);
+            self.min_y = self.min_y.min(other.min_y);
+            self.max_x = self.max_x.max(other.max_x);
+            self.max_y = self.max_y.max(other.max_y);
+        }
+    }
+
+    let mut leaf_rects: std::collections::HashMap<String, Rect> = std::collections::HashMap::new();
+
     let mut out_nodes: Vec<LayoutNode> = Vec::new();
     for n in &model.nodes {
         let Some(label) = g.node(&n.id) else {
@@ -182,10 +231,17 @@ pub fn layout_flowchart_v2(
                 message: format!("missing layout node {}", n.id),
             });
         };
+        let x = label.x.unwrap_or(0.0);
+        let y = label.y.unwrap_or(0.0);
+        leaf_rects.insert(
+            n.id.clone(),
+            Rect::from_center(x, y, label.width, label.height),
+        );
         out_nodes.push(LayoutNode {
             id: n.id.clone(),
-            x: label.x.unwrap_or(0.0),
-            y: label.y.unwrap_or(0.0),
+            x,
+            // Mermaid shifts regular nodes by `subGraphTitleTotalMargin / 2` after Dagre layout.
+            y: y + y_shift,
             width: label.width,
             height: label.height,
             is_cluster: false,
@@ -193,28 +249,126 @@ pub fn layout_flowchart_v2(
     }
 
     let mut clusters: Vec<LayoutCluster> = Vec::new();
+
+    let mut subgraphs_by_id: std::collections::HashMap<String, FlowSubgraph> =
+        std::collections::HashMap::new();
     for sg in &model.subgraphs {
-        let Some(node) = g.node(&sg.id) else {
+        subgraphs_by_id.insert(sg.id.clone(), sg.clone());
+    }
+
+    let mut cluster_rects: std::collections::HashMap<String, Rect> =
+        std::collections::HashMap::new();
+    let mut visiting: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    fn compute_cluster_rect(
+        id: &str,
+        subgraphs_by_id: &std::collections::HashMap<String, FlowSubgraph>,
+        leaf_rects: &std::collections::HashMap<String, Rect>,
+        cluster_rects: &mut std::collections::HashMap<String, Rect>,
+        visiting: &mut std::collections::HashSet<String>,
+        measurer: &dyn TextMeasurer,
+        text_style: &TextStyle,
+        cluster_padding: f64,
+        title_total_margin: f64,
+    ) -> Result<Rect> {
+        if let Some(r) = cluster_rects.get(id).copied() {
+            return Ok(r);
+        }
+        if !visiting.insert(id.to_string()) {
             return Err(Error::InvalidModel {
-                message: format!("missing layout subgraph node {}", sg.id),
+                message: format!("cycle in subgraph membership involving {id}"),
+            });
+        }
+
+        let Some(sg) = subgraphs_by_id.get(id) else {
+            return Err(Error::InvalidModel {
+                message: format!("missing subgraph definition for {id}"),
             });
         };
 
-        let cx = node.x.unwrap_or(0.0);
-        let cy = node.y.unwrap_or(0.0);
+        let mut content: Option<Rect> = None;
+        for member in &sg.nodes {
+            let member_rect = if let Some(r) = leaf_rects.get(member).copied() {
+                Some(r)
+            } else if subgraphs_by_id.contains_key(member) {
+                Some(compute_cluster_rect(
+                    member,
+                    subgraphs_by_id,
+                    leaf_rects,
+                    cluster_rects,
+                    visiting,
+                    measurer,
+                    text_style,
+                    cluster_padding,
+                    title_total_margin,
+                )?)
+            } else {
+                None
+            };
+
+            if let Some(r) = member_rect {
+                if let Some(ref mut cur) = content {
+                    cur.union(r);
+                } else {
+                    content = Some(r);
+                }
+            }
+        }
+
+        let title_metrics = measurer.measure(&sg.title, text_style);
+        let mut rect = if let Some(r) = content {
+            r
+        } else {
+            Rect::from_center(
+                0.0,
+                0.0,
+                (title_metrics.width + cluster_padding * 2.0).max(1.0),
+                (title_metrics.height + cluster_padding * 2.0).max(1.0),
+            )
+        };
+
+        // Expand to provide the cluster's internal padding.
+        rect.min_x -= cluster_padding;
+        rect.max_x += cluster_padding;
+        rect.min_y -= cluster_padding;
+        rect.max_y += cluster_padding;
+
+        // Ensure the cluster is wide enough to fit the title.
+        let min_width = title_metrics.width + cluster_padding;
+        if rect.width() < min_width {
+            let (cx, cy) = rect.center();
+            rect = Rect::from_center(cx, cy, min_width, rect.height());
+        }
+
+        // Extend height to reserve space for subgraph title margins (Mermaid does this after layout).
+        if title_total_margin > 0.0 {
+            let (cx, cy) = rect.center();
+            rect = Rect::from_center(cx, cy, rect.width(), rect.height() + title_total_margin);
+        }
+
+        visiting.remove(id);
+        cluster_rects.insert(id.to_string(), rect);
+        Ok(rect)
+    }
+
+    for sg in &model.subgraphs {
+        let rect = compute_cluster_rect(
+            &sg.id,
+            &subgraphs_by_id,
+            &leaf_rects,
+            &mut cluster_rects,
+            &mut visiting,
+            measurer,
+            &text_style,
+            cluster_padding,
+            title_total_margin,
+        )?;
+        let (cx, cy) = rect.center();
 
         let title_metrics = measurer.measure(&sg.title, &text_style);
-        let base_width = node.width;
-        let base_height = node.height;
-
-        // Mermaid cluster rendering ensures the box is large enough to fit the title and then
-        // applies subgraph title margins by extending the box height.
-        let width = base_width.max(title_metrics.width + cluster_padding);
-        let height = base_height + title_total_margin;
-
         let title_label = LayoutLabel {
             x: cx,
-            y: cy - height / 2.0 + title_margin_top + title_metrics.height / 2.0,
+            y: cy - rect.height() / 2.0 + title_margin_top + title_metrics.height / 2.0,
             width: title_metrics.width,
             height: title_metrics.height,
         };
@@ -223,8 +377,8 @@ pub fn layout_flowchart_v2(
             id: sg.id.clone(),
             x: cx,
             y: cy,
-            width,
-            height,
+            width: rect.width(),
+            height: rect.height(),
             title: sg.title.clone(),
             title_label,
             padding: cluster_padding,
@@ -235,9 +389,10 @@ pub fn layout_flowchart_v2(
         out_nodes.push(LayoutNode {
             id: sg.id.clone(),
             x: cx,
+            // Mermaid does not shift pure cluster nodes by `subGraphTitleTotalMargin / 2`.
             y: cy,
-            width,
-            height,
+            width: rect.width(),
+            height: rect.height(),
             is_cluster: true,
         });
     }
@@ -253,12 +408,17 @@ pub fn layout_flowchart_v2(
         let points = label
             .points
             .iter()
-            .map(|p| LayoutPoint { x: p.x, y: p.y })
+            .map(|p| LayoutPoint {
+                x: p.x,
+                // Mermaid shifts all edge points by `subGraphTitleTotalMargin / 2` after Dagre layout.
+                y: p.y + y_shift,
+            })
             .collect::<Vec<_>>();
         let label_pos = match (label.x, label.y) {
             (Some(x), Some(y)) if label.width > 0.0 || label.height > 0.0 => Some(LayoutLabel {
                 x,
-                y,
+                // Mermaid shifts edge label y by `subGraphTitleTotalMargin / 2` when positioning.
+                y: y + y_shift,
                 width: label.width,
                 height: label.height,
             }),
