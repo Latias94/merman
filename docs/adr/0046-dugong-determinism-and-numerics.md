@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -80,4 +80,3 @@ For invalid inputs (missing width/height, NaNs, etc.):
 - `dugong` numeric behavior stays close to JS Dagre by using `f64` and stable ordering.
 - Rendering parity can focus on text measurement and Mermaid-specific semantics rather than layout
   nondeterminism.
-

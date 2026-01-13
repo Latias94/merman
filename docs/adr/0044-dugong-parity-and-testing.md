@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -26,7 +26,9 @@ To avoid subjective drift, we need:
   - package: `@dagrejs/dagre@2.0.2`
   - commit: `ba986662394f8f3ed608717194e5958f3386ce01`
 - `dugong-graphlib` baseline is `@dagrejs/graphlib@2.2.4` (required by Dagre).
-  - If/when a local checkout is added, it must be pinned in `repo-ref/REPOS.lock.json`.
+  - commit: `380d5efa1f4ab0904539f046bdba583d14ac2add`
+  - if a local checkout is used, it lives under `repo-ref/graphlib` and is pinned in
+    `repo-ref/REPOS.lock.json` (not a git submodule).
 
 ### Public API compatibility
 
@@ -89,4 +91,3 @@ Those concerns are handled by `merman` via a headless rendering pipeline and plu
   separate and headless.
 - Exact Mermaid SVG parity remains dependent on faithful porting of Mermaid-specific rendering
   semantics and deterministic text measurement.
-

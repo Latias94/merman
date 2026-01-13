@@ -13,6 +13,12 @@
       "ref": "v2.0.2",
       "commit": "ba986662394f8f3ed608717194e5958f3386ce01"
     },
+    "graphlib": {
+      "path": "repo-ref/graphlib",
+      "url": "https://github.com/dagrejs/graphlib.git",
+      "ref": "v2.2.4",
+      "commit": "380d5efa1f4ab0904539f046bdba583d14ac2add"
+    },
     "dompurify": {
       "path": "repo-ref/dompurify",
       "url": "https://github.com/cure53/DOMPurify.git",
@@ -27,4 +33,3 @@
     }
   }
 }
-

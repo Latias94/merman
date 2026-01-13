@@ -9,10 +9,10 @@ Typical layout:
 
 - `repo-ref/mermaid` (Mermaid upstream)
 - `repo-ref/dagre` (Dagre upstream)
+- `repo-ref/graphlib` (Graphlib upstream)
 - `repo-ref/dompurify` (DOMPurify upstream)
 - `repo-ref/sanitize-url` (sanitize-url upstream)
 
 ## How to populate
 
 Clone each repository at the pinned commit shown in `repo-ref/REPOS.lock.json`.
-

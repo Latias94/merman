@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -95,4 +95,3 @@ Once `merman-render` exists:
 - `merman` can stay headless and UI-framework-agnostic while still enabling high-fidelity output.
 - Exact SVG parity depends on deterministic text measurement and faithful porting of Mermaid’s
   rendering semantics (shapes, markers, curves, cluster/subgraph behaviors).
-

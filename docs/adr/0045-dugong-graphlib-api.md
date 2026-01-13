@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -102,4 +102,3 @@ This is not part of the minimum API, but is a planned capability.
 - `dugong` can closely follow upstream Dagre algorithm structure without embedding a bespoke graph
   container.
 - Deterministic ordering guarantees make parity tests reproducible across platforms and runs.
-
