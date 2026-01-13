@@ -309,3 +309,54 @@ Source: `repo-ref/dagre/test/bundle-test.js`
 
 - `exports dagre` -> `crates/dugong/tests/bundle_test.rs::bundle_exports_expected_symbols`
 - `can do trivial layout` -> `crates/dugong/tests/bundle_test.rs::bundle_can_do_trivial_layout`
+
+Source: `repo-ref/dagre/test/position/bk-test.js`
+
+- `does not mark edges that have no conflict` -> `crates/dugong/tests/position_bk_test.rs::find_type1_conflicts_does_not_mark_edges_that_have_no_conflict`
+- `does not mark type-0 conflicts (no dummies)` -> `crates/dugong/tests/position_bk_test.rs::find_type1_conflicts_does_not_mark_type_0_conflicts_no_dummies`
+- `does not mark type-0 conflicts (a is dummy)` -> `crates/dugong/tests/position_bk_test.rs::find_type1_conflicts_does_not_mark_type_0_conflicts_a_is_dummy`
+- `does not mark type-0 conflicts (b is dummy)` -> `crates/dugong/tests/position_bk_test.rs::find_type1_conflicts_does_not_mark_type_0_conflicts_b_is_dummy`
+- `does not mark type-0 conflicts (c is dummy)` -> `crates/dugong/tests/position_bk_test.rs::find_type1_conflicts_does_not_mark_type_0_conflicts_c_is_dummy`
+- `does not mark type-0 conflicts (d is dummy)` -> `crates/dugong/tests/position_bk_test.rs::find_type1_conflicts_does_not_mark_type_0_conflicts_d_is_dummy`
+- `does mark type-1 conflicts (a is non-dummy)` -> `crates/dugong/tests/position_bk_test.rs::find_type1_conflicts_does_mark_type_1_conflicts_a_is_non_dummy`
+- `does mark type-1 conflicts (b is non-dummy)` -> `crates/dugong/tests/position_bk_test.rs::find_type1_conflicts_does_mark_type_1_conflicts_b_is_non_dummy`
+- `does mark type-1 conflicts (c is non-dummy)` -> `crates/dugong/tests/position_bk_test.rs::find_type1_conflicts_does_mark_type_1_conflicts_c_is_non_dummy`
+- `does mark type-1 conflicts (d is non-dummy)` -> `crates/dugong/tests/position_bk_test.rs::find_type1_conflicts_does_mark_type_1_conflicts_d_is_non_dummy`
+- `does not mark type-2 conflicts (all dummies)` -> `crates/dugong/tests/position_bk_test.rs::find_type1_conflicts_does_not_mark_type_2_conflicts_all_dummies`
+- `marks type-2 conflicts favoring border segments #1` -> `crates/dugong/tests/position_bk_test.rs::find_type2_conflicts_marks_type_2_conflicts_favoring_border_segments_1`
+- `marks type-2 conflicts favoring border segments #2` -> `crates/dugong/tests/position_bk_test.rs::find_type2_conflicts_marks_type_2_conflicts_favoring_border_segments_2`
+- `can test for a type-1 conflict regardless of edge orientation` -> `crates/dugong/tests/position_bk_test.rs::has_conflict_can_test_for_a_type_1_conflict_regardless_of_edge_orientation`
+- `works for multiple conflicts with the same node` -> `crates/dugong/tests/position_bk_test.rs::has_conflict_works_for_multiple_conflicts_with_the_same_node`
+- `Aligns with itself if the node has no adjacencies` -> `crates/dugong/tests/position_bk_test.rs::vertical_alignment_aligns_with_itself_if_the_node_has_no_adjacencies`
+- `Aligns with its sole adjacency` -> `crates/dugong/tests/position_bk_test.rs::vertical_alignment_aligns_with_its_sole_adjacency`
+- `aligns with its left median when possible` -> `crates/dugong/tests/position_bk_test.rs::vertical_alignment_aligns_with_its_left_median_when_possible`
+- `aligns correctly even regardless of node name / insertion order` -> `crates/dugong/tests/position_bk_test.rs::vertical_alignment_aligns_correctly_regardless_of_node_name_or_insertion_order`
+- `aligns with its right median when left is unavailable` -> `crates/dugong/tests/position_bk_test.rs::vertical_alignment_aligns_with_its_right_median_when_left_is_unavailable`
+- `aligns with neither median if both are unavailable` -> `crates/dugong/tests/position_bk_test.rs::vertical_alignment_aligns_with_neither_median_if_both_are_unavailable`
+- `aligns with the single median for an odd number of adjacencies` -> `crates/dugong/tests/position_bk_test.rs::vertical_alignment_aligns_with_the_single_median_for_an_odd_number_of_adjacencies`
+- `aligns blocks across multiple layers` -> `crates/dugong/tests/position_bk_test.rs::vertical_alignment_aligns_blocks_across_multiple_layers`
+- `places the center of a single node graph at origin (0,0)` -> `crates/dugong/tests/position_bk_test.rs::horizontal_compaction_places_the_center_of_a_single_node_graph_at_origin`
+- `separates adjacent nodes by specified node separation` -> `crates/dugong/tests/position_bk_test.rs::horizontal_compaction_separates_adjacent_nodes_by_specified_node_separation`
+- `separates adjacent edges by specified node separation` -> `crates/dugong/tests/position_bk_test.rs::horizontal_compaction_separates_adjacent_edges_by_specified_edge_separation`
+- `aligns the centers of nodes in the same block` -> `crates/dugong/tests/position_bk_test.rs::horizontal_compaction_aligns_the_centers_of_nodes_in_the_same_block`
+- `separates blocks with the appropriate separation` -> `crates/dugong/tests/position_bk_test.rs::horizontal_compaction_separates_blocks_with_the_appropriate_separation`
+- `separates classes with the appropriate separation` -> `crates/dugong/tests/position_bk_test.rs::horizontal_compaction_separates_classes_with_the_appropriate_separation`
+- `shifts classes by max sep from the adjacent block #1` -> `crates/dugong/tests/position_bk_test.rs::horizontal_compaction_shifts_classes_by_max_sep_from_the_adjacent_block_1`
+- `shifts classes by max sep from the adjacent block #2` -> `crates/dugong/tests/position_bk_test.rs::horizontal_compaction_shifts_classes_by_max_sep_from_the_adjacent_block_2`
+- `cascades class shift` -> `crates/dugong/tests/position_bk_test.rs::horizontal_compaction_cascades_class_shift`
+- `handles labelpos = l` -> `crates/dugong/tests/position_bk_test.rs::horizontal_compaction_handles_labelpos_l`
+- `handles labelpos = c` -> `crates/dugong/tests/position_bk_test.rs::horizontal_compaction_handles_labelpos_c`
+- `handles labelpos = r` -> `crates/dugong/tests/position_bk_test.rs::horizontal_compaction_handles_labelpos_r`
+- `aligns a single node` -> `crates/dugong/tests/position_bk_test.rs::align_coordinates_aligns_a_single_node`
+- `aligns multiple nodes` -> `crates/dugong/tests/position_bk_test.rs::align_coordinates_aligns_multiple_nodes`
+- `finds the alignment with the smallest width` -> `crates/dugong/tests/position_bk_test.rs::find_smallest_width_alignment_finds_the_alignment_with_the_smallest_width`
+- `takes node width into account` -> `crates/dugong/tests/position_bk_test.rs::find_smallest_width_alignment_takes_node_width_into_account`
+- `aligns a single node to the shared median value` -> `crates/dugong/tests/position_bk_test.rs::balance_aligns_a_single_node_to_the_shared_median_value`
+- `aligns a single node to the average of different median values` -> `crates/dugong/tests/position_bk_test.rs::balance_aligns_a_single_node_to_the_average_of_different_median_values`
+- `balances multiple nodes` -> `crates/dugong/tests/position_bk_test.rs::balance_balances_multiple_nodes`
+- `positions a single node at origin` -> `crates/dugong/tests/position_bk_test.rs::position_x_positions_a_single_node_at_origin`
+- `positions a single node block at origin` -> `crates/dugong/tests/position_bk_test.rs::position_x_positions_a_single_node_block_at_origin`
+- `positions a single node block at origin even when their sizes differ` -> `crates/dugong/tests/position_bk_test.rs::position_x_positions_a_single_node_block_at_origin_even_when_their_sizes_differ`
+- `centers a node if it is a predecessor of two same sized nodes` -> `crates/dugong/tests/position_bk_test.rs::position_x_centers_a_node_if_it_is_a_predecessor_of_two_same_sized_nodes`
+- `shifts blocks on both sides of aligned block` -> `crates/dugong/tests/position_bk_test.rs::position_x_shifts_blocks_on_both_sides_of_aligned_block`
+- `aligns inner segments` -> `crates/dugong/tests/position_bk_test.rs::position_x_aligns_inner_segments`
