@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Superseded by ADR 0043
 
 ## Context
 
@@ -66,25 +66,10 @@ Cons:
 
 ## Decision
 
-Adopt a staged strategy:
-
-1) Make **JS-backed embedded rendering** (Option B) the primary strategy for SVG parity.
-2) Keep Rust-native rendering (Option A) as a long-term effort, potentially replacing parts of the
-   JS-backed pipeline behind feature flags without changing the public API.
-
-Implementation direction:
-
-- Add a new workspace crate `merman-render` with a small, runtime-agnostic API surface:
-  - input: original Mermaid text + parsed/effective config (or a config override)
-  - output: SVG string + optional diagnostics (warnings, timing)
-- Add `merman-render-js` as an optional backend that embeds a JS engine and runs Mermaid `@11.12.2`.
-- Add renderer parity tests based on upstream SVG snapshots where available, or deterministic
-  “structural SVG checks” (e.g. stable IDs, required nodes/edges) when upstream does not snapshot.
+This ADR explored rendering strategies. The project direction is now a pure-Rust, headless approach
+based on a Dagre-compatible Rust layout library (`dugong`) plus a pluggable text measurement
+interface; see ADR 0043.
 
 ## Consequences
 
-- `merman` can reach “complete Mermaid support” for SVG without waiting for Rust-native layout work.
-- The workspace gains a well-defined boundary between parsing/semantic model and rendering.
-- We must design and document sandbox/resource-limit behavior for the embedded JS runtime.
-- Distribution requires bundling the pinned Mermaid JS artifacts and auditing licensing/compliance.
-
+- This document is retained for historical context and comparison.
