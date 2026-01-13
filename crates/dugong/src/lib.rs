@@ -19,6 +19,7 @@ pub struct GraphLabel {
     pub nodesep: f64,
     pub ranksep: f64,
     pub edgesep: f64,
+    pub ranker: Option<String>,
     pub acyclicer: Option<String>,
     pub dummy_chains: Vec<String>,
     pub nesting_root: Option<String>,
@@ -32,6 +33,7 @@ impl Default for GraphLabel {
             nodesep: 50.0,
             ranksep: 50.0,
             edgesep: 10.0,
+            ranker: None,
             acyclicer: None,
             dummy_chains: Vec::new(),
             nesting_root: None,
@@ -1330,6 +1332,22 @@ pub mod util {
 }
 
 pub mod rank {
+    pub fn rank(
+        g: &mut crate::graphlib::Graph<crate::NodeLabel, crate::EdgeLabel, crate::GraphLabel>,
+    ) {
+        let ranker = g.graph().ranker.clone();
+        match ranker.as_deref() {
+            Some("network-simplex") => network_simplex::network_simplex(g),
+            Some("tight-tree") => {
+                util::longest_path(g);
+                let _ = feasible_tree::feasible_tree(g);
+            }
+            Some("longest-path") => util::longest_path(g),
+            Some("none") => {}
+            _ => network_simplex::network_simplex(g),
+        }
+    }
+
     pub mod util {
         use crate::graphlib::{EdgeKey, Graph};
         use crate::{EdgeLabel, GraphLabel, NodeLabel};

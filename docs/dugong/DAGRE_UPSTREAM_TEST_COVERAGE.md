@@ -200,3 +200,11 @@ Source: `repo-ref/dagre/test/rank/network-simplex-test.js`
 - `calcCutValue works for 4-node tree with o -> gc -> c <- p, with o <- c` -> `crates/dugong/tests/network_simplex_test.rs::calc_cut_value_works_for_4_node_tree_o_to_gc_to_c_from_p_with_o_from_c`
 - `initCutValues works for gansnerGraph` -> `crates/dugong/tests/network_simplex_test.rs::init_cut_values_works_for_gansner_graph`
 - `initCutValues works for updated gansnerGraph` -> `crates/dugong/tests/network_simplex_test.rs::init_cut_values_works_for_updated_gansner_graph`
+
+Source: `repo-ref/dagre/test/rank/rank-test.js`
+
+- `longest-path respects the minlen attribute` -> `crates/dugong/tests/rank_test.rs::rank_longest_path_respects_the_minlen_attribute`
+- `tight-tree respects the minlen attribute` -> `crates/dugong/tests/rank_test.rs::rank_tight_tree_respects_the_minlen_attribute`
+- `network-simplex respects the minlen attribute` -> `crates/dugong/tests/rank_test.rs::rank_network_simplex_respects_the_minlen_attribute`
+- `unknown-should-still-work respects the minlen attribute` -> `crates/dugong/tests/rank_test.rs::rank_unknown_should_still_work_respects_the_minlen_attribute`
+- `can rank a single node graph (all rankers)` -> `crates/dugong/tests/rank_test.rs::rank_can_rank_a_single_node_graph_for_each_ranker`
