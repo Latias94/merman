@@ -208,3 +208,13 @@ Source: `repo-ref/dagre/test/rank/rank-test.js`
 - `network-simplex respects the minlen attribute` -> `crates/dugong/tests/rank_test.rs::rank_network_simplex_respects_the_minlen_attribute`
 - `unknown-should-still-work respects the minlen attribute` -> `crates/dugong/tests/rank_test.rs::rank_unknown_should_still_work_respects_the_minlen_attribute`
 - `can rank a single node graph (all rankers)` -> `crates/dugong/tests/rank_test.rs::rank_can_rank_a_single_node_graph_for_each_ranker`
+
+Source: `repo-ref/dagre/test/order/build-layer-graph-test.js`
+
+- `places movable nodes with no parents under the root node` -> `crates/dugong/tests/order_build_layer_graph_test.rs::build_layer_graph_places_movable_nodes_with_no_parents_under_the_root_node`
+- `copies flat nodes from the layer to the graph` -> `crates/dugong/tests/order_build_layer_graph_test.rs::build_layer_graph_copies_flat_nodes_from_the_layer_to_the_graph`
+- `uses the original node label for copied nodes` -> `crates/dugong/tests/order_build_layer_graph_test.rs::build_layer_graph_uses_the_original_node_label_for_copied_nodes`
+- `copies edges incident on rank nodes to the graph (inEdges)` -> `crates/dugong/tests/order_build_layer_graph_test.rs::build_layer_graph_copies_edges_incident_on_rank_nodes_to_the_graph_in_edges`
+- `copies edges incident on rank nodes to the graph (outEdges)` -> `crates/dugong/tests/order_build_layer_graph_test.rs::build_layer_graph_copies_edges_incident_on_rank_nodes_to_the_graph_out_edges`
+- `collapses multi-edges` -> `crates/dugong/tests/order_build_layer_graph_test.rs::build_layer_graph_collapses_multi_edges`
+- `preserves hierarchy for the movable layer` -> `crates/dugong/tests/order_build_layer_graph_test.rs::build_layer_graph_preserves_hierarchy_for_the_movable_layer`

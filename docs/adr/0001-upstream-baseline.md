@@ -13,7 +13,8 @@ project must pin an upstream baseline (tag + commit) that all alignment tests an
 
 - Baseline tag: `mermaid@11.12.2`
 - Baseline commit (reference checkout): `bd85b51e2`
-- Reference source location: `repo-ref/mermaid` (detached HEAD at the baseline tag)
+- Reference source location: `repo-ref/mermaid` (optional local checkout at the baseline commit)
+- Pinned revisions are tracked in `repo-ref/REPOS.lock.json` (not git submodules).
 
 ## Consequences
 

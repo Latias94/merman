@@ -4,17 +4,20 @@
 
 ## Reference upstreams
 
-This repository uses git submodules under `repo-ref/` to pin upstream baselines:
+This repository uses optional local checkouts under `repo-ref/` to support parity work against
+upstream projects. These checkouts are **not committed** and are **not** git submodules. The pinned
+revisions live in `repo-ref/REPOS.lock.json`.
 
-- `repo-ref/mermaid` (`mermaid-js/mermaid`)
-- `repo-ref/dompurify` (`cure53/DOMPurify`)
-- `repo-ref/sanitize-url` (`braintree/sanitize-url`)
+Typical upstreams:
 
-After cloning, initialize them:
+- `mermaid-js/mermaid` → `repo-ref/mermaid`
+- `dagrejs/dagre` → `repo-ref/dagre`
+- `dagrejs/graphlib` → `repo-ref/graphlib`
+- `cure53/DOMPurify` → `repo-ref/dompurify`
+- `braintree/sanitize-url` → `repo-ref/sanitize-url`
 
-```bash
-git submodule update --init --recursive
-```
+Populate `repo-ref/*` by cloning each repo at the pinned commit shown in
+`repo-ref/REPOS.lock.json`.
 
 ## Development
 
