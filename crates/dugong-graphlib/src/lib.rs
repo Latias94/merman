@@ -433,6 +433,18 @@ where
         self
     }
 
+    pub fn clear_parent(&mut self, child: &str) -> &mut Self {
+        if !self.options.compound {
+            return self;
+        }
+        if let Some(prev) = self.parent.remove(child) {
+            if let Some(ch) = self.children.get_mut(&prev) {
+                ch.retain(|c| c != child);
+            }
+        }
+        self
+    }
+
     pub fn parent(&self, child: &str) -> Option<&str> {
         self.parent.get(child).map(|s| s.as_str())
     }
