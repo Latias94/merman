@@ -24,6 +24,8 @@ impl DiagramRegistry {
     pub fn default_mermaid_11_12_2() -> Self {
         let mut reg = Self::new();
 
+        reg.insert("error", crate::diagrams::error_diagram::parse_error);
+
         reg.insert("flowchart-v2", crate::diagrams::flowchart::parse_flowchart);
         reg.insert("flowchart", crate::diagrams::flowchart::parse_flowchart);
         reg.insert("flowchart-elk", crate::diagrams::flowchart::parse_flowchart);
