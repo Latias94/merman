@@ -4,6 +4,13 @@ This document defines the initial, test-driven minimum slice for Treemap parsing
 
 Baseline: Mermaid `@11.12.2`.
 
+Upstream references:
+
+- Parser/AST bridge: `repo-ref/mermaid/packages/mermaid/src/diagrams/treemap/parser.ts`
+- DB/model: `repo-ref/mermaid/packages/mermaid/src/diagrams/treemap/db.ts`
+- Hierarchy builder: `repo-ref/mermaid/packages/mermaid/src/diagrams/treemap/utils.ts`
+- Hierarchy tests: `repo-ref/mermaid/packages/mermaid/src/diagrams/treemap/utils.test.ts`
+
 ## Supported (current)
 
 - Header:
@@ -48,4 +55,3 @@ Baseline: Mermaid `@11.12.2`.
 
 This is an incremental slice. The ultimate goal is full Mermaid `treemap` grammar and DB behavior
 compatibility at the pinned baseline tag.
-

@@ -1,0 +1,71 @@
+{
+  "diagramType": "treemap",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {},
+    "nodes": [
+      {
+        "level": 0,
+        "name": "Root"
+      },
+      {
+        "level": 1,
+        "name": "Level 1"
+      },
+      {
+        "level": 2,
+        "name": "Level 2"
+      },
+      {
+        "level": 3,
+        "name": "Leaf 1",
+        "value": 10
+      },
+      {
+        "level": 2,
+        "name": "Level 2 again"
+      },
+      {
+        "level": 3,
+        "name": "Leaf 2",
+        "value": 20
+      }
+    ],
+    "root": {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "name": "Leaf 1",
+                      "value": 10
+                    }
+                  ],
+                  "name": "Level 2"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "Leaf 2",
+                      "value": 20
+                    }
+                  ],
+                  "name": "Level 2 again"
+                }
+              ],
+              "name": "Level 1"
+            }
+          ],
+          "name": "Root"
+        }
+      ],
+      "name": ""
+    },
+    "title": null,
+    "type": "treemap"
+  }
+}

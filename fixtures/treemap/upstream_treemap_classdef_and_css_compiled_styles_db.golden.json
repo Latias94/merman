@@ -1,0 +1,80 @@
+{
+  "diagramType": "treemap",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {
+      "c": {
+        "id": "c",
+        "styles": [
+          "fill:#ff0000",
+          " stroke:rgb(1,2,3)",
+          " color"
+        ],
+        "textStyles": [
+          " color"
+        ]
+      }
+    },
+    "nodes": [
+      {
+        "classSelector": "c",
+        "cssCompiledStyles": [
+          "fill:#ff0000; stroke:rgb(1,2,3); color"
+        ],
+        "level": 0,
+        "name": "Root"
+      },
+      {
+        "classSelector": "c",
+        "cssCompiledStyles": [
+          "fill:#ff0000; stroke:rgb(1,2,3); color"
+        ],
+        "level": 1,
+        "name": "Leaf",
+        "value": 1000
+      },
+      {
+        "classSelector": "c",
+        "cssCompiledStyles": [
+          "fill:#ff0000; stroke:rgb(1,2,3); color"
+        ],
+        "level": 1,
+        "name": "Leaf 2",
+        "value": 12.5
+      }
+    ],
+    "root": {
+      "children": [
+        {
+          "children": [
+            {
+              "classSelector": "c",
+              "cssCompiledStyles": [
+                "fill:#ff0000; stroke:rgb(1,2,3); color"
+              ],
+              "name": "Leaf",
+              "value": 1000
+            },
+            {
+              "classSelector": "c",
+              "cssCompiledStyles": [
+                "fill:#ff0000; stroke:rgb(1,2,3); color"
+              ],
+              "name": "Leaf 2",
+              "value": 12.5
+            }
+          ],
+          "classSelector": "c",
+          "cssCompiledStyles": [
+            "fill:#ff0000; stroke:rgb(1,2,3); color"
+          ],
+          "name": "Root"
+        }
+      ],
+      "name": ""
+    },
+    "title": null,
+    "type": "treemap"
+  }
+}
