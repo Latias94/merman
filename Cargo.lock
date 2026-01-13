@@ -212,6 +212,7 @@ version = "0.1.0"
 dependencies = [
  "dugong-graphlib",
  "gag",
+ "serde",
  "serde_json",
 ]
 

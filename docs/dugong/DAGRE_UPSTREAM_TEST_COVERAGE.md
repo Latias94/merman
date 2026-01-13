@@ -291,3 +291,21 @@ Source: `repo-ref/dagre/test/order/order-test.js`
 - `can solve a simple graph` -> `crates/dugong/tests/order_order_test.rs::order_can_solve_a_simple_graph`
 - `can minimize crossings` -> `crates/dugong/tests/order_order_test.rs::order_can_minimize_crossings`
 - `can skip the optimal ordering` -> `crates/dugong/tests/order_order_test.rs::order_can_skip_the_optimal_ordering`
+
+Source: `repo-ref/dagre/test/data/list-test.js`
+
+- `returns undefined with an empty list` -> `crates/dugong/tests/data_list_test.rs::list_dequeue_returns_none_with_an_empty_list`
+- `unlinks and returns the first entry` -> `crates/dugong/tests/data_list_test.rs::list_dequeue_unlinks_and_returns_the_first_entry`
+- `unlinks and returns multiple entries in FIFO order` -> `crates/dugong/tests/data_list_test.rs::list_dequeue_unlinks_and_returns_multiple_entries_in_fifo_order`
+- `unlinks and relinks an entry if it is re-enqueued` -> `crates/dugong/tests/data_list_test.rs::list_dequeue_unlinks_and_relinks_an_entry_if_it_is_re_enqueued`
+- `unlinks and relinks an entry if it is enqueued on another list` -> `crates/dugong/tests/data_list_test.rs::list_dequeue_unlinks_and_relinks_an_entry_if_it_is_enqueued_on_another_list`
+- `can return a string representation` -> `crates/dugong/tests/data_list_test.rs::list_can_return_a_string_representation`
+
+Source: `repo-ref/dagre/test/version-test.js`
+
+- `should match the version from package.json` -> `crates/dugong/tests/version_test.rs::version_matches_cargo_pkg_version`
+
+Source: `repo-ref/dagre/test/bundle-test.js`
+
+- `exports dagre` -> `crates/dugong/tests/bundle_test.rs::bundle_exports_expected_symbols`
+- `can do trivial layout` -> `crates/dugong/tests/bundle_test.rs::bundle_can_do_trivial_layout`
