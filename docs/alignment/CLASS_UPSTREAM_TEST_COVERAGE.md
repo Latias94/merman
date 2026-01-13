@@ -48,7 +48,11 @@ Source files:
 - `repo-ref/mermaid/packages/mermaid/src/diagrams/class/classDb.ts`
 
 - href sanitization when `securityLevel != loose`: `fixtures/class/upstream_interactivity.mmd` and unit test `parse_diagram_class_href_sanitizes_javascript_urls_when_not_loose`
+- click href target + tooltip: `fixtures/class/upstream_interactivity_click_href_target_spec.mmd`
+- click call with callback args + tooltip: `fixtures/class/upstream_interactivity_click_call_with_args_spec.mmd`
+- `securityLevel = loose` snapshot (callbackEffective + JS href allowed): `fixtures/class/upstream_interactivity_security_level_loose_spec.mmd`
 - sandbox target coercion (`_top`): unit test `parse_diagram_class_security_level_sandbox_forces_link_target_top`
+- `securityLevel = sandbox` snapshot (forces `_top`): `fixtures/class/upstream_interactivity_security_level_sandbox_target_top_spec.mmd`
 - callback effective when `securityLevel = loose`: unit test `parse_diagram_class_security_level_loose_marks_callback_effective`
 
 ## Rendering-only / deferred

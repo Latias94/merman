@@ -1,0 +1,52 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {
+      "Class1": {
+        "annotations": [],
+        "callback": {
+          "args": "\"test0\", test1, test2",
+          "function": "functionCall"
+        },
+        "callbackEffective": false,
+        "cssClasses": "default clickable",
+        "domId": "classId-Class1-0",
+        "haveCallback": true,
+        "id": "Class1",
+        "label": "Class1",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Class1",
+        "tooltip": "A tooltip",
+        "type": ""
+      }
+    },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
+    "relations": [],
+    "styleClasses": {},
+    "type": "classDiagram"
+  }
+}
