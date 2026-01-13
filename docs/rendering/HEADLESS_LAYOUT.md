@@ -19,6 +19,9 @@ Baseline: Mermaid `@11.12.2`.
 - Use a pluggable `TextMeasurer` trait with a deterministic default measurer for CI.
 - Emit explicit cluster layout information (box bounds + title placeholder) to make subgraph rendering
   backend-independent.
+- For isolated, leaf-only clusters (no external edges), apply a Mermaid-like "cluster dir" behavior:
+  the cluster's `dir` (or toggled direction when `inheritDir=false`) influences the internal layout
+  of its member nodes.
 
 ## API
 
@@ -37,3 +40,5 @@ The result includes:
 - The deterministic `TextMeasurer` is a placeholder for parity-driven measurement.
   Full SVG parity will require faithful measurement and per-shape sizing rules.
 - Cluster title placement uses Mermaid-compatible `flowchart.subGraphTitleMargin.{top,bottom}`.
+- Clusters expose `requested_dir` (from the semantic model) and `effective_dir` (the rankdir actually
+  used for isolated cluster layout).

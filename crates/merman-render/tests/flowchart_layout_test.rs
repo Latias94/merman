@@ -120,6 +120,19 @@ fn flowchart_layout_includes_clusters_with_title_placeholders() {
         assert!(c.width + 1e-6 >= c.title_label.width);
     }
 
+    let clusters_by_id = layout
+        .clusters
+        .iter()
+        .map(|c| (c.id.as_str(), c))
+        .collect::<std::collections::HashMap<_, _>>();
+
+    // Default `inheritDir` is false; when a subgraph does not specify `dir`, Mermaid toggles
+    // the layout direction for isolated clusters (TB -> LR).
+    assert_eq!(clusters_by_id["A"].effective_dir, "LR");
+    assert_eq!(clusters_by_id["id1"].effective_dir, "LR");
+    assert_eq!(clusters_by_id["subGraph2"].effective_dir, "RL");
+    assert_eq!(clusters_by_id["child"].effective_dir, "BT");
+
     fn rect_from_layout_node(n: &merman_render::model::LayoutNode) -> (f64, f64, f64, f64) {
         let hw = n.width / 2.0;
         let hh = n.height / 2.0;
@@ -137,11 +150,33 @@ fn flowchart_layout_includes_clusters_with_title_placeholders() {
         .iter()
         .map(|n| (n.id.as_str(), n))
         .collect::<std::collections::HashMap<_, _>>();
-    let clusters_by_id = layout
-        .clusters
-        .iter()
-        .map(|c| (c.id.as_str(), c))
-        .collect::<std::collections::HashMap<_, _>>();
+    let clusters_by_id = clusters_by_id;
+
+    // Verify that cluster `dir` (or toggled direction) affects internal node layout when the
+    // cluster has no external connections.
+    {
+        let a = nodes_by_id.get("a").expect("node a");
+        let b = nodes_by_id.get("b").expect("node b");
+        assert!(b.x > a.x, "cluster A should lay out a->b left-to-right");
+
+        let c = nodes_by_id.get("c").expect("node c");
+        let d = nodes_by_id.get("d").expect("node d");
+        assert!(d.x > c.x, "cluster id1 should lay out c->d left-to-right");
+
+        let e = nodes_by_id.get("e").expect("node e");
+        let f = nodes_by_id.get("f").expect("node f");
+        assert!(
+            f.x < e.x,
+            "cluster subGraph2 dir=RL should lay out e->f right-to-left"
+        );
+
+        let g = nodes_by_id.get("g").expect("node g");
+        let h = nodes_by_id.get("h").expect("node h");
+        assert!(
+            h.y < g.y,
+            "cluster child dir=BT should lay out g->h bottom-to-top"
+        );
+    }
 
     let subgraphs = out
         .semantic

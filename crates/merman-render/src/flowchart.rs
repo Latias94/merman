@@ -38,6 +38,7 @@ struct FlowEdge {
 struct FlowSubgraph {
     pub id: String,
     pub title: String,
+    pub dir: Option<String>,
     pub nodes: Vec<String>,
 }
 
@@ -96,6 +97,11 @@ pub fn layout_flowchart_v2(
     .unwrap_or(0.0);
     let title_total_margin = title_margin_top + title_margin_bottom;
     let y_shift = title_total_margin / 2.0;
+    let inherit_dir = effective_config
+        .get("flowchart")
+        .and_then(|v| v.get("inheritDir"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
 
     let font_family = config_string(effective_config, &["fontFamily"]);
     let font_size = config_f64(effective_config, &["fontSize"]).unwrap_or(16.0);
@@ -223,8 +229,13 @@ pub fn layout_flowchart_v2(
     }
 
     let mut leaf_rects: std::collections::HashMap<String, Rect> = std::collections::HashMap::new();
+    let mut base_pos: std::collections::HashMap<String, (f64, f64)> =
+        std::collections::HashMap::new();
+    let mut edge_override_points: std::collections::HashMap<String, Vec<LayoutPoint>> =
+        std::collections::HashMap::new();
+    let mut edge_override_label: std::collections::HashMap<String, Option<LayoutLabel>> =
+        std::collections::HashMap::new();
 
-    let mut out_nodes: Vec<LayoutNode> = Vec::new();
     for n in &model.nodes {
         let Some(label) = g.node(&n.id) else {
             return Err(Error::InvalidModel {
@@ -233,10 +244,234 @@ pub fn layout_flowchart_v2(
         };
         let x = label.x.unwrap_or(0.0);
         let y = label.y.unwrap_or(0.0);
+        base_pos.insert(n.id.clone(), (x, y));
         leaf_rects.insert(
             n.id.clone(),
             Rect::from_center(x, y, label.width, label.height),
         );
+    }
+
+    let mut subgraphs_by_id: std::collections::HashMap<String, FlowSubgraph> =
+        std::collections::HashMap::new();
+    for sg in &model.subgraphs {
+        subgraphs_by_id.insert(sg.id.clone(), sg.clone());
+    }
+
+    fn normalize_dir(s: &str) -> String {
+        s.trim().to_uppercase()
+    }
+
+    fn toggled_dir(parent: &str) -> String {
+        let parent = normalize_dir(parent);
+        if parent == "TB" || parent == "TD" {
+            "LR".to_string()
+        } else {
+            "TB".to_string()
+        }
+    }
+
+    fn effective_cluster_dir(sg: &FlowSubgraph, diagram_dir: &str, inherit_dir: bool) -> String {
+        if let Some(dir) = sg.dir.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            return normalize_dir(dir);
+        }
+        if inherit_dir {
+            return normalize_dir(diagram_dir);
+        }
+        toggled_dir(diagram_dir)
+    }
+
+    fn dir_to_rankdir(dir: &str) -> RankDir {
+        match normalize_dir(dir).as_str() {
+            "TB" | "TD" => RankDir::TB,
+            "BT" => RankDir::BT,
+            "LR" => RankDir::LR,
+            "RL" => RankDir::RL,
+            _ => RankDir::TB,
+        }
+    }
+
+    // Apply Mermaid-like "recursive cluster" layout for clusters with:
+    // - leaf-only membership (no nested subgraph ids),
+    // - no external connections (all edges are internal to the cluster membership).
+    //
+    // This captures the key behavior where a cluster's `dir` influences internal layout.
+    {
+        let subgraph_ids: std::collections::HashSet<String> =
+            subgraphs_by_id.keys().cloned().collect();
+
+        for sg in model.subgraphs.iter() {
+            let has_nested = sg.nodes.iter().any(|m| subgraph_ids.contains(m));
+            if has_nested {
+                continue;
+            }
+
+            let members: std::collections::HashSet<&str> =
+                sg.nodes.iter().map(|s| s.as_str()).collect();
+            if members.is_empty() {
+                continue;
+            }
+
+            let mut has_external = false;
+            let mut internal_edges: Vec<&FlowEdge> = Vec::new();
+            for e in &model.edges {
+                let in_from = members.contains(e.from.as_str());
+                let in_to = members.contains(e.to.as_str());
+                match (in_from, in_to) {
+                    (true, true) => internal_edges.push(e),
+                    (true, false) | (false, true) => {
+                        has_external = true;
+                        break;
+                    }
+                    (false, false) => {}
+                }
+            }
+            if has_external {
+                continue;
+            }
+
+            let dir = effective_cluster_dir(sg, &model.direction, inherit_dir);
+
+            let mut g_inner: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
+                multigraph: true,
+                compound: false,
+                directed: true,
+            });
+            g_inner.set_graph(GraphLabel {
+                rankdir: dir_to_rankdir(&dir),
+                nodesep: 50.0,
+                ranksep: 50.0,
+                edgesep: 20.0,
+                ..Default::default()
+            });
+
+            for node_id in &sg.nodes {
+                let Some(orig) = g.node(node_id) else {
+                    continue;
+                };
+                g_inner.set_node(
+                    node_id.clone(),
+                    NodeLabel {
+                        width: orig.width,
+                        height: orig.height,
+                        ..Default::default()
+                    },
+                );
+            }
+
+            for e in &internal_edges {
+                let (lw, lh) = if let Some(label) = e.label.as_deref() {
+                    let metrics = measurer.measure(label, &text_style);
+                    (metrics.width + node_padding, metrics.height + node_padding)
+                } else {
+                    (0.0, 0.0)
+                };
+                let el = EdgeLabel {
+                    width: lw,
+                    height: lh,
+                    labelpos: LabelPos::C,
+                    labeloffset: 10.0,
+                    minlen: e.length.max(1),
+                    weight: 1.0,
+                    ..Default::default()
+                };
+                g_inner.set_edge_named(e.from.clone(), e.to.clone(), Some(e.id.clone()), Some(el));
+            }
+
+            dugong::layout(&mut g_inner);
+
+            // Translate the inner layout back into the diagram coordinate space by matching the
+            // original membership bounding box center.
+            let mut old_rect: Option<Rect> = None;
+            for node_id in &sg.nodes {
+                let Some((x, y)) = base_pos.get(node_id) else {
+                    continue;
+                };
+                let Some(orig) = g.node(node_id) else {
+                    continue;
+                };
+                let r = Rect::from_center(*x, *y, orig.width, orig.height);
+                if let Some(ref mut cur) = old_rect {
+                    cur.union(r);
+                } else {
+                    old_rect = Some(r);
+                }
+            }
+            let Some(old_rect) = old_rect else { continue };
+
+            let mut new_rect: Option<Rect> = None;
+            for node_id in &sg.nodes {
+                let Some(inner) = g_inner.node(node_id) else {
+                    continue;
+                };
+                let x = inner.x.unwrap_or(0.0);
+                let y = inner.y.unwrap_or(0.0);
+                let r = Rect::from_center(x, y, inner.width, inner.height);
+                if let Some(ref mut cur) = new_rect {
+                    cur.union(r);
+                } else {
+                    new_rect = Some(r);
+                }
+            }
+            let Some(new_rect) = new_rect else { continue };
+
+            let (ocx, ocy) = old_rect.center();
+            let (ncx, ncy) = new_rect.center();
+            let dx = ocx - ncx;
+            let dy = ocy - ncy;
+
+            // Apply translated positions to base_pos and leaf_rects.
+            for node_id in &sg.nodes {
+                let Some(inner) = g_inner.node(node_id) else {
+                    continue;
+                };
+                let x = inner.x.unwrap_or(0.0) + dx;
+                let y = inner.y.unwrap_or(0.0) + dy;
+                base_pos.insert(node_id.clone(), (x, y));
+                leaf_rects.insert(
+                    node_id.clone(),
+                    Rect::from_center(x, y, inner.width, inner.height),
+                );
+            }
+
+            // Capture edge point overrides for internal edges.
+            for e in &internal_edges {
+                let Some(lbl) = g_inner.edge(&e.from, &e.to, Some(&e.id)) else {
+                    continue;
+                };
+                let points = lbl
+                    .points
+                    .iter()
+                    .map(|p| LayoutPoint {
+                        x: p.x + dx,
+                        y: p.y + dy + y_shift,
+                    })
+                    .collect::<Vec<_>>();
+                edge_override_points.insert(e.id.clone(), points);
+
+                let label_pos = match (lbl.x, lbl.y) {
+                    (Some(x), Some(y)) if lbl.width > 0.0 || lbl.height > 0.0 => {
+                        Some(LayoutLabel {
+                            x: x + dx,
+                            y: y + dy + y_shift,
+                            width: lbl.width,
+                            height: lbl.height,
+                        })
+                    }
+                    _ => None,
+                };
+                edge_override_label.insert(e.id.clone(), label_pos);
+            }
+        }
+    }
+
+    let mut out_nodes: Vec<LayoutNode> = Vec::new();
+    for n in &model.nodes {
+        let Some(label) = g.node(&n.id) else {
+            return Err(Error::InvalidModel {
+                message: format!("missing layout node {}", n.id),
+            });
+        };
+        let (x, y) = base_pos.get(&n.id).copied().unwrap_or((0.0, 0.0));
         out_nodes.push(LayoutNode {
             id: n.id.clone(),
             x,
@@ -249,12 +484,6 @@ pub fn layout_flowchart_v2(
     }
 
     let mut clusters: Vec<LayoutCluster> = Vec::new();
-
-    let mut subgraphs_by_id: std::collections::HashMap<String, FlowSubgraph> =
-        std::collections::HashMap::new();
-    for sg in &model.subgraphs {
-        subgraphs_by_id.insert(sg.id.clone(), sg.clone());
-    }
 
     let mut cluster_rects: std::collections::HashMap<String, Rect> =
         std::collections::HashMap::new();
@@ -373,6 +602,8 @@ pub fn layout_flowchart_v2(
             height: title_metrics.height,
         };
 
+        let effective_dir = effective_cluster_dir(sg, &model.direction, inherit_dir);
+
         clusters.push(LayoutCluster {
             id: sg.id.clone(),
             x: cx,
@@ -381,6 +612,8 @@ pub fn layout_flowchart_v2(
             height: rect.height(),
             title: sg.title.clone(),
             title_label,
+            requested_dir: sg.dir.as_ref().map(|s| normalize_dir(s)),
+            effective_dir,
             padding: cluster_padding,
             title_margin_top,
             title_margin_bottom,
@@ -400,29 +633,39 @@ pub fn layout_flowchart_v2(
 
     let mut out_edges: Vec<LayoutEdge> = Vec::new();
     for e in &model.edges {
-        let Some(label) = g.edge(&e.from, &e.to, Some(&e.id)) else {
-            return Err(Error::InvalidModel {
-                message: format!("missing layout edge {}", e.id),
-            });
-        };
-        let points = label
-            .points
-            .iter()
-            .map(|p| LayoutPoint {
-                x: p.x,
-                // Mermaid shifts all edge points by `subGraphTitleTotalMargin / 2` after Dagre layout.
-                y: p.y + y_shift,
-            })
-            .collect::<Vec<_>>();
-        let label_pos = match (label.x, label.y) {
-            (Some(x), Some(y)) if label.width > 0.0 || label.height > 0.0 => Some(LayoutLabel {
-                x,
-                // Mermaid shifts edge label y by `subGraphTitleTotalMargin / 2` when positioning.
-                y: y + y_shift,
-                width: label.width,
-                height: label.height,
-            }),
-            _ => None,
+        let (points, label_pos) = if let Some(points) = edge_override_points.get(&e.id) {
+            (
+                points.clone(),
+                edge_override_label.get(&e.id).cloned().unwrap_or(None),
+            )
+        } else {
+            let Some(label) = g.edge(&e.from, &e.to, Some(&e.id)) else {
+                return Err(Error::InvalidModel {
+                    message: format!("missing layout edge {}", e.id),
+                });
+            };
+            let points = label
+                .points
+                .iter()
+                .map(|p| LayoutPoint {
+                    x: p.x,
+                    // Mermaid shifts all edge points by `subGraphTitleTotalMargin / 2` after Dagre layout.
+                    y: p.y + y_shift,
+                })
+                .collect::<Vec<_>>();
+            let label_pos = match (label.x, label.y) {
+                (Some(x), Some(y)) if label.width > 0.0 || label.height > 0.0 => {
+                    Some(LayoutLabel {
+                        x,
+                        // Mermaid shifts edge label y by `subGraphTitleTotalMargin / 2` when positioning.
+                        y: y + y_shift,
+                        width: label.width,
+                        height: label.height,
+                    })
+                }
+                _ => None,
+            };
+            (points, label_pos)
         };
         out_edges.push(LayoutEdge {
             id: e.id.clone(),

@@ -82,6 +82,8 @@ pub struct LayoutCluster {
     pub height: f64,
     pub title: String,
     pub title_label: LayoutLabel,
+    pub requested_dir: Option<String>,
+    pub effective_dir: String,
     pub padding: f64,
     pub title_margin_top: f64,
     pub title_margin_bottom: f64,
