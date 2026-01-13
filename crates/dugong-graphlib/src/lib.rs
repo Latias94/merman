@@ -183,12 +183,20 @@ where
         self.nodes.iter().map(|n| n.id.as_str())
     }
 
+    pub fn node_ids(&self) -> Vec<String> {
+        self.nodes.iter().map(|n| n.id.clone()).collect()
+    }
+
     pub fn edge_count(&self) -> usize {
         self.edges.len()
     }
 
     pub fn edges(&self) -> impl Iterator<Item = &EdgeKey> {
         self.edges.iter().map(|e| &e.key)
+    }
+
+    pub fn edge_keys(&self) -> Vec<EdgeKey> {
+        self.edges.iter().map(|e| e.key.clone()).collect()
     }
 
     pub fn set_edge(&mut self, v: impl Into<String>, w: impl Into<String>) -> &mut Self {
@@ -281,6 +289,103 @@ where
             .map(move |idx| &mut self.edges[idx].label)
     }
 
+    pub fn edge_by_key(&self, key: &EdgeKey) -> Option<&E> {
+        self.edge_index.get(key).map(|&idx| &self.edges[idx].label)
+    }
+
+    pub fn edge_mut_by_key(&mut self, key: &EdgeKey) -> Option<&mut E> {
+        self.edge_index
+            .get(key)
+            .copied()
+            .map(move |idx| &mut self.edges[idx].label)
+    }
+
+    pub fn remove_edge_key(&mut self, key: &EdgeKey) -> bool {
+        let Some(idx) = self.edge_index.remove(key) else {
+            return false;
+        };
+        self.edges.remove(idx);
+        self.edge_index.clear();
+        for (i, e) in self.edges.iter().enumerate() {
+            self.edge_index.insert(e.key.clone(), i);
+        }
+        true
+    }
+
+    pub fn remove_node(&mut self, id: &str) -> bool {
+        let Some(idx) = self.node_index.remove(id) else {
+            return false;
+        };
+
+        self.nodes.remove(idx);
+        self.node_index.clear();
+        for (i, n) in self.nodes.iter().enumerate() {
+            self.node_index.insert(n.id.clone(), i);
+        }
+
+        // Remove incident edges.
+        let mut removed_keys: Vec<EdgeKey> = Vec::new();
+        for e in &self.edges {
+            if e.key.v == id || e.key.w == id {
+                removed_keys.push(e.key.clone());
+            }
+        }
+        for k in removed_keys {
+            let _ = self.remove_edge_key(&k);
+        }
+
+        // Remove parent links.
+        if let Some(parent) = self.parent.remove(id) {
+            if let Some(ch) = self.children.get_mut(&parent) {
+                ch.retain(|c| c != id);
+            }
+        }
+        // Remove children mappings.
+        if let Some(ch) = self.children.remove(id) {
+            for child in ch {
+                self.parent.remove(&child);
+            }
+        }
+
+        true
+    }
+
+    pub fn successors(&self, v: &str) -> Vec<&str> {
+        self.edges
+            .iter()
+            .filter(|e| e.key.v == v)
+            .map(|e| e.key.w.as_str())
+            .collect()
+    }
+
+    pub fn predecessors(&self, v: &str) -> Vec<&str> {
+        self.edges
+            .iter()
+            .filter(|e| e.key.w == v)
+            .map(|e| e.key.v.as_str())
+            .collect()
+    }
+
+    pub fn out_edges(&self, v: &str, w: Option<&str>) -> Vec<EdgeKey> {
+        self.edges
+            .iter()
+            .filter(|e| e.key.v == v && w.map_or(true, |w| e.key.w == w))
+            .map(|e| e.key.clone())
+            .collect()
+    }
+
+    pub fn in_edges(&self, v: &str, w: Option<&str>) -> Vec<EdgeKey> {
+        self.edges
+            .iter()
+            .filter(|e| e.key.w == v && w.map_or(true, |w| e.key.v == w))
+            .map(|e| e.key.clone())
+            .collect()
+    }
+
+    pub fn set_edge_key(&mut self, key: EdgeKey, label: E) -> &mut Self {
+        self.set_edge_named(key.v, key.w, key.name, Some(label))
+    }
+
     pub fn set_parent(&mut self, child: impl Into<String>, parent: impl Into<String>) -> &mut Self {
         if !self.options.compound {
             return self;
@@ -289,8 +394,15 @@ where
         let parent = parent.into();
         self.ensure_node(child.clone());
         self.ensure_node(parent.clone());
-        self.parent.insert(child.clone(), parent.clone());
-        self.children.entry(parent).or_default().push(child);
+        if let Some(prev) = self.parent.insert(child.clone(), parent.clone()) {
+            if let Some(ch) = self.children.get_mut(&prev) {
+                ch.retain(|c| c != &child);
+            }
+        }
+        let entry = self.children.entry(parent).or_default();
+        if !entry.iter().any(|c| c == &child) {
+            entry.push(child);
+        }
         self
     }
 
@@ -303,5 +415,57 @@ where
             .get(parent)
             .map(|v| v.iter().map(|s| s.as_str()).collect::<Vec<_>>())
             .unwrap_or_default()
+    }
+
+    pub fn children_root(&self) -> Vec<&str> {
+        if !self.options.compound {
+            return self.nodes().collect();
+        }
+        self.nodes
+            .iter()
+            .filter(|n| !self.parent.contains_key(&n.id))
+            .map(|n| n.id.as_str())
+            .collect()
+    }
+}
+
+pub mod alg {
+    use super::Graph;
+    use std::collections::{BTreeSet, VecDeque};
+
+    pub fn components<N, E, G>(g: &Graph<N, E, G>) -> Vec<Vec<String>>
+    where
+        N: Default + 'static,
+        E: Default + 'static,
+        G: Default,
+    {
+        let mut seen: BTreeSet<String> = BTreeSet::new();
+        let ids = g.node_ids();
+        let mut out: Vec<Vec<String>> = Vec::new();
+
+        for start in ids {
+            if !seen.insert(start.clone()) {
+                continue;
+            }
+            let mut comp: Vec<String> = Vec::new();
+            let mut q: VecDeque<String> = VecDeque::new();
+            q.push_back(start);
+            while let Some(v) = q.pop_front() {
+                comp.push(v.clone());
+                for n in g.successors(&v) {
+                    if seen.insert(n.to_string()) {
+                        q.push_back(n.to_string());
+                    }
+                }
+                for n in g.predecessors(&v) {
+                    if seen.insert(n.to_string()) {
+                        q.push_back(n.to_string());
+                    }
+                }
+            }
+            out.push(comp);
+        }
+
+        out
     }
 }
