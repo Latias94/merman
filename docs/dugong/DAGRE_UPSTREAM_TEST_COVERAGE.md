@@ -51,3 +51,20 @@ Source: `repo-ref/dagre/test/coordinate-system-test.js`
 - `flips the y coordinate for points with rankdir = BT` -> `crates/dugong/tests/coordinate_system_test.rs::coordinate_system_undo_flips_the_y_coordinate_for_points_with_rankdir_bt`
 - `swaps dimensions and coordinates for points with rankdir = LR` -> `crates/dugong/tests/coordinate_system_test.rs::coordinate_system_undo_swaps_dimensions_and_coordinates_for_points_with_rankdir_lr`
 - `swaps dims and coords and flips x for points with rankdir = RL` -> `crates/dugong/tests/coordinate_system_test.rs::coordinate_system_undo_swaps_dims_and_coords_and_flips_x_for_points_with_rankdir_rl`
+- `does nothing to node dimensions with rankdir = TB` → `crates/dugong/tests/coordinate_system_test.rs::coordinate_system_adjust_does_nothing_to_node_dimensions_with_rankdir_tb`
+- `does nothing to node dimensions with rankdir = BT` → `crates/dugong/tests/coordinate_system_test.rs::coordinate_system_adjust_does_nothing_to_node_dimensions_with_rankdir_bt`
+- `swaps width and height for nodes with rankdir = LR` → `crates/dugong/tests/coordinate_system_test.rs::coordinate_system_adjust_swaps_width_and_height_for_nodes_with_rankdir_lr`
+- `swaps width and height for nodes with rankdir = RL` → `crates/dugong/tests/coordinate_system_test.rs::coordinate_system_adjust_swaps_width_and_height_for_nodes_with_rankdir_rl`
+- `does nothing to points with rankdir = TB` → `crates/dugong/tests/coordinate_system_test.rs::coordinate_system_undo_does_nothing_to_points_with_rankdir_tb`
+- `flips the y coordinate for points with rankdir = BT` → `crates/dugong/tests/coordinate_system_test.rs::coordinate_system_undo_flips_the_y_coordinate_for_points_with_rankdir_bt`
+- `swaps dimensions and coordinates for points with rankdir = LR` → `crates/dugong/tests/coordinate_system_test.rs::coordinate_system_undo_swaps_dimensions_and_coordinates_for_points_with_rankdir_lr`
+- `swaps dims and coords and flips x for points with rankdir = RL` → `crates/dugong/tests/coordinate_system_test.rs::coordinate_system_undo_swaps_dims_and_coords_and_flips_x_for_points_with_rankdir_rl`
+
+Source: `repo-ref/dagre/test/acyclic-test.js`
+
+- `does not change an already acyclic graph` → `crates/dugong/tests/acyclic_test.rs::acyclic_run_does_not_change_an_already_acyclic_graph`
+- `breaks cycles in the input graph` → `crates/dugong/tests/acyclic_test.rs::acyclic_run_breaks_cycles_in_the_input_graph`
+- `creates a multi-edge where necessary` → `crates/dugong/tests/acyclic_test.rs::acyclic_run_creates_a_multi_edge_where_necessary`
+- `does not change edges where the original graph was acyclic` → `crates/dugong/tests/acyclic_test.rs::acyclic_undo_does_not_change_edges_where_the_original_graph_was_acyclic`
+- `can restore previosuly reversed edges` → `crates/dugong/tests/acyclic_test.rs::acyclic_undo_can_restore_previously_reversed_edges`
+- `prefers to break cycles at low-weight edges` → `crates/dugong/tests/acyclic_test.rs::acyclic_greedy_prefers_to_break_cycles_at_low_weight_edges`

@@ -19,6 +19,7 @@ pub struct GraphLabel {
     pub nodesep: f64,
     pub ranksep: f64,
     pub edgesep: f64,
+    pub acyclicer: Option<String>,
     pub nesting_root: Option<String>,
     pub node_rank_factor: Option<usize>,
 }
@@ -30,6 +31,7 @@ impl Default for GraphLabel {
             nodesep: 50.0,
             ranksep: 50.0,
             edgesep: 10.0,
+            acyclicer: None,
             nesting_root: None,
             node_rank_factor: None,
         }
@@ -63,7 +65,7 @@ pub struct Point {
     pub y: f64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EdgeLabel {
     pub width: f64,
     pub height: f64,
@@ -72,6 +74,8 @@ pub struct EdgeLabel {
     pub minlen: usize,
     pub weight: f64,
     pub nesting_edge: bool,
+    pub reversed: bool,
+    pub forward_name: Option<String>,
 
     pub x: Option<f64>,
     pub y: Option<f64>,
@@ -88,6 +92,8 @@ impl Default for EdgeLabel {
             minlen: 1,
             weight: 0.0,
             nesting_edge: false,
+            reversed: false,
+            forward_name: None,
             x: None,
             y: None,
             points: Vec::new(),
@@ -183,6 +189,348 @@ pub mod coordinate_system {
                 }
             }
         }
+    }
+}
+
+pub mod acyclic {
+    use super::{EdgeLabel, GraphLabel, NodeLabel};
+    use crate::graphlib::{EdgeKey, Graph};
+    use std::collections::{BTreeMap, BTreeSet, VecDeque};
+
+    pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+        let fas = if g
+            .graph()
+            .acyclicer
+            .as_deref()
+            .is_some_and(|s| s == "greedy")
+        {
+            greedy_fas(g)
+        } else {
+            dfs_fas(g)
+        };
+
+        for e in fas {
+            let Some(label) = g.edge_by_key(&e).cloned() else {
+                continue;
+            };
+            let _ = g.remove_edge_key(&e);
+
+            let mut label = label;
+            label.forward_name = e.name.clone();
+            label.reversed = true;
+
+            let name = unique_rev_name(g, &e.w, &e.v);
+            g.set_edge_named(e.w, e.v, Some(name), Some(label));
+        }
+    }
+
+    pub fn undo(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+        let edge_keys = g.edge_keys();
+        for e in edge_keys {
+            let Some(label) = g.edge_by_key(&e).cloned() else {
+                continue;
+            };
+            if !label.reversed {
+                continue;
+            }
+            let _ = g.remove_edge_key(&e);
+
+            let mut label = label;
+            let forward_name = label.forward_name.take();
+            label.reversed = false;
+            g.set_edge_named(e.w, e.v, forward_name, Some(label));
+        }
+    }
+
+    fn unique_rev_name(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>, v: &str, w: &str) -> String {
+        for i in 1usize.. {
+            let candidate = format!("rev{i}");
+            if !g.has_edge(v, w, Some(&candidate)) {
+                return candidate;
+            }
+        }
+        unreachable!()
+    }
+
+    fn dfs_fas(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<EdgeKey> {
+        let mut fas: Vec<EdgeKey> = Vec::new();
+        let mut stack: BTreeSet<String> = BTreeSet::new();
+        let mut visited: BTreeSet<String> = BTreeSet::new();
+
+        fn dfs(
+            g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+            v: &str,
+            visited: &mut BTreeSet<String>,
+            stack: &mut BTreeSet<String>,
+            fas: &mut Vec<EdgeKey>,
+        ) {
+            if !visited.insert(v.to_string()) {
+                return;
+            }
+            stack.insert(v.to_string());
+            for e in g.out_edges(v, None) {
+                if stack.contains(&e.w) {
+                    fas.push(e);
+                } else {
+                    dfs(g, &e.w, visited, stack, fas);
+                }
+            }
+            stack.remove(v);
+        }
+
+        let node_ids = g.node_ids();
+        for v in node_ids {
+            dfs(g, &v, &mut visited, &mut stack, &mut fas);
+        }
+        fas
+    }
+
+    fn greedy_fas(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<EdgeKey> {
+        if g.node_count() <= 1 {
+            return Vec::new();
+        }
+
+        // Aggregate multi-edges into a simple graph with summed weights.
+        let node_ids = g.node_ids();
+        let mut in_w: BTreeMap<String, i64> = BTreeMap::new();
+        let mut out_w: BTreeMap<String, i64> = BTreeMap::new();
+        for v in &node_ids {
+            in_w.insert(v.clone(), 0);
+            out_w.insert(v.clone(), 0);
+        }
+
+        let mut edge_w: BTreeMap<(String, String), i64> = BTreeMap::new();
+        let mut max_in: i64 = 0;
+        let mut max_out: i64 = 0;
+
+        for e in g.edges() {
+            let w = g
+                .edge_by_key(e)
+                .map(|lbl| weight_i64(lbl.weight))
+                .unwrap_or(1);
+            *edge_w.entry((e.v.clone(), e.w.clone())).or_insert(0) += w;
+            let o = out_w.entry(e.v.clone()).or_insert(0);
+            *o += w;
+            max_out = max_out.max(*o);
+            let i = in_w.entry(e.w.clone()).or_insert(0);
+            *i += w;
+            max_in = max_in.max(*i);
+        }
+
+        let bucket_len: usize = (max_out + max_in + 3).max(3) as usize;
+        let zero_idx: i64 = max_in + 1;
+        let mut buckets: Vec<VecDeque<String>> = (0..bucket_len).map(|_| VecDeque::new()).collect();
+        let mut bucket_of: BTreeMap<String, usize> = BTreeMap::new();
+
+        for v in &node_ids {
+            assign_bucket(v, &in_w, &out_w, &mut buckets, zero_idx, &mut bucket_of);
+        }
+
+        // Build adjacency for the aggregated graph (for efficient updates).
+        let mut in_edges: BTreeMap<String, Vec<(String, i64)>> = BTreeMap::new();
+        let mut out_edges: BTreeMap<String, Vec<(String, i64)>> = BTreeMap::new();
+        for ((v, w), wgt) in &edge_w {
+            out_edges
+                .entry(v.clone())
+                .or_default()
+                .push((w.clone(), *wgt));
+            in_edges
+                .entry(w.clone())
+                .or_default()
+                .push((v.clone(), *wgt));
+        }
+
+        let mut alive: BTreeSet<String> = node_ids.iter().cloned().collect();
+        let mut results: Vec<(String, String)> = Vec::new();
+
+        while !alive.is_empty() {
+            // Drain sinks (out == 0).
+            while let Some(v) = pop_bucket(&mut buckets[0], &alive) {
+                remove_node(
+                    &v,
+                    &mut alive,
+                    &mut buckets,
+                    zero_idx,
+                    &mut bucket_of,
+                    &mut in_w,
+                    &mut out_w,
+                    &in_edges,
+                    &out_edges,
+                    None,
+                );
+            }
+
+            // Drain sources (in == 0).
+            let last = buckets.len() - 1;
+            while let Some(v) = pop_bucket(&mut buckets[last], &alive) {
+                remove_node(
+                    &v,
+                    &mut alive,
+                    &mut buckets,
+                    zero_idx,
+                    &mut bucket_of,
+                    &mut in_w,
+                    &mut out_w,
+                    &in_edges,
+                    &out_edges,
+                    None,
+                );
+            }
+
+            if alive.is_empty() {
+                break;
+            }
+
+            // Pick a node from the highest non-extreme bucket and collect its predecessor edges.
+            let mut picked: Option<String> = None;
+            for i in (1..last).rev() {
+                if let Some(v) = pop_bucket(&mut buckets[i], &alive) {
+                    picked = Some(v);
+                    break;
+                }
+            }
+
+            let Some(v) = picked else {
+                // Should not happen, but avoid an infinite loop.
+                let v = alive.iter().next().cloned().unwrap();
+                remove_node(
+                    &v,
+                    &mut alive,
+                    &mut buckets,
+                    zero_idx,
+                    &mut bucket_of,
+                    &mut in_w,
+                    &mut out_w,
+                    &in_edges,
+                    &out_edges,
+                    None,
+                );
+                continue;
+            };
+
+            let mut preds: Vec<(String, String)> = Vec::new();
+            remove_node(
+                &v,
+                &mut alive,
+                &mut buckets,
+                zero_idx,
+                &mut bucket_of,
+                &mut in_w,
+                &mut out_w,
+                &in_edges,
+                &out_edges,
+                Some(&mut preds),
+            );
+            results.extend(preds);
+        }
+
+        // Expand multi-edges back to concrete edge keys from the original graph.
+        let mut out: Vec<EdgeKey> = Vec::new();
+        for (v, w) in results {
+            out.extend(g.out_edges(&v, Some(&w)));
+        }
+        out
+    }
+
+    fn weight_i64(w: f64) -> i64 {
+        if !w.is_finite() {
+            return 0;
+        }
+        w.round() as i64
+    }
+
+    fn pop_bucket(bucket: &mut VecDeque<String>, alive: &BTreeSet<String>) -> Option<String> {
+        while let Some(v) = bucket.pop_back() {
+            if alive.contains(&v) {
+                return Some(v);
+            }
+        }
+        None
+    }
+
+    fn assign_bucket(
+        v: &str,
+        in_w: &BTreeMap<String, i64>,
+        out_w: &BTreeMap<String, i64>,
+        buckets: &mut [VecDeque<String>],
+        zero_idx: i64,
+        bucket_of: &mut BTreeMap<String, usize>,
+    ) {
+        if let Some(prev) = bucket_of.get(v).copied() {
+            if let Some(pos) = buckets[prev].iter().position(|x| x == v) {
+                buckets[prev].remove(pos);
+            }
+        }
+
+        let in_v = in_w.get(v).copied().unwrap_or(0);
+        let out_v = out_w.get(v).copied().unwrap_or(0);
+        let idx: usize = if out_v == 0 {
+            0
+        } else if in_v == 0 {
+            buckets.len() - 1
+        } else {
+            let raw = out_v - in_v + zero_idx;
+            raw.clamp(0, (buckets.len() - 1) as i64) as usize
+        };
+
+        buckets[idx].push_front(v.to_string());
+        bucket_of.insert(v.to_string(), idx);
+    }
+
+    fn remove_node(
+        v: &str,
+        alive: &mut BTreeSet<String>,
+        buckets: &mut [VecDeque<String>],
+        zero_idx: i64,
+        bucket_of: &mut BTreeMap<String, usize>,
+        in_w: &mut BTreeMap<String, i64>,
+        out_w: &mut BTreeMap<String, i64>,
+        in_edges: &BTreeMap<String, Vec<(String, i64)>>,
+        out_edges: &BTreeMap<String, Vec<(String, i64)>>,
+        collect_predecessors: Option<&mut Vec<(String, String)>>,
+    ) {
+        if !alive.remove(v) {
+            return;
+        }
+
+        if let Some(preds) = collect_predecessors {
+            if let Some(ins) = in_edges.get(v) {
+                for (u, _) in ins {
+                    if alive.contains(u) {
+                        preds.push((u.clone(), v.to_string()));
+                    }
+                }
+            }
+        }
+
+        if let Some(ins) = in_edges.get(v) {
+            for (u, wgt) in ins {
+                if !alive.contains(u) {
+                    continue;
+                }
+                if let Some(o) = out_w.get_mut(u) {
+                    *o -= *wgt;
+                }
+                assign_bucket(u, in_w, out_w, buckets, zero_idx, bucket_of);
+            }
+        }
+
+        if let Some(outs) = out_edges.get(v) {
+            for (w, wgt) in outs {
+                if !alive.contains(w) {
+                    continue;
+                }
+                if let Some(i) = in_w.get_mut(w) {
+                    *i -= *wgt;
+                }
+                assign_bucket(w, in_w, out_w, buckets, zero_idx, bucket_of);
+            }
+        }
+
+        // Keep book-keeping maps small to reduce accidental lookups.
+        in_w.remove(v);
+        out_w.remove(v);
+        bucket_of.remove(v);
     }
 }
 
