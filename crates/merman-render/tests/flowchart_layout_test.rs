@@ -57,6 +57,11 @@ fn flowchart_layout_produces_positions_and_routes() {
             assert!(p.x.is_finite() && p.y.is_finite());
         }
     }
+
+    // Mermaid's modern flowchart layout represents edge labels as label nodes. Ensure we emit
+    // stable label placeholders for labeled edges.
+    let labeled = layout.edges.iter().filter(|e| e.label.is_some()).count();
+    assert!(labeled >= 2, "expected at least two labeled edges");
 }
 
 #[test]

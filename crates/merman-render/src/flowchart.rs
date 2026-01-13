@@ -74,6 +74,25 @@ fn rank_dir_from_flow(direction: &str) -> RankDir {
     }
 }
 
+fn edge_label_is_non_empty(edge: &FlowEdge) -> bool {
+    edge.label
+        .as_deref()
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false)
+}
+
+fn edge_label_node_id(edge: &FlowEdge) -> String {
+    format!("edge-label-{}-{}-{}", edge.from, edge.to, edge.id)
+}
+
+fn edge_to_label_name(edge: &FlowEdge) -> String {
+    format!("{}-to-label", edge.id)
+}
+
+fn edge_from_label_name(edge: &FlowEdge) -> String {
+    format!("{}-from-label", edge.id)
+}
+
 pub fn layout_flowchart_v2(
     semantic: &Value,
     effective_config: &Value,
@@ -163,24 +182,66 @@ pub fn layout_flowchart_v2(
         }
     }
 
+    let mut edge_label_nodes: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+
     for e in &model.edges {
-        let (lw, lh) = if let Some(label) = e.label.as_deref() {
-            let metrics = measurer.measure(label, &text_style);
-            (metrics.width + node_padding, metrics.height + node_padding)
+        if edge_label_is_non_empty(e) {
+            // Mermaid's modern Dagre pipeline converts labeled edges into a label node and splits
+            // the original edge into two edges to ensure the label participates in layout.
+            let label_node_id = edge_label_node_id(e);
+            edge_label_nodes.insert(e.id.clone(), label_node_id.clone());
+
+            let label_text = e.label.as_deref().unwrap_or_default();
+            let metrics = measurer.measure(label_text, &text_style);
+            let label_width = (metrics.width + node_padding).max(1.0);
+            let label_height = (metrics.height + node_padding).max(1.0);
+            g.set_node(
+                label_node_id.clone(),
+                NodeLabel {
+                    width: label_width,
+                    height: label_height,
+                    ..Default::default()
+                },
+            );
+
+            let minlen = e.length.max(1);
+            let el = EdgeLabel {
+                // Edge label is represented by the label node, so edges themselves carry no label size.
+                width: 0.0,
+                height: 0.0,
+                labelpos: LabelPos::C,
+                labeloffset: 10.0,
+                minlen,
+                weight: 1.0,
+                ..Default::default()
+            };
+
+            g.set_edge_named(
+                e.from.clone(),
+                label_node_id.clone(),
+                Some(edge_to_label_name(e)),
+                Some(el.clone()),
+            );
+            g.set_edge_named(
+                label_node_id,
+                e.to.clone(),
+                Some(edge_from_label_name(e)),
+                Some(el),
+            );
         } else {
-            (0.0, 0.0)
-        };
-        let el = EdgeLabel {
-            width: lw,
-            height: lh,
-            labelpos: LabelPos::C,
-            // Dagre layout defaults `labeloffset` to 10 when unspecified.
-            labeloffset: 10.0,
-            minlen: e.length.max(1),
-            weight: 1.0,
-            ..Default::default()
-        };
-        g.set_edge_named(e.from.clone(), e.to.clone(), Some(e.id.clone()), Some(el));
+            let el = EdgeLabel {
+                width: 0.0,
+                height: 0.0,
+                labelpos: LabelPos::C,
+                // Dagre layout defaults `labeloffset` to 10 when unspecified.
+                labeloffset: 10.0,
+                minlen: e.length.max(1),
+                weight: 1.0,
+                ..Default::default()
+            };
+            g.set_edge_named(e.from.clone(), e.to.clone(), Some(e.id.clone()), Some(el));
+        }
     }
 
     dugong::layout(&mut g);
@@ -359,22 +420,62 @@ pub fn layout_flowchart_v2(
             }
 
             for e in &internal_edges {
-                let (lw, lh) = if let Some(label) = e.label.as_deref() {
-                    let metrics = measurer.measure(label, &text_style);
-                    (metrics.width + node_padding, metrics.height + node_padding)
+                if edge_label_is_non_empty(e) {
+                    let label_node_id = edge_label_node_id(e);
+
+                    let label_text = e.label.as_deref().unwrap_or_default();
+                    let metrics = measurer.measure(label_text, &text_style);
+                    let label_width = (metrics.width + node_padding).max(1.0);
+                    let label_height = (metrics.height + node_padding).max(1.0);
+                    g_inner.set_node(
+                        label_node_id.clone(),
+                        NodeLabel {
+                            width: label_width,
+                            height: label_height,
+                            ..Default::default()
+                        },
+                    );
+
+                    let minlen = e.length.max(1);
+                    let el = EdgeLabel {
+                        width: 0.0,
+                        height: 0.0,
+                        labelpos: LabelPos::C,
+                        labeloffset: 10.0,
+                        minlen,
+                        weight: 1.0,
+                        ..Default::default()
+                    };
+
+                    g_inner.set_edge_named(
+                        e.from.clone(),
+                        label_node_id.clone(),
+                        Some(edge_to_label_name(e)),
+                        Some(el.clone()),
+                    );
+                    g_inner.set_edge_named(
+                        label_node_id,
+                        e.to.clone(),
+                        Some(edge_from_label_name(e)),
+                        Some(el),
+                    );
                 } else {
-                    (0.0, 0.0)
-                };
-                let el = EdgeLabel {
-                    width: lw,
-                    height: lh,
-                    labelpos: LabelPos::C,
-                    labeloffset: 10.0,
-                    minlen: e.length.max(1),
-                    weight: 1.0,
-                    ..Default::default()
-                };
-                g_inner.set_edge_named(e.from.clone(), e.to.clone(), Some(e.id.clone()), Some(el));
+                    let el = EdgeLabel {
+                        width: 0.0,
+                        height: 0.0,
+                        labelpos: LabelPos::C,
+                        labeloffset: 10.0,
+                        minlen: e.length.max(1),
+                        weight: 1.0,
+                        ..Default::default()
+                    };
+                    g_inner.set_edge_named(
+                        e.from.clone(),
+                        e.to.clone(),
+                        Some(e.id.clone()),
+                        Some(el),
+                    );
+                }
             }
 
             dugong::layout(&mut g_inner);
@@ -435,30 +536,75 @@ pub fn layout_flowchart_v2(
 
             // Capture edge point overrides for internal edges.
             for e in &internal_edges {
-                let Some(lbl) = g_inner.edge(&e.from, &e.to, Some(&e.id)) else {
-                    continue;
-                };
-                let points = lbl
-                    .points
-                    .iter()
-                    .map(|p| LayoutPoint {
-                        x: p.x + dx,
-                        y: p.y + dy + y_shift,
-                    })
-                    .collect::<Vec<_>>();
-                edge_override_points.insert(e.id.clone(), points);
+                let (points, label_pos) = if edge_label_is_non_empty(e) {
+                    let label_node_id = edge_label_node_id(e);
+                    let to_label_name = edge_to_label_name(e);
+                    let from_label_name = edge_from_label_name(e);
 
-                let label_pos = match (lbl.x, lbl.y) {
-                    (Some(x), Some(y)) if lbl.width > 0.0 || lbl.height > 0.0 => {
-                        Some(LayoutLabel {
-                            x: x + dx,
-                            y: y + dy + y_shift,
-                            width: lbl.width,
-                            height: lbl.height,
-                        })
+                    let Some(to_label) =
+                        g_inner.edge(&e.from, &label_node_id, Some(to_label_name.as_str()))
+                    else {
+                        continue;
+                    };
+                    let Some(from_label) =
+                        g_inner.edge(&label_node_id, &e.to, Some(from_label_name.as_str()))
+                    else {
+                        continue;
+                    };
+
+                    let mut pts = Vec::new();
+                    for p in &to_label.points {
+                        pts.push(LayoutPoint {
+                            x: p.x + dx,
+                            y: p.y + dy + y_shift,
+                        });
                     }
-                    _ => None,
+
+                    let mut skip_first = false;
+                    if let (Some(last), Some(first)) = (pts.last(), from_label.points.first()) {
+                        let fx = first.x + dx;
+                        let fy = first.y + dy + y_shift;
+                        if (last.x - fx).abs() <= 1e-6 && (last.y - fy).abs() <= 1e-6 {
+                            skip_first = true;
+                        }
+                    }
+
+                    for (idx, p) in from_label.points.iter().enumerate() {
+                        if skip_first && idx == 0 {
+                            continue;
+                        }
+                        pts.push(LayoutPoint {
+                            x: p.x + dx,
+                            y: p.y + dy + y_shift,
+                        });
+                    }
+
+                    let label_pos = g_inner.node(&label_node_id).and_then(|n| {
+                        Some(LayoutLabel {
+                            x: n.x.unwrap_or(0.0) + dx,
+                            y: n.y.unwrap_or(0.0) + dy + y_shift,
+                            width: n.width,
+                            height: n.height,
+                        })
+                    });
+
+                    (pts, label_pos)
+                } else {
+                    let Some(lbl) = g_inner.edge(&e.from, &e.to, Some(&e.id)) else {
+                        continue;
+                    };
+                    let points = lbl
+                        .points
+                        .iter()
+                        .map(|p| LayoutPoint {
+                            x: p.x + dx,
+                            y: p.y + dy + y_shift,
+                        })
+                        .collect::<Vec<_>>();
+                    (points, None)
                 };
+
+                edge_override_points.insert(e.id.clone(), points);
                 edge_override_label.insert(e.id.clone(), label_pos);
             }
         }
@@ -638,6 +784,58 @@ pub fn layout_flowchart_v2(
                 points.clone(),
                 edge_override_label.get(&e.id).cloned().unwrap_or(None),
             )
+        } else if let Some(label_node_id) = edge_label_nodes.get(&e.id) {
+            let to_label_name = edge_to_label_name(e);
+            let from_label_name = edge_from_label_name(e);
+
+            let Some(to_label) = g.edge(&e.from, label_node_id, Some(to_label_name.as_str()))
+            else {
+                return Err(Error::InvalidModel {
+                    message: format!("missing layout edge {} (to-label)", e.id),
+                });
+            };
+            let Some(from_label) = g.edge(label_node_id, &e.to, Some(from_label_name.as_str()))
+            else {
+                return Err(Error::InvalidModel {
+                    message: format!("missing layout edge {} (from-label)", e.id),
+                });
+            };
+
+            let mut pts = Vec::new();
+            for p in &to_label.points {
+                pts.push(LayoutPoint {
+                    x: p.x,
+                    y: p.y + y_shift,
+                });
+            }
+            let mut skip_first = false;
+            if let (Some(last), Some(first)) = (pts.last(), from_label.points.first()) {
+                let fx = first.x;
+                let fy = first.y + y_shift;
+                if (last.x - fx).abs() <= 1e-6 && (last.y - fy).abs() <= 1e-6 {
+                    skip_first = true;
+                }
+            }
+            for (idx, p) in from_label.points.iter().enumerate() {
+                if skip_first && idx == 0 {
+                    continue;
+                }
+                pts.push(LayoutPoint {
+                    x: p.x,
+                    y: p.y + y_shift,
+                });
+            }
+
+            let label_pos = g.node(label_node_id).and_then(|n| {
+                Some(LayoutLabel {
+                    x: n.x.unwrap_or(0.0),
+                    y: n.y.unwrap_or(0.0) + y_shift,
+                    width: n.width,
+                    height: n.height,
+                })
+            });
+
+            (pts, label_pos)
         } else {
             let Some(label) = g.edge(&e.from, &e.to, Some(&e.id)) else {
                 return Err(Error::InvalidModel {
