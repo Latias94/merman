@@ -1782,6 +1782,192 @@ pub mod rank {
     }
 }
 
+pub mod order {
+    use crate::graphlib::{Graph, GraphOptions};
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Relationship {
+        InEdges,
+        OutEdges,
+    }
+
+    #[derive(Debug, Clone, Default, PartialEq)]
+    pub struct LayerGraphLabel {
+        pub root: String,
+    }
+
+    #[derive(Debug, Clone, Copy, Default, PartialEq)]
+    pub struct WeightLabel {
+        pub weight: f64,
+    }
+
+    pub trait OrderEdgeWeight {
+        fn weight(&self) -> f64;
+    }
+
+    impl OrderEdgeWeight for WeightLabel {
+        fn weight(&self) -> f64 {
+            self.weight
+        }
+    }
+
+    impl OrderEdgeWeight for crate::EdgeLabel {
+        fn weight(&self) -> f64 {
+            self.weight
+        }
+    }
+
+    pub trait OrderNodeRange {
+        fn rank(&self) -> Option<i32>;
+        fn min_rank(&self) -> Option<i32>;
+        fn max_rank(&self) -> Option<i32>;
+        fn has_min_rank(&self) -> bool {
+            self.min_rank().is_some()
+        }
+        fn border_left_at(&self, _rank: i32) -> Option<String> {
+            None
+        }
+        fn border_right_at(&self, _rank: i32) -> Option<String> {
+            None
+        }
+        fn subgraph_layer_label(&self, _rank: i32) -> Self
+        where
+            Self: Sized,
+        {
+            unreachable!("subgraph_layer_label not implemented for this node label type")
+        }
+    }
+
+    impl OrderNodeRange for crate::NodeLabel {
+        fn rank(&self) -> Option<i32> {
+            self.rank
+        }
+
+        fn min_rank(&self) -> Option<i32> {
+            self.min_rank
+        }
+
+        fn max_rank(&self) -> Option<i32> {
+            self.max_rank
+        }
+
+        fn has_min_rank(&self) -> bool {
+            self.min_rank.is_some()
+        }
+
+        fn border_left_at(&self, rank: i32) -> Option<String> {
+            self.border_left.get(rank as usize).cloned().unwrap_or(None)
+        }
+
+        fn border_right_at(&self, rank: i32) -> Option<String> {
+            self.border_right
+                .get(rank as usize)
+                .cloned()
+                .unwrap_or(None)
+        }
+
+        fn subgraph_layer_label(&self, rank: i32) -> Self {
+            let left = self.border_left_at(rank);
+            let right = self.border_right_at(rank);
+
+            Self {
+                border_left: vec![left],
+                border_right: vec![right],
+                ..Default::default()
+            }
+        }
+    }
+
+    pub fn build_layer_graph<N, E, G>(
+        g: &Graph<N, E, G>,
+        rank: i32,
+        relationship: Relationship,
+        nodes_with_rank: Option<&[String]>,
+    ) -> Graph<N, WeightLabel, LayerGraphLabel>
+    where
+        N: Default + Clone + 'static + OrderNodeRange,
+        E: Default + 'static + OrderEdgeWeight,
+        G: Default,
+    {
+        let root = create_root_node(g);
+        let mut result: Graph<N, WeightLabel, LayerGraphLabel> = Graph::new(GraphOptions {
+            compound: true,
+            multigraph: false,
+            ..Default::default()
+        });
+        result.set_graph(LayerGraphLabel { root: root.clone() });
+        result.set_node(root.clone(), N::default());
+
+        let nodes: Vec<String> = match nodes_with_rank {
+            Some(vs) => vs.to_vec(),
+            None => g.nodes().map(|v| v.to_string()).collect(),
+        };
+
+        for v in nodes {
+            let node = g.node(&v).cloned().unwrap_or_default();
+            let parent = g.parent(&v).map(|p| p.to_string());
+
+            let in_range = node.rank() == Some(rank)
+                || (node.min_rank().is_some()
+                    && node.max_rank().is_some()
+                    && node.min_rank().unwrap() <= rank
+                    && rank <= node.max_rank().unwrap());
+
+            if !in_range {
+                continue;
+            }
+
+            result.set_node(v.clone(), node.clone());
+            result.set_parent(v.clone(), parent.unwrap_or_else(|| root.clone()));
+
+            let incident_edges = match relationship {
+                Relationship::InEdges => g.in_edges(&v, None),
+                Relationship::OutEdges => g.out_edges(&v, None),
+            };
+
+            for e in incident_edges {
+                let u = if e.v == v { e.w.clone() } else { e.v.clone() };
+
+                if !result.has_node(&u) {
+                    let lbl = g.node(&u).cloned().unwrap_or_default();
+                    result.set_node(u.clone(), lbl);
+                }
+
+                let existing_weight = result.edge(&u, &v, None).map(|l| l.weight).unwrap_or(0.0);
+                let weight = g.edge_by_key(&e).map(|l| l.weight()).unwrap_or(0.0);
+                result.set_edge_with_label(
+                    u,
+                    v.clone(),
+                    WeightLabel {
+                        weight: weight + existing_weight,
+                    },
+                );
+            }
+
+            if node.has_min_rank() {
+                let override_label = node.subgraph_layer_label(rank);
+                result.set_node(v, override_label);
+            }
+        }
+
+        result
+    }
+
+    fn create_root_node<N, E, G>(g: &Graph<N, E, G>) -> String
+    where
+        N: Default + 'static,
+        E: Default + 'static,
+        G: Default,
+    {
+        loop {
+            let v = crate::util::unique_id("_root");
+            if !g.has_node(&v) {
+                return v;
+            }
+        }
+    }
+}
+
 pub mod nesting_graph {
     use super::{EdgeLabel, GraphLabel, NodeLabel};
     use crate::graphlib::{EdgeKey, Graph, alg};
