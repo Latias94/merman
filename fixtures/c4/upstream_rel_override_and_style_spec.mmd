@@ -1,0 +1,9 @@
+C4Context
+title Relationship override and style
+
+Person(a, "A")
+Person(b, "B")
+
+Rel(a, b, "first", "tech1", "d1")
+Rel_Back(a, b, "override", "tech2", "d2")
+UpdateRelStyle(a, b, $textColor="red", $lineColor="blue", $offsetX="10", $offsetY="20")

@@ -1,0 +1,80 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
+        "type": {
+          "text": "global"
+        }
+      }
+    ],
+    "c4Type": "C4Context",
+    "layout": {
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
+    },
+    "rels": [
+      {
+        "descr": {
+          "text": "d2"
+        },
+        "from": "a",
+        "label": {
+          "text": "override"
+        },
+        "lineColor": "blue",
+        "offsetX": 10,
+        "offsetY": 20,
+        "techn": {
+          "text": "tech2"
+        },
+        "textColor": "red",
+        "to": "b",
+        "type": "rel_b",
+        "wrap": false
+      }
+    ],
+    "shapes": [
+      {
+        "alias": "a",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "A"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "b",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "B"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      }
+    ],
+    "title": "Relationship override and style",
+    "type": "c4",
+    "wrap": false
+  }
+}
