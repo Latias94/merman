@@ -473,3 +473,51 @@ fn layout_can_layout_a_graph_with_subgraphs() {
     assert_eq!(sg.x, None);
     assert_eq!(sg.y, None);
 }
+
+#[test]
+fn layout_minimizes_the_height_of_subgraphs() {
+    let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
+        multigraph: true,
+        compound: true,
+    });
+    g.set_graph(GraphLabel::default());
+    g.set_default_edge_label(EdgeLabel::default);
+
+    for v in ["a", "b", "c", "d", "x", "y"] {
+        g.set_node(
+            v,
+            NodeLabel {
+                width: 50.0,
+                height: 50.0,
+                ..Default::default()
+            },
+        );
+    }
+
+    // setPath(["a", "b", "c", "d"])
+    g.set_edge("a", "b");
+    g.set_edge("b", "c");
+    g.set_edge("c", "d");
+
+    g.set_edge_with_label(
+        "a",
+        "x",
+        EdgeLabel {
+            weight: 100.0,
+            ..Default::default()
+        },
+    );
+    g.set_edge_with_label(
+        "y",
+        "d",
+        EdgeLabel {
+            weight: 100.0,
+            ..Default::default()
+        },
+    );
+    g.set_parent("x", "sg");
+    g.set_parent("y", "sg");
+
+    layout(&mut g);
+    assert_eq!(g.node("x").unwrap().y, g.node("y").unwrap().y);
+}

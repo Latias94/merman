@@ -481,6 +481,65 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         }
     }
 
+    if g.options().compound {
+        // Compact ranks inside compound nodes where a common rank is feasible, to minimize cluster height.
+        // This is a small parity-oriented step to match upstream Dagre behavior for subgraphs.
+        let parents: Vec<String> = g
+            .node_ids()
+            .into_iter()
+            .filter(|id| !g.children(id).is_empty())
+            .collect();
+
+        for parent in parents {
+            let children: Vec<String> = g
+                .children(&parent)
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect();
+            let targets: Vec<String> = children
+                .into_iter()
+                .filter(|c| rank.contains_key(c))
+                .collect();
+            if targets.len() < 2 {
+                continue;
+            }
+
+            // Preserve insertion order (children are stored deterministically).
+            let mut min_needed: usize = 0;
+            let mut max_allowed: usize = usize::MAX / 4;
+
+            for child in &targets {
+                let mut min_rank: usize = 0;
+                for ek in g.in_edges(child, None) {
+                    let Some(&pred_rank) = rank.get(&ek.v) else {
+                        continue;
+                    };
+                    let minlen = g.edge_by_key(&ek).map(|e| e.minlen).unwrap_or(1).max(1);
+                    min_rank = min_rank.max(pred_rank.saturating_add(minlen));
+                }
+
+                let mut max_rank: usize = usize::MAX / 4;
+                for ek in g.out_edges(child, None) {
+                    let Some(&succ_rank) = rank.get(&ek.w) else {
+                        continue;
+                    };
+                    let minlen = g.edge_by_key(&ek).map(|e| e.minlen).unwrap_or(1).max(1);
+                    let upper = succ_rank.saturating_sub(minlen);
+                    max_rank = max_rank.min(upper);
+                }
+
+                min_needed = min_needed.max(min_rank);
+                max_allowed = max_allowed.min(max_rank);
+            }
+
+            if min_needed <= max_allowed {
+                for child in &targets {
+                    rank.insert(child.clone(), min_needed);
+                }
+            }
+        }
+    }
+
     let max_rank = rank.values().copied().max().unwrap_or(0);
     let mut ranks: Vec<Vec<String>> = vec![Vec::new(); max_rank + 1];
     for id in &node_ids {
