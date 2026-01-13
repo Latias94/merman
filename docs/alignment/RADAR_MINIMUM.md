@@ -6,6 +6,12 @@ Baseline: Mermaid `@11.12.2`.
 
 Note: Mermaid exposes this diagram as `radar-beta` but registers it with diagram id `radar`.
 
+Upstream references:
+
+- Parser/AST bridge: `repo-ref/mermaid/packages/mermaid/src/diagrams/radar/parser.ts`
+- DB/model: `repo-ref/mermaid/packages/mermaid/src/diagrams/radar/db.ts`
+- Upstream tests: `repo-ref/mermaid/packages/mermaid/src/diagrams/radar/radar.spec.ts`
+
 ## Supported (current)
 
 - Header:
@@ -51,4 +57,3 @@ Note: Mermaid exposes this diagram as `radar-beta` but registers it with diagram
 
 This is an incremental slice. The ultimate goal is full Mermaid `radar-beta` grammar and DB
 behavior compatibility at the pinned baseline tag.
-

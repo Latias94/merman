@@ -1,0 +1,41 @@
+{
+  "diagramType": "radar",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "axes": [
+      {
+        "label": "A",
+        "name": "A"
+      },
+      {
+        "label": "B",
+        "name": "B"
+      },
+      {
+        "label": "C",
+        "name": "C"
+      }
+    ],
+    "curves": [
+      {
+        "entries": [
+          1,
+          2,
+          3
+        ],
+        "label": "mycurve",
+        "name": "mycurve"
+      }
+    ],
+    "options": {
+      "graticule": "circle",
+      "max": null,
+      "min": 0,
+      "showLegend": true,
+      "ticks": 5
+    },
+    "title": null,
+    "type": "radar"
+  }
+}
