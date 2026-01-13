@@ -138,3 +138,14 @@ Source: `repo-ref/dagre/test/unique-id-test.js`
 - `uniqueId(name) generates a valid identifier` -> `crates/dugong/tests/unique_id_test.rs::unique_id_name_generates_a_valid_identifier`
 - `Calling uniqueId(name) multiple times generate distinct values` -> `crates/dugong/tests/unique_id_test.rs::unique_id_multiple_calls_generate_distinct_values`
 - `Calling uniqueId(number) with a number creates a valid identifier string` -> `crates/dugong/tests/unique_id_test.rs::unique_id_number_prefix_creates_a_valid_identifier_string`
+
+Source: `repo-ref/dagre/test/greedy-fas-test.js`
+
+- `returns the empty set for empty graphs` -> `crates/dugong/tests/greedy_fas_test.rs::greedy_fas_returns_the_empty_set_for_empty_graphs`
+- `returns the empty set for single-node graphs` -> `crates/dugong/tests/greedy_fas_test.rs::greedy_fas_returns_the_empty_set_for_single_node_graphs`
+- `returns an empty set if the input graph is acyclic` -> `crates/dugong/tests/greedy_fas_test.rs::greedy_fas_returns_an_empty_set_if_the_input_graph_is_acyclic`
+- `returns a single edge with a simple cycle` -> `crates/dugong/tests/greedy_fas_test.rs::greedy_fas_returns_a_single_edge_with_a_simple_cycle`
+- `returns a single edge in a 4-node cycle` -> `crates/dugong/tests/greedy_fas_test.rs::greedy_fas_returns_a_single_edge_in_a_4_node_cycle`
+- `returns two edges for two 4-node cycles` -> `crates/dugong/tests/greedy_fas_test.rs::greedy_fas_returns_two_edges_for_two_4_node_cycles`
+- `works with arbitrarily weighted edges` -> `crates/dugong/tests/greedy_fas_test.rs::greedy_fas_works_with_arbitrarily_weighted_edges`
+- `works for multigraphs` -> `crates/dugong/tests/greedy_fas_test.rs::greedy_fas_works_for_multigraphs`
