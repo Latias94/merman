@@ -4,6 +4,7 @@ members = [
   "crates/merman",
   "crates/merman-core",
   "crates/merman-cli",
+  "crates/merman-render",
   "crates/dugong",
   "crates/dugong-graphlib",
   "crates/xtask",

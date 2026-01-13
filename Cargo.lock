@@ -780,6 +780,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "merman-render"
+version = "0.1.0"
+dependencies = [
+ "dugong",
+ "futures",
+ "merman-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
