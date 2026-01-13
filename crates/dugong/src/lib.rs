@@ -20,6 +20,7 @@ pub struct GraphLabel {
     pub ranksep: f64,
     pub edgesep: f64,
     pub acyclicer: Option<String>,
+    pub dummy_chains: Vec<String>,
     pub nesting_root: Option<String>,
     pub node_rank_factor: Option<usize>,
 }
@@ -32,6 +33,7 @@ impl Default for GraphLabel {
             ranksep: 50.0,
             edgesep: 10.0,
             acyclicer: None,
+            dummy_chains: Vec::new(),
             nesting_root: None,
             node_rank_factor: None,
         }
@@ -47,6 +49,9 @@ pub struct NodeLabel {
     pub rank: Option<i32>,
     pub order: Option<usize>,
     pub dummy: Option<String>,
+    pub labelpos: Option<LabelPos>,
+    pub edge_label: Option<EdgeLabel>,
+    pub edge_obj: Option<graphlib::EdgeKey>,
     pub border_top: Option<String>,
     pub border_bottom: Option<String>,
 }
@@ -71,11 +76,13 @@ pub struct EdgeLabel {
     pub height: f64,
     pub labelpos: LabelPos,
     pub labeloffset: f64,
+    pub label_rank: Option<i32>,
     pub minlen: usize,
     pub weight: f64,
     pub nesting_edge: bool,
     pub reversed: bool,
     pub forward_name: Option<String>,
+    pub extras: std::collections::BTreeMap<String, serde_json::Value>,
 
     pub x: Option<f64>,
     pub y: Option<f64>,
@@ -89,11 +96,13 @@ impl Default for EdgeLabel {
             height: 0.0,
             labelpos: LabelPos::C,
             labeloffset: 0.0,
+            label_rank: None,
             minlen: 1,
             weight: 0.0,
             nesting_edge: false,
             reversed: false,
             forward_name: None,
+            extras: std::collections::BTreeMap::new(),
             x: None,
             y: None,
             points: Vec::new(),
@@ -531,6 +540,160 @@ pub mod acyclic {
         in_w.remove(v);
         out_w.remove(v);
         bucket_of.remove(v);
+    }
+}
+
+pub mod normalize {
+    use super::{EdgeLabel, GraphLabel, NodeLabel, Point};
+    use crate::graphlib::{EdgeKey, Graph};
+
+    fn add_dummy_node(
+        g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        label: NodeLabel,
+        prefix: &str,
+    ) -> String {
+        if !g.has_node(prefix) {
+            g.set_node(prefix, label);
+            return prefix.to_string();
+        }
+        for i in 1usize.. {
+            let v = format!("{prefix}{i}");
+            if !g.has_node(&v) {
+                g.set_node(&v, label.clone());
+                return v;
+            }
+        }
+        unreachable!()
+    }
+
+    pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+        g.graph_mut().dummy_chains.clear();
+        let edge_keys = g.edge_keys();
+        for e in edge_keys {
+            normalize_edge(g, e);
+        }
+    }
+
+    fn normalize_edge(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, e: EdgeKey) {
+        let v = e.v.clone();
+        let w = e.w.clone();
+        let name = e.name.clone();
+
+        let v_rank = g.node(&v).and_then(|n| n.rank).unwrap_or(0);
+        let w_rank = g.node(&w).and_then(|n| n.rank).unwrap_or(0);
+        let Some(mut edge_label) = g.edge_by_key(&e).cloned() else {
+            return;
+        };
+        let label_rank = edge_label.label_rank;
+
+        if w_rank == v_rank + 1 {
+            return;
+        }
+
+        let _ = g.remove_edge_key(&e);
+
+        edge_label.points.clear();
+
+        let mut prev = v;
+        let mut first_dummy: Option<String> = None;
+        let mut r = v_rank + 1;
+
+        while r < w_rank {
+            let dummy_id = add_dummy_node(
+                g,
+                NodeLabel {
+                    width: 0.0,
+                    height: 0.0,
+                    rank: Some(r),
+                    dummy: Some("edge".to_string()),
+                    edge_label: Some(edge_label.clone()),
+                    edge_obj: Some(e.clone()),
+                    ..Default::default()
+                },
+                "_d",
+            );
+
+            if first_dummy.is_none() {
+                first_dummy = Some(dummy_id.clone());
+                g.graph_mut().dummy_chains.push(dummy_id.clone());
+            }
+
+            if label_rank == Some(r) {
+                if let Some(n) = g.node_mut(&dummy_id) {
+                    n.width = edge_label.width;
+                    n.height = edge_label.height;
+                    n.dummy = Some("edge-label".to_string());
+                    n.labelpos = Some(edge_label.labelpos);
+                }
+            }
+
+            g.set_edge_named(
+                prev.clone(),
+                dummy_id.clone(),
+                name.clone(),
+                Some(EdgeLabel {
+                    weight: edge_label.weight,
+                    ..Default::default()
+                }),
+            );
+            prev = dummy_id;
+            r += 1;
+        }
+
+        g.set_edge_named(
+            prev,
+            w,
+            name,
+            Some(EdgeLabel {
+                weight: edge_label.weight,
+                ..Default::default()
+            }),
+        );
+    }
+
+    pub fn undo(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+        let chains = g.graph().dummy_chains.clone();
+        for start in chains {
+            let Some(start_node) = g.node(&start) else {
+                continue;
+            };
+            let Some(mut orig_label) = start_node.edge_label.clone() else {
+                continue;
+            };
+            let Some(edge_obj) = start_node.edge_obj.clone() else {
+                continue;
+            };
+
+            let mut v = start.clone();
+            while let Some(node) = g.node(&v) {
+                if node.dummy.is_none() {
+                    break;
+                }
+                let w = g
+                    .successors(&v)
+                    .get(0)
+                    .map(|s| s.to_string())
+                    .unwrap_or_default();
+
+                if let (Some(x), Some(y)) = (node.x, node.y) {
+                    orig_label.points.push(Point { x, y });
+                    if node.dummy.as_deref() == Some("edge-label") {
+                        orig_label.x = Some(x);
+                        orig_label.y = Some(y);
+                        orig_label.width = node.width;
+                        orig_label.height = node.height;
+                    }
+                }
+
+                let _ = g.remove_node(&v);
+                v = w;
+                if v.is_empty() {
+                    break;
+                }
+            }
+
+            g.set_edge_key(edge_obj, orig_label);
+        }
     }
 }
 

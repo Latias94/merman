@@ -211,6 +211,7 @@ name = "dugong"
 version = "0.1.0"
 dependencies = [
  "dugong-graphlib",
+ "serde_json",
 ]
 
 [[package]]

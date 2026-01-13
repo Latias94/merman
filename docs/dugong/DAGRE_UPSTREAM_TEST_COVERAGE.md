@@ -68,3 +68,18 @@ Source: `repo-ref/dagre/test/acyclic-test.js`
 - `does not change edges where the original graph was acyclic` → `crates/dugong/tests/acyclic_test.rs::acyclic_undo_does_not_change_edges_where_the_original_graph_was_acyclic`
 - `can restore previosuly reversed edges` → `crates/dugong/tests/acyclic_test.rs::acyclic_undo_can_restore_previously_reversed_edges`
 - `prefers to break cycles at low-weight edges` → `crates/dugong/tests/acyclic_test.rs::acyclic_greedy_prefers_to_break_cycles_at_low_weight_edges`
+
+Source: `repo-ref/dagre/test/normalize-test.js`
+
+- `does not change a short edge` -> `crates/dugong/tests/normalize_test.rs::normalize_run_does_not_change_a_short_edge`
+- `splits a two layer edge into two segments` -> `crates/dugong/tests/normalize_test.rs::normalize_run_splits_a_two_layer_edge_into_two_segments`
+- `assigns width = 0, height = 0 to dummy nodes by default` -> `crates/dugong/tests/normalize_test.rs::normalize_run_assigns_width_and_height_0_to_dummy_nodes_by_default`
+- `assigns width and height from the edge for the node on labelRank` -> `crates/dugong/tests/normalize_test.rs::normalize_run_assigns_width_and_height_from_the_edge_for_the_node_on_label_rank`
+- `preserves the weight for the edge` -> `crates/dugong/tests/normalize_test.rs::normalize_run_preserves_the_weight_for_the_edge`
+- `reverses the run operation` -> `crates/dugong/tests/normalize_test.rs::normalize_undo_reverses_the_run_operation`
+- `restores previous edge labels` -> `crates/dugong/tests/normalize_test.rs::normalize_undo_restores_previous_edge_labels`
+- `collects assigned coordinates into the 'points' attribute` -> `crates/dugong/tests/normalize_test.rs::normalize_undo_collects_assigned_coordinates_into_points`
+- `merges assigned coordinates into the 'points' attribute` -> `crates/dugong/tests/normalize_test.rs::normalize_undo_merges_assigned_coordinates_into_points`
+- `sets coords and dims for the label, if the edge has one` -> `crates/dugong/tests/normalize_test.rs::normalize_undo_sets_coords_and_dims_for_the_label_if_the_edge_has_one`
+- `sets coords and dims for the label, if the long edge has one` -> `crates/dugong/tests/normalize_test.rs::normalize_undo_sets_coords_and_dims_for_the_label_if_the_long_edge_has_one`
+- `restores multi-edges` -> `crates/dugong/tests/normalize_test.rs::normalize_undo_restores_multi_edges`
