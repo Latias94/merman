@@ -143,6 +143,7 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/flowDb.spec.ts
   - `parse_diagram_flowchart_linkstyle_numbered_interpolate_sets_edges`
   - `parse_diagram_flowchart_linkstyle_multi_numbered_interpolate_sets_edges`
 - subgraph membership ordering parity (FlowDB semantics): unit tests under `parse_diagram_flowchart_subgraph_*`
+- subgraph membership uniqueness (`makeUniq`): `fixtures/flowchart/upstream_flowdb_makeuniq_spec.mmd`
 
 ### `flowChartShapes.spec.js` (rendering)
 
