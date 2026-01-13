@@ -31,3 +31,10 @@ Upstream baseline: `mermaid@11.12.2` (see `docs/adr/0001-upstream-baseline.md`).
 
 - High-frequency, user-facing errors should match Mermaid's baseline message text.
 - Internal/low-frequency errors prioritize stable categories and payloads first, then message text.
+
+## Repo alignment checks
+
+- Run `cargo run -p xtask -- check-alignment` to validate that:
+  - every `docs/alignment/*_MINIMUM.md` has a corresponding `*_UPSTREAM_TEST_COVERAGE.md`
+  - every `fixtures/**/*.mmd` has a sibling `*.golden.json`
+  - coverage docs only reference existing local files

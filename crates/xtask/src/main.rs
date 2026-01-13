@@ -38,6 +38,8 @@ enum XtaskError {
     VerifyFailed(String),
     #[error("snapshot update failed: {0}")]
     SnapshotUpdateFailed(String),
+    #[error("alignment check failed:\n{0}")]
+    AlignmentCheckFailed(String),
 }
 
 fn main() -> Result<(), XtaskError> {
@@ -51,8 +53,180 @@ fn main() -> Result<(), XtaskError> {
         "gen-dompurify-defaults" => gen_dompurify_defaults(args.collect()),
         "verify-generated" => verify_generated(args.collect()),
         "update-snapshots" => update_snapshots(args.collect()),
+        "check-alignment" => check_alignment(args.collect()),
         other => Err(XtaskError::UnknownCommand(other.to_string())),
     }
+}
+
+fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
+    if !args.is_empty() && !(args.len() == 1 && (args[0] == "--help" || args[0] == "-h")) {
+        return Err(XtaskError::Usage);
+    }
+    if args.len() == 1 {
+        return Err(XtaskError::Usage);
+    }
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+    let alignment_dir = workspace_root.join("docs").join("alignment");
+    let fixtures_root = workspace_root.join("fixtures");
+
+    let mut failures: Vec<String> = Vec::new();
+
+    // 1) Every *_MINIMUM.md should have a *_UPSTREAM_TEST_COVERAGE.md sibling.
+    let mut minimum_docs: Vec<PathBuf> = Vec::new();
+    if let Ok(entries) = fs::read_dir(&alignment_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if name.ends_with("_MINIMUM.md") {
+                minimum_docs.push(path);
+            }
+        }
+    }
+    minimum_docs.sort();
+    for min_path in &minimum_docs {
+        let Some(stem) = min_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .and_then(|n| n.strip_suffix("_MINIMUM.md"))
+        else {
+            continue;
+        };
+        let cov = alignment_dir.join(format!("{stem}_UPSTREAM_TEST_COVERAGE.md"));
+        if !cov.exists() {
+            failures.push(format!(
+                "missing upstream coverage doc for {stem}: expected {}",
+                cov.display()
+            ));
+        }
+    }
+
+    fn strip_reference_suffix(s: &str) -> &str {
+        // Normalize "path:line" and "path#Lline" forms to just "path" for existence checks.
+        if let Some((left, right)) = s.rsplit_once(':') {
+            if right.chars().all(|c| c.is_ascii_digit()) {
+                return left;
+            }
+        }
+        if let Some((left, right)) = s.rsplit_once("#L") {
+            if right.chars().all(|c| c.is_ascii_digit()) {
+                return left;
+            }
+        }
+        s
+    }
+
+    fn is_probably_relative_path(s: &str) -> bool {
+        s.starts_with("fixtures/")
+            || s.starts_with("docs/")
+            || s.starts_with("crates/")
+            || s.starts_with("repo-ref/")
+    }
+
+    fn contains_glob(s: &str) -> bool {
+        s.contains('*') || s.contains('?') || s.contains('[') || s.contains(']')
+    }
+
+    // 2) Every `fixtures/**/*.mmd` must have a sibling `.golden.json`.
+    let mut mmd_files = Vec::new();
+    let mut stack = vec![fixtures_root.clone()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().is_some_and(|e| e == "mmd") {
+                mmd_files.push(path);
+            }
+        }
+    }
+    mmd_files.sort();
+    for mmd in &mmd_files {
+        let golden = mmd.with_extension("golden.json");
+        if !golden.exists() {
+            failures.push(format!(
+                "missing golden snapshot for fixture {} (expected {})",
+                mmd.display(),
+                golden.display()
+            ));
+        }
+    }
+
+    // 3) Coverage docs should not reference non-existent local files.
+    let backtick_re = Regex::new(r"`([^`]+)`")
+        .map_err(|e| XtaskError::AlignmentCheckFailed(format!("invalid regex: {e}")))?;
+
+    let mut coverage_docs: Vec<PathBuf> = Vec::new();
+    if let Ok(entries) = fs::read_dir(&alignment_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if name.ends_with("_UPSTREAM_TEST_COVERAGE.md") {
+                coverage_docs.push(path);
+            }
+        }
+    }
+    coverage_docs.sort();
+
+    for cov_path in &coverage_docs {
+        let text = read_text(cov_path)?;
+        for caps in backtick_re.captures_iter(&text) {
+            let raw = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            let raw = strip_reference_suffix(raw.trim());
+            if raw.is_empty() {
+                continue;
+            }
+            if !is_probably_relative_path(raw) {
+                continue;
+            }
+            if contains_glob(raw) {
+                continue;
+            }
+            let path = workspace_root.join(raw);
+            if !path.exists() {
+                failures.push(format!(
+                    "broken reference in {}: `{}` does not exist",
+                    cov_path.display(),
+                    raw
+                ));
+                continue;
+            }
+            if raw.starts_with("fixtures/") && raw.ends_with(".mmd") {
+                let golden = path.with_extension("golden.json");
+                if !golden.exists() {
+                    failures.push(format!(
+                        "broken reference in {}: missing golden for `{}` (expected {})",
+                        cov_path.display(),
+                        raw,
+                        golden.display()
+                    ));
+                }
+            }
+        }
+    }
+
+    if failures.is_empty() {
+        return Ok(());
+    }
+
+    Err(XtaskError::AlignmentCheckFailed(failures.join("\n")))
 }
 
 fn gen_default_config(args: Vec<String>) -> Result<(), XtaskError> {
