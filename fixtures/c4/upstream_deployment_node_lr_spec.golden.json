@@ -1,0 +1,119 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
+        "type": {
+          "text": "global"
+        }
+      },
+      {
+        "alias": "nl",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "NL"
+        },
+        "nodeType": "nodeL",
+        "parentBoundary": "global",
+        "type": {
+          "text": "node"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "nr",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "NR"
+        },
+        "nodeType": "nodeR",
+        "parentBoundary": "global",
+        "type": {
+          "text": "node"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "nd",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "ND"
+        },
+        "nodeType": "node",
+        "parentBoundary": "global",
+        "type": {
+          "text": "node"
+        },
+        "wrap": false
+      }
+    ],
+    "c4Type": "C4Deployment",
+    "layout": {
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
+    },
+    "rels": [],
+    "shapes": [
+      {
+        "alias": "p1",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "P1"
+        },
+        "parentBoundary": "nl",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "p2",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "P2"
+        },
+        "parentBoundary": "nr",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "p3",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "P3"
+        },
+        "parentBoundary": "nd",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      }
+    ],
+    "title": "Deployment nodes",
+    "type": "c4",
+    "wrap": false
+  }
+}

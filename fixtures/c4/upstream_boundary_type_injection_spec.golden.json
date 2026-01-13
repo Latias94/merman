@@ -1,0 +1,82 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
+        "type": {
+          "text": "global"
+        }
+      },
+      {
+        "alias": "ent",
+        "label": {
+          "text": "Enterprise"
+        },
+        "parentBoundary": "global",
+        "type": {
+          "text": "ENTERPRISE"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "sys",
+        "label": {
+          "text": "System"
+        },
+        "parentBoundary": "ent",
+        "type": {
+          "text": "SYSTEM"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "cb",
+        "label": {
+          "text": "Container"
+        },
+        "parentBoundary": "sys",
+        "type": {
+          "text": "CONTAINER"
+        },
+        "wrap": false
+      }
+    ],
+    "c4Type": "C4Container",
+    "layout": {
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
+    },
+    "rels": [],
+    "shapes": [
+      {
+        "alias": "c1",
+        "descr": {
+          "text": "Desc"
+        },
+        "label": {
+          "text": "C1"
+        },
+        "parentBoundary": "cb",
+        "techn": {
+          "text": "Tech"
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "wrap": false
+      }
+    ],
+    "title": "Boundary type injection",
+    "type": "c4",
+    "wrap": false
+  }
+}

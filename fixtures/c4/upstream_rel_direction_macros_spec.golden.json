@@ -1,0 +1,248 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
+        "type": {
+          "text": "global"
+        }
+      }
+    ],
+    "c4Type": "C4Context",
+    "layout": {
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
+    },
+    "rels": [
+      {
+        "descr": {
+          "text": ""
+        },
+        "from": "a",
+        "label": {
+          "text": "up"
+        },
+        "techn": {
+          "text": ""
+        },
+        "to": "b",
+        "type": "rel_u",
+        "wrap": false
+      },
+      {
+        "descr": {
+          "text": ""
+        },
+        "from": "c",
+        "label": {
+          "text": "down"
+        },
+        "techn": {
+          "text": ""
+        },
+        "to": "d",
+        "type": "rel_d",
+        "wrap": false
+      },
+      {
+        "descr": {
+          "text": ""
+        },
+        "from": "e",
+        "label": {
+          "text": "left"
+        },
+        "techn": {
+          "text": ""
+        },
+        "to": "f",
+        "type": "rel_l",
+        "wrap": false
+      },
+      {
+        "descr": {
+          "text": ""
+        },
+        "from": "g",
+        "label": {
+          "text": "right"
+        },
+        "techn": {
+          "text": ""
+        },
+        "to": "h",
+        "type": "rel_r",
+        "wrap": false
+      },
+      {
+        "descr": {
+          "text": ""
+        },
+        "from": "i",
+        "label": {
+          "text": "back"
+        },
+        "techn": {
+          "text": ""
+        },
+        "to": "j",
+        "type": "rel_b",
+        "wrap": false
+      }
+    ],
+    "shapes": [
+      {
+        "alias": "a",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "A"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "b",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "B"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "c",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "C"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "d",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "D"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "e",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "E"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "f",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "F"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "g",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "G"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "h",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "H"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "i",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "I"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "j",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "J"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      }
+    ],
+    "title": "Relationship direction variants",
+    "type": "c4",
+    "wrap": false
+  }
+}

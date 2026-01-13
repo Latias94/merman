@@ -1,0 +1,82 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
+        "type": {
+          "text": "global"
+        }
+      }
+    ],
+    "c4Type": "C4Container",
+    "layout": {
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
+    },
+    "rels": [
+      {
+        "descr": {
+          "text": ""
+        },
+        "from": "c1",
+        "label": {
+          "text": "reads"
+        },
+        "techn": {
+          "text": ""
+        },
+        "to": "c2",
+        "type": "rel",
+        "wrap": false
+      }
+    ],
+    "shapes": [
+      {
+        "alias": "c1",
+        "descr": {
+          "text": "Desc"
+        },
+        "label": {
+          "text": "C1"
+        },
+        "parentBoundary": "global",
+        "techn": {
+          "text": "Tech"
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "c2",
+        "descr": {
+          "text": "DB"
+        },
+        "label": {
+          "text": "C2"
+        },
+        "parentBoundary": "global",
+        "techn": {
+          "text": "Postgres"
+        },
+        "typeC4Shape": {
+          "text": "container_db"
+        },
+        "wrap": false
+      }
+    ],
+    "title": "Container diagram",
+    "type": "c4",
+    "wrap": false
+  }
+}

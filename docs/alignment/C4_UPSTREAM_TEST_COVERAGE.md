@@ -61,3 +61,15 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/c4/parser/c4Boundary.spe
 - alias / label / type: `fixtures/c4/upstream_boundary_spec.mmd`
 - link / tags via kv-objects in the label slot: `fixtures/c4/upstream_boundary_spec.mmd`
 
+## Additional grammar coverage (`parser/c4Diagram.jison`)
+
+Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/c4/parser/c4Diagram.jison`
+
+- headers beyond `C4Context`:
+  - `C4Container` + `direction LR`: `fixtures/c4/upstream_c4container_header_and_direction_spec.mmd`
+  - `C4Component`: `fixtures/c4/upstream_c4component_header_spec.mmd`
+  - `C4Dynamic` + `RelIndex(...)`: `fixtures/c4/upstream_c4dynamic_header_and_relindex_spec.mmd`
+- component macros: `fixtures/c4/upstream_c4component_header_spec.mmd`
+- relationship direction macros (`Rel_Up/Down/Left/Right/Back`): `fixtures/c4/upstream_rel_direction_macros_spec.mmd`
+- deployment node variants (`Node_L`, `Node_R`, `Deployment_Node`): `fixtures/c4/upstream_deployment_node_lr_spec.mmd`
+- boundary type injection (`Enterprise_Boundary`, `System_Boundary`, `Container_Boundary`): `fixtures/c4/upstream_boundary_type_injection_spec.mmd`
