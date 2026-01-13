@@ -72,6 +72,7 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/flow-st
   - `parse_diagram_flowchart_inline_vertex_class_in_groups_matches_mermaid_style_spec`
   - `parse_diagram_flowchart_style_statement_supports_multiple_styles`
   - `parse_diagram_flowchart_classdef_supports_multiple_classes`
+- `classDef` supports multiple class names: `fixtures/flowchart/upstream_flowdb_addclass_spec.mmd`
 
 ### `parser/flow-interactions.spec.js`
 
@@ -144,6 +145,7 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/flowDb.spec.ts
   - `parse_diagram_flowchart_linkstyle_multi_numbered_interpolate_sets_edges`
 - subgraph membership ordering parity (FlowDB semantics): unit tests under `parse_diagram_flowchart_subgraph_*`
 - subgraph membership uniqueness (`makeUniq`): `fixtures/flowchart/upstream_flowdb_makeuniq_spec.mmd`
+- `addClass` supports comma-separated class names: `fixtures/flowchart/upstream_flowdb_addclass_spec.mmd`
 
 ### `flowChartShapes.spec.js` (rendering)
 
