@@ -103,3 +103,38 @@ Source: `repo-ref/dagre/test/add-border-segments-test.js`
 - `adds a border for a single-rank subgraph` -> `crates/dugong/tests/add_border_segments_test.rs::add_border_segments_adds_a_border_for_a_single_rank_subgraph`
 - `adds a border for a multi-rank subgraph` -> `crates/dugong/tests/add_border_segments_test.rs::add_border_segments_adds_a_border_for_a_multi_rank_subgraph`
 - `adds borders for nested subgraphs` -> `crates/dugong/tests/add_border_segments_test.rs::add_border_segments_adds_borders_for_nested_subgraphs`
+
+Source: `repo-ref/dagre/test/util-test.js`
+
+- `copies without change a graph with no multi-edges` -> `crates/dugong/tests/util_test.rs::util_simplify_copies_without_change_a_graph_with_no_multi_edges`
+- `collapses multi-edges` -> `crates/dugong/tests/util_test.rs::util_simplify_collapses_multi_edges`
+- `copies the graph object` (simplify) -> `crates/dugong/tests/util_test.rs::util_simplify_copies_the_graph_object`
+- `copies all nodes` -> `crates/dugong/tests/util_test.rs::util_as_non_compound_graph_copies_all_nodes`
+- `copies all edges` -> `crates/dugong/tests/util_test.rs::util_as_non_compound_graph_copies_all_edges`
+- `does not copy compound nodes` -> `crates/dugong/tests/util_test.rs::util_as_non_compound_graph_does_not_copy_compound_nodes`
+- `copies the graph object` (asNonCompoundGraph) -> `crates/dugong/tests/util_test.rs::util_as_non_compound_graph_copies_the_graph_object`
+- `maps a node to its successors with associated weights` -> `crates/dugong/tests/util_test.rs::util_successor_weights_maps_a_node_to_its_successors_with_associated_weights`
+- `maps a node to its predecessors with associated weights` -> `crates/dugong/tests/util_test.rs::util_predecessor_weights_maps_a_node_to_its_predecessors_with_associated_weights`
+- `creates a slope that will intersect the rectangle's center` -> `crates/dugong/tests/util_test.rs::util_intersect_rect_creates_a_slope_that_will_intersect_the_rectangles_center`
+- `touches the border of the rectangle` -> `crates/dugong/tests/util_test.rs::util_intersect_rect_touches_the_border_of_the_rectangle`
+- `throws an error if the point is at the center of the rectangle` -> `crates/dugong/tests/util_test.rs::util_intersect_rect_throws_if_the_point_is_at_the_center_of_the_rectangle`
+- `creates a matrix based on rank and order of nodes in the graph` -> `crates/dugong/tests/util_test.rs::util_build_layer_matrix_creates_a_matrix_based_on_rank_and_order_of_nodes_in_the_graph`
+- `logs timing information` -> `crates/dugong/tests/util_test.rs::util_time_logs_timing_information`
+- `returns the value from the evaluated function` -> `crates/dugong/tests/util_test.rs::util_time_returns_the_value_from_the_evaluated_function`
+- `adjust ranks such that all are >= 0, and at least one is 0` -> `crates/dugong/tests/util_test.rs::util_normalize_ranks_adjusts_ranks_such_that_all_are_gte_0_and_at_least_one_is_0`
+- `works for negative ranks` -> `crates/dugong/tests/util_test.rs::util_normalize_ranks_works_for_negative_ranks`
+- `does not assign a rank to subgraphs` -> `crates/dugong/tests/util_test.rs::util_normalize_ranks_does_not_assign_a_rank_to_subgraphs`
+- `Removes border ranks without any nodes` -> `crates/dugong/tests/util_test.rs::util_remove_empty_ranks_removes_border_ranks_without_any_nodes`
+- `Does not remove non-border ranks` -> `crates/dugong/tests/util_test.rs::util_remove_empty_ranks_does_not_remove_non_border_ranks`
+- `Handles parents with undefined ranks` -> `crates/dugong/tests/util_test.rs::util_remove_empty_ranks_handles_parents_with_undefined_ranks`
+- `Builds an array to the limit` -> `crates/dugong/tests/util_test.rs::util_range_builds_an_array_to_the_limit`
+- `Builds an array with a start` -> `crates/dugong/tests/util_test.rs::util_range_builds_an_array_with_a_start`
+- `Builds an array with a negative step` -> `crates/dugong/tests/util_test.rs::util_range_builds_an_array_with_a_negative_step`
+- `Creates an object with the same keys` -> `crates/dugong/tests/util_test.rs::util_map_values_creates_an_object_with_the_same_keys`
+- `Can take a property name` -> `crates/dugong/tests/util_test.rs::util_map_values_can_take_a_property_name`
+
+Source: `repo-ref/dagre/test/unique-id-test.js`
+
+- `uniqueId(name) generates a valid identifier` -> `crates/dugong/tests/unique_id_test.rs::unique_id_name_generates_a_valid_identifier`
+- `Calling uniqueId(name) multiple times generate distinct values` -> `crates/dugong/tests/unique_id_test.rs::unique_id_multiple_calls_generate_distinct_values`
+- `Calling uniqueId(number) with a number creates a valid identifier string` -> `crates/dugong/tests/unique_id_test.rs::unique_id_number_prefix_creates_a_valid_identifier_string`

@@ -7,3 +7,6 @@ license.workspace = true
 [dependencies]
 dugong-graphlib = { path = "../dugong-graphlib" }
 serde_json.workspace = true
+
+[dev-dependencies]
+gag = "1.0.0"

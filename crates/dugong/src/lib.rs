@@ -993,6 +993,324 @@ pub mod add_border_segments {
     }
 }
 
+pub mod util {
+    use super::{EdgeLabel, GraphLabel, NodeLabel, Point};
+    use crate::graphlib::{Graph, GraphOptions};
+    use std::collections::BTreeMap;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Instant;
+
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub struct Rect {
+        pub x: f64,
+        pub y: f64,
+        pub width: f64,
+        pub height: f64,
+    }
+
+    pub fn simplify<N, G>(g: &Graph<N, EdgeLabel, G>) -> Graph<N, EdgeLabel, G>
+    where
+        N: Default + Clone + 'static,
+        G: Default + Clone,
+    {
+        let mut simplified: Graph<N, EdgeLabel, G> = Graph::new(GraphOptions {
+            multigraph: false,
+            compound: false,
+        });
+        simplified.set_graph(g.graph().clone());
+
+        for v in g.node_ids() {
+            if let Some(lbl) = g.node(&v) {
+                simplified.set_node(v, lbl.clone());
+            }
+        }
+
+        let mut merged: BTreeMap<(String, String), (f64, usize)> = BTreeMap::new();
+        for e in g.edges() {
+            let lbl = g.edge_by_key(e).cloned().unwrap_or_default();
+            let entry = merged.entry((e.v.clone(), e.w.clone())).or_insert((0.0, 1));
+            entry.0 += lbl.weight;
+            entry.1 = entry.1.max(lbl.minlen.max(1));
+        }
+
+        for ((v, w), (weight, minlen)) in merged {
+            simplified.set_edge_with_label(
+                v,
+                w,
+                EdgeLabel {
+                    weight,
+                    minlen,
+                    ..Default::default()
+                },
+            );
+        }
+
+        simplified
+    }
+
+    pub fn as_non_compound_graph<N, E, G>(g: &Graph<N, E, G>) -> Graph<N, E, G>
+    where
+        N: Default + Clone + 'static,
+        E: Default + Clone + 'static,
+        G: Default + Clone,
+    {
+        let mut simplified: Graph<N, E, G> = Graph::new(GraphOptions {
+            multigraph: g.options().multigraph,
+            compound: false,
+        });
+        simplified.set_graph(g.graph().clone());
+
+        for v in g.node_ids() {
+            if g.children(&v).is_empty() {
+                if let Some(lbl) = g.node(&v) {
+                    simplified.set_node(v, lbl.clone());
+                }
+            }
+        }
+
+        for e in g.edges() {
+            if let Some(lbl) = g.edge_by_key(e) {
+                simplified.set_edge_named(
+                    e.v.clone(),
+                    e.w.clone(),
+                    e.name.clone(),
+                    Some(lbl.clone()),
+                );
+            }
+        }
+
+        simplified
+    }
+
+    pub fn successor_weights<G>(
+        g: &Graph<NodeLabel, EdgeLabel, G>,
+    ) -> BTreeMap<String, BTreeMap<String, f64>>
+    where
+        G: Default,
+    {
+        let mut out: BTreeMap<String, BTreeMap<String, f64>> = BTreeMap::new();
+        for v in g.node_ids() {
+            let mut map: BTreeMap<String, f64> = BTreeMap::new();
+            for e in g.out_edges(&v, None) {
+                let w = e.w.clone();
+                let weight = g.edge_by_key(&e).map(|lbl| lbl.weight).unwrap_or(0.0);
+                *map.entry(w).or_insert(0.0) += weight;
+            }
+            out.insert(v, map);
+        }
+        out
+    }
+
+    pub fn predecessor_weights<G>(
+        g: &Graph<NodeLabel, EdgeLabel, G>,
+    ) -> BTreeMap<String, BTreeMap<String, f64>>
+    where
+        G: Default,
+    {
+        let mut out: BTreeMap<String, BTreeMap<String, f64>> = BTreeMap::new();
+        for v in g.node_ids() {
+            let mut map: BTreeMap<String, f64> = BTreeMap::new();
+            for e in g.in_edges(&v, None) {
+                let u = e.v.clone();
+                let weight = g.edge_by_key(&e).map(|lbl| lbl.weight).unwrap_or(0.0);
+                *map.entry(u).or_insert(0.0) += weight;
+            }
+            out.insert(v, map);
+        }
+        out
+    }
+
+    pub fn intersect_rect(rect: Rect, point: Point) -> Point {
+        let x = rect.x;
+        let y = rect.y;
+
+        let dx = point.x - x;
+        let dy = point.y - y;
+        let mut w = rect.width / 2.0;
+        let mut h = rect.height / 2.0;
+
+        if dx == 0.0 && dy == 0.0 {
+            panic!("Not possible to find intersection inside of the rectangle");
+        }
+
+        let (sx, sy) = if dy.abs() * w > dx.abs() * h {
+            if dy < 0.0 {
+                h = -h;
+            }
+            (h * dx / dy, h)
+        } else {
+            if dx < 0.0 {
+                w = -w;
+            }
+            (w, w * dy / dx)
+        };
+
+        Point {
+            x: x + sx,
+            y: y + sy,
+        }
+    }
+
+    pub fn build_layer_matrix<E, G>(g: &Graph<NodeLabel, E, G>) -> Vec<Vec<String>>
+    where
+        E: Default + 'static,
+        G: Default,
+    {
+        let mut max_rank: i32 = i32::MIN;
+        let mut ranks: BTreeMap<i32, Vec<(usize, String)>> = BTreeMap::new();
+        for v in g.node_ids() {
+            let Some(node) = g.node(&v) else { continue };
+            let Some(rank) = node.rank else { continue };
+            let order = node.order.unwrap_or(0);
+            ranks.entry(rank).or_default().push((order, v.clone()));
+            max_rank = max_rank.max(rank);
+        }
+
+        if max_rank == i32::MIN {
+            return Vec::new();
+        }
+
+        let mut out: Vec<Vec<String>> = Vec::with_capacity((max_rank + 1).max(0) as usize);
+        for rank in 0..=max_rank {
+            let mut entries = ranks.remove(&rank).unwrap_or_default();
+            entries.sort_by_key(|(o, _)| *o);
+            out.push(entries.into_iter().map(|(_, v)| v).collect());
+        }
+        out
+    }
+
+    pub fn time<T>(name: &str, f: impl FnOnce() -> T) -> T {
+        let start = Instant::now();
+        let out = f();
+        let ms = start.elapsed().as_millis();
+        println!("{name} time: {ms}ms");
+        out
+    }
+
+    pub fn normalize_ranks<E, G>(g: &mut Graph<NodeLabel, E, G>)
+    where
+        E: Default + 'static,
+        G: Default,
+    {
+        let mut min_rank: i32 = i32::MAX;
+        for v in g.node_ids() {
+            if let Some(rank) = g.node(&v).and_then(|n| n.rank) {
+                min_rank = min_rank.min(rank);
+            }
+        }
+        if min_rank == i32::MAX {
+            return;
+        }
+        for v in g.node_ids() {
+            if let Some(n) = g.node_mut(&v) {
+                if let Some(rank) = n.rank {
+                    n.rank = Some(rank - min_rank);
+                }
+            }
+        }
+    }
+
+    pub fn remove_empty_ranks(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+        let Some(factor) = g.graph().node_rank_factor.filter(|&f| f > 0) else {
+            return;
+        };
+
+        let mut ranks: Vec<i32> = Vec::new();
+        for v in g.node_ids() {
+            if let Some(rank) = g.node(&v).and_then(|n| n.rank) {
+                ranks.push(rank);
+            }
+        }
+        if ranks.is_empty() {
+            return;
+        }
+        let offset = *ranks.iter().min().unwrap();
+
+        let mut max_idx: usize = 0;
+        let mut layers: BTreeMap<usize, Vec<String>> = BTreeMap::new();
+        for v in g.node_ids() {
+            let Some(rank) = g.node(&v).and_then(|n| n.rank) else {
+                continue;
+            };
+            let idx = (rank - offset).max(0) as usize;
+            max_idx = max_idx.max(idx);
+            layers.entry(idx).or_default().push(v);
+        }
+
+        let mut delta: i32 = 0;
+        for i in 0..=max_idx {
+            if !layers.contains_key(&i) && i % factor != 0 {
+                delta -= 1;
+                continue;
+            }
+            if delta == 0 {
+                continue;
+            }
+            if let Some(vs) = layers.get(&i) {
+                for v in vs {
+                    if let Some(n) = g.node_mut(v) {
+                        if let Some(rank) = n.rank {
+                            n.rank = Some(rank + delta);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    static UNIQUE_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    pub fn unique_id(prefix: impl ToString) -> String {
+        let id = UNIQUE_ID_COUNTER.fetch_add(1, Ordering::Relaxed) + 1;
+        format!("{}{}", prefix.to_string(), id)
+    }
+
+    pub fn range(limit: i32) -> Vec<i32> {
+        range_with(0, limit, 1)
+    }
+
+    pub fn range_start(start: i32, limit: i32) -> Vec<i32> {
+        range_with(start, limit, 1)
+    }
+
+    pub fn range_with(start: i32, limit: i32, step: i32) -> Vec<i32> {
+        assert!(step != 0, "step cannot be zero");
+        let mut out: Vec<i32> = Vec::new();
+        let mut i = start;
+        if step > 0 {
+            while i < limit {
+                out.push(i);
+                i += step;
+            }
+        } else {
+            while limit < i {
+                out.push(i);
+                i += step;
+            }
+        }
+        out
+    }
+
+    pub fn map_values<K, V, R>(obj: &BTreeMap<K, V>, f: impl Fn(&V, &K) -> R) -> BTreeMap<K, R>
+    where
+        K: Ord + Clone,
+    {
+        obj.iter().map(|(k, v)| (k.clone(), f(v, k))).collect()
+    }
+
+    pub fn map_values_prop(
+        obj: &BTreeMap<String, serde_json::Value>,
+        prop: &str,
+    ) -> BTreeMap<String, serde_json::Value> {
+        obj.iter()
+            .map(|(k, v)| {
+                let value = v.get(prop).cloned().unwrap_or(serde_json::Value::Null);
+                (k.clone(), value)
+            })
+            .collect()
+    }
+}
+
 pub mod nesting_graph {
     use super::{EdgeLabel, GraphLabel, NodeLabel};
     use crate::graphlib::{EdgeKey, Graph, alg};
