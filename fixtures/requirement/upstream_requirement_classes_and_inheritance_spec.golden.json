@@ -1,0 +1,119 @@
+{
+  "diagramType": "requirement",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {
+      "class1": {
+        "id": "class1",
+        "styles": [
+          "fill:#f9f",
+          "stroke:#333",
+          "stroke-width:4px"
+        ],
+        "textStyles": []
+      },
+      "class2": {
+        "id": "class2",
+        "styles": [
+          "fill:#f9f",
+          "stroke:#333",
+          "stroke-width:4px"
+        ],
+        "textStyles": []
+      },
+      "class3": {
+        "id": "class3",
+        "styles": [
+          "color:blue"
+        ],
+        "textStyles": [
+          "color:blue"
+        ]
+      }
+    },
+    "direction": "TB",
+    "elements": [
+      {
+        "classes": [
+          "default",
+          "class1",
+          "class2"
+        ],
+        "cssStyles": [
+          "fill:#f9f",
+          "stroke:#333",
+          "stroke-width:4px",
+          "fill:#f9f",
+          "stroke:#333",
+          "stroke-width:4px"
+        ],
+        "docRef": "",
+        "name": "elem",
+        "type": ""
+      },
+      {
+        "classes": [
+          "default",
+          "class1",
+          "class2"
+        ],
+        "cssStyles": [
+          "fill:#f9f",
+          "stroke:#333",
+          "stroke-width:4px",
+          "fill:#f9f",
+          "stroke:#333",
+          "stroke-width:4px"
+        ],
+        "docRef": "",
+        "name": "myElem",
+        "type": "simulation"
+      }
+    ],
+    "relationships": [],
+    "requirements": [
+      {
+        "classes": [
+          "default",
+          "class1",
+          "class2",
+          "class3"
+        ],
+        "cssStyles": [
+          "fill:#f9f",
+          "stroke:#333",
+          "stroke-width:4px",
+          "fill:#f9f",
+          "stroke:#333",
+          "stroke-width:4px",
+          "color:blue"
+        ],
+        "name": "req",
+        "requirementId": "",
+        "risk": "",
+        "text": "",
+        "type": "Requirement",
+        "verifyMethod": ""
+      },
+      {
+        "classes": [
+          "default",
+          "class1"
+        ],
+        "cssStyles": [
+          "fill:#f9f",
+          "stroke:#333",
+          "stroke-width:4px"
+        ],
+        "name": "myReq",
+        "requirementId": "",
+        "risk": "",
+        "text": "",
+        "type": "Requirement",
+        "verifyMethod": ""
+      }
+    ],
+    "type": "requirement"
+  }
+}

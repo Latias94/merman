@@ -5,6 +5,13 @@ This document defines the initial, test-driven minimum slice for Requirement Dia
 
 Baseline: Mermaid `@11.12.2`.
 
+Upstream references:
+
+- Parser grammar: `repo-ref/mermaid/packages/mermaid/src/diagrams/requirement/parser/requirementDiagram.jison`
+- Parser tests: `repo-ref/mermaid/packages/mermaid/src/diagrams/requirement/parser/requirementDiagram.spec.js`
+- DB/model: `repo-ref/mermaid/packages/mermaid/src/diagrams/requirement/requirementDb.ts`
+- DB tests: `repo-ref/mermaid/packages/mermaid/src/diagrams/requirement/requirementDb.spec.ts`
+
 ## Supported (current)
 
 - Header:
@@ -66,4 +73,3 @@ Baseline: Mermaid `@11.12.2`.
 
 This is an incremental slice. The ultimate goal is full Mermaid `requirement` grammar and DB
 behavior compatibility at the pinned baseline tag.
-

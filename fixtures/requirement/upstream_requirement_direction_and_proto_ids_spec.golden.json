@@ -1,0 +1,36 @@
+{
+  "diagramType": "requirement",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {},
+    "direction": "LR",
+    "elements": [
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "docRef": "test_ref",
+        "name": "constructor",
+        "type": "simulation"
+      }
+    ],
+    "relationships": [],
+    "requirements": [
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "__proto__",
+        "requirementId": "1",
+        "risk": "Low",
+        "text": "the test text.",
+        "type": "Requirement",
+        "verifyMethod": "Analysis"
+      }
+    ],
+    "type": "requirement"
+  }
+}

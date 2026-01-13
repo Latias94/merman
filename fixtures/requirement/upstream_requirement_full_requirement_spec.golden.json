@@ -1,0 +1,38 @@
+{
+  "diagramType": "requirement",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {},
+    "direction": "TB",
+    "elements": [],
+    "relationships": [],
+    "requirements": [
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "test_req",
+        "requirementId": "test_id",
+        "risk": "High",
+        "text": "the test text.",
+        "type": "Requirement",
+        "verifyMethod": "Test"
+      },
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "dc1",
+        "requirementId": "dc_id",
+        "risk": "Medium",
+        "text": "constraint text",
+        "type": "Design Constraint",
+        "verifyMethod": "Inspection"
+      }
+    ],
+    "type": "requirement"
+  }
+}

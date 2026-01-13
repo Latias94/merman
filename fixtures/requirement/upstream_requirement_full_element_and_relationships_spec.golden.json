@@ -1,0 +1,73 @@
+{
+  "diagramType": "requirement",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {},
+    "direction": "TB",
+    "elements": [
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "docRef": "docA",
+        "name": "elA",
+        "type": "simulation"
+      },
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "docRef": "test_ref",
+        "name": "elB",
+        "type": "test_type"
+      }
+    ],
+    "relationships": [
+      {
+        "dst": "b",
+        "src": "a",
+        "type": "contains"
+      },
+      {
+        "dst": "b",
+        "src": "a",
+        "type": "copies"
+      },
+      {
+        "dst": "b",
+        "src": "a",
+        "type": "derives"
+      },
+      {
+        "dst": "b",
+        "src": "a",
+        "type": "satisfies"
+      },
+      {
+        "dst": "b",
+        "src": "a",
+        "type": "verifies"
+      },
+      {
+        "dst": "b",
+        "src": "a",
+        "type": "refines"
+      },
+      {
+        "dst": "b",
+        "src": "a",
+        "type": "traces"
+      },
+      {
+        "dst": "a",
+        "src": "b",
+        "type": "contains"
+      }
+    ],
+    "requirements": [],
+    "type": "requirement"
+  }
+}

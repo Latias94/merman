@@ -1,0 +1,22 @@
+requirementDiagram
+
+element elA {
+  type: simulation
+  docref: docA
+}
+
+element elB {
+  type: test_type
+  docref: test_ref
+}
+
+a - contains -> b
+a - copies -> b
+a - derives -> b
+a - satisfies -> b
+a - verifies -> b
+a - refines -> b
+a - traces -> b
+
+%% reverse arrow variant
+a <- contains - b

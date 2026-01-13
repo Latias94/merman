@@ -1,0 +1,23 @@
+{
+  "diagramType": "requirement",
+  "model": {
+    "accDescr": "my chart description\nline 2",
+    "accTitle": "test title",
+    "classes": {},
+    "direction": "TB",
+    "elements": [
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "docRef": "test_ref",
+        "name": "test_name",
+        "type": "test_type"
+      }
+    ],
+    "relationships": [],
+    "requirements": [],
+    "type": "requirement"
+  }
+}

@@ -1,0 +1,23 @@
+requirementDiagram
+
+requirement req {
+}
+element elem {
+}
+
+%% define multiple classes at once
+classDef class1,class2 fill:#f9f,stroke:#333,stroke-width:4px
+classDef class3 color:blue
+
+%% class statement assigns classes
+class req,elem class1,class2
+
+%% shorthand assignment
+req:::class3
+
+%% shorthand on definition
+requirement myReq:::class1 {
+}
+element myElem:::class1,class2 {
+  type: simulation
+}
