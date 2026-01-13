@@ -40,3 +40,14 @@ Source: `repo-ref/dagre/test/position-test.js`
 - `use the largest height in each rank with ranksep` → `crates/dugong/tests/position_test.rs::position_uses_largest_height_in_each_rank_with_ranksep`
 - `respects nodesep` → `crates/dugong/tests/position_test.rs::position_respects_nodesep`
 - `should not try to position the subgraph node itself` → `crates/dugong/tests/position_test.rs::position_does_not_try_to_position_the_subgraph_node_itself`
+
+Source: `repo-ref/dagre/test/coordinate-system-test.js`
+
+- `does nothing to node dimensions with rankdir = TB` -> `crates/dugong/tests/coordinate_system_test.rs::coordinate_system_adjust_does_nothing_to_node_dimensions_with_rankdir_tb`
+- `does nothing to node dimensions with rankdir = BT` -> `crates/dugong/tests/coordinate_system_test.rs::coordinate_system_adjust_does_nothing_to_node_dimensions_with_rankdir_bt`
+- `swaps width and height for nodes with rankdir = LR` -> `crates/dugong/tests/coordinate_system_test.rs::coordinate_system_adjust_swaps_width_and_height_for_nodes_with_rankdir_lr`
+- `swaps width and height for nodes with rankdir = RL` -> `crates/dugong/tests/coordinate_system_test.rs::coordinate_system_adjust_swaps_width_and_height_for_nodes_with_rankdir_rl`
+- `does nothing to points with rankdir = TB` -> `crates/dugong/tests/coordinate_system_test.rs::coordinate_system_undo_does_nothing_to_points_with_rankdir_tb`
+- `flips the y coordinate for points with rankdir = BT` -> `crates/dugong/tests/coordinate_system_test.rs::coordinate_system_undo_flips_the_y_coordinate_for_points_with_rankdir_bt`
+- `swaps dimensions and coordinates for points with rankdir = LR` -> `crates/dugong/tests/coordinate_system_test.rs::coordinate_system_undo_swaps_dimensions_and_coordinates_for_points_with_rankdir_lr`
+- `swaps dims and coords and flips x for points with rankdir = RL` -> `crates/dugong/tests/coordinate_system_test.rs::coordinate_system_undo_swaps_dims_and_coords_and_flips_x_for_points_with_rankdir_rl`

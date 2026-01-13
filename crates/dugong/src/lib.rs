@@ -95,6 +95,97 @@ impl Default for EdgeLabel {
     }
 }
 
+pub mod coordinate_system {
+    use super::{EdgeLabel, GraphLabel, NodeLabel, RankDir};
+    use crate::graphlib::{EdgeKey, Graph};
+
+    pub fn adjust(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+        match g.graph().rankdir {
+            RankDir::LR | RankDir::RL => swap_width_height(g),
+            RankDir::TB | RankDir::BT => {}
+        }
+    }
+
+    pub fn undo(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+        match g.graph().rankdir {
+            RankDir::BT | RankDir::RL => reverse_y(g),
+            RankDir::TB | RankDir::LR => {}
+        }
+
+        match g.graph().rankdir {
+            RankDir::LR | RankDir::RL => {
+                swap_xy(g);
+                swap_width_height(g);
+            }
+            RankDir::TB | RankDir::BT => {}
+        }
+    }
+
+    fn swap_width_height(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+        let node_ids = g.node_ids();
+        for id in node_ids {
+            if let Some(n) = g.node_mut(&id) {
+                (n.width, n.height) = (n.height, n.width);
+            }
+        }
+
+        let edge_keys = g.edge_keys();
+        for EdgeKey { v, w, name } in edge_keys {
+            if let Some(e) = g.edge_mut(&v, &w, name.as_deref()) {
+                (e.width, e.height) = (e.height, e.width);
+            }
+        }
+    }
+
+    fn reverse_y(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+        let node_ids = g.node_ids();
+        for id in node_ids {
+            if let Some(n) = g.node_mut(&id) {
+                if let Some(y) = n.y {
+                    n.y = Some(-y);
+                }
+            }
+        }
+
+        let edge_keys = g.edge_keys();
+        for EdgeKey { v, w, name } in edge_keys {
+            if let Some(e) = g.edge_mut(&v, &w, name.as_deref()) {
+                for p in &mut e.points {
+                    p.y = -p.y;
+                }
+                if let Some(y) = e.y {
+                    e.y = Some(-y);
+                }
+            }
+        }
+    }
+
+    fn swap_xy(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+        let node_ids = g.node_ids();
+        for id in node_ids {
+            if let Some(n) = g.node_mut(&id) {
+                if let (Some(x), Some(y)) = (n.x, n.y) {
+                    n.x = Some(y);
+                    n.y = Some(x);
+                }
+            }
+        }
+
+        let edge_keys = g.edge_keys();
+        for EdgeKey { v, w, name } in edge_keys {
+            if let Some(e) = g.edge_mut(&v, &w, name.as_deref()) {
+                for p in &mut e.points {
+                    (p.x, p.y) = (p.y, p.x);
+                }
+                if let (Some(x), Some(y)) = (e.x, e.y) {
+                    e.x = Some(y);
+                    e.y = Some(x);
+                }
+            }
+        }
+    }
+}
+
 pub mod nesting_graph {
     use super::{EdgeLabel, GraphLabel, NodeLabel};
     use crate::graphlib::{EdgeKey, Graph, alg};
