@@ -1,6 +1,8 @@
 {
   "diagramType": "flowchart-v2",
   "model": {
+    "accDescr": null,
+    "accTitle": null,
     "classDefs": {},
     "direction": "LR",
     "edgeDefaults": {

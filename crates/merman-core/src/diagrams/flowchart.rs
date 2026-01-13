@@ -1298,8 +1298,9 @@ impl<'input> Iterator for Lexer<'input> {
 }
 
 pub fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    let (code, acc_title, acc_descr) = extract_flowchart_accessibility_statements(code);
     let ast = flowchart_grammar::FlowchartAstParser::new()
-        .parse(Lexer::new(code))
+        .parse(Lexer::new(&code))
         .map_err(|e| Error::DiagramParse {
             diagram_type: meta.diagram_type.clone(),
             message: format!("{e:?}"),
@@ -1382,6 +1383,8 @@ pub fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
         "type": meta.diagram_type,
         "keyword": ast.keyword,
         "direction": ast.direction,
+        "accTitle": acc_title,
+        "accDescr": acc_descr,
         "classDefs": class_defs.into_iter().collect::<HashMap<_, _>>(),
         "tooltips": tooltips.into_iter().collect::<HashMap<_, _>>(),
         "edgeDefaults": {
@@ -1440,6 +1443,74 @@ pub fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
         }).collect::<Vec<_>>(),
         "subgraphs": builder.subgraphs.into_iter().map(flow_subgraph_to_json).collect::<Vec<_>>(),
     }))
+}
+
+fn extract_flowchart_accessibility_statements(
+    code: &str,
+) -> (String, Option<String>, Option<String>) {
+    let mut acc_title: Option<String> = None;
+    let mut acc_descr: Option<String> = None;
+    let mut out = String::with_capacity(code.len());
+
+    let mut lines = code.lines().peekable();
+    while let Some(line) = lines.next() {
+        let trimmed = line.trim_start();
+
+        if let Some(rest) = trimmed.strip_prefix("accTitle") {
+            let rest = rest.trim_start();
+            if rest.starts_with(':') {
+                acc_title = Some(rest[1..].trim().to_string());
+                continue;
+            }
+        }
+
+        if let Some(rest) = trimmed.strip_prefix("accDescr") {
+            let rest = rest.trim_start();
+            if rest.starts_with(':') {
+                acc_descr = Some(rest[1..].trim().to_string());
+                continue;
+            }
+
+            if rest.starts_with('{') {
+                let mut buf = String::new();
+
+                let mut after = rest[1..].to_string();
+                if let Some(end) = after.find('}') {
+                    after.truncate(end);
+                    acc_descr = Some(after.trim().to_string());
+                    continue;
+                }
+                let after = after.trim_start();
+                if !after.is_empty() {
+                    buf.push_str(after);
+                }
+
+                while let Some(raw) = lines.next() {
+                    if let Some(pos) = raw.find('}') {
+                        let part = &raw[..pos];
+                        if !buf.is_empty() {
+                            buf.push('\n');
+                        }
+                        buf.push_str(part);
+                        break;
+                    }
+
+                    if !buf.is_empty() {
+                        buf.push('\n');
+                    }
+                    buf.push_str(raw);
+                }
+
+                acc_descr = Some(buf.trim().to_string());
+                continue;
+            }
+        }
+
+        out.push_str(line);
+        out.push('\n');
+    }
+
+    (out, acc_title, acc_descr)
 }
 
 struct FlowchartBuildState {
