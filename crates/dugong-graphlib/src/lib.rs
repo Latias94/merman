@@ -247,6 +247,18 @@ where
         self
     }
 
+    pub fn set_path(&mut self, nodes: &[&str]) -> &mut Self {
+        if nodes.len() < 2 {
+            return self;
+        }
+        for pair in nodes.windows(2) {
+            let v = pair[0];
+            let w = pair[1];
+            self.set_edge(v, w);
+        }
+        self
+    }
+
     pub fn has_edge(&self, v: &str, w: &str, name: Option<&str>) -> bool {
         let key = EdgeKey {
             v: v.to_string(),
@@ -431,7 +443,7 @@ where
 
 pub mod alg {
     use super::Graph;
-    use std::collections::{BTreeSet, VecDeque};
+    use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
     pub fn components<N, E, G>(g: &Graph<N, E, G>) -> Vec<Vec<String>>
     where
@@ -467,5 +479,106 @@ pub mod alg {
         }
 
         out
+    }
+
+    pub fn find_cycles<N, E, G>(g: &Graph<N, E, G>) -> Vec<Vec<String>>
+    where
+        N: Default + 'static,
+        E: Default + 'static,
+        G: Default,
+    {
+        // Strongly connected components (Tarjan). Report SCCs with size > 1, or self-loops.
+        let node_ids = g.node_ids();
+        let mut index: usize = 0;
+        let mut stack: Vec<String> = Vec::new();
+        let mut on_stack: BTreeSet<String> = BTreeSet::new();
+        let mut indices: BTreeMap<String, usize> = BTreeMap::new();
+        let mut lowlink: BTreeMap<String, usize> = BTreeMap::new();
+        let mut sccs: Vec<Vec<String>> = Vec::new();
+
+        fn strongconnect<N, E, G>(
+            g: &Graph<N, E, G>,
+            v: &str,
+            index: &mut usize,
+            stack: &mut Vec<String>,
+            on_stack: &mut BTreeSet<String>,
+            indices: &mut BTreeMap<String, usize>,
+            lowlink: &mut BTreeMap<String, usize>,
+            sccs: &mut Vec<Vec<String>>,
+        ) where
+            N: Default + 'static,
+            E: Default + 'static,
+            G: Default,
+        {
+            indices.insert(v.to_string(), *index);
+            lowlink.insert(v.to_string(), *index);
+            *index += 1;
+            stack.push(v.to_string());
+            on_stack.insert(v.to_string());
+
+            for w in g.successors(v) {
+                if !indices.contains_key(w) {
+                    strongconnect(g, w, index, stack, on_stack, indices, lowlink, sccs);
+                    let v_low = lowlink[v];
+                    let w_low = lowlink[w];
+                    lowlink.insert(v.to_string(), v_low.min(w_low));
+                } else if on_stack.contains(w) {
+                    let v_low = lowlink[v];
+                    let w_idx = indices[w];
+                    lowlink.insert(v.to_string(), v_low.min(w_idx));
+                }
+            }
+
+            if lowlink[v] == indices[v] {
+                let mut scc: Vec<String> = Vec::new();
+                loop {
+                    let w = stack.pop().expect("tarjan stack underflow");
+                    on_stack.remove(&w);
+                    scc.push(w.clone());
+                    if w == v {
+                        break;
+                    }
+                }
+                sccs.push(scc);
+            }
+        }
+
+        for v in &node_ids {
+            if !indices.contains_key(v) {
+                strongconnect(
+                    g,
+                    v,
+                    &mut index,
+                    &mut stack,
+                    &mut on_stack,
+                    &mut indices,
+                    &mut lowlink,
+                    &mut sccs,
+                );
+            }
+        }
+
+        let mut cycles: Vec<Vec<String>> = Vec::new();
+        for mut scc in sccs {
+            if scc.len() > 1 {
+                // Deterministic node order: use original insertion order.
+                let order: BTreeMap<String, usize> = node_ids
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (v, i))
+                    .collect();
+                scc.sort_by_key(|v| order.get(v).copied().unwrap_or(usize::MAX));
+                cycles.push(scc);
+            } else {
+                let v = &scc[0];
+                if g.has_edge(v, v, None) || !g.out_edges(v, Some(v)).is_empty() {
+                    cycles.push(vec![v.clone()]);
+                }
+            }
+        }
+
+        cycles.sort_by(|a, b| a.first().cmp(&b.first()));
+        cycles
     }
 }
