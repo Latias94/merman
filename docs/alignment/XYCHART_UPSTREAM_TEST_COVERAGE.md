@@ -16,7 +16,10 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/xychart/parser/xychart.j
 - axis titles only (auto-derives ranges on first plot): `fixtures/xychart/upstream_xychart_axes_titles_only_then_plots_jison_spec.mmd`
 - axis title + decimal-only range tokens: `fixtures/xychart/upstream_xychart_axis_title_and_decimal_range_jison_spec.mmd`
 - x-axis band category whitespace concatenation: `fixtures/xychart/upstream_xychart_xaxis_band_cat2asdf_jison_spec.mmd`
+- x-axis quoted axis title preserves inner spaces: `fixtures/xychart/upstream_xychart_xaxis_quoted_title_with_spaces_jison_spec.mmd`
 - plot titles + signed/decimal numbers: `fixtures/xychart/upstream_xychart_plot_numbers_and_titles_jison_spec.mmd`
+- y-axis quoted axis title preserves inner spaces: `fixtures/xychart/upstream_xychart_yaxis_quoted_title_with_spaces_jison_spec.mmd`
+- y-axis range without title: `fixtures/xychart/upstream_xychart_yaxis_range_without_title_jison_spec.mmd`
 - accept `line[1,2,3]` (no whitespace after keyword): `crates/merman-core/src/diagrams/xychart.rs:1225`
 - error cases (invalid ranges/brackets/numbers): `crates/merman-core/src/diagrams/xychart.rs:1233`
 

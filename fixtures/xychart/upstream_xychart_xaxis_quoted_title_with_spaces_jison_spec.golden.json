@@ -1,0 +1,36 @@
+{
+  "diagramType": "xychart",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "orientation": "vertical",
+    "plots": [
+      {
+        "data": [
+          [
+            "1",
+            1.0
+          ]
+        ],
+        "type": "bar",
+        "values": [
+          1.0
+        ]
+      }
+    ],
+    "title": null,
+    "type": "xychart",
+    "xAxis": {
+      "max": 1.0,
+      "min": 1.0,
+      "title": "xAxisName has space",
+      "type": "linear"
+    },
+    "yAxis": {
+      "max": 1.0,
+      "min": 1.0,
+      "title": "",
+      "type": "linear"
+    }
+  }
+}
