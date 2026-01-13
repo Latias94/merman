@@ -1,0 +1,17 @@
+erDiagram
+
+%% should not create duplicate entities across relationship statements
+CAR ||--o{ DRIVER : "insured for"
+DRIVER ||--|| LICENSE : has
+
+%% multiple relationships between the same two entities are allowed when roles differ
+CAR ||--o{ PERSON : "insured for"
+CAR }o--|| PERSON : "owned by"
+
+%% recursive relationships are allowed
+NODE ||--o{ NODE : "leads to"
+
+%% cardinality aliases and numeric shorthands
+A 1+--0+ B : hasMany
+C many(0) optionally to many(1) D : uses
+E one or zero to one or many F : owns

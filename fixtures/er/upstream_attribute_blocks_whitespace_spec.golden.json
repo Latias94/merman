@@ -1,0 +1,76 @@
+{
+  "diagramType": "er",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "mdParent": "MD_PARENT",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
+      },
+      "identification": {
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
+      }
+    },
+    "direction": "TB",
+    "entities": {
+      "BOOK": {
+        "alias": "",
+        "attributes": [
+          {
+            "comment": "",
+            "keys": [],
+            "name": "title",
+            "type": "string"
+          },
+          {
+            "comment": "",
+            "keys": [],
+            "name": "author",
+            "type": "string"
+          }
+        ],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-BOOK-0",
+        "label": "BOOK",
+        "shape": "erBox"
+      },
+      "EMPTY": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-EMPTY-1",
+        "label": "EMPTY",
+        "shape": "erBox"
+      },
+      "SPACED": {
+        "alias": "",
+        "attributes": [
+          {
+            "comment": "key+comment",
+            "keys": [
+              "PK",
+              "FK"
+            ],
+            "name": "*id",
+            "type": "string"
+          }
+        ],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-SPACED-2",
+        "label": "SPACED",
+        "shape": "erBox"
+      }
+    },
+    "relationships": [],
+    "type": "er"
+  }
+}

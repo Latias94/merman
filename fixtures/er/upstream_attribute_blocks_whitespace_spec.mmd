@@ -1,0 +1,17 @@
+erDiagram
+
+%% attribute block can start immediately after entity name
+BOOK{ string title }
+
+%% attribute definitions can be split into multiple blocks
+BOOK {
+  string author
+}
+
+%% empty attribute block is allowed
+EMPTY {}
+
+%% whitespace around the entity name and braces is accepted
+SPACED    {
+  string *id PK,FK "key+comment"
+}

@@ -1,0 +1,55 @@
+{
+  "diagramType": "er",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "mdParent": "MD_PARENT",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
+      },
+      "identification": {
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
+      }
+    },
+    "direction": "TB",
+    "entities": {
+      "Blo@rf": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-Blo@rf-0",
+        "label": "Blo@rf",
+        "shape": "erBox"
+      },
+      "Blorf!": {
+        "alias": "Alias!",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-Blorf!-1",
+        "label": "Blorf!",
+        "shape": "erBox"
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-Blorf!-1",
+        "entityB": "entity-Blo@rf-0",
+        "relSpec": {
+          "cardA": "ONLY_ONE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        },
+        "roleA": "relates"
+      }
+    ],
+    "type": "er"
+  }
+}

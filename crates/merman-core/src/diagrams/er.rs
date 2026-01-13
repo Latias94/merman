@@ -752,6 +752,12 @@ impl<'input> Lexer<'input> {
                 .get(self.pos.wrapping_sub(1))
                 .copied()
                 .is_some_and(|b| matches!(b, b' ' | b'\t' | b'\r'))
+            && self
+                .input
+                .as_bytes()
+                .get(self.pos + 1)
+                .copied()
+                .is_some_and(|b| matches!(b, b'-' | b'.'))
         {
             self.pos += 1;
             return Some((start, Tok::MdParent, self.pos));

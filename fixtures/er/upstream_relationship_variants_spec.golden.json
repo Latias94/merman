@@ -1,0 +1,206 @@
+{
+  "diagramType": "er",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "mdParent": "MD_PARENT",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
+      },
+      "identification": {
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
+      }
+    },
+    "direction": "TB",
+    "entities": {
+      "A": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-A-5",
+        "label": "A",
+        "shape": "erBox"
+      },
+      "B": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-B-6",
+        "label": "B",
+        "shape": "erBox"
+      },
+      "C": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-C-7",
+        "label": "C",
+        "shape": "erBox"
+      },
+      "CAR": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-CAR-0",
+        "label": "CAR",
+        "shape": "erBox"
+      },
+      "D": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-D-8",
+        "label": "D",
+        "shape": "erBox"
+      },
+      "DRIVER": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-DRIVER-1",
+        "label": "DRIVER",
+        "shape": "erBox"
+      },
+      "E": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-E-9",
+        "label": "E",
+        "shape": "erBox"
+      },
+      "F": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-F-10",
+        "label": "F",
+        "shape": "erBox"
+      },
+      "LICENSE": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-LICENSE-2",
+        "label": "LICENSE",
+        "shape": "erBox"
+      },
+      "NODE": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-NODE-4",
+        "label": "NODE",
+        "shape": "erBox"
+      },
+      "PERSON": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-PERSON-3",
+        "label": "PERSON",
+        "shape": "erBox"
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-CAR-0",
+        "entityB": "entity-DRIVER-1",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        },
+        "roleA": "insured for"
+      },
+      {
+        "entityA": "entity-DRIVER-1",
+        "entityB": "entity-LICENSE-2",
+        "relSpec": {
+          "cardA": "ONLY_ONE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        },
+        "roleA": "has"
+      },
+      {
+        "entityA": "entity-CAR-0",
+        "entityB": "entity-PERSON-3",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        },
+        "roleA": "insured for"
+      },
+      {
+        "entityA": "entity-CAR-0",
+        "entityB": "entity-PERSON-3",
+        "relSpec": {
+          "cardA": "ONLY_ONE",
+          "cardB": "ZERO_OR_MORE",
+          "relType": "IDENTIFYING"
+        },
+        "roleA": "owned by"
+      },
+      {
+        "entityA": "entity-NODE-4",
+        "entityB": "entity-NODE-4",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        },
+        "roleA": "leads to"
+      },
+      {
+        "entityA": "entity-A-5",
+        "entityB": "entity-B-6",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONE_OR_MORE",
+          "relType": "IDENTIFYING"
+        },
+        "roleA": "hasMany"
+      },
+      {
+        "entityA": "entity-C-7",
+        "entityB": "entity-D-8",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ZERO_OR_MORE",
+          "relType": "NON_IDENTIFYING"
+        },
+        "roleA": "uses"
+      },
+      {
+        "entityA": "entity-E-9",
+        "entityB": "entity-F-10",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ZERO_OR_ONE",
+          "relType": "IDENTIFYING"
+        },
+        "roleA": "owns"
+      }
+    ],
+    "type": "er"
+  }
+}

@@ -38,6 +38,7 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/er/parser/erDiagram.spec
 - constraints + comments: `fixtures/er/upstream_attributes_styles_classes.mmd` and unit tests
   - `parse_diagram_er_parses_many_constraints_and_comments`
   - `parse_diagram_er_supports_empty_attribute_blocks_and_multiple_blocks`
+- multiple attribute blocks + empty blocks + whitespace variants: `fixtures/er/upstream_attribute_blocks_whitespace_spec.mmd`
 
 ### Relationships
 
@@ -47,6 +48,7 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/er/parser/erDiagram.spec
   - `parse_diagram_er_relationship_matrix_matches_upstream_spec_minimally`
   - `parse_diagram_er_relationship_word_aliases_match_upstream_spec_minimally`
   - representative snapshot: `fixtures/er/upstream_relationship_aliases.mmd`
+- recursive + multi-relationship + numeric/word cardinality variants: `fixtures/er/upstream_relationship_variants_spec.mmd`
 - numeric cardinality shorthands (`1+`, `0+`, `1`): unit test `parse_diagram_er_supports_numeric_cardinality_shorthands`
 - parent-child relationship mapping (`MD_PARENT`): unit test `parse_diagram_er_parent_child_relationship_sets_md_parent_cardinality`
 - invalid relationship syntax rejected: unit test `parse_diagram_er_rejects_invalid_relationship_syntax`
@@ -66,14 +68,18 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/er/parser/erDiagram.spec
   - `parse_diagram_er_shorthand_assignment_supports_multiple_classes_and_alias`
   - `parse_diagram_er_shorthand_assignment_works_in_relationships`
   - representative snapshot: `fixtures/er/upstream_attributes_styles_classes.mmd`
+- default class definition (`classDef default ...`): `fixtures/er/upstream_default_class_spec.mmd`
 
 ### Accessibility
 
-- `accTitle:` + `accDescr:` + multiline `accDescr{...}`: unit test `parse_diagram_er_acc_title_and_multiline_description` in `crates/merman-core/src/lib.rs`
+- `accTitle:` + multiline `accDescr{...}`: `fixtures/er/upstream_accessibility_multiline_spec.mmd` and unit test `parse_diagram_er_acc_title_and_multiline_description` in `crates/merman-core/src/lib.rs`
+
+### Quoted entity names
+
+- quoted entity names with punctuation (except `%` and `\\`): `fixtures/er/upstream_quoted_entity_names_spec.mmd`
 
 ## `erRenderer.spec.ts` (rendering)
 
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/er/erRenderer.spec.ts`
 
 - renderer-only (SVG / id generation for rendering) and out of scope for headless parsing parity.
-

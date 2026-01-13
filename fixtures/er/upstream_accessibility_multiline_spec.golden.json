@@ -1,0 +1,55 @@
+{
+  "diagramType": "er",
+  "model": {
+    "accDescr": "this graph is\nabout\nstuff",
+    "accTitle": "graph title",
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "mdParent": "MD_PARENT",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
+      },
+      "identification": {
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
+      }
+    },
+    "direction": "TB",
+    "entities": {
+      "STUDENT": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-STUDENT-1",
+        "label": "STUDENT",
+        "shape": "erBox"
+      },
+      "TEACHER": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-TEACHER-0",
+        "label": "TEACHER",
+        "shape": "erBox"
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-TEACHER-0",
+        "entityB": "entity-STUDENT-1",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ZERO_OR_MORE",
+          "relType": "IDENTIFYING"
+        },
+        "roleA": "is teacher of"
+      }
+    ],
+    "type": "er"
+  }
+}
