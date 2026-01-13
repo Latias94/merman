@@ -19,6 +19,8 @@ pub struct GraphLabel {
     pub nodesep: f64,
     pub ranksep: f64,
     pub edgesep: f64,
+    pub nesting_root: Option<String>,
+    pub node_rank_factor: Option<usize>,
 }
 
 impl Default for GraphLabel {
@@ -28,16 +30,21 @@ impl Default for GraphLabel {
             nodesep: 50.0,
             ranksep: 50.0,
             edgesep: 10.0,
+            nesting_root: None,
+            node_rank_factor: None,
         }
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct NodeLabel {
     pub width: f64,
     pub height: f64,
     pub x: Option<f64>,
     pub y: Option<f64>,
+    pub dummy: Option<String>,
+    pub border_top: Option<String>,
+    pub border_bottom: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -61,6 +68,8 @@ pub struct EdgeLabel {
     pub labelpos: LabelPos,
     pub labeloffset: f64,
     pub minlen: usize,
+    pub weight: f64,
+    pub nesting_edge: bool,
 
     pub x: Option<f64>,
     pub y: Option<f64>,
@@ -75,9 +84,245 @@ impl Default for EdgeLabel {
             labelpos: LabelPos::C,
             labeloffset: 0.0,
             minlen: 1,
+            weight: 0.0,
+            nesting_edge: false,
             x: None,
             y: None,
             points: Vec::new(),
+        }
+    }
+}
+
+pub mod nesting_graph {
+    use super::{EdgeLabel, GraphLabel, NodeLabel};
+    use crate::graphlib::{EdgeKey, Graph, alg};
+    use std::collections::BTreeMap;
+
+    fn unique_id(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>, prefix: &str) -> String {
+        if !g.has_node(prefix) {
+            return prefix.to_string();
+        }
+        for i in 1usize.. {
+            let v = format!("{prefix}{i}");
+            if !g.has_node(&v) {
+                return v;
+            }
+        }
+        unreachable!()
+    }
+
+    fn add_dummy_node(
+        g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        dummy: &str,
+        mut label: NodeLabel,
+        name: &str,
+    ) -> String {
+        let id = unique_id(g, name);
+        label.dummy = Some(dummy.to_string());
+        g.set_node(id.clone(), label);
+        id
+    }
+
+    fn add_border_node(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, prefix: &str) -> String {
+        add_dummy_node(
+            g,
+            "border",
+            NodeLabel {
+                width: 0.0,
+                height: 0.0,
+                ..Default::default()
+            },
+            prefix,
+        )
+    }
+
+    fn tree_depths(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> BTreeMap<String, usize> {
+        fn dfs(
+            g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+            v: &str,
+            depth: usize,
+            out: &mut BTreeMap<String, usize>,
+        ) {
+            for child in g.children(v) {
+                dfs(g, child, depth + 1, out);
+            }
+            out.insert(v.to_string(), depth);
+        }
+
+        let mut out: BTreeMap<String, usize> = BTreeMap::new();
+        for v in g.children_root() {
+            dfs(g, v, 1, &mut out);
+        }
+        out
+    }
+
+    fn sum_weights(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> f64 {
+        g.edge_keys()
+            .iter()
+            .filter_map(|k| g.edge_by_key(k))
+            .map(|e| e.weight)
+            .sum()
+    }
+
+    fn dfs(
+        g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        root: &str,
+        node_sep: usize,
+        weight: f64,
+        height: usize,
+        depths: &BTreeMap<String, usize>,
+        v: &str,
+    ) {
+        let children: Vec<String> = g.children(v).into_iter().map(|s| s.to_string()).collect();
+        if children.is_empty() {
+            if v != root {
+                g.set_edge_with_label(
+                    root,
+                    v,
+                    EdgeLabel {
+                        weight: 0.0,
+                        minlen: node_sep,
+                        ..Default::default()
+                    },
+                );
+            }
+            return;
+        }
+
+        let top = add_border_node(g, "_bt");
+        let bottom = add_border_node(g, "_bb");
+
+        g.set_parent(top.clone(), v.to_string());
+        if let Some(lbl) = g.node_mut(v) {
+            lbl.border_top = Some(top.clone());
+        }
+        g.set_parent(bottom.clone(), v.to_string());
+        if let Some(lbl) = g.node_mut(v) {
+            lbl.border_bottom = Some(bottom.clone());
+        }
+
+        for child in children {
+            dfs(g, root, node_sep, weight, height, depths, &child);
+
+            let child_node = g.node(&child).cloned().unwrap_or_default();
+            let child_top = child_node
+                .border_top
+                .as_deref()
+                .unwrap_or(&child)
+                .to_string();
+            let child_bottom = child_node
+                .border_bottom
+                .as_deref()
+                .unwrap_or(&child)
+                .to_string();
+            let this_weight = if child_node.border_top.is_some() {
+                weight
+            } else {
+                2.0 * weight
+            };
+            let minlen = if child_top != child_bottom {
+                1usize
+            } else {
+                let dv = depths.get(v).copied().unwrap_or(1);
+                height.saturating_sub(dv).saturating_add(1)
+            };
+
+            g.set_edge_with_label(
+                top.clone(),
+                child_top.clone(),
+                EdgeLabel {
+                    weight: this_weight,
+                    minlen,
+                    nesting_edge: true,
+                    ..Default::default()
+                },
+            );
+            g.set_edge_with_label(
+                child_bottom.clone(),
+                bottom.clone(),
+                EdgeLabel {
+                    weight: this_weight,
+                    minlen,
+                    nesting_edge: true,
+                    ..Default::default()
+                },
+            );
+        }
+
+        if g.parent(v).is_none() {
+            let dv = depths.get(v).copied().unwrap_or(1);
+            g.set_edge_with_label(
+                root,
+                top,
+                EdgeLabel {
+                    weight: 0.0,
+                    minlen: height + dv,
+                    nesting_edge: true,
+                    ..Default::default()
+                },
+            );
+        }
+    }
+
+    pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+        let root = add_dummy_node(
+            g,
+            "root",
+            NodeLabel {
+                ..Default::default()
+            },
+            "_root",
+        );
+
+        let depths = tree_depths(g);
+        let height = depths
+            .values()
+            .copied()
+            .max()
+            .unwrap_or(1)
+            .saturating_sub(1);
+        let node_sep = 2 * height + 1;
+
+        if let Some(gl) = g.graph_mut().nesting_root.replace(root.clone()) {
+            let _ = gl;
+        }
+
+        for k in g.edge_keys() {
+            if let Some(e) = g.edge_mut_by_key(&k) {
+                e.minlen *= node_sep.max(1);
+            }
+        }
+
+        let weight = sum_weights(g) + 1.0;
+
+        let children = g
+            .children_root()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>();
+        for child in children {
+            dfs(g, &root, node_sep, weight, height, &depths, &child);
+        }
+
+        g.graph_mut().node_rank_factor = Some(node_sep);
+
+        let _ = alg::components(g);
+    }
+
+    pub fn cleanup(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+        let root = g.graph().nesting_root.clone();
+        if let Some(root) = root {
+            let _ = g.remove_node(&root);
+            g.graph_mut().nesting_root = None;
+        }
+
+        let keys: Vec<EdgeKey> = g.edge_keys();
+        for k in keys {
+            if let Some(e) = g.edge_by_key(&k) {
+                if e.nesting_edge {
+                    let _ = g.remove_edge_key(&k);
+                }
+            }
         }
     }
 }

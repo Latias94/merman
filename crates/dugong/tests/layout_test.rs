@@ -287,6 +287,7 @@ fn layout_can_apply_an_offset() {
             nodesep: 10.0,
             ranksep: 10.0,
             edgesep: 10.0,
+            ..Default::default()
         });
         g.set_default_edge_label(EdgeLabel::default);
 
@@ -349,6 +350,7 @@ fn layout_can_layout_an_edge_with_a_long_label() {
             nodesep: 10.0,
             ranksep: 50.0,
             edgesep: 10.0,
+            ..Default::default()
         });
         g.set_default_edge_label(EdgeLabel::default);
 
@@ -407,6 +409,7 @@ fn layout_can_layout_a_self_loop() {
             nodesep: 50.0,
             ranksep: 50.0,
             edgesep: 75.0,
+            ..Default::default()
         });
         g.set_default_edge_label(EdgeLabel::default);
 
