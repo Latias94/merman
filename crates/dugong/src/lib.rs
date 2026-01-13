@@ -84,6 +84,28 @@ impl Default for EdgeLabel {
 
 pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     let graph = g.graph().clone();
+    let edge_keys: Vec<graphlib::EdgeKey> = g.edges().cloned().collect();
+
+    let mut max_edge_label_width: f64 = 0.0;
+    let mut max_edge_label_height: f64 = 0.0;
+    for e in &edge_keys {
+        if let Some(lbl) = g.edge(&e.v, &e.w, e.name.as_deref()) {
+            max_edge_label_width = max_edge_label_width.max(lbl.width);
+            max_edge_label_height = max_edge_label_height.max(lbl.height);
+        }
+    }
+
+    // A minimal parity-oriented approximation:
+    // - in TB/BT: long edge labels tend to push nodes apart horizontally (cross-axis)
+    // - in LR/RL: long edge labels tend to push ranks apart horizontally (axis)
+    let node_sep = match graph.rankdir {
+        RankDir::TB | RankDir::BT => graph.nodesep.max(max_edge_label_width),
+        RankDir::LR | RankDir::RL => graph.nodesep.max(max_edge_label_height),
+    };
+    let rank_sep = match graph.rankdir {
+        RankDir::TB | RankDir::BT => graph.ranksep,
+        RankDir::LR | RankDir::RL => graph.ranksep.max(max_edge_label_width),
+    };
 
     let node_ids: Vec<String> = g.nodes().map(|s| s.to_string()).collect();
 
@@ -195,7 +217,7 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             h = h.max(nh);
             w += nw;
             if i + 1 < ids.len() {
-                w += graph.nodesep;
+                w += node_sep;
             }
         }
         rank_heights.push(h);
@@ -217,17 +239,16 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
                 n.x = Some(x);
                 n.y = Some(y);
             }
-            x_cursor += nw + graph.nodesep;
+            x_cursor += nw + node_sep;
         }
 
         y_cursor += rank_h;
         if rank_idx + 1 < ranks.len() {
-            y_cursor += graph.ranksep + gap_extra.get(rank_idx).copied().unwrap_or(0.0);
+            y_cursor += rank_sep + gap_extra.get(rank_idx).copied().unwrap_or(0.0);
         }
     }
 
     let total_height = y_cursor;
-    let edge_keys: Vec<graphlib::EdgeKey> = g.edges().map(|e| e.clone()).collect();
 
     for e in &edge_keys {
         let Some((sx, sy, sw, sh)) = g

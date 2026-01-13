@@ -336,3 +336,61 @@ fn layout_can_apply_an_offset() {
         }
     }
 }
+
+#[test]
+fn layout_can_layout_an_edge_with_a_long_label() {
+    for rankdir in [RankDir::TB, RankDir::BT, RankDir::LR, RankDir::RL] {
+        let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
+            multigraph: true,
+            compound: true,
+        });
+        g.set_graph(GraphLabel {
+            rankdir,
+            nodesep: 10.0,
+            ranksep: 50.0,
+            edgesep: 10.0,
+        });
+        g.set_default_edge_label(EdgeLabel::default);
+
+        for v in ["a", "b", "c", "d"] {
+            g.set_node(
+                v,
+                NodeLabel {
+                    width: 10.0,
+                    height: 10.0,
+                    ..Default::default()
+                },
+            );
+        }
+        g.set_edge_with_label(
+            "a",
+            "c",
+            EdgeLabel {
+                width: 2000.0,
+                height: 10.0,
+                ..Default::default()
+            },
+        );
+        g.set_edge_with_label(
+            "b",
+            "d",
+            EdgeLabel {
+                width: 1.0,
+                height: 1.0,
+                ..Default::default()
+            },
+        );
+
+        layout(&mut g);
+
+        if rankdir == RankDir::TB || rankdir == RankDir::BT {
+            let p1 = g.edge("a", "c", None).unwrap();
+            let p2 = g.edge("b", "d", None).unwrap();
+            assert!((p1.x.unwrap() - p2.x.unwrap()).abs() > 1000.0);
+        } else {
+            let p1 = g.node("a").unwrap();
+            let p2 = g.node("c").unwrap();
+            assert!((p1.x.unwrap() - p2.x.unwrap()).abs() > 1000.0);
+        }
+    }
+}
