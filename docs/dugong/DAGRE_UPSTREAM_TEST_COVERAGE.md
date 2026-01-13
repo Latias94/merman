@@ -163,3 +163,40 @@ Source: `repo-ref/dagre/test/rank/feasible-tree-test.js`
 - `creates a tree for a trivial input graph` -> `crates/dugong/tests/feasible_tree_test.rs::feasible_tree_creates_a_tree_for_a_trivial_input_graph`
 - `correctly shortens slack by pulling a node up` -> `crates/dugong/tests/feasible_tree_test.rs::feasible_tree_correctly_shortens_slack_by_pulling_a_node_up`
 - `correctly shortens slack by pulling a node down` -> `crates/dugong/tests/feasible_tree_test.rs::feasible_tree_correctly_shortens_slack_by_pulling_a_node_down`
+
+Source: `repo-ref/dagre/test/rank/network-simplex-test.js`
+
+- `can assign a rank to a single node` -> `crates/dugong/tests/network_simplex_test.rs::network_simplex_can_assign_a_rank_to_a_single_node`
+- `can assign a rank to a 2-node connected graph` -> `crates/dugong/tests/network_simplex_test.rs::network_simplex_can_assign_a_rank_to_a_2_node_connected_graph`
+- `can assign ranks for a diamond` -> `crates/dugong/tests/network_simplex_test.rs::network_simplex_can_assign_ranks_for_a_diamond`
+- `uses the minlen attribute on the edge` -> `crates/dugong/tests/network_simplex_test.rs::network_simplex_uses_the_minlen_attribute_on_the_edge`
+- `can rank the gansner graph` -> `crates/dugong/tests/network_simplex_test.rs::network_simplex_can_rank_the_gansner_graph`
+- `can handle multi-edges` -> `crates/dugong/tests/network_simplex_test.rs::network_simplex_can_handle_multi_edges`
+- `leaveEdge returns undefined if there is no edge with a negative cutvalue` -> `crates/dugong/tests/network_simplex_test.rs::leave_edge_returns_none_if_there_is_no_edge_with_a_negative_cutvalue`
+- `leaveEdge returns an edge if one is found with a negative cutvalue` -> `crates/dugong/tests/network_simplex_test.rs::leave_edge_returns_an_edge_if_one_is_found_with_a_negative_cutvalue`
+- `enterEdge finds an edge from the head to tail component` -> `crates/dugong/tests/network_simplex_test.rs::enter_edge_finds_an_edge_from_the_head_to_tail_component`
+- `enterEdge works when the root of the tree is in the tail component` -> `crates/dugong/tests/network_simplex_test.rs::enter_edge_works_when_the_root_of_the_tree_is_in_the_tail_component`
+- `enterEdge finds the edge with the least slack` -> `crates/dugong/tests/network_simplex_test.rs::enter_edge_finds_the_edge_with_the_least_slack`
+- `enterEdge finds an appropriate edge for gansner graph #1` -> `crates/dugong/tests/network_simplex_test.rs::enter_edge_finds_an_appropriate_edge_for_gansner_graph_1`
+- `enterEdge finds an appropriate edge for gansner graph #2` -> `crates/dugong/tests/network_simplex_test.rs::enter_edge_finds_an_appropriate_edge_for_gansner_graph_2`
+- `enterEdge finds an appropriate edge for gansner graph #3` -> `crates/dugong/tests/network_simplex_test.rs::enter_edge_finds_an_appropriate_edge_for_gansner_graph_3`
+- `enterEdge finds an appropriate edge for gansner graph #4` -> `crates/dugong/tests/network_simplex_test.rs::enter_edge_finds_an_appropriate_edge_for_gansner_graph_4`
+- `initLowLimValues assigns low, lim, and parent for each node in a tree` -> `crates/dugong/tests/network_simplex_test.rs::init_low_lim_values_assigns_low_lim_and_parent_for_each_node_in_a_tree`
+- `exchangeEdges exchanges edges and updates cut values and low/lim numbers` -> `crates/dugong/tests/network_simplex_test.rs::exchange_edges_exchanges_edges_and_updates_cut_values_and_low_lim_numbers`
+- `exchangeEdges updates ranks` -> `crates/dugong/tests/network_simplex_test.rs::exchange_edges_updates_ranks`
+- `calcCutValue works for a 2-node tree with c -> p` -> `crates/dugong/tests/network_simplex_test.rs::calc_cut_value_works_for_a_2_node_tree_with_c_to_p`
+- `calcCutValue works for a 2-node tree with c <- p` -> `crates/dugong/tests/network_simplex_test.rs::calc_cut_value_works_for_a_2_node_tree_with_c_from_p`
+- `calcCutValue works for 3-node tree with gc -> c -> p` -> `crates/dugong/tests/network_simplex_test.rs::calc_cut_value_works_for_3_node_tree_with_gc_to_c_to_p`
+- `calcCutValue works for 3-node tree with gc -> c <- p` -> `crates/dugong/tests/network_simplex_test.rs::calc_cut_value_works_for_3_node_tree_with_gc_to_c_from_p`
+- `calcCutValue works for 3-node tree with gc <- c -> p` -> `crates/dugong/tests/network_simplex_test.rs::calc_cut_value_works_for_3_node_tree_with_gc_from_c_to_p`
+- `calcCutValue works for 3-node tree with gc <- c <- p` -> `crates/dugong/tests/network_simplex_test.rs::calc_cut_value_works_for_3_node_tree_with_gc_from_c_from_p`
+- `calcCutValue works for 4-node tree with gc -> c -> p -> o, with o -> c` -> `crates/dugong/tests/network_simplex_test.rs::calc_cut_value_works_for_4_node_tree_gc_to_c_to_p_to_o_with_o_to_c`
+- `calcCutValue works for 4-node tree with gc -> c -> p -> o, with o <- c` -> `crates/dugong/tests/network_simplex_test.rs::calc_cut_value_works_for_4_node_tree_gc_to_c_to_p_to_o_with_o_from_c`
+- `calcCutValue works for 4-node tree with o -> gc -> c -> p, with o -> c` -> `crates/dugong/tests/network_simplex_test.rs::calc_cut_value_works_for_4_node_tree_o_to_gc_to_c_to_p_with_o_to_c`
+- `calcCutValue works for 4-node tree with o -> gc -> c -> p, with o <- c` -> `crates/dugong/tests/network_simplex_test.rs::calc_cut_value_works_for_4_node_tree_o_to_gc_to_c_to_p_with_o_from_c`
+- `calcCutValue works for 4-node tree with gc -> c <- p -> o, with o -> c` -> `crates/dugong/tests/network_simplex_test.rs::calc_cut_value_works_for_4_node_tree_gc_to_c_from_p_to_o_with_o_to_c`
+- `calcCutValue works for 4-node tree with gc -> c <- p -> o, with o <- c` -> `crates/dugong/tests/network_simplex_test.rs::calc_cut_value_works_for_4_node_tree_gc_to_c_from_p_to_o_with_o_from_c`
+- `calcCutValue works for 4-node tree with o -> gc -> c <- p, with o -> c` -> `crates/dugong/tests/network_simplex_test.rs::calc_cut_value_works_for_4_node_tree_o_to_gc_to_c_from_p_with_o_to_c`
+- `calcCutValue works for 4-node tree with o -> gc -> c <- p, with o <- c` -> `crates/dugong/tests/network_simplex_test.rs::calc_cut_value_works_for_4_node_tree_o_to_gc_to_c_from_p_with_o_from_c`
+- `initCutValues works for gansnerGraph` -> `crates/dugong/tests/network_simplex_test.rs::init_cut_values_works_for_gansner_graph`
+- `initCutValues works for updated gansnerGraph` -> `crates/dugong/tests/network_simplex_test.rs::init_cut_values_works_for_updated_gansner_graph`

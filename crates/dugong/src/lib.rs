@@ -1386,16 +1386,33 @@ pub mod rank {
         }
     }
 
+    pub mod tree {
+        #[derive(Debug, Clone, Default, PartialEq)]
+        pub struct TreeNodeLabel {
+            pub low: i32,
+            pub lim: i32,
+            pub parent: Option<String>,
+        }
+
+        #[derive(Debug, Clone, Default, PartialEq)]
+        pub struct TreeEdgeLabel {
+            pub cutvalue: f64,
+        }
+    }
+
     pub mod feasible_tree {
-        use super::util;
+        use super::{tree, util};
         use crate::graphlib::{EdgeKey, Graph, GraphOptions};
         use crate::{EdgeLabel, GraphLabel, NodeLabel};
 
-        pub fn feasible_tree(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Graph<(), (), ()> {
-            let mut t: Graph<(), (), ()> = Graph::new(GraphOptions {
-                directed: false,
-                ..Default::default()
-            });
+        pub fn feasible_tree(
+            g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        ) -> Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()> {
+            let mut t: Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()> =
+                Graph::new(GraphOptions {
+                    directed: false,
+                    ..Default::default()
+                });
 
             let start = g
                 .nodes()
@@ -1403,7 +1420,7 @@ pub mod rank {
                 .expect("feasible_tree requires at least one node")
                 .to_string();
             let size = g.node_count();
-            t.set_node(start, ());
+            t.set_node(start, tree::TreeNodeLabel::default());
 
             while tight_tree(&mut t, g) < size {
                 let edge = find_min_slack_edge(&t, g)
@@ -1417,19 +1434,19 @@ pub mod rank {
         }
 
         fn tight_tree(
-            t: &mut Graph<(), (), ()>,
+            t: &mut Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
             g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
         ) -> usize {
             fn dfs(
                 v: &str,
-                t: &mut Graph<(), (), ()>,
+                t: &mut Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
                 g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
             ) {
                 let edges: Vec<EdgeKey> = g.node_edges(v);
                 for e in edges {
                     let w = if v == e.v { e.w.as_str() } else { e.v.as_str() };
                     if !t.has_node(w) && util::slack(g, &e) == 0 {
-                        t.set_node(w.to_string(), ());
+                        t.set_node(w.to_string(), tree::TreeNodeLabel::default());
                         t.set_edge(v.to_string(), w.to_string());
                         dfs(w, t, g);
                     }
@@ -1444,7 +1461,7 @@ pub mod rank {
         }
 
         fn find_min_slack_edge(
-            t: &Graph<(), (), ()>,
+            t: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
             g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
         ) -> Option<EdgeKey> {
             let mut best: Option<(i32, EdgeKey)> = None;
@@ -1464,7 +1481,7 @@ pub mod rank {
         }
 
         fn shift_ranks(
-            t: &Graph<(), (), ()>,
+            t: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
             g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
             delta: i32,
         ) {
@@ -1473,6 +1490,276 @@ pub mod rank {
                 let rank = label.rank.expect("node rank missing");
                 label.rank = Some(rank + delta);
             }
+        }
+    }
+
+    pub mod network_simplex {
+        use super::{feasible_tree, tree, util};
+        use crate::graphlib::{EdgeKey, Graph, alg};
+        use crate::{EdgeLabel, GraphLabel, NodeLabel};
+
+        pub fn network_simplex(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+            let mut simplified = crate::util::simplify(g);
+            util::longest_path(&mut simplified);
+            let mut t = feasible_tree::feasible_tree(&mut simplified);
+            init_low_lim_values(&mut t, None);
+            init_cut_values(&mut t, &simplified);
+
+            while let Some(e) = leave_edge(&t) {
+                let f = enter_edge(&t, &simplified, &e);
+                exchange_edges(&mut t, &mut simplified, &e, &f);
+            }
+
+            for v in g.node_ids() {
+                if let Some(rank) = simplified.node(&v).and_then(|n| n.rank) {
+                    if let Some(lbl) = g.node_mut(&v) {
+                        lbl.rank = Some(rank);
+                    }
+                }
+            }
+        }
+
+        pub fn init_low_lim_values(
+            tree: &mut Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
+            root: Option<&str>,
+        ) {
+            let root = root
+                .map(|s| s.to_string())
+                .or_else(|| tree.nodes().next().map(|s| s.to_string()))
+                .expect("init_low_lim_values requires at least one node");
+
+            let mut visited: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            let _ = dfs_assign_low_lim(tree, &mut visited, 1, &root, None);
+        }
+
+        fn dfs_assign_low_lim(
+            tree: &mut Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
+            visited: &mut std::collections::BTreeSet<String>,
+            next_lim: i32,
+            v: &str,
+            parent: Option<&str>,
+        ) -> i32 {
+            let low = next_lim;
+            visited.insert(v.to_string());
+
+            let neighbors: Vec<String> = tree
+                .neighbors(v)
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect();
+            let mut next_lim = next_lim;
+            for w in neighbors {
+                if !visited.contains(&w) {
+                    next_lim = dfs_assign_low_lim(tree, visited, next_lim, &w, Some(v));
+                }
+            }
+
+            let label = tree.node_mut(v).expect("tree node missing");
+            label.low = low;
+            label.lim = next_lim;
+            label.parent = parent.map(|p| p.to_string());
+            next_lim + 1
+        }
+
+        pub fn init_cut_values(
+            t: &mut Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
+            g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        ) {
+            let mut vs: Vec<String> = {
+                let roots: Vec<&str> = t.nodes().collect();
+                alg::postorder(t, &roots)
+            };
+            let _ = vs.pop();
+            for v in vs {
+                assign_cut_value(t, g, &v);
+            }
+        }
+
+        fn assign_cut_value(
+            t: &mut Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
+            g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+            child: &str,
+        ) {
+            let parent = t
+                .node(child)
+                .and_then(|lbl| lbl.parent.clone())
+                .expect("tree node parent missing");
+            let cutvalue = calc_cut_value(t, g, child);
+            let edge = t.edge_mut(child, &parent, None).expect("tree edge missing");
+            edge.cutvalue = cutvalue;
+        }
+
+        pub fn calc_cut_value(
+            t: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
+            g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+            child: &str,
+        ) -> f64 {
+            let parent = t
+                .node(child)
+                .and_then(|lbl| lbl.parent.as_deref())
+                .expect("tree node parent missing");
+
+            let mut child_is_tail = true;
+            let mut graph_edge = g.edge(child, parent, None);
+            if graph_edge.is_none() {
+                child_is_tail = false;
+                graph_edge = g.edge(parent, child, None);
+            }
+            let graph_edge = graph_edge.expect("tree edge missing from graph");
+
+            let mut cut_value = graph_edge.weight;
+
+            for e in g.node_edges(child) {
+                let is_out_edge = e.v == child;
+                let other = if is_out_edge {
+                    e.w.as_str()
+                } else {
+                    e.v.as_str()
+                };
+                if other == parent {
+                    continue;
+                }
+
+                let points_to_head = is_out_edge == child_is_tail;
+                let other_weight = g.edge_by_key(&e).map(|lbl| lbl.weight).unwrap_or_default();
+                cut_value += if points_to_head {
+                    other_weight
+                } else {
+                    -other_weight
+                };
+
+                if is_tree_edge(t, child, other) {
+                    let other_cut_value = t
+                        .edge(child, other, None)
+                        .expect("tree edge missing")
+                        .cutvalue;
+                    cut_value += if points_to_head {
+                        -other_cut_value
+                    } else {
+                        other_cut_value
+                    };
+                }
+            }
+
+            cut_value
+        }
+
+        pub fn leave_edge(
+            t: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
+        ) -> Option<EdgeKey> {
+            t.edges()
+                .find(|e| {
+                    t.edge_by_key(e)
+                        .map(|lbl| lbl.cutvalue < 0.0)
+                        .unwrap_or(false)
+                })
+                .cloned()
+        }
+
+        pub fn enter_edge(
+            t: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
+            g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+            edge: &EdgeKey,
+        ) -> EdgeKey {
+            let mut v = edge.v.clone();
+            let mut w = edge.w.clone();
+            if !g.has_edge(&v, &w, None) {
+                std::mem::swap(&mut v, &mut w);
+            }
+
+            let v_label = t.node(&v).expect("tree node missing");
+            let w_label = t.node(&w).expect("tree node missing");
+            let (tail_label, flip) = if v_label.lim > w_label.lim {
+                (w_label, true)
+            } else {
+                (v_label, false)
+            };
+
+            let mut best: Option<(i32, EdgeKey)> = None;
+            for e in g.edges() {
+                let v_desc = is_descendant(t, t.node(&e.v).expect("tree node missing"), tail_label);
+                let w_desc = is_descendant(t, t.node(&e.w).expect("tree node missing"), tail_label);
+
+                if flip == v_desc && flip != w_desc {
+                    let s = util::slack(g, e);
+                    match &best {
+                        Some((best_slack, _)) if s >= *best_slack => {}
+                        _ => best = Some((s, e.clone())),
+                    }
+                }
+            }
+
+            best.map(|(_, e)| e).expect("no entering edge found")
+        }
+
+        pub fn exchange_edges(
+            t: &mut Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
+            g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+            e: &EdgeKey,
+            f: &EdgeKey,
+        ) {
+            let _ = t.remove_edge(&e.v, &e.w, None);
+            t.set_edge(f.v.clone(), f.w.clone());
+            init_low_lim_values(t, None);
+            init_cut_values(t, g);
+            update_ranks(t, g);
+        }
+
+        fn update_ranks(
+            t: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
+            g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        ) {
+            let root = t
+                .node_ids()
+                .into_iter()
+                .find(|v| t.node(v).map(|lbl| lbl.parent.is_none()).unwrap_or(false))
+                .or_else(|| t.nodes().next().map(|v| v.to_string()))
+                .expect("update_ranks requires at least one node");
+
+            let vs = alg::preorder(t, &[root.as_str()]);
+            for v in vs.into_iter().skip(1) {
+                let parent = t
+                    .node(&v)
+                    .and_then(|lbl| lbl.parent.clone())
+                    .expect("tree node parent missing");
+
+                let (minlen, flipped) = match g.edge(&v, &parent, None) {
+                    Some(e) => (e.minlen as i32, false),
+                    None => {
+                        let e = g
+                            .edge(&parent, &v, None)
+                            .expect("tree edge missing from graph");
+                        (e.minlen as i32, true)
+                    }
+                };
+
+                let parent_rank = g
+                    .node(&parent)
+                    .and_then(|n| n.rank)
+                    .expect("parent rank missing");
+                let rank = if flipped {
+                    parent_rank + minlen
+                } else {
+                    parent_rank - minlen
+                };
+                g.node_mut(&v).expect("node missing").rank = Some(rank);
+            }
+        }
+
+        fn is_tree_edge(
+            tree: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
+            u: &str,
+            v: &str,
+        ) -> bool {
+            tree.has_edge(u, v, None)
+        }
+
+        fn is_descendant(
+            _tree: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
+            v_label: &tree::TreeNodeLabel,
+            root_label: &tree::TreeNodeLabel,
+        ) -> bool {
+            root_label.low <= v_label.lim && v_label.lim <= root_label.lim
         }
     }
 }
