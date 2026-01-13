@@ -1,0 +1,86 @@
+{
+  "diagramType": "requirement",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {},
+    "direction": "TB",
+    "elements": [],
+    "relationships": [],
+    "requirements": [
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "req_requirement",
+        "requirementId": "req_id",
+        "risk": "Low",
+        "text": "base requirement",
+        "type": "Requirement",
+        "verifyMethod": "Analysis"
+      },
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "req_functional",
+        "requirementId": "functional_id",
+        "risk": "Medium",
+        "text": "functional requirement",
+        "type": "Functional Requirement",
+        "verifyMethod": "Inspection"
+      },
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "req_interface",
+        "requirementId": "interface_id",
+        "risk": "High",
+        "text": "interface requirement",
+        "type": "Interface Requirement",
+        "verifyMethod": "Test"
+      },
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "req_performance",
+        "requirementId": "performance_id",
+        "risk": "Low",
+        "text": "performance requirement",
+        "type": "Performance Requirement",
+        "verifyMethod": "Demonstration"
+      },
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "req_physical",
+        "requirementId": "physical_id",
+        "risk": "Medium",
+        "text": "physical requirement",
+        "type": "Physical Requirement",
+        "verifyMethod": "Analysis"
+      },
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "req_design",
+        "requirementId": "design_id",
+        "risk": "High",
+        "text": "design constraint",
+        "type": "Design Constraint",
+        "verifyMethod": "Inspection"
+      }
+    ],
+    "type": "requirement"
+  }
+}

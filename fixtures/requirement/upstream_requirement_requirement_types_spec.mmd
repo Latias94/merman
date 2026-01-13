@@ -1,0 +1,44 @@
+requirementDiagram
+
+%% requirement type variants + verifyMethod variants (including Demonstration)
+requirement req_requirement {
+  id: req_id
+  text: base requirement
+  risk: low
+  verifymethod: analysis
+}
+
+functionalRequirement req_functional {
+  id: functional_id
+  text: functional requirement
+  risk: medium
+  verifymethod: inspection
+}
+
+interfaceRequirement req_interface {
+  id: interface_id
+  text: interface requirement
+  risk: high
+  verifymethod: test
+}
+
+performanceRequirement req_performance {
+  id: performance_id
+  text: performance requirement
+  risk: low
+  verifymethod: demonstration
+}
+
+physicalRequirement req_physical {
+  id: physical_id
+  text: physical requirement
+  risk: medium
+  verifymethod: analysis
+}
+
+designConstraint req_design {
+  id: design_id
+  text: design constraint
+  risk: high
+  verifyMethod: inspection
+}

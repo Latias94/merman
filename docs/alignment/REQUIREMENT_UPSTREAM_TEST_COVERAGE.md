@@ -10,6 +10,7 @@ Scope: Mermaid tag `@11.12.2`.
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/requirement/parser/requirementDiagram.spec.js`
 
 - full requirement definition + type/risk/verifyMethod normalization: `fixtures/requirement/upstream_requirement_full_requirement_spec.mmd`
+- requirement type variants (functional/interface/performance/physical) + `verifyMethod: demonstration`: `fixtures/requirement/upstream_requirement_requirement_types_spec.mmd`
 - full element definition: `fixtures/requirement/upstream_requirement_full_element_and_relationships_spec.mmd`
 - accessibility title + description (single + multiline): `fixtures/requirement/upstream_requirement_accessibility_spec.mmd`
 - relationship directions + types: `fixtures/requirement/upstream_requirement_full_element_and_relationships_spec.mmd`
@@ -21,4 +22,3 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/requirement/parser/requi
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/requirement/requirementDb.spec.ts`
 
 - requirements/elements/relations/classes/styles behaviors: covered across the fixtures above, and `crates/merman-core/src/diagrams/requirement.rs`
-
