@@ -191,6 +191,21 @@ graph TD;A-->B;"#;
     }
 
     #[test]
+    fn parse_merges_init_directive_numeric_values_like_upstream() {
+        let engine = Engine::new();
+        let text = r#"%%{init: { 'logLevel': 0 } }%%
+sequenceDiagram
+Alice->Bob: Hi
+"#;
+
+        let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(res.diagram_type, "sequence");
+        assert_eq!(res.config.as_value(), &json!({ "logLevel": 0 }));
+    }
+
+    #[test]
     fn parse_returns_malformed_frontmatter_error_for_unclosed_frontmatter() {
         let engine = Engine::new();
         let err = block_on(engine.parse_metadata(
