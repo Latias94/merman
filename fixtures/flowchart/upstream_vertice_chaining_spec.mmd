@@ -1,0 +1,16 @@
+graph TD
+
+%% Simple chaining
+A-->B-->C;
+
+%% Multiple vertices on either side
+A & B --> C2;
+A-->B2 & C3;
+A & B2--> C4 & D4;
+
+%% Chaining + multiple vertices (FVC)
+A3 --> B3 & B4 & C5 --> D5;
+
+%% Chaining with inline node metadata and classes
+A4[ h ] -- hello --> B6[" test "]:::exClass & C6 --> D6;
+classDef exClass background:#bbb,border:1px solid red;

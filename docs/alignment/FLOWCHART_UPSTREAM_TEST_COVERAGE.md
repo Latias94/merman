@@ -83,6 +83,42 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/flow-in
   - `parse_diagram_flowchart_click_link_sets_link_and_tooltip_and_clickable_class`
   - `parse_diagram_flowchart_click_link_sanitizes_javascript_urls_when_not_loose`
 
+### `parser/flow-lines.spec.js`
+
+Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/flow-lines.spec.js`
+
+- `linkStyle` interpolate (`default` / numbered / mixed): `fixtures/flowchart/upstream_linkstyle_and_click.mmd`
+- edge curve properties via edge id (`e1@{curve: ...}`): `fixtures/flowchart/upstream_lines_edge_curve_properties_spec.mmd`
+
+### `parser/flow-text.spec.js`
+
+Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/flow-text.spec.js`
+
+- edge label parsing variants (pipe notation, new notation, quoted labels): `fixtures/flowchart/upstream_text_edge_labels_spec.mmd`
+
+### `parser/flow-singlenode.spec.js`
+
+Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/flow-singlenode.spec.js`
+
+- single node parsing + shape variants + numeric ids in subgraphs: `fixtures/flowchart/upstream_singlenode_shapes_spec.mmd`
+
+### `parser/flow-vertice-chaining.spec.js`
+
+Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/flow-vertice-chaining.spec.js`
+
+- chained vertices and multi-vertex statements (`A-->B-->C`, `A & B --> C`, etc): `fixtures/flowchart/upstream_vertice_chaining_spec.mmd`
+- group edge-id behavior for multi-vertex statements: unit tests:
+  - `parse_diagram_flowchart_node_data_unique_edge_ids_with_groups`
+  - `parse_diagram_flowchart_node_data_redefined_edge_id_becomes_auto_id`
+
+### `parser/flow.spec.js`
+
+Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/flow.spec.js`
+
+- keyword substrings in node ids + trailing whitespace: `fixtures/flowchart/upstream_flow_spec_special_chars_and_a11y.mmd`
+- special characters in node labels (`<` -> `&lt;` etc): `fixtures/flowchart/upstream_flow_spec_special_chars_and_a11y.mmd`
+- `accTitle` / multiline `accDescr { ... }`: `fixtures/flowchart/upstream_flow_spec_special_chars_and_a11y.mmd`
+
 ### `parser/subgraph.spec.js`
 
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/subgraph.spec.js`
@@ -117,4 +153,3 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/flowChartShape
 ## Deferred / intentionally not snapshotted
 
 - `parser/flow-huge.spec.js`: performance/stress coverage is deferred (headless functional parity is validated via smaller fixtures + unit tests).
-

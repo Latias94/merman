@@ -1,0 +1,8 @@
+graph TD
+A e1@-->B
+A uniqueName@-->C
+
+%% Default interpolate + edge-id curve overrides
+linkStyle default interpolate linear
+e1@{curve: stepAfter}
+uniqueName@{curve: cardinal}

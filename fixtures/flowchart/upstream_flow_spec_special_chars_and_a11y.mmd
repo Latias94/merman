@@ -1,0 +1,18 @@
+graph LR
+accTitle: Big decisions
+accDescr {
+  Flow chart of the decision making process
+  with a second line
+}
+
+endpoint --> sender
+blend --> monograph
+default --> monograph2
+
+%% Special characters in labels are sanitized like upstream (strict)
+S1(<)-->T1
+S2(&)-->T2
+
+%% trailing whitespace after statements should be accepted
+X-->Y; 
+Y-->Z;

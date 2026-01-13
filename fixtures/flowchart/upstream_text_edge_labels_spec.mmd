@@ -1,0 +1,12 @@
+graph TD;
+
+%% Edge text with pipe notation (including spaces, keywords, and special chars)
+A --x|text including / should work| B;
+A --x|text including `| C;
+
+%% Edge text with "new" notation (text between line segments)
+D -- text including URL space and send --> E;
+F --    textNoSpace --x G;
+
+%% Quoted edge label should be preserved
+V -- "test string()" --> a[v];
