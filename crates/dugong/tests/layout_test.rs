@@ -394,3 +394,79 @@ fn layout_can_layout_an_edge_with_a_long_label() {
         }
     }
 }
+
+#[test]
+fn layout_can_layout_a_self_loop() {
+    for rankdir in [RankDir::TB, RankDir::BT, RankDir::LR, RankDir::RL] {
+        let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
+            multigraph: true,
+            compound: true,
+        });
+        g.set_graph(GraphLabel {
+            rankdir,
+            nodesep: 50.0,
+            ranksep: 50.0,
+            edgesep: 75.0,
+        });
+        g.set_default_edge_label(EdgeLabel::default);
+
+        g.set_node(
+            "a",
+            NodeLabel {
+                width: 100.0,
+                height: 100.0,
+                ..Default::default()
+            },
+        );
+        g.set_edge_with_label(
+            "a",
+            "a",
+            EdgeLabel {
+                width: 50.0,
+                height: 50.0,
+                ..Default::default()
+            },
+        );
+
+        layout(&mut g);
+        let node_a = g.node("a").unwrap();
+        let points = &g.edge("a", "a", None).unwrap().points;
+        assert_eq!(points.len(), 7);
+        for p in points {
+            if rankdir != RankDir::LR && rankdir != RankDir::RL {
+                assert!(p.x > node_a.x.unwrap());
+                assert!((p.y - node_a.y.unwrap()).abs() <= node_a.height / 2.0);
+            } else {
+                assert!(p.y > node_a.y.unwrap());
+                assert!((p.x - node_a.x.unwrap()).abs() <= node_a.width / 2.0);
+            }
+        }
+    }
+}
+
+#[test]
+fn layout_can_layout_a_graph_with_subgraphs() {
+    let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
+        multigraph: true,
+        compound: true,
+    });
+    g.set_graph(GraphLabel::default());
+    g.set_default_edge_label(EdgeLabel::default);
+
+    g.set_node(
+        "a",
+        NodeLabel {
+            width: 50.0,
+            height: 50.0,
+            ..Default::default()
+        },
+    );
+    g.set_parent("a", "sg1");
+    layout(&mut g);
+
+    // Cluster node should exist but should not be positioned by the layout engine.
+    assert!(g.has_node("sg1"));
+    let sg = g.node("sg1").unwrap();
+    assert_eq!(sg.x, None);
+    assert_eq!(sg.y, None);
+}

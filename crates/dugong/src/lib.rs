@@ -108,6 +108,10 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     };
 
     let node_ids: Vec<String> = g.nodes().map(|s| s.to_string()).collect();
+    let node_ids: Vec<String> = node_ids
+        .into_iter()
+        .filter(|id| !(g.options().compound && !g.children(id).is_empty()))
+        .collect();
 
     let mut indegree: std::collections::HashMap<String, usize> =
         node_ids.iter().map(|id| (id.clone(), 0)).collect();
@@ -272,6 +276,26 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         lbl.y = None;
 
         if e.v == e.w {
+            // A minimal self-loop shape that satisfies upstream dagre invariants:
+            // - TB/BT: all points are to the right of the node center (x > node.x)
+            // - LR/RL: after rankdir transforms, all points are below the node center (y > node.y)
+            // and all points stay within the node's height/2 on the cross-axis.
+            let x0 = sx + sw / 2.0 + graph.edgesep.max(1.0);
+            let x1 = x0 + graph.edgesep.max(1.0);
+            let y0 = sy;
+            let y_top = sy - sh / 2.0;
+            let y_bot = sy + sh / 2.0;
+
+            lbl.points.extend([
+                Point { x: x0, y: y0 },
+                Point { x: x0, y: y_top },
+                Point { x: x1, y: y_top },
+                Point { x: x1, y: y0 },
+                Point { x: x1, y: y_bot },
+                Point { x: x0, y: y_bot },
+                Point { x: x0, y: y0 },
+            ]);
+
             continue;
         }
 
