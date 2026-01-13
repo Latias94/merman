@@ -1,0 +1,53 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "develop"
+      }
+    ],
+    "commits": [
+      {
+        "branch": "main",
+        "id": "ZERO",
+        "message": "",
+        "parents": [],
+        "seq": 0,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "develop",
+        "id": "A",
+        "message": "",
+        "parents": [
+          "ZERO"
+        ],
+        "seq": 1,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "id": "2-<dynamic>",
+        "message": "cherry-picked  into main",
+        "parents": [
+          "ZERO",
+          "A"
+        ],
+        "seq": 2,
+        "tags": [],
+        "type": 4
+      }
+    ],
+    "currentBranch": "main",
+    "direction": "LR",
+    "type": "gitGraph",
+    "warnings": []
+  }
+}

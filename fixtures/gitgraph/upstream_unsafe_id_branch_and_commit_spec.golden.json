@@ -1,0 +1,54 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "__proto__"
+      }
+    ],
+    "commits": [
+      {
+        "branch": "main",
+        "id": "__proto__",
+        "message": "",
+        "parents": [],
+        "seq": 0,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "__proto__",
+        "id": "1-<dynamic>",
+        "message": "",
+        "parents": [
+          "__proto__"
+        ],
+        "seq": 1,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "customId": false,
+        "id": "2-<dynamic>",
+        "message": "merged branch __proto__ into main",
+        "parents": [
+          "__proto__",
+          "1-<dynamic>"
+        ],
+        "seq": 2,
+        "tags": [],
+        "type": 3
+      }
+    ],
+    "currentBranch": "main",
+    "direction": "LR",
+    "type": "gitGraph",
+    "warnings": []
+  }
+}

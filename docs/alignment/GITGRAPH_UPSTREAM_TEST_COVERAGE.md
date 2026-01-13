@@ -31,6 +31,7 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/git/gitGraph.spec.ts`
 ### Branching and checkout/switch
 
 - branch creation + `checkout` / `switch`: unit tests `should_checkout_and_switch_branch` and `should_add_commits_to_checked_out_branch` in `crates/merman-core/src/diagrams/git_graph.rs`
+- `switch` flow with commits and merge: `fixtures/gitgraph/upstream_switch_commit_merge_spec.mmd`
 - quoted branch names: covered by unit tests (see `crates/merman-core/src/diagrams/git_graph.rs`) and snapshots:
   - `fixtures/gitgraph/upstream_branches_and_order.mmd`
 - branch name character coverage (including `_ - . /` and numeric prefixes): unit tests (see `crates/merman-core/src/diagrams/git_graph.rs`) and snapshots:
@@ -48,15 +49,20 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/git/gitGraph.spec.ts`
 
 ### Cherry-pick behavior
 
+- cherry-pick commits (default tag / custom tag / empty tag): 
+  - `fixtures/gitgraph/upstream_cherry_pick_default_tag_spec.mmd`
+  - `fixtures/gitgraph/upstream_cherry_pick_custom_tag_spec.mmd`
+  - `fixtures/gitgraph/upstream_cherry_pick_empty_tag_spec.mmd`
 - cherry-pick merge commits with explicit `parent:` and tag handling (including empty tag): unit tests (see `crates/merman-core/src/diagrams/git_graph.rs`) and snapshots:
   - `fixtures/gitgraph/upstream_cherry_pick_merge_commits.mmd`
 - cherry-pick error cases (missing parent for merge commit, invalid parent): unit tests under `crates/merman-core/src/diagrams/git_graph.rs`
 
 ### Accessibility and warnings
 
-- `accTitle` / `accDescr` (single-line and multi-line block): unit test `should_handle_accessibility_title_and_description` in `crates/merman-core/src/diagrams/git_graph.rs` and snapshot:
+- `accTitle` / `accDescr` (single-line and multi-line block): unit test `should_handle_accessibility_title_and_description` in `crates/merman-core/src/diagrams/git_graph.rs` and snapshots:
+  - `fixtures/gitgraph/upstream_accessibility_single_line_accdescr_spec.mmd`
   - `fixtures/gitgraph/upstream_accessibility_and_warnings.mmd`
-- unsafe ids (`__proto__`, `constructor`) as commit ids / branch names: unit test `should_work_with_unsafe_properties_as_ids_and_branch_names` in `crates/merman-core/src/diagrams/git_graph.rs`
+- unsafe ids (`__proto__`, `constructor`) as commit ids / branch names: unit test `should_work_with_unsafe_properties_as_ids_and_branch_names` in `crates/merman-core/src/diagrams/git_graph.rs` and snapshot:
+  - `fixtures/gitgraph/upstream_unsafe_id_branch_and_commit_spec.mmd`
 - duplicate commit id warning: unit test `should_log_warning_when_two_commits_have_same_id` in `crates/merman-core/src/diagrams/git_graph.rs` and snapshot:
   - `fixtures/gitgraph/upstream_accessibility_and_warnings.mmd`
-

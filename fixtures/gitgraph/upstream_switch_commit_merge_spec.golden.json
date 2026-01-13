@@ -1,0 +1,65 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "testBranch"
+      }
+    ],
+    "commits": [
+      {
+        "branch": "main",
+        "id": "0-<dynamic>",
+        "message": "",
+        "parents": [],
+        "seq": 0,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "testBranch",
+        "id": "1-<dynamic>",
+        "message": "",
+        "parents": [
+          "0-<dynamic>"
+        ],
+        "seq": 1,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "testBranch",
+        "id": "2-<dynamic>",
+        "message": "",
+        "parents": [
+          "1-<dynamic>"
+        ],
+        "seq": 2,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "customId": false,
+        "id": "3-<dynamic>",
+        "message": "merged branch testBranch into main",
+        "parents": [
+          "0-<dynamic>",
+          "2-<dynamic>"
+        ],
+        "seq": 3,
+        "tags": [],
+        "type": 3
+      }
+    ],
+    "currentBranch": "main",
+    "direction": "LR",
+    "type": "gitGraph",
+    "warnings": []
+  }
+}
