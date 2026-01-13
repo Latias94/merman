@@ -145,6 +145,7 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/flowDb.spec.ts
   - `parse_diagram_flowchart_linkstyle_multi_numbered_interpolate_sets_edges`
 - subgraph membership ordering parity (FlowDB semantics): unit tests under `parse_diagram_flowchart_subgraph_*`
 - subgraph membership uniqueness (`makeUniq`): `fixtures/flowchart/upstream_flowdb_makeuniq_spec.mmd`
+- subgraph membership helper (`exists`): unit test in `crates/merman-core/src/diagrams/flowchart.rs` (`flowchart_subgraphs_exist_matches_mermaid_flowdb_spec`)
 - `addClass` supports comma-separated class names: `fixtures/flowchart/upstream_flowdb_addclass_spec.mmd`
 
 ### `flowChartShapes.spec.js` (rendering)

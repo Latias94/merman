@@ -2135,7 +2135,6 @@ enum StatementItem {
 struct SubgraphBuilder {
     sub_count: usize,
     subgraphs: Vec<FlowSubGraph>,
-    assigned: HashSet<String>,
     inherit_dir: bool,
     global_dir: Option<String>,
 }
@@ -2145,7 +2144,6 @@ impl SubgraphBuilder {
         Self {
             sub_count: 0,
             subgraphs: Vec::new(),
-            assigned: HashSet::new(),
             inherit_dir,
             global_dir,
         }
@@ -2245,10 +2243,7 @@ impl SubgraphBuilder {
 
         self.sub_count += 1;
 
-        members.retain(|m| !self.assigned.contains(m));
-        for m in &members {
-            self.assigned.insert(m.clone());
-        }
+        members.retain(|m| !subgraphs_exist(&self.subgraphs, m));
 
         self.subgraphs.push(FlowSubGraph {
             id: id.clone(),
@@ -2261,6 +2256,12 @@ impl SubgraphBuilder {
 
         id
     }
+}
+
+fn subgraphs_exist(subgraphs: &[FlowSubGraph], node_id: &str) -> bool {
+    subgraphs
+        .iter()
+        .any(|sg| sg.nodes.iter().any(|n| n == node_id))
 }
 
 fn parse_subgraph_title(raw_title: &str, id_equals_title: bool) -> (String, TitleKind) {
@@ -2942,4 +2943,60 @@ fn parse_link_style_stmt(rest: &str) -> std::result::Result<LinkStyleStmt, LexEr
         interpolate,
         styles,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn flowchart_subgraphs_exist_matches_mermaid_flowdb_spec() {
+        let subgraphs = vec![
+            FlowSubGraph {
+                id: "sg0".to_string(),
+                nodes: vec![
+                    "a".to_string(),
+                    "b".to_string(),
+                    "c".to_string(),
+                    "e".to_string(),
+                ],
+                title: "".to_string(),
+                classes: Vec::new(),
+                dir: None,
+                label_type: "text".to_string(),
+            },
+            FlowSubGraph {
+                id: "sg1".to_string(),
+                nodes: vec!["f".to_string(), "g".to_string(), "h".to_string()],
+                title: "".to_string(),
+                classes: Vec::new(),
+                dir: None,
+                label_type: "text".to_string(),
+            },
+            FlowSubGraph {
+                id: "sg2".to_string(),
+                nodes: vec!["i".to_string(), "j".to_string()],
+                title: "".to_string(),
+                classes: Vec::new(),
+                dir: None,
+                label_type: "text".to_string(),
+            },
+            FlowSubGraph {
+                id: "sg3".to_string(),
+                nodes: vec!["k".to_string()],
+                title: "".to_string(),
+                classes: Vec::new(),
+                dir: None,
+                label_type: "text".to_string(),
+            },
+        ];
+
+        assert!(subgraphs_exist(&subgraphs, "a"));
+        assert!(subgraphs_exist(&subgraphs, "h"));
+        assert!(subgraphs_exist(&subgraphs, "j"));
+        assert!(subgraphs_exist(&subgraphs, "k"));
+
+        assert!(!subgraphs_exist(&subgraphs, "a2"));
+        assert!(!subgraphs_exist(&subgraphs, "l"));
+    }
 }
