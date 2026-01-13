@@ -2234,6 +2234,43 @@ Bob-->Alice: I am good thanks!"#;
     }
 
     #[test]
+    fn parse_diagram_sequence_is_stateless_across_multiple_parses() {
+        let engine = Engine::new();
+        let first = r#"sequenceDiagram
+Alice->Bob:Hello Bob, how are you?
+Bob-->Alice:I am good thanks!"#;
+        let second = r#"sequenceDiagram
+Alice->John:Hello John, how are you?
+John-->Alice:I am good thanks!"#;
+
+        let a = block_on(engine.parse_diagram(first, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+        let b = block_on(engine.parse_diagram(second, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+
+        let a_msgs = a.model["messages"].as_array().unwrap();
+        let b_msgs = b.model["messages"].as_array().unwrap();
+
+        assert_eq!(a_msgs.len(), 2);
+        assert_eq!(a_msgs[0]["id"], json!("0"));
+        assert_eq!(a_msgs[1]["id"], json!("1"));
+        assert_eq!(a_msgs[0]["from"], json!("Alice"));
+        assert_eq!(a_msgs[0]["to"], json!("Bob"));
+        assert_eq!(a_msgs[1]["from"], json!("Bob"));
+        assert_eq!(a_msgs[1]["to"], json!("Alice"));
+
+        assert_eq!(b_msgs.len(), 2);
+        assert_eq!(b_msgs[0]["id"], json!("0"));
+        assert_eq!(b_msgs[1]["id"], json!("1"));
+        assert_eq!(b_msgs[0]["from"], json!("Alice"));
+        assert_eq!(b_msgs[0]["to"], json!("John"));
+        assert_eq!(b_msgs[1]["from"], json!("John"));
+        assert_eq!(b_msgs[1]["to"], json!("Alice"));
+    }
+
+    #[test]
     fn parse_diagram_sequence_title_and_accessibility_fields() {
         let engine = Engine::new();
         let text = r#"sequenceDiagram

@@ -14,7 +14,10 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceDiagram
 ### Parsing / DB-level behavior
 
 - basic definition: `fixtures/sequence/basic.mmd`
-- title + accessibility (`title:`, `accTitle:`, `accDescr{...}`): `fixtures/sequence/title_and_accdescr_multiline.mmd`
+- title + accessibility (`title:`, `accTitle:`, `accDescr:`, `accDescr{...}`):
+  - `fixtures/sequence/title_and_accdescr_multiline.mmd`
+  - `fixtures/sequence/upstream_title_without_colon_spec.mmd`
+  - `fixtures/sequence/upstream_accessibility_single_line_spec.mmd`
 - `-` / `=` in actor ids: `fixtures/sequence/actor_ids_dashes_and_equals.mmd`
 - signal type variants: `fixtures/sequence/arrows_variants.mmd`
 - activation:
