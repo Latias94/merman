@@ -1,0 +1,19 @@
+classDiagram
+%% relation types + directions + labels + cardinalities
+Class11 <|.. Class12
+Class13 --> Class14
+Class15 ..> Class16
+Class17 ..|> Class18
+Class19 <--* Class20
+
+Class1 "1" *-- "many" Class02 : contains
+Class03 o-- Class04 : aggregation
+Class05 --> "1" Class06
+
+Class07 o.. Class08
+Class09 *--* Class10
+Class21 -- Class22
+Class23 --|> Class24
+Driver -- Car : drives >
+Car *-- Wheel : have 4 >
+Car -- Person : < owns

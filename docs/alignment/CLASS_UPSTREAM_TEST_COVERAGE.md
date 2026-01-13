@@ -31,9 +31,13 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/class/classDiagram.spec.
 - generic class `~T~` and method return formatting: `fixtures/class/upstream_namespaces_and_generics.mmd`
 - direction + relation label parsing: `fixtures/class/upstream_namespaces_and_generics.mmd` and unit test `parse_diagram_class_relation_with_label_and_direction`
 - accTitle + multiline accDescr: `fixtures/class/upstream_namespaces_and_generics.mmd`
+- backticked class names + dash/underscore identifiers: `fixtures/class/upstream_names_backticks_dash_underscore_spec.mmd`
 - separators inside member blocks: `fixtures/class/upstream_separators_labels_notes.mmd`
 - text labels + annotations + member statements: `fixtures/class/upstream_separators_labels_notes.mmd` and unit test `parse_diagram_class_text_label_member_annotation_and_css_classes`
+- text label variants (punctuation/unicode): `fixtures/class/upstream_text_label_variants_spec.mmd`
+- relation types + cardinalities + labels: `fixtures/class/upstream_relation_types_and_cardinalities_spec.mmd`
 - notes (`note for`, unattached `note`): `fixtures/class/upstream_separators_labels_notes.mmd`
+- notes with keywords in text: `fixtures/class/upstream_note_keywords_spec.mmd`
 
 ## Interactivity and security-level behavior
 
@@ -47,4 +51,3 @@ Source files:
 ## Rendering-only / deferred
 
 - `classTypes.spec.ts`, `svgDraw.spec.js`: rendering/layout-focused behavior and not part of headless parsing parity.
-

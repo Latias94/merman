@@ -1,0 +1,81 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {
+      "Something": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Something-0",
+        "haveCallback": false,
+        "id": "Something",
+        "label": "Something",
+        "link": null,
+        "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "int id",
+            "id": "int id",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "string name",
+            "id": "string name",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          }
+        ],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Something",
+        "tooltip": null,
+        "type": ""
+      }
+    },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [
+      {
+        "class": null,
+        "id": "note0",
+        "text": "This is a keyword: classDiagram-v2. It truly is."
+      },
+      {
+        "class": "Something",
+        "id": "note1",
+        "text": "This is a keyword: click. It truly is."
+      }
+    ],
+    "relations": [],
+    "styleClasses": {},
+    "type": "classDiagram"
+  }
+}
