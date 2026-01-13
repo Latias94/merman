@@ -1,0 +1,58 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "actors": {
+      "A": {
+        "description": "Alice",
+        "links": {},
+        "name": "A",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "B": {
+        "description": "Bob",
+        "links": {},
+        "name": "B",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      }
+    },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "A",
+        "id": "0",
+        "message": "Hello Bob, how are you?",
+        "to": "B",
+        "type": 5,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "1",
+        "message": "I am good thanks!",
+        "to": "A",
+        "type": 6,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
+  }
+}

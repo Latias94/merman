@@ -19,15 +19,24 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceDiagram
   - `fixtures/sequence/upstream_title_without_colon_spec.mmd`
   - `fixtures/sequence/upstream_accessibility_single_line_spec.mmd`
 - `-` / `=` in actor ids: `fixtures/sequence/actor_ids_dashes_and_equals.mmd`
+- participant / actor aliasing:
+  - `fixtures/sequence/upstream_alias_participants_spec.mmd`
+  - `fixtures/sequence/upstream_alias_mixed_actor_participant_spec.mmd`
+- repeated participant declarations dedupe actors: `fixtures/sequence/upstream_duplicate_participants_single_actor_spec.mmd`
 - signal type variants: `fixtures/sequence/arrows_variants.mmd`
 - activation:
   - `activate` / `deactivate`: `fixtures/sequence/activation_explicit.mmd`
   - inline `+` / `-` activation syntax + stacked activations: `fixtures/sequence/activation_stacked.mmd`
   - deactivate inactive participant must fail: unit test `parse_diagram_sequence_deactivate_inactive_participant_fails_like_upstream` in `crates/merman-core/src/lib.rs`
 - comments and blank lines: `fixtures/sequence/comments_and_blank_lines.mmd`
+- leading indentation on statements: `fixtures/sequence/upstream_leading_spaces_spec.mmd`
 - semicolon statement separators: `fixtures/sequence/semicolons_and_comments.mmd`
 - special characters truncated by `;` and `#`: `fixtures/sequence/special_characters.mmd`
 - no-label `loop` / `opt` / `alt` / `par`: `fixtures/sequence/no_label_blocks.mmd`
+- indented block statements (`loop` + `end`): `fixtures/sequence/upstream_indented_loop_block_spec.mmd`
+- `rect` blocks (including nested):
+  - `fixtures/sequence/upstream_rect_block_spec.mmd`
+  - `fixtures/sequence/upstream_nested_rect_blocks_spec.mmd`
 - alt with multiple `else` branches: `fixtures/sequence/upstream_alt_multiple_elses_spec.mmd`
 - `critical` blocks (with/without `option`): 
   - `fixtures/sequence/upstream_critical_without_options_spec.mmd`
