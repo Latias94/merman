@@ -1,0 +1,8 @@
+[package]
+name = "dugong-graphlib"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+

@@ -1,0 +1,9 @@
+[package]
+name = "dugong"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+dugong-graphlib = { path = "../dugong-graphlib" }
+
