@@ -1784,7 +1784,7 @@ pub mod rank {
 
 pub mod order {
     use crate::graphlib::{Graph, GraphOptions};
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum Relationship {
@@ -2291,6 +2291,442 @@ pub mod order {
                 weight: None,
             }
         }
+    }
+
+    pub fn sort_subgraph<N, E, G, CN, CE, CG>(
+        g: &Graph<N, E, G>,
+        v: &str,
+        cg: &Graph<CN, CE, CG>,
+        bias_right: bool,
+    ) -> SortResult
+    where
+        N: Default + OrderNodeLabel + Clone + 'static,
+        E: Default + OrderEdgeWeight + 'static,
+        G: Default,
+        CN: Default + 'static,
+        CE: Default + 'static,
+        CG: Default,
+    {
+        let mut movable: Vec<String> = g.children(v).into_iter().map(|s| s.to_string()).collect();
+
+        let (border_left, border_right) = g.node(v).map_or((None, None), |node| {
+            (
+                node.border_left().map(|s| s.to_string()),
+                node.border_right().map(|s| s.to_string()),
+            )
+        });
+
+        if let (Some(bl), Some(br)) = (border_left.as_deref(), border_right.as_deref()) {
+            movable.retain(|w| w != bl && w != br);
+        }
+
+        let mut subgraphs: HashMap<String, SortResult> = HashMap::new();
+
+        let mut barycenters = barycenter(g, &movable);
+        for entry in &mut barycenters {
+            if !g.children(&entry.v).is_empty() {
+                let subgraph_result = sort_subgraph(g, &entry.v, cg, bias_right);
+                if subgraph_result.barycenter.is_some() {
+                    merge_barycenters(entry, &subgraph_result);
+                }
+                subgraphs.insert(entry.v.clone(), subgraph_result);
+            }
+        }
+
+        let mut entries = resolve_conflicts(&barycenters, cg);
+        expand_subgraphs(&mut entries, &subgraphs);
+
+        let mut result = sort(&entries, bias_right);
+
+        if let (Some(bl), Some(br)) = (border_left, border_right) {
+            let mut out: Vec<String> = Vec::with_capacity(result.vs.len() + 2);
+            out.push(bl.clone());
+            out.extend(result.vs);
+            out.push(br.clone());
+            result.vs = out;
+
+            if !g.predecessors(&bl).is_empty() {
+                let bl_pred = g.predecessors(&bl)[0];
+                let br_pred = g.predecessors(&br)[0];
+                let bl_order = g.node(bl_pred).and_then(|n| n.order()).unwrap_or(0) as f64;
+                let br_order = g.node(br_pred).and_then(|n| n.order()).unwrap_or(0) as f64;
+
+                let bc = result.barycenter.unwrap_or(0.0);
+                let w = result.weight.unwrap_or(0.0);
+                let denom = w + 2.0;
+                result.barycenter = Some((bc * w + bl_order + br_order) / denom);
+                result.weight = Some(denom);
+            }
+        }
+
+        result
+    }
+
+    fn expand_subgraphs(entries: &mut [SortEntry], subgraphs: &HashMap<String, SortResult>) {
+        for entry in entries {
+            let mut out: Vec<String> = Vec::new();
+            for v in &entry.vs {
+                if let Some(sg) = subgraphs.get(v) {
+                    out.extend(sg.vs.iter().cloned());
+                } else {
+                    out.push(v.clone());
+                }
+            }
+            entry.vs = out;
+        }
+    }
+
+    fn merge_barycenters(target: &mut BarycenterEntry, other: &SortResult) {
+        let Some(other_bc) = other.barycenter else {
+            return;
+        };
+        let other_w = other.weight.unwrap_or(0.0);
+
+        if let (Some(bc), Some(w)) = (target.barycenter, target.weight) {
+            let denom = w + other_w;
+            target.barycenter = Some((bc * w + other_bc * other_w) / denom);
+            target.weight = Some(denom);
+        } else {
+            target.barycenter = Some(other_bc);
+            target.weight = Some(other_w);
+        }
+    }
+
+    pub fn add_subgraph_constraints<N, E, G, CN, CE, CG>(
+        g: &Graph<N, E, G>,
+        cg: &mut Graph<CN, CE, CG>,
+        vs: &[String],
+    ) where
+        N: Default + 'static,
+        E: Default + 'static,
+        G: Default,
+        CN: Default + 'static,
+        CE: Default + 'static,
+        CG: Default,
+    {
+        let mut prev: HashMap<String, String> = HashMap::new();
+        let mut root_prev: Option<String> = None;
+
+        for v in vs {
+            let mut child = g.parent(v).map(|s| s.to_string());
+            while let Some(c) = child.clone() {
+                let parent = g.parent(&c).map(|s| s.to_string());
+
+                let prev_child = if let Some(p) = parent.as_deref() {
+                    let prev_child = prev.insert(p.to_string(), c.clone());
+                    prev_child
+                } else {
+                    let prev_child = root_prev.replace(c.clone());
+                    prev_child
+                };
+
+                if let Some(prev_child) = prev_child {
+                    if prev_child != c {
+                        cg.set_edge(prev_child, c);
+                        break;
+                    }
+                }
+
+                child = parent;
+            }
+        }
+    }
+
+    pub fn init_order<N, E, G>(g: &Graph<N, E, G>) -> Vec<Vec<String>>
+    where
+        N: Default + OrderNodeRange + 'static,
+        E: Default + 'static,
+        G: Default,
+    {
+        let mut visited: HashMap<String, bool> = HashMap::new();
+
+        let simple_nodes: Vec<String> = g
+            .nodes()
+            .filter(|v| g.children(v).is_empty())
+            .map(|v| v.to_string())
+            .collect();
+
+        let mut max_rank: i32 = i32::MIN;
+        for v in &simple_nodes {
+            let Some(rank) = g.node(v).and_then(|n| n.rank()) else {
+                continue;
+            };
+            max_rank = max_rank.max(rank);
+        }
+
+        if max_rank == i32::MIN {
+            return Vec::new();
+        }
+
+        let mut layers: Vec<Vec<String>> = vec![Vec::new(); (max_rank + 1).max(0) as usize];
+
+        fn dfs<N, E, G>(
+            g: &Graph<N, E, G>,
+            v: &str,
+            visited: &mut HashMap<String, bool>,
+            layers: &mut [Vec<String>],
+        ) where
+            N: Default + OrderNodeRange + 'static,
+            E: Default + 'static,
+            G: Default,
+        {
+            if visited.get(v).copied().unwrap_or(false) {
+                return;
+            }
+            visited.insert(v.to_string(), true);
+
+            let Some(rank) = g.node(v).and_then(|n| n.rank()) else {
+                return;
+            };
+            let idx = rank.max(0) as usize;
+            if let Some(layer) = layers.get_mut(idx) {
+                layer.push(v.to_string());
+            }
+
+            let successors: Vec<String> =
+                g.successors(v).into_iter().map(|s| s.to_string()).collect();
+            for w in successors {
+                dfs(g, &w, visited, layers);
+            }
+        }
+
+        let mut ordered_vs = simple_nodes;
+        ordered_vs.sort_by_key(|v| g.node(v).and_then(|n| n.rank()).unwrap_or(i32::MAX));
+        for v in ordered_vs {
+            dfs(g, &v, &mut visited, &mut layers);
+        }
+
+        layers
+    }
+
+    pub fn cross_count<N, E, G>(g: &Graph<N, E, G>, layering: &[Vec<String>]) -> f64
+    where
+        N: Default + 'static,
+        E: Default + OrderEdgeWeight + 'static,
+        G: Default,
+    {
+        let mut cc: f64 = 0.0;
+        for i in 1..layering.len() {
+            cc += two_layer_cross_count(g, &layering[i - 1], &layering[i]);
+        }
+        cc
+    }
+
+    fn two_layer_cross_count<N, E, G>(g: &Graph<N, E, G>, north: &[String], south: &[String]) -> f64
+    where
+        N: Default + 'static,
+        E: Default + OrderEdgeWeight + 'static,
+        G: Default,
+    {
+        if south.is_empty() {
+            return 0.0;
+        }
+
+        let mut south_pos: HashMap<&str, usize> = HashMap::new();
+        for (i, v) in south.iter().enumerate() {
+            south_pos.insert(v.as_str(), i);
+        }
+
+        #[derive(Debug, Clone)]
+        struct SouthEntry {
+            pos: usize,
+            weight: f64,
+        }
+
+        let mut south_entries: Vec<SouthEntry> = Vec::new();
+        for v in north {
+            let mut entries: Vec<SouthEntry> = g
+                .out_edges(v, None)
+                .into_iter()
+                .filter_map(|e| {
+                    let pos = *south_pos.get(e.w.as_str())?;
+                    let weight = g.edge_by_key(&e).map(|e| e.weight()).unwrap_or(0.0);
+                    Some(SouthEntry { pos, weight })
+                })
+                .collect();
+            entries.sort_by_key(|e| e.pos);
+            south_entries.extend(entries);
+        }
+
+        let mut first_index: usize = 1;
+        while first_index < south.len() {
+            first_index <<= 1;
+        }
+        let tree_size = 2 * first_index - 1;
+        first_index -= 1;
+        let mut tree: Vec<f64> = vec![0.0; tree_size];
+
+        let mut cc: f64 = 0.0;
+        for entry in south_entries {
+            let mut index = entry.pos + first_index;
+            tree[index] += entry.weight;
+            let mut weight_sum: f64 = 0.0;
+            while index > 0 {
+                if index % 2 == 1 {
+                    weight_sum += tree[index + 1];
+                }
+                index = (index - 1) >> 1;
+                tree[index] += entry.weight;
+            }
+            cc += entry.weight * weight_sum;
+        }
+
+        cc
+    }
+
+    #[derive(Debug, Clone, Copy, Default)]
+    pub struct OrderOptions {
+        pub disable_optimal_order_heuristic: bool,
+    }
+
+    pub fn order<N, E, G>(g: &mut Graph<N, E, G>, opts: OrderOptions)
+    where
+        N: Default + Clone + OrderNodeLabel + 'static,
+        E: Default + OrderEdgeWeight + 'static,
+        G: Default,
+    {
+        let mut max_rank: i32 = i32::MIN;
+        let mut nodes_by_rank: BTreeMap<i32, Vec<String>> = BTreeMap::new();
+
+        for v in g.nodes() {
+            let Some(node) = g.node(v) else { continue };
+            if let Some(rank) = node.rank() {
+                max_rank = max_rank.max(rank);
+                nodes_by_rank.entry(rank).or_default().push(v.to_string());
+            }
+            if let (Some(min_rank), Some(max_rank_node)) = (node.min_rank(), node.max_rank()) {
+                for r in min_rank..=max_rank_node {
+                    if node.rank() == Some(r) {
+                        continue;
+                    }
+                    nodes_by_rank.entry(r).or_default().push(v.to_string());
+                }
+            }
+        }
+
+        if max_rank == i32::MIN {
+            return;
+        }
+
+        let layering = init_order(g);
+        assign_order(g, &layering);
+
+        if opts.disable_optimal_order_heuristic {
+            return;
+        }
+
+        let mut best_cc: f64 = f64::INFINITY;
+        let mut best_layering: Option<Vec<Vec<String>>> = None;
+
+        let mut i: usize = 0;
+        let mut last_best: usize = 0;
+        while last_best < 4 {
+            let use_down = i % 2 == 1;
+            let bias_right = i % 4 >= 2;
+
+            if use_down {
+                let ranks: Vec<i32> = (1..=max_rank).collect();
+                sweep(g, &nodes_by_rank, &ranks, Relationship::InEdges, bias_right);
+            } else {
+                let ranks: Vec<i32> = if max_rank >= 1 {
+                    (0..=(max_rank - 1)).rev().collect()
+                } else {
+                    Vec::new()
+                };
+                sweep(
+                    g,
+                    &nodes_by_rank,
+                    &ranks,
+                    Relationship::OutEdges,
+                    bias_right,
+                );
+            }
+
+            let layering_now = build_layer_matrix(g, max_rank);
+            let cc = cross_count(g, &layering_now);
+            if cc < best_cc {
+                last_best = 0;
+                best_cc = cc;
+                best_layering = Some(layering_now);
+            } else if cc == best_cc {
+                best_layering = Some(layering_now);
+            }
+
+            i += 1;
+            last_best += 1;
+        }
+
+        if let Some(best) = best_layering {
+            assign_order(g, &best);
+        }
+    }
+
+    fn assign_order<N, E, G>(g: &mut Graph<N, E, G>, layering: &[Vec<String>])
+    where
+        N: Default + OrderNodeLabel + 'static,
+        E: Default + 'static,
+        G: Default,
+    {
+        for layer in layering {
+            for (i, v) in layer.iter().enumerate() {
+                if let Some(node) = g.node_mut(v) {
+                    node.set_order(i);
+                }
+            }
+        }
+    }
+
+    fn sweep<N, E, G>(
+        g: &mut Graph<N, E, G>,
+        nodes_by_rank: &BTreeMap<i32, Vec<String>>,
+        ranks: &[i32],
+        relationship: Relationship,
+        bias_right: bool,
+    ) where
+        N: Default + Clone + OrderNodeLabel + 'static,
+        E: Default + OrderEdgeWeight + 'static,
+        G: Default,
+    {
+        let mut cg: Graph<(), (), ()> = Graph::new(GraphOptions::default());
+
+        for &rank in ranks {
+            let nodes = nodes_by_rank
+                .get(&rank)
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]);
+            let lg = build_layer_graph(g, rank, relationship, Some(nodes));
+            let root = lg.graph().root.clone();
+
+            let sorted = sort_subgraph(&lg, &root, &cg, bias_right);
+            for (i, v) in sorted.vs.iter().enumerate() {
+                if let Some(n) = g.node_mut(v) {
+                    n.set_order(i);
+                }
+            }
+
+            add_subgraph_constraints(&lg, &mut cg, &sorted.vs);
+        }
+    }
+
+    fn build_layer_matrix<N, E, G>(g: &Graph<N, E, G>, max_rank: i32) -> Vec<Vec<String>>
+    where
+        N: Default + OrderNodeLabel + 'static,
+        E: Default + 'static,
+        G: Default,
+    {
+        let mut layers: Vec<Vec<(usize, String)>> = vec![Vec::new(); (max_rank + 1) as usize];
+        for v in g.nodes() {
+            let Some(node) = g.node(v) else { continue };
+            let Some(rank) = node.rank() else { continue };
+            let Some(order) = node.order() else { continue };
+            layers[rank.max(0) as usize].push((order, v.to_string()));
+        }
+        let mut out: Vec<Vec<String>> = Vec::with_capacity(layers.len());
+        for mut layer in layers {
+            layer.sort_by_key(|(o, _)| *o);
+            out.push(layer.into_iter().map(|(_, v)| v).collect());
+        }
+        out
     }
 
     fn create_root_node<N, E, G>(g: &Graph<N, E, G>) -> String

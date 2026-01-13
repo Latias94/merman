@@ -249,3 +249,45 @@ Source: `repo-ref/dagre/test/order/sort-test.js`
 - `can sort nodes without a barycenter` -> `crates/dugong/tests/order_sort_test.rs::sort_can_sort_nodes_without_a_barycenter`
 - `can handle no barycenters for any nodes` -> `crates/dugong/tests/order_sort_test.rs::sort_can_handle_no_barycenters_for_any_nodes`
 - `can handle a barycenter of 0` -> `crates/dugong/tests/order_sort_test.rs::sort_can_handle_a_barycenter_of_0`
+
+Source: `repo-ref/dagre/test/order/sort-subgraph-test.js`
+
+- `sorts a flat subgraph based on barycenter` -> `crates/dugong/tests/order_sort_subgraph_test.rs::sort_subgraph_sorts_a_flat_subgraph_based_on_barycenter`
+- `preserves the pos of a node (y) w/o neighbors in a flat subgraph` -> `crates/dugong/tests/order_sort_subgraph_test.rs::sort_subgraph_preserves_the_pos_of_a_node_without_neighbors_in_a_flat_subgraph`
+- `biases to the left without reverse bias` -> `crates/dugong/tests/order_sort_subgraph_test.rs::sort_subgraph_biases_to_the_left_without_reverse_bias`
+- `biases to the right with reverse bias` -> `crates/dugong/tests/order_sort_subgraph_test.rs::sort_subgraph_biases_to_the_right_with_reverse_bias`
+- `aggregates stats about the subgraph` -> `crates/dugong/tests/order_sort_subgraph_test.rs::sort_subgraph_aggregates_stats_about_the_subgraph`
+- `can sort a nested subgraph with no barycenter` -> `crates/dugong/tests/order_sort_subgraph_test.rs::sort_subgraph_can_sort_a_nested_subgraph_with_no_barycenter`
+- `can sort a nested subgraph with a barycenter` -> `crates/dugong/tests/order_sort_subgraph_test.rs::sort_subgraph_can_sort_a_nested_subgraph_with_a_barycenter`
+- `can sort a nested subgraph with no in-edges` -> `crates/dugong/tests/order_sort_subgraph_test.rs::sort_subgraph_can_sort_a_nested_subgraph_with_no_in_edges`
+- `sorts border nodes to the extremes of the subgraph` -> `crates/dugong/tests/order_sort_subgraph_test.rs::sort_subgraph_sorts_border_nodes_to_the_extremes_of_the_subgraph`
+- `assigns a barycenter to a subgraph based on previous border nodes` -> `crates/dugong/tests/order_sort_subgraph_test.rs::sort_subgraph_assigns_a_barycenter_to_a_subgraph_based_on_previous_border_nodes`
+
+Source: `repo-ref/dagre/test/order/add-subgraph-constraints-test.js`
+
+- `does not change CG for a flat set of nodes` -> `crates/dugong/tests/order_add_subgraph_constraints_test.rs::add_subgraph_constraints_does_not_change_cg_for_a_flat_set_of_nodes`
+- `doesn't create a constraint for contiguous subgraph nodes` -> `crates/dugong/tests/order_add_subgraph_constraints_test.rs::add_subgraph_constraints_does_not_create_a_constraint_for_contiguous_subgraph_nodes`
+- `adds a constraint when the parents for adjacent nodes are different` -> `crates/dugong/tests/order_add_subgraph_constraints_test.rs::add_subgraph_constraints_adds_a_constraint_when_parents_for_adjacent_nodes_are_different`
+- `works for multiple levels` -> `crates/dugong/tests/order_add_subgraph_constraints_test.rs::add_subgraph_constraints_works_for_multiple_levels`
+
+Source: `repo-ref/dagre/test/order/init-order-test.js`
+
+- `assigns non-overlapping orders for each rank in a tree` -> `crates/dugong/tests/order_init_order_test.rs::init_order_assigns_non_overlapping_orders_for_each_rank_in_a_tree`
+- `assigns non-overlapping orders for each rank in a DAG` -> `crates/dugong/tests/order_init_order_test.rs::init_order_assigns_non_overlapping_orders_for_each_rank_in_a_dag`
+- `does not assign an order to subgraph nodes` -> `crates/dugong/tests/order_init_order_test.rs::init_order_does_not_assign_an_order_to_subgraph_nodes`
+
+Source: `repo-ref/dagre/test/order/cross-count-test.js`
+
+- `returns 0 for an empty layering` -> `crates/dugong/tests/order_cross_count_test.rs::cross_count_returns_0_for_an_empty_layering`
+- `returns 0 for a layering with no crossings` -> `crates/dugong/tests/order_cross_count_test.rs::cross_count_returns_0_for_a_layering_with_no_crossings`
+- `returns 1 for a layering with 1 crossing` -> `crates/dugong/tests/order_cross_count_test.rs::cross_count_returns_1_for_a_layering_with_1_crossing`
+- `returns a weighted crossing count for a layering with 1 crossing` -> `crates/dugong/tests/order_cross_count_test.rs::cross_count_returns_a_weighted_crossing_count_for_a_layering_with_1_crossing`
+- `calculates crossings across layers` -> `crates/dugong/tests/order_cross_count_test.rs::cross_count_calculates_crossings_across_layers`
+- `works for graph #1` -> `crates/dugong/tests/order_cross_count_test.rs::cross_count_works_for_graph_1`
+
+Source: `repo-ref/dagre/test/order/order-test.js`
+
+- `does not add crossings to a tree structure` -> `crates/dugong/tests/order_order_test.rs::order_does_not_add_crossings_to_a_tree_structure`
+- `can solve a simple graph` -> `crates/dugong/tests/order_order_test.rs::order_can_solve_a_simple_graph`
+- `can minimize crossings` -> `crates/dugong/tests/order_order_test.rs::order_can_minimize_crossings`
+- `can skip the optimal ordering` -> `crates/dugong/tests/order_order_test.rs::order_can_skip_the_optimal_ordering`
