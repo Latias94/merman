@@ -40,8 +40,47 @@ pub struct NodeLabel {
     pub y: Option<f64>,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct EdgeLabel {}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LabelPos {
+    #[default]
+    C,
+    L,
+    R,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Point {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct EdgeLabel {
+    pub width: f64,
+    pub height: f64,
+    pub labelpos: LabelPos,
+    pub labeloffset: f64,
+    pub minlen: usize,
+
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub points: Vec<Point>,
+}
+
+impl Default for EdgeLabel {
+    fn default() -> Self {
+        Self {
+            width: 0.0,
+            height: 0.0,
+            labelpos: LabelPos::C,
+            labeloffset: 0.0,
+            minlen: 1,
+            x: None,
+            y: None,
+            points: Vec::new(),
+        }
+    }
+}
 
 pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     let graph = g.graph().clone();
@@ -97,7 +136,12 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             if e.v != *n {
                 continue;
             }
-            let next = r.saturating_add(1);
+            let minlen = g
+                .edge(&e.v, &e.w, e.name.as_deref())
+                .map(|l| l.minlen)
+                .unwrap_or(1)
+                .max(1);
+            let next = r.saturating_add(minlen);
             let entry = rank.entry(e.w.clone()).or_insert(0);
             if next > *entry {
                 *entry = next;
@@ -119,6 +163,28 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         }
     }
 
+    let mut gap_extra: Vec<f64> = vec![0.0; ranks.len().saturating_sub(1)];
+    for e in g.edges() {
+        let Some(v_rank) = rank.get(&e.v).copied() else {
+            continue;
+        };
+        let Some(w_rank) = rank.get(&e.w).copied() else {
+            continue;
+        };
+        if w_rank != v_rank.saturating_add(1) {
+            continue;
+        }
+        let Some(lbl) = g.edge(&e.v, &e.w, e.name.as_deref()) else {
+            continue;
+        };
+        if lbl.height <= 0.0 {
+            continue;
+        }
+        if let Some(extra) = gap_extra.get_mut(v_rank) {
+            *extra = extra.max(lbl.height);
+        }
+    }
+
     let mut rank_heights: Vec<f64> = Vec::with_capacity(ranks.len());
     let mut rank_widths: Vec<f64> = Vec::with_capacity(ranks.len());
     for ids in &ranks {
@@ -137,7 +203,7 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     }
     let max_rank_width = rank_widths.iter().copied().fold(0.0_f64, |a, b| a.max(b));
 
-    let mut y_cursor = 0.0;
+    let mut y_cursor: f64 = 0.0;
     for (rank_idx, ids) in ranks.iter().enumerate() {
         let rank_h = rank_heights[rank_idx];
         let y = y_cursor + rank_h / 2.0;
@@ -154,6 +220,140 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             x_cursor += nw + graph.nodesep;
         }
 
-        y_cursor += rank_h + graph.ranksep;
+        y_cursor += rank_h;
+        if rank_idx + 1 < ranks.len() {
+            y_cursor += graph.ranksep + gap_extra.get(rank_idx).copied().unwrap_or(0.0);
+        }
+    }
+
+    let total_height = y_cursor;
+    let edge_keys: Vec<graphlib::EdgeKey> = g.edges().map(|e| e.clone()).collect();
+
+    for e in &edge_keys {
+        let Some((sx, sy, sw, sh)) = g
+            .node(&e.v)
+            .map(|n| (n.x.unwrap_or(0.0), n.y.unwrap_or(0.0), n.width, n.height))
+        else {
+            continue;
+        };
+        let Some((tx, ty, tw, th)) = g
+            .node(&e.w)
+            .map(|n| (n.x.unwrap_or(0.0), n.y.unwrap_or(0.0), n.width, n.height))
+        else {
+            continue;
+        };
+
+        let Some(lbl) = g.edge_mut(&e.v, &e.w, e.name.as_deref()) else {
+            continue;
+        };
+        lbl.points.clear();
+        lbl.x = None;
+        lbl.y = None;
+
+        if e.v == e.w {
+            continue;
+        }
+
+        let start = Point {
+            x: sx,
+            y: sy + sh / 2.0,
+        };
+        let end = Point {
+            x: tx,
+            y: ty - th / 2.0,
+        };
+
+        let minlen = lbl.minlen.max(1);
+        let count = 2 * minlen + 1;
+        for i in 0..count {
+            let t = (i as f64) / ((count - 1) as f64);
+            lbl.points.push(Point {
+                x: start.x + (end.x - start.x) * t,
+                y: start.y + (end.y - start.y) * t,
+            });
+        }
+
+        if lbl.width > 0.0 || lbl.height > 0.0 {
+            let mid = lbl.points[count / 2];
+            let mut ex = mid.x;
+            let ey = mid.y;
+            match lbl.labelpos {
+                LabelPos::C => {}
+                LabelPos::L => ex -= lbl.labeloffset + lbl.width / 2.0,
+                LabelPos::R => ex += lbl.labeloffset + lbl.width / 2.0,
+            }
+            lbl.x = Some(ex);
+            lbl.y = Some(ey);
+        }
+
+        let _ = (sw, tw);
+    }
+
+    match graph.rankdir {
+        RankDir::TB => {}
+        RankDir::BT => {
+            for id in &node_ids {
+                if let Some(n) = g.node_mut(id) {
+                    if let Some(y) = n.y {
+                        n.y = Some(total_height - y);
+                    }
+                }
+            }
+            for e in &edge_keys {
+                if let Some(lbl) = g.edge_mut(&e.v, &e.w, e.name.as_deref()) {
+                    for p in &mut lbl.points {
+                        p.y = total_height - p.y;
+                    }
+                    if let Some(y) = lbl.y {
+                        lbl.y = Some(total_height - y);
+                    }
+                }
+            }
+        }
+        RankDir::LR => {
+            for id in &node_ids {
+                if let Some(n) = g.node_mut(id) {
+                    let (Some(x), Some(y)) = (n.x, n.y) else {
+                        continue;
+                    };
+                    n.x = Some(y);
+                    n.y = Some(x);
+                }
+            }
+            for e in &edge_keys {
+                if let Some(lbl) = g.edge_mut(&e.v, &e.w, e.name.as_deref()) {
+                    for p in &mut lbl.points {
+                        (p.x, p.y) = (p.y, p.x);
+                    }
+                    if let (Some(x), Some(y)) = (lbl.x, lbl.y) {
+                        lbl.x = Some(y);
+                        lbl.y = Some(x);
+                    }
+                }
+            }
+        }
+        RankDir::RL => {
+            for id in &node_ids {
+                if let Some(n) = g.node_mut(id) {
+                    let (Some(x), Some(y)) = (n.x, n.y) else {
+                        continue;
+                    };
+                    n.x = Some(total_height - y);
+                    n.y = Some(x);
+                }
+            }
+            for e in &edge_keys {
+                if let Some(lbl) = g.edge_mut(&e.v, &e.w, e.name.as_deref()) {
+                    for p in &mut lbl.points {
+                        let new_x = total_height - p.y;
+                        (p.x, p.y) = (new_x, p.x);
+                    }
+                    if let (Some(x), Some(y)) = (lbl.x, lbl.y) {
+                        lbl.x = Some(total_height - y);
+                        lbl.y = Some(x);
+                    }
+                }
+            }
+        }
     }
 }
