@@ -149,3 +149,11 @@ Source: `repo-ref/dagre/test/greedy-fas-test.js`
 - `returns two edges for two 4-node cycles` -> `crates/dugong/tests/greedy_fas_test.rs::greedy_fas_returns_two_edges_for_two_4_node_cycles`
 - `works with arbitrarily weighted edges` -> `crates/dugong/tests/greedy_fas_test.rs::greedy_fas_works_with_arbitrarily_weighted_edges`
 - `works for multigraphs` -> `crates/dugong/tests/greedy_fas_test.rs::greedy_fas_works_for_multigraphs`
+
+Source: `repo-ref/dagre/test/rank/util-test.js`
+
+- `can assign a rank to a single node graph` -> `crates/dugong/tests/rank_util_test.rs::longest_path_can_assign_a_rank_to_a_single_node_graph`
+- `can assign ranks to unconnected nodes` -> `crates/dugong/tests/rank_util_test.rs::longest_path_can_assign_ranks_to_unconnected_nodes`
+- `can assign ranks to connected nodes` -> `crates/dugong/tests/rank_util_test.rs::longest_path_can_assign_ranks_to_connected_nodes`
+- `can assign ranks for a diamond` -> `crates/dugong/tests/rank_util_test.rs::longest_path_can_assign_ranks_for_a_diamond`
+- `uses the minlen attribute on the edge` -> `crates/dugong/tests/rank_util_test.rs::longest_path_uses_the_minlen_attribute_on_the_edge`
