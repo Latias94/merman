@@ -518,6 +518,13 @@ fn parse_y_axis(rest: &str, state: &mut XyChartState, meta: &ParseMetadata) -> R
         return Ok(());
     }
 
+    if tail.starts_with('[') {
+        return Err(Error::DiagramParse {
+            diagram_type: "xychart".to_string(),
+            message: "y-axis does not support band data".to_string(),
+        });
+    }
+
     if let Some((min, max)) = try_parse_range(tail)? {
         state.set_y_axis_range(min, max);
         return Ok(());
@@ -1006,5 +1013,47 @@ line lineTitle1 [11, 45.5, 67, 23]
     fn xychart_acc_title_requires_colon() {
         let err = parse_err("xychart\naccTitle hello");
         assert!(err.contains("accTitle"));
+    }
+
+    #[test]
+    fn xychart_rejects_invalid_x_axis_range_like_upstream() {
+        let err = parse_err("xychart\nx-axis xAxisName aaa --> 33\n");
+        assert!(err.contains("invalid"));
+    }
+
+    #[test]
+    fn xychart_rejects_unbalanced_x_axis_brackets_like_upstream() {
+        let err = parse_err("xychart\nx-axis xAxisName [ \"cat1\" [ cat2a ]\n");
+        assert!(err.contains("unbalanced"));
+        let err = parse_err("xychart\nx-axis xAxisName [ \"cat1\" , cat2a ] ]\n");
+        assert!(err.contains("unexpected") || err.contains("unbalanced"));
+    }
+
+    #[test]
+    fn xychart_rejects_invalid_y_axis_range_like_upstream() {
+        let err = parse_err("xychart\ny-axis yAxisName 45.5 --> abc\n");
+        assert!(err.contains("expected number") || err.contains("invalid"));
+    }
+
+    #[test]
+    fn xychart_rejects_y_axis_band_data_like_upstream() {
+        let err = parse_err("xychart\ny-axis yAxisName [ 45.3, 33 ]\n");
+        assert!(err.contains("does not support") || err.contains("band"));
+    }
+
+    #[test]
+    fn xychart_rejects_unbalanced_plot_brackets_like_upstream() {
+        let err = parse_err("xychart\nline \"t\" [  +23 [ -45  , 56.6 ]\n");
+        assert!(err.contains("unbalanced") || err.contains("expected"));
+        let err = parse_err("xychart\nbar \"t\" [  +23 , -45  ] 56.6 ]\n");
+        assert!(err.contains("unexpected") || err.contains("unbalanced"));
+    }
+
+    #[test]
+    fn xychart_rejects_invalid_plot_commas_and_numbers_like_upstream() {
+        let err = parse_err("xychart\nline \"t\" [  +23 ,  , -45  , 56.6 ]\n");
+        assert!(err.contains("empty") || err.contains("invalid"));
+        let err = parse_err("xychart\nbar \"t\" [  +23 , -4aa5  , 56.6 ]\n");
+        assert!(err.contains("invalid number"));
     }
 }
