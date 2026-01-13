@@ -218,3 +218,34 @@ Source: `repo-ref/dagre/test/order/build-layer-graph-test.js`
 - `copies edges incident on rank nodes to the graph (outEdges)` -> `crates/dugong/tests/order_build_layer_graph_test.rs::build_layer_graph_copies_edges_incident_on_rank_nodes_to_the_graph_out_edges`
 - `collapses multi-edges` -> `crates/dugong/tests/order_build_layer_graph_test.rs::build_layer_graph_collapses_multi_edges`
 - `preserves hierarchy for the movable layer` -> `crates/dugong/tests/order_build_layer_graph_test.rs::build_layer_graph_preserves_hierarchy_for_the_movable_layer`
+
+Source: `repo-ref/dagre/test/order/barycenter-test.js`
+
+- `assigns an undefined barycenter for a node with no predecessors` -> `crates/dugong/tests/order_barycenter_test.rs::barycenter_assigns_an_undefined_barycenter_for_a_node_with_no_predecessors`
+- `assigns the position of the sole predecessors` -> `crates/dugong/tests/order_barycenter_test.rs::barycenter_assigns_the_position_of_the_sole_predecessors`
+- `assigns the average of multiple predecessors` -> `crates/dugong/tests/order_barycenter_test.rs::barycenter_assigns_the_average_of_multiple_predecessors`
+- `takes into account the weight of edges` -> `crates/dugong/tests/order_barycenter_test.rs::barycenter_takes_into_account_the_weight_of_edges`
+- `calculates barycenters for all nodes in the movable layer` -> `crates/dugong/tests/order_barycenter_test.rs::barycenter_calculates_barycenters_for_all_nodes_in_the_movable_layer`
+
+Source: `repo-ref/dagre/test/order/resolve-conflicts-test.js`
+
+- `returns back nodes unchanged when no constraints exist` -> `crates/dugong/tests/order_resolve_conflicts_test.rs::resolve_conflicts_returns_back_nodes_unchanged_when_no_constraints_exist`
+- `returns back nodes unchanged when no conflicts exist` -> `crates/dugong/tests/order_resolve_conflicts_test.rs::resolve_conflicts_returns_back_nodes_unchanged_when_no_conflicts_exist`
+- `coalesces nodes when there is a conflict` -> `crates/dugong/tests/order_resolve_conflicts_test.rs::resolve_conflicts_coalesces_nodes_when_there_is_a_conflict`
+- `coalesces nodes when there is a conflict #2` -> `crates/dugong/tests/order_resolve_conflicts_test.rs::resolve_conflicts_coalesces_nodes_when_there_is_a_conflict_2`
+- `works with multiple constraints for the same target #1` -> `crates/dugong/tests/order_resolve_conflicts_test.rs::resolve_conflicts_works_with_multiple_constraints_for_the_same_target_1`
+- `works with multiple constraints for the same target #2` -> `crates/dugong/tests/order_resolve_conflicts_test.rs::resolve_conflicts_works_with_multiple_constraints_for_the_same_target_2`
+- `does nothing to a node lacking both a barycenter and a constraint` -> `crates/dugong/tests/order_resolve_conflicts_test.rs::resolve_conflicts_does_nothing_to_a_node_lacking_both_a_barycenter_and_a_constraint`
+- `treats a node w/o a barycenter as always violating constraints #1` -> `crates/dugong/tests/order_resolve_conflicts_test.rs::resolve_conflicts_treats_a_node_without_a_barycenter_as_always_violating_constraints_1`
+- `treats a node w/o a barycenter as always violating constraints #2` -> `crates/dugong/tests/order_resolve_conflicts_test.rs::resolve_conflicts_treats_a_node_without_a_barycenter_as_always_violating_constraints_2`
+- `ignores edges not related to entries` -> `crates/dugong/tests/order_resolve_conflicts_test.rs::resolve_conflicts_ignores_edges_not_related_to_entries`
+
+Source: `repo-ref/dagre/test/order/sort-test.js`
+
+- `sorts nodes by barycenter` -> `crates/dugong/tests/order_sort_test.rs::sort_sorts_nodes_by_barycenter`
+- `can sort super-nodes` -> `crates/dugong/tests/order_sort_test.rs::sort_can_sort_super_nodes`
+- `biases to the left by default` -> `crates/dugong/tests/order_sort_test.rs::sort_biases_to_the_left_by_default`
+- `biases to the right if biasRight = true` -> `crates/dugong/tests/order_sort_test.rs::sort_biases_to_the_right_if_bias_right_is_true`
+- `can sort nodes without a barycenter` -> `crates/dugong/tests/order_sort_test.rs::sort_can_sort_nodes_without_a_barycenter`
+- `can handle no barycenters for any nodes` -> `crates/dugong/tests/order_sort_test.rs::sort_can_handle_no_barycenters_for_any_nodes`
+- `can handle a barycenter of 0` -> `crates/dugong/tests/order_sort_test.rs::sort_can_handle_a_barycenter_of_0`

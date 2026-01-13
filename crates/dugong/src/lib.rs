@@ -1784,6 +1784,7 @@ pub mod rank {
 
 pub mod order {
     use crate::graphlib::{Graph, GraphOptions};
+    use std::collections::HashMap;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum Relationship {
@@ -1878,6 +1879,37 @@ pub mod order {
         }
     }
 
+    pub trait OrderNodeLabel: OrderNodeRange {
+        fn order(&self) -> Option<usize>;
+        fn set_order(&mut self, order: usize);
+
+        fn border_left(&self) -> Option<&str> {
+            None
+        }
+
+        fn border_right(&self) -> Option<&str> {
+            None
+        }
+    }
+
+    impl OrderNodeLabel for crate::NodeLabel {
+        fn order(&self) -> Option<usize> {
+            self.order
+        }
+
+        fn set_order(&mut self, order: usize) {
+            self.order = Some(order);
+        }
+
+        fn border_left(&self) -> Option<&str> {
+            self.border_left.first().and_then(|v| v.as_deref())
+        }
+
+        fn border_right(&self) -> Option<&str> {
+            self.border_right.first().and_then(|v| v.as_deref())
+        }
+    }
+
     pub fn build_layer_graph<N, E, G>(
         g: &Graph<N, E, G>,
         rank: i32,
@@ -1951,6 +1983,314 @@ pub mod order {
         }
 
         result
+    }
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct BarycenterEntry {
+        pub v: String,
+        pub barycenter: Option<f64>,
+        pub weight: Option<f64>,
+    }
+
+    pub fn barycenter<N, E, G>(g: &Graph<N, E, G>, movable: &[String]) -> Vec<BarycenterEntry>
+    where
+        N: Default + OrderNodeLabel + 'static,
+        E: Default + OrderEdgeWeight + 'static,
+        G: Default,
+    {
+        movable
+            .iter()
+            .map(|v| {
+                let in_edges = g.in_edges(v, None);
+                if in_edges.is_empty() {
+                    return BarycenterEntry {
+                        v: v.clone(),
+                        barycenter: None,
+                        weight: None,
+                    };
+                }
+
+                let mut sum: f64 = 0.0;
+                let mut weight: f64 = 0.0;
+                for e in in_edges {
+                    let edge_weight = g.edge_by_key(&e).map(|e| e.weight()).unwrap_or(0.0);
+                    let u_order = g
+                        .node(&e.v)
+                        .and_then(|n| n.order())
+                        .map(|n| n as f64)
+                        .unwrap_or(0.0);
+                    sum += edge_weight * u_order;
+                    weight += edge_weight;
+                }
+
+                BarycenterEntry {
+                    v: v.clone(),
+                    barycenter: Some(sum / weight),
+                    weight: Some(weight),
+                }
+            })
+            .collect()
+    }
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct SortEntry {
+        pub vs: Vec<String>,
+        pub i: usize,
+        pub barycenter: Option<f64>,
+        pub weight: Option<f64>,
+    }
+
+    #[derive(Debug, Clone)]
+    struct ConflictEntry {
+        indegree: usize,
+        ins: Vec<String>,
+        outs: Vec<String>,
+        vs: Vec<String>,
+        i: usize,
+        barycenter: Option<f64>,
+        weight: Option<f64>,
+        merged: bool,
+    }
+
+    pub fn resolve_conflicts<N, E, G>(
+        entries: &[BarycenterEntry],
+        cg: &Graph<N, E, G>,
+    ) -> Vec<SortEntry>
+    where
+        N: Default + 'static,
+        E: Default + 'static,
+        G: Default,
+    {
+        let mut mapped: HashMap<String, ConflictEntry> = HashMap::new();
+        for (i, entry) in entries.iter().enumerate() {
+            mapped.insert(
+                entry.v.clone(),
+                ConflictEntry {
+                    indegree: 0,
+                    ins: Vec::new(),
+                    outs: Vec::new(),
+                    vs: vec![entry.v.clone()],
+                    i,
+                    barycenter: entry.barycenter,
+                    weight: entry.weight,
+                    merged: false,
+                },
+            );
+        }
+
+        for e in cg.edges() {
+            let Some(_) = mapped.get(&e.v) else { continue };
+            let Some(_) = mapped.get(&e.w) else { continue };
+
+            mapped.get_mut(&e.w).expect("mapped entry missing").indegree += 1;
+            mapped
+                .get_mut(&e.v)
+                .expect("mapped entry missing")
+                .outs
+                .push(e.w.clone());
+        }
+
+        let mut source_set: Vec<String> = mapped
+            .iter()
+            .filter_map(|(k, v)| {
+                if v.indegree == 0 {
+                    Some(k.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let mut processed: Vec<String> = Vec::new();
+        while let Some(v) = source_set.pop() {
+            processed.push(v.clone());
+
+            let ins = mapped.get(&v).expect("mapped entry missing").ins.clone();
+
+            // Match upstream `.reverse().forEach(...)` on the "in" list.
+            for u in ins.into_iter().rev() {
+                if mapped.get(&u).map(|e| e.merged).unwrap_or(true) {
+                    continue;
+                }
+                let (u_bary, v_bary) = {
+                    let u_entry = mapped.get(&u).expect("mapped entry missing");
+                    let v_entry = mapped.get(&v).expect("mapped entry missing");
+                    (u_entry.barycenter, v_entry.barycenter)
+                };
+                let should_merge = match (u_bary, v_bary) {
+                    (None, _) => true,
+                    (_, None) => true,
+                    (Some(ub), Some(vb)) => ub >= vb,
+                };
+                if should_merge {
+                    merge_conflict_entries(&mut mapped, &v, &u);
+                }
+            }
+
+            let outs = mapped.get(&v).expect("mapped entry missing").outs.clone();
+            for w in outs {
+                mapped
+                    .get_mut(&w)
+                    .expect("mapped entry missing")
+                    .ins
+                    .push(v.clone());
+                let w_indegree = {
+                    let w_entry = mapped.get_mut(&w).expect("mapped entry missing");
+                    w_entry.indegree -= 1;
+                    w_entry.indegree
+                };
+                if w_indegree == 0 {
+                    source_set.push(w);
+                }
+            }
+        }
+
+        let mut out: Vec<SortEntry> = Vec::new();
+        for id in processed {
+            let Some(entry) = mapped.get(&id) else {
+                continue;
+            };
+            if entry.merged {
+                continue;
+            }
+            out.push(SortEntry {
+                vs: entry.vs.clone(),
+                i: entry.i,
+                barycenter: entry.barycenter,
+                weight: entry.weight,
+            });
+        }
+        out
+    }
+
+    // The conflict resolution algorithm needs a helper that can mutate two entries in-place.
+    // We keep it as a standalone function to make the port easy to review.
+    fn merge_conflict_entries(
+        mapped: &mut HashMap<String, ConflictEntry>,
+        target: &str,
+        source: &str,
+    ) {
+        let (target_bary, target_weight, source_bary, source_weight, source_vs, source_i) = {
+            let t = mapped.get(target).expect("mapped entry missing");
+            let s = mapped.get(source).expect("mapped entry missing");
+            (
+                t.barycenter,
+                t.weight,
+                s.barycenter,
+                s.weight,
+                s.vs.clone(),
+                s.i,
+            )
+        };
+
+        let mut sum: f64 = 0.0;
+        let mut weight: f64 = 0.0;
+        if let (Some(b), Some(w)) = (target_bary, target_weight) {
+            if w != 0.0 {
+                sum += b * w;
+                weight += w;
+            }
+        }
+        if let (Some(b), Some(w)) = (source_bary, source_weight) {
+            if w != 0.0 {
+                sum += b * w;
+                weight += w;
+            }
+        }
+
+        let t = mapped.get_mut(target).expect("mapped entry missing");
+        t.vs = source_vs.into_iter().chain(t.vs.drain(..)).collect();
+        if weight != 0.0 {
+            t.barycenter = Some(sum / weight);
+            t.weight = Some(weight);
+        }
+        t.i = t.i.min(source_i);
+
+        mapped.get_mut(source).expect("mapped entry missing").merged = true;
+    }
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct SortResult {
+        pub vs: Vec<String>,
+        pub barycenter: Option<f64>,
+        pub weight: Option<f64>,
+    }
+
+    pub fn sort(entries: &[SortEntry], bias_right: bool) -> SortResult {
+        let mut sortable: Vec<SortEntry> = Vec::new();
+        let mut unsortable: Vec<SortEntry> = Vec::new();
+
+        for entry in entries {
+            if entry.barycenter.is_some() {
+                sortable.push(entry.clone());
+            } else {
+                unsortable.push(entry.clone());
+            }
+        }
+
+        unsortable.sort_by(|a, b| b.i.cmp(&a.i));
+
+        sortable.sort_by(|a, b| {
+            let a_bc = a.barycenter.unwrap_or(0.0);
+            let b_bc = b.barycenter.unwrap_or(0.0);
+            if a_bc < b_bc {
+                std::cmp::Ordering::Less
+            } else if a_bc > b_bc {
+                std::cmp::Ordering::Greater
+            } else if !bias_right {
+                a.i.cmp(&b.i)
+            } else {
+                b.i.cmp(&a.i)
+            }
+        });
+
+        let mut parts: Vec<Vec<String>> = Vec::new();
+        let mut sum: f64 = 0.0;
+        let mut weight: f64 = 0.0;
+        let mut vs_index: usize = 0;
+
+        fn consume_unsortable(
+            parts: &mut Vec<Vec<String>>,
+            unsortable: &mut Vec<SortEntry>,
+            mut index: usize,
+        ) -> usize {
+            while let Some(last) = unsortable.last() {
+                if last.i > index {
+                    break;
+                }
+                let last = unsortable.pop().expect("last must exist");
+                parts.push(last.vs);
+                index += 1;
+            }
+            index
+        }
+
+        vs_index = consume_unsortable(&mut parts, &mut unsortable, vs_index);
+
+        for entry in sortable {
+            vs_index += entry.vs.len();
+            parts.push(entry.vs.clone());
+            if let (Some(bc), Some(w)) = (entry.barycenter, entry.weight) {
+                sum += bc * w;
+                weight += w;
+            }
+            vs_index = consume_unsortable(&mut parts, &mut unsortable, vs_index);
+        }
+
+        let vs: Vec<String> = parts.into_iter().flatten().collect();
+        if weight != 0.0 {
+            SortResult {
+                vs,
+                barycenter: Some(sum / weight),
+                weight: Some(weight),
+            }
+        } else {
+            SortResult {
+                vs,
+                barycenter: None,
+                weight: None,
+            }
+        }
     }
 
     fn create_root_node<N, E, G>(g: &Graph<N, E, G>) -> String
