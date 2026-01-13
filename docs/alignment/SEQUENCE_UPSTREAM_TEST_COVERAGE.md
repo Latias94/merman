@@ -25,6 +25,13 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceDiagram
 - semicolon statement separators: `fixtures/sequence/semicolons_and_comments.mmd`
 - special characters truncated by `;` and `#`: `fixtures/sequence/special_characters.mmd`
 - no-label `loop` / `opt` / `alt` / `par`: `fixtures/sequence/no_label_blocks.mmd`
+- alt with multiple `else` branches: `fixtures/sequence/upstream_alt_multiple_elses_spec.mmd`
+- `critical` blocks (with/without `option`): 
+  - `fixtures/sequence/upstream_critical_without_options_spec.mmd`
+  - `fixtures/sequence/upstream_critical_with_options_spec.mmd`
+- `break` blocks: `fixtures/sequence/upstream_break_spec.mmd`
+- `par` with multiple `and` branches: `fixtures/sequence/upstream_par_multiple_ands_spec.mmd`
+- `par_over` blocks: `fixtures/sequence/upstream_par_over_spec.mmd`
 - `<br>` variants + `wrap:` / `nowrap:` prefixes: `fixtures/sequence/html_br_variants_and_wrap.mmd`
 - wrap directive `%%{wrap}%%`: `fixtures/sequence/wrap_directive_default.mmd`
 - note placement forms: `fixtures/sequence/notes_placements.mmd`
@@ -44,4 +51,3 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceDiagram
 
 - `showSequenceNumbers()` depends on `renderer.draw(...)` side effects in upstream tests.
 - bounds calculation, APA rendering, actor mirror behavior, and `svgDraw` unit tests.
-

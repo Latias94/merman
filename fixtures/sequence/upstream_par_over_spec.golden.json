@@ -1,0 +1,100 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "actors": {
+      "Alice": {
+        "description": "Alice",
+        "links": {},
+        "name": "Alice",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "Bob": {
+        "description": "Bob",
+        "links": {},
+        "name": "Bob",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      }
+    },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": null,
+        "id": "0",
+        "message": "Parallel overlap",
+        "to": null,
+        "type": 32,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "1",
+        "message": "Message",
+        "to": "Bob",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "2",
+        "message": "Alice note",
+        "placement": 0,
+        "to": "Alice",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "3",
+        "message": "Bob note",
+        "placement": 1,
+        "to": "Bob",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "4",
+        "message": "",
+        "to": null,
+        "type": 21,
+        "wrap": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": "Alice",
+        "message": "Alice note",
+        "placement": 0,
+        "wrap": false
+      },
+      {
+        "actor": "Bob",
+        "message": "Bob note",
+        "placement": 1,
+        "wrap": false
+      }
+    ],
+    "title": null,
+    "type": "sequence"
+  }
+}
