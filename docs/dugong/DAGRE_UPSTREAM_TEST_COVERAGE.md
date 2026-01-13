@@ -32,3 +32,10 @@ Source: `repo-ref/dagre/test/nesting-graph-test.js`
 - `sets minlen correctly for nested SG boder to children` → `crates/dugong/tests/nesting_graph_test.rs::nesting_graph_sets_minlen_correctly_for_nested_border_to_children`
 - `removes nesting graph edges` → `crates/dugong/tests/nesting_graph_test.rs::nesting_graph_cleanup_removes_nesting_graph_edges`
 - `removes the root node` → `crates/dugong/tests/nesting_graph_test.rs::nesting_graph_cleanup_removes_the_root_node`
+
+Source: `repo-ref/dagre/test/position-test.js`
+
+- `respects ranksep` → `crates/dugong/tests/position_test.rs::position_respects_ranksep`
+- `use the largest height in each rank with ranksep` → `crates/dugong/tests/position_test.rs::position_uses_largest_height_in_each_rank_with_ranksep`
+- `respects nodesep` → `crates/dugong/tests/position_test.rs::position_respects_nodesep`
+- `should not try to position the subgraph node itself` → `crates/dugong/tests/position_test.rs::position_does_not_try_to_position_the_subgraph_node_itself`
