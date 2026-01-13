@@ -95,3 +95,11 @@ Source: `repo-ref/dagre/test/parent-dummy-chains-test.js`
 - `handles overlapping rank ranges` -> `crates/dugong/tests/parent_dummy_chains_test.rs::parent_dummy_chains_handles_overlapping_rank_ranges`
 - `handles an LCA that is not the root of the graph #1` -> `crates/dugong/tests/parent_dummy_chains_test.rs::parent_dummy_chains_handles_an_lca_that_is_not_the_root_1`
 - `handles an LCA that is not the root of the graph #2` -> `crates/dugong/tests/parent_dummy_chains_test.rs::parent_dummy_chains_handles_an_lca_that_is_not_the_root_2`
+
+Source: `repo-ref/dagre/test/add-border-segments-test.js`
+
+- `does not add border nodes for a non-compound graph` -> `crates/dugong/tests/add_border_segments_test.rs::add_border_segments_does_not_add_border_nodes_for_a_non_compound_graph`
+- `does not add border nodes for a graph with no clusters` -> `crates/dugong/tests/add_border_segments_test.rs::add_border_segments_does_not_add_border_nodes_for_a_graph_with_no_clusters`
+- `adds a border for a single-rank subgraph` -> `crates/dugong/tests/add_border_segments_test.rs::add_border_segments_adds_a_border_for_a_single_rank_subgraph`
+- `adds a border for a multi-rank subgraph` -> `crates/dugong/tests/add_border_segments_test.rs::add_border_segments_adds_a_border_for_a_multi_rank_subgraph`
+- `adds borders for nested subgraphs` -> `crates/dugong/tests/add_border_segments_test.rs::add_border_segments_adds_borders_for_nested_subgraphs`
