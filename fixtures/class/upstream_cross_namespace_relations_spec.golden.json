@@ -1,0 +1,194 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {
+      "A1": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-A1-0",
+        "haveCallback": false,
+        "id": "A1",
+        "label": "A1",
+        "link": null,
+        "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+foo : string",
+            "id": "foo : string",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
+          }
+        ],
+        "methods": [],
+        "parent": "A",
+        "styles": [],
+        "text": "A1",
+        "tooltip": null,
+        "type": ""
+      },
+      "A2": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-A2-2",
+        "haveCallback": false,
+        "id": "A2",
+        "label": "A2",
+        "link": null,
+        "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+bar : int",
+            "id": "bar : int",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
+          }
+        ],
+        "methods": [],
+        "parent": "A",
+        "styles": [],
+        "text": "A2",
+        "tooltip": null,
+        "type": ""
+      },
+      "B1": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-B1-1",
+        "haveCallback": false,
+        "id": "B1",
+        "label": "B1",
+        "link": null,
+        "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+foo : bool",
+            "id": "foo : bool",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
+          }
+        ],
+        "methods": [],
+        "parent": "B",
+        "styles": [],
+        "text": "B1",
+        "tooltip": null,
+        "type": ""
+      },
+      "B2": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-B2-3",
+        "haveCallback": false,
+        "id": "B2",
+        "label": "B2",
+        "link": null,
+        "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+bar : float",
+            "id": "bar : float",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
+          }
+        ],
+        "methods": [],
+        "parent": "B",
+        "styles": [],
+        "text": "B2",
+        "tooltip": null,
+        "type": ""
+      }
+    },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {
+      "A": {
+        "classIds": [
+          "A1",
+          "A2"
+        ],
+        "domId": "classId-A-0",
+        "id": "A"
+      },
+      "B": {
+        "classIds": [
+          "B1",
+          "B2"
+        ],
+        "domId": "classId-B-1",
+        "id": "B"
+      }
+    },
+    "notes": [],
+    "relations": [
+      {
+        "id": "0",
+        "id1": "A1",
+        "id2": "B1",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 3
+        },
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": ""
+      },
+      {
+        "id": "1",
+        "id1": "A2",
+        "id2": "B2",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 3
+        },
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": ""
+      }
+    ],
+    "styleClasses": {},
+    "type": "classDiagram"
+  }
+}

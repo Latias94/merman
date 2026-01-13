@@ -1,0 +1,24 @@
+classDiagram
+%% relations can appear before namespace/class definitions
+A1 --> B1
+
+namespace A {
+  class A1 {
+    +foo : string
+  }
+  class A2 {
+    +bar : int
+  }
+}
+
+namespace B {
+  class B1 {
+    +foo : bool
+  }
+  class B2 {
+    +bar : float
+  }
+}
+
+%% relations can appear after namespaces too
+A2 --> B2

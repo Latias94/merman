@@ -1,0 +1,116 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "classes": {
+      "Class1": {
+        "annotations": [
+          "interface"
+        ],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Class1-0",
+        "haveCallback": false,
+        "id": "Class1",
+        "label": "Class1",
+        "link": null,
+        "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "int : test",
+            "id": "int : test",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          }
+        ],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "test()",
+            "id": "test",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          }
+        ],
+        "parent": null,
+        "styles": [],
+        "text": "Class1",
+        "tooltip": null,
+        "type": ""
+      },
+      "Class2": {
+        "annotations": [
+          "abstract"
+        ],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Class2-1",
+        "haveCallback": false,
+        "id": "Class2",
+        "label": "Class2",
+        "link": null,
+        "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "string : foo",
+            "id": "string : foo",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          }
+        ],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "bar()",
+            "id": "bar",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          }
+        ],
+        "parent": null,
+        "styles": [],
+        "text": "Class2",
+        "tooltip": null,
+        "type": ""
+      }
+    },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
+    "relations": [],
+    "styleClasses": {},
+    "type": "classDiagram"
+  }
+}
