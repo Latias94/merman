@@ -378,6 +378,21 @@ where
             .collect()
     }
 
+    pub fn neighbors(&self, v: &str) -> Vec<&str> {
+        let mut out: Vec<&str> = Vec::new();
+        for w in self.successors(v) {
+            if !out.iter().any(|x| x == &w) {
+                out.push(w);
+            }
+        }
+        for u in self.predecessors(v) {
+            if !out.iter().any(|x| x == &u) {
+                out.push(u);
+            }
+        }
+        out
+    }
+
     pub fn out_edges(&self, v: &str, w: Option<&str>) -> Vec<EdgeKey> {
         self.edges
             .iter()
