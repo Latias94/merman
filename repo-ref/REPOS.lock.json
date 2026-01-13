@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "repos": {
+    "mermaid": {
+      "path": "repo-ref/mermaid",
+      "url": "https://github.com/mermaid-js/mermaid.git",
+      "ref": "mermaid@11.12.2",
+      "commit": "bd85b51e2404102dbd04613a4891c017b425f803"
+    },
+    "dagre": {
+      "path": "repo-ref/dagre",
+      "url": "https://github.com/dagrejs/dagre.git",
+      "ref": "v2.0.2",
+      "commit": "ba986662394f8f3ed608717194e5958f3386ce01"
+    },
+    "dompurify": {
+      "path": "repo-ref/dompurify",
+      "url": "https://github.com/cure53/DOMPurify.git",
+      "ref": "3.2.5",
+      "commit": "78060045e4d3ec0d199eb61bbeca02d8268ac310"
+    },
+    "sanitize-url": {
+      "path": "repo-ref/sanitize-url",
+      "url": "https://github.com/braintree/sanitize-url.git",
+      "ref": "v7.1.1",
+      "commit": "b1e8d50e4066a9af00fa042176676374747f754b"
+    }
+  }
+}
+

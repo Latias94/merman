@@ -200,6 +200,11 @@ fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
                 continue;
             }
             let path = workspace_root.join(raw);
+            // `repo-ref/*` repositories are optional workspace checkouts (not committed).
+            // We only require `fixtures/`, `docs/`, and `crates/` references to exist.
+            if raw.starts_with("repo-ref/") && !path.exists() {
+                continue;
+            }
             if !path.exists() {
                 failures.push(format!(
                     "broken reference in {}: `{}` does not exist",
