@@ -157,3 +157,9 @@ Source: `repo-ref/dagre/test/rank/util-test.js`
 - `can assign ranks to connected nodes` -> `crates/dugong/tests/rank_util_test.rs::longest_path_can_assign_ranks_to_connected_nodes`
 - `can assign ranks for a diamond` -> `crates/dugong/tests/rank_util_test.rs::longest_path_can_assign_ranks_for_a_diamond`
 - `uses the minlen attribute on the edge` -> `crates/dugong/tests/rank_util_test.rs::longest_path_uses_the_minlen_attribute_on_the_edge`
+
+Source: `repo-ref/dagre/test/rank/feasible-tree-test.js`
+
+- `creates a tree for a trivial input graph` -> `crates/dugong/tests/feasible_tree_test.rs::feasible_tree_creates_a_tree_for_a_trivial_input_graph`
+- `correctly shortens slack by pulling a node up` -> `crates/dugong/tests/feasible_tree_test.rs::feasible_tree_correctly_shortens_slack_by_pulling_a_node_up`
+- `correctly shortens slack by pulling a node down` -> `crates/dugong/tests/feasible_tree_test.rs::feasible_tree_correctly_shortens_slack_by_pulling_a_node_down`

@@ -1385,6 +1385,96 @@ pub mod rank {
             w_rank - v_rank - minlen
         }
     }
+
+    pub mod feasible_tree {
+        use super::util;
+        use crate::graphlib::{EdgeKey, Graph, GraphOptions};
+        use crate::{EdgeLabel, GraphLabel, NodeLabel};
+
+        pub fn feasible_tree(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Graph<(), (), ()> {
+            let mut t: Graph<(), (), ()> = Graph::new(GraphOptions {
+                directed: false,
+                ..Default::default()
+            });
+
+            let start = g
+                .nodes()
+                .next()
+                .expect("feasible_tree requires at least one node")
+                .to_string();
+            let size = g.node_count();
+            t.set_node(start, ());
+
+            while tight_tree(&mut t, g) < size {
+                let edge = find_min_slack_edge(&t, g)
+                    .expect("graph must be connected to construct feasible tree");
+                let slack = util::slack(g, &edge);
+                let delta = if t.has_node(&edge.v) { slack } else { -slack };
+                shift_ranks(&t, g, delta);
+            }
+
+            t
+        }
+
+        fn tight_tree(
+            t: &mut Graph<(), (), ()>,
+            g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        ) -> usize {
+            fn dfs(
+                v: &str,
+                t: &mut Graph<(), (), ()>,
+                g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+            ) {
+                let edges: Vec<EdgeKey> = g.node_edges(v);
+                for e in edges {
+                    let w = if v == e.v { e.w.as_str() } else { e.v.as_str() };
+                    if !t.has_node(w) && util::slack(g, &e) == 0 {
+                        t.set_node(w.to_string(), ());
+                        t.set_edge(v.to_string(), w.to_string());
+                        dfs(w, t, g);
+                    }
+                }
+            }
+
+            let roots: Vec<String> = t.node_ids();
+            for v in roots {
+                dfs(&v, t, g);
+            }
+            t.node_count()
+        }
+
+        fn find_min_slack_edge(
+            t: &Graph<(), (), ()>,
+            g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        ) -> Option<EdgeKey> {
+            let mut best: Option<(i32, EdgeKey)> = None;
+            for e in g.edges() {
+                let in_v = t.has_node(&e.v);
+                let in_w = t.has_node(&e.w);
+                if in_v == in_w {
+                    continue;
+                }
+                let edge_slack = util::slack(g, e);
+                match &best {
+                    Some((best_slack, _)) if edge_slack >= *best_slack => {}
+                    _ => best = Some((edge_slack, e.clone())),
+                }
+            }
+            best.map(|(_, e)| e)
+        }
+
+        fn shift_ranks(
+            t: &Graph<(), (), ()>,
+            g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+            delta: i32,
+        ) {
+            for v in t.node_ids() {
+                let label = g.node_mut(&v).expect("tree node missing from graph");
+                let rank = label.rank.expect("node rank missing");
+                label.rank = Some(rank + delta);
+            }
+        }
+    }
 }
 
 pub mod nesting_graph {
