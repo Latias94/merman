@@ -4,7 +4,7 @@
     "accDescr": null,
     "accTitle": null,
     "classDefs": {},
-    "direction": "TD",
+    "direction": "TB",
     "edgeDefaults": {
       "interpolate": "basis",
       "style": []

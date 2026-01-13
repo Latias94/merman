@@ -228,6 +228,10 @@ struct Lexer<'input> {
 }
 
 impl<'input> Lexer<'input> {
+    fn normalize_direction_token(dir: &str) -> &str {
+        if dir == "TD" { "TB" } else { dir }
+    }
+
     fn new(input: &'input str) -> Self {
         Self {
             input,
@@ -328,6 +332,7 @@ impl<'input> Lexer<'input> {
                 }
                 self.pos = after;
                 self.allow_header_direction = false;
+                let d = Self::normalize_direction_token(d);
                 return Some((start, Tok::Direction(d.to_string()), self.pos));
             }
         }
@@ -377,6 +382,7 @@ impl<'input> Lexer<'input> {
         let Some(dir) = dir else {
             return Some((start, Tok::DirectionStmt("".to_string()), self.pos));
         };
+        let dir = Self::normalize_direction_token(dir);
 
         while let Some(b) = self.peek() {
             if b == b'\n' || b == b';' {

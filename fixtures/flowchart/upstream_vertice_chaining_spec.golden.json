@@ -9,7 +9,7 @@
         "border:1px solid red"
       ]
     },
-    "direction": "TD",
+    "direction": "TB",
     "edgeDefaults": {
       "interpolate": null,
       "style": []

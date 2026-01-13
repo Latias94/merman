@@ -315,7 +315,7 @@ Alice->Bob: Hi
             json!({
                 "type": "flowchart-v2",
                 "keyword": "graph",
-                "direction": "TD",
+                "direction": "TB",
                 "accTitle": null,
                 "accDescr": null,
                 "classDefs": {},
@@ -377,7 +377,7 @@ Alice->Bob: Hi
             json!({
                 "type": "flowchart-v2",
                 "keyword": "graph",
-                "direction": "TD",
+                "direction": "TB",
                 "accTitle": null,
                 "accDescr": null,
                 "classDefs": {},
@@ -2191,7 +2191,7 @@ graph TD
             .unwrap();
         assert_eq!(res.meta.diagram_type, "flowchart-v2");
         assert_eq!(res.model["keyword"], json!("flowchart"));
-        assert_eq!(res.model["direction"], json!("TD"));
+        assert_eq!(res.model["direction"], json!("TB"));
         assert_eq!(res.model["subgraphs"], json!([]));
     }
 

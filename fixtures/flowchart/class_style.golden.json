@@ -10,7 +10,7 @@
         "stroke-width:2px"
       ]
     },
-    "direction": "TD",
+    "direction": "TB",
     "edgeDefaults": {
       "interpolate": null,
       "style": []
