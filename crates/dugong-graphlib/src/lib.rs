@@ -5,10 +5,21 @@
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct GraphOptions {
     pub multigraph: bool,
     pub compound: bool,
+    pub directed: bool,
+}
+
+impl Default for GraphOptions {
+    fn default() -> Self {
+        Self {
+            multigraph: false,
+            compound: false,
+            directed: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -88,6 +99,26 @@ where
     E: Default + 'static,
     G: Default,
 {
+    fn canonicalize_endpoints(&self, v: String, w: String) -> (String, String) {
+        if self.options.directed || v <= w {
+            (v, w)
+        } else {
+            (w, v)
+        }
+    }
+
+    fn canonicalize_name(&self, name: Option<String>) -> Option<String> {
+        if self.options.multigraph { name } else { None }
+    }
+
+    fn canonicalize_key(&self, mut key: EdgeKey) -> EdgeKey {
+        if !self.options.directed && key.v > key.w {
+            (key.v, key.w) = (key.w, key.v);
+        }
+        key.name = self.canonicalize_name(key.name);
+        key
+    }
+
     pub fn new(options: GraphOptions) -> Self {
         Self {
             options,
@@ -105,6 +136,18 @@ where
 
     pub fn options(&self) -> GraphOptions {
         self.options
+    }
+
+    pub fn is_multigraph(&self) -> bool {
+        self.options.multigraph
+    }
+
+    pub fn is_compound(&self) -> bool {
+        self.options.compound
+    }
+
+    pub fn is_directed(&self) -> bool {
+        self.options.directed
     }
 
     pub fn set_graph(&mut self, label: G) -> &mut Self {
@@ -219,16 +262,11 @@ where
         name: Option<impl Into<String>>,
         label: Option<E>,
     ) -> &mut Self {
-        let v = v.into();
-        let w = w.into();
+        let (v, w) = self.canonicalize_endpoints(v.into(), w.into());
         self.ensure_node(v.clone());
         self.ensure_node(w.clone());
 
-        let name = if self.options.multigraph {
-            name.map(Into::into)
-        } else {
-            None
-        };
+        let name = self.canonicalize_name(name.map(Into::into));
         let key = EdgeKey { v, w, name };
 
         if let Some(&idx) = self.edge_index.get(&key) {
@@ -260,40 +298,31 @@ where
     }
 
     pub fn has_edge(&self, v: &str, w: &str, name: Option<&str>) -> bool {
+        let (v, w) = self.canonicalize_endpoints(v.to_string(), w.to_string());
         let key = EdgeKey {
-            v: v.to_string(),
-            w: w.to_string(),
-            name: if self.options.multigraph {
-                name.map(|s| s.to_string())
-            } else {
-                None
-            },
+            v,
+            w,
+            name: self.canonicalize_name(name.map(|s| s.to_string())),
         };
         self.edge_index.contains_key(&key)
     }
 
     pub fn edge(&self, v: &str, w: &str, name: Option<&str>) -> Option<&E> {
+        let (v, w) = self.canonicalize_endpoints(v.to_string(), w.to_string());
         let key = EdgeKey {
-            v: v.to_string(),
-            w: w.to_string(),
-            name: if self.options.multigraph {
-                name.map(|s| s.to_string())
-            } else {
-                None
-            },
+            v,
+            w,
+            name: self.canonicalize_name(name.map(|s| s.to_string())),
         };
         self.edge_index.get(&key).map(|&idx| &self.edges[idx].label)
     }
 
     pub fn edge_mut(&mut self, v: &str, w: &str, name: Option<&str>) -> Option<&mut E> {
+        let (v, w) = self.canonicalize_endpoints(v.to_string(), w.to_string());
         let key = EdgeKey {
-            v: v.to_string(),
-            w: w.to_string(),
-            name: if self.options.multigraph {
-                name.map(|s| s.to_string())
-            } else {
-                None
-            },
+            v,
+            w,
+            name: self.canonicalize_name(name.map(|s| s.to_string())),
         };
         self.edge_index
             .get(&key)
@@ -302,18 +331,21 @@ where
     }
 
     pub fn edge_by_key(&self, key: &EdgeKey) -> Option<&E> {
-        self.edge_index.get(key).map(|&idx| &self.edges[idx].label)
+        let key = self.canonicalize_key(key.clone());
+        self.edge_index.get(&key).map(|&idx| &self.edges[idx].label)
     }
 
     pub fn edge_mut_by_key(&mut self, key: &EdgeKey) -> Option<&mut E> {
+        let key = self.canonicalize_key(key.clone());
         self.edge_index
-            .get(key)
+            .get(&key)
             .copied()
             .map(move |idx| &mut self.edges[idx].label)
     }
 
     pub fn remove_edge_key(&mut self, key: &EdgeKey) -> bool {
-        let Some(idx) = self.edge_index.remove(key) else {
+        let key = self.canonicalize_key(key.clone());
+        let Some(idx) = self.edge_index.remove(&key) else {
             return false;
         };
         self.edges.remove(idx);
@@ -363,6 +395,9 @@ where
     }
 
     pub fn successors(&self, v: &str) -> Vec<&str> {
+        if !self.options.directed {
+            return self.adjacent_nodes(v);
+        }
         self.edges
             .iter()
             .filter(|e| e.key.v == v)
@@ -371,6 +406,9 @@ where
     }
 
     pub fn predecessors(&self, v: &str) -> Vec<&str> {
+        if !self.options.directed {
+            return self.adjacent_nodes(v);
+        }
         self.edges
             .iter()
             .filter(|e| e.key.w == v)
@@ -379,6 +417,9 @@ where
     }
 
     pub fn neighbors(&self, v: &str) -> Vec<&str> {
+        if !self.options.directed {
+            return self.adjacent_nodes(v);
+        }
         let mut out: Vec<&str> = Vec::new();
         for w in self.successors(v) {
             if !out.iter().any(|x| x == &w) {
@@ -393,23 +434,63 @@ where
         out
     }
 
+    fn adjacent_nodes(&self, v: &str) -> Vec<&str> {
+        let mut out: Vec<&str> = Vec::new();
+        for e in &self.edges {
+            if e.key.v == v {
+                let w = e.key.w.as_str();
+                if !out.iter().any(|x| x == &w) {
+                    out.push(w);
+                }
+            } else if e.key.w == v {
+                let u = e.key.v.as_str();
+                if !out.iter().any(|x| x == &u) {
+                    out.push(u);
+                }
+            }
+        }
+        out
+    }
+
     pub fn out_edges(&self, v: &str, w: Option<&str>) -> Vec<EdgeKey> {
+        if self.options.directed {
+            return self
+                .edges
+                .iter()
+                .filter(|e| e.key.v == v && w.map_or(true, |w| e.key.w == w))
+                .map(|e| e.key.clone())
+                .collect();
+        }
+
         self.edges
             .iter()
-            .filter(|e| e.key.v == v && w.map_or(true, |w| e.key.w == w))
+            .filter(|e| {
+                if e.key.v == v {
+                    w.map_or(true, |w| e.key.w == w)
+                } else if e.key.w == v {
+                    w.map_or(true, |w| e.key.v == w)
+                } else {
+                    false
+                }
+            })
             .map(|e| e.key.clone())
             .collect()
     }
 
     pub fn in_edges(&self, v: &str, w: Option<&str>) -> Vec<EdgeKey> {
-        self.edges
-            .iter()
-            .filter(|e| e.key.w == v && w.map_or(true, |w| e.key.v == w))
-            .map(|e| e.key.clone())
-            .collect()
+        if self.options.directed {
+            return self
+                .edges
+                .iter()
+                .filter(|e| e.key.w == v && w.map_or(true, |w| e.key.v == w))
+                .map(|e| e.key.clone())
+                .collect();
+        }
+        self.out_edges(v, w)
     }
 
     pub fn set_edge_key(&mut self, key: EdgeKey, label: E) -> &mut Self {
+        let key = self.canonicalize_key(key);
         self.set_edge_named(key.v, key.w, key.name, Some(label))
     }
 
@@ -465,6 +546,30 @@ where
             .filter(|n| !self.parent.contains_key(&n.id))
             .map(|n| n.id.as_str())
             .collect()
+    }
+
+    pub fn sources(&self) -> Vec<&str> {
+        if !self.options.directed {
+            return self.nodes().collect();
+        }
+        self.nodes
+            .iter()
+            .filter(|n| self.in_edges(&n.id, None).is_empty())
+            .map(|n| n.id.as_str())
+            .collect()
+    }
+
+    pub fn node_edges(&self, v: &str) -> Vec<EdgeKey> {
+        let mut out: Vec<EdgeKey> = Vec::new();
+        let mut seen: std::collections::HashSet<EdgeKey> = std::collections::HashSet::new();
+        for e in &self.edges {
+            if e.key.v == v || e.key.w == v {
+                if seen.insert(e.key.clone()) {
+                    out.push(e.key.clone());
+                }
+            }
+        }
+        out
     }
 }
 

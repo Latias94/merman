@@ -6,6 +6,7 @@ fn graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         compound: true,
         multigraph: false,
+        ..Default::default()
     });
     g.set_graph(GraphLabel {
         ranksep: 50.0,

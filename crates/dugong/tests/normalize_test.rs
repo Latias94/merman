@@ -7,6 +7,7 @@ fn new_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: true,
         compound: true,
+        ..Default::default()
     });
     g.set_graph(GraphLabel::default());
     g

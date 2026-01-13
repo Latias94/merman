@@ -1032,6 +1032,7 @@ pub mod util {
         let mut simplified: Graph<N, EdgeLabel, G> = Graph::new(GraphOptions {
             multigraph: false,
             compound: false,
+            ..Default::default()
         });
         simplified.set_graph(g.graph().clone());
 
@@ -1073,6 +1074,7 @@ pub mod util {
         let mut simplified: Graph<N, E, G> = Graph::new(GraphOptions {
             multigraph: g.options().multigraph,
             compound: false,
+            ..Default::default()
         });
         simplified.set_graph(g.graph().clone());
 

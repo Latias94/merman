@@ -9,6 +9,7 @@ fn util_simplify_copies_without_change_a_graph_with_no_multi_edges() {
     let mut g: Graph<serde_json::Value, EdgeLabel, serde_json::Value> = Graph::new(GraphOptions {
         multigraph: true,
         compound: false,
+        ..Default::default()
     });
     g.set_graph(serde_json::Value::Null);
     g.set_edge_with_label(
@@ -38,6 +39,7 @@ fn util_simplify_collapses_multi_edges() {
     let mut g: Graph<serde_json::Value, EdgeLabel, serde_json::Value> = Graph::new(GraphOptions {
         multigraph: true,
         compound: false,
+        ..Default::default()
     });
     g.set_graph(serde_json::Value::Null);
     g.set_edge_with_label(
@@ -78,6 +80,7 @@ fn util_simplify_copies_the_graph_object() {
     let mut g: Graph<serde_json::Value, EdgeLabel, serde_json::Value> = Graph::new(GraphOptions {
         multigraph: true,
         compound: false,
+        ..Default::default()
     });
     g.set_graph(json!({ "foo": "bar" }));
     let g2 = util::simplify(&g);
@@ -90,6 +93,7 @@ fn util_as_non_compound_graph_copies_all_nodes() {
         Graph::new(GraphOptions {
             compound: true,
             multigraph: true,
+            ..Default::default()
         });
     g.set_node("a", json!({ "foo": "bar" }));
     g.set_node("b", serde_json::Value::Null);
@@ -105,6 +109,7 @@ fn util_as_non_compound_graph_copies_all_edges() {
         Graph::new(GraphOptions {
             compound: true,
             multigraph: true,
+            ..Default::default()
         });
     g.set_edge_named("a", "b", None::<String>, Some(json!({ "foo": "bar" })));
     g.set_edge_named("a", "b", Some("multi"), Some(json!({ "foo": "baz" })));
@@ -123,6 +128,7 @@ fn util_as_non_compound_graph_does_not_copy_compound_nodes() {
         Graph::new(GraphOptions {
             compound: true,
             multigraph: true,
+            ..Default::default()
         });
     g.set_parent("a", "sg1");
     let g2 = util::as_non_compound_graph(&g);
@@ -137,6 +143,7 @@ fn util_as_non_compound_graph_copies_the_graph_object() {
         Graph::new(GraphOptions {
             compound: true,
             multigraph: true,
+            ..Default::default()
         });
     g.set_graph(json!({ "foo": "bar" }));
     let g2 = util::as_non_compound_graph(&g);
@@ -148,6 +155,7 @@ fn util_successor_weights_maps_a_node_to_its_successors_with_associated_weights(
     let mut g: Graph<NodeLabel, EdgeLabel, serde_json::Value> = Graph::new(GraphOptions {
         multigraph: true,
         compound: false,
+        ..Default::default()
     });
     g.set_edge_with_label(
         "a",
@@ -202,6 +210,7 @@ fn util_predecessor_weights_maps_a_node_to_its_predecessors_with_associated_weig
     let mut g: Graph<NodeLabel, EdgeLabel, serde_json::Value> = Graph::new(GraphOptions {
         multigraph: true,
         compound: false,
+        ..Default::default()
     });
     g.set_edge_with_label(
         "a",
@@ -322,6 +331,7 @@ fn util_build_layer_matrix_creates_a_matrix_based_on_rank_and_order_of_nodes_in_
     let mut g: Graph<NodeLabel, EdgeLabel, serde_json::Value> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     g.set_node(
         "a",
@@ -396,6 +406,7 @@ fn util_normalize_ranks_adjusts_ranks_such_that_all_are_gte_0_and_at_least_one_i
     let mut g: Graph<NodeLabel, EdgeLabel, serde_json::Value> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     g.set_node(
         "a",
@@ -430,6 +441,7 @@ fn util_normalize_ranks_works_for_negative_ranks() {
     let mut g: Graph<NodeLabel, EdgeLabel, serde_json::Value> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     g.set_node(
         "a",
@@ -455,6 +467,7 @@ fn util_normalize_ranks_does_not_assign_a_rank_to_subgraphs() {
     let mut g: Graph<NodeLabel, EdgeLabel, serde_json::Value> = Graph::new(GraphOptions {
         multigraph: false,
         compound: true,
+        ..Default::default()
     });
     g.set_node(
         "a",
@@ -476,6 +489,7 @@ fn util_remove_empty_ranks_removes_border_ranks_without_any_nodes() {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     g.set_graph(GraphLabel {
         node_rank_factor: Some(4),
@@ -505,6 +519,7 @@ fn util_remove_empty_ranks_does_not_remove_non_border_ranks() {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     g.set_graph(GraphLabel {
         node_rank_factor: Some(4),
@@ -534,6 +549,7 @@ fn util_remove_empty_ranks_handles_parents_with_undefined_ranks() {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: false,
         compound: true,
+        ..Default::default()
     });
     g.set_graph(GraphLabel {
         node_rank_factor: Some(3),

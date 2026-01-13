@@ -7,6 +7,7 @@ fn coordinate_system_adjust_does_nothing_to_node_dimensions_with_rankdir_tb() {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     g.set_graph(GraphLabel {
         rankdir: RankDir::TB,
@@ -37,6 +38,7 @@ fn coordinate_system_adjust_does_nothing_to_node_dimensions_with_rankdir_bt() {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     g.set_graph(GraphLabel {
         rankdir: RankDir::BT,
@@ -67,6 +69,7 @@ fn coordinate_system_adjust_swaps_width_and_height_for_nodes_with_rankdir_lr() {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     g.set_graph(GraphLabel {
         rankdir: RankDir::LR,
@@ -97,6 +100,7 @@ fn coordinate_system_adjust_swaps_width_and_height_for_nodes_with_rankdir_rl() {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     g.set_graph(GraphLabel {
         rankdir: RankDir::RL,
@@ -127,6 +131,7 @@ fn coordinate_system_undo_does_nothing_to_points_with_rankdir_tb() {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     g.set_graph(GraphLabel {
         rankdir: RankDir::TB,
@@ -161,6 +166,7 @@ fn coordinate_system_undo_flips_the_y_coordinate_for_points_with_rankdir_bt() {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     g.set_graph(GraphLabel {
         rankdir: RankDir::BT,
@@ -195,6 +201,7 @@ fn coordinate_system_undo_swaps_dimensions_and_coordinates_for_points_with_rankd
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     g.set_graph(GraphLabel {
         rankdir: RankDir::LR,
@@ -229,6 +236,7 @@ fn coordinate_system_undo_swaps_dims_and_coords_and_flips_x_for_points_with_rank
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     g.set_graph(GraphLabel {
         rankdir: RankDir::RL,

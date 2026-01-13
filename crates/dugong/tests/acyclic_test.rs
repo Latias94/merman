@@ -32,6 +32,7 @@ fn new_graph(acyclicer: &str) -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: true,
         compound: false,
+        ..Default::default()
     });
     g.set_graph(GraphLabel {
         acyclicer: Some(acyclicer.to_string()),

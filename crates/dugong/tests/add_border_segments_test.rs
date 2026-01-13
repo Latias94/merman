@@ -6,6 +6,7 @@ fn compound_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: false,
         compound: true,
+        ..Default::default()
     });
     g.set_graph(GraphLabel::default());
     g
@@ -16,6 +17,7 @@ fn add_border_segments_does_not_add_border_nodes_for_a_non_compound_graph() {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     g.set_graph(GraphLabel::default());
     g.set_node(

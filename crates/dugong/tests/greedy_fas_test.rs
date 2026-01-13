@@ -17,6 +17,7 @@ fn greedy_fas_returns_the_empty_set_for_empty_graphs() {
     let g: Graph<(), i64, ()> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     assert_eq!(greedy_fas::greedy_fas(&g), Vec::new());
 }
@@ -26,6 +27,7 @@ fn greedy_fas_returns_the_empty_set_for_single_node_graphs() {
     let mut g: Graph<(), i64, ()> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     g.set_node("a", ());
     assert_eq!(greedy_fas::greedy_fas(&g), Vec::new());
@@ -36,6 +38,7 @@ fn greedy_fas_returns_an_empty_set_if_the_input_graph_is_acyclic() {
     let mut g: Graph<(), i64, ()> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     g.set_edge_with_label("a", "b", 1);
     g.set_edge_with_label("b", "c", 1);
@@ -49,6 +52,7 @@ fn greedy_fas_returns_a_single_edge_with_a_simple_cycle() {
     let mut g: Graph<(), i64, ()> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     g.set_edge_with_label("a", "b", 1);
     g.set_edge_with_label("b", "a", 1);
@@ -61,6 +65,7 @@ fn greedy_fas_returns_a_single_edge_in_a_4_node_cycle() {
     let mut g: Graph<(), i64, ()> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     g.set_edge_with_label("n1", "n2", 1);
     g.set_path(&["n2", "n3", "n4", "n5", "n2"]);
@@ -76,6 +81,7 @@ fn greedy_fas_returns_two_edges_for_two_4_node_cycles() {
     let mut g: Graph<(), i64, ()> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     g.set_edge_with_label("n1", "n2", 1);
     g.set_path(&["n2", "n3", "n4", "n5", "n2"]);
@@ -95,6 +101,7 @@ fn greedy_fas_works_with_arbitrarily_weighted_edges() {
     let mut g1: Graph<(), i64, ()> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     g1.set_edge_with_label("n1", "n2", 2);
     g1.set_edge_with_label("n2", "n1", 1);
@@ -109,6 +116,7 @@ fn greedy_fas_works_with_arbitrarily_weighted_edges() {
     let mut g2: Graph<(), i64, ()> = Graph::new(GraphOptions {
         multigraph: false,
         compound: false,
+        ..Default::default()
     });
     g2.set_edge_with_label("n1", "n2", 1);
     g2.set_edge_with_label("n2", "n1", 2);
@@ -126,6 +134,7 @@ fn greedy_fas_works_for_multigraphs() {
     let mut g: Graph<(), i64, ()> = Graph::new(GraphOptions {
         multigraph: true,
         compound: false,
+        ..Default::default()
     });
     g.set_edge_named("a", "b", Some("foo"), Some(5));
     g.set_edge_named("b", "a", Some("bar"), Some(2));

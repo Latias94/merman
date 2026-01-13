@@ -17,6 +17,7 @@ fn layout_can_layout_a_single_node() {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: true,
         compound: true,
+        ..Default::default()
     });
     g.set_graph(GraphLabel::default());
     g.set_default_edge_label(EdgeLabel::default);
@@ -41,6 +42,7 @@ fn layout_can_layout_two_nodes_on_the_same_rank() {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: true,
         compound: true,
+        ..Default::default()
     });
     g.set_graph(GraphLabel::default());
     g.set_default_edge_label(EdgeLabel::default);
@@ -79,6 +81,7 @@ fn layout_can_layout_two_nodes_connected_by_an_edge() {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: true,
         compound: true,
+        ..Default::default()
     });
     g.set_graph(GraphLabel::default());
     g.set_default_edge_label(EdgeLabel::default);
@@ -118,6 +121,7 @@ fn layout_can_layout_an_edge_with_a_label() {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: true,
         compound: true,
+        ..Default::default()
     });
     g.set_graph(GraphLabel::default());
     g.set_default_edge_label(EdgeLabel::default);
@@ -173,6 +177,7 @@ fn layout_adds_rectangle_intersects_for_edges() {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: true,
         compound: true,
+        ..Default::default()
     });
     g.set_graph(GraphLabel::default());
     g.set_default_edge_label(EdgeLabel::default);
@@ -219,6 +224,7 @@ fn layout_adds_rectangle_intersects_for_edges_spanning_multiple_ranks() {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: true,
         compound: true,
+        ..Default::default()
     });
     g.set_graph(GraphLabel::default());
     g.set_default_edge_label(EdgeLabel::default);
@@ -281,6 +287,7 @@ fn layout_can_apply_an_offset() {
         let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
             multigraph: true,
             compound: true,
+            ..Default::default()
         });
         g.set_graph(GraphLabel {
             rankdir,
@@ -344,6 +351,7 @@ fn layout_can_layout_an_edge_with_a_long_label() {
         let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
             multigraph: true,
             compound: true,
+            ..Default::default()
         });
         g.set_graph(GraphLabel {
             rankdir,
@@ -403,6 +411,7 @@ fn layout_can_layout_a_self_loop() {
         let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
             multigraph: true,
             compound: true,
+            ..Default::default()
         });
         g.set_graph(GraphLabel {
             rankdir,
@@ -452,6 +461,7 @@ fn layout_can_layout_a_graph_with_subgraphs() {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: true,
         compound: true,
+        ..Default::default()
     });
     g.set_graph(GraphLabel::default());
     g.set_default_edge_label(EdgeLabel::default);
@@ -479,6 +489,7 @@ fn layout_minimizes_the_height_of_subgraphs() {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: true,
         compound: true,
+        ..Default::default()
     });
     g.set_graph(GraphLabel::default());
     g.set_default_edge_label(EdgeLabel::default);
