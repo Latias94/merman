@@ -1,0 +1,89 @@
+{
+  "diagramType": "c4",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
+        "type": {
+          "text": "global"
+        }
+      },
+      {
+        "alias": "b1",
+        "bgColor": "blue",
+        "borderColor": "gray",
+        "fontColor": "yellow",
+        "label": {
+          "text": "B1"
+        },
+        "legendSprite": "server",
+        "legendText": "BoundaryLegend",
+        "parentBoundary": "global",
+        "shadowing": "false",
+        "shape": "rect",
+        "sprite": "package",
+        "techn": "Tech",
+        "type": {
+          "text": "system"
+        },
+        "wrap": false
+      }
+    ],
+    "c4Type": "C4Context",
+    "layout": {
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
+    },
+    "rels": [],
+    "shapes": [
+      {
+        "alias": "p1",
+        "bgColor": "red",
+        "borderColor": "black",
+        "descr": {
+          "text": ""
+        },
+        "fontColor": "white",
+        "label": {
+          "text": "P1"
+        },
+        "legendSprite": "cloud",
+        "legendText": "Legend",
+        "parentBoundary": "global",
+        "shadowing": "true",
+        "shape": "rounded",
+        "sprite": "users",
+        "techn": "Rust",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "s1",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": "S1"
+        },
+        "parentBoundary": "b1",
+        "typeC4Shape": {
+          "text": "system"
+        },
+        "wrap": false
+      }
+    ],
+    "title": "Element style updates",
+    "type": "c4",
+    "wrap": false
+  }
+}

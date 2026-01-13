@@ -73,3 +73,5 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/c4/parser/c4Diagram.jiso
 - relationship direction macros (`Rel_Up/Down/Left/Right/Back`): `fixtures/c4/upstream_rel_direction_macros_spec.mmd`
 - deployment node variants (`Node_L`, `Node_R`, `Deployment_Node`): `fixtures/c4/upstream_deployment_node_lr_spec.mmd`
 - boundary type injection (`Enterprise_Boundary`, `System_Boundary`, `Container_Boundary`): `fixtures/c4/upstream_boundary_type_injection_spec.mmd`
+- `UpdateElementStyle` supports more fields: `fixtures/c4/upstream_update_element_style_all_fields_spec.mmd`
+- `UpdateLayoutConfig` ignores invalid values: `fixtures/c4/upstream_update_layout_config_invalid_values_spec.mmd`
