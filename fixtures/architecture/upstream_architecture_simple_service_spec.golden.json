@@ -1,0 +1,34 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "accDescr": null,
+    "accTitle": null,
+    "edges": [],
+    "groups": [],
+    "junctions": [],
+    "nodes": [
+      {
+        "edges": [],
+        "icon": null,
+        "iconText": null,
+        "id": "db",
+        "in": null,
+        "title": null,
+        "type": "service"
+      }
+    ],
+    "services": [
+      {
+        "edges": [],
+        "icon": null,
+        "iconText": null,
+        "id": "db",
+        "in": null,
+        "title": null,
+        "type": "service"
+      }
+    ],
+    "title": null,
+    "type": "architecture"
+  }
+}

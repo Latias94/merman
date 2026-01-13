@@ -4,6 +4,12 @@ This document defines the initial, test-driven minimum slice for architecture pa
 
 Baseline: Mermaid `@11.12.2`.
 
+Upstream references:
+
+- Parser/AST bridge: `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/architectureParser.ts`
+- DB/model: `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/architectureDb.ts`
+- Upstream tests: `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/architecture.spec.ts`
+
 ## Supported (current)
 
 - Header:
@@ -34,4 +40,3 @@ Baseline: Mermaid `@11.12.2`.
 
 This is an incremental slice. The ultimate goal is full Mermaid `architecture` grammar and DB behavior
 compatibility at the pinned baseline tag.
-

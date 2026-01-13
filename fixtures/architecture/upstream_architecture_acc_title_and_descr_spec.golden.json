@@ -1,0 +1,14 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "accDescr": "Accessibility Description",
+    "accTitle": "Accessibility Title",
+    "edges": [],
+    "groups": [],
+    "junctions": [],
+    "nodes": [],
+    "services": [],
+    "title": null,
+    "type": "architecture"
+  }
+}
