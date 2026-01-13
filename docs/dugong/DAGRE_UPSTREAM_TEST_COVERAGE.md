@@ -83,3 +83,15 @@ Source: `repo-ref/dagre/test/normalize-test.js`
 - `sets coords and dims for the label, if the edge has one` -> `crates/dugong/tests/normalize_test.rs::normalize_undo_sets_coords_and_dims_for_the_label_if_the_edge_has_one`
 - `sets coords and dims for the label, if the long edge has one` -> `crates/dugong/tests/normalize_test.rs::normalize_undo_sets_coords_and_dims_for_the_label_if_the_long_edge_has_one`
 - `restores multi-edges` -> `crates/dugong/tests/normalize_test.rs::normalize_undo_restores_multi_edges`
+
+Source: `repo-ref/dagre/test/parent-dummy-chains-test.js`
+
+- `does not set a parent if both the tail and head have no parent` -> `crates/dugong/tests/parent_dummy_chains_test.rs::parent_dummy_chains_does_not_set_a_parent_if_both_tail_and_head_have_no_parent`
+- `uses the tail's parent for the first node if it is not the root` -> `crates/dugong/tests/parent_dummy_chains_test.rs::parent_dummy_chains_uses_the_tails_parent_for_the_first_node_if_it_is_not_the_root`
+- `uses the heads's parent for the first node if tail's is root` -> `crates/dugong/tests/parent_dummy_chains_test.rs::parent_dummy_chains_uses_the_heads_parent_for_the_first_node_if_tails_is_root`
+- `handles a long chain starting in a subgraph` -> `crates/dugong/tests/parent_dummy_chains_test.rs::parent_dummy_chains_handles_a_long_chain_starting_in_a_subgraph`
+- `handles a long chain ending in a subgraph` -> `crates/dugong/tests/parent_dummy_chains_test.rs::parent_dummy_chains_handles_a_long_chain_ending_in_a_subgraph`
+- `handles nested subgraphs` -> `crates/dugong/tests/parent_dummy_chains_test.rs::parent_dummy_chains_handles_nested_subgraphs`
+- `handles overlapping rank ranges` -> `crates/dugong/tests/parent_dummy_chains_test.rs::parent_dummy_chains_handles_overlapping_rank_ranges`
+- `handles an LCA that is not the root of the graph #1` -> `crates/dugong/tests/parent_dummy_chains_test.rs::parent_dummy_chains_handles_an_lca_that_is_not_the_root_1`
+- `handles an LCA that is not the root of the graph #2` -> `crates/dugong/tests/parent_dummy_chains_test.rs::parent_dummy_chains_handles_an_lca_that_is_not_the_root_2`
