@@ -26,6 +26,9 @@ Baseline: Mermaid `@11.12.2`.
 - For isolated, leaf-only clusters (no external edges), apply a Mermaid-like "cluster dir" behavior:
   the cluster's `dir` (or toggled direction when `inheritDir=false`) influences the internal layout
   of its member nodes.
+  - Root, isolated clusters are packed after the recursive step to avoid overlaps, approximating
+    Mermaid's `clusterNode` behavior (recursive render updates cluster bounds before the parent
+    graph is laid out).
 - For `flowchart-v2` edge labels, mimic Mermaid's modern Dagre pipeline by inserting a label node
   and splitting the labeled edge into two edges internally; the public layout output still reports
   the original edge id, route and label position.
@@ -54,3 +57,5 @@ The result includes:
 - Clusters expose Mermaid parity fields used by the SVG renderers:
   - `diff`: the Mermaid cluster "diff" value (see `packages/mermaid/src/rendering-util/rendering-elements/clusters.js`)
   - `offset_y`: the Mermaid cluster "offsetY" value (`labelBBox.height - padding/2`)
+
+See also: `docs/rendering/FLOWCHART_DEBUG_SVG.md`.

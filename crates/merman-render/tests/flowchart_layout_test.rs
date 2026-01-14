@@ -34,6 +34,14 @@ fn rect_contains(outer: (f64, f64, f64, f64), inner: (f64, f64, f64, f64), eps: 
         && imax_y <= omax_y + eps
 }
 
+fn rects_overlap(a: (f64, f64, f64, f64), b: (f64, f64, f64, f64), eps: f64) -> bool {
+    let (amin_x, amin_y, amax_x, amax_y) = a;
+    let (bmin_x, bmin_y, bmax_x, bmax_y) = b;
+    let sep_x = amax_x <= bmin_x + eps || bmax_x <= amin_x + eps;
+    let sep_y = amax_y <= bmin_y + eps || bmax_y <= amin_y + eps;
+    !(sep_x || sep_y)
+}
+
 #[test]
 fn flowchart_layout_produces_positions_and_routes() {
     let path = workspace_root()
@@ -238,6 +246,112 @@ fn flowchart_layout_includes_clusters_with_title_placeholders() {
             assert!(
                 min_y + 1e-6 >= cmin_y && max_y <= cmax_y + 1e-6,
                 "member {mid} should fit vertically in cluster {id}"
+            );
+        }
+    }
+
+    // Root-level isolated subgraphs are rendered recursively by Mermaid and should not overlap
+    // after applying subgraph `dir`/toggle behavior and cluster padding/title extents.
+    let semantic_edges = out
+        .semantic
+        .get("edges")
+        .and_then(|v| v.as_array())
+        .expect("semantic edges");
+
+    let mut members_by_id: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    let mut subgraph_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for sg in subgraphs {
+        let id = sg.get("id").and_then(|v| v.as_str()).expect("subgraph id");
+        let members = sg
+            .get("nodes")
+            .and_then(|v| v.as_array())
+            .expect("subgraph nodes")
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect::<Vec<_>>();
+        members_by_id.insert(id.to_string(), members);
+        subgraph_ids.insert(id.to_string());
+    }
+
+    let mut child_subgraphs: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for members in members_by_id.values() {
+        for m in members {
+            if subgraph_ids.contains(m) {
+                child_subgraphs.insert(m.clone());
+            }
+        }
+    }
+
+    fn collect_leaf_nodes(
+        id: &str,
+        subgraph_ids: &std::collections::HashSet<String>,
+        members_by_id: &std::collections::HashMap<String, Vec<String>>,
+        out: &mut std::collections::HashSet<String>,
+        visiting: &mut std::collections::HashSet<String>,
+    ) {
+        if !visiting.insert(id.to_string()) {
+            return;
+        }
+        let Some(members) = members_by_id.get(id) else {
+            visiting.remove(id);
+            return;
+        };
+        for m in members {
+            if subgraph_ids.contains(m) {
+                collect_leaf_nodes(m, subgraph_ids, members_by_id, out, visiting);
+            } else {
+                out.insert(m.clone());
+            }
+        }
+        visiting.remove(id);
+    }
+
+    let mut root_isolated_cluster_ids: Vec<String> = Vec::new();
+    for id in subgraph_ids.iter() {
+        if child_subgraphs.contains(id) {
+            continue;
+        }
+        let mut leaves: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut visiting: std::collections::HashSet<String> = std::collections::HashSet::new();
+        collect_leaf_nodes(
+            id,
+            &subgraph_ids,
+            &members_by_id,
+            &mut leaves,
+            &mut visiting,
+        );
+        if leaves.is_empty() {
+            continue;
+        }
+
+        let mut has_external = false;
+        for e in semantic_edges {
+            let from = e.get("from").and_then(|v| v.as_str()).expect("edge from");
+            let to = e.get("to").and_then(|v| v.as_str()).expect("edge to");
+            let in_from = leaves.contains(from);
+            let in_to = leaves.contains(to);
+            if in_from ^ in_to {
+                has_external = true;
+                break;
+            }
+        }
+
+        if !has_external {
+            root_isolated_cluster_ids.push(id.clone());
+        }
+    }
+
+    root_isolated_cluster_ids.sort();
+    for i in 0..root_isolated_cluster_ids.len() {
+        for j in (i + 1)..root_isolated_cluster_ids.len() {
+            let a = &root_isolated_cluster_ids[i];
+            let b = &root_isolated_cluster_ids[j];
+            let ca = clusters_by_id.get(a.as_str()).expect("cluster output");
+            let cb = clusters_by_id.get(b.as_str()).expect("cluster output");
+            assert!(
+                !rects_overlap(rect_from_cluster(ca), rect_from_cluster(cb), 1e-6),
+                "expected clusters {a} and {b} not to overlap"
             );
         }
     }
