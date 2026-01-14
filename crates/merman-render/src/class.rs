@@ -441,6 +441,49 @@ enum TerminalPos {
     EndRight,
 }
 
+fn point_inside_rect(rect: Rect, x: f64, y: f64, eps: f64) -> bool {
+    x > rect.min_x + eps && x < rect.max_x - eps && y > rect.min_y + eps && y < rect.max_y - eps
+}
+
+fn nudge_point_outside_rect(mut x: f64, mut y: f64, rect: Rect) -> (f64, f64) {
+    let eps = 0.01;
+    if !point_inside_rect(rect, x, y, eps) {
+        return (x, y);
+    }
+
+    let (cx, cy) = rect.center();
+    let mut dx = x - cx;
+    let mut dy = y - cy;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len < 1e-9 {
+        dx = 1.0;
+        dy = 0.0;
+    } else {
+        dx /= len;
+        dy /= len;
+    }
+
+    let mut t_exit = f64::INFINITY;
+    if dx > 1e-9 {
+        t_exit = t_exit.min((rect.max_x - x) / dx);
+    } else if dx < -1e-9 {
+        t_exit = t_exit.min((rect.min_x - x) / dx);
+    }
+    if dy > 1e-9 {
+        t_exit = t_exit.min((rect.max_y - y) / dy);
+    } else if dy < -1e-9 {
+        t_exit = t_exit.min((rect.min_y - y) / dy);
+    }
+
+    if t_exit.is_finite() && t_exit >= 0.0 {
+        let margin = 0.5;
+        x += dx * (t_exit + margin);
+        y += dy * (t_exit + margin);
+    }
+
+    (x, y)
+}
+
 fn calc_terminal_label_position(
     terminal_marker_size: f64,
     position: TerminalPos,
@@ -1039,19 +1082,26 @@ pub fn layout_class_diagram_v2(
         let Some(meta) = terminal_meta.clone() else {
             continue;
         };
-        let points = if let (Some(from), Some(to)) = (
+        let (from_rect, to_rect, points) = if let (Some(from), Some(to)) = (
             node_rect_by_id.get(edge.from.as_str()).copied(),
             node_rect_by_id.get(edge.to.as_str()).copied(),
         ) {
-            terminal_path_for_edge(&edge.points, from, to)
+            (
+                Some(from),
+                Some(to),
+                terminal_path_for_edge(&edge.points, from, to),
+            )
         } else {
-            edge.points.clone()
+            (None, None, edge.points.clone())
         };
 
         if let Some((w, h)) = meta.start_left {
             if let Some((x, y)) =
                 calc_terminal_label_position(meta.start_marker, TerminalPos::StartLeft, &points)
             {
+                let (x, y) = from_rect
+                    .map(|r| nudge_point_outside_rect(x, y, r))
+                    .unwrap_or((x, y));
                 edge.start_label_left = Some(LayoutLabel {
                     x,
                     y,
@@ -1064,6 +1114,9 @@ pub fn layout_class_diagram_v2(
             if let Some((x, y)) =
                 calc_terminal_label_position(meta.start_marker, TerminalPos::StartRight, &points)
             {
+                let (x, y) = from_rect
+                    .map(|r| nudge_point_outside_rect(x, y, r))
+                    .unwrap_or((x, y));
                 edge.start_label_right = Some(LayoutLabel {
                     x,
                     y,
@@ -1076,6 +1129,9 @@ pub fn layout_class_diagram_v2(
             if let Some((x, y)) =
                 calc_terminal_label_position(meta.end_marker, TerminalPos::EndLeft, &points)
             {
+                let (x, y) = to_rect
+                    .map(|r| nudge_point_outside_rect(x, y, r))
+                    .unwrap_or((x, y));
                 edge.end_label_left = Some(LayoutLabel {
                     x,
                     y,
@@ -1088,6 +1144,9 @@ pub fn layout_class_diagram_v2(
             if let Some((x, y)) =
                 calc_terminal_label_position(meta.end_marker, TerminalPos::EndRight, &points)
             {
+                let (x, y) = to_rect
+                    .map(|r| nudge_point_outside_rect(x, y, r))
+                    .unwrap_or((x, y));
                 edge.end_label_right = Some(LayoutLabel {
                     x,
                     y,
