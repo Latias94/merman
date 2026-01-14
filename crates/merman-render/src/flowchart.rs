@@ -1,7 +1,7 @@
 use crate::model::{
     Bounds, FlowchartV2Layout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
 };
-use crate::text::{TextMeasurer, TextStyle};
+use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
@@ -132,6 +132,16 @@ pub fn layout_flowchart_v2(
     let node_padding = config_f64(effective_config, &["flowchart", "padding"]).unwrap_or(15.0);
     let wrapping_width =
         config_f64(effective_config, &["flowchart", "wrappingWidth"]).unwrap_or(200.0);
+    let html_labels = effective_config
+        .get("flowchart")
+        .and_then(|v| v.get("htmlLabels"))
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    let wrap_mode = if html_labels {
+        WrapMode::HtmlLike
+    } else {
+        WrapMode::SvgLike
+    };
     let cluster_padding = 8.0;
     let title_margin_top = config_f64(
         effective_config,
@@ -177,7 +187,7 @@ pub fn layout_flowchart_v2(
 
     for n in &model.nodes {
         let label = n.label.as_deref().unwrap_or(&n.id);
-        let metrics = measurer.measure_wrapped(label, &text_style, Some(wrapping_width));
+        let metrics = measurer.measure_wrapped(label, &text_style, Some(wrapping_width), wrap_mode);
         let (width, height) = node_dimensions(n.layout_shape.as_deref(), metrics, node_padding);
         g.set_node(
             n.id.clone(),
@@ -224,7 +234,8 @@ pub fn layout_flowchart_v2(
             edge_label_nodes.insert(e.id.clone(), label_node_id.clone());
 
             let label_text = e.label.as_deref().unwrap_or_default();
-            let metrics = measurer.measure_wrapped(label_text, &text_style, Some(wrapping_width));
+            let metrics =
+                measurer.measure_wrapped(label_text, &text_style, Some(wrapping_width), wrap_mode);
             // Mermaid renders edge labels using the `labelRect` shape and measures the overall
             // SVG group bounding box; the label node should match the text box size (no extra
             // node padding).
@@ -484,8 +495,12 @@ pub fn layout_flowchart_v2(
                     let label_node_id = edge_label_node_id(e);
 
                     let label_text = e.label.as_deref().unwrap_or_default();
-                    let metrics =
-                        measurer.measure_wrapped(label_text, &text_style, Some(wrapping_width));
+                    let metrics = measurer.measure_wrapped(
+                        label_text,
+                        &text_style,
+                        Some(wrapping_width),
+                        wrap_mode,
+                    );
                     let label_width = metrics.width.max(1.0);
                     let label_height = metrics.height.max(1.0);
                     g_inner.set_node(

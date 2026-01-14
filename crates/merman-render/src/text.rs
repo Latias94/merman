@@ -1,5 +1,17 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WrapMode {
+    SvgLike,
+    HtmlLike,
+}
+
+impl Default for WrapMode {
+    fn default() -> Self {
+        Self::SvgLike
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextStyle {
     pub font_family: Option<String>,
@@ -32,8 +44,10 @@ pub trait TextMeasurer {
         text: &str,
         style: &TextStyle,
         max_width: Option<f64>,
+        wrap_mode: WrapMode,
     ) -> TextMetrics {
         let _ = max_width;
+        let _ = wrap_mode;
         self.measure(text, style)
     }
 }
@@ -74,7 +88,7 @@ impl DeterministicTextMeasurer {
         out
     }
 
-    fn wrap_line(line: &str, max_chars: usize) -> Vec<String> {
+    fn wrap_line(line: &str, max_chars: usize, break_long_words: bool) -> Vec<String> {
         if max_chars == 0 {
             return vec![line.to_string()];
         }
@@ -101,16 +115,21 @@ impl DeterministicTextMeasurer {
                 continue;
             }
 
-            // `tok` itself does not fit on an empty line; split it by characters.
+            // `tok` itself does not fit on an empty line.
             if tok == " " {
                 continue;
             }
-            let tok_chars = tok.chars().collect::<Vec<_>>();
-            let head: String = tok_chars.iter().take(max_chars.max(1)).collect();
-            let tail: String = tok_chars.iter().skip(max_chars.max(1)).collect();
-            out.push(head);
-            if !tail.is_empty() {
-                tokens.push_front(tail);
+            if !break_long_words {
+                out.push(tok);
+            } else {
+                // Split it by characters (Mermaid SVG text mode behavior).
+                let tok_chars = tok.chars().collect::<Vec<_>>();
+                let head: String = tok_chars.iter().take(max_chars.max(1)).collect();
+                let tail: String = tok_chars.iter().skip(max_chars.max(1)).collect();
+                out.push(head);
+                if !tail.is_empty() {
+                    tokens.push_front(tail);
+                }
             }
         }
 
@@ -128,7 +147,7 @@ impl DeterministicTextMeasurer {
 
 impl TextMeasurer for DeterministicTextMeasurer {
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
-        self.measure_wrapped(text, style, None)
+        self.measure_wrapped(text, style, None, WrapMode::SvgLike)
     }
 
     fn measure_wrapped(
@@ -136,27 +155,33 @@ impl TextMeasurer for DeterministicTextMeasurer {
         text: &str,
         style: &TextStyle,
         max_width: Option<f64>,
+        wrap_mode: WrapMode,
     ) -> TextMetrics {
         let char_width_factor = if self.char_width_factor == 0.0 {
             0.6
         } else {
             self.char_width_factor
         };
+        let default_line_height_factor = match wrap_mode {
+            WrapMode::SvgLike => 1.1,
+            WrapMode::HtmlLike => 1.5,
+        };
         let line_height_factor = if self.line_height_factor == 0.0 {
-            1.2
+            default_line_height_factor
         } else {
             self.line_height_factor
         };
 
         let font_size = style.font_size.max(1.0);
         let max_width = max_width.filter(|w| w.is_finite() && *w > 0.0);
+        let break_long_words = wrap_mode == WrapMode::SvgLike;
 
         let mut lines = Vec::new();
         for line in Self::normalized_text_lines(text) {
             if let Some(w) = max_width {
                 let char_px = font_size * char_width_factor;
                 let max_chars = ((w / char_px).floor() as isize).max(1) as usize;
-                lines.extend(Self::wrap_line(&line, max_chars));
+                lines.extend(Self::wrap_line(&line, max_chars, break_long_words));
             } else {
                 lines.push(line);
             }
@@ -167,7 +192,15 @@ impl TextMeasurer for DeterministicTextMeasurer {
             max_chars = max_chars.max(line.chars().count());
         }
 
-        let width = max_chars as f64 * font_size * char_width_factor;
+        let mut width = max_chars as f64 * font_size * char_width_factor;
+        // Mermaid HTML labels use `max-width` and can visually overflow for long words, but their
+        // layout width is effectively clamped to the max width. Mirror this to avoid explosive
+        // headless widths when `htmlLabels=true`.
+        if wrap_mode == WrapMode::HtmlLike {
+            if let Some(w) = max_width {
+                width = width.min(w);
+            }
+        }
         let height = lines.len() as f64 * font_size * line_height_factor;
         TextMetrics {
             width,

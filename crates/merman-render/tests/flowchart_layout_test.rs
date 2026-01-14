@@ -1,5 +1,5 @@
 use merman_core::{Engine, ParseOptions};
-use merman_render::text::TextMeasurer;
+use merman_render::text::{TextMeasurer, WrapMode};
 use merman_render::{LayoutOptions, layout_parsed};
 use std::path::PathBuf;
 
@@ -473,7 +473,12 @@ fn flowchart_html_multiline_edge_label_has_multiple_lines() {
     let label = edge.label.as_ref().expect("edge label");
 
     let measurer = merman_render::text::DeterministicTextMeasurer::default();
-    let one = measurer.measure("line1", &merman_render::text::TextStyle::default());
+    let one = measurer.measure_wrapped(
+        "line1",
+        &merman_render::text::TextStyle::default(),
+        Some(200.0),
+        WrapMode::HtmlLike,
+    );
     assert!(
         label.height > one.height + 1e-6,
         "expected multiline label to have larger height"
@@ -609,7 +614,12 @@ O(-Label-)
         .collect::<std::collections::HashMap<_, _>>();
 
     let measurer = merman_render::text::DeterministicTextMeasurer::default();
-    let metrics = measurer.measure("Label", &merman_render::text::TextStyle::default());
+    let metrics = measurer.measure_wrapped(
+        "Label",
+        &merman_render::text::TextStyle::default(),
+        Some(200.0),
+        WrapMode::HtmlLike,
+    );
     let p = 15.0;
     let tw = metrics.width;
     let th = metrics.height;
@@ -751,7 +761,12 @@ fn flowchart_wrapping_width_increases_height_for_long_labels() {
 
     let measurer = merman_render::text::DeterministicTextMeasurer::default();
     let style = merman_render::text::TextStyle::default();
-    let single = measurer.measure("This is a long label that should wrap", &style);
+    let single = measurer.measure_wrapped(
+        "This is a long label that should wrap",
+        &style,
+        None,
+        WrapMode::HtmlLike,
+    );
 
     // With wrapping, the node should become taller than the single-line size would indicate.
     assert!(

@@ -20,7 +20,8 @@ Baseline: Mermaid `@11.12.2`.
 - Emit explicit cluster layout information (box bounds + title placeholder) to make subgraph rendering
   backend-independent.
 - The default flowchart behavior applies `flowchart.wrappingWidth` when measuring node/edge labels,
-  matching Mermaid's `createText` width parameter usage.
+  matching Mermaid's `createText` width parameter usage. When `flowchart.htmlLabels=true`, use an
+  HTML-like wrapping mode (no long-word splitting, width clamped to max-width, line-height 1.5).
 - For isolated, leaf-only clusters (no external edges), apply a Mermaid-like "cluster dir" behavior:
   the cluster's `dir` (or toggled direction when `inheritDir=false`) influences the internal layout
   of its member nodes.
