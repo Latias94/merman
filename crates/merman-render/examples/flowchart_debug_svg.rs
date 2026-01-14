@@ -17,7 +17,9 @@ fn main() {
         .expect("diagram detected");
 
     let layouted = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = layouted.layout;
+    let LayoutDiagram::FlowchartV2(layout) = layouted.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
 
     let svg = render_flowchart_v2_debug_svg(&layout, &SvgRenderOptions::default());
     print!("{svg}");

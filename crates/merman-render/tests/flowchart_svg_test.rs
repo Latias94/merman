@@ -23,7 +23,9 @@ fn flowchart_debug_svg_includes_cluster_positioning_metadata() {
         .expect("diagram detected");
 
     let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let LayoutDiagram::FlowchartV2(layout) = out.layout;
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
 
     let cluster = layout
         .clusters

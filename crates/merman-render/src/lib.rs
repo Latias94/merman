@@ -2,6 +2,7 @@
 
 pub mod flowchart;
 pub mod model;
+pub mod state;
 pub mod svg;
 pub mod text;
 
@@ -42,6 +43,11 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
 
     let layout = match diagram_type {
         "flowchart-v2" => LayoutDiagram::FlowchartV2(flowchart::layout_flowchart_v2(
+            &parsed.model,
+            &meta.effective_config,
+            options.text_measurer.as_ref(),
+        )?),
+        "stateDiagram" => LayoutDiagram::StateDiagramV2(state::layout_state_diagram_v2(
             &parsed.model,
             &meta.effective_config,
             options.text_measurer.as_ref(),

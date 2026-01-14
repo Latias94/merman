@@ -55,7 +55,9 @@ fn flowchart_layout_produces_positions_and_routes() {
         .expect("diagram detected");
 
     let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
 
     assert_eq!(layout.nodes.len(), 4);
     assert_eq!(layout.edges.len(), 3);
@@ -103,7 +105,9 @@ fn flowchart_layout_respects_lr_direction() {
         .expect("diagram detected");
 
     let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
 
     let mut by_id = std::collections::HashMap::new();
     for n in &layout.nodes {
@@ -131,7 +135,9 @@ fn flowchart_layout_includes_clusters_with_title_placeholders() {
         .expect("diagram detected");
 
     let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
 
     assert_eq!(layout.clusters.len(), 5);
     let ids = layout
@@ -367,7 +373,9 @@ fn flowchart_cluster_exposes_mermaid_diff_and_offset_y() {
         .expect("diagram detected");
 
     let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
 
     let cluster = layout
         .clusters
@@ -417,7 +425,10 @@ fn flowchart_cluster_title_margins_increase_cluster_height() {
             .expect("diagram detected");
     let out_no_margin =
         layout_parsed(&parsed_no_margin, &LayoutOptions::default()).expect("layout");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout_no_margin) = out_no_margin.layout;
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout_no_margin) = out_no_margin.layout
+    else {
+        panic!("expected FlowchartV2 layout");
+    };
     let h0 = layout_no_margin
         .clusters
         .iter()
@@ -433,7 +444,10 @@ fn flowchart_cluster_title_margins_increase_cluster_height() {
     let out_with_margin =
         layout_parsed(&parsed_with_margin, &LayoutOptions::default()).expect("layout");
     let merman_render::model::LayoutDiagram::FlowchartV2(layout_with_margin) =
-        out_with_margin.layout;
+        out_with_margin.layout
+    else {
+        panic!("expected FlowchartV2 layout");
+    };
     let c = layout_with_margin
         .clusters
         .iter()
@@ -458,7 +472,9 @@ fn flowchart_edge_label_is_included_in_subgraph_bounds() {
         .expect("diagram detected");
 
     let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
 
     let cluster = layout
         .clusters
@@ -510,7 +526,9 @@ fn flowchart_subgraph_dir_is_not_applied_when_cluster_has_external_edges() {
         .expect("diagram detected");
 
     let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
 
     let nodes_by_id = layout
         .nodes
@@ -536,7 +554,9 @@ fn flowchart_nested_subgraph_labeled_edge_label_is_inside_inner_cluster() {
         .expect("diagram detected");
 
     let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
 
     let clusters_by_id = layout
         .clusters
@@ -576,7 +596,9 @@ fn flowchart_cross_subgraph_labeled_edge_label_belongs_to_outer_cluster() {
         .expect("diagram detected");
 
     let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
 
     let clusters_by_id = layout
         .clusters
@@ -624,7 +646,9 @@ fn flowchart_html_multiline_edge_label_has_multiple_lines() {
         .expect("diagram detected");
 
     let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
 
     let edge = layout
         .edges
@@ -658,7 +682,9 @@ fn flowchart_multigraph_edges_keep_distinct_routes_and_labels() {
         .expect("diagram detected");
 
     let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
 
     let edges = layout
         .edges
@@ -687,7 +713,9 @@ fn flowchart_isolated_cluster_with_multiple_labeled_edges_contains_all_labels() 
         .expect("diagram detected");
 
     let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
 
     let cluster = layout
         .clusters
@@ -729,7 +757,9 @@ fn flowchart_various_edge_styles_do_not_break_layout() {
         .expect("diagram detected");
 
     let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
 
     assert!(layout.nodes.len() >= 5);
     assert_eq!(layout.edges.len(), 4);
@@ -766,7 +796,9 @@ O(-Label-)
         .expect("diagram detected");
 
     let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
 
     let nodes_by_id = layout
         .nodes
@@ -916,7 +948,9 @@ fn flowchart_wrapping_width_increases_height_for_long_labels() {
         .expect("diagram detected");
 
     let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
 
     let a = layout.nodes.iter().find(|n| n.id == "A").expect("node A");
 
@@ -955,7 +989,9 @@ fn flowchart_htmllabels_long_word_is_clamped_but_not_wrapped() {
         .expect("diagram detected");
 
     let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
 
     let a = layout.nodes.iter().find(|n| n.id == "A").expect("node A");
 
@@ -994,7 +1030,9 @@ fn flowchart_svglike_long_word_is_wrapped_into_multiple_lines() {
         .expect("diagram detected");
 
     let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
 
     let a = layout.nodes.iter().find(|n| n.id == "A").expect("node A");
 
@@ -1032,7 +1070,9 @@ fn flowchart_subgraph_title_uses_wrapping_placeholder_metrics() {
         .expect("diagram detected");
 
     let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
 
     let cluster = layout
         .clusters
@@ -1065,7 +1105,9 @@ fn flowchart_subgraph_title_wraps_long_word_in_svglike_mode() {
         .expect("diagram detected");
 
     let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
 
     let cluster = layout
         .clusters

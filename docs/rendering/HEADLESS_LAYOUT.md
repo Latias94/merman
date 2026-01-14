@@ -15,6 +15,7 @@ Baseline: Mermaid `@11.12.2`.
 ## Current Scope
 
 - Implement `flowchart-v2` layout via `dugong` (Dagre-compatible).
+- Implement `stateDiagram` (`stateDiagram-v2` renderer path) layout via `dugong` (Dagre-wrapper compatible).
 - Support compound graphs for subgraphs by mapping Mermaid `subgraphs[]` to compound nodes.
 - Use a pluggable `TextMeasurer` trait with a deterministic default measurer for CI.
 - Emit explicit cluster layout information (box bounds + title placeholder) to make subgraph rendering

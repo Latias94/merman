@@ -1354,6 +1354,8 @@ pub fn layout_flowchart_v2(
             id: e.id.clone(),
             from: e.from.clone(),
             to: e.to.clone(),
+            from_cluster: None,
+            to_cluster: None,
             points,
             label: label_pos,
         });
