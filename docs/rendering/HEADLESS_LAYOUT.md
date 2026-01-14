@@ -51,3 +51,6 @@ The result includes:
 - Cluster title placement uses Mermaid-compatible `flowchart.subGraphTitleMargin.{top,bottom}`.
 - Clusters expose `requested_dir` (from the semantic model) and `effective_dir` (the rankdir actually
   used for isolated cluster layout).
+- Clusters expose Mermaid parity fields used by the SVG renderers:
+  - `diff`: the Mermaid cluster "diff" value (see `packages/mermaid/src/rendering-util/rendering-elements/clusters.js`)
+  - `offset_y`: the Mermaid cluster "offsetY" value (`labelBBox.height - padding/2`)

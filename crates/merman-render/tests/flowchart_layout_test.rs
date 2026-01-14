@@ -244,6 +244,53 @@ fn flowchart_layout_includes_clusters_with_title_placeholders() {
 }
 
 #[test]
+fn flowchart_cluster_exposes_mermaid_diff_and_offset_y() {
+    let text = "flowchart TB\nsubgraph A[\"This is a very very very very very very very long title that should wrap\"]\n  a\nend\n";
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+
+    let cluster = layout
+        .clusters
+        .iter()
+        .find(|c| c.id == "A")
+        .expect("cluster A");
+    let node_a = layout.nodes.iter().find(|n| n.id == "a").expect("node a");
+
+    // The layout currently uses a fixed "cluster padding" of 8 for bounds.
+    let cluster_padding = 8.0;
+    let node_padding = 15.0;
+    let base_width = node_a.width + cluster_padding * 2.0;
+
+    let measurer = merman_render::text::DeterministicTextMeasurer::default();
+    let title_metrics = measurer.measure_wrapped(
+        &cluster.title,
+        &merman_render::text::TextStyle::default(),
+        Some(200.0),
+        WrapMode::HtmlLike,
+    );
+    let padded_label_width = title_metrics.width + node_padding;
+
+    let expected_diff = if base_width <= padded_label_width {
+        (padded_label_width - base_width) / 2.0 - node_padding
+    } else {
+        -node_padding
+    };
+    let expected_offset_y = title_metrics.height - node_padding / 2.0;
+
+    assert!((cluster.diff - expected_diff).abs() < 1e-6);
+    assert!((cluster.offset_y - expected_offset_y).abs() < 1e-6);
+
+    let expected_width = base_width.max(padded_label_width);
+    assert!((cluster.width - expected_width).abs() < 1e-6);
+}
+
+#[test]
 fn flowchart_cluster_title_margins_increase_cluster_height() {
     let text_no_margin = "flowchart TD\nsubgraph A\na-->b\nend\n";
     let text_with_margin = "%%{init: {\"flowchart\": {\"subGraphTitleMargin\": {\"top\": 10, \"bottom\": 5}}}}%%\nflowchart TD\nsubgraph A\na-->b\nend\n";

@@ -80,6 +80,10 @@ pub struct LayoutCluster {
     pub y: f64,
     pub width: f64,
     pub height: f64,
+    /// Mermaid cluster "diff" value used during cluster positioning.
+    pub diff: f64,
+    /// Mermaid cluster "offsetY" value: title bbox height minus half padding.
+    pub offset_y: f64,
     pub title: String,
     pub title_label: LayoutLabel,
     pub requested_dir: Option<String>,

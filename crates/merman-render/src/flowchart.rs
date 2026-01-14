@@ -717,6 +717,8 @@ pub fn layout_flowchart_v2(
 
     let mut cluster_rects: std::collections::HashMap<String, Rect> =
         std::collections::HashMap::new();
+    let mut cluster_base_widths: std::collections::HashMap<String, f64> =
+        std::collections::HashMap::new();
     let mut visiting: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     fn compute_cluster_rect(
@@ -725,6 +727,7 @@ pub fn layout_flowchart_v2(
         leaf_rects: &std::collections::HashMap<String, Rect>,
         extra_children: &std::collections::HashMap<String, Vec<String>>,
         cluster_rects: &mut std::collections::HashMap<String, Rect>,
+        cluster_base_widths: &mut std::collections::HashMap<String, f64>,
         visiting: &mut std::collections::HashSet<String>,
         measurer: &dyn TextMeasurer,
         text_style: &TextStyle,
@@ -732,6 +735,7 @@ pub fn layout_flowchart_v2(
         wrap_mode: WrapMode,
         cluster_padding: f64,
         title_total_margin: f64,
+        node_padding: f64,
     ) -> Result<Rect> {
         if let Some(r) = cluster_rects.get(id).copied() {
             return Ok(r);
@@ -759,6 +763,7 @@ pub fn layout_flowchart_v2(
                     leaf_rects,
                     extra_children,
                     cluster_rects,
+                    cluster_base_widths,
                     visiting,
                     measurer,
                     text_style,
@@ -766,6 +771,7 @@ pub fn layout_flowchart_v2(
                     wrap_mode,
                     cluster_padding,
                     title_total_margin,
+                    node_padding,
                 )?)
             } else {
                 None
@@ -800,8 +806,8 @@ pub fn layout_flowchart_v2(
             Rect::from_center(
                 0.0,
                 0.0,
-                (title_metrics.width + cluster_padding * 2.0).max(1.0),
-                (title_metrics.height + cluster_padding * 2.0).max(1.0),
+                title_metrics.width.max(1.0),
+                title_metrics.height.max(1.0),
             )
         };
 
@@ -812,7 +818,12 @@ pub fn layout_flowchart_v2(
         rect.max_y += cluster_padding;
 
         // Ensure the cluster is wide enough to fit the title.
-        let min_width = title_metrics.width + cluster_padding;
+        let base_width = rect.width();
+        cluster_base_widths.insert(id.to_string(), base_width);
+
+        // Mermaid uses `bbox.width + node.padding` (not `2x`) when determining if the cluster
+        // needs to widen for the title label.
+        let min_width = title_metrics.width + node_padding;
         if rect.width() < min_width {
             let (cx, cy) = rect.center();
             rect = Rect::from_center(cx, cy, min_width, rect.height());
@@ -845,6 +856,7 @@ pub fn layout_flowchart_v2(
             &leaf_rects,
             &extra_children,
             &mut cluster_rects,
+            &mut cluster_base_widths,
             &mut visiting,
             measurer,
             &text_style,
@@ -852,6 +864,7 @@ pub fn layout_flowchart_v2(
             wrap_mode,
             cluster_padding,
             title_total_margin,
+            node_padding,
         )?;
         let (cx, cy) = rect.center();
 
@@ -868,6 +881,18 @@ pub fn layout_flowchart_v2(
             height: title_metrics.height,
         };
 
+        let base_width = cluster_base_widths
+            .get(&sg.id)
+            .copied()
+            .unwrap_or(rect.width());
+        let padded_label_width = title_metrics.width + node_padding;
+        let diff = if base_width <= padded_label_width {
+            (padded_label_width - base_width) / 2.0 - node_padding
+        } else {
+            -node_padding
+        };
+        let offset_y = title_metrics.height - node_padding / 2.0;
+
         let effective_dir = effective_cluster_dir(sg, &model.direction, inherit_dir);
 
         clusters.push(LayoutCluster {
@@ -876,6 +901,8 @@ pub fn layout_flowchart_v2(
             y: cy,
             width: rect.width(),
             height: rect.height(),
+            diff,
+            offset_y,
             title: sg.title.clone(),
             title_label,
             requested_dir: sg.dir.as_ref().map(|s| normalize_dir(s)),
