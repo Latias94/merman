@@ -16,6 +16,7 @@ Baseline: Mermaid `@11.12.2`.
 
 - Implement `flowchart-v2` layout via `dugong` (Dagre-compatible).
 - Implement `stateDiagram` (`stateDiagram-v2` renderer path) layout via `dugong` (Dagre-wrapper compatible).
+- Implement `classDiagram` (`dagre-wrapper` renderer path) layout via `dugong` (Dagre-wrapper compatible).
 - Support compound graphs for subgraphs by mapping Mermaid `subgraphs[]` to compound nodes.
 - Use a pluggable `TextMeasurer` trait with a deterministic default measurer for CI.
 - Emit explicit cluster layout information (box bounds + title placeholder) to make subgraph rendering
@@ -35,6 +36,8 @@ Baseline: Mermaid `@11.12.2`.
   the original edge id, route and label position.
   - Label nodes are assigned to the lowest common compound parent of their endpoints (when any),
     and cluster bounds include those label nodes.
+- For `classDiagram` relations, include Mermaid-style edge terminal label positions (e.g. cardinalities)
+  using `start_label_*` / `end_label_*` slots, positioned via Mermaid's `calcTerminalLabelPosition` logic.
 
 ## API
 
@@ -61,3 +64,4 @@ The result includes:
 
 See also: `docs/rendering/FLOWCHART_DEBUG_SVG.md`.
 See also: `docs/rendering/STATE_DEBUG_SVG.md`.
+See also: `docs/rendering/CLASS_DEBUG_SVG.md`.

@@ -1358,6 +1358,10 @@ pub fn layout_flowchart_v2(
             to_cluster: None,
             points,
             label: label_pos,
+            start_label_left: None,
+            start_label_right: None,
+            end_label_left: None,
+            end_label_right: None,
         });
     }
 

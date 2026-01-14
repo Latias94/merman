@@ -104,6 +104,14 @@ pub struct LayoutEdge {
     pub to_cluster: Option<String>,
     pub points: Vec<LayoutPoint>,
     pub label: Option<LayoutLabel>,
+    #[serde(default)]
+    pub start_label_left: Option<LayoutLabel>,
+    #[serde(default)]
+    pub start_label_right: Option<LayoutLabel>,
+    #[serde(default)]
+    pub end_label_left: Option<LayoutLabel>,
+    #[serde(default)]
+    pub end_label_right: Option<LayoutLabel>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -123,9 +131,18 @@ pub struct StateDiagramV2Layout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClassDiagramV2Layout {
+    pub nodes: Vec<LayoutNode>,
+    pub edges: Vec<LayoutEdge>,
+    pub clusters: Vec<LayoutCluster>,
+    pub bounds: Option<Bounds>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LayoutDiagram {
     FlowchartV2(FlowchartV2Layout),
     StateDiagramV2(StateDiagramV2Layout),
+    ClassDiagramV2(ClassDiagramV2Layout),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
