@@ -25,6 +25,8 @@ Baseline: Mermaid `@11.12.2`.
 - For `flowchart-v2` edge labels, mimic Mermaid's modern Dagre pipeline by inserting a label node
   and splitting the labeled edge into two edges internally; the public layout output still reports
   the original edge id, route and label position.
+  - Label nodes are assigned to the lowest common compound parent of their endpoints (when any),
+    and cluster bounds include those label nodes.
 
 ## API
 

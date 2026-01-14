@@ -261,3 +261,55 @@ fn flowchart_cluster_title_margins_increase_cluster_height() {
     assert!((c.title_margin_top - 10.0).abs() < 1e-6);
     assert!((c.title_margin_bottom - 5.0).abs() < 1e-6);
 }
+
+#[test]
+fn flowchart_edge_label_is_included_in_subgraph_bounds() {
+    // Ensure edge labels participate in cluster bounding box calculation. Without including the
+    // label node (used internally for layout), a very wide label in TB direction can extend
+    // beyond the union of the member node rectangles.
+    let text = "flowchart TB\nsubgraph A\n  direction TB\n  a -->|this is a very very very very very long label| b\nend\n";
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+
+    let cluster = layout
+        .clusters
+        .iter()
+        .find(|c| c.id == "A")
+        .expect("cluster A");
+
+    let edge = layout
+        .edges
+        .iter()
+        .find(|e| e.from == "a" && e.to == "b")
+        .expect("edge a->b");
+    let label = edge.label.as_ref().expect("edge label");
+
+    let c_hw = cluster.width / 2.0;
+    let c_hh = cluster.height / 2.0;
+    let cmin_x = cluster.x - c_hw;
+    let cmax_x = cluster.x + c_hw;
+    let cmin_y = cluster.y - c_hh;
+    let cmax_y = cluster.y + c_hh;
+
+    let l_hw = label.width / 2.0;
+    let l_hh = label.height / 2.0;
+    let lmin_x = label.x - l_hw;
+    let lmax_x = label.x + l_hw;
+    let lmin_y = label.y - l_hh;
+    let lmax_y = label.y + l_hh;
+
+    assert!(
+        lmin_x + 1e-6 >= cmin_x && lmax_x <= cmax_x + 1e-6,
+        "edge label should fit horizontally in cluster A"
+    );
+    assert!(
+        lmin_y + 1e-6 >= cmin_y && lmax_y <= cmax_y + 1e-6,
+        "edge label should fit vertically in cluster A"
+    );
+}

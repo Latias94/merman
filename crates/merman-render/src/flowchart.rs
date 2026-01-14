@@ -93,6 +93,33 @@ fn edge_from_label_name(edge: &FlowEdge) -> String {
     format!("{}-from-label", edge.id)
 }
 
+fn lowest_common_parent(
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    a: &str,
+    b: &str,
+) -> Option<String> {
+    if !g.options().compound {
+        return None;
+    }
+
+    let mut ancestors: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut cur = g.parent(a);
+    while let Some(p) = cur {
+        ancestors.insert(p.to_string());
+        cur = g.parent(p);
+    }
+
+    let mut cur = g.parent(b);
+    while let Some(p) = cur {
+        if ancestors.contains(p) {
+            return Some(p.to_string());
+        }
+        cur = g.parent(p);
+    }
+
+    None
+}
+
 pub fn layout_flowchart_v2(
     semantic: &Value,
     effective_config: &Value,
@@ -184,6 +211,8 @@ pub fn layout_flowchart_v2(
 
     let mut edge_label_nodes: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
+    let mut extra_children: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
 
     for e in &model.edges {
         if edge_label_is_non_empty(e) {
@@ -204,6 +233,14 @@ pub fn layout_flowchart_v2(
                     ..Default::default()
                 },
             );
+
+            if let Some(parent) = lowest_common_parent(&g, &e.from, &e.to) {
+                g.set_parent(label_node_id.clone(), parent.clone());
+                extra_children
+                    .entry(parent)
+                    .or_default()
+                    .push(label_node_id.clone());
+            }
 
             let minlen = e.length.max(1);
             let el = EdgeLabel {
@@ -312,6 +349,19 @@ pub fn layout_flowchart_v2(
         );
     }
 
+    for label_node_id in edge_label_nodes.values() {
+        let Some(n) = g.node(label_node_id) else {
+            continue;
+        };
+        let x = n.x.unwrap_or(0.0);
+        let y = n.y.unwrap_or(0.0);
+        base_pos.insert(label_node_id.clone(), (x, y));
+        leaf_rects.insert(
+            label_node_id.clone(),
+            Rect::from_center(x, y, n.width, n.height),
+        );
+    }
+
     let mut subgraphs_by_id: std::collections::HashMap<String, FlowSubgraph> =
         std::collections::HashMap::new();
     for sg in &model.subgraphs {
@@ -391,6 +441,11 @@ pub fn layout_flowchart_v2(
             }
 
             let dir = effective_cluster_dir(sg, &model.direction, inherit_dir);
+            let label_nodes_for_edges = internal_edges
+                .iter()
+                .filter(|e| edge_label_is_non_empty(e))
+                .map(|e| edge_label_node_id(e))
+                .collect::<Vec<_>>();
 
             let mut g_inner: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
                 multigraph: true,
@@ -483,7 +538,7 @@ pub fn layout_flowchart_v2(
             // Translate the inner layout back into the diagram coordinate space by matching the
             // original membership bounding box center.
             let mut old_rect: Option<Rect> = None;
-            for node_id in &sg.nodes {
+            for node_id in sg.nodes.iter().chain(label_nodes_for_edges.iter()) {
                 let Some((x, y)) = base_pos.get(node_id) else {
                     continue;
                 };
@@ -500,7 +555,7 @@ pub fn layout_flowchart_v2(
             let Some(old_rect) = old_rect else { continue };
 
             let mut new_rect: Option<Rect> = None;
-            for node_id in &sg.nodes {
+            for node_id in sg.nodes.iter().chain(label_nodes_for_edges.iter()) {
                 let Some(inner) = g_inner.node(node_id) else {
                     continue;
                 };
@@ -521,7 +576,7 @@ pub fn layout_flowchart_v2(
             let dy = ocy - ncy;
 
             // Apply translated positions to base_pos and leaf_rects.
-            for node_id in &sg.nodes {
+            for node_id in sg.nodes.iter().chain(label_nodes_for_edges.iter()) {
                 let Some(inner) = g_inner.node(node_id) else {
                     continue;
                 };
@@ -639,6 +694,7 @@ pub fn layout_flowchart_v2(
         id: &str,
         subgraphs_by_id: &std::collections::HashMap<String, FlowSubgraph>,
         leaf_rects: &std::collections::HashMap<String, Rect>,
+        extra_children: &std::collections::HashMap<String, Vec<String>>,
         cluster_rects: &mut std::collections::HashMap<String, Rect>,
         visiting: &mut std::collections::HashSet<String>,
         measurer: &dyn TextMeasurer,
@@ -670,6 +726,7 @@ pub fn layout_flowchart_v2(
                     member,
                     subgraphs_by_id,
                     leaf_rects,
+                    extra_children,
                     cluster_rects,
                     visiting,
                     measurer,
@@ -686,6 +743,18 @@ pub fn layout_flowchart_v2(
                     cur.union(r);
                 } else {
                     content = Some(r);
+                }
+            }
+        }
+
+        if let Some(extra) = extra_children.get(id) {
+            for child in extra {
+                if let Some(r) = leaf_rects.get(child).copied() {
+                    if let Some(ref mut cur) = content {
+                        cur.union(r);
+                    } else {
+                        content = Some(r);
+                    }
                 }
             }
         }
@@ -731,6 +800,7 @@ pub fn layout_flowchart_v2(
             &sg.id,
             &subgraphs_by_id,
             &leaf_rects,
+            &extra_children,
             &mut cluster_rects,
             &mut visiting,
             measurer,
