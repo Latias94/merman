@@ -70,4 +70,8 @@ fn er_svg_renders_entities_and_relationships() {
         svg.contains(" C "),
         "expected curveBasis cubic bezier commands in relationship paths"
     );
+    assert!(
+        svg.contains("fill:#fff") || svg.contains("fill: #fff"),
+        "expected classDef text color to apply as SVG fill"
+    );
 }

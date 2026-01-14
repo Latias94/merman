@@ -23,4 +23,4 @@ PowerShell:
 
 - Theme variables and styling parity (colors, fonts, precise CSS selectors).
 - Exact edge curve rendering (Mermaid uses a D3 basis curve; implemented via cubic Béziers).
-- Full support for Mermaid `style` / `classDef` / `class` application semantics (we currently apply `cssStyles` only to the entity box).
+- Full support for Mermaid `style` / `classDef` / `class` application semantics (currently applied for entity boxes + entity/attribute text; relationship labels still use defaults).

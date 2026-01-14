@@ -560,6 +560,101 @@ fn split_br_like_mermaid(text: &str) -> Vec<String> {
     t.split('\n').map(|s| s.to_string()).collect()
 }
 
+fn parse_style_decl(s: &str) -> Option<(&str, &str)> {
+    let s = s.trim().trim_end_matches(';').trim();
+    if s.is_empty() {
+        return None;
+    }
+    let (k, v) = s.split_once(':')?;
+    let k = k.trim();
+    let v = v.trim();
+    if k.is_empty() || v.is_empty() {
+        return None;
+    }
+    Some((k, v))
+}
+
+fn is_rect_style_key(key: &str) -> bool {
+    matches!(
+        key,
+        "fill"
+            | "stroke"
+            | "stroke-width"
+            | "stroke-dasharray"
+            | "opacity"
+            | "fill-opacity"
+            | "stroke-opacity"
+    )
+}
+
+fn is_text_style_key(key: &str) -> bool {
+    matches!(
+        key,
+        "color" | "font-family" | "font-size" | "font-weight" | "opacity"
+    )
+}
+
+fn compile_er_entity_styles(
+    entity: &crate::er::ErEntity,
+    classes: &std::collections::HashMap<String, crate::er::ErClassDef>,
+) -> (Vec<String>, Vec<String>) {
+    let mut compiled_box: Vec<String> = Vec::new();
+    let mut compiled_text: Vec<String> = Vec::new();
+    for class_name in entity.css_classes.split_whitespace() {
+        let Some(def) = classes.get(class_name) else {
+            continue;
+        };
+        for s in &def.styles {
+            let t = s.trim();
+            if t.is_empty() {
+                continue;
+            }
+            compiled_box.push(t.to_string());
+        }
+        for s in &def.text_styles {
+            let t = s.trim();
+            if t.is_empty() {
+                continue;
+            }
+            compiled_text.push(t.to_string());
+        }
+    }
+
+    let mut rect_decls: Vec<String> = Vec::new();
+    let mut text_decls: Vec<String> = Vec::new();
+
+    // Box styles: classDef styles + `style` statements.
+    for s in compiled_box.iter().chain(entity.css_styles.iter()) {
+        let Some((k, v)) = parse_style_decl(s) else {
+            continue;
+        };
+        if is_rect_style_key(k) {
+            rect_decls.push(format!("{k}:{v}"));
+        }
+        // Mermaid treats `color:` as the text color (even if it comes from the style list).
+        if k == "color" {
+            text_decls.push(format!("fill:{v}"));
+        }
+    }
+
+    // Text styles: classDef textStyles + `style` statements (only text-related keys).
+    for s in compiled_text.iter().chain(entity.css_styles.iter()) {
+        let Some((k, v)) = parse_style_decl(s) else {
+            continue;
+        };
+        if !is_text_style_key(k) {
+            continue;
+        }
+        if k == "color" {
+            text_decls.push(format!("fill:{v}"));
+        } else {
+            text_decls.push(format!("{k}:{v}"));
+        }
+    }
+
+    (rect_decls, text_decls)
+}
+
 pub fn render_er_diagram_svg(
     layout: &ErDiagramLayout,
     semantic: &serde_json::Value,
@@ -775,6 +870,18 @@ pub fn render_er_diagram_svg(
             });
         };
 
+        let (rect_style_decls, text_style_decls) = compile_er_entity_styles(entity, &model.classes);
+        let rect_style_attr = if rect_style_decls.is_empty() {
+            String::new()
+        } else {
+            format!(r#" style="{}""#, escape_xml(&rect_style_decls.join(";")))
+        };
+        let text_style_attr = if text_style_decls.is_empty() {
+            String::new()
+        } else {
+            format!(r#" style="{}""#, escape_xml(&text_style_decls.join(";")))
+        };
+
         let measure = crate::er::measure_entity_box(
             entity,
             measurer,
@@ -810,26 +917,22 @@ pub fn render_er_diagram_svg(
             fmt(ty)
         );
 
-        let rect_style = if entity.css_styles.is_empty() {
-            String::new()
-        } else {
-            format!(r#" style="{}""#, escape_xml(&entity.css_styles.join(";")))
-        };
         let _ = write!(
             &mut out,
             r#"<rect class="er entityBox" x="0" y="0" width="{}" height="{}"{} />"#,
             fmt(w),
             fmt(h),
-            rect_style
+            rect_style_attr
         );
 
         if entity.attributes.is_empty() {
             let _ = write!(
                 &mut out,
-                r#"<text class="er entityLabel" x="{}" y="{}" font-size="{}">{}</text>"#,
+                r#"<text class="er entityLabel" x="{}" y="{}" font-size="{}"{}>{}</text>"#,
                 fmt(w / 2.0),
                 fmt(h / 2.0),
                 fmt(font_size),
+                text_style_attr,
                 escape_xml(&measure.label_text)
             );
             out.push_str("</g>");
@@ -840,10 +943,11 @@ pub fn render_er_diagram_svg(
         let title_y = measure.height_padding + measure.label_height / 2.0;
         let _ = write!(
             &mut out,
-            r#"<text class="er entityLabel" x="{}" y="{}" font-size="{}">{}</text>"#,
+            r#"<text class="er entityLabel" x="{}" y="{}" font-size="{}"{}>{}</text>"#,
             fmt(w / 2.0),
             fmt(title_y),
             fmt(font_size),
+            text_style_attr,
             escape_xml(&measure.label_text)
         );
 
@@ -884,10 +988,11 @@ pub fn render_er_diagram_svg(
             );
             let _ = write!(
                 &mut out,
-                r#"<text class="er attributeText" x="{}" y="{}" font-size="{}">{}</text>"#,
+                r#"<text class="er attributeText" x="{}" y="{}" font-size="{}"{}>{}</text>"#,
                 fmt(measure.width_padding),
                 fmt(align_y),
                 fmt(attr_style.font_size),
+                text_style_attr,
                 escape_xml(&row.type_text)
             );
 
@@ -904,10 +1009,11 @@ pub fn render_er_diagram_svg(
             );
             let _ = write!(
                 &mut out,
-                r#"<text class="er attributeText" x="{}" y="{}" font-size="{}">{}</text>"#,
+                r#"<text class="er attributeText" x="{}" y="{}" font-size="{}"{}>{}</text>"#,
                 fmt(name_x + measure.width_padding),
                 fmt(align_y),
                 fmt(attr_style.font_size),
+                text_style_attr,
                 escape_xml(&row.name_text)
             );
 
@@ -924,10 +1030,11 @@ pub fn render_er_diagram_svg(
                 );
                 let _ = write!(
                     &mut out,
-                    r#"<text class="er attributeText" x="{}" y="{}" font-size="{}">{}</text>"#,
+                    r#"<text class="er attributeText" x="{}" y="{}" font-size="{}"{}>{}</text>"#,
                     fmt(x_off + measure.width_padding),
                     fmt(align_y),
                     fmt(attr_style.font_size),
+                    text_style_attr,
                     escape_xml(&row.key_text)
                 );
                 x_off += key_col_w;
@@ -944,10 +1051,11 @@ pub fn render_er_diagram_svg(
                 );
                 let _ = write!(
                     &mut out,
-                    r#"<text class="er attributeText" x="{}" y="{}" font-size="{}">{}</text>"#,
+                    r#"<text class="er attributeText" x="{}" y="{}" font-size="{}"{}>{}</text>"#,
                     fmt(x_off + measure.width_padding),
                     fmt(align_y),
                     fmt(attr_style.font_size),
+                    text_style_attr,
                     escape_xml(&row.comment_text)
                 );
             }
