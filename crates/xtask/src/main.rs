@@ -92,86 +92,106 @@ fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         .join("..");
     let out_root = out_root.unwrap_or_else(|| workspace_root.join("target").join("debug-svgs"));
 
-    let (fixtures_dir, out_dir) = match diagram.as_str() {
-        "class" | "classDiagram" => (
-            workspace_root.join("fixtures").join("class"),
-            out_root.join("class"),
-        ),
-        other => {
+    fn gen_one(
+        workspace_root: &Path,
+        out_root: &Path,
+        diagram: &str,
+        filter: Option<&str>,
+    ) -> Result<(), XtaskError> {
+        let (fixtures_dir, out_dir) = match diagram {
+            "flowchart" | "flowchart-v2" | "flowchartV2" => (
+                workspace_root.join("fixtures").join("flowchart"),
+                out_root.join("flowchart"),
+            ),
+            "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => (
+                workspace_root.join("fixtures").join("state"),
+                out_root.join("state"),
+            ),
+            "class" | "classDiagram" => (
+                workspace_root.join("fixtures").join("class"),
+                out_root.join("class"),
+            ),
+            "er" | "erDiagram" => (
+                workspace_root.join("fixtures").join("er"),
+                out_root.join("er"),
+            ),
+            other => {
+                return Err(XtaskError::DebugSvgFailed(format!(
+                    "unsupported diagram for debug svg export: {other} (supported: flowchart, state, class, er)"
+                )));
+            }
+        };
+
+        let mut mmd_files: Vec<PathBuf> = Vec::new();
+        let Ok(entries) = fs::read_dir(&fixtures_dir) else {
             return Err(XtaskError::DebugSvgFailed(format!(
-                "unsupported diagram for debug svg export: {other} (supported: class)"
+                "failed to list fixtures directory {}",
+                fixtures_dir.display()
+            )));
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            if !path.extension().is_some_and(|e| e == "mmd") {
+                continue;
+            }
+            if let Some(f) = filter {
+                if !path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.contains(f))
+                {
+                    continue;
+                }
+            }
+            mmd_files.push(path);
+        }
+        mmd_files.sort();
+
+        if mmd_files.is_empty() {
+            return Err(XtaskError::DebugSvgFailed(format!(
+                "no .mmd fixtures matched under {}",
+                fixtures_dir.display()
             )));
         }
-    };
 
-    let mut mmd_files: Vec<PathBuf> = Vec::new();
-    let Ok(entries) = fs::read_dir(&fixtures_dir) else {
-        return Err(XtaskError::DebugSvgFailed(format!(
-            "failed to list fixtures directory {}",
-            fixtures_dir.display()
-        )));
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        if !path.extension().is_some_and(|e| e == "mmd") {
-            continue;
-        }
-        if let Some(ref f) = filter {
-            if !path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.contains(f))
-            {
-                continue;
-            }
-        }
-        mmd_files.push(path);
-    }
-    mmd_files.sort();
+        fs::create_dir_all(&out_dir).map_err(|source| XtaskError::WriteFile {
+            path: out_dir.display().to_string(),
+            source,
+        })?;
 
-    if mmd_files.is_empty() {
-        return Err(XtaskError::DebugSvgFailed(format!(
-            "no .mmd fixtures matched under {}",
-            fixtures_dir.display()
-        )));
-    }
+        let engine = merman::Engine::new();
+        let mut failures: Vec<String> = Vec::new();
 
-    fs::create_dir_all(&out_dir).map_err(|source| XtaskError::WriteFile {
-        path: out_dir.display().to_string(),
-        source,
-    })?;
+        for mmd_path in mmd_files {
+            let text = match fs::read_to_string(&mmd_path) {
+                Ok(v) => v,
+                Err(err) => {
+                    failures.push(format!("failed to read {}: {err}", mmd_path.display()));
+                    continue;
+                }
+            };
 
-    let engine = merman::Engine::new();
-    let mut failures: Vec<String> = Vec::new();
+            let parsed = match futures::executor::block_on(
+                engine.parse_diagram(&text, merman::ParseOptions::default()),
+            ) {
+                Ok(Some(v)) => v,
+                Ok(None) => {
+                    failures.push(format!("no diagram detected in {}", mmd_path.display()));
+                    continue;
+                }
+                Err(err) => {
+                    failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
+                    continue;
+                }
+            };
 
-    for mmd_path in mmd_files {
-        let text = match fs::read_to_string(&mmd_path) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!("failed to read {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
-
-        let parsed = match futures::executor::block_on(
-            engine.parse_diagram(&text, merman::ParseOptions::default()),
-        ) {
-            Ok(Some(v)) => v,
-            Ok(None) => {
-                failures.push(format!("no diagram detected in {}", mmd_path.display()));
-                continue;
-            }
-            Err(err) => {
-                failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
-                continue;
-            }
-        };
-
-        let layouted =
-            match merman_render::layout_parsed(&parsed, &merman_render::LayoutOptions::default()) {
+            let layouted = match merman_render::layout_parsed(
+                &parsed,
+                &merman_render::LayoutOptions::default(),
+            ) {
                 Ok(v) => v,
                 Err(err) => {
                     failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
@@ -179,28 +199,61 @@ fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
-        let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = &layouted.layout else {
-            failures.push(format!(
-                "unexpected layout type for {}: {}",
-                mmd_path.display(),
-                layouted.meta.diagram_type
-            ));
-            continue;
-        };
+            let svg = match &layouted.layout {
+                merman_render::model::LayoutDiagram::FlowchartV2(layout) => {
+                    merman_render::svg::render_flowchart_v2_debug_svg(
+                        layout,
+                        &merman_render::svg::SvgRenderOptions::default(),
+                    )
+                }
+                merman_render::model::LayoutDiagram::StateDiagramV2(layout) => {
+                    merman_render::svg::render_state_diagram_v2_debug_svg(
+                        layout,
+                        &merman_render::svg::SvgRenderOptions::default(),
+                    )
+                }
+                merman_render::model::LayoutDiagram::ClassDiagramV2(layout) => {
+                    merman_render::svg::render_class_diagram_v2_debug_svg(
+                        layout,
+                        &merman_render::svg::SvgRenderOptions::default(),
+                    )
+                }
+                merman_render::model::LayoutDiagram::ErDiagram(layout) => {
+                    merman_render::svg::render_er_diagram_debug_svg(
+                        layout,
+                        &merman_render::svg::SvgRenderOptions::default(),
+                    )
+                }
+            };
 
-        let svg = merman_render::svg::render_class_diagram_v2_debug_svg(
-            layout,
-            &merman_render::svg::SvgRenderOptions::default(),
-        );
+            let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
+                failures.push(format!("invalid fixture filename {}", mmd_path.display()));
+                continue;
+            };
+            let out_path = out_dir.join(format!("{stem}.svg"));
+            if let Err(err) = fs::write(&out_path, svg) {
+                failures.push(format!("failed to write {}: {err}", out_path.display()));
+                continue;
+            }
+        }
 
-        let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
-            failures.push(format!("invalid fixture filename {}", mmd_path.display()));
-            continue;
-        };
-        let out_path = out_dir.join(format!("{stem}.svg"));
-        if let Err(err) = fs::write(&out_path, svg) {
-            failures.push(format!("failed to write {}: {err}", out_path.display()));
-            continue;
+        if failures.is_empty() {
+            return Ok(());
+        }
+
+        Err(XtaskError::DebugSvgFailed(failures.join("\n")))
+    }
+
+    let filter = filter.as_deref();
+    let diagrams: Vec<&str> = match diagram.as_str() {
+        "all" => vec!["flowchart", "state", "class", "er"],
+        other => vec![other],
+    };
+
+    let mut failures: Vec<String> = Vec::new();
+    for d in diagrams {
+        if let Err(err) = gen_one(&workspace_root, &out_root, d, filter) {
+            failures.push(format!("{d}: {err}"));
         }
     }
 
