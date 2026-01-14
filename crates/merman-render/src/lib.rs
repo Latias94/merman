@@ -2,6 +2,7 @@
 
 pub mod flowchart;
 pub mod model;
+pub mod svg;
 pub mod text;
 
 use crate::model::{LayoutDiagram, LayoutMeta, LayoutedDiagram};
