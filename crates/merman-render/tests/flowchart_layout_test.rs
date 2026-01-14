@@ -1,4 +1,5 @@
 use merman_core::{Engine, ParseOptions};
+use merman_render::text::TextMeasurer;
 use merman_render::{LayoutOptions, layout_parsed};
 use std::path::PathBuf;
 
@@ -471,8 +472,10 @@ fn flowchart_html_multiline_edge_label_has_multiple_lines() {
         .expect("edge A->B");
     let label = edge.label.as_ref().expect("edge label");
 
+    let measurer = merman_render::text::DeterministicTextMeasurer::default();
+    let one = measurer.measure("line1", &merman_render::text::TextStyle::default());
     assert!(
-        label.height > 45.0,
+        label.height > one.height + 1e-6,
         "expected multiline label to have larger height"
     );
 }
@@ -566,5 +569,168 @@ fn flowchart_various_edge_styles_do_not_break_layout() {
     assert_eq!(layout.edges.len(), 4);
     for e in &layout.edges {
         assert!(!e.points.is_empty(), "edge {} should have points", e.id);
+    }
+}
+
+#[test]
+fn flowchart_node_shape_dimensions_follow_mermaid_rules() {
+    // Verify key flowchart shapes follow Mermaid `@11.12.2` sizing rules (headless approximation).
+    // This mainly protects us from regressions when refactoring shape sizing.
+    let text = r#"flowchart TB
+A[Label]
+B(Label)
+C((Label))
+D(((Label)))
+E{Label}
+F{{Label}}
+G>Label]
+H([Label])
+I[(Label)]
+J[[Label]]
+K[/Label/]
+L[\Label\]
+M[/Label\]
+N[\Label/]
+O(-Label-)
+"#;
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+
+    let nodes_by_id = layout
+        .nodes
+        .iter()
+        .map(|n| (n.id.as_str(), n))
+        .collect::<std::collections::HashMap<_, _>>();
+
+    let measurer = merman_render::text::DeterministicTextMeasurer::default();
+    let metrics = measurer.measure("Label", &merman_render::text::TextStyle::default());
+    let p = 15.0;
+    let tw = metrics.width;
+    let th = metrics.height;
+
+    fn assert_close(actual: f64, expected: f64, name: &str) {
+        let eps = 1e-6;
+        assert!(
+            (actual - expected).abs() <= eps,
+            "{name}: expected {expected}, got {actual}"
+        );
+    }
+
+    // squareRect
+    {
+        let n = nodes_by_id["A"];
+        assert_close(n.width, tw + 4.0 * p, "squareRect width");
+        assert_close(n.height, th + 2.0 * p, "squareRect height");
+    }
+
+    // roundedRect
+    {
+        let n = nodes_by_id["B"];
+        assert_close(n.width, tw + 2.0 * p, "roundedRect width");
+        assert_close(n.height, th + 2.0 * p, "roundedRect height");
+    }
+
+    // circle / doublecircle
+    {
+        let n = nodes_by_id["C"];
+        assert_close(n.width, tw + p, "circle width");
+        assert_close(n.height, tw + p, "circle height");
+
+        let n = nodes_by_id["D"];
+        assert_close(n.width, tw + p + 10.0, "doublecircle width");
+        assert_close(n.height, tw + p + 10.0, "doublecircle height");
+    }
+
+    // diamond/question
+    {
+        let n = nodes_by_id["E"];
+        let s = (tw + p) + (th + p);
+        assert_close(n.width, s, "diamond width");
+        assert_close(n.height, s, "diamond height");
+    }
+
+    // hexagon
+    {
+        let n = nodes_by_id["F"];
+        let w0 = tw + 2.5 * p;
+        assert_close(n.width, w0 * (7.0 / 6.0), "hexagon width");
+        assert_close(n.height, th + p, "hexagon height");
+    }
+
+    // odd (`rect_left_inv_arrow`)
+    {
+        let n = nodes_by_id["G"];
+        let w = tw + p;
+        let h = th + p;
+        assert_close(n.width, w + h / 4.0, "odd width");
+        assert_close(n.height, h, "odd height");
+    }
+
+    // stadium
+    {
+        let n = nodes_by_id["H"];
+        let h = th + p;
+        let w = tw + h / 4.0 + p;
+        assert_close(n.width, w, "stadium width");
+        assert_close(n.height, h, "stadium height");
+    }
+
+    // cylinder
+    {
+        let n = nodes_by_id["I"];
+        let w = tw + p;
+        let rx = w / 2.0;
+        let ry = rx / (2.5 + w / 50.0);
+        let expected_h = th + p + 3.0 * ry;
+        assert_close(n.width, w, "cylinder width");
+        assert_close(n.height, expected_h, "cylinder height");
+    }
+
+    // subroutine
+    {
+        let n = nodes_by_id["J"];
+        assert_close(n.width, tw + p + 16.0, "subroutine width");
+        assert_close(n.height, th + p, "subroutine height");
+    }
+
+    // lean right/left
+    {
+        let n = nodes_by_id["K"];
+        let w = tw + p;
+        let h = th + p;
+        assert_close(n.width, w + h, "lean_right width");
+        assert_close(n.height, h, "lean_right height");
+
+        let n = nodes_by_id["L"];
+        assert_close(n.width, w + h, "lean_left width");
+        assert_close(n.height, h, "lean_left height");
+    }
+
+    // trapezoid / inv_trapezoid
+    {
+        let n = nodes_by_id["M"];
+        let w = tw + p;
+        let h = th + p;
+        assert_close(n.width, w + h, "trapezoid width");
+        assert_close(n.height, h, "trapezoid height");
+
+        let n = nodes_by_id["N"];
+        let w = tw + 2.0 * p;
+        let h = th + 2.0 * p;
+        assert_close(n.width, w + h, "inv_trapezoid width");
+        assert_close(n.height, h, "inv_trapezoid height");
+    }
+
+    // ellipse (broken upstream, but keep stable headless sizing)
+    {
+        let n = nodes_by_id["O"];
+        assert_close(n.width, tw + 2.0 * p, "ellipse width");
+        assert_close(n.height, th + 2.0 * p, "ellipse height");
     }
 }

@@ -223,8 +223,11 @@ pub fn layout_flowchart_v2(
 
             let label_text = e.label.as_deref().unwrap_or_default();
             let metrics = measurer.measure(label_text, &text_style);
-            let label_width = (metrics.width + node_padding).max(1.0);
-            let label_height = (metrics.height + node_padding).max(1.0);
+            // Mermaid renders edge labels using the `labelRect` shape and measures the overall
+            // SVG group bounding box; the label node should match the text box size (no extra
+            // node padding).
+            let label_width = metrics.width.max(1.0);
+            let label_height = metrics.height.max(1.0);
             g.set_node(
                 label_node_id.clone(),
                 NodeLabel {
@@ -480,8 +483,8 @@ pub fn layout_flowchart_v2(
 
                     let label_text = e.label.as_deref().unwrap_or_default();
                     let metrics = measurer.measure(label_text, &text_style);
-                    let label_width = (metrics.width + node_padding).max(1.0);
-                    let label_height = (metrics.height + node_padding).max(1.0);
+                    let label_width = metrics.width.max(1.0);
+                    let label_height = metrics.height.max(1.0);
                     g_inner.set_node(
                         label_node_id.clone(),
                         NodeLabel {
@@ -959,17 +962,110 @@ fn node_dimensions(
     metrics: crate::text::TextMetrics,
     padding: f64,
 ) -> (f64, f64) {
-    let mut width = metrics.width + padding * 2.0;
-    let mut height = metrics.height + padding * 2.0;
+    // This function mirrors Mermaid `@11.12.2` node shape sizing rules at the "rendering-elements"
+    // layer, but uses our headless `TextMeasurer` metrics instead of DOM `getBBox()`.
+    //
+    // References:
+    // - `packages/mermaid/src/diagrams/flowchart/flowDb.ts` (shape assignment + padding)
+    // - `packages/mermaid/src/rendering-util/rendering-elements/shapes/*.ts` (shape bounds)
+    let text_w = metrics.width.max(1.0);
+    let text_h = metrics.height.max(1.0);
+    let p = padding.max(0.0);
 
-    if let Some(shape) = layout_shape {
-        if shape == "diamond" {
-            width *= 1.2;
-            height *= 1.2;
+    let shape = layout_shape.unwrap_or("squareRect");
+
+    match shape {
+        // Default flowchart process node.
+        "squareRect" => (text_w + 4.0 * p, text_h + 2.0 * p),
+
+        // Flowchart "round" node type maps to `roundedRect` in FlowDB.
+        "roundedRect" => (text_w + 2.0 * p, text_h + 2.0 * p),
+
+        // Diamond (decision/question).
+        "diamond" | "question" | "diam" => {
+            let w = text_w + p;
+            let h = text_h + p;
+            let s = w + h;
+            (s, s)
         }
-    }
 
-    (width.max(1.0), height.max(1.0))
+        // Hexagon.
+        "hexagon" | "hex" => {
+            let h = text_h + p;
+            let w0 = text_w + 2.5 * p;
+            // The current Mermaid implementation expands the half-width by `m = (w/2)/6`,
+            // resulting in a total width of `7/6 * w`.
+            (w0 * (7.0 / 6.0), h)
+        }
+
+        // Stadium/terminator.
+        "stadium" => {
+            let h = text_h + p;
+            let w = text_w + h / 4.0 + p;
+            (w, h)
+        }
+
+        // Subroutine (framed rectangle): adds an 8px "frame" on both sides.
+        "subroutine" | "fr-rect" => {
+            let w = text_w + p;
+            let h = text_h + p;
+            (w + 16.0, h)
+        }
+
+        // Cylinder/database.
+        "cylinder" | "cyl" => {
+            let w = text_w + p;
+            let rx = w / 2.0;
+            let ry = rx / (2.5 + w / 50.0);
+            // Mermaid's cylinder path height ends up including two extra `ry` from the ellipses.
+            // See `createCylinderPathD` + `translate(..., -(h/2 + ry))`.
+            let height = text_h + p + 3.0 * ry;
+            (w, height)
+        }
+
+        // Circle.
+        "circle" | "circ" => {
+            // Mermaid uses half-padding for circles and bases radius on label width.
+            let d = text_w + p;
+            (d, d)
+        }
+
+        // Double circle.
+        "doublecircle" | "dbl-circ" => {
+            // `gap = 5` is hard-coded in Mermaid.
+            let d = text_w + p + 10.0;
+            (d, d)
+        }
+
+        // Lean and trapezoid variants (parallelograms/trapezoids).
+        "lean_right" | "lean-r" | "lean-right" | "lean_left" | "lean-l" | "lean-left"
+        | "trapezoid" => {
+            let w = text_w + p;
+            let h = text_h + p;
+            (w + h, h)
+        }
+
+        // Inverted trapezoid uses `2 * padding` on both axes in Mermaid.
+        "inv_trapezoid" | "inv-trapezoid" => {
+            let w = text_w + 2.0 * p;
+            let h = text_h + 2.0 * p;
+            (w + h, h)
+        }
+
+        // Odd node (`>... ]`) is rendered using `rect_left_inv_arrow`.
+        "odd" | "rect_left_inv_arrow" => {
+            let w = text_w + p;
+            let h = text_h + p;
+            (w + h / 4.0, h)
+        }
+
+        // Ellipses are currently broken upstream but still emitted by FlowDB.
+        // Keep a reasonable headless size for layout stability.
+        "ellipse" => (text_w + 2.0 * p, text_h + 2.0 * p),
+
+        // Fallback: treat unknown shapes as default rectangles.
+        _ => (text_w + 4.0 * p, text_h + 2.0 * p),
+    }
 }
 
 fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
