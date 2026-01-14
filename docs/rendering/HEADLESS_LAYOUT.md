@@ -67,3 +67,4 @@ See also: `docs/rendering/FLOWCHART_DEBUG_SVG.md`.
 See also: `docs/rendering/STATE_DEBUG_SVG.md`.
 See also: `docs/rendering/CLASS_DEBUG_SVG.md`.
 See also: `docs/rendering/ER_DEBUG_SVG.md`.
+See also: `docs/rendering/ER_SVG.md`.

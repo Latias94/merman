@@ -8,25 +8,32 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Deserialize)]
-struct ErModel {
+pub(crate) struct ErModel {
     pub direction: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub classes: HashMap<String, ErClassDef>,
     pub entities: HashMap<String, ErEntity>,
     #[serde(default)]
     pub relationships: Vec<ErRelationship>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct ErEntity {
+pub(crate) struct ErEntity {
     pub id: String,
     pub label: String,
     #[serde(default)]
     pub alias: String,
+    #[serde(default, rename = "cssClasses")]
+    pub css_classes: String,
+    #[serde(default, rename = "cssStyles")]
+    pub css_styles: Vec<String>,
     #[serde(default)]
     pub attributes: Vec<ErAttribute>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct ErAttribute {
+pub(crate) struct ErAttribute {
     #[serde(rename = "type")]
     pub ty: String,
     pub name: String,
@@ -37,7 +44,7 @@ struct ErAttribute {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct ErRelationship {
+pub(crate) struct ErRelationship {
     #[serde(rename = "entityA")]
     pub entity_a: String,
     #[serde(rename = "entityB")]
@@ -47,6 +54,18 @@ struct ErRelationship {
     #[allow(dead_code)]
     #[serde(rename = "relSpec")]
     pub rel_spec: Value,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct ErClassDef {
+    #[allow(dead_code)]
+    pub id: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub styles: Vec<String>,
+    #[serde(default, rename = "textStyles")]
+    #[allow(dead_code)]
+    pub text_styles: Vec<String>,
 }
 
 fn json_f64(v: &Value) -> Option<f64> {
@@ -91,7 +110,7 @@ fn rank_dir_from(direction: &str) -> RankDir {
     }
 }
 
-fn parse_generic_types_like_mermaid(text: &str) -> String {
+pub(crate) fn parse_generic_types_like_mermaid(text: &str) -> String {
     // Mermaid `parseGenericTypes` turns `Foo~T~` into `Foo<T>` for display.
     let mut out = String::with_capacity(text.len());
     let mut it = text.split('~').peekable();
@@ -127,13 +146,43 @@ fn er_text_style(effective_config: &Value) -> TextStyle {
     }
 }
 
-fn entity_box_dimensions(
+#[derive(Debug, Clone)]
+pub(crate) struct ErEntityMeasureRow {
+    pub type_text: String,
+    pub name_text: String,
+    pub key_text: String,
+    pub comment_text: String,
+    pub height: f64,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ErEntityMeasure {
+    pub width: f64,
+    pub height: f64,
+    #[allow(dead_code)]
+    pub padding: f64,
+    pub height_padding: f64,
+    pub width_padding: f64,
+    pub label_text: String,
+    #[allow(dead_code)]
+    pub label_width: f64,
+    pub label_height: f64,
+    pub has_key: bool,
+    pub has_comment: bool,
+    pub max_type_w: f64,
+    pub max_name_w: f64,
+    pub max_key_w: f64,
+    pub max_comment_w: f64,
+    pub rows: Vec<ErEntityMeasureRow>,
+}
+
+pub(crate) fn measure_entity_box(
     entity: &ErEntity,
     measurer: &dyn TextMeasurer,
     label_style: &TextStyle,
     attr_style: &TextStyle,
     effective_config: &Value,
-) -> (f64, f64) {
+) -> ErEntityMeasure {
     let padding = config_f64(effective_config, &["er", "entityPadding"]).unwrap_or(15.0);
     let min_w = config_f64(effective_config, &["er", "minEntityWidth"]).unwrap_or(100.0);
     let min_h = config_f64(effective_config, &["er", "minEntityHeight"]).unwrap_or(75.0);
@@ -145,8 +194,9 @@ fn entity_box_dimensions(
         entity.label.as_str()
     } else {
         entity.alias.as_str()
-    };
-    let label_metrics = measurer.measure_wrapped(label_text, label_style, None, WrapMode::SvgLike);
+    }
+    .to_string();
+    let label_metrics = measurer.measure_wrapped(&label_text, label_style, None, WrapMode::SvgLike);
 
     let mut has_key = false;
     let mut has_comment = false;
@@ -164,9 +214,10 @@ fn entity_box_dimensions(
     let mut max_key_w: f64 = 0.0;
     let mut max_comment_w: f64 = 0.0;
 
+    let mut rows: Vec<ErEntityMeasureRow> = Vec::new();
+
     let mut cumulative_h = label_metrics.height + height_padding * 2.0;
-    for (idx, a) in entity.attributes.iter().enumerate() {
-        let _ = idx;
+    for a in &entity.attributes {
         let ty = parse_generic_types_like_mermaid(&a.ty);
         let m_type = measurer.measure_wrapped(&ty, attr_style, None, WrapMode::SvgLike);
         let m_name = measurer.measure_wrapped(&a.name, attr_style, None, WrapMode::SvgLike);
@@ -174,24 +225,40 @@ fn entity_box_dimensions(
         max_name_w = max_name_w.max(m_name.width);
         let mut row_h = m_type.height.max(m_name.height);
 
-        if has_key {
-            let key_text = if a.keys.is_empty() {
+        let key_text = if has_key {
+            if a.keys.is_empty() {
                 String::new()
             } else {
                 a.keys.join(",")
-            };
+            }
+        } else {
+            String::new()
+        };
+        if has_key {
             let m_key = measurer.measure_wrapped(&key_text, attr_style, None, WrapMode::SvgLike);
             max_key_w = max_key_w.max(m_key.width);
             row_h = row_h.max(m_key.height);
         }
 
+        let comment_text = if has_comment {
+            a.comment.clone()
+        } else {
+            String::new()
+        };
         if has_comment {
             let m_comment =
-                measurer.measure_wrapped(&a.comment, attr_style, None, WrapMode::SvgLike);
+                measurer.measure_wrapped(&comment_text, attr_style, None, WrapMode::SvgLike);
             max_comment_w = max_comment_w.max(m_comment.width);
             row_h = row_h.max(m_comment.height);
         }
 
+        rows.push(ErEntityMeasureRow {
+            type_text: ty,
+            name_text: a.name.clone(),
+            key_text,
+            comment_text,
+            height: row_h.max(1.0),
+        });
         cumulative_h += row_h + height_padding * 2.0;
     }
 
@@ -204,17 +271,44 @@ fn entity_box_dimensions(
     }
 
     let max_width = max_type_w + max_name_w + max_key_w + max_comment_w;
-    let w = min_w.max(
+    let width = min_w.max(
         (label_metrics.width + padding * 2.0).max(max_width + width_padding * width_padding_factor),
     );
 
-    let h = if entity.attributes.is_empty() {
+    let height = if entity.attributes.is_empty() {
         min_h.max(label_metrics.height + padding * 2.0)
     } else {
         cumulative_h
     };
 
-    (w.max(1.0), h.max(1.0))
+    ErEntityMeasure {
+        width: width.max(1.0),
+        height: height.max(1.0),
+        padding,
+        height_padding,
+        width_padding,
+        label_text,
+        label_width: label_metrics.width.max(1.0),
+        label_height: label_metrics.height.max(1.0),
+        has_key,
+        has_comment,
+        max_type_w,
+        max_name_w,
+        max_key_w,
+        max_comment_w,
+        rows,
+    }
+}
+
+fn entity_box_dimensions(
+    entity: &ErEntity,
+    measurer: &dyn TextMeasurer,
+    label_style: &TextStyle,
+    attr_style: &TextStyle,
+    effective_config: &Value,
+) -> (f64, f64) {
+    let m = measure_entity_box(entity, measurer, label_style, attr_style, effective_config);
+    (m.width, m.height)
 }
 
 fn edge_label_metrics(text: &str, measurer: &dyn TextMeasurer, style: &TextStyle) -> (f64, f64) {

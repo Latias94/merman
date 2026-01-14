@@ -2,6 +2,8 @@ use crate::model::{
     Bounds, ClassDiagramV2Layout, ErDiagramLayout, FlowchartV2Layout, LayoutCluster, LayoutNode,
     StateDiagramV2Layout,
 };
+use crate::text::TextMeasurer;
+use crate::{Error, Result};
 use std::fmt::Write as _;
 
 #[derive(Debug, Clone)]
@@ -535,6 +537,438 @@ pub fn render_er_diagram_debug_svg(layout: &ErDiagramLayout, options: &SvgRender
 
     out.push_str("</svg>\n");
     out
+}
+
+fn config_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
+    let mut cur = cfg;
+    for key in path {
+        cur = cur.get(*key)?;
+    }
+    cur.as_str().map(|s| s.to_string())
+}
+
+fn theme_color(effective_config: &serde_json::Value, key: &str, fallback: &str) -> String {
+    config_string(effective_config, &["themeVariables", key])
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn split_br_like_mermaid(text: &str) -> Vec<String> {
+    let t = text
+        .replace("<br/>", "\n")
+        .replace("<br />", "\n")
+        .replace("<br>", "\n");
+    t.split('\n').map(|s| s.to_string()).collect()
+}
+
+pub fn render_er_diagram_svg(
+    layout: &ErDiagramLayout,
+    semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let model: crate::er::ErModel = serde_json::from_value(semantic.clone())?;
+
+    let stroke = theme_color(effective_config, "lineColor", "#333333");
+    let node_border = theme_color(effective_config, "nodeBorder", "#333333");
+    let main_bkg = theme_color(effective_config, "mainBkg", "#ffffff");
+    let tertiary = theme_color(effective_config, "tertiaryColor", "#e5e7eb");
+    let font_family = config_string(effective_config, &["fontFamily"])
+        .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
+        .unwrap_or_else(|| "Arial, Helvetica, sans-serif".to_string());
+    let font_size = effective_config
+        .get("er")
+        .and_then(|v| v.get("fontSize"))
+        .and_then(|v| v.as_f64())
+        .or_else(|| effective_config.get("fontSize").and_then(|v| v.as_f64()))
+        .unwrap_or(12.0)
+        .max(1.0);
+
+    let label_style = crate::text::TextStyle {
+        font_family: Some(font_family.clone()),
+        font_size,
+        font_weight: None,
+    };
+    let attr_style = crate::text::TextStyle {
+        font_family: Some(font_family.clone()),
+        font_size: (font_size * 0.85).max(1.0),
+        font_weight: None,
+    };
+
+    let mut nodes = layout.nodes.clone();
+    nodes.sort_by(|a, b| a.id.cmp(&b.id));
+
+    let mut edges = layout.edges.clone();
+    edges.sort_by(|a, b| a.id.cmp(&b.id));
+
+    let bounds = compute_layout_bounds(&[], &nodes, &edges).unwrap_or(Bounds {
+        min_x: 0.0,
+        min_y: 0.0,
+        max_x: 100.0,
+        max_y: 100.0,
+    });
+    let pad = options.viewbox_padding.max(0.0);
+    let vb_min_x = bounds.min_x - pad;
+    let vb_min_y = bounds.min_y - pad;
+    let vb_w = (bounds.max_x - bounds.min_x) + pad * 2.0;
+    let vb_h = (bounds.max_y - bounds.min_y) + pad * 2.0;
+
+    let mut out = String::new();
+    let _ = writeln!(
+        &mut out,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}">"#,
+        fmt(vb_min_x),
+        fmt(vb_min_y),
+        fmt(vb_w.max(1.0)),
+        fmt(vb_h.max(1.0))
+    );
+
+    let _ = writeln!(
+        &mut out,
+        r#"<style>
+  .er.entityBox {{ fill: {}; stroke: {}; stroke-width: 1px; }}
+  .er.relationshipLine {{ stroke: {}; stroke-width: 1; fill: none; }}
+  .er.relationshipLabelBox {{ fill: {}; opacity: 0.7; }}
+  .er.entityLabel {{ fill: {}; font-family: {}; dominant-baseline: middle; text-anchor: middle; }}
+  .er.attributeText {{ fill: {}; font-family: {}; dominant-baseline: middle; text-anchor: left; }}
+  .er.attributeBoxOdd {{ fill: rgba(0,0,0,0.03); stroke: {}; stroke-width: 0; }}
+  .er.attributeBoxEven {{ fill: rgba(0,0,0,0.06); stroke: {}; stroke-width: 0; }}
+</style>"#,
+        main_bkg,
+        node_border,
+        stroke,
+        tertiary,
+        node_border,
+        escape_xml(&font_family),
+        node_border,
+        escape_xml(&font_family),
+        node_border,
+        node_border
+    );
+
+    // Markers ported from Mermaid `@11.12.2` `erMarkers.js`.
+    let defs = format!(
+        r##"<defs>
+  <marker id="MD_PARENT_START" refX="0" refY="7" markerWidth="190" markerHeight="240" orient="auto">
+    <path d="M 18,7 L9,13 L1,7 L9,1 Z" fill="{stroke}" stroke="{stroke}" />
+  </marker>
+  <marker id="MD_PARENT_END" refX="19" refY="7" markerWidth="20" markerHeight="28" orient="auto">
+    <path d="M 18,7 L9,13 L1,7 L9,1 Z" fill="{stroke}" stroke="{stroke}" />
+  </marker>
+
+  <marker id="ONLY_ONE_START" refX="0" refY="9" markerWidth="18" markerHeight="18" orient="auto">
+    <path stroke="{stroke}" fill="none" d="M9,0 L9,18 M15,0 L15,18" />
+  </marker>
+  <marker id="ONLY_ONE_END" refX="18" refY="9" markerWidth="18" markerHeight="18" orient="auto">
+    <path stroke="{stroke}" fill="none" d="M3,0 L3,18 M9,0 L9,18" />
+  </marker>
+
+  <marker id="ZERO_OR_ONE_START" refX="0" refY="9" markerWidth="30" markerHeight="18" orient="auto">
+    <circle stroke="{stroke}" fill="{main_bkg}" cx="21" cy="9" r="6" />
+    <path stroke="{stroke}" fill="none" d="M9,0 L9,18" />
+  </marker>
+  <marker id="ZERO_OR_ONE_END" refX="30" refY="9" markerWidth="30" markerHeight="18" orient="auto">
+    <circle stroke="{stroke}" fill="{main_bkg}" cx="9" cy="9" r="6" />
+    <path stroke="{stroke}" fill="none" d="M21,0 L21,18" />
+  </marker>
+
+  <marker id="ONE_OR_MORE_START" refX="18" refY="18" markerWidth="45" markerHeight="36" orient="auto">
+    <path stroke="{stroke}" fill="none" d="M0,18 Q 18,0 36,18 Q 18,36 0,18 M42,9 L42,27" />
+  </marker>
+  <marker id="ONE_OR_MORE_END" refX="27" refY="18" markerWidth="45" markerHeight="36" orient="auto">
+    <path stroke="{stroke}" fill="none" d="M3,9 L3,27 M9,18 Q27,0 45,18 Q27,36 9,18" />
+  </marker>
+
+  <marker id="ZERO_OR_MORE_START" refX="18" refY="18" markerWidth="57" markerHeight="36" orient="auto">
+    <circle stroke="{stroke}" fill="{main_bkg}" cx="48" cy="18" r="6" />
+    <path stroke="{stroke}" fill="none" d="M0,18 Q18,0 36,18 Q18,36 0,18" />
+  </marker>
+  <marker id="ZERO_OR_MORE_END" refX="39" refY="18" markerWidth="57" markerHeight="36" orient="auto">
+    <circle stroke="{stroke}" fill="{main_bkg}" cx="9" cy="18" r="6" />
+    <path stroke="{stroke}" fill="none" d="M21,18 Q39,0 57,18 Q39,36 21,18" />
+  </marker>
+</defs>"##,
+        stroke = escape_xml(&stroke),
+        main_bkg = escape_xml(&main_bkg)
+    );
+    out.push_str(&defs);
+    out.push('\n');
+
+    let mut entity_by_id: std::collections::HashMap<&str, &crate::er::ErEntity> =
+        std::collections::HashMap::new();
+    for e in model.entities.values() {
+        entity_by_id.insert(e.id.as_str(), e);
+    }
+
+    if options.include_edges {
+        out.push_str(r#"<g class="relationships">"#);
+        for e in &edges {
+            if e.points.len() >= 2 {
+                out.push_str(r#"<path class="er relationshipLine""#);
+                if let Some(dash) = &e.stroke_dasharray {
+                    let _ = write!(&mut out, r#" stroke-dasharray="{}""#, escape_xml(dash));
+                }
+                if let Some(m) = &e.start_marker {
+                    let _ = write!(&mut out, r#" marker-start="url(#{})""#, escape_xml(m));
+                }
+                if let Some(m) = &e.end_marker {
+                    let _ = write!(&mut out, r#" marker-end="url(#{})""#, escape_xml(m));
+                }
+                out.push_str(r#" d=""#);
+                for (idx, p) in e.points.iter().enumerate() {
+                    if idx == 0 {
+                        let _ = write!(&mut out, "M {},{}", fmt(p.x), fmt(p.y));
+                    } else {
+                        let _ = write!(&mut out, " L {},{}", fmt(p.x), fmt(p.y));
+                    }
+                }
+                out.push_str(r#"" />"#);
+            }
+
+            // Role label + opaque box.
+            if let Some(lbl) = &e.label {
+                let x = lbl.x - lbl.width / 2.0;
+                let y = lbl.y - lbl.height / 2.0;
+                let _ = write!(
+                    &mut out,
+                    r#"<rect class="er relationshipLabelBox" x="{}" y="{}" width="{}" height="{}" />"#,
+                    fmt(x),
+                    fmt(y),
+                    fmt(lbl.width.max(1.0)),
+                    fmt(lbl.height.max(1.0))
+                );
+
+                let rel_text =
+                    e.id.strip_prefix("er-rel-")
+                        .and_then(|s| s.parse::<usize>().ok())
+                        .and_then(|idx| model.relationships.get(idx))
+                        .map(|r| r.role_a.as_str())
+                        .unwrap_or("");
+                let lines = split_br_like_mermaid(rel_text);
+                let _ = write!(
+                    &mut out,
+                    r#"<text class="er entityLabel" x="{}" y="{}" font-size="{}">"#,
+                    fmt(lbl.x),
+                    fmt(lbl.y),
+                    fmt(font_size)
+                );
+                if lines.len() <= 1 {
+                    out.push_str(&escape_xml(rel_text));
+                } else {
+                    let first_shift = -((lines.len() as f64 - 1.0) * 0.5);
+                    for (i, line) in lines.iter().enumerate() {
+                        let dy = if i == 0 { first_shift } else { 1.0 };
+                        let _ = write!(
+                            &mut out,
+                            r#"<tspan x="{}" dy="{}em">{}</tspan>"#,
+                            fmt(lbl.x),
+                            fmt(dy),
+                            escape_xml(line)
+                        );
+                    }
+                }
+                out.push_str("</text>");
+            }
+        }
+        out.push_str("</g>\n");
+    }
+
+    // Entities drawn after relationships so they cover markers when overlapping.
+    out.push_str(r#"<g class="entities">"#);
+    for n in &nodes {
+        let Some(entity) = entity_by_id.get(n.id.as_str()).copied() else {
+            return Err(Error::InvalidModel {
+                message: format!("missing ER entity for node id {}", n.id),
+            });
+        };
+
+        let measure = crate::er::measure_entity_box(
+            entity,
+            measurer,
+            &label_style,
+            &attr_style,
+            effective_config,
+        );
+        let w = n.width.max(1.0);
+        let h = n.height.max(1.0);
+        if (measure.width - w).abs() > 1e-3 || (measure.height - h).abs() > 1e-3 {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "ER entity measured size mismatch for {}: layout=({},{}), measure=({}, {})",
+                    n.id, w, h, measure.width, measure.height
+                ),
+            });
+        }
+
+        let tx = n.x - w / 2.0;
+        let ty = n.y - h / 2.0;
+
+        let group_class = if entity.css_classes.trim().is_empty() {
+            "er".to_string()
+        } else {
+            format!("er {}", entity.css_classes.trim())
+        };
+        let _ = write!(
+            &mut out,
+            r#"<g id="{}" class="{}" transform="translate({}, {})">"#,
+            escape_xml(&entity.id),
+            escape_xml(&group_class),
+            fmt(tx),
+            fmt(ty)
+        );
+
+        let rect_style = if entity.css_styles.is_empty() {
+            String::new()
+        } else {
+            format!(r#" style="{}""#, escape_xml(&entity.css_styles.join(";")))
+        };
+        let _ = write!(
+            &mut out,
+            r#"<rect class="er entityBox" x="0" y="0" width="{}" height="{}"{} />"#,
+            fmt(w),
+            fmt(h),
+            rect_style
+        );
+
+        if entity.attributes.is_empty() {
+            let _ = write!(
+                &mut out,
+                r#"<text class="er entityLabel" x="{}" y="{}" font-size="{}">{}</text>"#,
+                fmt(w / 2.0),
+                fmt(h / 2.0),
+                fmt(font_size),
+                escape_xml(&measure.label_text)
+            );
+            out.push_str("</g>");
+            continue;
+        }
+
+        // Title near top.
+        let title_y = measure.height_padding + measure.label_height / 2.0;
+        let _ = write!(
+            &mut out,
+            r#"<text class="er entityLabel" x="{}" y="{}" font-size="{}">{}</text>"#,
+            fmt(w / 2.0),
+            fmt(title_y),
+            fmt(font_size),
+            escape_xml(&measure.label_text)
+        );
+
+        let width_padding_factor = 4.0
+            + if measure.has_key { 2.0 } else { 0.0 }
+            + if measure.has_comment { 2.0 } else { 0.0 };
+        let max_width =
+            measure.max_type_w + measure.max_name_w + measure.max_key_w + measure.max_comment_w;
+        let spare_column_width = ((w - max_width - measure.width_padding * width_padding_factor)
+            / (width_padding_factor / 2.0))
+            .max(0.0);
+
+        let type_col_w = measure.max_type_w + measure.width_padding * 2.0 + spare_column_width;
+        let name_col_w = measure.max_name_w + measure.width_padding * 2.0 + spare_column_width;
+        let key_col_w = measure.max_key_w + measure.width_padding * 2.0 + spare_column_width;
+        let comment_col_w =
+            measure.max_comment_w + measure.width_padding * 2.0 + spare_column_width;
+
+        let mut y_off = measure.label_height + measure.height_padding * 2.0;
+        let mut odd = true;
+        for row in &measure.rows {
+            let align_y = y_off + measure.height_padding + row.height / 2.0;
+            let row_h = row.height + measure.height_padding * 2.0;
+            let row_class = if odd {
+                "attributeBoxOdd"
+            } else {
+                "attributeBoxEven"
+            };
+
+            // type
+            let _ = write!(
+                &mut out,
+                r#"<rect class="er {}" x="0" y="{}" width="{}" height="{}" />"#,
+                row_class,
+                fmt(y_off),
+                fmt(type_col_w.max(1.0)),
+                fmt(row_h.max(1.0))
+            );
+            let _ = write!(
+                &mut out,
+                r#"<text class="er attributeText" x="{}" y="{}" font-size="{}">{}</text>"#,
+                fmt(measure.width_padding),
+                fmt(align_y),
+                fmt(attr_style.font_size),
+                escape_xml(&row.type_text)
+            );
+
+            // name
+            let name_x = type_col_w;
+            let _ = write!(
+                &mut out,
+                r#"<rect class="er {}" x="{}" y="{}" width="{}" height="{}" />"#,
+                row_class,
+                fmt(name_x),
+                fmt(y_off),
+                fmt(name_col_w.max(1.0)),
+                fmt(row_h.max(1.0))
+            );
+            let _ = write!(
+                &mut out,
+                r#"<text class="er attributeText" x="{}" y="{}" font-size="{}">{}</text>"#,
+                fmt(name_x + measure.width_padding),
+                fmt(align_y),
+                fmt(attr_style.font_size),
+                escape_xml(&row.name_text)
+            );
+
+            let mut x_off = name_x + name_col_w;
+            if measure.has_key {
+                let _ = write!(
+                    &mut out,
+                    r#"<rect class="er {}" x="{}" y="{}" width="{}" height="{}" />"#,
+                    row_class,
+                    fmt(x_off),
+                    fmt(y_off),
+                    fmt(key_col_w.max(1.0)),
+                    fmt(row_h.max(1.0))
+                );
+                let _ = write!(
+                    &mut out,
+                    r#"<text class="er attributeText" x="{}" y="{}" font-size="{}">{}</text>"#,
+                    fmt(x_off + measure.width_padding),
+                    fmt(align_y),
+                    fmt(attr_style.font_size),
+                    escape_xml(&row.key_text)
+                );
+                x_off += key_col_w;
+            }
+            if measure.has_comment {
+                let _ = write!(
+                    &mut out,
+                    r#"<rect class="er {}" x="{}" y="{}" width="{}" height="{}" />"#,
+                    row_class,
+                    fmt(x_off),
+                    fmt(y_off),
+                    fmt(comment_col_w.max(1.0)),
+                    fmt(row_h.max(1.0))
+                );
+                let _ = write!(
+                    &mut out,
+                    r#"<text class="er attributeText" x="{}" y="{}" font-size="{}">{}</text>"#,
+                    fmt(x_off + measure.width_padding),
+                    fmt(align_y),
+                    fmt(attr_style.font_size),
+                    escape_xml(&row.comment_text)
+                );
+            }
+
+            y_off += row_h;
+            odd = !odd;
+        }
+
+        out.push_str("</g>");
+    }
+    out.push_str("</g>\n");
+
+    out.push_str("</svg>\n");
+    Ok(out)
 }
 
 fn render_node(out: &mut String, n: &LayoutNode) {
