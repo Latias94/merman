@@ -781,3 +781,42 @@ fn flowchart_wrapping_width_increases_height_for_long_labels() {
         "expected wrapped label to constrain node width"
     );
 }
+
+#[test]
+fn flowchart_htmllabels_long_word_is_clamped_but_not_wrapped() {
+    // Mermaid HTML labels use `white-space: nowrap` initially and do not split long words; layout
+    // width is constrained by `max-width` but height should not increase.
+    let text = "%%{init: {\"flowchart\": {\"wrappingWidth\": 60, \"htmlLabels\": true}}}%%\nflowchart TB\nA[Supercalifragilisticexpialidocious]\n";
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+
+    let a = layout.nodes.iter().find(|n| n.id == "A").expect("node A");
+
+    let measurer = merman_render::text::DeterministicTextMeasurer::default();
+    let style = merman_render::text::TextStyle::default();
+    let single = measurer.measure_wrapped(
+        "Supercalifragilisticexpialidocious",
+        &style,
+        None,
+        WrapMode::HtmlLike,
+    );
+
+    // Height should remain single-line in HTML mode (no long-word splitting).
+    assert!(
+        (a.height - (single.height + 2.0 * 15.0)).abs() < 1e-6,
+        "expected long word to remain single-line in HTML mode"
+    );
+
+    // Width should be clamped to wrappingWidth plus squareRect padding rule.
+    let p = 15.0;
+    assert!(
+        a.width <= 60.0 + 4.0 * p + 1e-6,
+        "expected HTML mode to clamp width"
+    );
+}
