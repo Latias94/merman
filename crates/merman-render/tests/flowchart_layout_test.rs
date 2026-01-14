@@ -437,13 +437,16 @@ fn flowchart_cross_subgraph_labeled_edge_label_belongs_to_outer_cluster() {
         rect_contains(rect_from_cluster(outer), label_rect, 1e-6),
         "cross-subgraph edge label should fit in Outer cluster"
     );
+
+    // If the label node were incorrectly assigned to `Left`/`Right`, those cluster bounds would
+    // expand to include the (very wide) label. Instead, only the LCA (`Outer`) should include it.
     assert!(
-        !rect_contains(rect_from_cluster(left), label_rect, 1e-6),
-        "cross-subgraph edge label should not be required to fit in Left cluster"
+        left.width < label.width * 0.8,
+        "Left cluster should not expand to include cross-subgraph label"
     );
     assert!(
-        !rect_contains(rect_from_cluster(right), label_rect, 1e-6),
-        "cross-subgraph edge label should not be required to fit in Right cluster"
+        right.width < label.width * 0.8,
+        "Right cluster should not expand to include cross-subgraph label"
     );
 }
 
@@ -472,4 +475,96 @@ fn flowchart_html_multiline_edge_label_has_multiple_lines() {
         label.height > 45.0,
         "expected multiline label to have larger height"
     );
+}
+
+#[test]
+fn flowchart_multigraph_edges_keep_distinct_routes_and_labels() {
+    // Mermaid flowcharts are multigraphs; ensure we can lay out multiple edges between the same
+    // endpoints without collapsing their routes/labels.
+    let text = "flowchart TB\nA -->|l1| B\nA -->|l2| B\nA --> B\n";
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+
+    let edges = layout
+        .edges
+        .iter()
+        .filter(|e| e.from == "A" && e.to == "B")
+        .collect::<Vec<_>>();
+    assert_eq!(edges.len(), 3, "expected three A->B edges");
+
+    let labeled = edges.iter().filter(|e| e.label.is_some()).count();
+    assert_eq!(labeled, 2, "expected two labeled edges");
+
+    for e in edges {
+        assert!(e.points.len() >= 2);
+    }
+}
+
+#[test]
+fn flowchart_isolated_cluster_with_multiple_labeled_edges_contains_all_labels() {
+    // When a cluster is isolated, we apply recursive layout (dir/toggle) and should still include
+    // all internal edge labels in the cluster bounds.
+    let text = "flowchart TB\nsubgraph A\n  direction TB\n  a -->|label one that is quite wide| b\n  b -->|another wide label for coverage| c\nend\n";
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+
+    let cluster = layout
+        .clusters
+        .iter()
+        .find(|c| c.id == "A")
+        .expect("cluster A");
+    let cluster_rect = rect_from_cluster(cluster);
+
+    let internal_labeled_edges = layout
+        .edges
+        .iter()
+        .filter(|e| e.label.is_some())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        internal_labeled_edges.len(),
+        2,
+        "expected two labeled edges in cluster"
+    );
+
+    for e in internal_labeled_edges {
+        let label = e.label.as_ref().expect("label");
+        assert!(
+            rect_contains(cluster_rect, rect_from_label(label), 1e-6),
+            "edge {} label should fit in cluster A",
+            e.id
+        );
+    }
+}
+
+#[test]
+fn flowchart_various_edge_styles_do_not_break_layout() {
+    // The renderer is headless; edge styling should not affect layout stability.
+    // This test mainly ensures we don't crash and we always emit routed points.
+    let text = "flowchart TB\nA --> B\nA --- C\nA -.-> D\nA ==> E\n";
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+
+    assert!(layout.nodes.len() >= 5);
+    assert_eq!(layout.edges.len(), 4);
+    for e in &layout.edges {
+        assert!(!e.points.is_empty(), "edge {} should have points", e.id);
+    }
 }
