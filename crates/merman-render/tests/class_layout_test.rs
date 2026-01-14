@@ -146,3 +146,69 @@ fn class_terminal_labels_exist_for_cardinalities_fixture() {
     });
     assert!(has_terminal, "expected at least one terminal label");
 }
+
+fn point_inside(rect: (f64, f64, f64, f64), x: f64, y: f64, eps: f64) -> bool {
+    let (min_x, min_y, max_x, max_y) = rect;
+    x >= min_x - eps && x <= max_x + eps && y >= min_y - eps && y <= max_y + eps
+}
+
+#[test]
+fn class_terminal_labels_are_outside_endpoint_nodes_for_cardinalities_fixture() {
+    let path = workspace_root()
+        .join("fixtures")
+        .join("class")
+        .join("upstream_relation_types_and_cardinalities_spec.mmd");
+    let text = std::fs::read_to_string(&path).expect("fixture");
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
+        panic!("expected ClassDiagramV2 layout");
+    };
+
+    let mut node_rect_by_id = std::collections::HashMap::new();
+    for n in &layout.nodes {
+        if n.is_cluster {
+            continue;
+        }
+        node_rect_by_id.insert(n.id.as_str(), rect_from_node(n));
+    }
+
+    let eps = 0.01;
+    let mut checked = 0usize;
+    for e in &layout.edges {
+        let Some(from_rect) = node_rect_by_id.get(e.from.as_str()) else {
+            continue;
+        };
+        let Some(to_rect) = node_rect_by_id.get(e.to.as_str()) else {
+            continue;
+        };
+
+        for lbl in [
+            e.start_label_left.as_ref(),
+            e.start_label_right.as_ref(),
+            e.end_label_left.as_ref(),
+            e.end_label_right.as_ref(),
+        ] {
+            let Some(lbl) = lbl else {
+                continue;
+            };
+            checked += 1;
+            assert!(
+                !point_inside(*from_rect, lbl.x, lbl.y, eps),
+                "terminal label center should not be inside start node for edge {}",
+                e.id
+            );
+            assert!(
+                !point_inside(*to_rect, lbl.x, lbl.y, eps),
+                "terminal label center should not be inside end node for edge {}",
+                e.id
+            );
+        }
+    }
+    assert!(checked > 0, "expected to check at least one terminal label");
+}

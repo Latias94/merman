@@ -469,18 +469,14 @@ fn calc_terminal_label_position(
                 -a.cos() * d + (pts[0].y + center.y) / 2.0,
             )
         }
-        TerminalPos::StartRight => {
-            (
-                angle.sin() * d + (pts[0].x + center.x) / 2.0,
-                -angle.cos() * d + (pts[0].y + center.y) / 2.0,
-            )
-        }
-        TerminalPos::EndLeft => {
-            (
-                angle.sin() * d + (pts[0].x + center.x) / 2.0 - 5.0,
-                -angle.cos() * d + (pts[0].y + center.y) / 2.0 - 5.0,
-            )
-        }
+        TerminalPos::StartRight => (
+            angle.sin() * d + (pts[0].x + center.x) / 2.0,
+            -angle.cos() * d + (pts[0].y + center.y) / 2.0,
+        ),
+        TerminalPos::EndLeft => (
+            angle.sin() * d + (pts[0].x + center.x) / 2.0 - 5.0,
+            -angle.cos() * d + (pts[0].y + center.y) / 2.0 - 5.0,
+        ),
         TerminalPos::EndRight => {
             let a = angle - std::f64::consts::PI;
             (
@@ -490,6 +486,74 @@ fn calc_terminal_label_position(
         }
     };
     Some((x, y))
+}
+
+fn intersect_segment_with_rect(
+    p0: &LayoutPoint,
+    p1: &LayoutPoint,
+    rect: Rect,
+) -> Option<LayoutPoint> {
+    let dx = p1.x - p0.x;
+    let dy = p1.y - p0.y;
+    if dx == 0.0 && dy == 0.0 {
+        return None;
+    }
+
+    let mut candidates: Vec<(f64, LayoutPoint)> = Vec::new();
+    let eps = 1e-9;
+
+    if dx.abs() > eps {
+        for x_edge in [rect.min_x, rect.max_x] {
+            let t = (x_edge - p0.x) / dx;
+            if t < -eps || t > 1.0 + eps {
+                continue;
+            }
+            let y = p0.y + t * dy;
+            if y + eps >= rect.min_y && y <= rect.max_y + eps {
+                candidates.push((t, LayoutPoint { x: x_edge, y }));
+            }
+        }
+    }
+
+    if dy.abs() > eps {
+        for y_edge in [rect.min_y, rect.max_y] {
+            let t = (y_edge - p0.y) / dy;
+            if t < -eps || t > 1.0 + eps {
+                continue;
+            }
+            let x = p0.x + t * dx;
+            if x + eps >= rect.min_x && x <= rect.max_x + eps {
+                candidates.push((t, LayoutPoint { x, y: y_edge }));
+            }
+        }
+    }
+
+    candidates.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    candidates
+        .into_iter()
+        .find(|(t, _)| *t >= 0.0)
+        .map(|(_, p)| p)
+}
+
+fn terminal_path_for_edge(
+    points: &[LayoutPoint],
+    from_rect: Rect,
+    to_rect: Rect,
+) -> Vec<LayoutPoint> {
+    if points.len() < 2 {
+        return points.to_vec();
+    }
+    let mut out = points.to_vec();
+
+    if let Some(p) = intersect_segment_with_rect(&out[0], &out[1], from_rect) {
+        out[0] = p;
+    }
+    let last = out.len() - 1;
+    if let Some(p) = intersect_segment_with_rect(&out[last], &out[last - 1], to_rect) {
+        out[last] = p;
+    }
+
+    out
 }
 
 fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rect)> {
@@ -966,11 +1030,23 @@ pub fn layout_class_diagram_v2(
     let mut prepared = prepare_graph(g, 0)?;
     let (mut fragments, _bounds) = layout_prepared(&mut prepared)?;
 
+    let mut node_rect_by_id: HashMap<String, Rect> = HashMap::new();
+    for n in fragments.nodes.values() {
+        node_rect_by_id.insert(n.id.clone(), Rect::from_center(n.x, n.y, n.width, n.height));
+    }
+
     for (edge, terminal_meta) in fragments.edges.iter_mut() {
         let Some(meta) = terminal_meta.clone() else {
             continue;
         };
-        let points = edge.points.clone();
+        let points = if let (Some(from), Some(to)) = (
+            node_rect_by_id.get(edge.from.as_str()).copied(),
+            node_rect_by_id.get(edge.to.as_str()).copied(),
+        ) {
+            terminal_path_for_edge(&edge.points, from, to)
+        } else {
+            edge.points.clone()
+        };
 
         if let Some((w, h)) = meta.start_left {
             if let Some((x, y)) =

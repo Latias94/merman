@@ -1583,6 +1583,7 @@ dependencies = [
  "chrono",
  "futures",
  "merman",
+ "merman-render",
  "regex",
  "serde_json",
  "serde_yaml",
