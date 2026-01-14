@@ -31,4 +31,5 @@ fn er_debug_svg_renders() {
     let svg = render_er_diagram_debug_svg(&layout, &SvgRenderOptions::default());
     assert!(svg.contains("<svg"));
     assert!(svg.contains("edge-label-box") || svg.contains("polyline"));
+    assert!(svg.contains("marker") && svg.contains("ONLY_ONE_START"));
 }

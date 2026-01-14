@@ -22,5 +22,6 @@ Outputs to: `target/debug-svgs/er/*.svg`
 
 - Blue rectangles: entity bounding boxes.
 - Black polylines: relationship routes.
+- Relationship markers: Mermaid ER cardinality markers via `marker-start`/`marker-end`.
+- Dashed lines: non-identifying relationships (`relSpec.relType = NON_IDENTIFYING`).
 - Yellow boxes: relationship label bounding boxes (role text).
-

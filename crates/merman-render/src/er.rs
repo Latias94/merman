@@ -232,6 +232,9 @@ struct LayoutEdgeParts {
     to: String,
     points: Vec<LayoutPoint>,
     label: Option<LayoutLabel>,
+    start_marker: Option<String>,
+    end_marker: Option<String>,
+    stroke_dasharray: Option<String>,
 }
 
 fn calc_label_position(points: &[LayoutPoint]) -> Option<(f64, f64)> {
@@ -266,6 +269,106 @@ fn calc_label_position(points: &[LayoutPoint]) -> Option<(f64, f64)> {
         return Some((p0.x + t * dx, p0.y + t * dy));
     }
     Some((points.last()?.x, points.last()?.y))
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Rect {
+    min_x: f64,
+    min_y: f64,
+    max_x: f64,
+    max_y: f64,
+}
+
+impl Rect {
+    fn from_center(x: f64, y: f64, width: f64, height: f64) -> Self {
+        let hw = width / 2.0;
+        let hh = height / 2.0;
+        Self {
+            min_x: x - hw,
+            min_y: y - hh,
+            max_x: x + hw,
+            max_y: y + hh,
+        }
+    }
+
+    fn contains_point(&self, x: f64, y: f64) -> bool {
+        x >= self.min_x && x <= self.max_x && y >= self.min_y && y <= self.max_y
+    }
+}
+
+fn intersect_segment_with_rect(
+    p0: &LayoutPoint,
+    p1: &LayoutPoint,
+    rect: Rect,
+) -> Option<LayoutPoint> {
+    let dx = p1.x - p0.x;
+    let dy = p1.y - p0.y;
+    if dx == 0.0 && dy == 0.0 {
+        return None;
+    }
+
+    let mut candidates: Vec<(f64, LayoutPoint)> = Vec::new();
+    let eps = 1e-9;
+
+    if dx.abs() > eps {
+        for x_edge in [rect.min_x, rect.max_x] {
+            let t = (x_edge - p0.x) / dx;
+            if t < -eps || t > 1.0 + eps {
+                continue;
+            }
+            let y = p0.y + t * dy;
+            if y + eps >= rect.min_y && y <= rect.max_y + eps {
+                candidates.push((t, LayoutPoint { x: x_edge, y }));
+            }
+        }
+    }
+
+    if dy.abs() > eps {
+        for y_edge in [rect.min_y, rect.max_y] {
+            let t = (y_edge - p0.y) / dy;
+            if t < -eps || t > 1.0 + eps {
+                continue;
+            }
+            let x = p0.x + t * dx;
+            if x + eps >= rect.min_x && x <= rect.max_x + eps {
+                candidates.push((t, LayoutPoint { x, y: y_edge }));
+            }
+        }
+    }
+
+    candidates.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    candidates
+        .into_iter()
+        .find(|(t, _)| *t >= 0.0)
+        .map(|(_, p)| p)
+}
+
+fn clip_edge_endpoints(points: &mut [LayoutPoint], from: Rect, to: Rect) {
+    if points.len() < 2 {
+        return;
+    }
+    if from.contains_point(points[0].x, points[0].y) {
+        if let Some(p) = intersect_segment_with_rect(&points[0], &points[1], from) {
+            points[0] = p;
+        }
+    }
+    let last = points.len() - 1;
+    if to.contains_point(points[last].x, points[last].y) {
+        if let Some(p) = intersect_segment_with_rect(&points[last], &points[last - 1], to) {
+            points[last] = p;
+        }
+    }
+}
+
+fn er_marker_id(card: &str, suffix: &str) -> Option<String> {
+    match card {
+        "ONLY_ONE" => Some(format!("ONLY_ONE_{suffix}")),
+        "ZERO_OR_ONE" => Some(format!("ZERO_OR_ONE_{suffix}")),
+        "ONE_OR_MORE" => Some(format!("ONE_OR_MORE_{suffix}")),
+        "ZERO_OR_MORE" => Some(format!("ZERO_OR_MORE_{suffix}")),
+        "MD_PARENT" => Some(format!("MD_PARENT_{suffix}")),
+        _ => None,
+    }
 }
 
 pub fn layout_er_diagram(
@@ -356,12 +459,17 @@ pub fn layout_er_diagram(
     }
     nodes.sort_by(|a, b| a.id.cmp(&b.id));
 
+    let mut node_rect_by_id: HashMap<String, Rect> = HashMap::new();
+    for n in &nodes {
+        node_rect_by_id.insert(n.id.clone(), Rect::from_center(n.x, n.y, n.width, n.height));
+    }
+
     let mut edges: Vec<LayoutEdgeParts> = Vec::new();
     for key in g.edge_keys() {
         let Some(e) = g.edge_by_key(&key) else {
             continue;
         };
-        let points = e
+        let mut points = e
             .points
             .iter()
             .map(|p| LayoutPoint { x: p.x, y: p.y })
@@ -372,14 +480,50 @@ pub fn layout_er_diagram(
             .clone()
             .unwrap_or_else(|| format!("edge:{}:{}", key.v, key.w));
 
-        let role = key
+        let rel_idx = key
             .name
             .as_ref()
             .and_then(|name| name.strip_prefix("er-rel-"))
             .and_then(|idx| idx.parse::<usize>().ok())
-            .and_then(|idx| model.relationships.get(idx))
-            .map(|r| r.role_a.clone())
-            .unwrap_or_default();
+            .and_then(|idx| model.relationships.get(idx).map(|_| idx));
+
+        let rel = rel_idx.and_then(|idx| model.relationships.get(idx));
+        let role = rel.map(|r| r.role_a.clone()).unwrap_or_default();
+
+        let (start_marker, end_marker, stroke_dasharray) = if let Some(rel) = rel {
+            let card_a = rel
+                .rel_spec
+                .get("cardA")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let card_b = rel
+                .rel_spec
+                .get("cardB")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let rel_type = rel
+                .rel_spec
+                .get("relType")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let start_marker = er_marker_id(card_b, "START");
+            let end_marker = er_marker_id(card_a, "END");
+            let stroke_dasharray = if rel_type == "NON_IDENTIFYING" {
+                Some("8,8".to_string())
+            } else {
+                None
+            };
+            (start_marker, end_marker, stroke_dasharray)
+        } else {
+            (None, None, None)
+        };
+
+        if let (Some(from_rect), Some(to_rect)) = (
+            node_rect_by_id.get(&key.v).copied(),
+            node_rect_by_id.get(&key.w).copied(),
+        ) {
+            clip_edge_endpoints(&mut points, from_rect, to_rect);
+        }
 
         let label = if role.trim().is_empty() {
             None
@@ -399,6 +543,9 @@ pub fn layout_er_diagram(
             to: key.w.clone(),
             points,
             label,
+            start_marker,
+            end_marker,
+            stroke_dasharray,
         });
     }
     edges.sort_by(|a, b| a.id.cmp(&b.id));
@@ -417,6 +564,9 @@ pub fn layout_er_diagram(
             start_label_right: None,
             end_label_left: None,
             end_label_right: None,
+            start_marker: e.start_marker,
+            end_marker: e.end_marker,
+            stroke_dasharray: e.stroke_dasharray,
         });
     }
 

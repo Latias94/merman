@@ -422,20 +422,75 @@ pub fn render_er_diagram_debug_svg(layout: &ErDiagramLayout, options: &SvgRender
     );
     out.push_str(
         r#"<style>
-.node-box { fill: none; stroke: #2563eb; stroke-width: 1; }
-.node-label { fill: #1f2937; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 11px; text-anchor: middle; dominant-baseline: middle; }
-.edge { fill: none; stroke: #111827; stroke-width: 1; }
-.edge-label-box { fill: #fef3c7; stroke: #92400e; stroke-width: 1; opacity: 0.6; }
-.debug-cross { stroke: #ef4444; stroke-width: 1; }
-</style>
-"#,
+ .node-box { fill: none; stroke: #2563eb; stroke-width: 1; }
+ .node-label { fill: #1f2937; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 11px; text-anchor: middle; dominant-baseline: middle; }
+ .edge { fill: none; stroke: #111827; stroke-width: 1; }
+ .edge-label-box { fill: #fef3c7; stroke: #92400e; stroke-width: 1; opacity: 0.6; }
+ .debug-cross { stroke: #ef4444; stroke-width: 1; }
+ </style>
+ "#,
+    );
+
+    // Ported from Mermaid `@11.12.2` `erMarkers.js` (debug-only for now).
+    out.push_str(
+        r##"<defs>
+  <marker id="MD_PARENT_START" refX="0" refY="7" markerWidth="190" markerHeight="240" orient="auto">
+    <path d="M 18,7 L9,13 L1,7 L9,1 Z" fill="#111827" />
+  </marker>
+  <marker id="MD_PARENT_END" refX="19" refY="7" markerWidth="20" markerHeight="28" orient="auto">
+    <path d="M 18,7 L9,13 L1,7 L9,1 Z" fill="#111827" />
+  </marker>
+
+  <marker id="ONLY_ONE_START" refX="0" refY="9" markerWidth="18" markerHeight="18" orient="auto">
+    <path stroke="#111827" fill="none" d="M9,0 L9,18 M15,0 L15,18" />
+  </marker>
+  <marker id="ONLY_ONE_END" refX="18" refY="9" markerWidth="18" markerHeight="18" orient="auto">
+    <path stroke="#111827" fill="none" d="M3,0 L3,18 M9,0 L9,18" />
+  </marker>
+
+  <marker id="ZERO_OR_ONE_START" refX="0" refY="9" markerWidth="30" markerHeight="18" orient="auto">
+    <circle stroke="#111827" fill="white" cx="21" cy="9" r="6" />
+    <path stroke="#111827" fill="none" d="M9,0 L9,18" />
+  </marker>
+  <marker id="ZERO_OR_ONE_END" refX="30" refY="9" markerWidth="30" markerHeight="18" orient="auto">
+    <circle stroke="#111827" fill="white" cx="9" cy="9" r="6" />
+    <path stroke="#111827" fill="none" d="M21,0 L21,18" />
+  </marker>
+
+  <marker id="ONE_OR_MORE_START" refX="18" refY="18" markerWidth="45" markerHeight="36" orient="auto">
+    <path stroke="#111827" fill="none" d="M0,18 Q 18,0 36,18 Q 18,36 0,18 M42,9 L42,27" />
+  </marker>
+  <marker id="ONE_OR_MORE_END" refX="27" refY="18" markerWidth="45" markerHeight="36" orient="auto">
+    <path stroke="#111827" fill="none" d="M3,9 L3,27 M9,18 Q27,0 45,18 Q27,36 9,18" />
+  </marker>
+
+  <marker id="ZERO_OR_MORE_START" refX="18" refY="18" markerWidth="57" markerHeight="36" orient="auto">
+    <circle stroke="#111827" fill="white" cx="48" cy="18" r="6" />
+    <path stroke="#111827" fill="none" d="M0,18 Q18,0 36,18 Q18,36 0,18" />
+  </marker>
+  <marker id="ZERO_OR_MORE_END" refX="39" refY="18" markerWidth="57" markerHeight="36" orient="auto">
+    <circle stroke="#111827" fill="white" cx="9" cy="18" r="6" />
+    <path stroke="#111827" fill="none" d="M21,18 Q39,0 57,18 Q39,36 21,18" />
+  </marker>
+</defs>
+"##,
     );
 
     if options.include_edges {
         out.push_str(r#"<g class="edges">"#);
         for e in &edges {
             if e.points.len() >= 2 {
-                out.push_str(r#"<polyline class="edge" points=""#);
+                let _ = write!(&mut out, r#"<polyline class="edge""#);
+                if let Some(dash) = &e.stroke_dasharray {
+                    let _ = write!(&mut out, r#" stroke-dasharray="{}""#, escape_xml(dash));
+                }
+                if let Some(m) = &e.start_marker {
+                    let _ = write!(&mut out, r#" marker-start="url(#{})""#, escape_xml(m));
+                }
+                if let Some(m) = &e.end_marker {
+                    let _ = write!(&mut out, r#" marker-end="url(#{})""#, escape_xml(m));
+                }
+                out.push_str(r#" points=""#);
                 for (idx, p) in e.points.iter().enumerate() {
                     if idx > 0 {
                         out.push(' ');
