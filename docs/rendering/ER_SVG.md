@@ -22,6 +22,5 @@ PowerShell:
 ## Known Gaps (Parity Roadmap)
 
 - Theme variables and styling parity (colors, fonts, precise CSS selectors).
-- Exact edge curve rendering (Mermaid uses a D3 basis curve; currently we render a polyline path).
+- Exact edge curve rendering (Mermaid uses a D3 basis curve; implemented via cubic Béziers).
 - Full support for Mermaid `style` / `classDef` / `class` application semantics (we currently apply `cssStyles` only to the entity box).
-

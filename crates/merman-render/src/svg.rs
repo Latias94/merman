@@ -714,15 +714,8 @@ pub fn render_er_diagram_svg(
                 if let Some(m) = &e.end_marker {
                     let _ = write!(&mut out, r#" marker-end="url(#{})""#, escape_xml(m));
                 }
-                out.push_str(r#" d=""#);
-                for (idx, p) in e.points.iter().enumerate() {
-                    if idx == 0 {
-                        let _ = write!(&mut out, "M {},{}", fmt(p.x), fmt(p.y));
-                    } else {
-                        let _ = write!(&mut out, " L {},{}", fmt(p.x), fmt(p.y));
-                    }
-                }
-                out.push_str(r#"" />"#);
+                let d = curve_basis_path_d(&e.points);
+                let _ = write!(&mut out, r#" d="{}" />"#, escape_xml(&d));
             }
 
             // Role label + opaque box.
@@ -969,6 +962,80 @@ pub fn render_er_diagram_svg(
 
     out.push_str("</svg>\n");
     Ok(out)
+}
+
+// Ported from D3 `curveBasis` (d3-shape v3.x), used by Mermaid ER renderer `@11.12.2`.
+fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {
+    let mut out = String::new();
+    if points.is_empty() {
+        return out;
+    }
+
+    let mut p = 0u8;
+    let mut x0 = f64::NAN;
+    let mut y0 = f64::NAN;
+    let mut x1 = f64::NAN;
+    let mut y1 = f64::NAN;
+
+    fn basis_point(out: &mut String, x0: f64, y0: f64, x1: f64, y1: f64, x: f64, y: f64) {
+        let c1x = (2.0 * x0 + x1) / 3.0;
+        let c1y = (2.0 * y0 + y1) / 3.0;
+        let c2x = (x0 + 2.0 * x1) / 3.0;
+        let c2y = (y0 + 2.0 * y1) / 3.0;
+        let ex = (x0 + 4.0 * x1 + x) / 6.0;
+        let ey = (y0 + 4.0 * y1 + y) / 6.0;
+        let _ = write!(
+            out,
+            " C {},{} {},{} {},{}",
+            fmt(c1x),
+            fmt(c1y),
+            fmt(c2x),
+            fmt(c2y),
+            fmt(ex),
+            fmt(ey)
+        );
+    }
+
+    for pt in points {
+        let x = pt.x;
+        let y = pt.y;
+        match p {
+            0 => {
+                p = 1;
+                let _ = write!(&mut out, "M {},{}", fmt(x), fmt(y));
+            }
+            1 => {
+                p = 2;
+            }
+            2 => {
+                p = 3;
+                let lx = (5.0 * x0 + x1) / 6.0;
+                let ly = (5.0 * y0 + y1) / 6.0;
+                let _ = write!(&mut out, " L {},{}", fmt(lx), fmt(ly));
+                basis_point(&mut out, x0, y0, x1, y1, x, y);
+            }
+            _ => {
+                basis_point(&mut out, x0, y0, x1, y1, x, y);
+            }
+        }
+        x0 = x1;
+        x1 = x;
+        y0 = y1;
+        y1 = y;
+    }
+
+    match p {
+        3 => {
+            basis_point(&mut out, x0, y0, x1, y1, x1, y1);
+            let _ = write!(&mut out, " L {},{}", fmt(x1), fmt(y1));
+        }
+        2 => {
+            let _ = write!(&mut out, " L {},{}", fmt(x1), fmt(y1));
+        }
+        _ => {}
+    }
+
+    out
 }
 
 fn render_node(out: &mut String, n: &LayoutNode) {
