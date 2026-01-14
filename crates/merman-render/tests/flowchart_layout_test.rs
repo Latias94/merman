@@ -890,3 +890,36 @@ fn flowchart_subgraph_title_uses_wrapping_placeholder_metrics() {
         "cluster should be at least as tall as its title placeholder"
     );
 }
+
+#[test]
+fn flowchart_subgraph_title_wraps_long_word_in_svglike_mode() {
+    let title = "Supercalifragilisticexpialidocious";
+    let text = format!(
+        "%%{{init: {{\"flowchart\": {{\"htmlLabels\": false}}}}}}%%\nflowchart TB\nsubgraph A[{title}]\n  a\nend\n"
+    );
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+
+    let cluster = layout
+        .clusters
+        .iter()
+        .find(|c| c.id == "A")
+        .expect("cluster A");
+
+    let measurer = merman_render::text::DeterministicTextMeasurer::default();
+    let style = merman_render::text::TextStyle::default();
+    let single = measurer.measure_wrapped(title, &style, None, WrapMode::SvgLike);
+    let wrapped = measurer.measure_wrapped(title, &style, Some(200.0), WrapMode::SvgLike);
+
+    assert!(
+        wrapped.height > single.height + 1e-6,
+        "expected SVG-like mode to wrap long-word title"
+    );
+    assert!((cluster.title_label.height - wrapped.height).abs() < 1e-6);
+}
