@@ -721,11 +721,13 @@ pub fn render_er_diagram_svg(
     let _ = writeln!(
         &mut out,
         r#"<style>
-  .er.entityBox {{ fill: {}; stroke: {}; stroke-width: 1px; }}
-  .er.relationshipLine {{ stroke: {}; stroke-width: 1; fill: none; }}
-  .er.relationshipLabelBox {{ fill: {}; opacity: 0.7; }}
-  .er.entityLabel {{ fill: {}; font-family: {}; dominant-baseline: middle; text-anchor: middle; }}
-  .er.attributeText {{ fill: {}; font-family: {}; dominant-baseline: middle; text-anchor: left; }}
+  .er .entityBox {{ fill: {}; stroke: {}; stroke-width: 1px; }}
+  .er .relationshipLine {{ stroke: {}; stroke-width: 1; fill: none; }}
+  .er .relationshipLabelBox {{ fill: {}; opacity: 0.7; }}
+  .er .edge-pattern-dashed {{ stroke-dasharray: 8,8; }}
+  .er .relationshipLabel {{ fill: {}; font-family: {}; dominant-baseline: middle; text-anchor: middle; }}
+  .er .entityLabel {{ fill: {}; font-family: {}; dominant-baseline: middle; text-anchor: middle; }}
+  .er .attributeText {{ fill: {}; font-family: {}; dominant-baseline: middle; text-anchor: left; }}
   .er.attributeBoxOdd {{ fill: rgba(0,0,0,0.03); stroke: {}; stroke-width: 0; }}
   .er.attributeBoxEven {{ fill: rgba(0,0,0,0.06); stroke: {}; stroke-width: 0; }}
 </style>"#,
@@ -733,6 +735,8 @@ pub fn render_er_diagram_svg(
         node_border,
         stroke,
         tertiary,
+        node_border,
+        escape_xml(&font_family),
         node_border,
         escape_xml(&font_family),
         node_border,
@@ -799,7 +803,11 @@ pub fn render_er_diagram_svg(
         out.push_str(r#"<g class="relationships">"#);
         for e in &edges {
             if e.points.len() >= 2 {
-                out.push_str(r#"<path class="er relationshipLine""#);
+                let mut line_classes = String::from("er relationshipLine");
+                if e.stroke_dasharray.as_deref() == Some("8,8") {
+                    line_classes.push_str(" edge-pattern-dashed");
+                }
+                let _ = write!(&mut out, r#"<path class="{}""#, escape_xml(&line_classes));
                 if let Some(dash) = &e.stroke_dasharray {
                     let _ = write!(&mut out, r#" stroke-dasharray="{}""#, escape_xml(dash));
                 }
@@ -835,7 +843,7 @@ pub fn render_er_diagram_svg(
                 let lines = split_br_like_mermaid(rel_text);
                 let _ = write!(
                     &mut out,
-                    r#"<text class="er entityLabel" x="{}" y="{}" font-size="{}">"#,
+                    r#"<text class="er relationshipLabel" x="{}" y="{}" font-size="{}">"#,
                     fmt(lbl.x),
                     fmt(lbl.y),
                     fmt(font_size)
