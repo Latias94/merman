@@ -1,4 +1,4 @@
-use crate::model::{Bounds, FlowchartV2Layout, LayoutCluster, LayoutNode};
+use crate::model::{Bounds, FlowchartV2Layout, LayoutCluster, LayoutNode, StateDiagramV2Layout};
 use std::fmt::Write as _;
 
 #[derive(Debug, Clone)]
@@ -43,7 +43,7 @@ pub fn render_flowchart_v2_debug_svg(
     let mut edges = layout.edges.clone();
     edges.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let bounds = compute_flowchart_bounds(&clusters, &nodes, &edges).unwrap_or(Bounds {
+    let bounds = compute_layout_bounds(&clusters, &nodes, &edges).unwrap_or(Bounds {
         min_x: 0.0,
         min_y: 0.0,
         max_x: 100.0,
@@ -128,6 +128,125 @@ pub fn render_flowchart_v2_debug_svg(
     out
 }
 
+pub fn render_state_diagram_v2_debug_svg(
+    layout: &StateDiagramV2Layout,
+    options: &SvgRenderOptions,
+) -> String {
+    let mut clusters = layout.clusters.clone();
+    clusters.sort_by(|a, b| a.id.cmp(&b.id));
+
+    let mut nodes = layout.nodes.clone();
+    nodes.sort_by(|a, b| a.id.cmp(&b.id));
+
+    let mut edges = layout.edges.clone();
+    edges.sort_by(|a, b| a.id.cmp(&b.id));
+
+    let bounds = compute_layout_bounds(&clusters, &nodes, &edges).unwrap_or(Bounds {
+        min_x: 0.0,
+        min_y: 0.0,
+        max_x: 100.0,
+        max_y: 100.0,
+    });
+    let pad = options.viewbox_padding.max(0.0);
+    let vb_min_x = bounds.min_x - pad;
+    let vb_min_y = bounds.min_y - pad;
+    let vb_w = (bounds.max_x - bounds.min_x) + pad * 2.0;
+    let vb_h = (bounds.max_y - bounds.min_y) + pad * 2.0;
+
+    let mut out = String::new();
+    let _ = writeln!(
+        &mut out,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}">"#,
+        fmt(vb_min_x),
+        fmt(vb_min_y),
+        fmt(vb_w.max(1.0)),
+        fmt(vb_h.max(1.0))
+    );
+    out.push_str(
+        r#"<style>
+.cluster-box { fill: none; stroke: #4b5563; stroke-width: 1; }
+.cluster-title { fill: #111827; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 12px; text-anchor: middle; dominant-baseline: middle; }
+.node-box { fill: none; stroke: #2563eb; stroke-width: 1; }
+.node-circle { fill: none; stroke: #2563eb; stroke-width: 1; }
+.node-label { fill: #1f2937; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 11px; text-anchor: middle; dominant-baseline: middle; }
+.edge { fill: none; stroke: #111827; stroke-width: 1; }
+.edge-label-box { fill: #fef3c7; stroke: #92400e; stroke-width: 1; opacity: 0.6; }
+.edge-label { fill: #111827; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 11px; text-anchor: middle; dominant-baseline: middle; }
+.debug-cross { stroke: #ef4444; stroke-width: 1; }
+</style>
+"#,
+    );
+
+    if options.include_clusters {
+        out.push_str(r#"<g class="clusters">"#);
+        for c in &clusters {
+            render_cluster(&mut out, c, options.include_cluster_debug_markers);
+        }
+        out.push_str("</g>\n");
+    }
+
+    if options.include_edges {
+        out.push_str(r#"<g class="edges">"#);
+        for e in &edges {
+            if e.points.len() >= 2 {
+                out.push_str(r#"<polyline class="edge" points=""#);
+                for (idx, p) in e.points.iter().enumerate() {
+                    if idx > 0 {
+                        out.push(' ');
+                    }
+                    let _ = write!(&mut out, "{},{}", fmt(p.x), fmt(p.y));
+                }
+                let _ = write!(
+                    &mut out,
+                    r#"" data-from-cluster="{}" data-to-cluster="{}" />"#,
+                    escape_attr(e.from_cluster.as_deref().unwrap_or_default()),
+                    escape_attr(e.to_cluster.as_deref().unwrap_or_default())
+                );
+            }
+
+            if let Some(lbl) = &e.label {
+                let x = lbl.x - lbl.width / 2.0;
+                let y = lbl.y - lbl.height / 2.0;
+                let _ = write!(
+                    &mut out,
+                    r#"<rect class="edge-label-box" x="{}" y="{}" width="{}" height="{}" />"#,
+                    fmt(x),
+                    fmt(y),
+                    fmt(lbl.width.max(1.0)),
+                    fmt(lbl.height.max(1.0))
+                );
+            }
+
+            if options.include_edge_id_labels {
+                if let Some(lbl) = &e.label {
+                    let _ = write!(
+                        &mut out,
+                        r#"<text class="edge-label" x="{}" y="{}">{}</text>"#,
+                        fmt(lbl.x),
+                        fmt(lbl.y),
+                        escape_xml(&e.id)
+                    );
+                }
+            }
+        }
+        out.push_str("</g>\n");
+    }
+
+    if options.include_nodes {
+        out.push_str(r#"<g class="nodes">"#);
+        for n in &nodes {
+            if n.is_cluster {
+                continue;
+            }
+            render_state_node(&mut out, n);
+        }
+        out.push_str("</g>\n");
+    }
+
+    out.push_str("</svg>\n");
+    out
+}
+
 fn render_node(out: &mut String, n: &LayoutNode) {
     let x = n.x - n.width / 2.0;
     let y = n.y - n.height / 2.0;
@@ -139,6 +258,39 @@ fn render_node(out: &mut String, n: &LayoutNode) {
         fmt(n.width.max(1.0)),
         fmt(n.height.max(1.0))
     );
+    let _ = write!(
+        out,
+        r#"<text class="node-label" x="{}" y="{}">{}</text>"#,
+        fmt(n.x),
+        fmt(n.y),
+        escape_xml(&n.id)
+    );
+}
+
+fn render_state_node(out: &mut String, n: &LayoutNode) {
+    let is_small_circle = (n.width - n.height).abs() < 1e-6 && n.width <= 20.0 && n.height <= 20.0;
+    if is_small_circle {
+        let r = (n.width / 2.0).max(1.0);
+        let _ = write!(
+            out,
+            r#"<circle class="node-circle" cx="{}" cy="{}" r="{}" />"#,
+            fmt(n.x),
+            fmt(n.y),
+            fmt(r)
+        );
+    } else {
+        let x = n.x - n.width / 2.0;
+        let y = n.y - n.height / 2.0;
+        let _ = write!(
+            out,
+            r#"<rect class="node-box" x="{}" y="{}" width="{}" height="{}" />"#,
+            fmt(x),
+            fmt(y),
+            fmt(n.width.max(1.0)),
+            fmt(n.height.max(1.0))
+        );
+    }
+
     let _ = write!(
         out,
         r#"<text class="node-label" x="{}" y="{}">{}</text>"#,
@@ -206,7 +358,7 @@ fn debug_cross(out: &mut String, x: f64, y: f64, size: f64) {
     );
 }
 
-fn compute_flowchart_bounds(
+fn compute_layout_bounds(
     clusters: &[LayoutCluster],
     nodes: &[LayoutNode],
     edges: &[crate::model::LayoutEdge],

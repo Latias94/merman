@@ -60,3 +60,4 @@ The result includes:
   - `offset_y`: the Mermaid cluster "offsetY" value (`labelBBox.height - padding/2`)
 
 See also: `docs/rendering/FLOWCHART_DEBUG_SVG.md`.
+See also: `docs/rendering/STATE_DEBUG_SVG.md`.
