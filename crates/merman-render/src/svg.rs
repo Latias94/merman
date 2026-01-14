@@ -10,6 +10,8 @@ use std::fmt::Write as _;
 pub struct SvgRenderOptions {
     /// Adds extra space around the computed viewBox.
     pub viewbox_padding: f64,
+    /// Optional diagram id used for Mermaid-like marker ids.
+    pub diagram_id: Option<String>,
     /// When true, include edge polylines.
     pub include_edges: bool,
     /// When true, include node bounding boxes and ids.
@@ -26,6 +28,7 @@ impl Default for SvgRenderOptions {
     fn default() -> Self {
         Self {
             viewbox_padding: 20.0,
+            diagram_id: None,
             include_edges: true,
             include_nodes: true,
             include_clusters: true,
@@ -664,6 +667,9 @@ pub fn render_er_diagram_svg(
 ) -> Result<String> {
     let model: crate::er::ErModel = serde_json::from_value(semantic.clone())?;
 
+    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_type = "erDiagram";
+
     let stroke = theme_color(effective_config, "lineColor", "#333333");
     let node_border = theme_color(effective_config, "nodeBorder", "#333333");
     let main_bkg = theme_color(effective_config, "mainBkg", "#ffffff");
@@ -746,47 +752,50 @@ pub fn render_er_diagram_svg(
     );
 
     // Markers ported from Mermaid `@11.12.2` `erMarkers.js`.
+    // Note: ids follow Mermaid unified renderer rules: `${diagramId}_${diagramType}-${markerType}{Start|End}`.
     let defs = format!(
         r##"<defs>
-  <marker id="MD_PARENT_START" refX="0" refY="7" markerWidth="190" markerHeight="240" orient="auto">
+  <marker id="{diagram_id}_{diagram_type}-mdParentStart" refX="0" refY="7" markerWidth="190" markerHeight="240" orient="auto">
     <path d="M 18,7 L9,13 L1,7 L9,1 Z" fill="{stroke}" stroke="{stroke}" />
   </marker>
-  <marker id="MD_PARENT_END" refX="19" refY="7" markerWidth="20" markerHeight="28" orient="auto">
+  <marker id="{diagram_id}_{diagram_type}-mdParentEnd" refX="19" refY="7" markerWidth="20" markerHeight="28" orient="auto">
     <path d="M 18,7 L9,13 L1,7 L9,1 Z" fill="{stroke}" stroke="{stroke}" />
   </marker>
 
-  <marker id="ONLY_ONE_START" refX="0" refY="9" markerWidth="18" markerHeight="18" orient="auto">
+  <marker id="{diagram_id}_{diagram_type}-onlyOneStart" refX="0" refY="9" markerWidth="18" markerHeight="18" orient="auto">
     <path stroke="{stroke}" fill="none" d="M9,0 L9,18 M15,0 L15,18" />
   </marker>
-  <marker id="ONLY_ONE_END" refX="18" refY="9" markerWidth="18" markerHeight="18" orient="auto">
+  <marker id="{diagram_id}_{diagram_type}-onlyOneEnd" refX="18" refY="9" markerWidth="18" markerHeight="18" orient="auto">
     <path stroke="{stroke}" fill="none" d="M3,0 L3,18 M9,0 L9,18" />
   </marker>
 
-  <marker id="ZERO_OR_ONE_START" refX="0" refY="9" markerWidth="30" markerHeight="18" orient="auto">
+  <marker id="{diagram_id}_{diagram_type}-zeroOrOneStart" refX="0" refY="9" markerWidth="30" markerHeight="18" orient="auto">
     <circle stroke="{stroke}" fill="{main_bkg}" cx="21" cy="9" r="6" />
     <path stroke="{stroke}" fill="none" d="M9,0 L9,18" />
   </marker>
-  <marker id="ZERO_OR_ONE_END" refX="30" refY="9" markerWidth="30" markerHeight="18" orient="auto">
+  <marker id="{diagram_id}_{diagram_type}-zeroOrOneEnd" refX="30" refY="9" markerWidth="30" markerHeight="18" orient="auto">
     <circle stroke="{stroke}" fill="{main_bkg}" cx="9" cy="9" r="6" />
     <path stroke="{stroke}" fill="none" d="M21,0 L21,18" />
   </marker>
 
-  <marker id="ONE_OR_MORE_START" refX="18" refY="18" markerWidth="45" markerHeight="36" orient="auto">
+  <marker id="{diagram_id}_{diagram_type}-oneOrMoreStart" refX="18" refY="18" markerWidth="45" markerHeight="36" orient="auto">
     <path stroke="{stroke}" fill="none" d="M0,18 Q 18,0 36,18 Q 18,36 0,18 M42,9 L42,27" />
   </marker>
-  <marker id="ONE_OR_MORE_END" refX="27" refY="18" markerWidth="45" markerHeight="36" orient="auto">
+  <marker id="{diagram_id}_{diagram_type}-oneOrMoreEnd" refX="27" refY="18" markerWidth="45" markerHeight="36" orient="auto">
     <path stroke="{stroke}" fill="none" d="M3,9 L3,27 M9,18 Q27,0 45,18 Q27,36 9,18" />
   </marker>
 
-  <marker id="ZERO_OR_MORE_START" refX="18" refY="18" markerWidth="57" markerHeight="36" orient="auto">
+  <marker id="{diagram_id}_{diagram_type}-zeroOrMoreStart" refX="18" refY="18" markerWidth="57" markerHeight="36" orient="auto">
     <circle stroke="{stroke}" fill="{main_bkg}" cx="48" cy="18" r="6" />
     <path stroke="{stroke}" fill="none" d="M0,18 Q18,0 36,18 Q18,36 0,18" />
   </marker>
-  <marker id="ZERO_OR_MORE_END" refX="39" refY="18" markerWidth="57" markerHeight="36" orient="auto">
+  <marker id="{diagram_id}_{diagram_type}-zeroOrMoreEnd" refX="39" refY="18" markerWidth="57" markerHeight="36" orient="auto">
     <circle stroke="{stroke}" fill="{main_bkg}" cx="9" cy="18" r="6" />
     <path stroke="{stroke}" fill="none" d="M21,18 Q39,0 57,18 Q39,36 21,18" />
   </marker>
 </defs>"##,
+        diagram_id = escape_xml(diagram_id),
+        diagram_type = escape_xml(diagram_type),
         stroke = escape_xml(&stroke),
         main_bkg = escape_xml(&main_bkg)
     );
@@ -812,10 +821,12 @@ pub fn render_er_diagram_svg(
                     let _ = write!(&mut out, r#" stroke-dasharray="{}""#, escape_xml(dash));
                 }
                 if let Some(m) = &e.start_marker {
-                    let _ = write!(&mut out, r#" marker-start="url(#{})""#, escape_xml(m));
+                    let marker = er_unified_marker_id(diagram_id, diagram_type, m);
+                    let _ = write!(&mut out, r#" marker-start="url(#{})""#, escape_xml(&marker));
                 }
                 if let Some(m) = &e.end_marker {
-                    let _ = write!(&mut out, r#" marker-end="url(#{})""#, escape_xml(m));
+                    let marker = er_unified_marker_id(diagram_id, diagram_type, m);
+                    let _ = write!(&mut out, r#" marker-end="url(#{})""#, escape_xml(&marker));
                 }
                 let d = curve_basis_path_d(&e.points);
                 let _ = write!(&mut out, r#" d="{}" />"#, escape_xml(&d));
@@ -1078,6 +1089,28 @@ pub fn render_er_diagram_svg(
 
     out.push_str("</svg>\n");
     Ok(out)
+}
+
+fn er_unified_marker_id(diagram_id: &str, diagram_type: &str, legacy_marker: &str) -> String {
+    let legacy_marker = legacy_marker.trim();
+    let (base, suffix) = if let Some(v) = legacy_marker.strip_suffix("_START") {
+        (v, "Start")
+    } else if let Some(v) = legacy_marker.strip_suffix("_END") {
+        (v, "End")
+    } else {
+        return legacy_marker.to_string();
+    };
+
+    let marker_type = match base {
+        "ONLY_ONE" => "onlyOne",
+        "ZERO_OR_ONE" => "zeroOrOne",
+        "ONE_OR_MORE" => "oneOrMore",
+        "ZERO_OR_MORE" => "zeroOrMore",
+        "MD_PARENT" => "mdParent",
+        _ => return legacy_marker.to_string(),
+    };
+
+    format!("{diagram_id}_{diagram_type}-{marker_type}{suffix}")
 }
 
 // Ported from D3 `curveBasis` (d3-shape v3.x), used by Mermaid ER renderer `@11.12.2`.

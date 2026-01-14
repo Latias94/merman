@@ -65,7 +65,10 @@ fn er_svg_renders_entities_and_relationships() {
     assert!(svg.contains(r#"class="er entityBox""#));
     assert!(svg.contains(r#"class="er relationshipLine""#));
     assert!(svg.contains("relationshipLabelBox"));
-    assert!(svg.contains("marker") && svg.contains("ZERO_OR_MORE_START"));
+    assert!(
+        svg.contains("marker") && svg.contains("merman_erDiagram-zeroOrMoreStart"),
+        "expected Mermaid-like marker ids"
+    );
     assert!(
         svg.contains(" C "),
         "expected curveBasis cubic bezier commands in relationship paths"
