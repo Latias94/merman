@@ -8,6 +8,7 @@ license.workspace = true
 chrono.workspace = true
 futures.workspace = true
 merman = { path = "../merman" }
+merman-render = { path = "../merman-render" }
 regex.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
