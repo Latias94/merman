@@ -112,6 +112,15 @@ pub struct LayoutEdge {
     pub end_label_left: Option<LayoutLabel>,
     #[serde(default)]
     pub end_label_right: Option<LayoutLabel>,
+    /// Optional SVG marker id for marker-start (e.g. ER cardinality markers).
+    #[serde(default)]
+    pub start_marker: Option<String>,
+    /// Optional SVG marker id for marker-end (e.g. ER cardinality markers).
+    #[serde(default)]
+    pub end_marker: Option<String>,
+    /// Optional SVG dash pattern (e.g. identifying vs non-identifying ER relationships).
+    #[serde(default)]
+    pub stroke_dasharray: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

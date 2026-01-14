@@ -706,6 +706,9 @@ fn merge_edge_segments(mut segments: Vec<EdgeSegment>) -> Vec<LayoutEdge> {
             start_label_right: None,
             end_label_left: None,
             end_label_right: None,
+            start_marker: None,
+            end_marker: None,
+            stroke_dasharray: None,
         });
     }
 

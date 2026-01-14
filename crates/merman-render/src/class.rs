@@ -680,6 +680,9 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
             start_label_right: None,
             end_label_left: None,
             end_label_right: None,
+            start_marker: None,
+            end_marker: None,
+            stroke_dasharray: None,
         };
 
         let terminals = edge_terminal_metrics_from_extras(e);
