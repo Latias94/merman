@@ -12,6 +12,12 @@ PowerShell:
 
 `Get-Content fixtures\\er\\basic.mmd | cargo run -p merman-render --example er_svg > out.svg`
 
+## Bulk export (all fixtures)
+
+`cargo run -p xtask -- gen-er-svgs`
+
+Outputs to: `target/svgs/er/*.svg`
+
 ## What It Produces Today
 
 - Entity boxes with title and attribute rows (column layout follows the legacy Mermaid ER renderer logic).
