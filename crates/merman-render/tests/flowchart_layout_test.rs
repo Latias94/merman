@@ -820,3 +820,42 @@ fn flowchart_htmllabels_long_word_is_clamped_but_not_wrapped() {
         "expected HTML mode to clamp width"
     );
 }
+
+#[test]
+fn flowchart_svglike_long_word_is_wrapped_into_multiple_lines() {
+    // In SVG-like mode (`htmlLabels=false`), Mermaid's text wrapping logic can split long words to
+    // satisfy the width constraint, increasing height.
+    let text = "%%{init: {\"flowchart\": {\"wrappingWidth\": 60, \"htmlLabels\": false}}}%%\nflowchart TB\nA[Supercalifragilisticexpialidocious]\n";
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+
+    let a = layout.nodes.iter().find(|n| n.id == "A").expect("node A");
+
+    let measurer = merman_render::text::DeterministicTextMeasurer::default();
+    let style = merman_render::text::TextStyle::default();
+    let single = measurer.measure_wrapped(
+        "Supercalifragilisticexpialidocious",
+        &style,
+        None,
+        WrapMode::SvgLike,
+    );
+
+    // Height should increase vs. the single-line size.
+    assert!(
+        a.height > single.height + 2.0 * 15.0 + 1e-6,
+        "expected long word to wrap and increase height in SVG-like mode"
+    );
+
+    // Width should still respect wrappingWidth via wrapping.
+    let p = 15.0;
+    assert!(
+        a.width <= 60.0 + 4.0 * p + 1e-6,
+        "expected SVG-like mode to constrain width via wrapping"
+    );
+}
