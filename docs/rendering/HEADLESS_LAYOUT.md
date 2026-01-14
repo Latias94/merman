@@ -19,6 +19,8 @@ Baseline: Mermaid `@11.12.2`.
 - Use a pluggable `TextMeasurer` trait with a deterministic default measurer for CI.
 - Emit explicit cluster layout information (box bounds + title placeholder) to make subgraph rendering
   backend-independent.
+- The default flowchart behavior applies `flowchart.wrappingWidth` when measuring node/edge labels,
+  matching Mermaid's `createText` width parameter usage.
 - For isolated, leaf-only clusters (no external edges), apply a Mermaid-like "cluster dir" behavior:
   the cluster's `dir` (or toggled direction when `inheritDir=false`) influences the internal layout
   of its member nodes.

@@ -734,3 +734,35 @@ O(-Label-)
         assert_close(n.height, th + 2.0 * p, "ellipse height");
     }
 }
+
+#[test]
+fn flowchart_wrapping_width_increases_height_for_long_labels() {
+    let text = "%%{init: {\"flowchart\": {\"wrappingWidth\": 60}}}%%\nflowchart TB\nA[This is a long label that should wrap]\n";
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+
+    let a = layout.nodes.iter().find(|n| n.id == "A").expect("node A");
+
+    let measurer = merman_render::text::DeterministicTextMeasurer::default();
+    let style = merman_render::text::TextStyle::default();
+    let single = measurer.measure("This is a long label that should wrap", &style);
+
+    // With wrapping, the node should become taller than the single-line size would indicate.
+    assert!(
+        a.height > single.height + 1e-6,
+        "expected wrapped label to increase node height"
+    );
+
+    // Node width should be constrained by wrappingWidth plus the shape's padding rule (squareRect).
+    let p = 15.0;
+    assert!(
+        a.width <= 60.0 + 4.0 * p + 1e-6,
+        "expected wrapped label to constrain node width"
+    );
+}
