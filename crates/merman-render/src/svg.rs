@@ -1,5 +1,5 @@
 use crate::model::{
-    Bounds, ClassDiagramV2Layout, FlowchartV2Layout, LayoutCluster, LayoutNode,
+    Bounds, ClassDiagramV2Layout, ErDiagramLayout, FlowchartV2Layout, LayoutCluster, LayoutNode,
     StateDiagramV2Layout,
 };
 use std::fmt::Write as _;
@@ -383,6 +383,96 @@ pub fn render_class_diagram_v2_debug_svg(
             if n.is_cluster {
                 continue;
             }
+            render_node(&mut out, n);
+        }
+        out.push_str("</g>\n");
+    }
+
+    out.push_str("</svg>\n");
+    out
+}
+
+pub fn render_er_diagram_debug_svg(layout: &ErDiagramLayout, options: &SvgRenderOptions) -> String {
+    let mut nodes = layout.nodes.clone();
+    nodes.sort_by(|a, b| a.id.cmp(&b.id));
+
+    let mut edges = layout.edges.clone();
+    edges.sort_by(|a, b| a.id.cmp(&b.id));
+
+    let bounds = compute_layout_bounds(&[], &nodes, &edges).unwrap_or(Bounds {
+        min_x: 0.0,
+        min_y: 0.0,
+        max_x: 100.0,
+        max_y: 100.0,
+    });
+    let pad = options.viewbox_padding.max(0.0);
+    let vb_min_x = bounds.min_x - pad;
+    let vb_min_y = bounds.min_y - pad;
+    let vb_w = (bounds.max_x - bounds.min_x) + pad * 2.0;
+    let vb_h = (bounds.max_y - bounds.min_y) + pad * 2.0;
+
+    let mut out = String::new();
+    let _ = writeln!(
+        &mut out,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}">"#,
+        fmt(vb_min_x),
+        fmt(vb_min_y),
+        fmt(vb_w.max(1.0)),
+        fmt(vb_h.max(1.0))
+    );
+    out.push_str(
+        r#"<style>
+.node-box { fill: none; stroke: #2563eb; stroke-width: 1; }
+.node-label { fill: #1f2937; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 11px; text-anchor: middle; dominant-baseline: middle; }
+.edge { fill: none; stroke: #111827; stroke-width: 1; }
+.edge-label-box { fill: #fef3c7; stroke: #92400e; stroke-width: 1; opacity: 0.6; }
+.debug-cross { stroke: #ef4444; stroke-width: 1; }
+</style>
+"#,
+    );
+
+    if options.include_edges {
+        out.push_str(r#"<g class="edges">"#);
+        for e in &edges {
+            if e.points.len() >= 2 {
+                out.push_str(r#"<polyline class="edge" points=""#);
+                for (idx, p) in e.points.iter().enumerate() {
+                    if idx > 0 {
+                        out.push(' ');
+                    }
+                    let _ = write!(&mut out, "{},{}", fmt(p.x), fmt(p.y));
+                }
+                out.push_str(r#"" />"#);
+            }
+
+            if let Some(lbl) = &e.label {
+                let x = lbl.x - lbl.width / 2.0;
+                let y = lbl.y - lbl.height / 2.0;
+                let _ = write!(
+                    &mut out,
+                    r#"<rect class="edge-label-box" x="{}" y="{}" width="{}" height="{}" />"#,
+                    fmt(x),
+                    fmt(y),
+                    fmt(lbl.width.max(1.0)),
+                    fmt(lbl.height.max(1.0))
+                );
+                if options.include_edge_id_labels {
+                    let _ = write!(
+                        &mut out,
+                        r#"<text class="node-label" x="{}" y="{}">{}</text>"#,
+                        fmt(lbl.x),
+                        fmt(lbl.y),
+                        escape_xml(&e.id)
+                    );
+                }
+            }
+        }
+        out.push_str("</g>\n");
+    }
+
+    if options.include_nodes {
+        out.push_str(r#"<g class="nodes">"#);
+        for n in &nodes {
             render_node(&mut out, n);
         }
         out.push_str("</g>\n");

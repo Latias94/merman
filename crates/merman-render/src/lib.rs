@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 pub mod class;
+pub mod er;
 pub mod flowchart;
 pub mod model;
 pub mod state;
@@ -54,6 +55,11 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
             options.text_measurer.as_ref(),
         )?),
         "classDiagram" | "class" => LayoutDiagram::ClassDiagramV2(class::layout_class_diagram_v2(
+            &parsed.model,
+            &meta.effective_config,
+            options.text_measurer.as_ref(),
+        )?),
+        "er" | "erDiagram" => LayoutDiagram::ErDiagram(er::layout_er_diagram(
             &parsed.model,
             &meta.effective_config,
             options.text_measurer.as_ref(),

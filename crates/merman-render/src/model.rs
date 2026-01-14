@@ -139,10 +139,18 @@ pub struct ClassDiagramV2Layout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ErDiagramLayout {
+    pub nodes: Vec<LayoutNode>,
+    pub edges: Vec<LayoutEdge>,
+    pub bounds: Option<Bounds>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LayoutDiagram {
     FlowchartV2(FlowchartV2Layout),
     StateDiagramV2(StateDiagramV2Layout),
     ClassDiagramV2(ClassDiagramV2Layout),
+    ErDiagram(ErDiagramLayout),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
