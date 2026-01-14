@@ -41,6 +41,12 @@ struct StateNode {
     pub position: Option<String>,
 }
 
+impl StateNode {
+    fn is_effective_group(&self) -> bool {
+        self.is_group && self.shape != "note"
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct StateEdge {
     pub id: String,
@@ -744,7 +750,7 @@ fn compute_cluster_rects(
         let node = nodes_by_id.get(id).ok_or_else(|| Error::InvalidModel {
             message: format!("unknown cluster id: {id}"),
         })?;
-        if !node.is_group {
+        if !node.is_effective_group() {
             return Err(Error::InvalidModel {
                 message: format!("node is not a cluster: {id}"),
             });
@@ -755,7 +761,7 @@ fn compute_cluster_rects(
             if child.parent_id.as_deref() != Some(id) {
                 continue;
             }
-            let child_rect = if child.is_group {
+            let child_rect = if child.is_effective_group() {
                 compute(
                     cid,
                     nodes_by_id,
@@ -812,7 +818,7 @@ fn compute_cluster_rects(
     }
 
     for (id, node) in nodes_by_id {
-        if !node.is_group {
+        if !node.is_effective_group() {
             continue;
         }
         let _ = compute(
@@ -872,7 +878,7 @@ pub fn layout_state_diagram_v2(
 
     // Pre-size nodes (leaf nodes only). Cluster nodes start with a tiny placeholder size.
     for n in &model.nodes {
-        if n.is_group {
+        if n.is_effective_group() {
             g.set_node(
                 n.id.clone(),
                 NodeLabel {
@@ -1068,7 +1074,7 @@ pub fn layout_state_diagram_v2(
             });
         };
 
-        if !n.is_group {
+        if !n.is_effective_group() {
             out_nodes.push(LayoutNode {
                 id: n.id.clone(),
                 x: pos.x,
@@ -1089,7 +1095,7 @@ pub fn layout_state_diagram_v2(
 
     let mut clusters: Vec<LayoutCluster> = Vec::new();
     for n in &model.nodes {
-        if !n.is_group {
+        if !n.is_effective_group() {
             continue;
         }
         let rect = *cluster_rects

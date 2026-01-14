@@ -10,7 +10,8 @@ use serde_json::Value;
 
 #[derive(Debug, Clone, Deserialize)]
 struct FlowchartV2Model {
-    pub direction: String,
+    #[serde(default)]
+    pub direction: Option<String>,
     pub nodes: Vec<FlowNode>,
     pub edges: Vec<FlowEdge>,
     #[serde(default)]
@@ -173,6 +174,7 @@ pub fn layout_flowchart_v2(
         font_weight,
     };
 
+    let diagram_direction = model.direction.as_deref().unwrap_or("TB");
     let compound = !model.subgraphs.is_empty();
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: true,
@@ -180,7 +182,7 @@ pub fn layout_flowchart_v2(
         directed: true,
     });
     g.set_graph(GraphLabel {
-        rankdir: rank_dir_from_flow(&model.direction),
+        rankdir: rank_dir_from_flow(diagram_direction),
         nodesep,
         ranksep,
         // Dagre layout defaults `edgesep` to 20 when unspecified.
@@ -473,7 +475,7 @@ pub fn layout_flowchart_v2(
                 continue;
             }
 
-            let dir = effective_cluster_dir(sg, &model.direction, inherit_dir);
+            let dir = effective_cluster_dir(sg, diagram_direction, inherit_dir);
             let label_nodes_for_edges = internal_edges
                 .iter()
                 .filter(|e| edge_label_is_non_empty(e))
@@ -776,7 +778,7 @@ pub fn layout_flowchart_v2(
             Y,
         }
 
-        let pack_axis = match normalize_dir(&model.direction).as_str() {
+        let pack_axis = match normalize_dir(diagram_direction).as_str() {
             "LR" | "RL" => PackAxis::Y,
             _ => PackAxis::X,
         };
@@ -1211,7 +1213,7 @@ pub fn layout_flowchart_v2(
         };
         let offset_y = title_metrics.height - node_padding / 2.0;
 
-        let effective_dir = effective_cluster_dir(sg, &model.direction, inherit_dir);
+        let effective_dir = effective_cluster_dir(sg, diagram_direction, inherit_dir);
 
         clusters.push(LayoutCluster {
             id: sg.id.clone(),
