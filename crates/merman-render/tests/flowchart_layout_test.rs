@@ -859,3 +859,34 @@ fn flowchart_svglike_long_word_is_wrapped_into_multiple_lines() {
         "expected SVG-like mode to constrain width via wrapping"
     );
 }
+
+#[test]
+fn flowchart_subgraph_title_uses_wrapping_placeholder_metrics() {
+    let title = "This is a very long subgraph title that should wrap across multiple lines for layout parity";
+    let text = format!("flowchart TB\nsubgraph A[{title}]\n  a\nend\n");
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout;
+
+    let cluster = layout
+        .clusters
+        .iter()
+        .find(|c| c.id == "A")
+        .expect("cluster A");
+
+    let measurer = merman_render::text::DeterministicTextMeasurer::default();
+    let style = merman_render::text::TextStyle::default();
+    let expected = measurer.measure_wrapped(title, &style, Some(200.0), WrapMode::HtmlLike);
+
+    assert!((cluster.title_label.width - expected.width).abs() < 1e-6);
+    assert!((cluster.title_label.height - expected.height).abs() < 1e-6);
+    assert!(
+        cluster.height >= cluster.title_label.height,
+        "cluster should be at least as tall as its title placeholder"
+    );
+}

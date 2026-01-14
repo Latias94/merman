@@ -132,6 +132,9 @@ pub fn layout_flowchart_v2(
     let node_padding = config_f64(effective_config, &["flowchart", "padding"]).unwrap_or(15.0);
     let wrapping_width =
         config_f64(effective_config, &["flowchart", "wrappingWidth"]).unwrap_or(200.0);
+    // Mermaid subgraph labels are rendered via `createText(...)` without an explicit `width`,
+    // which defaults to 200.
+    let cluster_title_wrapping_width = 200.0;
     let html_labels = effective_config
         .get("flowchart")
         .and_then(|v| v.get("htmlLabels"))
@@ -200,7 +203,12 @@ pub fn layout_flowchart_v2(
     }
 
     for sg in &model.subgraphs {
-        let metrics = measurer.measure(&sg.title, &text_style);
+        let metrics = measurer.measure_wrapped(
+            &sg.title,
+            &text_style,
+            Some(cluster_title_wrapping_width),
+            wrap_mode,
+        );
         let width = metrics.width + cluster_padding * 2.0;
         let height = metrics.height + cluster_padding * 2.0;
         g.set_node(
@@ -720,6 +728,8 @@ pub fn layout_flowchart_v2(
         visiting: &mut std::collections::HashSet<String>,
         measurer: &dyn TextMeasurer,
         text_style: &TextStyle,
+        title_wrapping_width: f64,
+        wrap_mode: WrapMode,
         cluster_padding: f64,
         title_total_margin: f64,
     ) -> Result<Rect> {
@@ -752,6 +762,8 @@ pub fn layout_flowchart_v2(
                     visiting,
                     measurer,
                     text_style,
+                    title_wrapping_width,
+                    wrap_mode,
                     cluster_padding,
                     title_total_margin,
                 )?)
@@ -780,7 +792,8 @@ pub fn layout_flowchart_v2(
             }
         }
 
-        let title_metrics = measurer.measure(&sg.title, text_style);
+        let title_metrics =
+            measurer.measure_wrapped(&sg.title, text_style, Some(title_wrapping_width), wrap_mode);
         let mut rect = if let Some(r) = content {
             r
         } else {
@@ -811,6 +824,15 @@ pub fn layout_flowchart_v2(
             rect = Rect::from_center(cx, cy, rect.width(), rect.height() + title_total_margin);
         }
 
+        // Ensure the cluster is tall enough to fit the title placeholder.
+        // When a cluster contains small nodes but a multi-line title, the member union can be
+        // shorter than the title itself. Mermaid's rendering always accommodates the title bbox.
+        let min_height = title_metrics.height + cluster_padding * 2.0 + title_total_margin;
+        if rect.height() < min_height {
+            let (cx, cy) = rect.center();
+            rect = Rect::from_center(cx, cy, rect.width(), min_height);
+        }
+
         visiting.remove(id);
         cluster_rects.insert(id.to_string(), rect);
         Ok(rect)
@@ -826,12 +848,19 @@ pub fn layout_flowchart_v2(
             &mut visiting,
             measurer,
             &text_style,
+            cluster_title_wrapping_width,
+            wrap_mode,
             cluster_padding,
             title_total_margin,
         )?;
         let (cx, cy) = rect.center();
 
-        let title_metrics = measurer.measure(&sg.title, &text_style);
+        let title_metrics = measurer.measure_wrapped(
+            &sg.title,
+            &text_style,
+            Some(cluster_title_wrapping_width),
+            wrap_mode,
+        );
         let title_label = LayoutLabel {
             x: cx,
             y: cy - rect.height() / 2.0 + title_margin_top + title_metrics.height / 2.0,
