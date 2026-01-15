@@ -165,7 +165,6 @@ pub(crate) struct ErEntityMeasureRow {
 pub(crate) struct ErEntityMeasure {
     pub width: f64,
     pub height: f64,
-    pub padding: f64,
     pub text_padding: f64,
     pub label_text: String,
     pub label_height: f64,
@@ -227,7 +226,6 @@ pub(crate) fn measure_entity_box(
         return ErEntityMeasure {
             width: width.max(1.0),
             height: height.max(1.0),
-            padding,
             text_padding,
             label_text,
             label_height: label_metrics.height.max(0.0),
@@ -341,7 +339,6 @@ pub(crate) fn measure_entity_box(
     ErEntityMeasure {
         width: width.max(1.0),
         height: height.max(1.0),
-        padding,
         text_padding,
         label_text,
         label_height: label_metrics.height.max(0.0),
@@ -544,9 +541,8 @@ fn er_marker_id(card: &str, suffix: &str) -> Option<String> {
         "ZERO_OR_ONE" => Some(format!("ZERO_OR_ONE_{suffix}")),
         "ONE_OR_MORE" => Some(format!("ONE_OR_MORE_{suffix}")),
         "ZERO_OR_MORE" => Some(format!("ZERO_OR_MORE_{suffix}")),
-        // Mermaid ER unified renderer does not enable a dedicated MD_PARENT marker. In practice,
-        // Mermaid CLI output maps `u` cardinality to the same marker as `ONLY_ONE`.
-        "MD_PARENT" => Some(format!("ONLY_ONE_{suffix}")),
+        // Mermaid CLI ER output does not emit a dedicated MD_PARENT marker.
+        "MD_PARENT" => None,
         _ => None,
     }
 }

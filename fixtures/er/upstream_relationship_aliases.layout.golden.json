@@ -140,7 +140,7 @@
           ],
           "start_label_left": null,
           "start_label_right": null,
-          "start_marker": "ONLY_ONE_START",
+          "start_marker": null,
           "stroke_dasharray": null,
           "to": "entity-TEAM_MEMBER-7",
           "to_cluster": null

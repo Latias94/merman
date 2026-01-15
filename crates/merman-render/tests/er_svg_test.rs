@@ -63,8 +63,8 @@ fn er_svg_renders_entities_and_relationships() {
     )
     .expect("render svg");
 
-    assert!(svg.contains(r#"class="er entityBox""#));
-    assert!(svg.contains(r#"class="er relationshipLine""#));
+    assert!(svg.contains(r#"id="entity-BOOK-0""#));
+    assert!(svg.contains("relationshipLine"));
     assert!(svg.contains("relationshipLabelBox"));
     assert!(
         svg.contains("marker") && svg.contains("merman_er-zeroOrMoreStart"),
@@ -75,8 +75,8 @@ fn er_svg_renders_entities_and_relationships() {
         "expected curveBasis cubic bezier commands in relationship paths"
     );
     assert!(
-        svg.contains("fill:#fff") || svg.contains("fill: #fff"),
-        "expected classDef text color to apply as SVG fill"
+        svg.contains("color:#fff") || svg.contains("color: rgb(255, 255, 255)"),
+        "expected classDef text color to apply to HTML labels"
     );
 }
 

@@ -68,6 +68,9 @@ Generate a small report comparing upstream SVGs and the current Rust Stage-B ER 
 - Fail the command if the **SVG DOM** diverges (ignores attribute order/whitespace and rounds
   numeric tokens for comparison):
   - `cargo run -p xtask -- compare-er-svgs --check-dom --dom-decimals 3`
+  - Use a looser, structure-only mode while iterating on DOM shape (replaces numeric tokens with
+    `<n>`, ignores `data-points`, and ignores `<style>` text):
+    - `cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode structure --dom-decimals 3`
 
 ## Notes
 

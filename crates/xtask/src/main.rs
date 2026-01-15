@@ -282,6 +282,7 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut check_markers: bool = false;
     let mut check_dom: bool = false;
     let mut dom_decimals: u32 = 3;
+    let mut dom_mode: String = "strict".to_string();
 
     let mut i = 0;
     while i < args.len() {
@@ -299,6 +300,13 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             "--dom-decimals" => {
                 i += 1;
                 dom_decimals = args.get(i).and_then(|s| s.parse::<u32>().ok()).unwrap_or(3);
+            }
+            "--dom-mode" => {
+                i += 1;
+                dom_mode = args
+                    .get(i)
+                    .map(|s| s.trim().to_string())
+                    .unwrap_or_else(|| "strict".to_string());
             }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -369,6 +377,19 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         children: Vec<SvgDomNode>,
     }
 
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum DomMode {
+        Strict,
+        Structure,
+    }
+
+    fn parse_dom_mode(s: &str) -> DomMode {
+        match s {
+            "structure" => DomMode::Structure,
+            _ => DomMode::Strict,
+        }
+    }
+
     fn round_f64(v: f64, decimals: u32) -> f64 {
         let p = 10_f64.powi(decimals as i32);
         (v * p).round() / p
@@ -433,29 +454,51 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             .to_string()
     }
 
-    fn normalize_svg_attr(name: &str, value: &str, decimals: u32) -> String {
+    fn normalize_numeric_tokens_mode(s: &str, decimals: u32, mode: DomMode) -> String {
+        match mode {
+            DomMode::Strict => normalize_numeric_tokens(s, decimals),
+            DomMode::Structure => re_num().replace_all(s, "<n>").to_string(),
+        }
+    }
+
+    fn normalize_svg_attr(name: &str, value: &str, decimals: u32, mode: DomMode) -> String {
         match name {
+            "data-points" if mode == DomMode::Structure => "<data-points>".to_string(),
             "class" => normalize_class_list(value),
-            "style" => normalize_css_value(&normalize_numeric_tokens(value, decimals)),
-            "viewBox" => normalize_whitespace(&normalize_numeric_tokens(value, decimals)),
-            "transform" => normalize_whitespace(&normalize_numeric_tokens(value, decimals)),
+            "style" => normalize_css_value(&normalize_numeric_tokens_mode(value, decimals, mode)),
+            "viewBox" => {
+                normalize_whitespace(&normalize_numeric_tokens_mode(value, decimals, mode))
+            }
+            "transform" => {
+                normalize_whitespace(&normalize_numeric_tokens_mode(value, decimals, mode))
+            }
             "d" => {
                 let v = value.replace(',', " ");
-                normalize_whitespace(&normalize_numeric_tokens(&v, decimals))
+                normalize_numeric_tokens_mode(&v, decimals, mode)
+                    .chars()
+                    .filter(|c| !c.is_whitespace())
+                    .collect()
             }
             "points" => {
                 let v = value.replace(',', " ");
-                normalize_whitespace(&normalize_numeric_tokens(&v, decimals))
+                normalize_numeric_tokens_mode(&v, decimals, mode)
+                    .chars()
+                    .filter(|c| !c.is_whitespace())
+                    .collect()
             }
             "x" | "y" | "x1" | "y1" | "x2" | "y2" | "cx" | "cy" | "r" | "rx" | "ry" | "width"
             | "height" | "stroke-width" | "font-size" | "opacity" => {
-                normalize_whitespace(&normalize_numeric_tokens(value, decimals))
+                normalize_whitespace(&normalize_numeric_tokens_mode(value, decimals, mode))
             }
             _ => normalize_whitespace(value),
         }
     }
 
-    fn dom_node_from_xml(node: roxmltree::Node<'_, '_>, decimals: u32) -> Option<SvgDomNode> {
+    fn dom_node_from_xml(
+        node: roxmltree::Node<'_, '_>,
+        decimals: u32,
+        mode: DomMode,
+    ) -> Option<SvgDomNode> {
         if !node.is_element() {
             return None;
         }
@@ -465,8 +508,17 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             std::collections::BTreeMap::new();
         for a in node.attributes() {
             let key = a.name().to_string();
-            let val = normalize_svg_attr(&key, a.value(), decimals);
+            let val = normalize_svg_attr(&key, a.value(), decimals, mode);
             attrs.insert(key, val);
+        }
+
+        if mode == DomMode::Structure && name == "style" {
+            return Some(SvgDomNode {
+                name,
+                attrs,
+                text: None,
+                children: Vec::new(),
+            });
         }
 
         let mut text: Option<String> = None;
@@ -484,7 +536,7 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
         let mut children: Vec<SvgDomNode> = Vec::new();
         for child in node.children() {
-            if let Some(c) = dom_node_from_xml(child, decimals) {
+            if let Some(c) = dom_node_from_xml(child, decimals, mode) {
                 children.push(c);
             }
         }
@@ -497,10 +549,10 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         })
     }
 
-    fn svg_dom_signature(svg: &str, decimals: u32) -> Result<SvgDomNode, String> {
+    fn svg_dom_signature(svg: &str, decimals: u32, mode: DomMode) -> Result<SvgDomNode, String> {
         let doc = Document::parse(svg).map_err(|e| format!("xml parse failed: {e}"))?;
         let root = doc.root_element();
-        dom_node_from_xml(root, decimals).ok_or_else(|| "missing root element".to_string())
+        dom_node_from_xml(root, decimals, mode).ok_or_else(|| "missing root element".to_string())
     }
 
     fn truncate(s: &str, max_len: usize) -> String {
@@ -769,7 +821,9 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
         let mut dom_ok = true;
         let dom_ok_str = if check_dom {
-            let upstream_dom = match svg_dom_signature(&upstream_svg, dom_decimals) {
+            let dom_mode_parsed = parse_dom_mode(dom_mode.as_str());
+            let upstream_dom = match svg_dom_signature(&upstream_svg, dom_decimals, dom_mode_parsed)
+            {
                 Ok(v) => v,
                 Err(err) => {
                     dom_ok = false;
@@ -782,7 +836,7 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                     }
                 }
             };
-            let local_dom = match svg_dom_signature(&local_svg, dom_decimals) {
+            let local_dom = match svg_dom_signature(&local_svg, dom_decimals, dom_mode_parsed) {
                 Ok(v) => v,
                 Err(err) => {
                     dom_ok = false;
@@ -805,7 +859,9 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
 
             if !dom_ok {
-                failures.push(format!("dom mismatch for {stem} (decimals={dom_decimals})"));
+                failures.push(format!(
+                    "dom mismatch for {stem} (mode={dom_mode}, decimals={dom_decimals})"
+                ));
             }
 
             if dom_ok { "yes" } else { "no" }

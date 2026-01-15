@@ -16,6 +16,7 @@ edition = "2024"
 license = "MIT"
 
 [workspace.dependencies]
+base64 = "0.22.1"
 lalrpop = "0.20.2"
 lalrpop-util = "0.20.2"
 logos = "0.14.4"

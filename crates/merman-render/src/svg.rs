@@ -4,6 +4,7 @@ use crate::model::{
 };
 use crate::text::TextMeasurer;
 use crate::{Error, Result};
+use base64::Engine as _;
 use std::fmt::Write as _;
 
 #[derive(Debug, Clone)]
@@ -559,14 +560,6 @@ fn theme_color(effective_config: &serde_json::Value, key: &str, fallback: &str) 
         .unwrap_or_else(|| fallback.to_string())
 }
 
-fn split_br_like_mermaid(text: &str) -> Vec<String> {
-    let t = text
-        .replace("<br/>", "\n")
-        .replace("<br />", "\n")
-        .replace("<br>", "\n");
-    t.split('\n').map(|s| s.to_string()).collect()
-}
-
 fn parse_style_decl(s: &str) -> Option<(&str, &str)> {
     let s = s.trim().trim_end_matches(';').trim();
     if s.is_empty() {
@@ -607,7 +600,11 @@ fn compile_er_entity_styles(
 ) -> (Vec<String>, Vec<String>) {
     let mut compiled_box: Vec<String> = Vec::new();
     let mut compiled_text: Vec<String> = Vec::new();
+    let mut seen_classes: std::collections::HashSet<&str> = std::collections::HashSet::new();
     for class_name in entity.css_classes.split_whitespace() {
+        if !seen_classes.insert(class_name) {
+            continue;
+        }
         let Some(def) = classes.get(class_name) else {
             continue;
         };
@@ -627,8 +624,10 @@ fn compile_er_entity_styles(
         }
     }
 
-    let mut rect_decls: Vec<String> = Vec::new();
-    let mut text_decls: Vec<String> = Vec::new();
+    let mut rect_map: std::collections::BTreeMap<String, String> =
+        std::collections::BTreeMap::new();
+    let mut text_map: std::collections::BTreeMap<String, String> =
+        std::collections::BTreeMap::new();
 
     // Box styles: classDef styles + `style` statements.
     for s in compiled_box.iter().chain(entity.css_styles.iter()) {
@@ -636,11 +635,11 @@ fn compile_er_entity_styles(
             continue;
         };
         if is_rect_style_key(k) {
-            rect_decls.push(format!("{k}:{v}"));
+            rect_map.insert(k.to_string(), v.to_string());
         }
-        // Mermaid treats `color:` as the text color (even if it comes from the style list).
+        // Mermaid treats `color:` as the HTML label text color (even if it comes from the style list).
         if k == "color" {
-            text_decls.push(format!("fill:{v}"));
+            text_map.insert("color".to_string(), v.to_string());
         }
     }
 
@@ -653,13 +652,89 @@ fn compile_er_entity_styles(
             continue;
         }
         if k == "color" {
-            text_decls.push(format!("fill:{v}"));
+            text_map.insert("color".to_string(), v.to_string());
         } else {
+            text_map.insert(k.to_string(), v.to_string());
+        }
+    }
+
+    let mut rect_decls: Vec<String> = Vec::new();
+    for k in [
+        "fill",
+        "stroke",
+        "stroke-width",
+        "stroke-dasharray",
+        "opacity",
+        "fill-opacity",
+        "stroke-opacity",
+    ] {
+        if let Some(v) = rect_map.get(k) {
+            rect_decls.push(format!("{k}:{v}"));
+        }
+    }
+
+    let mut text_decls: Vec<String> = Vec::new();
+    for k in [
+        "color",
+        "font-family",
+        "font-size",
+        "font-weight",
+        "opacity",
+    ] {
+        if let Some(v) = text_map.get(k) {
             text_decls.push(format!("{k}:{v}"));
         }
     }
 
     (rect_decls, text_decls)
+}
+
+fn style_decls_with_important_join(decls: &[String], join: &str) -> String {
+    let mut out: Vec<String> = Vec::new();
+    for d in decls {
+        let Some((k, v)) = parse_style_decl(d) else {
+            continue;
+        };
+        out.push(format!("{k}:{v} !important"));
+    }
+    out.join(join)
+}
+
+fn style_decls_with_important(decls: &[String]) -> String {
+    style_decls_with_important_join(decls, "; ")
+}
+
+fn last_style_value(decls: &[String], key: &str) -> Option<String> {
+    for d in decls.iter().rev() {
+        let Some((k, v)) = parse_style_decl(d) else {
+            continue;
+        };
+        if k == key {
+            return Some(v.to_string());
+        }
+    }
+    None
+}
+
+fn concat_style_keys(decls: &[String], keys: &[&str]) -> String {
+    let mut out = String::new();
+    for k in keys {
+        if let Some(v) = last_style_value(decls, k) {
+            out.push_str(k);
+            out.push(':');
+            out.push_str(&v);
+        }
+    }
+    out
+}
+
+fn parse_px_f64(v: &str) -> Option<f64> {
+    let raw = v.trim().trim_end_matches(';').trim();
+    let raw = raw.trim_end_matches("px").trim();
+    if raw.is_empty() {
+        return None;
+    }
+    raw.parse::<f64>().ok()
 }
 
 pub fn render_er_diagram_svg(
@@ -732,13 +807,48 @@ pub fn render_er_diagram_svg(
         font_size: font_size.max(1.0),
         font_weight: None,
     };
-    let rel_label_font_size = (font_size - 2.0).max(1.0);
+    fn parse_trailing_index(id: &str) -> Option<i64> {
+        let (_, tail) = id.rsplit_once('-')?;
+        tail.parse::<i64>().ok()
+    }
+    fn er_node_sort_key(id: &str) -> (i64, i64) {
+        if id.contains("---") {
+            return (1, parse_trailing_index(id).unwrap_or(i64::MAX));
+        }
+        (0, parse_trailing_index(id).unwrap_or(i64::MAX))
+    }
 
     let mut nodes = layout.nodes.clone();
-    nodes.sort_by(|a, b| a.id.cmp(&b.id));
+    nodes.sort_by_key(|n| er_node_sort_key(&n.id));
 
     let mut edges = layout.edges.clone();
-    edges.sort_by(|a, b| a.id.cmp(&b.id));
+    fn er_edge_sort_key(id: &str) -> (i64, i64) {
+        let Some(rest) = id.strip_prefix("er-rel-") else {
+            return (i64::MAX, i64::MAX);
+        };
+        let mut digits_len = 0usize;
+        for ch in rest.chars() {
+            if !ch.is_ascii_digit() {
+                break;
+            }
+            digits_len += ch.len_utf8();
+        }
+        if digits_len == 0 {
+            return (i64::MAX, i64::MAX);
+        }
+        let Ok(idx) = rest[..digits_len].parse::<i64>() else {
+            return (i64::MAX, i64::MAX);
+        };
+        let suffix = &rest[digits_len..];
+        let variant = match suffix {
+            "-cyclic-0" => 0,
+            "" => 1,
+            "-cyclic-2" => 2,
+            _ => 99,
+        };
+        (idx, variant)
+    }
+    edges.sort_by_key(|e| er_edge_sort_key(&e.id));
 
     let include_md_parent = edges.iter().any(|e| {
         matches!(
@@ -885,76 +995,44 @@ pub fn render_er_diagram_svg(
         node_border
     );
 
+    // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
+    out.push_str("<g>");
+
     // Markers ported from Mermaid `@11.12.2` `erMarkers.js`.
     // Note: ids follow Mermaid marker rules: `${diagramId}_${diagramType}-${markerType}{Start|End}`.
     // Mermaid's ER unified renderer enables four marker types by default; include MD_PARENT only if used.
     let diagram_id_esc = escape_xml(diagram_id);
     let diagram_type_esc = escape_xml(diagram_type);
-    let stroke_esc = escape_xml(&stroke);
-    let main_bkg_esc = escape_xml(&main_bkg);
-    out.push_str("<defs>\n");
 
+    // Mermaid emits one `<defs>` wrapper per marker.
     if include_md_parent {
         let _ = writeln!(
             &mut out,
-            r#"  <marker id="{diagram_id_esc}_{diagram_type_esc}-mdParentStart" refX="0" refY="7" markerWidth="190" markerHeight="240" orient="auto">
-    <path d="M 18,7 L9,13 L1,7 L9,1 Z" fill="{stroke_esc}" stroke="{stroke_esc}" />
-  </marker>
-  <marker id="{diagram_id_esc}_{diagram_type_esc}-mdParentEnd" refX="19" refY="7" markerWidth="20" markerHeight="28" orient="auto">
-    <path d="M 18,7 L9,13 L1,7 L9,1 Z" fill="{stroke_esc}" stroke="{stroke_esc}" />
-  </marker>"#
+            r#"<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-mdParentStart" class="marker mdParent er" refX="0" refY="7" markerWidth="190" markerHeight="240" orient="auto"><path d="M 18,7 L9,13 L1,7 L9,1 Z"/></marker></defs>
+<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-mdParentEnd" class="marker mdParent er" refX="19" refY="7" markerWidth="20" markerHeight="28" orient="auto"><path d="M 18,7 L9,13 L1,7 L9,1 Z"/></marker></defs>"#
         );
     }
 
     let _ = writeln!(
         &mut out,
-        r#"  <marker id="{diagram_id_esc}_{diagram_type_esc}-onlyOneStart" refX="0" refY="9" markerWidth="18" markerHeight="18" orient="auto">
-    <path stroke="{stroke_esc}" fill="none" d="M9,0 L9,18 M15,0 L15,18" />
-  </marker>
-  <marker id="{diagram_id_esc}_{diagram_type_esc}-onlyOneEnd" refX="18" refY="9" markerWidth="18" markerHeight="18" orient="auto">
-    <path stroke="{stroke_esc}" fill="none" d="M3,0 L3,18 M9,0 L9,18" />
-  </marker>
-
-  <marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrOneStart" refX="0" refY="9" markerWidth="30" markerHeight="18" orient="auto">
-    <circle stroke="{stroke_esc}" fill="{main_bkg_esc}" cx="21" cy="9" r="6" />
-    <path stroke="{stroke_esc}" fill="none" d="M9,0 L9,18" />
-  </marker>
-  <marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrOneEnd" refX="30" refY="9" markerWidth="30" markerHeight="18" orient="auto">
-    <circle stroke="{stroke_esc}" fill="{main_bkg_esc}" cx="9" cy="9" r="6" />
-    <path stroke="{stroke_esc}" fill="none" d="M21,0 L21,18" />
-  </marker>
-
-  <marker id="{diagram_id_esc}_{diagram_type_esc}-oneOrMoreStart" refX="18" refY="18" markerWidth="45" markerHeight="36" orient="auto">
-    <path stroke="{stroke_esc}" fill="none" d="M0,18 Q 18,0 36,18 Q 18,36 0,18 M42,9 L42,27" />
-  </marker>
-  <marker id="{diagram_id_esc}_{diagram_type_esc}-oneOrMoreEnd" refX="27" refY="18" markerWidth="45" markerHeight="36" orient="auto">
-    <path stroke="{stroke_esc}" fill="none" d="M3,9 L3,27 M9,18 Q27,0 45,18 Q27,36 9,18" />
-  </marker>
-
-  <marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrMoreStart" refX="18" refY="18" markerWidth="57" markerHeight="36" orient="auto">
-    <circle stroke="{stroke_esc}" fill="{main_bkg_esc}" cx="48" cy="18" r="6" />
-    <path stroke="{stroke_esc}" fill="none" d="M0,18 Q18,0 36,18 Q18,36 0,18" />
-  </marker>
-  <marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrMoreEnd" refX="39" refY="18" markerWidth="57" markerHeight="36" orient="auto">
-    <circle stroke="{stroke_esc}" fill="{main_bkg_esc}" cx="9" cy="18" r="6" />
-    <path stroke="{stroke_esc}" fill="none" d="M21,18 Q39,0 57,18 Q39,36 21,18" />
-  </marker>"#
+        r#"<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-onlyOneStart" class="marker onlyOne er" refX="0" refY="9" markerWidth="18" markerHeight="18" orient="auto"><path d="M9,0 L9,18 M15,0 L15,18"/></marker></defs>
+<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-onlyOneEnd" class="marker onlyOne er" refX="18" refY="9" markerWidth="18" markerHeight="18" orient="auto"><path d="M3,0 L3,18 M9,0 L9,18"/></marker></defs>
+<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrOneStart" class="marker zeroOrOne er" refX="0" refY="9" markerWidth="30" markerHeight="18" orient="auto"><circle fill="white" cx="21" cy="9" r="6"/><path d="M9,0 L9,18"/></marker></defs>
+<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrOneEnd" class="marker zeroOrOne er" refX="30" refY="9" markerWidth="30" markerHeight="18" orient="auto"><circle fill="white" cx="9" cy="9" r="6"/><path d="M21,0 L21,18"/></marker></defs>
+<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-oneOrMoreStart" class="marker oneOrMore er" refX="18" refY="18" markerWidth="45" markerHeight="36" orient="auto"><path d="M0,18 Q 18,0 36,18 Q 18,36 0,18 M42,9 L42,27"/></marker></defs>
+<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-oneOrMoreEnd" class="marker oneOrMore er" refX="27" refY="18" markerWidth="45" markerHeight="36" orient="auto"><path d="M3,9 L3,27 M9,18 Q27,0 45,18 Q27,36 9,18"/></marker></defs>
+<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrMoreStart" class="marker zeroOrMore er" refX="18" refY="18" markerWidth="57" markerHeight="36" orient="auto"><circle fill="white" cx="48" cy="18" r="6"/><path d="M0,18 Q18,0 36,18 Q18,36 0,18"/></marker></defs>
+<defs><marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrMoreEnd" class="marker zeroOrMore er" refX="39" refY="18" markerWidth="57" markerHeight="36" orient="auto"><circle fill="white" cx="9" cy="18" r="6"/><path d="M21,18 Q39,0 57,18 Q39,36 21,18"/></marker></defs>"#
     );
-    out.push_str("</defs>\n");
 
-    let _ = writeln!(
-        &mut out,
-        r#"<g class="root" transform="translate({}, {})">"#,
-        fmt(translate_x),
-        fmt(translate_y)
-    );
+    let _ = writeln!(&mut out, r#"<g class="root">"#);
 
     if let Some(title) = diagram_title {
         let _ = writeln!(
             &mut out,
             r#"<text class="erDiagramTitleText" x="{}" y="{}">{}</text>"#,
-            fmt(title_x),
-            fmt(title_y),
+            fmt(title_x + translate_x),
+            fmt(title_y + translate_y),
             escape_xml(title)
         );
     }
@@ -965,95 +1043,185 @@ pub fn render_er_diagram_svg(
         entity_by_id.insert(e.id.as_str(), e);
     }
 
-    if options.include_edges {
-        out.push_str(r#"<g class="relationships">"#);
-        for e in &edges {
-            if e.points.len() >= 2 {
-                let mut line_classes = String::from("er relationshipLine");
-                if e.stroke_dasharray.as_deref() == Some("8,8") {
-                    line_classes.push_str(" edge-pattern-dashed");
-                }
-                let _ = write!(&mut out, r#"<path class="{}""#, escape_xml(&line_classes));
-                if let Some(dash) = &e.stroke_dasharray {
-                    let _ = write!(&mut out, r#" stroke-dasharray="{}""#, escape_xml(dash));
-                }
-                if let Some(m) = &e.start_marker {
-                    let marker = er_unified_marker_id(diagram_id, diagram_type, m);
-                    let _ = write!(&mut out, r#" marker-start="url(#{})""#, escape_xml(&marker));
-                }
-                if let Some(m) = &e.end_marker {
-                    let marker = er_unified_marker_id(diagram_id, diagram_type, m);
-                    let _ = write!(&mut out, r#" marker-end="url(#{})""#, escape_xml(&marker));
-                }
-                let d = curve_basis_path_d(&e.points);
-                let _ = write!(&mut out, r#" d="{}" />"#, escape_xml(&d));
-            }
+    out.push_str(r#"<g class="clusters"/>"#);
 
-            // Role label + opaque box.
-            if let Some(lbl) = &e.label {
-                let x = lbl.x - lbl.width / 2.0;
-                let y = lbl.y - lbl.height / 2.0;
-                let _ = write!(
-                    &mut out,
-                    r#"<rect class="er relationshipLabelBox" x="{}" y="{}" width="{}" height="{}" />"#,
-                    fmt(x),
-                    fmt(y),
-                    fmt(lbl.width.max(1.0)),
-                    fmt(lbl.height.max(1.0))
-                );
-
-                let rel_text =
-                    e.id.strip_prefix("er-rel-")
-                        .and_then(|s| s.parse::<usize>().ok())
-                        .and_then(|idx| model.relationships.get(idx))
-                        .map(|r| r.role_a.as_str())
-                        .unwrap_or("");
-                let lines = split_br_like_mermaid(rel_text);
-                let _ = write!(
-                    &mut out,
-                    r#"<text class="er relationshipLabel" x="{}" y="{}" font-size="{}">"#,
-                    fmt(lbl.x),
-                    fmt(lbl.y),
-                    fmt(rel_label_font_size)
-                );
-                if lines.len() <= 1 {
-                    out.push_str(&escape_xml(rel_text));
-                } else {
-                    let first_shift = -((lines.len() as f64 - 1.0) * 0.5);
-                    for (i, line) in lines.iter().enumerate() {
-                        let dy = if i == 0 { first_shift } else { 1.0 };
-                        let _ = write!(
-                            &mut out,
-                            r#"<tspan x="{}" dy="{}em">{}</tspan>"#,
-                            fmt(lbl.x),
-                            fmt(dy),
-                            escape_xml(line)
-                        );
-                    }
-                }
-                out.push_str("</text>");
+    fn er_rel_idx_from_edge_id(edge_id: &str) -> Option<usize> {
+        let rest = edge_id.strip_prefix("er-rel-")?;
+        let mut digits_len = 0usize;
+        for ch in rest.chars() {
+            if !ch.is_ascii_digit() {
+                break;
             }
+            digits_len += ch.len_utf8();
         }
-        out.push_str("</g>\n");
+        if digits_len == 0 {
+            return None;
+        }
+        rest[..digits_len].parse::<usize>().ok()
     }
 
+    fn er_edge_dom_id(edge_id: &str, relationships: &[crate::er::ErRelationship]) -> String {
+        let Some(idx) = er_rel_idx_from_edge_id(edge_id) else {
+            return edge_id.to_string();
+        };
+        let Some(rel) = relationships.get(idx) else {
+            return edge_id.to_string();
+        };
+        let rest = edge_id.strip_prefix("er-rel-").unwrap_or("");
+        let idx_prefix = idx.to_string();
+        let suffix = rest.strip_prefix(&idx_prefix).unwrap_or("");
+        if rel.entity_a == rel.entity_b {
+            return match suffix {
+                "-cyclic-0" => format!("{}-cyclic-special-1", rel.entity_a),
+                "" => format!("{}-cyclic-special-mid", rel.entity_a),
+                "-cyclic-2" => format!("{}-cyclic-special-2", rel.entity_a),
+                _ => format!("{}-cyclic-special-mid", rel.entity_a),
+            };
+        }
+        format!("id_{}_{}_{}", rel.entity_a, rel.entity_b, idx)
+    }
+
+    out.push_str(r#"<g class="edgePaths">"#);
+    if options.include_edges {
+        for e in &edges {
+            if e.points.len() < 2 {
+                continue;
+            }
+            let edge_dom_id = er_edge_dom_id(&e.id, &model.relationships);
+            let is_dashed = e.stroke_dasharray.as_deref() == Some("8,8");
+            let pattern_class = if is_dashed {
+                "edge-pattern-dashed"
+            } else {
+                "edge-pattern-solid"
+            };
+            let line_classes = format!("edge-thickness-normal {pattern_class} relationshipLine");
+            let shifted: Vec<crate::model::LayoutPoint> = e
+                .points
+                .iter()
+                .map(|p| crate::model::LayoutPoint {
+                    x: p.x + translate_x,
+                    y: p.y + translate_y,
+                })
+                .collect();
+            let data_points = base64::engine::general_purpose::STANDARD
+                .encode(serde_json::to_vec(&shifted).unwrap_or_default());
+            let d = curve_basis_path_d(&shifted);
+
+            let _ = write!(
+                &mut out,
+                r#"<path d="{}" id="{}" class="{}" style="undefined;;;undefined" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
+                escape_xml(&d),
+                escape_xml(&edge_dom_id),
+                escape_xml(&line_classes),
+                escape_xml(&edge_dom_id),
+                escape_xml(&data_points)
+            );
+            if let Some(m) = &e.start_marker {
+                let marker = er_unified_marker_id(diagram_id, diagram_type, m);
+                let _ = write!(&mut out, r#" marker-start="url(#{})""#, escape_xml(&marker));
+            }
+            if let Some(m) = &e.end_marker {
+                let marker = er_unified_marker_id(diagram_id, diagram_type, m);
+                let _ = write!(&mut out, r#" marker-end="url(#{})""#, escape_xml(&marker));
+            }
+            out.push_str(" />");
+        }
+    }
+    out.push_str("</g>");
+
+    out.push_str(r#"<g class="edgeLabels">"#);
+    if options.include_edges {
+        for e in &edges {
+            let rel_idx = er_rel_idx_from_edge_id(&e.id)
+                .and_then(|idx| model.relationships.get(idx).map(|r| (idx, r)));
+
+            let rel_text = rel_idx.map(|(_, r)| r.role_a.as_str()).unwrap_or("").trim();
+            let edge_dom_id = er_edge_dom_id(&e.id, &model.relationships);
+
+            let has_label_text = !rel_text.is_empty();
+            let (w, h, cx, cy) = if has_label_text {
+                if let Some(lbl) = &e.label {
+                    (
+                        lbl.width.max(0.0),
+                        lbl.height.max(0.0),
+                        lbl.x + translate_x,
+                        lbl.y + translate_y,
+                    )
+                } else {
+                    (0.0, 0.0, 0.0, 0.0)
+                }
+            } else {
+                (0.0, 0.0, 0.0, 0.0)
+            };
+
+            if has_label_text && w > 0.0 && h > 0.0 {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="edgeLabel" transform="translate({}, {})">"#,
+                    fmt(cx),
+                    fmt(cy)
+                );
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="label" data-id="{}" transform="translate({}, {})">"#,
+                    escape_xml(&edge_dom_id),
+                    fmt(-w / 2.0),
+                    fmt(-h / 2.0)
+                );
+                let _ = write!(
+                    &mut out,
+                    r#"<foreignObject width="{}" height="{}">"#,
+                    fmt(w),
+                    fmt(h)
+                );
+                out.push_str(r#"<div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>"#);
+                out.push_str(&escape_xml(rel_text));
+                out.push_str(r#"</p></span></div></foreignObject></g></g>"#);
+            } else {
+                out.push_str(r#"<g class="edgeLabel"><g class="label""#);
+                let _ = write!(&mut out, r#" data-id="{}""#, escape_xml(&edge_dom_id));
+                out.push_str(r#" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#);
+            }
+        }
+    }
+    out.push_str("</g>\n");
+
     // Entities drawn after relationships so they cover markers when overlapping.
-    out.push_str(r#"<g class="entities">"#);
+    out.push_str(r#"<g class="nodes">"#);
     for n in &nodes {
         let Some(entity) = entity_by_id.get(n.id.as_str()).copied() else {
+            if n.id.contains("---") {
+                let cx = n.x + translate_x;
+                let cy = n.y + translate_y;
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})">"#,
+                    escape_xml(&n.id),
+                    fmt(cx),
+                    fmt(cy)
+                );
+                out.push_str(r#"<rect width="0.1" height="0.1"/>"#);
+                out.push_str(r#"<g class="label" style="" transform="translate(0, 0)"><rect/><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 10px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g>"#);
+            }
             continue;
         };
 
         let (rect_style_decls, text_style_decls) = compile_er_entity_styles(entity, &model.classes);
         let rect_style_attr = if rect_style_decls.is_empty() {
-            String::new()
+            r#"style="""#.to_string()
         } else {
-            format!(r#" style="{}""#, escape_xml(&rect_style_decls.join(";")))
+            format!(
+                r#"style="{}""#,
+                escape_xml(&style_decls_with_important(&rect_style_decls))
+            )
         };
-        let text_style_attr = if text_style_decls.is_empty() {
-            String::new()
+        let label_style_attr = if text_style_decls.is_empty() {
+            r#"style="""#.to_string()
         } else {
-            format!(r#" style="{}""#, escape_xml(&text_style_decls.join(";")))
+            format!(
+                r#"style="{}""#,
+                escape_xml(&style_decls_with_important(&text_style_decls))
+            )
         };
 
         let measure = crate::er::measure_entity_box(
@@ -1074,168 +1242,476 @@ pub fn render_er_diagram_svg(
             });
         }
 
-        let tx = n.x - w / 2.0;
-        let ty = n.y - h / 2.0;
+        let cx = n.x + translate_x;
+        let cy = n.y + translate_y;
+        let ox = -w / 2.0;
+        let oy = -h / 2.0;
 
         let group_class = if entity.css_classes.trim().is_empty() {
-            "er".to_string()
+            "node".to_string()
         } else {
-            format!("er {}", entity.css_classes.trim())
+            format!("node {}", entity.css_classes.trim())
         };
         let _ = write!(
             &mut out,
             r#"<g id="{}" class="{}" transform="translate({}, {})">"#,
             escape_xml(&entity.id),
             escape_xml(&group_class),
-            fmt(tx),
-            fmt(ty)
-        );
-
-        let _ = write!(
-            &mut out,
-            r#"<rect class="er entityBox" x="0" y="0" width="{}" height="{}"{} />"#,
-            fmt(w),
-            fmt(h),
-            rect_style_attr
+            fmt(cx),
+            fmt(cy)
         );
 
         if entity.attributes.is_empty() {
             let _ = write!(
                 &mut out,
-                r#"<text class="er entityLabel" x="{}" y="{}" font-size="{}"{}>{}</text>"#,
-                fmt(w / 2.0),
-                fmt(h / 2.0),
-                fmt(font_size),
-                text_style_attr,
+                r#"<rect class="basic label-container" {} x="{}" y="{}" width="{}" height="{}"/>"#,
+                rect_style_attr,
+                fmt(ox),
+                fmt(oy),
+                fmt(w),
+                fmt(h)
+            );
+            let html_labels = effective_config
+                .get("htmlLabels")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+            let wrap_mode = if html_labels {
+                crate::text::WrapMode::HtmlLike
+            } else {
+                crate::text::WrapMode::SvgLike
+            };
+            let label_metrics =
+                measurer.measure_wrapped(&measure.label_text, &label_style, None, wrap_mode);
+            let lw = label_metrics.width.max(0.0);
+            let lh = label_metrics.height.max(0.0);
+
+            let _ = write!(
+                &mut out,
+                r#"<g class="label" transform="translate({}, {})" {}><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g>"#,
+                fmt(-lw / 2.0),
+                fmt(-lh / 2.0),
+                label_style_attr,
+                fmt(lw),
+                fmt(lh),
                 escape_xml(&measure.label_text)
             );
             out.push_str("</g>");
             continue;
         }
 
-        // Title row: Mermaid's unified ER shape uses HTML labels by default, with `line-height: 1.5`.
-        // Approximate the "name row" height as `label_height + TEXT_PADDING` and place the title centered in that row.
+        fn rect_fill_path_d(x0: f64, y0: f64, x1: f64, y1: f64) -> String {
+            format!(
+                "M{} {} L{} {} L{} {} L{} {}",
+                fmt(x0),
+                fmt(y0),
+                fmt(x1),
+                fmt(y0),
+                fmt(x1),
+                fmt(y1),
+                fmt(x0),
+                fmt(y1)
+            )
+        }
+
+        fn rough_line_path_d(x0: f64, y0: f64, x1: f64, y1: f64) -> String {
+            let c1x = x0 + (x1 - x0) * 0.25;
+            let c1y = y0 + (y1 - y0) * 0.25;
+            let c2x = x0 + (x1 - x0) * 0.75;
+            let c2y = y0 + (y1 - y0) * 0.75;
+            let d1 = format!(
+                "M{} {} C{} {}, {} {}, {} {}",
+                fmt(x0),
+                fmt(y0),
+                fmt(c1x),
+                fmt(c1y),
+                fmt(c2x),
+                fmt(c2y),
+                fmt(x1),
+                fmt(y1)
+            );
+            let c1x2 = x0 + (x1 - x0) * 0.35;
+            let c1y2 = y0 + (y1 - y0) * 0.15;
+            let c2x2 = x0 + (x1 - x0) * 0.65;
+            let c2y2 = y0 + (y1 - y0) * 0.85;
+            let d2 = format!(
+                "M{} {} C{} {}, {} {}, {} {}",
+                fmt(x0),
+                fmt(y0),
+                fmt(c1x2),
+                fmt(c1y2),
+                fmt(c2x2),
+                fmt(c2y2),
+                fmt(x1),
+                fmt(y1)
+            );
+            format!("{d1} {d2}")
+        }
+
+        fn rough_rect_border_path_d(x0: f64, y0: f64, x1: f64, y1: f64) -> String {
+            let top = rough_line_path_d(x0, y0, x1, y0);
+            let right = rough_line_path_d(x1, y0, x1, y1);
+            let bottom = rough_line_path_d(x1, y1, x0, y1);
+            let left = rough_line_path_d(x0, y1, x0, y0);
+            format!("{top} {right} {bottom} {left}")
+        }
+
+        fn html_label_content(text: &str, span_style_attr: &str) -> String {
+            let text = text.trim();
+            if text.is_empty() {
+                return format!(r#"<span class="nodeLabel"{}></span>"#, span_style_attr);
+            }
+            // Mermaid's DOM serialization for generics (`type<T>`) avoids nested HTML tags.
+            if text.contains('<') || text.contains('>') {
+                return escape_xml(text);
+            }
+            format!(
+                r#"<span class="nodeLabel"{}><p>{}</p></span>"#,
+                span_style_attr,
+                escape_xml(text)
+            )
+        }
+
+        fn parse_hex_color_rgb(s: &str) -> Option<(u8, u8, u8)> {
+            let s = s.trim();
+            let Some(hex) = s.strip_prefix('#') else {
+                return None;
+            };
+            if hex.len() == 3 {
+                let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?;
+                let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?;
+                let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?;
+                return Some((r, g, b));
+            }
+            if hex.len() == 6 {
+                let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+                let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+                let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+                return Some((r, g, b));
+            }
+            None
+        }
+
+        let label_div_color_prefix = last_style_value(&text_style_decls, "color")
+            .and_then(|v| parse_hex_color_rgb(&v))
+            .map(|(r, g, b)| format!("color: rgb({r}, {g}, {b}) !important; "))
+            .unwrap_or_default();
+        let span_style_attr = if text_style_decls.is_empty() {
+            String::new()
+        } else {
+            format!(
+                r#" style="{}""#,
+                escape_xml(&style_decls_with_important(&text_style_decls))
+            )
+        };
+
+        // Mermaid ER attribute tables (erBox.ts) use HTML labels (`foreignObject`) and paths for the table rows.
         let name_row_h = (measure.label_height + measure.text_padding).max(1.0);
-        let title_y = name_row_h / 2.0;
+        let box_x0 = ox;
+        let box_y0 = oy;
+        let box_x1 = ox + w;
+        let box_y1 = oy + h;
+        let sep_y = oy + name_row_h;
+
+        let box_fill =
+            last_style_value(&rect_style_decls, "fill").unwrap_or_else(|| main_bkg.clone());
+        let box_stroke =
+            last_style_value(&rect_style_decls, "stroke").unwrap_or_else(|| node_border.clone());
+        let box_stroke_width = last_style_value(&rect_style_decls, "stroke-width")
+            .and_then(|v| parse_px_f64(&v))
+            .unwrap_or(1.3)
+            .max(0.0);
+
+        let stroke_width_attr = fmt(box_stroke_width);
+
+        let group_style = concat_style_keys(&rect_style_decls, &["fill", "stroke", "stroke-width"]);
+        let group_style_attr = if group_style.is_empty() {
+            r#"style="""#.to_string()
+        } else {
+            format!(r#"style="{}""#, escape_xml(&group_style))
+        };
+
+        let mut override_decls: Vec<String> = Vec::new();
+        if let Some(v) = last_style_value(&rect_style_decls, "stroke") {
+            override_decls.push(format!("stroke:{v}"));
+        }
+        if let Some(v) = last_style_value(&rect_style_decls, "stroke-width") {
+            override_decls.push(format!("stroke-width:{v}"));
+        }
+        let override_style = if override_decls.is_empty() {
+            None
+        } else {
+            Some(style_decls_with_important(&override_decls))
+        };
+        let override_style_attr = override_style
+            .as_deref()
+            .map(|s| format!(r#" style="{}""#, escape_xml(s)))
+            .unwrap_or_default();
+
+        // Base box (fill + border)
+        let _ = write!(&mut out, r#"<g {}>"#, group_style_attr);
         let _ = write!(
             &mut out,
-            r#"<text class="er entityLabel" x="{}" y="{}" font-size="{}"{}>{}</text>"#,
-            fmt(w / 2.0),
-            fmt(title_y),
-            fmt(font_size),
-            text_style_attr,
-            escape_xml(&measure.label_text)
+            r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"{} />"#,
+            rect_fill_path_d(box_x0, box_y0, box_x1, box_y1),
+            escape_xml(&box_fill),
+            override_style_attr
         );
+        let _ = write!(
+            &mut out,
+            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} />"#,
+            rough_rect_border_path_d(box_x0, box_y0, box_x1, box_y1),
+            escape_xml(&box_stroke),
+            stroke_width_attr,
+            override_style_attr
+        );
+        out.push_str("</g>");
 
-        let inner_pad_x = (measure.padding / 2.0).max(0.0);
+        // Row rectangles
+        let odd_fill = "hsl(240, 100%, 100%)";
+        let even_fill = "hsl(240, 100%, 97.2745098039%)";
+        let mut y = sep_y;
+        for (idx, row) in measure.rows.iter().enumerate() {
+            let row_h = row.height.max(1.0);
+            let y0 = y;
+            let y1 = y + row_h;
+            y = y1;
+            let is_odd = idx % 2 == 0;
+            let row_class = if is_odd {
+                "row-rect-odd"
+            } else {
+                "row-rect-even"
+            };
+            let row_fill = if is_odd { odd_fill } else { even_fill };
+            let _ = write!(
+                &mut out,
+                r#"<g {} class="{}">"#,
+                group_style_attr, row_class
+            );
+            let row_override_style_attr =
+                if !is_odd && last_style_value(&rect_style_decls, "fill").is_some() {
+                    let mut decls: Vec<String> = Vec::new();
+                    if let Some(v) = last_style_value(&rect_style_decls, "fill") {
+                        decls.push(format!("fill:{v}"));
+                    }
+                    if let Some(v) = last_style_value(&rect_style_decls, "stroke") {
+                        decls.push(format!("stroke:{v}"));
+                    }
+                    if let Some(v) = last_style_value(&rect_style_decls, "stroke-width") {
+                        decls.push(format!("stroke-width:{v}"));
+                    }
+                    if decls.is_empty() {
+                        override_style_attr.clone()
+                    } else {
+                        let s = style_decls_with_important_join(&decls, ";");
+                        format!(r#" style="{}""#, escape_xml(&s))
+                    }
+                } else {
+                    override_style_attr.clone()
+                };
+            let _ = write!(
+                &mut out,
+                r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"{} />"#,
+                rect_fill_path_d(box_x0, y0, box_x1, y1),
+                row_fill,
+                row_override_style_attr
+            );
+            let _ = write!(
+                &mut out,
+                r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} />"#,
+                rough_rect_border_path_d(box_x0, y0, box_x1, y1),
+                escape_xml(&node_border),
+                stroke_width_attr,
+                row_override_style_attr
+            );
+            out.push_str("</g>");
+        }
+
+        // HTML labels
+        let line_h = (font_size * 1.5).max(1.0);
+        let name_w = measurer
+            .measure_wrapped(
+                &measure.label_text,
+                &label_style,
+                None,
+                crate::text::WrapMode::HtmlLike,
+            )
+            .width
+            .max(0.0);
+        let name_x = -name_w / 2.0;
+        let name_y = oy + name_row_h / 2.0 - line_h / 2.0;
+        let _ = write!(
+            &mut out,
+            r#"<g class="label name" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: start;">{}"#,
+            fmt(name_x),
+            fmt(name_y),
+            label_style_attr,
+            fmt(name_w),
+            fmt(line_h),
+            escape_xml(&label_div_color_prefix),
+            html_label_content(&measure.label_text, &span_style_attr)
+        );
+        out.push_str("</div></foreignObject></g>");
+
         let type_col_w = measure.type_col_w.max(0.0);
         let name_col_w = measure.name_col_w.max(0.0);
         let key_col_w = measure.key_col_w.max(0.0);
         let comment_col_w = measure.comment_col_w.max(0.0);
 
-        let mut y_off = name_row_h;
-        let mut odd = true;
+        let type_center = ox + type_col_w / 2.0;
+        let name_center = ox + type_col_w + name_col_w / 2.0;
+        let key_center = ox + type_col_w + name_col_w + key_col_w / 2.0;
+        let comment_center = ox + type_col_w + name_col_w + key_col_w + comment_col_w / 2.0;
+
+        let mut row_top = sep_y;
         for row in &measure.rows {
             let row_h = row.height.max(1.0);
-            let align_y = y_off + row_h / 2.0;
-            let row_class = if odd {
-                "attributeBoxOdd"
-            } else {
-                "attributeBoxEven"
-            };
+            let cell_y = row_top + row_h / 2.0 - line_h / 2.0;
 
-            // type
+            let type_w = measurer
+                .measure_wrapped(
+                    &row.type_text,
+                    &attr_style,
+                    None,
+                    crate::text::WrapMode::HtmlLike,
+                )
+                .width
+                .max(0.0);
+            let name_w = measurer
+                .measure_wrapped(
+                    &row.name_text,
+                    &attr_style,
+                    None,
+                    crate::text::WrapMode::HtmlLike,
+                )
+                .width
+                .max(0.0);
+            let keys_w = measurer
+                .measure_wrapped(
+                    &row.key_text,
+                    &attr_style,
+                    None,
+                    crate::text::WrapMode::HtmlLike,
+                )
+                .width
+                .max(0.0);
+            let comment_w = measurer
+                .measure_wrapped(
+                    &row.comment_text,
+                    &attr_style,
+                    None,
+                    crate::text::WrapMode::HtmlLike,
+                )
+                .width
+                .max(0.0);
+
             let _ = write!(
                 &mut out,
-                r#"<rect class="er {}" x="0" y="{}" width="{}" height="{}" />"#,
-                row_class,
-                fmt(y_off),
-                fmt(type_col_w.max(1.0)),
-                fmt(row_h.max(1.0))
+                r#"<g class="label attribute-type" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: start;">{}"#,
+                fmt(type_center - type_w / 2.0),
+                fmt(cell_y),
+                label_style_attr,
+                fmt(type_w),
+                fmt(line_h),
+                escape_xml(&label_div_color_prefix),
+                html_label_content(&row.type_text, &span_style_attr)
             );
+            out.push_str("</div></foreignObject></g>");
+
             let _ = write!(
                 &mut out,
-                r#"<text class="er attributeText" x="{}" y="{}" font-size="{}"{}>{}</text>"#,
-                fmt(inner_pad_x),
-                fmt(align_y),
-                fmt(attr_style.font_size),
-                text_style_attr,
-                escape_xml(&row.type_text)
+                r#"<g class="label attribute-name" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: start;">{}"#,
+                fmt(name_center - name_w / 2.0),
+                fmt(cell_y),
+                label_style_attr,
+                fmt(name_w),
+                fmt(line_h),
+                escape_xml(&label_div_color_prefix),
+                html_label_content(&row.name_text, &span_style_attr)
             );
+            out.push_str("</div></foreignObject></g>");
 
-            // name
-            let name_x = type_col_w;
             let _ = write!(
                 &mut out,
-                r#"<rect class="er {}" x="{}" y="{}" width="{}" height="{}" />"#,
-                row_class,
-                fmt(name_x),
-                fmt(y_off),
-                fmt(name_col_w.max(1.0)),
-                fmt(row_h.max(1.0))
+                r#"<g class="label attribute-keys" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: start;">{}"#,
+                fmt(key_center - keys_w / 2.0),
+                fmt(cell_y),
+                label_style_attr,
+                fmt(keys_w),
+                fmt(if row.key_text.trim().is_empty() {
+                    0.0
+                } else {
+                    line_h
+                }),
+                escape_xml(&label_div_color_prefix),
+                html_label_content(&row.key_text, &span_style_attr)
             );
+            out.push_str("</div></foreignObject></g>");
+
             let _ = write!(
                 &mut out,
-                r#"<text class="er attributeText" x="{}" y="{}" font-size="{}"{}>{}</text>"#,
-                fmt(name_x + inner_pad_x),
-                fmt(align_y),
-                fmt(attr_style.font_size),
-                text_style_attr,
-                escape_xml(&row.name_text)
+                r#"<g class="label attribute-comment" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: start;">{}"#,
+                fmt(comment_center - comment_w / 2.0),
+                fmt(cell_y),
+                label_style_attr,
+                fmt(comment_w),
+                fmt(if row.comment_text.trim().is_empty() {
+                    0.0
+                } else {
+                    line_h
+                }),
+                escape_xml(&label_div_color_prefix),
+                html_label_content(&row.comment_text, &span_style_attr)
             );
+            out.push_str("</div></foreignObject></g>");
 
-            let mut x_off = name_x + name_col_w;
-            if measure.has_key {
-                let _ = write!(
-                    &mut out,
-                    r#"<rect class="er {}" x="{}" y="{}" width="{}" height="{}" />"#,
-                    row_class,
-                    fmt(x_off),
-                    fmt(y_off),
-                    fmt(key_col_w.max(1.0)),
-                    fmt(row_h.max(1.0))
-                );
-                let _ = write!(
-                    &mut out,
-                    r#"<text class="er attributeText" x="{}" y="{}" font-size="{}"{}>{}</text>"#,
-                    fmt(x_off + inner_pad_x),
-                    fmt(align_y),
-                    fmt(attr_style.font_size),
-                    text_style_attr,
-                    escape_xml(&row.key_text)
-                );
-                x_off += key_col_w;
-            }
-            if measure.has_comment {
-                let _ = write!(
-                    &mut out,
-                    r#"<rect class="er {}" x="{}" y="{}" width="{}" height="{}" />"#,
-                    row_class,
-                    fmt(x_off),
-                    fmt(y_off),
-                    fmt(comment_col_w.max(1.0)),
-                    fmt(row_h.max(1.0))
-                );
-                let _ = write!(
-                    &mut out,
-                    r#"<text class="er attributeText" x="{}" y="{}" font-size="{}"{}>{}</text>"#,
-                    fmt(x_off + inner_pad_x),
-                    fmt(align_y),
-                    fmt(attr_style.font_size),
-                    text_style_attr,
-                    escape_xml(&row.comment_text)
-                );
-            }
-
-            y_off += row_h;
-            odd = !odd;
+            row_top += row_h;
         }
+
+        // Dividers (header separator + column boundaries)
+        let divider_style = override_style_attr.clone();
+        let divider_path_attrs = format!(
+            r#" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{}"#,
+            escape_xml(&box_stroke),
+            stroke_width_attr,
+            divider_style
+        );
+        // Two rough strokes for the header separator.
+        let d_h1 = rough_line_path_d(box_x0, sep_y, box_x1, sep_y);
+        let d_h2 = rough_line_path_d(box_x0, sep_y, box_x1, sep_y);
+        let _ = write!(
+            &mut out,
+            r#"<g class="divider"><path d="{}"{} /></g>"#,
+            d_h1, divider_path_attrs
+        );
+
+        let mut divider_xs: Vec<f64> = Vec::new();
+        divider_xs.push(ox + type_col_w);
+        if measure.has_key || measure.has_comment {
+            divider_xs.push(ox + type_col_w + name_col_w);
+        }
+        if measure.has_comment {
+            divider_xs.push(ox + type_col_w + name_col_w + key_col_w);
+        }
+        for x in divider_xs {
+            let dv = rough_line_path_d(x, sep_y, x, box_y1);
+            let _ = write!(
+                &mut out,
+                r#"<g class="divider"><path d="{}"{} /></g>"#,
+                dv, divider_path_attrs
+            );
+        }
+
+        let _ = write!(
+            &mut out,
+            r#"<g class="divider"><path d="{}"{} /></g>"#,
+            d_h2, divider_path_attrs
+        );
 
         out.push_str("</g>");
     }
     out.push_str("</g>\n");
 
-    out.push_str("</g>\n</svg>\n");
+    out.push_str("</g>\n</g>\n</svg>\n");
     Ok(out)
 }
 
