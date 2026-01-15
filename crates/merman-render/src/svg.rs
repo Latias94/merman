@@ -27,7 +27,7 @@ pub struct SvgRenderOptions {
 impl Default for SvgRenderOptions {
     fn default() -> Self {
         Self {
-            viewbox_padding: 20.0,
+            viewbox_padding: 8.0,
             diagram_id: None,
             include_edges: true,
             include_nodes: true,
@@ -662,6 +662,7 @@ pub fn render_er_diagram_svg(
     layout: &ErDiagramLayout,
     semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
@@ -674,6 +675,8 @@ pub fn render_er_diagram_svg(
     let node_border = theme_color(effective_config, "nodeBorder", "#333333");
     let main_bkg = theme_color(effective_config, "mainBkg", "#ffffff");
     let tertiary = theme_color(effective_config, "tertiaryColor", "#e5e7eb");
+    let text_color = theme_color(effective_config, "textColor", "#111827");
+    let node_text_color = theme_color(effective_config, "nodeTextColor", &text_color);
     let font_family = config_string(effective_config, &["fontFamily"])
         .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
         .unwrap_or_else(|| "Arial, Helvetica, sans-serif".to_string());
@@ -684,6 +687,22 @@ pub fn render_er_diagram_svg(
         .or_else(|| effective_config.get("fontSize").and_then(|v| v.as_f64()))
         .unwrap_or(12.0)
         .max(1.0);
+    let title_top_margin = effective_config
+        .get("er")
+        .and_then(|v| v.get("titleTopMargin"))
+        .and_then(|v| v.as_f64())
+        .or_else(|| {
+            effective_config
+                .get("titleTopMargin")
+                .and_then(|v| v.as_f64())
+        })
+        .unwrap_or(25.0)
+        .max(0.0);
+    let use_max_width = effective_config
+        .get("er")
+        .and_then(|v| v.get("useMaxWidth"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
 
     let label_style = crate::text::TextStyle {
         font_family: Some(font_family.clone()),
@@ -708,44 +727,90 @@ pub fn render_er_diagram_svg(
         max_x: 100.0,
         max_y: 100.0,
     });
+
+    let diagram_title = diagram_title.map(str::trim).filter(|t| !t.is_empty());
+
+    let mut content_bounds = bounds.clone();
+    let mut title_x = 0.0;
+    let mut title_y = 0.0;
+    if let Some(title) = diagram_title {
+        let title_style = crate::text::TextStyle {
+            font_family: Some(font_family.clone()),
+            font_size: 18.0,
+            font_weight: None,
+        };
+        let measure = measurer.measure(title, &title_style);
+        let w = (content_bounds.max_x - content_bounds.min_x).max(1.0);
+        title_x = content_bounds.min_x + w / 2.0;
+        title_y = -title_top_margin;
+        let title_min_x = title_x - measure.width / 2.0;
+        let title_max_x = title_x + measure.width / 2.0;
+        // Approximate the SVG text bbox using the measured height above the baseline.
+        let title_min_y = title_y - measure.height;
+        let title_max_y = title_y;
+        content_bounds.min_x = content_bounds.min_x.min(title_min_x);
+        content_bounds.max_x = content_bounds.max_x.max(title_max_x);
+        content_bounds.min_y = content_bounds.min_y.min(title_min_y);
+        content_bounds.max_y = content_bounds.max_y.max(title_max_y);
+    }
+
     let pad = options.viewbox_padding.max(0.0);
-    let vb_min_x = bounds.min_x - pad;
-    let vb_min_y = bounds.min_y - pad;
-    let vb_w = (bounds.max_x - bounds.min_x) + pad * 2.0;
-    let vb_h = (bounds.max_y - bounds.min_y) + pad * 2.0;
+    let vb_min_x = content_bounds.min_x - pad;
+    let vb_min_y = content_bounds.min_y - pad;
+    let vb_w = (content_bounds.max_x - content_bounds.min_x) + pad * 2.0;
+    let vb_h = (content_bounds.max_y - content_bounds.min_y) + pad * 2.0;
 
     let mut out = String::new();
-    let _ = writeln!(
-        &mut out,
-        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}">"#,
-        fmt(vb_min_x),
-        fmt(vb_min_y),
-        fmt(vb_w.max(1.0)),
-        fmt(vb_h.max(1.0))
-    );
+    let w_attr = fmt(vb_w.max(1.0));
+    let h_attr = fmt(vb_h.max(1.0));
+    if use_max_width {
+        let _ = writeln!(
+            &mut out,
+            r#"<svg xmlns="http://www.w3.org/2000/svg" class="erDiagram" width="100%" style="max-width: {}px;" viewBox="{} {} {} {}">"#,
+            w_attr,
+            fmt(vb_min_x),
+            fmt(vb_min_y),
+            w_attr,
+            h_attr
+        );
+    } else {
+        let _ = writeln!(
+            &mut out,
+            r#"<svg xmlns="http://www.w3.org/2000/svg" class="erDiagram" width="{}" height="{}" viewBox="{} {} {} {}">"#,
+            w_attr,
+            h_attr,
+            fmt(vb_min_x),
+            fmt(vb_min_y),
+            w_attr,
+            h_attr
+        );
+    }
 
     let _ = writeln!(
         &mut out,
         r#"<style>
-  .er .entityBox {{ fill: {}; stroke: {}; stroke-width: 1px; }}
-  .er .relationshipLine {{ stroke: {}; stroke-width: 1; fill: none; }}
-  .er .relationshipLabelBox {{ fill: {}; opacity: 0.7; }}
-  .er .edge-pattern-dashed {{ stroke-dasharray: 8,8; }}
-  .er .relationshipLabel {{ fill: {}; font-family: {}; dominant-baseline: middle; text-anchor: middle; }}
-  .er .entityLabel {{ fill: {}; font-family: {}; dominant-baseline: middle; text-anchor: middle; }}
-  .er .attributeText {{ fill: {}; font-family: {}; dominant-baseline: middle; text-anchor: left; }}
-  .er.attributeBoxOdd {{ fill: rgba(0,0,0,0.03); stroke: {}; stroke-width: 0; }}
-  .er.attributeBoxEven {{ fill: rgba(0,0,0,0.06); stroke: {}; stroke-width: 0; }}
+  .erDiagramTitleText {{ text-anchor: middle; font-size: 18px; fill: {}; font-family: {}; }}
+  .entityBox {{ fill: {}; stroke: {}; stroke-width: 1px; }}
+  .relationshipLine {{ stroke: {}; stroke-width: 1; fill: none; }}
+  .relationshipLabelBox {{ fill: {}; opacity: 0.7; }}
+  .edge-pattern-dashed {{ stroke-dasharray: 8,8; }}
+  .relationshipLabel {{ fill: {}; font-family: {}; dominant-baseline: middle; text-anchor: middle; }}
+  .entityLabel {{ fill: {}; font-family: {}; dominant-baseline: middle; text-anchor: middle; }}
+  .attributeText {{ fill: {}; font-family: {}; dominant-baseline: middle; text-anchor: left; }}
+  .attributeBoxOdd {{ fill: rgba(0,0,0,0.03); stroke: {}; stroke-width: 0; }}
+  .attributeBoxEven {{ fill: rgba(0,0,0,0.06); stroke: {}; stroke-width: 0; }}
 </style>"#,
+        text_color,
+        escape_xml(&font_family),
         main_bkg,
         node_border,
         stroke,
         tertiary,
         node_border,
         escape_xml(&font_family),
-        node_border,
+        node_text_color,
         escape_xml(&font_family),
-        node_border,
+        node_text_color,
         escape_xml(&font_family),
         node_border,
         node_border
@@ -801,6 +866,16 @@ pub fn render_er_diagram_svg(
     );
     out.push_str(&defs);
     out.push('\n');
+
+    if let Some(title) = diagram_title {
+        let _ = writeln!(
+            &mut out,
+            r#"<text class="erDiagramTitleText" x="{}" y="{}">{}</text>"#,
+            fmt(title_x),
+            fmt(title_y),
+            escape_xml(title)
+        );
+    }
 
     let mut entity_by_id: std::collections::HashMap<&str, &crate::er::ErEntity> =
         std::collections::HashMap::new();

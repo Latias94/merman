@@ -57,6 +57,7 @@ fn er_svg_renders_entities_and_relationships() {
         layout,
         &out.semantic,
         &out.meta.effective_config,
+        out.meta.title.as_deref(),
         layout_options.text_measurer.as_ref(),
         &SvgRenderOptions::default(),
     )
@@ -77,4 +78,39 @@ fn er_svg_renders_entities_and_relationships() {
         svg.contains("fill:#fff") || svg.contains("fill: #fff"),
         "expected classDef text color to apply as SVG fill"
     );
+}
+
+#[test]
+fn er_svg_renders_diagram_title_and_viewbox_includes_it() {
+    let text = r#"---
+title: Diagram Title
+---
+erDiagram
+  A ||--o{ B : has
+"#;
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::ErDiagram(layout) = &out.layout else {
+        panic!("expected ErDiagram layout");
+    };
+
+    let svg = render_er_diagram_svg(
+        layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(svg.contains(r#"class="erDiagramTitleText""#));
+    assert!(svg.contains(">Diagram Title<"));
+    assert!(svg.contains("viewBox="));
 }

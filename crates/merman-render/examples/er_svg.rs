@@ -26,6 +26,7 @@ fn main() {
         layout,
         &layouted.semantic,
         &layouted.meta.effective_config,
+        layouted.meta.title.as_deref(),
         layout_options.text_measurer.as_ref(),
         &SvgRenderOptions::default(),
     )

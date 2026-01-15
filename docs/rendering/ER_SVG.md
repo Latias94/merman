@@ -24,9 +24,10 @@ Outputs to: `target/svgs/er/*.svg`
 - Relationship lines (with ER cardinality markers via `marker-start`/`marker-end`).
 - Dashed relationship lines for `NON_IDENTIFYING` relationships (`stroke-dasharray: 8,8`).
 - Relationship label text with an opaque label box behind it.
+- Diagram title via YAML front-matter `title:` (centered, above the diagram), with viewBox/size including the title area.
+- Mermaid-like viewport sizing (padding + `useMaxWidth` handling).
 
 ## Known Gaps (Parity Roadmap)
 
 - Theme variables and styling parity (colors, fonts, precise CSS selectors).
-- Exact edge curve rendering (Mermaid uses a D3 basis curve; implemented via cubic Béziers).
 - Full support for Mermaid `style` / `classDef` / `class` application semantics (currently applied for entity boxes + entity/attribute text; relationship labels still use defaults).
