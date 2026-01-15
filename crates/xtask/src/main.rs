@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use regex::Regex;
+use roxmltree::Document;
 
 #[derive(Debug, thiserror::Error)]
 enum XtaskError {
@@ -279,6 +280,8 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut out_path: Option<PathBuf> = None;
     let mut filter: Option<String> = None;
     let mut check_markers: bool = false;
+    let mut check_dom: bool = false;
+    let mut dom_decimals: u32 = 3;
 
     let mut i = 0;
     while i < args.len() {
@@ -292,6 +295,11 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 filter = args.get(i).map(|s| s.to_string());
             }
             "--check-markers" => check_markers = true,
+            "--check-dom" => check_dom = true,
+            "--dom-decimals" => {
+                i += 1;
+                dom_decimals = args.get(i).and_then(|s| s.parse::<u32>().ok()).unwrap_or(3);
+            }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
         }
@@ -353,6 +361,232 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let re_marker_id = Regex::new(r#"<marker[^>]*\bid="([^"]+)""#).unwrap();
     let re_marker_ref = Regex::new(r#"marker-(?:start|end)="url\(#([^)]+)\)""#).unwrap();
 
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct SvgDomNode {
+        name: String,
+        attrs: std::collections::BTreeMap<String, String>,
+        text: Option<String>,
+        children: Vec<SvgDomNode>,
+    }
+
+    fn round_f64(v: f64, decimals: u32) -> f64 {
+        let p = 10_f64.powi(decimals as i32);
+        (v * p).round() / p
+    }
+
+    fn normalize_whitespace(s: &str) -> String {
+        let mut out = String::with_capacity(s.len());
+        let mut last_was_ws = false;
+        for ch in s.chars() {
+            if ch.is_whitespace() {
+                last_was_ws = true;
+                continue;
+            }
+            if last_was_ws && !out.is_empty() {
+                out.push(' ');
+            }
+            last_was_ws = false;
+            out.push(ch);
+        }
+        out.trim().to_string()
+    }
+
+    fn normalize_class_list(s: &str) -> String {
+        let mut parts: Vec<&str> = s.split_whitespace().collect();
+        parts.sort_unstable();
+        parts.dedup();
+        parts.join(" ")
+    }
+
+    fn normalize_css_value(s: &str) -> String {
+        // Keep semantics while reducing whitespace noise.
+        normalize_whitespace(&s.replace('\n', " "))
+    }
+
+    fn re_num() -> &'static Regex {
+        // -12, 12.34, .5, 1e-3, -2.0E+4
+        static ONCE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+        ONCE.get_or_init(|| Regex::new(r"-?(?:\d+\.\d+|\d+\.|\.\d+|\d+)(?:[eE][+-]?\d+)?").unwrap())
+    }
+
+    fn normalize_numeric_tokens(s: &str, decimals: u32) -> String {
+        // Pragmatic DOM compare: ignore float formatting differences by rounding all numeric tokens.
+        re_num()
+            .replace_all(s, |caps: &regex::Captures<'_>| {
+                let raw = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
+                let Ok(v) = raw.parse::<f64>() else {
+                    return raw.to_string();
+                };
+                let r = round_f64(v, decimals);
+                let r = if r == 0.0 { 0.0 } else { r };
+                let mut out = format!("{r}");
+                if out.contains('.') {
+                    while out.ends_with('0') {
+                        out.pop();
+                    }
+                    if out.ends_with('.') {
+                        out.pop();
+                    }
+                }
+                out
+            })
+            .to_string()
+    }
+
+    fn normalize_svg_attr(name: &str, value: &str, decimals: u32) -> String {
+        match name {
+            "class" => normalize_class_list(value),
+            "style" => normalize_css_value(&normalize_numeric_tokens(value, decimals)),
+            "viewBox" => normalize_whitespace(&normalize_numeric_tokens(value, decimals)),
+            "transform" => normalize_whitespace(&normalize_numeric_tokens(value, decimals)),
+            "d" => {
+                let v = value.replace(',', " ");
+                normalize_whitespace(&normalize_numeric_tokens(&v, decimals))
+            }
+            "points" => {
+                let v = value.replace(',', " ");
+                normalize_whitespace(&normalize_numeric_tokens(&v, decimals))
+            }
+            "x" | "y" | "x1" | "y1" | "x2" | "y2" | "cx" | "cy" | "r" | "rx" | "ry" | "width"
+            | "height" | "stroke-width" | "font-size" | "opacity" => {
+                normalize_whitespace(&normalize_numeric_tokens(value, decimals))
+            }
+            _ => normalize_whitespace(value),
+        }
+    }
+
+    fn dom_node_from_xml(node: roxmltree::Node<'_, '_>, decimals: u32) -> Option<SvgDomNode> {
+        if !node.is_element() {
+            return None;
+        }
+        let name = node.tag_name().name().to_string();
+
+        let mut attrs: std::collections::BTreeMap<String, String> =
+            std::collections::BTreeMap::new();
+        for a in node.attributes() {
+            let key = a.name().to_string();
+            let val = normalize_svg_attr(&key, a.value(), decimals);
+            attrs.insert(key, val);
+        }
+
+        let mut text: Option<String> = None;
+        for child in node.children() {
+            if child.is_text() {
+                if let Some(t) = child.text() {
+                    let t = normalize_whitespace(t);
+                    if !t.is_empty() {
+                        text = Some(t);
+                        break;
+                    }
+                }
+            }
+        }
+
+        let mut children: Vec<SvgDomNode> = Vec::new();
+        for child in node.children() {
+            if let Some(c) = dom_node_from_xml(child, decimals) {
+                children.push(c);
+            }
+        }
+
+        Some(SvgDomNode {
+            name,
+            attrs,
+            text,
+            children,
+        })
+    }
+
+    fn svg_dom_signature(svg: &str, decimals: u32) -> Result<SvgDomNode, String> {
+        let doc = Document::parse(svg).map_err(|e| format!("xml parse failed: {e}"))?;
+        let root = doc.root_element();
+        dom_node_from_xml(root, decimals).ok_or_else(|| "missing root element".to_string())
+    }
+
+    fn truncate(s: &str, max_len: usize) -> String {
+        if s.len() <= max_len {
+            return s.to_string();
+        }
+        let mut out = s
+            .chars()
+            .take(max_len.saturating_sub(1))
+            .collect::<String>();
+        out.push('…');
+        out
+    }
+
+    fn dom_diff_path(
+        upstream: &SvgDomNode,
+        local: &SvgDomNode,
+        path: &mut Vec<String>,
+    ) -> Option<String> {
+        if upstream.name != local.name {
+            return Some(format!(
+                "{}: element name mismatch upstream={} local={}",
+                path.join("/"),
+                upstream.name,
+                local.name
+            ));
+        }
+
+        if upstream.attrs != local.attrs {
+            for (k, v_up) in &upstream.attrs {
+                match local.attrs.get(k) {
+                    None => return Some(format!("{}: missing attr `{k}`", path.join("/"))),
+                    Some(v_lo) if v_lo != v_up => {
+                        return Some(format!(
+                            "{}: attr `{k}` mismatch upstream=`{}` local=`{}`",
+                            path.join("/"),
+                            truncate(v_up, 120),
+                            truncate(v_lo, 120)
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+            for k in local.attrs.keys() {
+                if !upstream.attrs.contains_key(k) {
+                    return Some(format!("{}: extra attr `{k}`", path.join("/")));
+                }
+            }
+            return Some(format!("{}: attrs mismatch", path.join("/")));
+        }
+
+        if upstream.text != local.text {
+            return Some(format!(
+                "{}: text mismatch upstream=`{}` local=`{}`",
+                path.join("/"),
+                truncate(upstream.text.as_deref().unwrap_or(""), 120),
+                truncate(local.text.as_deref().unwrap_or(""), 120)
+            ));
+        }
+
+        if upstream.children.len() != local.children.len() {
+            return Some(format!(
+                "{}: children count mismatch upstream={} local={}",
+                path.join("/"),
+                upstream.children.len(),
+                local.children.len()
+            ));
+        }
+
+        for (idx, (cu, cl)) in upstream
+            .children
+            .iter()
+            .zip(local.children.iter())
+            .enumerate()
+        {
+            path.push(format!("{}[{idx}]", cu.name));
+            let diff = dom_diff_path(cu, cl, path);
+            path.pop();
+            if diff.is_some() {
+                return diff;
+            }
+        }
+
+        None
+    }
+
     #[derive(Default)]
     struct SvgSig {
         view_box: Option<String>,
@@ -404,11 +638,12 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let _ = writeln!(&mut report, "");
     let _ = writeln!(
         &mut report,
-        "| fixture | markers ok | viewBox (upstream) | viewBox (local) | max-width (upstream) | max-width (local) |"
+        "| fixture | markers ok | dom ok | viewBox (upstream) | viewBox (local) | max-width (upstream) | max-width (local) |"
     );
-    let _ = writeln!(&mut report, "|---|---:|---|---|---:|---:|");
+    let _ = writeln!(&mut report, "|---|---:|---:|---|---|---:|---:|");
 
     let mut failures: Vec<String> = Vec::new();
+    let mut dom_failures: Vec<String> = Vec::new();
 
     for mmd_path in mmd_files {
         let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
@@ -532,11 +767,58 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             ));
         }
 
+        let mut dom_ok = true;
+        let dom_ok_str = if check_dom {
+            let upstream_dom = match svg_dom_signature(&upstream_svg, dom_decimals) {
+                Ok(v) => v,
+                Err(err) => {
+                    dom_ok = false;
+                    dom_failures.push(format!("dom parse failed (upstream) for {stem}: {err}"));
+                    SvgDomNode {
+                        name: "<parse-failed>".to_string(),
+                        attrs: Default::default(),
+                        text: None,
+                        children: vec![],
+                    }
+                }
+            };
+            let local_dom = match svg_dom_signature(&local_svg, dom_decimals) {
+                Ok(v) => v,
+                Err(err) => {
+                    dom_ok = false;
+                    dom_failures.push(format!("dom parse failed (local) for {stem}: {err}"));
+                    SvgDomNode {
+                        name: "<parse-failed>".to_string(),
+                        attrs: Default::default(),
+                        text: None,
+                        children: vec![],
+                    }
+                }
+            };
+
+            if dom_ok {
+                let mut path = vec!["svg".to_string()];
+                if let Some(diff) = dom_diff_path(&upstream_dom, &local_dom, &mut path) {
+                    dom_ok = false;
+                    dom_failures.push(format!("{stem}: {diff}"));
+                }
+            }
+
+            if !dom_ok {
+                failures.push(format!("dom mismatch for {stem} (decimals={dom_decimals})"));
+            }
+
+            if dom_ok { "yes" } else { "no" }
+        } else {
+            "-"
+        };
+
         let _ = writeln!(
             &mut report,
-            "| `{}` | {} | `{}` | `{}` | `{}` | `{}` |",
+            "| `{}` | {} | {} | `{}` | `{}` | `{}` | `{}` |",
             stem,
             if marker_ok { "yes" } else { "no" },
+            dom_ok_str,
             upstream_sig
                 .view_box
                 .clone()
@@ -554,6 +836,15 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 .clone()
                 .unwrap_or_else(|| "-".to_string()),
         );
+    }
+
+    if check_dom && !dom_failures.is_empty() {
+        let _ = writeln!(&mut report, "");
+        let _ = writeln!(&mut report, "## DOM Mismatch Details");
+        let _ = writeln!(&mut report, "");
+        for f in &dom_failures {
+            let _ = writeln!(&mut report, "- {f}");
+        }
     }
 
     if let Some(parent) = out_path.parent() {

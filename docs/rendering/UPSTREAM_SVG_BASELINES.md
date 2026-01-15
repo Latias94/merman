@@ -65,6 +65,9 @@ Generate a small report comparing upstream SVGs and the current Rust Stage-B ER 
 - `cargo run -p xtask -- compare-er-svgs`
 - Fail the command if marker definitions diverge:
   - `cargo run -p xtask -- compare-er-svgs --check-markers`
+- Fail the command if the **SVG DOM** diverges (ignores attribute order/whitespace and rounds
+  numeric tokens for comparison):
+  - `cargo run -p xtask -- compare-er-svgs --check-dom --dom-decimals 3`
 
 ## Notes
 
