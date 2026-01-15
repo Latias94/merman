@@ -550,6 +550,10 @@ fn config_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
     cur.as_str().map(|s| s.to_string())
 }
 
+fn normalize_css_font_family(font_family: &str) -> String {
+    font_family.trim().trim_end_matches(';').trim().to_string()
+}
+
 fn theme_color(effective_config: &serde_json::Value, key: &str, fallback: &str) -> String {
     config_string(effective_config, &["themeVariables", key])
         .unwrap_or_else(|| fallback.to_string())
@@ -673,14 +677,21 @@ pub fn render_er_diagram_svg(
     // from this type (e.g. `<diagramId>_er-zeroOrMoreEnd`).
     let diagram_type = "er";
 
+    // Mermaid's computed theme variables are not currently present in `effective_config`.
+    // Use Mermaid default theme fallbacks so Stage-B SVGs match upstream defaults more closely.
     let stroke = theme_color(effective_config, "lineColor", "#333333");
-    let node_border = theme_color(effective_config, "nodeBorder", "#333333");
-    let main_bkg = theme_color(effective_config, "mainBkg", "#ffffff");
-    let tertiary = theme_color(effective_config, "tertiaryColor", "#e5e7eb");
-    let text_color = theme_color(effective_config, "textColor", "#111827");
+    let node_border = theme_color(effective_config, "nodeBorder", "#9370DB");
+    let main_bkg = theme_color(effective_config, "mainBkg", "#ECECFF");
+    let tertiary = theme_color(
+        effective_config,
+        "tertiaryColor",
+        "hsl(80, 100%, 96.2745098039%)",
+    );
+    let text_color = theme_color(effective_config, "textColor", "#333333");
     let node_text_color = theme_color(effective_config, "nodeTextColor", &text_color);
     let font_family = config_string(effective_config, &["fontFamily"])
         .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
+        .map(|s| normalize_css_font_family(&s))
         .unwrap_or_else(|| "Arial, Helvetica, sans-serif".to_string());
     let font_size = effective_config
         .get("er")
@@ -808,7 +819,7 @@ pub fn render_er_diagram_svg(
         node_border,
         stroke,
         tertiary,
-        node_border,
+        node_text_color,
         escape_xml(&font_family),
         node_text_color,
         escape_xml(&font_family),
