@@ -795,17 +795,64 @@ pub fn render_er_diagram_svg(
     let w_attr = fmt(vb_w.max(1.0));
     let h_attr = fmt(vb_h.max(1.0));
     if use_max_width {
-        let _ = writeln!(
+        let _ = write!(
             &mut out,
-            r#"<svg xmlns="http://www.w3.org/2000/svg" class="erDiagram" width="100%" style="max-width: {}px;" viewBox="0 0 {} {}">"#,
-            w_attr, w_attr, h_attr
+            r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="erDiagram" style="max-width: {}px; background-color: white;" viewBox="0 0 {} {}" role="graphics-document document" aria-roledescription="{}""#,
+            escape_xml(diagram_id),
+            w_attr,
+            w_attr,
+            h_attr,
+            diagram_type
         );
     } else {
-        let _ = writeln!(
+        let _ = write!(
             &mut out,
-            r#"<svg xmlns="http://www.w3.org/2000/svg" class="erDiagram" width="{}" height="{}" viewBox="0 0 {} {}">"#,
-            w_attr, h_attr, w_attr, h_attr
+            r#"<svg id="{}" width="{}" height="{}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="erDiagram" style="background-color: white;" viewBox="0 0 {} {}" role="graphics-document document" aria-roledescription="{}""#,
+            escape_xml(diagram_id),
+            w_attr,
+            h_attr,
+            w_attr,
+            h_attr,
+            diagram_type
         );
+    }
+
+    let has_acc_title = model.acc_title.as_ref().is_some_and(|s| !s.is_empty());
+    let has_acc_descr = model.acc_descr.as_ref().is_some_and(|s| !s.is_empty());
+    if has_acc_title {
+        let _ = write!(
+            &mut out,
+            r#" aria-labelledby="chart-title-{}""#,
+            escape_xml(diagram_id)
+        );
+    }
+    if has_acc_descr {
+        let _ = write!(
+            &mut out,
+            r#" aria-describedby="chart-desc-{}""#,
+            escape_xml(diagram_id)
+        );
+    }
+    out.push('>');
+    out.push('\n');
+
+    if has_acc_title {
+        let _ = write!(
+            &mut out,
+            r#"<title id="chart-title-{}">{}"#,
+            escape_xml(diagram_id),
+            escape_xml(model.acc_title.as_deref().unwrap_or_default())
+        );
+        out.push_str("</title>");
+    }
+    if has_acc_descr {
+        let _ = write!(
+            &mut out,
+            r#"<desc id="chart-desc-{}">{}"#,
+            escape_xml(diagram_id),
+            escape_xml(model.acc_descr.as_deref().unwrap_or_default())
+        );
+        out.push_str("</desc>");
     }
 
     let _ = writeln!(

@@ -9,6 +9,10 @@ use std::collections::{BTreeMap, HashMap};
 
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct ErModel {
+    #[serde(default, rename = "accTitle")]
+    pub acc_title: Option<String>,
+    #[serde(default, rename = "accDescr")]
+    pub acc_descr: Option<String>,
     pub direction: String,
     #[serde(default)]
     #[allow(dead_code)]
