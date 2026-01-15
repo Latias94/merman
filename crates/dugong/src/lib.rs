@@ -3497,7 +3497,12 @@ pub mod position {
             let mut best_width: f64 = f64::INFINITY;
             let mut best: HashMap<String, f64> = HashMap::new();
 
-            for xs in xss.values() {
+            // Match upstream dagre: ties are resolved by a stable iteration order over alignments.
+            // The canonical order is: `ul`, `ur`, `dl`, `dr` (insertion order in upstream).
+            for key in ["ul", "ur", "dl", "dr"] {
+                let Some(xs) = xss.get(key) else {
+                    continue;
+                };
                 let mut max: f64 = f64::NEG_INFINITY;
                 let mut min: f64 = f64::INFINITY;
                 for (v, x) in xs {
