@@ -69,6 +69,7 @@ fn main() -> Result<(), XtaskError> {
         "gen-debug-svgs" => gen_debug_svgs(args.collect()),
         "gen-er-svgs" => gen_er_svgs(args.collect()),
         "gen-upstream-svgs" => gen_upstream_svgs(args.collect()),
+        "check-upstream-svgs" => check_upstream_svgs(args.collect()),
         "compare-er-svgs" => compare_er_svgs(args.collect()),
         other => Err(XtaskError::UnknownCommand(other.to_string())),
     }
@@ -1218,6 +1219,167 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
         other => Err(XtaskError::UpstreamSvgFailed(format!(
             "unsupported diagram for upstream svg export: {other} (supported: er, flowchart, state, class, all)"
+        ))),
+    }
+}
+
+fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
+    let mut diagram: String = "er".to_string();
+    let mut filter: Option<String> = None;
+    let mut install: bool = false;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--diagram" => {
+                i += 1;
+                diagram = args.get(i).ok_or(XtaskError::Usage)?.trim().to_string();
+            }
+            "--filter" => {
+                i += 1;
+                filter = args.get(i).map(|s| s.to_string());
+            }
+            "--install" => install = true,
+            "--help" | "-h" => return Err(XtaskError::Usage),
+            _ => return Err(XtaskError::Usage),
+        }
+        i += 1;
+    }
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+    let baseline_root = workspace_root.join("fixtures").join("upstream-svgs");
+    let out_root = workspace_root.join("target").join("upstream-svgs-check");
+
+    let mut gen_args: Vec<String> = Vec::new();
+    gen_args.push("--diagram".to_string());
+    gen_args.push(diagram.clone());
+    gen_args.push("--out".to_string());
+    gen_args.push(out_root.to_string_lossy().to_string());
+    if let Some(f) = &filter {
+        gen_args.push("--filter".to_string());
+        gen_args.push(f.clone());
+    }
+    if install {
+        gen_args.push("--install".to_string());
+    }
+
+    gen_upstream_svgs(gen_args)?;
+
+    fn check_one(
+        workspace_root: &Path,
+        baseline_root: &Path,
+        out_root: &Path,
+        diagram: &str,
+        filter: Option<&str>,
+    ) -> Result<(), XtaskError> {
+        let fixtures_dir = workspace_root.join("fixtures").join(diagram);
+        let baseline_dir = baseline_root.join(diagram);
+        let out_dir = out_root.join(diagram);
+
+        let mut mmd_files: Vec<PathBuf> = Vec::new();
+        let Ok(entries) = fs::read_dir(&fixtures_dir) else {
+            return Err(XtaskError::UpstreamSvgFailed(format!(
+                "failed to list fixtures directory {}",
+                fixtures_dir.display()
+            )));
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            if !path.extension().is_some_and(|e| e == "mmd") {
+                continue;
+            }
+            if let Some(f) = filter {
+                if !path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.contains(f))
+                {
+                    continue;
+                }
+            }
+            mmd_files.push(path);
+        }
+        mmd_files.sort();
+
+        if mmd_files.is_empty() {
+            return Err(XtaskError::UpstreamSvgFailed(format!(
+                "no .mmd fixtures matched under {}",
+                fixtures_dir.display()
+            )));
+        }
+
+        let mut mismatches: Vec<String> = Vec::new();
+        for mmd_path in mmd_files {
+            let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
+                mismatches.push(format!("invalid fixture filename {}", mmd_path.display()));
+                continue;
+            };
+
+            let baseline_path = baseline_dir.join(format!("{stem}.svg"));
+            let out_path = out_dir.join(format!("{stem}.svg"));
+
+            let baseline_svg = match fs::read_to_string(&baseline_path) {
+                Ok(v) => v,
+                Err(err) => {
+                    mismatches.push(format!(
+                        "missing baseline svg: {} ({err})",
+                        baseline_path.display()
+                    ));
+                    continue;
+                }
+            };
+            let out_svg = match fs::read_to_string(&out_path) {
+                Ok(v) => v,
+                Err(err) => {
+                    mismatches.push(format!(
+                        "missing generated svg: {} ({err})",
+                        out_path.display()
+                    ));
+                    continue;
+                }
+            };
+
+            if baseline_svg != out_svg {
+                mismatches.push(format!("{diagram}/{stem}: output differs from baseline"));
+            }
+        }
+
+        if mismatches.is_empty() {
+            Ok(())
+        } else {
+            Err(XtaskError::UpstreamSvgFailed(mismatches.join("\n")))
+        }
+    }
+
+    let filter = filter.as_deref();
+    match diagram.as_str() {
+        "all" => {
+            let mut failures: Vec<String> = Vec::new();
+            for d in ["er", "flowchart", "state", "class"] {
+                if let Err(err) = check_one(&workspace_root, &baseline_root, &out_root, d, filter) {
+                    failures.push(format!("{d}: {err}"));
+                }
+            }
+            if failures.is_empty() {
+                Ok(())
+            } else {
+                Err(XtaskError::UpstreamSvgFailed(failures.join("\n")))
+            }
+        }
+        "er" | "flowchart" | "state" | "class" => check_one(
+            &workspace_root,
+            &baseline_root,
+            &out_root,
+            diagram.as_str(),
+            filter,
+        ),
+        other => Err(XtaskError::UpstreamSvgFailed(format!(
+            "unsupported diagram for upstream svg check: {other} (supported: er, flowchart, state, class, all)"
         ))),
     }
 }

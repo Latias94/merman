@@ -58,6 +58,13 @@ Outputs to:
 
 - `cargo run -p xtask -- gen-upstream-svgs --diagram all`
 
+## Verify Baselines (All supported diagrams)
+
+Regenerate upstream SVGs into `target/upstream-svgs-check/` and verify they byte-match the pinned
+baselines under `fixtures/upstream-svgs/`:
+
+- `cargo run -p xtask -- check-upstream-svgs --diagram all`
+
 ## Compare (ER)
 
 Generate a small report comparing upstream SVGs and the current Rust Stage-B ER SVG output:
