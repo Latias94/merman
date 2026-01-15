@@ -12,6 +12,9 @@ main risk is silent behavior drift (especially across refactors).
 We already have a stable headless output model (`ParsedDiagram.model`) and a CLI capable of printing
 it as JSON, which makes it practical to adopt snapshot-style regression tests.
 
+Upstream end-to-end SVG baselines are generated separately via the official Mermaid CLI (see
+`docs/rendering/UPSTREAM_SVG_BASELINES.md`).
+
 ## Decision
 
 - Store source fixtures as `.mmd` under `fixtures/` (recursive).

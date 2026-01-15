@@ -21,6 +21,21 @@ To make 1:1 parity work tractable, `merman` keeps multiple kinds of goldens:
   headless layout model and help localize diffs to layout vs. SVG rendering (see
   `docs/adr/0047-layout-golden-snapshots.md`).
 
+## Recommended Additional Goldens
+
+If we need tighter 1:1 parity coverage beyond ER, extend the golden strategy in these directions:
+
+- **Diagram-by-diagram SVG compare reports** (like `compare-er-svgs`), including:
+  - viewBox + width/height deltas
+  - marker and defs checks (arrowheads, gradients, filters)
+  - optional geometry probes (e.g. parse `<path d>` and compare command sequences at a high level)
+- **Error/diagnostics snapshots** for known-invalid inputs (parse errors and runtime render errors),
+  including line/column ranges and message text.
+- **Security-level snapshots** for sanitization behavior (e.g. `securityLevel` differences, HTML
+  label allowlists), to prevent accidental loosening.
+- **Theme/style snapshots** that lock the generated CSS blocks for a small set of themes and config
+  overrides (prevents silent selector drift).
+
 ## Tooling
 
 We use `@mermaid-js/mermaid-cli` pinned under `tools/mermaid-cli/`.

@@ -9,7 +9,8 @@ Accepted
 `merman` aims for 1:1 parity with Mermaid `@11.12.2`. We already use:
 
 - semantic golden snapshots (`*.golden.json`) to lock parsing behavior
-- upstream SVG fixtures (`fixtures/upstream-svgs/**`) to lock end-to-end rendering output
+- upstream SVG fixtures (`fixtures/upstream-svgs/**`) to lock end-to-end rendering output (see
+  `docs/rendering/UPSTREAM_SVG_BASELINES.md`)
 
 However, end-to-end SVG diffs are hard to debug because deviations can originate from multiple
 layers:
@@ -49,4 +50,3 @@ localized earlier than SVG output, without needing to diff full SVG files.
   reviewable action, similar to semantic snapshots.
 - Layout snapshots are **not** a replacement for upstream SVG parity checks; they complement them
   by narrowing the failure surface.
-
