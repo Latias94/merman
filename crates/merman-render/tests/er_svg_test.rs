@@ -67,7 +67,7 @@ fn er_svg_renders_entities_and_relationships() {
     assert!(svg.contains(r#"class="er relationshipLine""#));
     assert!(svg.contains("relationshipLabelBox"));
     assert!(
-        svg.contains("marker") && svg.contains("merman_erDiagram-zeroOrMoreStart"),
+        svg.contains("marker") && svg.contains("merman_er-zeroOrMoreStart"),
         "expected Mermaid-like marker ids"
     );
     assert!(

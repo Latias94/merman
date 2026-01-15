@@ -669,7 +669,9 @@ pub fn render_er_diagram_svg(
     let model: crate::er::ErModel = serde_json::from_value(semantic.clone())?;
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let diagram_type = "erDiagram";
+    // Mermaid's internal diagram type for ER is `er` (not `erDiagram`), and marker ids are derived
+    // from this type (e.g. `<diagramId>_er-zeroOrMoreEnd`).
+    let diagram_type = "er";
 
     let stroke = theme_color(effective_config, "lineColor", "#333333");
     let node_border = theme_color(effective_config, "nodeBorder", "#333333");
