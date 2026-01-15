@@ -4159,7 +4159,22 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
 ///
 /// For compound graphs, this falls back to `layout()` for now.
 pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
-    coordinate_system::adjust(g);
+    // Mirror Dagre's `makeSpaceForEdgeLabels` so edge-label proxy ranks become integers
+    // (we later materialize label nodes in `normalize::run`).
+    g.graph_mut().ranksep /= 2.0;
+    let rankdir = g.graph().rankdir;
+    for ek in g.edge_keys() {
+        if let Some(e) = g.edge_mut_by_key(&ek) {
+            e.minlen = e.minlen.max(1).saturating_mul(2);
+            if !matches!(e.labelpos, LabelPos::C) {
+                match rankdir {
+                    RankDir::TB | RankDir::BT => e.width += e.labeloffset,
+                    RankDir::LR | RankDir::RL => e.height += e.labeloffset,
+                }
+            }
+        }
+    }
+
     acyclic::run(g);
 
     // Mermaid's dagre adapter always enables `compound: true`, and Dagre's ranker expects a
@@ -4170,14 +4185,61 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     }
 
     rank::rank(g);
-    util::normalize_ranks(g);
 
-    // Match upstream Dagre: `nestingGraph.run` is primarily used to connect components and
-    // introduce border nodes for ranking, but the synthetic root/nesting edges must not affect
-    // later ordering/positioning. Mermaid's dagre wrapper uses `compound: true` even when there
-    // are no clusters, so this cleanup is important for simple ER graphs (e.g. single-chain).
+    // Mirror Dagre's `injectEdgeLabelProxies` / `removeEdgeLabelProxies` to compute label ranks.
+    // These label ranks are used by `normalize::run` to materialize `edge-label` dummy nodes with
+    // the correct width/height, letting BK positioning account for edge labels.
+    for ek in g.edge_keys() {
+        let Some(edge) = g.edge_by_key(&ek) else {
+            continue;
+        };
+        if edge.width <= 0.0 || edge.height <= 0.0 {
+            continue;
+        }
+        let Some(v_rank) = g.node(&ek.v).and_then(|n| n.rank) else {
+            continue;
+        };
+        let Some(w_rank) = g.node(&ek.w).and_then(|n| n.rank) else {
+            continue;
+        };
+        let rank = (w_rank - v_rank) / 2 + v_rank;
+        g.set_node(
+            util::unique_id("_ep"),
+            NodeLabel {
+                rank: Some(rank),
+                dummy: Some("edge-proxy".to_string()),
+                edge_obj: Some(ek.clone()),
+                ..Default::default()
+            },
+        );
+    }
+
+    util::remove_empty_ranks(g);
+
+    // Match upstream Dagre: `nestingGraph.cleanup` must happen before ordering/positioning.
     if g.options().compound {
         nesting_graph::cleanup(g);
+    }
+
+    util::normalize_ranks(g);
+
+    // Remove edge label proxy nodes, storing their rank on the corresponding edge label.
+    let node_ids = g.node_ids();
+    for v in node_ids {
+        let Some(node) = g.node(&v).cloned() else {
+            continue;
+        };
+        if node.dummy.as_deref() != Some("edge-proxy") {
+            continue;
+        }
+        let Some(edge_obj) = node.edge_obj.clone() else {
+            let _ = g.remove_node(&v);
+            continue;
+        };
+        if let Some(lbl) = g.edge_mut_by_key(&edge_obj) {
+            lbl.label_rank = node.rank;
+        }
+        let _ = g.remove_node(&v);
     }
 
     normalize::run(g);
@@ -4188,31 +4250,11 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
         },
     );
 
+    // Positioning runs in TB coordinates; `coordinate_system::adjust` maps LR/RL/BT into TB.
+    coordinate_system::adjust(g);
+
     let rank_sep = g.graph().ranksep;
     let layering = util::build_layer_matrix(g);
-
-    let mut gap_extra: Vec<f64> = vec![0.0; layering.len().saturating_sub(1)];
-    for ek in g.edge_keys() {
-        let Some(v_rank) = g.node(&ek.v).and_then(|n| n.rank) else {
-            continue;
-        };
-        let Some(w_rank) = g.node(&ek.w).and_then(|n| n.rank) else {
-            continue;
-        };
-        if w_rank != v_rank + 1 {
-            continue;
-        }
-        let Some(lbl) = g.edge_by_key(&ek) else {
-            continue;
-        };
-        if lbl.height <= 0.0 {
-            continue;
-        }
-        let idx = v_rank.max(0) as usize;
-        if let Some(extra) = gap_extra.get_mut(idx) {
-            *extra = extra.max(lbl.height);
-        }
-    }
 
     let mut prev_y: f64 = 0.0;
     for (idx, layer) in layering.iter().enumerate() {
@@ -4228,7 +4270,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
         }
         prev_y += max_h;
         if idx + 1 < layering.len() {
-            prev_y += rank_sep + gap_extra.get(idx).copied().unwrap_or(0.0);
+            prev_y += rank_sep;
         }
     }
 
@@ -4240,89 +4282,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     }
 
     normalize::undo(g);
-
-    // Ensure every edge has at least one internal point (so D3 `curveBasis` emits cubic beziers),
-    // and add node intersection endpoints to better match Dagre/Mermaid edge point semantics.
-    let edge_keys: Vec<graphlib::EdgeKey> = g.edges().cloned().collect();
-    for e in edge_keys {
-        let Some((sx, sy, sw, sh)) = g
-            .node(&e.v)
-            .map(|n| (n.x.unwrap_or(0.0), n.y.unwrap_or(0.0), n.width, n.height))
-        else {
-            continue;
-        };
-        let Some((tx, ty, tw, th)) = g
-            .node(&e.w)
-            .map(|n| (n.x.unwrap_or(0.0), n.y.unwrap_or(0.0), n.width, n.height))
-        else {
-            continue;
-        };
-
-        let Some(lbl) = g.edge_mut(&e.v, &e.w, e.name.as_deref()) else {
-            continue;
-        };
-
-        let mut internal: Vec<Point> = if lbl.points.is_empty() {
-            let start_y = sy + sh / 2.0;
-            let end_y = ty - th / 2.0;
-            vec![Point {
-                x: (sx + tx) / 2.0,
-                y: (start_y + end_y) / 2.0,
-            }]
-        } else {
-            lbl.points.clone()
-        };
-
-        // Make sure internal points are not empty.
-        if internal.is_empty() {
-            internal.push(Point {
-                x: (sx + tx) / 2.0,
-                y: (sy + ty) / 2.0,
-            });
-        }
-
-        let mut pts: Vec<Point> = Vec::with_capacity(internal.len() + 2);
-        let first = internal[0];
-        let last = internal[internal.len() - 1];
-
-        pts.push(util::intersect_rect(
-            util::Rect {
-                x: sx,
-                y: sy,
-                width: sw,
-                height: sh,
-            },
-            first,
-        ));
-        pts.extend(internal);
-        pts.push(util::intersect_rect(
-            util::Rect {
-                x: tx,
-                y: ty,
-                width: tw,
-                height: th,
-            },
-            last,
-        ));
-
-        lbl.points = pts;
-
-        if (lbl.width > 0.0 || lbl.height > 0.0) && lbl.x.is_none() && lbl.y.is_none() {
-            let mid = lbl.points[lbl.points.len() / 2];
-            let mut ex = mid.x;
-            let ey = mid.y;
-            match lbl.labelpos {
-                LabelPos::C => {}
-                LabelPos::L => ex -= lbl.labeloffset + lbl.width / 2.0,
-                LabelPos::R => ex += lbl.labeloffset + lbl.width / 2.0,
-            }
-            lbl.x = Some(ex);
-            lbl.y = Some(ey);
-        }
-    }
-
     coordinate_system::undo(g);
-    acyclic::undo(g);
 
     // Translate so the minimum top-left is at (0, 0).
     let mut min_x: f64 = f64::INFINITY;
@@ -4379,4 +4339,82 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
             }
         }
     }
+
+    // Ensure every edge has at least one internal point (so D3 `curveBasis` emits cubic beziers),
+    // and add node intersection endpoints to better match Dagre/Mermaid edge point semantics.
+    let edge_keys: Vec<graphlib::EdgeKey> = g.edges().cloned().collect();
+    for e in edge_keys {
+        let Some((sx, sy, sw, sh)) = g
+            .node(&e.v)
+            .map(|n| (n.x.unwrap_or(0.0), n.y.unwrap_or(0.0), n.width, n.height))
+        else {
+            continue;
+        };
+        let Some((tx, ty, tw, th)) = g
+            .node(&e.w)
+            .map(|n| (n.x.unwrap_or(0.0), n.y.unwrap_or(0.0), n.width, n.height))
+        else {
+            continue;
+        };
+
+        let Some(lbl) = g.edge_mut(&e.v, &e.w, e.name.as_deref()) else {
+            continue;
+        };
+
+        let mut internal: Vec<Point> = if lbl.points.is_empty() {
+            vec![Point {
+                x: (sx + tx) / 2.0,
+                y: (sy + ty) / 2.0,
+            }]
+        } else {
+            lbl.points.clone()
+        };
+        if internal.is_empty() {
+            internal.push(Point {
+                x: (sx + tx) / 2.0,
+                y: (sy + ty) / 2.0,
+            });
+        }
+
+        let mut pts: Vec<Point> = Vec::with_capacity(internal.len() + 2);
+        let first = internal[0];
+        let last = internal[internal.len() - 1];
+
+        pts.push(util::intersect_rect(
+            util::Rect {
+                x: sx,
+                y: sy,
+                width: sw,
+                height: sh,
+            },
+            first,
+        ));
+        pts.extend(internal);
+        pts.push(util::intersect_rect(
+            util::Rect {
+                x: tx,
+                y: ty,
+                width: tw,
+                height: th,
+            },
+            last,
+        ));
+
+        lbl.points = pts;
+
+        if (lbl.width > 0.0 || lbl.height > 0.0) && lbl.x.is_none() && lbl.y.is_none() {
+            let mid = lbl.points[lbl.points.len() / 2];
+            let mut ex = mid.x;
+            let ey = mid.y;
+            match lbl.labelpos {
+                LabelPos::C => {}
+                LabelPos::L => ex -= lbl.labeloffset + lbl.width / 2.0,
+                LabelPos::R => ex += lbl.labeloffset + lbl.width / 2.0,
+            }
+            lbl.x = Some(ex);
+            lbl.y = Some(ey);
+        }
+    }
+
+    acyclic::undo(g);
 }
