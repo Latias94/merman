@@ -574,7 +574,9 @@ pub fn layout_er_diagram(
     let mut g = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
         directed: true,
         multigraph: true,
-        compound: false,
+        // Mermaid's dagre adapter always enables `compound: true` (even if there are no clusters).
+        // This also makes the ranker behavior match upstream for disconnected ER graphs.
+        compound: true,
     });
     g.set_graph(GraphLabel {
         rankdir: dir,
@@ -585,8 +587,20 @@ pub fn layout_er_diagram(
         ..Default::default()
     });
 
+    fn parse_entity_counter_from_id(id: &str) -> Option<usize> {
+        let (_prefix, tail) = id.rsplit_once('-')?;
+        tail.parse::<usize>().ok()
+    }
+
     // Nodes.
-    for (_name, e) in &model.entities {
+    let mut entities_in_layout_order: Vec<&ErEntity> = model.entities.values().collect();
+    entities_in_layout_order.sort_by(|a, b| {
+        let a_key = (parse_entity_counter_from_id(&a.id), a.id.as_str());
+        let b_key = (parse_entity_counter_from_id(&b.id), b.id.as_str());
+        a_key.cmp(&b_key)
+    });
+
+    for e in entities_in_layout_order {
         let (w, h) =
             entity_box_dimensions(e, measurer, &label_style, &attr_style, effective_config);
         g.set_node(
@@ -657,7 +671,7 @@ pub fn layout_er_diagram(
                     labelpos: LabelPos::C,
                     labeloffset: 10.0,
                     minlen: 1,
-                    weight: 2.0,
+                    weight: 1.0,
                     ..Default::default()
                 }),
             );
@@ -673,18 +687,15 @@ pub fn layout_er_diagram(
                     labelpos: LabelPos::C,
                     labeloffset: 10.0,
                     minlen: 1,
-                    weight: 2.0,
+                    weight: 1.0,
                     ..Default::default()
                 }),
             );
 
             // Last segment: keep end marker, no label.
             g.set_edge_named(
-                // Use a DAG-friendly direction for layout so the real node is not forced into a
-                // later rank by the self-loop cycle. We'll swap this back when emitting the final
-                // layout edges.
-                r.entity_a.clone(),
                 special_2.clone(),
+                r.entity_a.clone(),
                 Some(format!("er-rel-{idx}-cyclic-2")),
                 Some(EdgeLabel {
                     width: 0.0,
@@ -692,8 +703,6 @@ pub fn layout_er_diagram(
                     labelpos: LabelPos::C,
                     labeloffset: 10.0,
                     minlen: 1,
-                    // Bias the feedback arc set to reverse this segment (the cycle-back edge),
-                    // matching Mermaid's dagre layout behavior for self-loops.
                     weight: 1.0,
                     ..Default::default()
                 }),
@@ -724,7 +733,7 @@ pub fn layout_er_diagram(
         );
     }
 
-    dugong::layout(&mut g);
+    dugong::layout_dagreish(&mut g);
 
     let mut nodes: Vec<LayoutNode> = Vec::new();
     for id in g.node_ids() {
@@ -762,16 +771,6 @@ pub fn layout_er_diagram(
             .name
             .clone()
             .unwrap_or_else(|| format!("edge:{}:{}", key.v, key.w));
-
-        // Self-loop edges: we intentionally use a DAG-friendly direction for layout (see edge
-        // construction above). Swap direction back when emitting layout edges so markers and
-        // point order match upstream Mermaid behavior.
-        let (from_id, to_id) = if id.ends_with("-cyclic-2") {
-            points.reverse();
-            (key.w.clone(), key.v.clone())
-        } else {
-            (key.v.clone(), key.w.clone())
-        };
 
         let rel_idx = key
             .name
@@ -845,8 +844,8 @@ pub fn layout_er_diagram(
 
         edges.push(LayoutEdgeParts {
             id,
-            from: from_id,
-            to: to_id,
+            from: key.v.clone(),
+            to: key.w.clone(),
             points,
             label,
             start_marker,

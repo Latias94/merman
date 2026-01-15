@@ -10,6 +10,17 @@ Baseline version: Mermaid `@11.12.2`.
 Without upstream SVG baselines, it is easy to "visually align by feel" and regress output
 in subtle ways (marker ids, viewBox sizing, CSS selectors, etc). Baselines make changes auditable.
 
+## Golden Layers
+
+To make 1:1 parity work tractable, `merman` keeps multiple kinds of goldens:
+
+- Upstream SVG baselines (this doc): the authoritative end-to-end output from Mermaid (via CLI).
+- Semantic snapshots: parser output snapshots for `fixtures/**/*.mmd` (generated via
+  `cargo run -p xtask -- update-snapshots`).
+- Layout golden snapshots: geometry-level snapshots (`*.layout.golden.json`) that validate the
+  headless layout model and help localize diffs to layout vs. SVG rendering (see
+  `docs/adr/0047-layout-golden-snapshots.md`).
+
 ## Tooling
 
 We use `@mermaid-js/mermaid-cli` pinned under `tools/mermaid-cli/`.

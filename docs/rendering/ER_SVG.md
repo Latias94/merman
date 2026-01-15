@@ -22,6 +22,8 @@ Outputs to: `target/svgs/er/*.svg`
 
 - Entity boxes with title and attribute rows (column layout follows the legacy Mermaid ER renderer logic).
 - Relationship lines (with ER cardinality markers via `marker-start`/`marker-end`).
+- Relationship paths use a port of D3 `curveBasis` (Mermaid-like cubic beziers), driven by Dagre-style
+  edge points (including node intersection endpoints).
 - Dashed relationship lines for `NON_IDENTIFYING` relationships (`stroke-dasharray: 8,8`).
 - Relationship label text with an opaque label box behind it.
 - Diagram title via YAML front-matter `title:` (centered, above the diagram), with viewBox/size including the title area.

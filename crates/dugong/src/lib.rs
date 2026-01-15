@@ -4151,3 +4151,228 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     // Restore original edge directions and names, keeping computed points.
     acyclic::undo(g);
 }
+
+/// Experimental Dagre-style pipeline for non-compound graphs.
+///
+/// This uses the parity-oriented building blocks (`rank`, `normalize`, `order`, BK positioning)
+/// that are already in this crate, but is not yet the default `layout()` implementation.
+///
+/// For compound graphs, this falls back to `layout()` for now.
+pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+    coordinate_system::adjust(g);
+    acyclic::run(g);
+
+    // Mermaid's dagre adapter always enables `compound: true`, and Dagre's ranker expects a
+    // connected graph. Nesting graph connects components (even if there are no explicit
+    // subgraphs), preventing network-simplex from panicking on disconnected inputs.
+    if g.options().compound {
+        nesting_graph::run(g);
+    }
+
+    rank::rank(g);
+    util::normalize_ranks(g);
+
+    normalize::run(g);
+    order::order(
+        g,
+        order::OrderOptions {
+            disable_optimal_order_heuristic: false,
+        },
+    );
+
+    let rank_sep = g.graph().ranksep;
+    let layering = util::build_layer_matrix(g);
+
+    let mut gap_extra: Vec<f64> = vec![0.0; layering.len().saturating_sub(1)];
+    for ek in g.edge_keys() {
+        let Some(v_rank) = g.node(&ek.v).and_then(|n| n.rank) else {
+            continue;
+        };
+        let Some(w_rank) = g.node(&ek.w).and_then(|n| n.rank) else {
+            continue;
+        };
+        if w_rank != v_rank + 1 {
+            continue;
+        }
+        let Some(lbl) = g.edge_by_key(&ek) else {
+            continue;
+        };
+        if lbl.height <= 0.0 {
+            continue;
+        }
+        let idx = v_rank.max(0) as usize;
+        if let Some(extra) = gap_extra.get_mut(idx) {
+            *extra = extra.max(lbl.height);
+        }
+    }
+
+    let mut prev_y: f64 = 0.0;
+    for (idx, layer) in layering.iter().enumerate() {
+        let max_h = layer
+            .iter()
+            .filter_map(|id| g.node(id).map(|n| n.height))
+            .fold(0.0_f64, f64::max);
+        let y = prev_y + max_h / 2.0;
+        for id in layer {
+            if let Some(n) = g.node_mut(id) {
+                n.y = Some(y);
+            }
+        }
+        prev_y += max_h;
+        if idx + 1 < layering.len() {
+            prev_y += rank_sep + gap_extra.get(idx).copied().unwrap_or(0.0);
+        }
+    }
+
+    let xs = position::bk::position_x(g);
+    for id in g.node_ids() {
+        if let Some(n) = g.node_mut(&id) {
+            n.x = Some(xs.get(&id).copied().unwrap_or(0.0));
+        }
+    }
+
+    normalize::undo(g);
+
+    // Ensure every edge has at least one internal point (so D3 `curveBasis` emits cubic beziers),
+    // and add node intersection endpoints to better match Dagre/Mermaid edge point semantics.
+    let edge_keys: Vec<graphlib::EdgeKey> = g.edges().cloned().collect();
+    for e in edge_keys {
+        let Some((sx, sy, sw, sh)) = g
+            .node(&e.v)
+            .map(|n| (n.x.unwrap_or(0.0), n.y.unwrap_or(0.0), n.width, n.height))
+        else {
+            continue;
+        };
+        let Some((tx, ty, tw, th)) = g
+            .node(&e.w)
+            .map(|n| (n.x.unwrap_or(0.0), n.y.unwrap_or(0.0), n.width, n.height))
+        else {
+            continue;
+        };
+
+        let Some(lbl) = g.edge_mut(&e.v, &e.w, e.name.as_deref()) else {
+            continue;
+        };
+
+        let mut internal: Vec<Point> = if lbl.points.is_empty() {
+            let start_y = sy + sh / 2.0;
+            let end_y = ty - th / 2.0;
+            vec![Point {
+                x: (sx + tx) / 2.0,
+                y: (start_y + end_y) / 2.0,
+            }]
+        } else {
+            lbl.points.clone()
+        };
+
+        // Make sure internal points are not empty.
+        if internal.is_empty() {
+            internal.push(Point {
+                x: (sx + tx) / 2.0,
+                y: (sy + ty) / 2.0,
+            });
+        }
+
+        let mut pts: Vec<Point> = Vec::with_capacity(internal.len() + 2);
+        let first = internal[0];
+        let last = internal[internal.len() - 1];
+
+        pts.push(util::intersect_rect(
+            util::Rect {
+                x: sx,
+                y: sy,
+                width: sw,
+                height: sh,
+            },
+            first,
+        ));
+        pts.extend(internal);
+        pts.push(util::intersect_rect(
+            util::Rect {
+                x: tx,
+                y: ty,
+                width: tw,
+                height: th,
+            },
+            last,
+        ));
+
+        lbl.points = pts;
+
+        if (lbl.width > 0.0 || lbl.height > 0.0) && lbl.x.is_none() && lbl.y.is_none() {
+            let mid = lbl.points[lbl.points.len() / 2];
+            let mut ex = mid.x;
+            let ey = mid.y;
+            match lbl.labelpos {
+                LabelPos::C => {}
+                LabelPos::L => ex -= lbl.labeloffset + lbl.width / 2.0,
+                LabelPos::R => ex += lbl.labeloffset + lbl.width / 2.0,
+            }
+            lbl.x = Some(ex);
+            lbl.y = Some(ey);
+        }
+    }
+
+    coordinate_system::undo(g);
+    acyclic::undo(g);
+
+    if g.options().compound {
+        nesting_graph::cleanup(g);
+    }
+
+    // Translate so the minimum top-left is at (0, 0).
+    let mut min_x: f64 = f64::INFINITY;
+    let mut min_y: f64 = f64::INFINITY;
+    for id in g.node_ids() {
+        let Some(n) = g.node(&id) else {
+            continue;
+        };
+        let (Some(x), Some(y)) = (n.x, n.y) else {
+            continue;
+        };
+        min_x = min_x.min(x - n.width / 2.0);
+        min_y = min_y.min(y - n.height / 2.0);
+    }
+    for ek in g.edge_keys() {
+        let Some(lbl) = g.edge_by_key(&ek) else {
+            continue;
+        };
+        for p in &lbl.points {
+            min_x = min_x.min(p.x);
+            min_y = min_y.min(p.y);
+        }
+        if let (Some(x), Some(y)) = (lbl.x, lbl.y) {
+            min_x = min_x.min(x - lbl.width / 2.0);
+            min_y = min_y.min(y - lbl.height / 2.0);
+        }
+    }
+
+    if min_x.is_finite() && min_y.is_finite() {
+        let dx = -min_x;
+        let dy = -min_y;
+        for id in g.node_ids() {
+            if let Some(n) = g.node_mut(&id) {
+                if let Some(x) = n.x {
+                    n.x = Some(x + dx);
+                }
+                if let Some(y) = n.y {
+                    n.y = Some(y + dy);
+                }
+            }
+        }
+        for ek in g.edge_keys() {
+            if let Some(lbl) = g.edge_mut_by_key(&ek) {
+                for p in &mut lbl.points {
+                    p.x += dx;
+                    p.y += dy;
+                }
+                if let Some(x) = lbl.x {
+                    lbl.x = Some(x + dx);
+                }
+                if let Some(y) = lbl.y {
+                    lbl.y = Some(y + dy);
+                }
+            }
+        }
+    }
+}
