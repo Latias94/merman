@@ -15,7 +15,7 @@
           "id": "entity-ENTITY1-0",
           "is_cluster": false,
           "width": 101.76,
-          "x": 292.64,
+          "x": 50.88,
           "y": 42.0
         },
         {
@@ -23,7 +23,7 @@
           "id": "entity-ENTITY2-1",
           "is_cluster": false,
           "width": 101.76,
-          "x": 50.88,
+          "x": 292.64,
           "y": 42.0
         }
       ]
