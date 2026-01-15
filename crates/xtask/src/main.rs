@@ -381,11 +381,13 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     enum DomMode {
         Strict,
         Structure,
+        Parity,
     }
 
     fn parse_dom_mode(s: &str) -> DomMode {
         match s {
             "structure" => DomMode::Structure,
+            "parity" => DomMode::Parity,
             _ => DomMode::Strict,
         }
     }
@@ -430,6 +432,11 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         ONCE.get_or_init(|| Regex::new(r"-?(?:\d+\.\d+|\d+\.|\.\d+|\d+)(?:[eE][+-]?\d+)?").unwrap())
     }
 
+    fn re_css_max_width() -> &'static Regex {
+        static ONCE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+        ONCE.get_or_init(|| Regex::new(r"(?i)max-width\s*:\s*[0-9.]+px").unwrap())
+    }
+
     fn normalize_numeric_tokens(s: &str, decimals: u32) -> String {
         // Pragmatic DOM compare: ignore float formatting differences by rounding all numeric tokens.
         re_num()
@@ -458,37 +465,149 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         match mode {
             DomMode::Strict => normalize_numeric_tokens(s, decimals),
             DomMode::Structure => re_num().replace_all(s, "<n>").to_string(),
+            DomMode::Parity => normalize_numeric_tokens(s, decimals),
         }
     }
 
-    fn normalize_svg_attr(name: &str, value: &str, decimals: u32, mode: DomMode) -> String {
+    fn strip_css_property(style: &str, key: &str) -> String {
+        // Very small, pragmatic parser for `style="k: v; k2: v2;"` used on the root `<svg>`.
+        let mut out: Vec<String> = Vec::new();
+        for part in style.split(';') {
+            let part = part.trim();
+            if part.is_empty() {
+                continue;
+            }
+            let Some((k, v)) = part.split_once(':') else {
+                continue;
+            };
+            if k.trim().eq_ignore_ascii_case(key) {
+                continue;
+            }
+            out.push(format!("{}: {}", k.trim(), v.trim()));
+        }
+        if out.is_empty() {
+            String::new()
+        } else {
+            format!("{};", out.join("; "))
+        }
+    }
+
+    fn is_geometry_attr(name: &str) -> bool {
+        matches!(
+            name,
+            "viewBox"
+                | "transform"
+                | "d"
+                | "points"
+                | "x"
+                | "y"
+                | "x1"
+                | "y1"
+                | "x2"
+                | "y2"
+                | "cx"
+                | "cy"
+                | "r"
+                | "rx"
+                | "ry"
+                | "width"
+                | "height"
+        )
+    }
+
+    fn normalize_svg_attr(
+        element_name: &str,
+        name: &str,
+        value: &str,
+        decimals: u32,
+        mode: DomMode,
+    ) -> String {
         match name {
-            "data-points" if mode == DomMode::Structure => "<data-points>".to_string(),
+            "data-points" if mode == DomMode::Structure || mode == DomMode::Parity => {
+                "<data-points>".to_string()
+            }
             "class" => normalize_class_list(value),
-            "style" => normalize_css_value(&normalize_numeric_tokens_mode(value, decimals, mode)),
+            "style" => {
+                let v = if mode == DomMode::Parity && element_name == "svg" {
+                    strip_css_property(value, "max-width")
+                } else {
+                    value.to_string()
+                };
+                match mode {
+                    DomMode::Parity => {
+                        // Headless rendering does not currently match upstream max-width heuristics for
+                        // HTML labels. Treat `max-width: <n>px` as geometry noise for parity checks.
+                        let v = if element_name == "div" {
+                            re_css_max_width()
+                                .replace_all(&v, "max-width: <n>px")
+                                .to_string()
+                        } else {
+                            v
+                        };
+                        normalize_css_value(&normalize_numeric_tokens(&v, decimals))
+                    }
+                    DomMode::Strict | DomMode::Structure => {
+                        normalize_css_value(&normalize_numeric_tokens_mode(&v, decimals, mode))
+                    }
+                }
+            }
             "viewBox" => {
-                normalize_whitespace(&normalize_numeric_tokens_mode(value, decimals, mode))
+                if mode == DomMode::Parity {
+                    normalize_whitespace(&normalize_numeric_tokens_mode(
+                        value,
+                        decimals,
+                        DomMode::Structure,
+                    ))
+                } else {
+                    normalize_whitespace(&normalize_numeric_tokens_mode(value, decimals, mode))
+                }
             }
             "transform" => {
-                normalize_whitespace(&normalize_numeric_tokens_mode(value, decimals, mode))
+                if mode == DomMode::Parity {
+                    normalize_whitespace(&normalize_numeric_tokens_mode(
+                        value,
+                        decimals,
+                        DomMode::Structure,
+                    ))
+                } else {
+                    normalize_whitespace(&normalize_numeric_tokens_mode(value, decimals, mode))
+                }
             }
             "d" => {
                 let v = value.replace(',', " ");
-                normalize_numeric_tokens_mode(&v, decimals, mode)
+                let m = if mode == DomMode::Parity {
+                    DomMode::Structure
+                } else {
+                    mode
+                };
+                normalize_numeric_tokens_mode(&v, decimals, m)
                     .chars()
                     .filter(|c| !c.is_whitespace())
                     .collect()
             }
             "points" => {
                 let v = value.replace(',', " ");
-                normalize_numeric_tokens_mode(&v, decimals, mode)
+                let m = if mode == DomMode::Parity {
+                    DomMode::Structure
+                } else {
+                    mode
+                };
+                normalize_numeric_tokens_mode(&v, decimals, m)
                     .chars()
                     .filter(|c| !c.is_whitespace())
                     .collect()
             }
             "x" | "y" | "x1" | "y1" | "x2" | "y2" | "cx" | "cy" | "r" | "rx" | "ry" | "width"
             | "height" | "stroke-width" | "font-size" | "opacity" => {
-                normalize_whitespace(&normalize_numeric_tokens_mode(value, decimals, mode))
+                if mode == DomMode::Parity && is_geometry_attr(name) {
+                    normalize_whitespace(&normalize_numeric_tokens_mode(
+                        value,
+                        decimals,
+                        DomMode::Structure,
+                    ))
+                } else {
+                    normalize_whitespace(&normalize_numeric_tokens_mode(value, decimals, mode))
+                }
             }
             _ => normalize_whitespace(value),
         }
@@ -508,11 +627,11 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             std::collections::BTreeMap::new();
         for a in node.attributes() {
             let key = a.name().to_string();
-            let val = normalize_svg_attr(&key, a.value(), decimals, mode);
+            let val = normalize_svg_attr(&name, &key, a.value(), decimals, mode);
             attrs.insert(key, val);
         }
 
-        if mode == DomMode::Structure && name == "style" {
+        if (mode == DomMode::Structure || mode == DomMode::Parity) && name == "style" {
             return Some(SvgDomNode {
                 name,
                 attrs,

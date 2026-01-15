@@ -71,6 +71,10 @@ Generate a small report comparing upstream SVGs and the current Rust Stage-B ER 
   - Use a looser, structure-only mode while iterating on DOM shape (replaces numeric tokens with
     `<n>`, ignores `data-points`, and ignores `<style>` text):
     - `cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode structure --dom-decimals 3`
+  - Use a parity-focused mode to ignore geometry noise (replaces numeric tokens in geometry attrs
+    with `<n>`, ignores `data-points` and `<style>` text, and ignores `max-width` heuristics inside
+    HTML label `<div>` style attributes):
+    - `cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 ## Notes
 
