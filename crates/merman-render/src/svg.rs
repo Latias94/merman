@@ -734,6 +734,16 @@ pub fn render_er_diagram_svg(
     let mut edges = layout.edges.clone();
     edges.sort_by(|a, b| a.id.cmp(&b.id));
 
+    let include_md_parent = edges.iter().any(|e| {
+        matches!(
+            e.start_marker.as_deref(),
+            Some("MD_PARENT_START") | Some("MD_PARENT_END")
+        ) || matches!(
+            e.end_marker.as_deref(),
+            Some("MD_PARENT_START") | Some("MD_PARENT_END")
+        )
+    });
+
     let bounds = compute_layout_bounds(&[], &nodes, &edges).unwrap_or(Bounds {
         min_x: 0.0,
         min_y: 0.0,
@@ -830,55 +840,61 @@ pub fn render_er_diagram_svg(
     );
 
     // Markers ported from Mermaid `@11.12.2` `erMarkers.js`.
-    // Note: ids follow Mermaid unified renderer rules: `${diagramId}_${diagramType}-${markerType}{Start|End}`.
-    let defs = format!(
-        r##"<defs>
-  <marker id="{diagram_id}_{diagram_type}-mdParentStart" refX="0" refY="7" markerWidth="190" markerHeight="240" orient="auto">
-    <path d="M 18,7 L9,13 L1,7 L9,1 Z" fill="{stroke}" stroke="{stroke}" />
+    // Note: ids follow Mermaid marker rules: `${diagramId}_${diagramType}-${markerType}{Start|End}`.
+    // Mermaid's ER unified renderer enables four marker types by default; include MD_PARENT only if used.
+    let diagram_id_esc = escape_xml(diagram_id);
+    let diagram_type_esc = escape_xml(diagram_type);
+    let stroke_esc = escape_xml(&stroke);
+    let main_bkg_esc = escape_xml(&main_bkg);
+    out.push_str("<defs>\n");
+
+    if include_md_parent {
+        let _ = writeln!(
+            &mut out,
+            r#"  <marker id="{diagram_id_esc}_{diagram_type_esc}-mdParentStart" refX="0" refY="7" markerWidth="190" markerHeight="240" orient="auto">
+    <path d="M 18,7 L9,13 L1,7 L9,1 Z" fill="{stroke_esc}" stroke="{stroke_esc}" />
   </marker>
-  <marker id="{diagram_id}_{diagram_type}-mdParentEnd" refX="19" refY="7" markerWidth="20" markerHeight="28" orient="auto">
-    <path d="M 18,7 L9,13 L1,7 L9,1 Z" fill="{stroke}" stroke="{stroke}" />
+  <marker id="{diagram_id_esc}_{diagram_type_esc}-mdParentEnd" refX="19" refY="7" markerWidth="20" markerHeight="28" orient="auto">
+    <path d="M 18,7 L9,13 L1,7 L9,1 Z" fill="{stroke_esc}" stroke="{stroke_esc}" />
+  </marker>"#
+        );
+    }
+
+    let _ = writeln!(
+        &mut out,
+        r#"  <marker id="{diagram_id_esc}_{diagram_type_esc}-onlyOneStart" refX="0" refY="9" markerWidth="18" markerHeight="18" orient="auto">
+    <path stroke="{stroke_esc}" fill="none" d="M9,0 L9,18 M15,0 L15,18" />
+  </marker>
+  <marker id="{diagram_id_esc}_{diagram_type_esc}-onlyOneEnd" refX="18" refY="9" markerWidth="18" markerHeight="18" orient="auto">
+    <path stroke="{stroke_esc}" fill="none" d="M3,0 L3,18 M9,0 L9,18" />
   </marker>
 
-  <marker id="{diagram_id}_{diagram_type}-onlyOneStart" refX="0" refY="9" markerWidth="18" markerHeight="18" orient="auto">
-    <path stroke="{stroke}" fill="none" d="M9,0 L9,18 M15,0 L15,18" />
+  <marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrOneStart" refX="0" refY="9" markerWidth="30" markerHeight="18" orient="auto">
+    <circle stroke="{stroke_esc}" fill="{main_bkg_esc}" cx="21" cy="9" r="6" />
+    <path stroke="{stroke_esc}" fill="none" d="M9,0 L9,18" />
   </marker>
-  <marker id="{diagram_id}_{diagram_type}-onlyOneEnd" refX="18" refY="9" markerWidth="18" markerHeight="18" orient="auto">
-    <path stroke="{stroke}" fill="none" d="M3,0 L3,18 M9,0 L9,18" />
-  </marker>
-
-  <marker id="{diagram_id}_{diagram_type}-zeroOrOneStart" refX="0" refY="9" markerWidth="30" markerHeight="18" orient="auto">
-    <circle stroke="{stroke}" fill="{main_bkg}" cx="21" cy="9" r="6" />
-    <path stroke="{stroke}" fill="none" d="M9,0 L9,18" />
-  </marker>
-  <marker id="{diagram_id}_{diagram_type}-zeroOrOneEnd" refX="30" refY="9" markerWidth="30" markerHeight="18" orient="auto">
-    <circle stroke="{stroke}" fill="{main_bkg}" cx="9" cy="9" r="6" />
-    <path stroke="{stroke}" fill="none" d="M21,0 L21,18" />
+  <marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrOneEnd" refX="30" refY="9" markerWidth="30" markerHeight="18" orient="auto">
+    <circle stroke="{stroke_esc}" fill="{main_bkg_esc}" cx="9" cy="9" r="6" />
+    <path stroke="{stroke_esc}" fill="none" d="M21,0 L21,18" />
   </marker>
 
-  <marker id="{diagram_id}_{diagram_type}-oneOrMoreStart" refX="18" refY="18" markerWidth="45" markerHeight="36" orient="auto">
-    <path stroke="{stroke}" fill="none" d="M0,18 Q 18,0 36,18 Q 18,36 0,18 M42,9 L42,27" />
+  <marker id="{diagram_id_esc}_{diagram_type_esc}-oneOrMoreStart" refX="18" refY="18" markerWidth="45" markerHeight="36" orient="auto">
+    <path stroke="{stroke_esc}" fill="none" d="M0,18 Q 18,0 36,18 Q 18,36 0,18 M42,9 L42,27" />
   </marker>
-  <marker id="{diagram_id}_{diagram_type}-oneOrMoreEnd" refX="27" refY="18" markerWidth="45" markerHeight="36" orient="auto">
-    <path stroke="{stroke}" fill="none" d="M3,9 L3,27 M9,18 Q27,0 45,18 Q27,36 9,18" />
+  <marker id="{diagram_id_esc}_{diagram_type_esc}-oneOrMoreEnd" refX="27" refY="18" markerWidth="45" markerHeight="36" orient="auto">
+    <path stroke="{stroke_esc}" fill="none" d="M3,9 L3,27 M9,18 Q27,0 45,18 Q27,36 9,18" />
   </marker>
 
-  <marker id="{diagram_id}_{diagram_type}-zeroOrMoreStart" refX="18" refY="18" markerWidth="57" markerHeight="36" orient="auto">
-    <circle stroke="{stroke}" fill="{main_bkg}" cx="48" cy="18" r="6" />
-    <path stroke="{stroke}" fill="none" d="M0,18 Q18,0 36,18 Q18,36 0,18" />
+  <marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrMoreStart" refX="18" refY="18" markerWidth="57" markerHeight="36" orient="auto">
+    <circle stroke="{stroke_esc}" fill="{main_bkg_esc}" cx="48" cy="18" r="6" />
+    <path stroke="{stroke_esc}" fill="none" d="M0,18 Q18,0 36,18 Q18,36 0,18" />
   </marker>
-  <marker id="{diagram_id}_{diagram_type}-zeroOrMoreEnd" refX="39" refY="18" markerWidth="57" markerHeight="36" orient="auto">
-    <circle stroke="{stroke}" fill="{main_bkg}" cx="9" cy="18" r="6" />
-    <path stroke="{stroke}" fill="none" d="M21,18 Q39,0 57,18 Q39,36 21,18" />
-  </marker>
-</defs>"##,
-        diagram_id = escape_xml(diagram_id),
-        diagram_type = escape_xml(diagram_type),
-        stroke = escape_xml(&stroke),
-        main_bkg = escape_xml(&main_bkg)
+  <marker id="{diagram_id_esc}_{diagram_type_esc}-zeroOrMoreEnd" refX="39" refY="18" markerWidth="57" markerHeight="36" orient="auto">
+    <circle stroke="{stroke_esc}" fill="{main_bkg_esc}" cx="9" cy="18" r="6" />
+    <path stroke="{stroke_esc}" fill="none" d="M21,18 Q39,0 57,18 Q39,36 21,18" />
+  </marker>"#
     );
-    out.push_str(&defs);
-    out.push('\n');
+    out.push_str("</defs>\n");
 
     if let Some(title) = diagram_title {
         let _ = writeln!(

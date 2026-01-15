@@ -460,7 +460,9 @@ fn er_marker_id(card: &str, suffix: &str) -> Option<String> {
         "ZERO_OR_ONE" => Some(format!("ZERO_OR_ONE_{suffix}")),
         "ONE_OR_MORE" => Some(format!("ONE_OR_MORE_{suffix}")),
         "ZERO_OR_MORE" => Some(format!("ZERO_OR_MORE_{suffix}")),
-        "MD_PARENT" => Some(format!("MD_PARENT_{suffix}")),
+        // Mermaid ER unified renderer does not enable a dedicated MD_PARENT marker. In practice,
+        // Mermaid CLI output maps `u` cardinality to the same marker as `ONLY_ONE`.
+        "MD_PARENT" => Some(format!("ONLY_ONE_{suffix}")),
         _ => None,
     }
 }
