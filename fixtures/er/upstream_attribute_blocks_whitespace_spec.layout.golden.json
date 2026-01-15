@@ -5,7 +5,7 @@
       "bounds": {
         "max_x": 812.248,
         "max_y": 117.0,
-        "min_x": 0.0,
+        "min_x": -0.0,
         "min_y": 0.0
       },
       "edges": [],
@@ -15,7 +15,7 @@
           "id": "entity-BOOK-0",
           "is_cluster": false,
           "width": 132.184,
-          "x": 66.092,
+          "x": 746.156,
           "y": 58.5
         },
         {
@@ -23,7 +23,7 @@
           "id": "entity-EMPTY-1",
           "is_cluster": false,
           "width": 100.0,
-          "x": 322.184,
+          "x": 490.064,
           "y": 58.5
         },
         {
@@ -31,7 +31,7 @@
           "id": "entity-SPACED-2",
           "is_cluster": false,
           "width": 300.064,
-          "x": 662.216,
+          "x": 150.032,
           "y": 58.5
         }
       ]
