@@ -1,0 +1,41 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "bounds": {
+        "max_x": 236.5,
+        "max_y": 31.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "clusters": [],
+      "edges": [],
+      "nodes": [
+        {
+          "height": 31.0,
+          "id": "as",
+          "is_cluster": false,
+          "width": 24.6,
+          "x": 224.2,
+          "y": 15.5
+        },
+        {
+          "height": 31.0,
+          "id": "assemble",
+          "is_cluster": false,
+          "width": 52.4,
+          "x": 26.2,
+          "y": 15.5
+        },
+        {
+          "height": 31.0,
+          "id": "assemblies",
+          "is_cluster": false,
+          "width": 59.5,
+          "x": 132.15,
+          "y": 15.5
+        }
+      ]
+    }
+  }
+}

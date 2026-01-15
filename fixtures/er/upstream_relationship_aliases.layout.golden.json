@@ -1,0 +1,246 @@
+{
+  "diagramType": "er",
+  "layout": {
+    "ErDiagram": {
+      "bounds": {
+        "max_x": 892.48,
+        "max_y": 269.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "edges": [
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ONE_OR_MORE_END",
+          "from": "entity-HOUSE-0",
+          "from_cluster": null,
+          "id": "er-rel-0",
+          "label": {
+            "height": 21.0,
+            "width": 46.06,
+            "x": 446.12,
+            "y": 134.5
+          },
+          "points": [
+            {
+              "x": 331.04,
+              "y": 84.0
+            },
+            {
+              "x": 446.12,
+              "y": 134.5
+            },
+            {
+              "x": 561.2,
+              "y": 185.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "stroke_dasharray": null,
+          "to": "entity-ROOM-1",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ZERO_OR_MORE_END",
+          "from": "entity-PERSON-2",
+          "from_cluster": null,
+          "id": "er-rel-1",
+          "label": {
+            "height": 21.0,
+            "width": 28.98,
+            "x": 438.32,
+            "y": 134.5
+          },
+          "points": [
+            {
+              "x": 571.04,
+              "y": 84.0
+            },
+            {
+              "x": 438.32,
+              "y": 134.5
+            },
+            {
+              "x": 305.6,
+              "y": 185.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": "ZERO_OR_MORE_START",
+          "stroke_dasharray": "8,8",
+          "to": "entity-POSSESSION-3",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ZERO_OR_MORE_END",
+          "from": "entity-CUSTOMER-4",
+          "from_cluster": null,
+          "id": "er-rel-2",
+          "label": {
+            "height": 21.0,
+            "width": 34.02,
+            "x": 66.32,
+            "y": 134.5
+          },
+          "points": [
+            {
+              "x": 82.64,
+              "y": 84.0
+            },
+            {
+              "x": 66.32,
+              "y": 134.5
+            },
+            {
+              "x": 50.0,
+              "y": 185.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": "ZERO_OR_ONE_START",
+          "stroke_dasharray": "8,8",
+          "to": "entity-ORDER-5",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ZERO_OR_MORE_END",
+          "from": "entity-PROJECT-6",
+          "from_cluster": null,
+          "id": "er-rel-3",
+          "label": {
+            "height": 21.0,
+            "width": 36.12,
+            "x": 818.24,
+            "y": 134.5
+          },
+          "points": [
+            {
+              "x": 814.64,
+              "y": 84.0
+            },
+            {
+              "x": 818.24,
+              "y": 134.5
+            },
+            {
+              "x": 821.84,
+              "y": 185.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "stroke_dasharray": null,
+          "to": "entity-TEAM_MEMBER-7",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ONE_OR_MORE_END",
+          "from": "entity-CUSTOMER-4",
+          "from_cluster": null,
+          "id": "er-rel-4",
+          "label": null,
+          "points": [
+            {
+              "x": 82.64,
+              "y": 84.0
+            },
+            {
+              "x": 66.32,
+              "y": 134.5
+            },
+            {
+              "x": 50.0,
+              "y": 185.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "stroke_dasharray": null,
+          "to": "entity-ORDER-5",
+          "to_cluster": null
+        }
+      ],
+      "nodes": [
+        {
+          "height": 84.0,
+          "id": "entity-CUSTOMER-4",
+          "is_cluster": false,
+          "width": 116.8,
+          "x": 82.64,
+          "y": 42.0
+        },
+        {
+          "height": 84.0,
+          "id": "entity-HOUSE-0",
+          "is_cluster": false,
+          "width": 100.0,
+          "x": 331.04,
+          "y": 42.0
+        },
+        {
+          "height": 84.0,
+          "id": "entity-ORDER-5",
+          "is_cluster": false,
+          "width": 100.0,
+          "x": 50.0,
+          "y": 227.0
+        },
+        {
+          "height": 84.0,
+          "id": "entity-PERSON-2",
+          "is_cluster": false,
+          "width": 100.0,
+          "x": 571.04,
+          "y": 42.0
+        },
+        {
+          "height": 84.0,
+          "id": "entity-POSSESSION-3",
+          "is_cluster": false,
+          "width": 131.2,
+          "x": 305.6,
+          "y": 227.0
+        },
+        {
+          "height": 84.0,
+          "id": "entity-PROJECT-6",
+          "is_cluster": false,
+          "width": 107.2,
+          "x": 814.64,
+          "y": 42.0
+        },
+        {
+          "height": 84.0,
+          "id": "entity-ROOM-1",
+          "is_cluster": false,
+          "width": 100.0,
+          "x": 561.2,
+          "y": 227.0
+        },
+        {
+          "height": 84.0,
+          "id": "entity-TEAM_MEMBER-7",
+          "is_cluster": false,
+          "width": 141.28,
+          "x": 821.84,
+          "y": 227.0
+        }
+      ]
+    }
+  }
+}

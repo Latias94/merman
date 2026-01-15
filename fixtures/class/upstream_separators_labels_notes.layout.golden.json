@@ -1,0 +1,79 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "bounds": {
+        "max_x": 345.8,
+        "max_y": 319.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "clusters": [],
+      "edges": [
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "note0",
+          "from_cluster": null,
+          "id": "edgeNote1",
+          "label": null,
+          "points": [
+            {
+              "x": 197.4,
+              "y": 118.0
+            },
+            {
+              "x": 185.15,
+              "y": 187.0
+            },
+            {
+              "x": 172.9,
+              "y": 256.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "C1",
+          "to_cluster": null
+        }
+      ],
+      "nodes": [
+        {
+          "height": 63.0,
+          "id": "C1",
+          "is_cluster": false,
+          "width": 105.4,
+          "x": 172.9,
+          "y": 287.5
+        },
+        {
+          "height": 206.0,
+          "id": "Foo1",
+          "is_cluster": false,
+          "width": 127.5,
+          "x": 63.75,
+          "y": 103.0
+        },
+        {
+          "height": 30.0,
+          "id": "note0",
+          "is_cluster": false,
+          "width": 39.8,
+          "x": 197.4,
+          "y": 103.0
+        },
+        {
+          "height": 30.0,
+          "id": "note1",
+          "is_cluster": false,
+          "width": 78.5,
+          "x": 306.55,
+          "y": 103.0
+        }
+      ]
+    }
+  }
+}

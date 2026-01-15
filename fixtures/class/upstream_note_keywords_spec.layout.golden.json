@@ -1,0 +1,71 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "bounds": {
+        "max_x": 430.5,
+        "max_y": 146.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "clusters": [],
+      "edges": [
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "note1",
+          "from_cluster": null,
+          "id": "edgeNote2",
+          "label": null,
+          "points": [
+            {
+              "x": 347.2,
+              "y": 30.0
+            },
+            {
+              "x": 281.225,
+              "y": 55.0
+            },
+            {
+              "x": 215.25,
+              "y": 80.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Something",
+          "to_cluster": null
+        }
+      ],
+      "nodes": [
+        {
+          "height": 66.0,
+          "id": "Something",
+          "is_cluster": false,
+          "width": 58.3,
+          "x": 215.25,
+          "y": 113.0
+        },
+        {
+          "height": 30.0,
+          "id": "note0",
+          "is_cluster": false,
+          "width": 213.9,
+          "x": 106.95,
+          "y": 15.0
+        },
+        {
+          "height": 30.0,
+          "id": "note1",
+          "is_cluster": false,
+          "width": 166.6,
+          "x": 347.2,
+          "y": 15.0
+        }
+      ]
+    }
+  }
+}

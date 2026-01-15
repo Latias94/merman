@@ -1,0 +1,32 @@
+{
+  "diagramType": "er",
+  "layout": {
+    "ErDiagram": {
+      "bounds": {
+        "max_x": 352.0,
+        "max_y": 84.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "edges": [],
+      "nodes": [
+        {
+          "height": 84.0,
+          "id": "entity-ISLAND-0",
+          "is_cluster": false,
+          "width": 100.0,
+          "x": 50.0,
+          "y": 42.0
+        },
+        {
+          "height": 84.0,
+          "id": "entity-MAINLAND-1",
+          "is_cluster": false,
+          "width": 112.0,
+          "x": 296.0,
+          "y": 42.0
+        }
+      ]
+    }
+  }
+}

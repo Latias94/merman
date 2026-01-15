@@ -1,0 +1,79 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "bounds": {
+        "max_x": 260.1,
+        "max_y": 51.0,
+        "min_x": -15.0,
+        "min_y": -15.0
+      },
+      "clusters": [
+        {
+          "diff": -7.5,
+          "effective_dir": "TB",
+          "height": 66.0,
+          "id": "A::B",
+          "offset_y": 7.5,
+          "padding": 15.0,
+          "requested_dir": null,
+          "title": "A::B",
+          "title_label": {
+            "height": 15.0,
+            "width": 17.6,
+            "x": 29.05,
+            "y": -7.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 88.1,
+          "x": 29.05,
+          "y": 18.0
+        }
+      ],
+      "edges": [],
+      "nodes": [
+        {
+          "height": 66.0,
+          "id": "A::B",
+          "is_cluster": true,
+          "width": 88.1,
+          "x": 29.05,
+          "y": 18.0
+        },
+        {
+          "height": 36.0,
+          "id": "A::B",
+          "is_cluster": false,
+          "width": 58.1,
+          "x": 29.05,
+          "y": 18.0
+        },
+        {
+          "height": 36.0,
+          "id": "IPC::Sender",
+          "is_cluster": false,
+          "width": 58.1,
+          "x": 29.05,
+          "y": 18.0
+        },
+        {
+          "height": 36.0,
+          "id": "__proto__",
+          "is_cluster": false,
+          "width": 44.7,
+          "x": 130.45,
+          "y": 18.0
+        },
+        {
+          "height": 36.0,
+          "id": "constructor",
+          "is_cluster": false,
+          "width": 57.3,
+          "x": 231.45,
+          "y": 18.0
+        }
+      ]
+    }
+  }
+}

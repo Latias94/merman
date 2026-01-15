@@ -1,0 +1,33 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "bounds": {
+        "max_x": 105.2,
+        "max_y": 31.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "clusters": [],
+      "edges": [],
+      "nodes": [
+        {
+          "height": 31.0,
+          "id": "S1",
+          "is_cluster": false,
+          "width": 27.6,
+          "x": 13.8,
+          "y": 15.5
+        },
+        {
+          "height": 31.0,
+          "id": "S2",
+          "is_cluster": false,
+          "width": 27.6,
+          "x": 91.4,
+          "y": 15.5
+        }
+      ]
+    }
+  }
+}

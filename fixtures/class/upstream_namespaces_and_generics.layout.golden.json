@@ -1,0 +1,151 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "bounds": {
+        "max_x": 275.6,
+        "max_y": 253.1,
+        "min_x": -36.5,
+        "min_y": -0.5
+      },
+      "clusters": [
+        {
+          "diff": -7.5,
+          "effective_dir": "LR",
+          "height": 98.5,
+          "id": "Company.Project",
+          "offset_y": 7.5,
+          "padding": 15.0,
+          "requested_dir": null,
+          "title": "Company.Project",
+          "title_label": {
+            "height": 15.0,
+            "width": 71.1,
+            "x": 167.75,
+            "y": 81.35
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 215.7,
+          "x": 167.75,
+          "y": 123.1
+        },
+        {
+          "diff": -7.5,
+          "effective_dir": "LR",
+          "height": 246.6,
+          "id": "Company.Project.Module",
+          "offset_y": 7.5,
+          "padding": 15.0,
+          "requested_dir": null,
+          "title": "Company.Project.Module",
+          "title_label": {
+            "height": 15.0,
+            "width": 99.9,
+            "x": 34.25,
+            "y": 14.0
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 141.5,
+          "x": 34.25,
+          "y": 129.8
+        }
+      ],
+      "edges": [
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Admin",
+          "from_cluster": null,
+          "id": "0",
+          "label": {
+            "height": 15.0,
+            "width": 33.6,
+            "x": 101.0,
+            "y": 89.425
+          },
+          "points": [
+            {
+              "x": 68.5,
+              "y": 55.75
+            },
+            {
+              "x": 101.0,
+              "y": 89.425
+            },
+            {
+              "x": 133.5,
+              "y": 123.1
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "User",
+          "to_cluster": null
+        }
+      ],
+      "nodes": [
+        {
+          "height": 68.5,
+          "id": "Admin",
+          "is_cluster": false,
+          "width": 111.5,
+          "x": 34.25,
+          "y": 55.75
+        },
+        {
+          "height": 98.5,
+          "id": "Company.Project",
+          "is_cluster": true,
+          "width": 215.7,
+          "x": 167.75,
+          "y": 123.1
+        },
+        {
+          "height": 1.0,
+          "id": "Company.Project",
+          "is_cluster": false,
+          "width": 1.0,
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "height": 246.6,
+          "id": "Company.Project.Module",
+          "is_cluster": true,
+          "width": 141.5,
+          "x": 34.25,
+          "y": 129.8
+        },
+        {
+          "height": 1.0,
+          "id": "Company.Project.Module",
+          "is_cluster": false,
+          "width": 1.0,
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "height": 68.5,
+          "id": "GenericClass",
+          "is_cluster": false,
+          "width": 84.7,
+          "x": 34.25,
+          "y": 203.85
+        },
+        {
+          "height": 68.5,
+          "id": "User",
+          "is_cluster": false,
+          "width": 185.7,
+          "x": 167.75,
+          "y": 123.1
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "bounds": {
+        "max_x": 159.0,
+        "max_y": 32.85,
+        "min_x": 0.0,
+        "min_y": 1.85
+      },
+      "clusters": [],
+      "edges": [
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "root_start",
+          "from_cluster": null,
+          "id": "edge0",
+          "label": null,
+          "points": [
+            {
+              "x": 14.0,
+              "y": 17.35
+            },
+            {
+              "x": 39.0,
+              "y": 17.35
+            },
+            {
+              "x": 64.0,
+              "y": 17.35
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Still",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Still",
+          "from_cluster": null,
+          "id": "edge1",
+          "label": null,
+          "points": [
+            {
+              "x": 95.0,
+              "y": 17.35
+            },
+            {
+              "x": 120.0,
+              "y": 17.35
+            },
+            {
+              "x": 145.0,
+              "y": 17.35
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "root_end",
+          "to_cluster": null
+        }
+      ],
+      "nodes": [
+        {
+          "height": 31.0,
+          "id": "Still",
+          "is_cluster": false,
+          "width": 34.7,
+          "x": 79.5,
+          "y": 17.35
+        },
+        {
+          "height": 14.0,
+          "id": "root_end",
+          "is_cluster": false,
+          "width": 14.0,
+          "x": 152.0,
+          "y": 17.35
+        },
+        {
+          "height": 14.0,
+          "id": "root_start",
+          "is_cluster": false,
+          "width": 14.0,
+          "x": 7.0,
+          "y": 17.35
+        }
+      ]
+    }
+  }
+}

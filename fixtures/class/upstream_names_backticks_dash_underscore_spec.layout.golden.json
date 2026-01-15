@@ -1,0 +1,41 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "bounds": {
+        "max_x": 186.4,
+        "max_y": 36.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "clusters": [],
+      "edges": [],
+      "nodes": [
+        {
+          "height": 36.0,
+          "id": "A_Car",
+          "is_cluster": false,
+          "width": 33.9,
+          "x": 16.95,
+          "y": 18.0
+        },
+        {
+          "height": 36.0,
+          "id": "Ca-r",
+          "is_cluster": false,
+          "width": 27.9,
+          "x": 97.85,
+          "y": 18.0
+        },
+        {
+          "height": 36.0,
+          "id": "Car",
+          "is_cluster": false,
+          "width": 24.6,
+          "x": 174.1,
+          "y": 18.0
+        }
+      ]
+    }
+  }
+}

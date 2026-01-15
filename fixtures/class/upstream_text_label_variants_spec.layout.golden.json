@@ -1,0 +1,121 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "bounds": {
+        "max_x": 1569.0,
+        "max_y": 36.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "clusters": [],
+      "edges": [],
+      "nodes": [
+        {
+          "height": 36.0,
+          "id": "C1",
+          "is_cluster": false,
+          "width": 46.0,
+          "x": 23.0,
+          "y": 18.0
+        },
+        {
+          "height": 36.0,
+          "id": "C10",
+          "is_cluster": false,
+          "width": 82.8,
+          "x": 137.4,
+          "y": 18.0
+        },
+        {
+          "height": 36.0,
+          "id": "C11",
+          "is_cluster": false,
+          "width": 90.1,
+          "x": 273.85,
+          "y": 18.0
+        },
+        {
+          "height": 36.0,
+          "id": "C12",
+          "is_cluster": false,
+          "width": 114.2,
+          "x": 426.0,
+          "y": 18.0
+        },
+        {
+          "height": 36.0,
+          "id": "C13",
+          "is_cluster": false,
+          "width": 124.7,
+          "x": 595.45,
+          "y": 18.0
+        },
+        {
+          "height": 36.0,
+          "id": "C2",
+          "is_cluster": false,
+          "width": 66.2,
+          "x": 740.9,
+          "y": 18.0
+        },
+        {
+          "height": 36.0,
+          "id": "C3",
+          "is_cluster": false,
+          "width": 77.1,
+          "x": 862.55,
+          "y": 18.0
+        },
+        {
+          "height": 36.0,
+          "id": "C4",
+          "is_cluster": false,
+          "width": 77.1,
+          "x": 989.65,
+          "y": 18.0
+        },
+        {
+          "height": 36.0,
+          "id": "C5",
+          "is_cluster": false,
+          "width": 77.1,
+          "x": 1116.75,
+          "y": 18.0
+        },
+        {
+          "height": 36.0,
+          "id": "C6",
+          "is_cluster": false,
+          "width": 13.3,
+          "x": 1211.95,
+          "y": 18.0
+        },
+        {
+          "height": 36.0,
+          "id": "C7",
+          "is_cluster": false,
+          "width": 71.4,
+          "x": 1304.3,
+          "y": 18.0
+        },
+        {
+          "height": 36.0,
+          "id": "C8",
+          "is_cluster": false,
+          "width": 72.0,
+          "x": 1426.0,
+          "y": 18.0
+        },
+        {
+          "height": 36.0,
+          "id": "C9",
+          "is_cluster": false,
+          "width": 57.0,
+          "x": 1540.5,
+          "y": 18.0
+        }
+      ]
+    }
+  }
+}

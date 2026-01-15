@@ -1,0 +1,152 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "bounds": {
+        "max_x": 47.6,
+        "max_y": 252.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "clusters": [
+        {
+          "diff": -8.0,
+          "effective_dir": "TB",
+          "height": 68.0,
+          "id": "Active",
+          "offset_y": 11.0,
+          "padding": 8.0,
+          "requested_dir": "TB",
+          "title": "Active",
+          "title_label": {
+            "height": 15.0,
+            "width": 26.0,
+            "x": 23.8,
+            "y": 75.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 46.4,
+          "x": 23.8,
+          "y": 101.0
+        }
+      ],
+      "edges": [
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Inactive",
+          "from_cluster": null,
+          "id": "edge0",
+          "label": {
+            "height": 15.0,
+            "width": 18.0,
+            "x": 23.8,
+            "y": 63.5
+          },
+          "points": [
+            {
+              "x": 23.8,
+              "y": 31.0
+            },
+            {
+              "x": 23.8,
+              "y": 63.5
+            },
+            {
+              "x": 23.8,
+              "y": 96.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Idle",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Active",
+          "from_cluster": "Active",
+          "id": "edge1",
+          "label": {
+            "height": 15.0,
+            "width": 18.0,
+            "x": 23.8,
+            "y": 219.5
+          },
+          "points": [
+            {
+              "x": 23.8,
+              "y": 127.0
+            },
+            {
+              "x": 23.8,
+              "y": 152.0
+            },
+            {
+              "x": 23.8,
+              "y": 177.0
+            },
+            {
+              "x": 23.8,
+              "y": 187.0
+            },
+            {
+              "x": 23.8,
+              "y": 219.5
+            },
+            {
+              "x": 23.8,
+              "y": 252.0
+            },
+            {
+              "x": 23.8,
+              "y": 189.5
+            },
+            {
+              "x": 23.8,
+              "y": 127.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Active",
+          "to_cluster": "Active"
+        }
+      ],
+      "nodes": [
+        {
+          "height": 68.0,
+          "id": "Active",
+          "is_cluster": true,
+          "width": 46.4,
+          "x": 23.8,
+          "y": 101.0
+        },
+        {
+          "height": 31.0,
+          "id": "Idle",
+          "is_cluster": false,
+          "width": 30.4,
+          "x": 23.8,
+          "y": 111.5
+        },
+        {
+          "height": 31.0,
+          "id": "Inactive",
+          "is_cluster": false,
+          "width": 47.6,
+          "x": 23.8,
+          "y": 15.5
+        }
+      ]
+    }
+  }
+}

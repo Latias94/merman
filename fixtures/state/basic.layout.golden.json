@@ -1,0 +1,176 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "bounds": {
+        "max_x": 42.0,
+        "max_y": 255.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "clusters": [],
+      "edges": [
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "root_start",
+          "from_cluster": null,
+          "id": "edge0",
+          "label": null,
+          "points": [
+            {
+              "x": 21.0,
+              "y": 14.0
+            },
+            {
+              "x": 21.0,
+              "y": 39.0
+            },
+            {
+              "x": 21.0,
+              "y": 64.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Idle",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Idle",
+          "from_cluster": null,
+          "id": "edge1",
+          "label": {
+            "height": 15.0,
+            "width": 21.5,
+            "x": 21.0,
+            "y": 127.5
+          },
+          "points": [
+            {
+              "x": 21.0,
+              "y": 95.0
+            },
+            {
+              "x": 21.0,
+              "y": 127.5
+            },
+            {
+              "x": 21.0,
+              "y": 160.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Active",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Active",
+          "from_cluster": null,
+          "id": "edge2",
+          "label": {
+            "height": 15.0,
+            "width": 17.2,
+            "x": 21.0,
+            "y": 127.5
+          },
+          "points": [
+            {
+              "x": 21.0,
+              "y": 160.0
+            },
+            {
+              "x": 21.0,
+              "y": 127.5
+            },
+            {
+              "x": 21.0,
+              "y": 95.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Idle",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Active",
+          "from_cluster": null,
+          "id": "edge3",
+          "label": null,
+          "points": [
+            {
+              "x": 21.0,
+              "y": 191.0
+            },
+            {
+              "x": 21.0,
+              "y": 216.0
+            },
+            {
+              "x": 21.0,
+              "y": 241.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "root_end",
+          "to_cluster": null
+        }
+      ],
+      "nodes": [
+        {
+          "height": 31.0,
+          "id": "Active",
+          "is_cluster": false,
+          "width": 42.0,
+          "x": 21.0,
+          "y": 175.5
+        },
+        {
+          "height": 31.0,
+          "id": "Idle",
+          "is_cluster": false,
+          "width": 30.4,
+          "x": 21.0,
+          "y": 79.5
+        },
+        {
+          "height": 14.0,
+          "id": "root_end",
+          "is_cluster": false,
+          "width": 14.0,
+          "x": 21.0,
+          "y": 248.0
+        },
+        {
+          "height": 14.0,
+          "id": "root_start",
+          "is_cluster": false,
+          "width": 14.0,
+          "x": 21.0,
+          "y": 7.0
+        }
+      ]
+    }
+  }
+}
