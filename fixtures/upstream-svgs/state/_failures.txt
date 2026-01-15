@@ -1,0 +1,1 @@
+mmdc failed for F:\SourceCodes\Rust\merman\crates\xtask\..\..\fixtures\state\upstream_state_parser_spec.mmd (exit=1)

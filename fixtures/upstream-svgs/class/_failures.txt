@@ -1,0 +1,1 @@
+mmdc failed for F:\SourceCodes\Rust\merman\crates\xtask\..\..\fixtures\class\upstream_text_label_variants_spec.mmd (exit=1)
