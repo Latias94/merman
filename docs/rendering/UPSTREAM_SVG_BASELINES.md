@@ -32,6 +32,14 @@ Outputs to:
 
 - `cargo run -p xtask -- gen-upstream-svgs --diagram all`
 
+## Compare (ER)
+
+Generate a small report comparing upstream SVGs and the current Rust Stage-B ER SVG output:
+
+- `cargo run -p xtask -- compare-er-svgs`
+- Fail the command if marker definitions diverge:
+  - `cargo run -p xtask -- compare-er-svgs --check-markers`
+
 ## Notes
 
 - The generator passes `--svgId <fixture_stem>` to make the root SVG id deterministic.
