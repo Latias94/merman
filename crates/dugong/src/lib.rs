@@ -641,7 +641,7 @@ pub mod acyclic {
             dfs_fas(g)
         };
 
-        for e in fas {
+        for e in fas.into_iter().filter(|e| e.v != e.w) {
             let Some(label) = g.edge_by_key(&e).cloned() else {
                 continue;
             };
@@ -670,6 +670,7 @@ pub mod acyclic {
             let mut label = label;
             let forward_name = label.forward_name.take();
             label.reversed = false;
+            label.points.reverse();
             g.set_edge_named(e.w, e.v, forward_name, Some(label));
         }
     }
@@ -701,6 +702,9 @@ pub mod acyclic {
             }
             stack.insert(v.to_string());
             for e in g.out_edges(v, None) {
+                if e.v == e.w {
+                    continue;
+                }
                 if stack.contains(&e.w) {
                     fas.push(e);
                 } else {
@@ -3749,6 +3753,11 @@ pub mod position {
 }
 
 pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+    // Dagre breaks cycles before ranking. Keep self-loops out of the feedback arc set since
+    // reversing a self-loop doesn't make the graph acyclic, and self-loops should not constrain
+    // rank assignment.
+    acyclic::run(g);
+
     let graph = g.graph().clone();
     let edge_keys: Vec<graphlib::EdgeKey> = g.edges().cloned().collect();
 
@@ -3782,6 +3791,9 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     let mut indegree: std::collections::HashMap<String, usize> =
         node_ids.iter().map(|id| (id.clone(), 0)).collect();
     for e in g.edges() {
+        if e.v == e.w {
+            continue;
+        }
         if let Some(v) = indegree.get_mut(&e.w) {
             *v += 1;
         }
@@ -3802,6 +3814,9 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         let mut out: Vec<String> = Vec::new();
         for e in g.edges() {
             if e.v == n {
+                if e.v == e.w {
+                    continue;
+                }
                 out.push(e.w.clone());
             }
         }
@@ -3826,6 +3841,9 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         let r = rank.get(n).copied().unwrap_or(0);
         for e in g.edges() {
             if e.v != *n {
+                continue;
+            }
+            if e.v == e.w {
                 continue;
             }
             let minlen = g
@@ -3916,6 +3934,9 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
 
     let mut gap_extra: Vec<f64> = vec![0.0; ranks.len().saturating_sub(1)];
     for e in g.edges() {
+        if e.v == e.w {
+            continue;
+        }
         let Some(v_rank) = rank.get(&e.v).copied() else {
             continue;
         };
@@ -4126,4 +4147,7 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             }
         }
     }
+
+    // Restore original edge directions and names, keeping computed points.
+    acyclic::undo(g);
 }

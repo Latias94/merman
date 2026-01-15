@@ -157,8 +157,12 @@ impl TextMeasurer for DeterministicTextMeasurer {
         max_width: Option<f64>,
         wrap_mode: WrapMode,
     ) -> TextMetrics {
-        let char_width_factor = if self.char_width_factor == 0.0 {
-            0.6
+        let uses_heuristic_widths = self.char_width_factor == 0.0;
+        let char_width_factor = if uses_heuristic_widths {
+            match wrap_mode {
+                WrapMode::SvgLike => 0.6,
+                WrapMode::HtmlLike => 0.5,
+            }
         } else {
             self.char_width_factor
         };
@@ -187,12 +191,15 @@ impl TextMeasurer for DeterministicTextMeasurer {
             }
         }
 
-        let mut max_chars = 0usize;
+        let mut width: f64 = 0.0;
         for line in &lines {
-            max_chars = max_chars.max(line.chars().count());
+            let w = if uses_heuristic_widths {
+                estimate_line_width_px(line, font_size)
+            } else {
+                line.chars().count() as f64 * font_size * char_width_factor
+            };
+            width = width.max(w);
         }
-
-        let mut width = max_chars as f64 * font_size * char_width_factor;
         // Mermaid HTML labels use `max-width` and can visually overflow for long words, but their
         // layout width is effectively clamped to the max width. Mirror this to avoid explosive
         // headless widths when `htmlLabels=true`.
@@ -208,4 +215,53 @@ impl TextMeasurer for DeterministicTextMeasurer {
             line_count: lines.len(),
         }
     }
+}
+
+fn estimate_line_width_px(line: &str, font_size: f64) -> f64 {
+    let mut em = 0.0;
+    for ch in line.chars() {
+        em += estimate_char_width_em(ch);
+    }
+    em * font_size
+}
+
+fn estimate_char_width_em(ch: char) -> f64 {
+    if ch == ' ' {
+        return 0.33;
+    }
+    if ch == '\t' {
+        return 0.66;
+    }
+    if ch == '_' || ch == '-' {
+        return 0.33;
+    }
+    if matches!(ch, '.' | ',' | ':' | ';') {
+        return 0.28;
+    }
+    if matches!(ch, '(' | ')' | '[' | ']' | '{' | '}' | '/') {
+        return 0.33;
+    }
+    if matches!(ch, '+' | '*' | '=' | '\\' | '^' | '|' | '~') {
+        return 0.45;
+    }
+    if ch.is_ascii_digit() {
+        return 0.56;
+    }
+    if ch.is_ascii_uppercase() {
+        return match ch {
+            'I' => 0.30,
+            'W' => 0.85,
+            _ => 0.60,
+        };
+    }
+    if ch.is_ascii_lowercase() {
+        return match ch {
+            'i' | 'l' => 0.28,
+            'm' | 'w' => 0.78,
+            'k' | 'y' => 0.55,
+            _ => 0.43,
+        };
+    }
+    // Punctuation/symbols/unicode: approximate.
+    0.60
 }

@@ -603,7 +603,7 @@ fn is_text_style_key(key: &str) -> bool {
 
 fn compile_er_entity_styles(
     entity: &crate::er::ErEntity,
-    classes: &std::collections::HashMap<String, crate::er::ErClassDef>,
+    classes: &std::collections::BTreeMap<String, crate::er::ErClassDef>,
 ) -> (Vec<String>, Vec<String>) {
     let mut compiled_box: Vec<String> = Vec::new();
     let mut compiled_text: Vec<String> = Vec::new();
@@ -693,12 +693,17 @@ pub fn render_er_diagram_svg(
         .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
         .map(|s| normalize_css_font_family(&s))
         .unwrap_or_else(|| "Arial, Helvetica, sans-serif".to_string());
+    // Mermaid ER unified output defaults to the global Mermaid fontSize (16px) via `#id{font-size:...}`.
     let font_size = effective_config
-        .get("er")
-        .and_then(|v| v.get("fontSize"))
+        .get("fontSize")
         .and_then(|v| v.as_f64())
-        .or_else(|| effective_config.get("fontSize").and_then(|v| v.as_f64()))
-        .unwrap_or(12.0)
+        .or_else(|| {
+            effective_config
+                .get("er")
+                .and_then(|v| v.get("fontSize"))
+                .and_then(|v| v.as_f64())
+        })
+        .unwrap_or(16.0)
         .max(1.0);
     let title_top_margin = effective_config
         .get("er")
@@ -724,9 +729,10 @@ pub fn render_er_diagram_svg(
     };
     let attr_style = crate::text::TextStyle {
         font_family: Some(font_family.clone()),
-        font_size: (font_size * 0.85).max(1.0),
+        font_size: font_size.max(1.0),
         font_weight: None,
     };
+    let rel_label_font_size = (font_size - 2.0).max(1.0);
 
     let mut nodes = layout.nodes.clone();
     nodes.sort_by(|a, b| a.id.cmp(&b.id));
@@ -778,10 +784,12 @@ pub fn render_er_diagram_svg(
     }
 
     let pad = options.viewbox_padding.max(0.0);
-    let vb_min_x = content_bounds.min_x - pad;
-    let vb_min_y = content_bounds.min_y - pad;
-    let vb_w = (content_bounds.max_x - content_bounds.min_x) + pad * 2.0;
-    let vb_h = (content_bounds.max_y - content_bounds.min_y) + pad * 2.0;
+    let content_w = (content_bounds.max_x - content_bounds.min_x).max(1.0);
+    let content_h = (content_bounds.max_y - content_bounds.min_y).max(1.0);
+    let vb_w = content_w + pad * 2.0;
+    let vb_h = content_h + pad * 2.0;
+    let translate_x = pad - content_bounds.min_x;
+    let translate_y = pad - content_bounds.min_y;
 
     let mut out = String::new();
     let w_attr = fmt(vb_w.max(1.0));
@@ -789,23 +797,14 @@ pub fn render_er_diagram_svg(
     if use_max_width {
         let _ = writeln!(
             &mut out,
-            r#"<svg xmlns="http://www.w3.org/2000/svg" class="erDiagram" width="100%" style="max-width: {}px;" viewBox="{} {} {} {}">"#,
-            w_attr,
-            fmt(vb_min_x),
-            fmt(vb_min_y),
-            w_attr,
-            h_attr
+            r#"<svg xmlns="http://www.w3.org/2000/svg" class="erDiagram" width="100%" style="max-width: {}px;" viewBox="0 0 {} {}">"#,
+            w_attr, w_attr, h_attr
         );
     } else {
         let _ = writeln!(
             &mut out,
-            r#"<svg xmlns="http://www.w3.org/2000/svg" class="erDiagram" width="{}" height="{}" viewBox="{} {} {} {}">"#,
-            w_attr,
-            h_attr,
-            fmt(vb_min_x),
-            fmt(vb_min_y),
-            w_attr,
-            h_attr
+            r#"<svg xmlns="http://www.w3.org/2000/svg" class="erDiagram" width="{}" height="{}" viewBox="0 0 {} {}">"#,
+            w_attr, h_attr, w_attr, h_attr
         );
     }
 
@@ -896,6 +895,13 @@ pub fn render_er_diagram_svg(
     );
     out.push_str("</defs>\n");
 
+    let _ = writeln!(
+        &mut out,
+        r#"<g class="root" transform="translate({}, {})">"#,
+        fmt(translate_x),
+        fmt(translate_y)
+    );
+
     if let Some(title) = diagram_title {
         let _ = writeln!(
             &mut out,
@@ -961,7 +967,7 @@ pub fn render_er_diagram_svg(
                     r#"<text class="er relationshipLabel" x="{}" y="{}" font-size="{}">"#,
                     fmt(lbl.x),
                     fmt(lbl.y),
-                    fmt(font_size)
+                    fmt(rel_label_font_size)
                 );
                 if lines.len() <= 1 {
                     out.push_str(&escape_xml(rel_text));
@@ -988,9 +994,7 @@ pub fn render_er_diagram_svg(
     out.push_str(r#"<g class="entities">"#);
     for n in &nodes {
         let Some(entity) = entity_by_id.get(n.id.as_str()).copied() else {
-            return Err(Error::InvalidModel {
-                message: format!("missing ER entity for node id {}", n.id),
-            });
+            continue;
         };
 
         let (rect_style_decls, text_style_decls) = compile_er_entity_styles(entity, &model.classes);
@@ -1062,8 +1066,10 @@ pub fn render_er_diagram_svg(
             continue;
         }
 
-        // Title near top.
-        let title_y = measure.height_padding + measure.label_height / 2.0;
+        // Title row: Mermaid's unified ER shape uses HTML labels by default, with `line-height: 1.5`.
+        // Approximate the "name row" height as `label_height + TEXT_PADDING` and place the title centered in that row.
+        let name_row_h = (measure.label_height + measure.text_padding).max(1.0);
+        let title_y = name_row_h / 2.0;
         let _ = write!(
             &mut out,
             r#"<text class="er entityLabel" x="{}" y="{}" font-size="{}"{}>{}</text>"#,
@@ -1074,26 +1080,17 @@ pub fn render_er_diagram_svg(
             escape_xml(&measure.label_text)
         );
 
-        let width_padding_factor = 4.0
-            + if measure.has_key { 2.0 } else { 0.0 }
-            + if measure.has_comment { 2.0 } else { 0.0 };
-        let max_width =
-            measure.max_type_w + measure.max_name_w + measure.max_key_w + measure.max_comment_w;
-        let spare_column_width = ((w - max_width - measure.width_padding * width_padding_factor)
-            / (width_padding_factor / 2.0))
-            .max(0.0);
+        let inner_pad_x = (measure.padding / 2.0).max(0.0);
+        let type_col_w = measure.type_col_w.max(0.0);
+        let name_col_w = measure.name_col_w.max(0.0);
+        let key_col_w = measure.key_col_w.max(0.0);
+        let comment_col_w = measure.comment_col_w.max(0.0);
 
-        let type_col_w = measure.max_type_w + measure.width_padding * 2.0 + spare_column_width;
-        let name_col_w = measure.max_name_w + measure.width_padding * 2.0 + spare_column_width;
-        let key_col_w = measure.max_key_w + measure.width_padding * 2.0 + spare_column_width;
-        let comment_col_w =
-            measure.max_comment_w + measure.width_padding * 2.0 + spare_column_width;
-
-        let mut y_off = measure.label_height + measure.height_padding * 2.0;
+        let mut y_off = name_row_h;
         let mut odd = true;
         for row in &measure.rows {
-            let align_y = y_off + measure.height_padding + row.height / 2.0;
-            let row_h = row.height + measure.height_padding * 2.0;
+            let row_h = row.height.max(1.0);
+            let align_y = y_off + row_h / 2.0;
             let row_class = if odd {
                 "attributeBoxOdd"
             } else {
@@ -1112,7 +1109,7 @@ pub fn render_er_diagram_svg(
             let _ = write!(
                 &mut out,
                 r#"<text class="er attributeText" x="{}" y="{}" font-size="{}"{}>{}</text>"#,
-                fmt(measure.width_padding),
+                fmt(inner_pad_x),
                 fmt(align_y),
                 fmt(attr_style.font_size),
                 text_style_attr,
@@ -1133,7 +1130,7 @@ pub fn render_er_diagram_svg(
             let _ = write!(
                 &mut out,
                 r#"<text class="er attributeText" x="{}" y="{}" font-size="{}"{}>{}</text>"#,
-                fmt(name_x + measure.width_padding),
+                fmt(name_x + inner_pad_x),
                 fmt(align_y),
                 fmt(attr_style.font_size),
                 text_style_attr,
@@ -1154,7 +1151,7 @@ pub fn render_er_diagram_svg(
                 let _ = write!(
                     &mut out,
                     r#"<text class="er attributeText" x="{}" y="{}" font-size="{}"{}>{}</text>"#,
-                    fmt(x_off + measure.width_padding),
+                    fmt(x_off + inner_pad_x),
                     fmt(align_y),
                     fmt(attr_style.font_size),
                     text_style_attr,
@@ -1175,7 +1172,7 @@ pub fn render_er_diagram_svg(
                 let _ = write!(
                     &mut out,
                     r#"<text class="er attributeText" x="{}" y="{}" font-size="{}"{}>{}</text>"#,
-                    fmt(x_off + measure.width_padding),
+                    fmt(x_off + inner_pad_x),
                     fmt(align_y),
                     fmt(attr_style.font_size),
                     text_style_attr,
@@ -1191,7 +1188,7 @@ pub fn render_er_diagram_svg(
     }
     out.push_str("</g>\n");
 
-    out.push_str("</svg>\n");
+    out.push_str("</g>\n</svg>\n");
     Ok(out)
 }
 

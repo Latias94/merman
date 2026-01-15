@@ -40,6 +40,8 @@ enum XtaskError {
     VerifyFailed(String),
     #[error("snapshot update failed: {0}")]
     SnapshotUpdateFailed(String),
+    #[error("layout snapshot update failed: {0}")]
+    LayoutSnapshotUpdateFailed(String),
     #[error("alignment check failed:\n{0}")]
     AlignmentCheckFailed(String),
     #[error("debug svg generation failed:\n{0}")]
@@ -61,12 +63,215 @@ fn main() -> Result<(), XtaskError> {
         "gen-dompurify-defaults" => gen_dompurify_defaults(args.collect()),
         "verify-generated" => verify_generated(args.collect()),
         "update-snapshots" => update_snapshots(args.collect()),
+        "update-layout-snapshots" | "gen-layout-goldens" => update_layout_snapshots(args.collect()),
         "check-alignment" => check_alignment(args.collect()),
         "gen-debug-svgs" => gen_debug_svgs(args.collect()),
         "gen-er-svgs" => gen_er_svgs(args.collect()),
         "gen-upstream-svgs" => gen_upstream_svgs(args.collect()),
         "compare-er-svgs" => compare_er_svgs(args.collect()),
         other => Err(XtaskError::UnknownCommand(other.to_string())),
+    }
+}
+
+fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
+    let mut diagram: String = "all".to_string();
+    let mut filter: Option<String> = None;
+    let mut decimals: u32 = 3;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--diagram" => {
+                i += 1;
+                diagram = args
+                    .get(i)
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "all".to_string());
+            }
+            "--filter" => {
+                i += 1;
+                filter = args.get(i).map(|s| s.to_string());
+            }
+            "--decimals" => {
+                i += 1;
+                decimals = args.get(i).and_then(|s| s.parse::<u32>().ok()).unwrap_or(3);
+            }
+            "--help" | "-h" => return Err(XtaskError::Usage),
+            _ => return Err(XtaskError::Usage),
+        }
+        i += 1;
+    }
+
+    fn round_f64(v: f64, decimals: u32) -> f64 {
+        let p = 10_f64.powi(decimals as i32);
+        (v * p).round() / p
+    }
+
+    fn round_json_numbers(v: &mut JsonValue, decimals: u32) {
+        match v {
+            JsonValue::Number(n) => {
+                let Some(f) = n.as_f64() else {
+                    return;
+                };
+                let r = round_f64(f, decimals);
+                if let Some(nn) = serde_json::Number::from_f64(r) {
+                    *v = JsonValue::Number(nn);
+                }
+            }
+            JsonValue::Array(arr) => {
+                for item in arr {
+                    round_json_numbers(item, decimals);
+                }
+            }
+            JsonValue::Object(map) => {
+                for (_k, val) in map.iter_mut() {
+                    round_json_numbers(val, decimals);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+    let fixtures_root = workspace_root.join("fixtures");
+
+    let mut mmd_files = Vec::new();
+    let mut stack = vec![fixtures_root.clone()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if path.file_name().is_some_and(|n| n == "upstream-svgs") {
+                    continue;
+                }
+                stack.push(path);
+                continue;
+            }
+            if path.extension().is_some_and(|e| e == "mmd") {
+                if let Some(ref f) = filter {
+                    if !path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| n.contains(f))
+                    {
+                        continue;
+                    }
+                }
+                mmd_files.push(path);
+            }
+        }
+    }
+    mmd_files.sort();
+    if mmd_files.is_empty() {
+        return Err(XtaskError::LayoutSnapshotUpdateFailed(format!(
+            "no .mmd fixtures found under {}",
+            fixtures_root.display()
+        )));
+    }
+
+    let engine = merman::Engine::new();
+    let layout_opts = merman_render::LayoutOptions::default();
+    let mut failures = Vec::new();
+
+    for mmd_path in mmd_files {
+        let text = match fs::read_to_string(&mmd_path) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!("failed to read {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
+
+        let parsed = match futures::executor::block_on(
+            engine.parse_diagram(&text, merman::ParseOptions::default()),
+        ) {
+            Ok(Some(v)) => v,
+            Ok(None) => {
+                failures.push(format!("no diagram detected in {}", mmd_path.display()));
+                continue;
+            }
+            Err(err) => {
+                failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
+
+        if diagram != "all" {
+            let dt = parsed.meta.diagram_type.as_str();
+            let matches = dt == diagram
+                || (diagram == "er" && matches!(dt, "er" | "erDiagram"))
+                || (diagram == "flowchart" && dt == "flowchart-v2")
+                || (diagram == "state" && dt == "stateDiagram")
+                || (diagram == "class" && matches!(dt, "class" | "classDiagram"));
+            if !matches {
+                continue;
+            }
+        }
+
+        let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
+            Ok(v) => v,
+            Err(merman_render::Error::UnsupportedDiagram { .. }) => {
+                // Layout snapshots are only defined for diagram types currently supported by
+                // `merman-render::layout_parsed`. Skip unsupported diagrams so `--diagram all`
+                // can be used for "all supported layout diagrams".
+                continue;
+            }
+            Err(err) => {
+                failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
+
+        let mut layout_json = match serde_json::to_value(&layouted.layout) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!(
+                    "failed to serialize layout JSON for {}: {err}",
+                    mmd_path.display()
+                ));
+                continue;
+            }
+        };
+        round_json_numbers(&mut layout_json, decimals);
+
+        let out = serde_json::json!({
+            "diagramType": parsed.meta.diagram_type,
+            "layout": layout_json,
+        });
+
+        let pretty = match serde_json::to_string_pretty(&out) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!(
+                    "failed to pretty-print JSON for {}: {err}",
+                    mmd_path.display()
+                ));
+                continue;
+            }
+        };
+
+        let out_path = mmd_path.with_extension("layout.golden.json");
+        if let Some(parent) = out_path.parent() {
+            if let Err(err) = fs::create_dir_all(parent) {
+                failures.push(format!("failed to create dir {}: {err}", parent.display()));
+                continue;
+            }
+        }
+        if let Err(err) = fs::write(&out_path, format!("{pretty}\n")) {
+            failures.push(format!("failed to write {}: {err}", out_path.display()));
+            continue;
+        }
+    }
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(XtaskError::LayoutSnapshotUpdateFailed(failures.join("\n")))
     }
 }
 

@@ -5,15 +5,15 @@ use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use serde::Deserialize;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct ErModel {
     pub direction: String,
     #[serde(default)]
     #[allow(dead_code)]
-    pub classes: HashMap<String, ErClassDef>,
-    pub entities: HashMap<String, ErEntity>,
+    pub classes: BTreeMap<String, ErClassDef>,
+    pub entities: BTreeMap<String, ErEntity>,
     #[serde(default)]
     pub relationships: Vec<ErRelationship>,
 }
@@ -136,9 +136,11 @@ pub(crate) fn parse_generic_types_like_mermaid(text: &str) -> String {
 
 fn er_text_style(effective_config: &Value) -> TextStyle {
     let font_family = config_string(effective_config, &["fontFamily"]);
-    let font_size = config_f64(effective_config, &["er", "fontSize"])
-        .or_else(|| config_f64(effective_config, &["fontSize"]))
-        .unwrap_or(12.0);
+    // Mermaid ER unified renderer output uses the global Mermaid `fontSize` (defaults to 16px)
+    // via the root `#id{font-size:...}` rule. Prefer the global value for parity.
+    let font_size = config_f64(effective_config, &["fontSize"])
+        .or_else(|| config_f64(effective_config, &["er", "fontSize"]))
+        .unwrap_or(16.0);
     TextStyle {
         font_family,
         font_size,
@@ -159,20 +161,16 @@ pub(crate) struct ErEntityMeasureRow {
 pub(crate) struct ErEntityMeasure {
     pub width: f64,
     pub height: f64,
-    #[allow(dead_code)]
     pub padding: f64,
-    pub height_padding: f64,
-    pub width_padding: f64,
+    pub text_padding: f64,
     pub label_text: String,
-    #[allow(dead_code)]
-    pub label_width: f64,
     pub label_height: f64,
     pub has_key: bool,
     pub has_comment: bool,
-    pub max_type_w: f64,
-    pub max_name_w: f64,
-    pub max_key_w: f64,
-    pub max_comment_w: f64,
+    pub type_col_w: f64,
+    pub name_col_w: f64,
+    pub key_col_w: f64,
+    pub comment_col_w: f64,
     pub rows: Vec<ErEntityMeasureRow>,
 }
 
@@ -183,12 +181,30 @@ pub(crate) fn measure_entity_box(
     attr_style: &TextStyle,
     effective_config: &Value,
 ) -> ErEntityMeasure {
-    let padding = config_f64(effective_config, &["er", "entityPadding"]).unwrap_or(15.0);
-    let min_w = config_f64(effective_config, &["er", "minEntityWidth"]).unwrap_or(100.0);
-    let min_h = config_f64(effective_config, &["er", "minEntityHeight"]).unwrap_or(75.0);
+    // Mermaid measures ER attribute table text via HTML labels (`foreignObject`) and browser font
+    // metrics. Our headless measurer is an approximation; apply a small, ER-specific width bump so
+    // attribute column widths are closer to upstream fixtures.
+    const ATTR_TEXT_WIDTH_SCALE: f64 = 1.15;
 
-    let height_padding = padding / 3.0;
-    let width_padding = padding / 3.0;
+    let html_labels = config_bool(effective_config, &["htmlLabels"]).unwrap_or(true);
+
+    // Mermaid ER unified shape (`erBox.ts`) uses:
+    // - PADDING = config.er.diagramPadding (default 20 in Mermaid 11.12.2 schema defaults)
+    // - TEXT_PADDING = config.er.entityPadding (default 15)
+    let mut padding = config_f64(effective_config, &["er", "diagramPadding"]).unwrap_or(20.0);
+    let mut text_padding = config_f64(effective_config, &["er", "entityPadding"]).unwrap_or(15.0);
+    let min_w = config_f64(effective_config, &["er", "minEntityWidth"]).unwrap_or(100.0);
+
+    if !html_labels {
+        padding *= 1.25;
+        text_padding *= 1.25;
+    }
+
+    let wrap_mode = if html_labels {
+        WrapMode::HtmlLike
+    } else {
+        WrapMode::SvgLike
+    };
 
     let label_text = if entity.alias.trim().is_empty() {
         entity.label.as_str()
@@ -196,61 +212,75 @@ pub(crate) fn measure_entity_box(
         entity.alias.as_str()
     }
     .to_string();
-    let label_metrics = measurer.measure_wrapped(&label_text, label_style, None, WrapMode::SvgLike);
+    let label_metrics = measurer.measure_wrapped(&label_text, label_style, None, wrap_mode);
 
-    let mut has_key = false;
-    let mut has_comment = false;
-    for a in &entity.attributes {
-        if !a.keys.is_empty() {
-            has_key = true;
-        }
-        if !a.comment.is_empty() {
-            has_comment = true;
-        }
+    // No attributes: use `drawRect`-like padding rules from Mermaid erBox.ts.
+    if entity.attributes.is_empty() {
+        let label_pad_x = padding;
+        let label_pad_y = padding * 1.5;
+        let width = (label_metrics.width + label_pad_x * 2.0).max(min_w);
+        let height = label_metrics.height + label_pad_y * 2.0;
+        return ErEntityMeasure {
+            width: width.max(1.0),
+            height: height.max(1.0),
+            padding,
+            text_padding,
+            label_text,
+            label_height: label_metrics.height.max(0.0),
+            has_key: false,
+            has_comment: false,
+            type_col_w: 0.0,
+            name_col_w: 0.0,
+            key_col_w: 0.0,
+            comment_col_w: 0.0,
+            rows: Vec::new(),
+        };
     }
-
-    let mut max_type_w: f64 = 0.0;
-    let mut max_name_w: f64 = 0.0;
-    let mut max_key_w: f64 = 0.0;
-    let mut max_comment_w: f64 = 0.0;
 
     let mut rows: Vec<ErEntityMeasureRow> = Vec::new();
 
-    let mut cumulative_h = label_metrics.height + height_padding * 2.0;
+    let mut max_type_raw_w: f64 = 0.0;
+    let mut max_name_raw_w: f64 = 0.0;
+    let mut max_keys_raw_w: f64 = 0.0;
+    let mut max_comment_raw_w: f64 = 0.0;
+
+    let mut max_type_col_w: f64 = 0.0;
+    let mut max_name_col_w: f64 = 0.0;
+    let mut max_keys_col_w: f64 = 0.0;
+    let mut max_comment_col_w: f64 = 0.0;
+
+    let mut total_rows_h = 0.0;
+
     for a in &entity.attributes {
         let ty = parse_generic_types_like_mermaid(&a.ty);
-        let m_type = measurer.measure_wrapped(&ty, attr_style, None, WrapMode::SvgLike);
-        let m_name = measurer.measure_wrapped(&a.name, attr_style, None, WrapMode::SvgLike);
-        max_type_w = max_type_w.max(m_type.width);
-        max_name_w = max_name_w.max(m_name.width);
-        let mut row_h = m_type.height.max(m_name.height);
+        let type_m = measurer.measure_wrapped(&ty, attr_style, None, wrap_mode);
+        let name_m = measurer.measure_wrapped(&a.name, attr_style, None, wrap_mode);
 
-        let key_text = if has_key {
-            if a.keys.is_empty() {
-                String::new()
-            } else {
-                a.keys.join(",")
-            }
-        } else {
-            String::new()
-        };
-        if has_key {
-            let m_key = measurer.measure_wrapped(&key_text, attr_style, None, WrapMode::SvgLike);
-            max_key_w = max_key_w.max(m_key.width);
-            row_h = row_h.max(m_key.height);
-        }
+        let type_w = type_m.width * ATTR_TEXT_WIDTH_SCALE;
+        let name_w = name_m.width * ATTR_TEXT_WIDTH_SCALE;
+        max_type_raw_w = max_type_raw_w.max(type_w);
+        max_name_raw_w = max_name_raw_w.max(name_w);
+        max_type_col_w = max_type_col_w.max(type_w + padding);
+        max_name_col_w = max_name_col_w.max(name_w + padding);
 
-        let comment_text = if has_comment {
-            a.comment.clone()
-        } else {
-            String::new()
-        };
-        if has_comment {
-            let m_comment =
-                measurer.measure_wrapped(&comment_text, attr_style, None, WrapMode::SvgLike);
-            max_comment_w = max_comment_w.max(m_comment.width);
-            row_h = row_h.max(m_comment.height);
-        }
+        let key_text = a.keys.join(",");
+        let keys_m = measurer.measure_wrapped(&key_text, attr_style, None, wrap_mode);
+        let keys_w = keys_m.width * ATTR_TEXT_WIDTH_SCALE;
+        max_keys_raw_w = max_keys_raw_w.max(keys_w);
+        max_keys_col_w = max_keys_col_w.max(keys_w + padding);
+
+        let comment_text = a.comment.clone();
+        let comment_m = measurer.measure_wrapped(&comment_text, attr_style, None, wrap_mode);
+        let comment_w = comment_m.width * ATTR_TEXT_WIDTH_SCALE;
+        max_comment_raw_w = max_comment_raw_w.max(comment_w);
+        max_comment_col_w = max_comment_col_w.max(comment_w + padding);
+
+        let row_h = type_m
+            .height
+            .max(name_m.height)
+            .max(keys_m.height)
+            .max(comment_m.height)
+            + text_padding;
 
         rows.push(ErEntityMeasureRow {
             type_text: ty,
@@ -259,43 +289,64 @@ pub(crate) fn measure_entity_box(
             comment_text,
             height: row_h.max(1.0),
         });
-        cumulative_h += row_h + height_padding * 2.0;
+        total_rows_h += row_h.max(1.0);
     }
 
-    let mut width_padding_factor = 4.0;
-    if has_key {
-        width_padding_factor += 2.0;
+    let mut total_width_sections = 4usize;
+    let mut has_key = true;
+    let mut has_comment = true;
+    if max_keys_col_w <= padding {
+        has_key = false;
+        max_keys_col_w = 0.0;
+        total_width_sections = total_width_sections.saturating_sub(1);
     }
-    if has_comment {
-        width_padding_factor += 2.0;
+    if max_comment_col_w <= padding {
+        has_comment = false;
+        max_comment_col_w = 0.0;
+        total_width_sections = total_width_sections.saturating_sub(1);
     }
 
-    let max_width = max_type_w + max_name_w + max_key_w + max_comment_w;
-    let width = min_w.max(
-        (label_metrics.width + padding * 2.0).max(max_width + width_padding * width_padding_factor),
-    );
+    // Mermaid adds extra padding to attribute components to accommodate the entity name width.
+    let name_w_min = label_metrics.width + padding * 2.0;
+    let mut max_width = max_type_col_w + max_name_col_w + max_keys_col_w + max_comment_col_w;
+    if name_w_min - max_width > 0.0 && total_width_sections > 0 {
+        let diff = name_w_min - max_width;
+        let per = diff / total_width_sections as f64;
+        max_type_col_w += per;
+        max_name_col_w += per;
+        if has_key {
+            max_keys_col_w += per;
+        }
+        if has_comment {
+            max_comment_col_w += per;
+        }
+        max_width = max_type_col_w + max_name_col_w + max_keys_col_w + max_comment_col_w;
+    }
 
-    let height = if entity.attributes.is_empty() {
-        min_h.max(label_metrics.height + padding * 2.0)
-    } else {
-        cumulative_h
-    };
+    let shape_bbox_w = label_metrics
+        .width
+        .max(max_type_raw_w)
+        .max(max_name_raw_w)
+        .max(max_keys_raw_w)
+        .max(max_comment_raw_w);
+
+    let width = (shape_bbox_w + padding * 2.0).max(max_width);
+    let name_h = label_metrics.height + text_padding;
+    let height = total_rows_h + name_h;
 
     ErEntityMeasure {
         width: width.max(1.0),
         height: height.max(1.0),
         padding,
-        height_padding,
-        width_padding,
+        text_padding,
         label_text,
-        label_width: label_metrics.width.max(1.0),
-        label_height: label_metrics.height.max(1.0),
+        label_height: label_metrics.height.max(0.0),
         has_key,
         has_comment,
-        max_type_w,
-        max_name_w,
-        max_key_w,
-        max_comment_w,
+        type_col_w: max_type_col_w.max(0.0),
+        name_col_w: max_name_col_w.max(0.0),
+        key_col_w: max_keys_col_w.max(0.0),
+        comment_col_w: max_comment_col_w.max(0.0),
         rows,
     }
 }
@@ -315,8 +366,37 @@ fn edge_label_metrics(text: &str, measurer: &dyn TextMeasurer, style: &TextStyle
     if text.trim().is_empty() {
         return (0.0, 0.0);
     }
-    let m = measurer.measure_wrapped(text, style, None, WrapMode::SvgLike);
+    // Mermaid ER uses HTML labels by default (foreignObject) and uses line-height: 1.5.
+    let m = measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike);
     (m.width.max(0.0), m.height.max(0.0))
+}
+
+fn parse_er_rel_idx_from_edge_name(name: &str) -> Option<usize> {
+    let rest = name.strip_prefix("er-rel-")?;
+    let mut end = 0usize;
+    for (idx, ch) in rest.char_indices() {
+        if !ch.is_ascii_digit() {
+            break;
+        }
+        end = idx + ch.len_utf8();
+    }
+    if end == 0 {
+        return None;
+    }
+    rest[..end].parse::<usize>().ok()
+}
+
+fn is_er_self_loop_dummy_node_id(id: &str) -> bool {
+    // Mermaid's dagre renderer creates self-loop helper nodes using `${nodeId}---${nodeId}---{1|2}`.
+    id.contains("---")
+}
+
+fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
+    let mut cur = cfg;
+    for key in path {
+        cur = cur.get(*key)?;
+    }
+    cur.as_bool()
 }
 
 #[derive(Debug, Clone)]
@@ -476,13 +556,18 @@ pub fn layout_er_diagram(
 
     let nodesep = config_f64(effective_config, &["er", "nodeSpacing"]).unwrap_or(140.0);
     let ranksep = config_f64(effective_config, &["er", "rankSpacing"]).unwrap_or(80.0);
-    let edgesep = nodesep;
     let dir = rank_dir_from(&model.direction);
 
     let label_style = er_text_style(effective_config);
     let attr_style = TextStyle {
         font_family: label_style.font_family.clone(),
-        font_size: (label_style.font_size * 0.85).max(1.0),
+        font_size: label_style.font_size.max(1.0),
+        font_weight: None,
+    };
+    let rel_label_style = TextStyle {
+        font_family: label_style.font_family.clone(),
+        // Mermaid ER edge labels default to 14px when `fontSize=16`.
+        font_size: (label_style.font_size - 2.0).max(1.0),
         font_weight: None,
     };
 
@@ -495,7 +580,8 @@ pub fn layout_er_diagram(
         rankdir: dir,
         nodesep,
         ranksep,
-        edgesep,
+        // Dagre's default `acyclicer` is "greedy" (Mermaid relies on this default).
+        acyclicer: Some("greedy".to_string()),
         ..Default::default()
     });
 
@@ -513,8 +599,9 @@ pub fn layout_er_diagram(
         );
     }
 
-    // Edges. Upstream ER layout does not include label sizes in Dagre, but we still compute label
-    // bbox for consumers after layout.
+    // Edges. Mermaid ER uses edge labels ("roleA") and the unified renderer routes through the
+    // generic dagre pipeline, which accounts for label bbox in spacing. Mirror that by giving
+    // dagre real label sizes here.
     for (idx, r) in model.relationships.iter().enumerate() {
         if g.node(&r.entity_a).is_none() || g.node(&r.entity_b).is_none() {
             return Err(Error::InvalidModel {
@@ -524,17 +611,117 @@ pub fn layout_er_diagram(
                 ),
             });
         }
+
+        // Mermaid's dagre renderer splits self-loops into three edges and introduces two 10x10
+        // helper nodes. Mirror that so the layout/bounds match upstream more closely.
+        if r.entity_a == r.entity_b {
+            let node_id = r.entity_a.as_str();
+            let special_1 = format!("{node_id}---{node_id}---1");
+            let special_2 = format!("{node_id}---{node_id}---2");
+
+            if g.node(&special_1).is_none() {
+                g.set_node(
+                    special_1.clone(),
+                    NodeLabel {
+                        width: 10.0,
+                        height: 10.0,
+                        ..Default::default()
+                    },
+                );
+            }
+            if g.node(&special_2).is_none() {
+                g.set_node(
+                    special_2.clone(),
+                    NodeLabel {
+                        width: 10.0,
+                        height: 10.0,
+                        ..Default::default()
+                    },
+                );
+            }
+
+            let (label_w, label_h) = if r.role_a.trim().is_empty() {
+                (0.0, 0.0)
+            } else {
+                edge_label_metrics(&r.role_a, measurer, &rel_label_style)
+            };
+
+            // First segment: keep start marker, no label.
+            g.set_edge_named(
+                r.entity_a.clone(),
+                special_1.clone(),
+                Some(format!("er-rel-{idx}-cyclic-0")),
+                Some(EdgeLabel {
+                    width: 0.0,
+                    height: 0.0,
+                    labelpos: LabelPos::C,
+                    labeloffset: 10.0,
+                    minlen: 1,
+                    weight: 2.0,
+                    ..Default::default()
+                }),
+            );
+
+            // Mid segment: carries the relationship label, no markers.
+            g.set_edge_named(
+                special_1.clone(),
+                special_2.clone(),
+                Some(format!("er-rel-{idx}")),
+                Some(EdgeLabel {
+                    width: label_w.max(0.0),
+                    height: label_h.max(0.0),
+                    labelpos: LabelPos::C,
+                    labeloffset: 10.0,
+                    minlen: 1,
+                    weight: 2.0,
+                    ..Default::default()
+                }),
+            );
+
+            // Last segment: keep end marker, no label.
+            g.set_edge_named(
+                // Use a DAG-friendly direction for layout so the real node is not forced into a
+                // later rank by the self-loop cycle. We'll swap this back when emitting the final
+                // layout edges.
+                r.entity_a.clone(),
+                special_2.clone(),
+                Some(format!("er-rel-{idx}-cyclic-2")),
+                Some(EdgeLabel {
+                    width: 0.0,
+                    height: 0.0,
+                    labelpos: LabelPos::C,
+                    labeloffset: 10.0,
+                    minlen: 1,
+                    // Bias the feedback arc set to reverse this segment (the cycle-back edge),
+                    // matching Mermaid's dagre layout behavior for self-loops.
+                    weight: 1.0,
+                    ..Default::default()
+                }),
+            );
+
+            continue;
+        }
+
         let name = format!("er-rel-{idx}");
-        let el = EdgeLabel {
-            width: 0.0,
-            height: 0.0,
-            labelpos: LabelPos::C,
-            labeloffset: 10.0,
-            minlen: 1,
-            weight: 1.0,
-            ..Default::default()
+        let (label_w, label_h) = if r.role_a.trim().is_empty() {
+            (0.0, 0.0)
+        } else {
+            edge_label_metrics(&r.role_a, measurer, &rel_label_style)
         };
-        g.set_edge_named(r.entity_a.clone(), r.entity_b.clone(), Some(name), Some(el));
+        g.set_edge_named(
+            r.entity_a.clone(),
+            r.entity_b.clone(),
+            Some(name),
+            Some(EdgeLabel {
+                width: label_w.max(0.0),
+                height: label_h.max(0.0),
+                labelpos: LabelPos::C,
+                labeloffset: 10.0,
+                minlen: 1,
+                weight: 1.0,
+                ..Default::default()
+            }),
+        );
     }
 
     dugong::layout(&mut g);
@@ -576,17 +763,26 @@ pub fn layout_er_diagram(
             .clone()
             .unwrap_or_else(|| format!("edge:{}:{}", key.v, key.w));
 
+        // Self-loop edges: we intentionally use a DAG-friendly direction for layout (see edge
+        // construction above). Swap direction back when emitting layout edges so markers and
+        // point order match upstream Mermaid behavior.
+        let (from_id, to_id) = if id.ends_with("-cyclic-2") {
+            points.reverse();
+            (key.w.clone(), key.v.clone())
+        } else {
+            (key.v.clone(), key.w.clone())
+        };
+
         let rel_idx = key
             .name
             .as_ref()
-            .and_then(|name| name.strip_prefix("er-rel-"))
-            .and_then(|idx| idx.parse::<usize>().ok())
+            .and_then(|name| parse_er_rel_idx_from_edge_name(name))
             .and_then(|idx| model.relationships.get(idx).map(|_| idx));
 
         let rel = rel_idx.and_then(|idx| model.relationships.get(idx));
         let role = rel.map(|r| r.role_a.clone()).unwrap_or_default();
 
-        let (start_marker, end_marker, stroke_dasharray) = if let Some(rel) = rel {
+        let (base_start_marker, base_end_marker, stroke_dasharray) = if let Some(rel) = rel {
             let card_a = rel
                 .rel_spec
                 .get("cardA")
@@ -614,29 +810,43 @@ pub fn layout_er_diagram(
             (None, None, None)
         };
 
-        if let (Some(from_rect), Some(to_rect)) = (
-            node_rect_by_id.get(&key.v).copied(),
-            node_rect_by_id.get(&key.w).copied(),
-        ) {
-            clip_edge_endpoints(&mut points, from_rect, to_rect);
+        if !is_er_self_loop_dummy_node_id(&key.v) && !is_er_self_loop_dummy_node_id(&key.w) {
+            if let (Some(from_rect), Some(to_rect)) = (
+                node_rect_by_id.get(&key.v).copied(),
+                node_rect_by_id.get(&key.w).copied(),
+            ) {
+                clip_edge_endpoints(&mut points, from_rect, to_rect);
+            }
         }
 
-        let label = if role.trim().is_empty() {
-            None
-        } else {
-            let (w, h) = edge_label_metrics(&role, measurer, &label_style);
-            calc_label_position(&points).map(|(x, y)| LayoutLabel {
-                x,
-                y,
-                width: w.max(1.0),
-                height: h.max(1.0),
-            })
-        };
+        let (start_marker, end_marker) =
+            if is_er_self_loop_dummy_node_id(&key.v) && is_er_self_loop_dummy_node_id(&key.w) {
+                (None, None)
+            } else if id.ends_with("-cyclic-0") {
+                (base_start_marker, None)
+            } else if id.ends_with("-cyclic-2") {
+                (None, base_end_marker)
+            } else {
+                (base_start_marker, base_end_marker)
+            };
+
+        let label =
+            if role.trim().is_empty() || id.ends_with("-cyclic-0") || id.ends_with("-cyclic-2") {
+                None
+            } else {
+                let (w, h) = edge_label_metrics(&role, measurer, &rel_label_style);
+                calc_label_position(&points).map(|(x, y)| LayoutLabel {
+                    x,
+                    y,
+                    width: w.max(1.0),
+                    height: h.max(1.0),
+                })
+            };
 
         edges.push(LayoutEdgeParts {
             id,
-            from: key.v.clone(),
-            to: key.w.clone(),
+            from: from_id,
+            to: to_id,
             points,
             label,
             start_marker,

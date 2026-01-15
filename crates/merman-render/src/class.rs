@@ -12,13 +12,13 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 #[derive(Debug, Clone, Deserialize)]
 struct ClassDiagramModel {
     pub direction: String,
-    pub classes: HashMap<String, ClassNode>,
+    pub classes: BTreeMap<String, ClassNode>,
     #[serde(default)]
     pub relations: Vec<ClassRelation>,
     #[serde(default)]
     pub notes: Vec<ClassNote>,
     #[serde(default)]
-    pub namespaces: HashMap<String, Namespace>,
+    pub namespaces: BTreeMap<String, Namespace>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
