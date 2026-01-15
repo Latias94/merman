@@ -4172,6 +4172,14 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     rank::rank(g);
     util::normalize_ranks(g);
 
+    // Match upstream Dagre: `nestingGraph.run` is primarily used to connect components and
+    // introduce border nodes for ranking, but the synthetic root/nesting edges must not affect
+    // later ordering/positioning. Mermaid's dagre wrapper uses `compound: true` even when there
+    // are no clusters, so this cleanup is important for simple ER graphs (e.g. single-chain).
+    if g.options().compound {
+        nesting_graph::cleanup(g);
+    }
+
     normalize::run(g);
     order::order(
         g,
@@ -4315,10 +4323,6 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
 
     coordinate_system::undo(g);
     acyclic::undo(g);
-
-    if g.options().compound {
-        nesting_graph::cleanup(g);
-    }
 
     // Translate so the minimum top-left is at (0, 0).
     let mut min_x: f64 = f64::INFINITY;
