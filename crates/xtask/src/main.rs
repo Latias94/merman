@@ -3,6 +3,7 @@ use serde_yaml::Value as YamlValue;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use regex::Regex;
 
@@ -42,6 +43,8 @@ enum XtaskError {
     AlignmentCheckFailed(String),
     #[error("debug svg generation failed:\n{0}")]
     DebugSvgFailed(String),
+    #[error("upstream svg generation failed:\n{0}")]
+    UpstreamSvgFailed(String),
 }
 
 fn main() -> Result<(), XtaskError> {
@@ -58,8 +61,202 @@ fn main() -> Result<(), XtaskError> {
         "check-alignment" => check_alignment(args.collect()),
         "gen-debug-svgs" => gen_debug_svgs(args.collect()),
         "gen-er-svgs" => gen_er_svgs(args.collect()),
+        "gen-upstream-svgs" => gen_upstream_svgs(args.collect()),
         other => Err(XtaskError::UnknownCommand(other.to_string())),
     }
+}
+
+fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
+    let mut diagram: String = "er".to_string();
+    let mut out_root: Option<PathBuf> = None;
+    let mut filter: Option<String> = None;
+    let mut install: bool = false;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--diagram" => {
+                i += 1;
+                diagram = args.get(i).ok_or(XtaskError::Usage)?.trim().to_string();
+            }
+            "--out" => {
+                i += 1;
+                out_root = args.get(i).map(PathBuf::from);
+            }
+            "--filter" => {
+                i += 1;
+                filter = args.get(i).map(|s| s.to_string());
+            }
+            "--install" => install = true,
+            "--help" | "-h" => return Err(XtaskError::Usage),
+            _ => return Err(XtaskError::Usage),
+        }
+        i += 1;
+    }
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+    let out_root =
+        out_root.unwrap_or_else(|| workspace_root.join("fixtures").join("upstream-svgs"));
+
+    let tools_root = workspace_root.join("tools").join("mermaid-cli");
+    let node_modules = tools_root.join("node_modules");
+    if install || !node_modules.exists() {
+        let npm_cmd = if tools_root.join("package-lock.json").is_file() {
+            "ci"
+        } else {
+            "install"
+        };
+        let status = Command::new("npm")
+            .arg(npm_cmd)
+            .current_dir(&tools_root)
+            .status()
+            .map_err(|err| {
+                XtaskError::UpstreamSvgFailed(format!(
+                    "failed to run `npm {npm_cmd}` in {}: {err}",
+                    tools_root.display()
+                ))
+            })?;
+        if !status.success() {
+            return Err(XtaskError::UpstreamSvgFailed(format!(
+                "npm {npm_cmd} failed in {}",
+                tools_root.display()
+            )));
+        }
+    }
+
+    let mmdc = find_mmdc(&tools_root).ok_or_else(|| {
+        XtaskError::UpstreamSvgFailed(format!(
+            "mmdc not found under {} (run: npm install)",
+            tools_root.display()
+        ))
+    })?;
+
+    fn run_one(
+        workspace_root: &Path,
+        out_root: &Path,
+        mmdc: &Path,
+        diagram: &str,
+        filter: Option<&str>,
+    ) -> Result<(), XtaskError> {
+        let fixtures_dir = workspace_root.join("fixtures").join(diagram);
+        let out_dir = out_root.join(diagram);
+
+        let mut mmd_files: Vec<PathBuf> = Vec::new();
+        let Ok(entries) = fs::read_dir(&fixtures_dir) else {
+            return Err(XtaskError::UpstreamSvgFailed(format!(
+                "failed to list fixtures directory {}",
+                fixtures_dir.display()
+            )));
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            if !path.extension().is_some_and(|e| e == "mmd") {
+                continue;
+            }
+            if let Some(f) = filter {
+                if !path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.contains(f))
+                {
+                    continue;
+                }
+            }
+            mmd_files.push(path);
+        }
+        mmd_files.sort();
+
+        if mmd_files.is_empty() {
+            return Err(XtaskError::UpstreamSvgFailed(format!(
+                "no .mmd fixtures matched under {}",
+                fixtures_dir.display()
+            )));
+        }
+
+        fs::create_dir_all(&out_dir).map_err(|source| XtaskError::WriteFile {
+            path: out_dir.display().to_string(),
+            source,
+        })?;
+
+        let mut failures: Vec<String> = Vec::new();
+
+        for mmd_path in mmd_files {
+            let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
+                failures.push(format!("invalid fixture filename {}", mmd_path.display()));
+                continue;
+            };
+            let out_path = out_dir.join(format!("{stem}.svg"));
+
+            let status = Command::new(mmdc)
+                .arg("-i")
+                .arg(&mmd_path)
+                .arg("-o")
+                .arg(&out_path)
+                .arg("-t")
+                .arg("default")
+                .arg("--svgId")
+                .arg(stem)
+                .status();
+
+            match status {
+                Ok(s) if s.success() => {}
+                Ok(s) => failures.push(format!(
+                    "mmdc failed for {} (exit={})",
+                    mmd_path.display(),
+                    s.code().unwrap_or(-1)
+                )),
+                Err(err) => failures.push(format!("mmdc failed for {}: {err}", mmd_path.display())),
+            }
+        }
+
+        if failures.is_empty() {
+            return Ok(());
+        }
+
+        let failures_path = out_dir.join("_failures.txt");
+        let _ = fs::write(&failures_path, failures.join("\n"));
+
+        Err(XtaskError::UpstreamSvgFailed(failures.join("\n")))
+    }
+
+    let filter = filter.as_deref();
+    match diagram.as_str() {
+        "all" => {
+            let mut failures: Vec<String> = Vec::new();
+            for d in ["er", "flowchart", "state", "class"] {
+                if let Err(err) = run_one(&workspace_root, &out_root, &mmdc, d, filter) {
+                    failures.push(format!("{d}: {err}"));
+                }
+            }
+            if failures.is_empty() {
+                Ok(())
+            } else {
+                Err(XtaskError::UpstreamSvgFailed(failures.join("\n")))
+            }
+        }
+        "er" | "flowchart" | "state" | "class" => {
+            run_one(&workspace_root, &out_root, &mmdc, &diagram, filter)
+        }
+        other => Err(XtaskError::UpstreamSvgFailed(format!(
+            "unsupported diagram for upstream svg export: {other} (supported: er, flowchart, state, class, all)"
+        ))),
+    }
+}
+
+fn find_mmdc(tools_root: &Path) -> Option<PathBuf> {
+    let bin_root = tools_root.join("node_modules").join(".bin");
+    for name in ["mmdc.cmd", "mmdc.ps1", "mmdc"] {
+        let p = bin_root.join(name);
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    None
 }
 
 fn gen_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
