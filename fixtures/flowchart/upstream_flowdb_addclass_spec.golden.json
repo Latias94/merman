@@ -82,6 +82,10 @@
     ],
     "subgraphs": [],
     "tooltips": {},
-    "type": "flowchart-v2"
+    "type": "flowchart-v2",
+    "vertexCalls": [
+      "A",
+      "B"
+    ]
   }
 }

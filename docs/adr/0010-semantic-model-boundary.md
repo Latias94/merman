@@ -29,9 +29,10 @@ AST-first (Langium-based), while many mature diagrams directly populate DB struc
 - Grammar AST is considered an internal implementation detail:
   - It may exist for debugging and diagnostics.
   - It is not the primary integration surface.
+- Exception for parity-critical ordering: when upstream DB objects depend on parse-time call order (e.g. Flowchart FlowDB `vertexCounter`),
+  the semantic model may include explicit ordering traces (e.g. `vertexCalls`) so renderers can reproduce upstream DOM ids deterministically.
 
 ## Consequences
 
 - Downstream renderers can evolve independently from grammar choices.
 - We avoid forcing consumers to understand grammar details or multiple parsing stacks.
-

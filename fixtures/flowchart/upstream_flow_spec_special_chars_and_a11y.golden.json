@@ -382,6 +382,22 @@
     ],
     "subgraphs": [],
     "tooltips": {},
-    "type": "flowchart-v2"
+    "type": "flowchart-v2",
+    "vertexCalls": [
+      "endpoint",
+      "sender",
+      "blend",
+      "monograph",
+      "default",
+      "monograph2",
+      "S1",
+      "T1",
+      "S2",
+      "T2",
+      "X",
+      "Y",
+      "Y",
+      "Z"
+    ]
   }
 }

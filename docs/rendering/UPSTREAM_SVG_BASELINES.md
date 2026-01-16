@@ -114,6 +114,8 @@ Notes:
 
 - Flowchart `parity` mode is expected to fail until Stage-B node shape paths (e.g. `roundedRect`, `hexagon`, `odd`)
   and edge routing/point generation are brought in line with upstream Mermaid.
+- Flowchart `domId` suffixes depend on FlowDB `vertexCounter` (Jison `addVertex(...)` call order, including `@{...}` shapeData passes).
+  The flowchart semantic model includes `vertexCalls` to make this deterministic and reproducible in Rust.
 
 ## Generate (StateDiagram Stage B)
 

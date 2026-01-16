@@ -109,6 +109,17 @@
     ],
     "subgraphs": [],
     "tooltips": {},
-    "type": "flowchart-v2"
+    "type": "flowchart-v2",
+    "vertexCalls": [
+      "A",
+      "A",
+      "B",
+      "B",
+      "C",
+      "C",
+      "A",
+      "D",
+      "D"
+    ]
   }
 }

@@ -53,9 +53,10 @@ This document defines the initial, test-driven minimum slice for flowchart parsi
       - `label` (supports YAML multiline `|` and quoted multiline strings with Mermaid `<br/>` rewrite semantics)
       - `icon`, `img`, `form`, `pos`, `constraint`, `w`, `h`
     - lexer parity: `}` and `@` are allowed inside double-quoted strings; newlines inside double-quoted strings are rewritten to `<br/>`
-  - Output note:
+- Output note:
     - `shape` is the parsed vertex shape (e.g. `square`, `round`, `diamond`)
     - `layoutShape` mirrors Mermaid FlowDB `getData().nodes[].shape` (e.g. `squareRect`, `roundedRect`)
+    - `vertexCalls` records FlowDB-style `addVertex(...)` call order to reproduce `vertexCounter`/`domId` suffixes in SVG parity work
 - Edges:
   - Mermaid-like link tokenization (`LINK` + `START_LINK` semantics):
     - normal (`--`), thick (`==`), dotted (`-.` / `...`), invisible (`~~~`)

@@ -235,6 +235,19 @@
       }
     ],
     "tooltips": {},
-    "type": "flowchart-v2"
+    "type": "flowchart-v2",
+    "vertexCalls": [
+      "A",
+      "A2",
+      "id1",
+      "s1",
+      "r1",
+      "c1",
+      "dc1",
+      "d1",
+      "h1",
+      "o1",
+      "1"
+    ]
   }
 }
