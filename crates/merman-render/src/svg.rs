@@ -2,9 +2,10 @@ use crate::model::{
     Bounds, ClassDiagramV2Layout, ErDiagramLayout, FlowchartV2Layout, LayoutCluster, LayoutNode,
     StateDiagramV2Layout,
 };
-use crate::text::TextMeasurer;
+use crate::text::{TextMeasurer, WrapMode};
 use crate::{Error, Result};
 use base64::Engine as _;
+use serde::Deserialize;
 use std::fmt::Write as _;
 
 #[derive(Debug, Clone)]
@@ -366,6 +367,1287 @@ pub fn render_flowchart_v2_svg(
 
     out.push_str("</g></svg>\n");
     Ok(out)
+}
+
+pub fn render_state_diagram_v2_svg(
+    layout: &StateDiagramV2Layout,
+    semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let model: StateSvgModel = serde_json::from_value(semantic.clone())?;
+
+    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+
+    let bounds =
+        compute_layout_bounds(&layout.clusters, &layout.nodes, &layout.edges).unwrap_or(Bounds {
+            min_x: 0.0,
+            min_y: 0.0,
+            max_x: 100.0,
+            max_y: 100.0,
+        });
+    let diagram_padding = config_f64(effective_config, &["state", "diagramPadding"])
+        .unwrap_or(0.0)
+        .max(0.0);
+    let vb_min_x = (bounds.min_x - diagram_padding).min(bounds.max_x);
+    let vb_min_y = (bounds.min_y - diagram_padding).min(bounds.max_y);
+    let vb_w = (bounds.max_x - bounds.min_x + diagram_padding * 2.0).max(1.0);
+    let vb_h = (bounds.max_y - bounds.min_y + diagram_padding * 2.0).max(1.0);
+
+    let has_acc_title = model
+        .acc_title
+        .as_deref()
+        .is_some_and(|s| !s.trim().is_empty());
+    let has_acc_descr = model
+        .acc_descr
+        .as_deref()
+        .is_some_and(|s| !s.trim().is_empty());
+
+    let mut out = String::new();
+    let _ = write!(
+        &mut out,
+        r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="statediagram" style="max-width: {}px; background-color: white;" viewBox="{} {} {} {}" role="graphics-document document" aria-roledescription="stateDiagram""#,
+        escape_xml(diagram_id),
+        fmt(vb_w),
+        fmt(vb_min_x),
+        fmt(vb_min_y),
+        fmt(vb_w),
+        fmt(vb_h)
+    );
+    if has_acc_title {
+        let _ = write!(
+            &mut out,
+            r#" aria-labelledby="chart-title-{}""#,
+            escape_xml(diagram_id)
+        );
+    }
+    if has_acc_descr {
+        let _ = write!(
+            &mut out,
+            r#" aria-describedby="chart-desc-{}""#,
+            escape_xml(diagram_id)
+        );
+    }
+    out.push('>');
+
+    if has_acc_title {
+        let _ = write!(
+            &mut out,
+            r#"<title id="chart-title-{}">{}"#,
+            escape_xml(diagram_id),
+            escape_xml(model.acc_title.as_deref().unwrap_or_default())
+        );
+        out.push_str("</title>");
+    }
+    if has_acc_descr {
+        let _ = write!(
+            &mut out,
+            r#"<desc id="chart-desc-{}">{}"#,
+            escape_xml(diagram_id),
+            escape_xml(model.acc_descr.as_deref().unwrap_or_default())
+        );
+        out.push_str("</desc>");
+    }
+
+    // Mermaid emits a single `<style>` element with diagram-scoped CSS.
+    let _ = write!(&mut out, "<style>{}</style>", "");
+
+    // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
+    out.push_str("<g>");
+    state_markers(&mut out, diagram_id);
+
+    let text_style = crate::state::state_text_style(effective_config);
+
+    let mut nodes_by_id: std::collections::HashMap<&str, &StateSvgNode> =
+        std::collections::HashMap::new();
+    for n in &model.nodes {
+        nodes_by_id.insert(n.id.as_str(), n);
+    }
+
+    let mut layout_nodes_by_id: std::collections::HashMap<&str, &LayoutNode> =
+        std::collections::HashMap::new();
+    for n in &layout.nodes {
+        layout_nodes_by_id.insert(n.id.as_str(), n);
+    }
+
+    let mut layout_edges_by_id: std::collections::HashMap<&str, &crate::model::LayoutEdge> =
+        std::collections::HashMap::new();
+    for e in &layout.edges {
+        layout_edges_by_id.insert(e.id.as_str(), e);
+    }
+
+    let mut layout_clusters_by_id: std::collections::HashMap<&str, &LayoutCluster> =
+        std::collections::HashMap::new();
+    for c in &layout.clusters {
+        layout_clusters_by_id.insert(c.id.as_str(), c);
+    }
+
+    let mut parent: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
+    for n in &model.nodes {
+        if let Some(p) = n.parent_id.as_deref() {
+            parent.insert(n.id.as_str(), p);
+        }
+    }
+
+    let mut hidden_prefixes: Vec<String> = Vec::new();
+    for (id, st) in &model.states {
+        let Some(note) = st.note.as_ref() else {
+            continue;
+        };
+        if note.text.trim().is_empty() {
+            continue;
+        }
+        if note.position.is_none() {
+            hidden_prefixes.push(id.clone());
+        }
+    }
+
+    let mut ctx = StateRenderCtx {
+        diagram_id: diagram_id.to_string(),
+        diagram_title: diagram_title.map(|s| s.to_string()),
+        nodes_by_id,
+        layout_nodes_by_id,
+        layout_edges_by_id,
+        layout_clusters_by_id,
+        parent,
+        nested_roots: std::collections::BTreeSet::new(),
+        hidden_prefixes,
+        links: &model.links,
+        states: &model.states,
+        edges: &model.edges,
+        include_edges: options.include_edges,
+        include_nodes: options.include_nodes,
+        measurer,
+        text_style,
+    };
+
+    fn compute_state_nested_roots(ctx: &StateRenderCtx<'_>) -> std::collections::BTreeSet<String> {
+        let mut out: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for e in ctx.edges {
+            if state_is_hidden(ctx, e.start.as_str())
+                || state_is_hidden(ctx, e.end.as_str())
+                || state_is_hidden(ctx, e.id.as_str())
+            {
+                continue;
+            }
+            let Some(c) = state_edge_context_raw(ctx, e) else {
+                continue;
+            };
+            out.insert(c.to_string());
+        }
+
+        // If a nested graph is needed for a descendant composite state, Mermaid also nests
+        // its composite state ancestors.
+        let seeds: Vec<String> = out.iter().cloned().collect();
+        for cid in seeds {
+            let mut cur: Option<&str> = Some(cid.as_str());
+            while let Some(id) = cur {
+                let Some(pid) = ctx.parent.get(id).copied() else {
+                    break;
+                };
+                let Some(pn) = ctx.nodes_by_id.get(pid).copied() else {
+                    cur = Some(pid);
+                    continue;
+                };
+                if pn.is_group && pn.shape != "noteGroup" {
+                    out.insert(pid.to_string());
+                }
+                cur = Some(pid);
+            }
+        }
+
+        out
+    }
+
+    ctx.nested_roots = compute_state_nested_roots(&ctx);
+
+    render_state_root(&mut out, &ctx, None, 0.0, 0.0);
+
+    out.push_str("</g></svg>\n");
+    Ok(out)
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct StateSvgModel {
+    #[serde(default, rename = "accTitle")]
+    pub acc_title: Option<String>,
+    #[serde(default, rename = "accDescr")]
+    pub acc_descr: Option<String>,
+    #[serde(default)]
+    pub nodes: Vec<StateSvgNode>,
+    #[serde(default)]
+    pub edges: Vec<StateSvgEdge>,
+    #[serde(default)]
+    pub links: std::collections::HashMap<String, StateSvgLink>,
+    #[serde(default)]
+    pub states: std::collections::HashMap<String, StateSvgState>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct StateSvgState {
+    #[serde(default)]
+    pub note: Option<StateSvgNote>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct StateSvgNote {
+    #[serde(default)]
+    pub position: Option<String>,
+    #[serde(default)]
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct StateSvgLink {
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub tooltip: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct StateSvgNode {
+    pub id: String,
+    #[serde(default)]
+    pub label: Option<serde_json::Value>,
+    #[serde(default)]
+    pub description: Option<Vec<String>>,
+    #[serde(default, rename = "domId")]
+    pub dom_id: String,
+    #[serde(default, rename = "isGroup")]
+    pub is_group: bool,
+    #[serde(default, rename = "parentId")]
+    pub parent_id: Option<String>,
+    #[serde(default, rename = "cssClasses")]
+    pub css_classes: String,
+    pub shape: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct StateSvgEdge {
+    pub id: String,
+    #[serde(rename = "start")]
+    pub start: String,
+    #[serde(rename = "end")]
+    pub end: String,
+    #[serde(default)]
+    pub classes: String,
+    #[serde(default, rename = "arrowTypeEnd")]
+    pub arrow_type_end: String,
+    #[serde(default)]
+    pub label: String,
+}
+
+struct StateRenderCtx<'a> {
+    diagram_id: String,
+    #[allow(dead_code)]
+    diagram_title: Option<String>,
+    nodes_by_id: std::collections::HashMap<&'a str, &'a StateSvgNode>,
+    layout_nodes_by_id: std::collections::HashMap<&'a str, &'a LayoutNode>,
+    layout_edges_by_id: std::collections::HashMap<&'a str, &'a crate::model::LayoutEdge>,
+    layout_clusters_by_id: std::collections::HashMap<&'a str, &'a LayoutCluster>,
+    parent: std::collections::HashMap<&'a str, &'a str>,
+    nested_roots: std::collections::BTreeSet<String>,
+    hidden_prefixes: Vec<String>,
+    links: &'a std::collections::HashMap<String, StateSvgLink>,
+    states: &'a std::collections::HashMap<String, StateSvgState>,
+    edges: &'a [StateSvgEdge],
+    include_edges: bool,
+    include_nodes: bool,
+    measurer: &'a dyn TextMeasurer,
+    text_style: crate::text::TextStyle,
+}
+
+fn state_markers(out: &mut String, diagram_id: &str) {
+    let diagram_id = escape_xml(diagram_id);
+    let _ = write!(
+        out,
+        r#"<defs><marker id="{diagram_id}_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L9,13 L14,7 L9,1 Z"/></marker></defs>"#
+    );
+}
+
+fn state_value_to_label_text(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Array(a) => {
+            let mut parts: Vec<&str> = Vec::new();
+            for item in a {
+                if let Some(s) = item.as_str() {
+                    parts.push(s);
+                }
+            }
+            if parts.is_empty() {
+                return "".to_string();
+            }
+            parts.join("\n")
+        }
+        _ => "".to_string(),
+    }
+}
+
+fn state_node_label_text(n: &StateSvgNode) -> String {
+    n.label
+        .as_ref()
+        .map(state_value_to_label_text)
+        .unwrap_or_else(|| n.id.clone())
+}
+
+fn html_paragraph_with_br(raw: &str) -> String {
+    fn normalize_br_tags(raw: &str) -> String {
+        let bytes = raw.as_bytes();
+        let mut out = String::with_capacity(raw.len());
+        let mut cur = 0usize;
+        let mut i = 0usize;
+        while i + 2 < bytes.len() {
+            if bytes[i] != b'<' {
+                i += 1;
+                continue;
+            }
+            let b1 = bytes[i + 1];
+            let b2 = bytes[i + 2];
+            if !matches!(b1, b'b' | b'B') || !matches!(b2, b'r' | b'R') {
+                i += 1;
+                continue;
+            }
+            let next = bytes.get(i + 3).copied();
+            if let Some(n) = next {
+                if !matches!(n, b'>' | b'/' | b' ' | b'\t' | b'\r' | b'\n') {
+                    i += 1;
+                    continue;
+                }
+            }
+            if i > cur {
+                out.push_str(&raw[cur..i]);
+            }
+            let Some(end_rel) = bytes[i..].iter().position(|&c| c == b'>') else {
+                cur = i;
+                break;
+            };
+            out.push('\n');
+            i = i + end_rel + 1;
+            cur = i;
+        }
+        if cur < raw.len() {
+            out.push_str(&raw[cur..]);
+        }
+        out
+    }
+
+    let normalized = normalize_br_tags(raw);
+    let lines: Vec<&str> = normalized.split('\n').collect();
+    let mut out = String::new();
+    out.push_str("<p>");
+    for (idx, line) in lines.iter().enumerate() {
+        if idx > 0 {
+            out.push_str("<br />");
+        }
+        out.push_str(&escape_xml(line));
+    }
+    out.push_str("</p>");
+    out
+}
+
+fn html_inline_with_br(raw: &str) -> String {
+    fn normalize_br_tags(raw: &str) -> String {
+        let bytes = raw.as_bytes();
+        let mut out = String::with_capacity(raw.len());
+        let mut cur = 0usize;
+        let mut i = 0usize;
+        while i + 2 < bytes.len() {
+            if bytes[i] != b'<' {
+                i += 1;
+                continue;
+            }
+            let b1 = bytes[i + 1];
+            let b2 = bytes[i + 2];
+            if !matches!(b1, b'b' | b'B') || !matches!(b2, b'r' | b'R') {
+                i += 1;
+                continue;
+            }
+            let next = bytes.get(i + 3).copied();
+            if let Some(n) = next {
+                if !matches!(n, b'>' | b'/' | b' ' | b'\t' | b'\r' | b'\n') {
+                    i += 1;
+                    continue;
+                }
+            }
+            if i > cur {
+                out.push_str(&raw[cur..i]);
+            }
+            let Some(end_rel) = bytes[i..].iter().position(|&c| c == b'>') else {
+                cur = i;
+                break;
+            };
+            out.push('\n');
+            i = i + end_rel + 1;
+            cur = i;
+        }
+        if cur < raw.len() {
+            out.push_str(&raw[cur..]);
+        }
+        out
+    }
+
+    let normalized = normalize_br_tags(raw);
+    let lines: Vec<&str> = normalized.split('\n').collect();
+    let mut out = String::new();
+    for (idx, line) in lines.iter().enumerate() {
+        if idx > 0 {
+            out.push_str("<br />");
+        }
+        out.push_str(&escape_xml(line));
+    }
+    out
+}
+
+fn state_node_label_html(raw: &str) -> String {
+    format!(
+        r#"<span class="nodeLabel">{}</span>"#,
+        html_paragraph_with_br(raw)
+    )
+}
+
+fn state_node_label_inline_html(raw: &str) -> String {
+    format!(
+        r#"<span class="nodeLabel">{}</span>"#,
+        html_inline_with_br(raw)
+    )
+}
+
+fn state_edge_label_html(raw: &str) -> String {
+    html_paragraph_with_br(raw)
+}
+
+fn state_is_hidden(ctx: &StateRenderCtx<'_>, id: &str) -> bool {
+    ctx.hidden_prefixes
+        .iter()
+        .any(|p| id == p || id.starts_with(&format!("{p}----")))
+}
+
+fn state_strip_note_group<'a>(
+    ctx: &'a StateRenderCtx<'_>,
+    mut parent: Option<&'a str>,
+) -> Option<&'a str> {
+    while let Some(pid) = parent {
+        let Some(pn) = ctx.nodes_by_id.get(pid).copied() else {
+            return Some(pid);
+        };
+        if pn.shape == "noteGroup" {
+            parent = ctx.parent.get(pid).copied();
+            continue;
+        }
+        return Some(pid);
+    }
+    None
+}
+
+fn state_leaf_context_raw<'a>(ctx: &'a StateRenderCtx<'_>, id: &str) -> Option<&'a str> {
+    let mut p = ctx.parent.get(id).copied();
+    loop {
+        let Some(pid) = state_strip_note_group(ctx, p) else {
+            return None;
+        };
+        let Some(pn) = ctx.nodes_by_id.get(pid).copied() else {
+            return Some(pid);
+        };
+        if pn.is_group && pn.shape != "noteGroup" {
+            return Some(pid);
+        }
+        p = ctx.parent.get(pid).copied();
+    }
+}
+
+fn state_insertion_context_raw<'a>(
+    ctx: &'a StateRenderCtx<'_>,
+    cluster_id: &str,
+) -> Option<&'a str> {
+    state_leaf_context_raw(ctx, cluster_id)
+}
+
+fn state_endpoint_context_raw<'a>(ctx: &'a StateRenderCtx<'_>, id: &str) -> Option<&'a str> {
+    if let Some(n) = ctx.nodes_by_id.get(id).copied() {
+        if n.is_group && n.shape != "noteGroup" {
+            return state_insertion_context_raw(ctx, id);
+        }
+    }
+    state_leaf_context_raw(ctx, id)
+}
+
+fn state_context_chain_raw<'a>(
+    ctx: &'a StateRenderCtx<'_>,
+    mut c: Option<&'a str>,
+) -> Vec<Option<&'a str>> {
+    let mut out = Vec::new();
+    loop {
+        out.push(c);
+        let Some(id) = c else {
+            break;
+        };
+        c = state_insertion_context_raw(ctx, id);
+    }
+    out
+}
+
+fn state_edge_context_raw<'a>(ctx: &'a StateRenderCtx<'_>, edge: &StateSvgEdge) -> Option<&'a str> {
+    let a = state_endpoint_context_raw(ctx, edge.start.as_str());
+    let b = state_endpoint_context_raw(ctx, edge.end.as_str());
+    let ca = state_context_chain_raw(ctx, a);
+    let cb = state_context_chain_raw(ctx, b);
+    for anc in cb {
+        if ca.contains(&anc) {
+            return anc;
+        }
+    }
+    None
+}
+
+fn state_leaf_context<'a>(ctx: &'a StateRenderCtx<'_>, id: &str) -> Option<&'a str> {
+    let mut p = ctx.parent.get(id).copied();
+    loop {
+        let Some(pid) = state_strip_note_group(ctx, p) else {
+            return None;
+        };
+        let Some(pn) = ctx.nodes_by_id.get(pid).copied() else {
+            return Some(pid);
+        };
+        if pn.is_group && pn.shape != "noteGroup" {
+            if ctx.nested_roots.contains(pid) {
+                return Some(pid);
+            }
+            p = ctx.parent.get(pid).copied();
+            continue;
+        }
+        p = ctx.parent.get(pid).copied();
+    }
+}
+
+fn state_insertion_context<'a>(ctx: &'a StateRenderCtx<'_>, cluster_id: &str) -> Option<&'a str> {
+    state_leaf_context(ctx, cluster_id)
+}
+
+fn state_endpoint_context<'a>(ctx: &'a StateRenderCtx<'_>, id: &str) -> Option<&'a str> {
+    if let Some(n) = ctx.nodes_by_id.get(id).copied() {
+        if n.is_group && n.shape != "noteGroup" {
+            return state_insertion_context(ctx, id);
+        }
+    }
+    state_leaf_context(ctx, id)
+}
+
+fn state_context_chain<'a>(
+    ctx: &'a StateRenderCtx<'_>,
+    mut c: Option<&'a str>,
+) -> Vec<Option<&'a str>> {
+    let mut out = Vec::new();
+    loop {
+        out.push(c);
+        let Some(id) = c else {
+            break;
+        };
+        c = state_insertion_context(ctx, id);
+    }
+    out
+}
+
+fn state_edge_context<'a>(ctx: &'a StateRenderCtx<'_>, edge: &StateSvgEdge) -> Option<&'a str> {
+    let a = state_endpoint_context(ctx, edge.start.as_str());
+    let b = state_endpoint_context(ctx, edge.end.as_str());
+    let ca = state_context_chain(ctx, a);
+    let cb = state_context_chain(ctx, b);
+    for anc in cb {
+        if ca.contains(&anc) {
+            return anc;
+        }
+    }
+    None
+}
+
+fn render_state_root(
+    out: &mut String,
+    ctx: &StateRenderCtx<'_>,
+    root: Option<&str>,
+    parent_origin_x: f64,
+    parent_origin_y: f64,
+) {
+    let (origin_x, origin_y, transform_attr) = if let Some(root_id) = root {
+        if let Some(c) = ctx.layout_clusters_by_id.get(root_id).copied() {
+            let left = c.x - c.width / 2.0;
+            let top = c.y - c.height / 2.0;
+            let tx = left - parent_origin_x;
+            let ty = top - parent_origin_y;
+            (
+                left,
+                top,
+                format!(r#" transform="translate({}, {})""#, fmt(tx), fmt(ty)),
+            )
+        } else {
+            (
+                parent_origin_x,
+                parent_origin_y,
+                r#" transform="translate(0, 0)""#.to_string(),
+            )
+        }
+    } else {
+        (parent_origin_x, parent_origin_y, String::new())
+    };
+
+    let _ = write!(out, r#"<g class="root"{}>"#, transform_attr);
+
+    // clusters
+    out.push_str(r#"<g class="clusters">"#);
+    if let Some(root_id) = root {
+        render_state_cluster(out, ctx, root_id, origin_x, origin_y);
+    }
+
+    let mut cluster_ids: Vec<&str> = ctx.layout_clusters_by_id.keys().copied().collect();
+    cluster_ids.sort_unstable();
+    for &cluster_id in &cluster_ids {
+        if root == Some(cluster_id) {
+            continue;
+        }
+        if state_is_hidden(ctx, cluster_id) {
+            continue;
+        }
+        if ctx.nested_roots.contains(cluster_id) {
+            continue;
+        }
+        let Some(node) = ctx.nodes_by_id.get(cluster_id).copied() else {
+            continue;
+        };
+        if !node.is_group || node.shape == "noteGroup" {
+            continue;
+        }
+        if state_insertion_context(ctx, cluster_id) != root {
+            continue;
+        }
+        render_state_cluster(out, ctx, cluster_id, origin_x, origin_y);
+    }
+
+    for cluster_id in cluster_ids {
+        let Some(cluster) = ctx.layout_clusters_by_id.get(cluster_id).copied() else {
+            continue;
+        };
+        if state_is_hidden(ctx, cluster_id) {
+            continue;
+        }
+        let Some(node) = ctx.nodes_by_id.get(cluster_id).copied() else {
+            continue;
+        };
+        if node.shape != "noteGroup" {
+            continue;
+        }
+        let note_owner = cluster_id.strip_suffix("----parent").unwrap_or(cluster_id);
+        if ctx.hidden_prefixes.iter().any(|p| p == note_owner) {
+            continue;
+        }
+        let has_position = ctx
+            .states
+            .get(note_owner)
+            .and_then(|s| s.note.as_ref())
+            .and_then(|n| n.position.as_ref())
+            .is_some();
+        if !has_position {
+            continue;
+        }
+
+        let target_root = state_insertion_context(ctx, note_owner);
+        if target_root != root {
+            continue;
+        }
+
+        let left = cluster.x - cluster.width / 2.0;
+        let top = cluster.y - cluster.height / 2.0;
+        let x = left - origin_x;
+        let y = top - origin_y;
+        let _ = write!(
+            out,
+            r#"<g id="{}" class="note-cluster"><rect x="{}" y="{}" width="{}" height="{}" fill="none"/></g>"#,
+            escape_attr(cluster_id),
+            fmt(x),
+            fmt(y),
+            fmt(cluster.width.max(1.0)),
+            fmt(cluster.height.max(1.0))
+        );
+    }
+    out.push_str("</g>");
+
+    // edge paths
+    out.push_str(r#"<g class="edgePaths">"#);
+    if ctx.include_edges {
+        for edge in ctx.edges {
+            if state_is_hidden(ctx, edge.start.as_str())
+                || state_is_hidden(ctx, edge.end.as_str())
+                || state_is_hidden(ctx, edge.id.as_str())
+            {
+                continue;
+            }
+            if state_edge_context(ctx, edge) != root {
+                continue;
+            }
+            render_state_edge_path(out, ctx, edge, origin_x, origin_y);
+        }
+    }
+    out.push_str("</g>");
+
+    // edge labels
+    out.push_str(r#"<g class="edgeLabels">"#);
+    if ctx.include_edges {
+        for edge in ctx.edges {
+            if state_is_hidden(ctx, edge.start.as_str())
+                || state_is_hidden(ctx, edge.end.as_str())
+                || state_is_hidden(ctx, edge.id.as_str())
+            {
+                continue;
+            }
+            if state_edge_context(ctx, edge) != root {
+                continue;
+            }
+            render_state_edge_label(out, ctx, edge, origin_x, origin_y);
+        }
+    }
+    out.push_str("</g>");
+
+    // nodes (leaf nodes + nested roots)
+    out.push_str(r#"<g class="nodes">"#);
+    let mut nested: Vec<&str> = Vec::new();
+    for (id, n) in ctx.nodes_by_id.iter() {
+        if state_is_hidden(ctx, id) {
+            continue;
+        }
+        if n.is_group && n.shape != "noteGroup" {
+            if ctx.nested_roots.contains(*id) && state_insertion_context(ctx, id) == root {
+                nested.push(*id);
+            }
+        }
+    }
+
+    if ctx.include_nodes {
+        let mut leaf_ids: Vec<&str> = ctx
+            .layout_nodes_by_id
+            .iter()
+            .filter_map(|(id, n)| {
+                if state_is_hidden(ctx, id) {
+                    return None;
+                }
+                if n.is_cluster {
+                    return None;
+                }
+                if state_leaf_context(ctx, id) != root {
+                    return None;
+                }
+                Some(*id)
+            })
+            .collect();
+        leaf_ids.sort_unstable();
+        for id in leaf_ids {
+            render_state_node_svg(out, ctx, id, origin_x, origin_y);
+        }
+    }
+
+    nested.sort_unstable();
+    for child_root in nested {
+        render_state_root(out, ctx, Some(child_root), origin_x, origin_y);
+    }
+
+    // Mermaid adds extra edgeLabel placeholders for self-loop transitions inside `nodes`.
+    if ctx.include_edges {
+        for edge in ctx.edges {
+            if state_is_hidden(ctx, edge.start.as_str())
+                || state_is_hidden(ctx, edge.end.as_str())
+                || state_is_hidden(ctx, edge.id.as_str())
+            {
+                continue;
+            }
+            if edge.start != edge.end {
+                continue;
+            }
+            if state_edge_context(ctx, edge) != root {
+                continue;
+            }
+
+            let start = edge.start.as_str();
+            let id1 = format!("{start}---{start}---1");
+            let id2 = format!("{start}---{start}---2");
+
+            let (cx, cy) = ctx
+                .layout_edges_by_id
+                .get(edge.id.as_str())
+                .and_then(|e| e.label.as_ref())
+                .map(|lbl| (lbl.x - origin_x, lbl.y - origin_y))
+                .unwrap_or((0.0, 0.0));
+
+            for id in [id1, id2] {
+                let _ = write!(
+                    out,
+                    r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0, 0)"><rect/><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 10px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g>"#,
+                    escape_attr(&id),
+                    fmt(cx),
+                    fmt(cy),
+                );
+            }
+        }
+    }
+
+    out.push_str("</g>");
+    out.push_str("</g>");
+}
+
+fn render_state_cluster(
+    out: &mut String,
+    ctx: &StateRenderCtx<'_>,
+    cluster_id: &str,
+    origin_x: f64,
+    origin_y: f64,
+) {
+    let Some(cluster) = ctx.layout_clusters_by_id.get(cluster_id).copied() else {
+        return;
+    };
+
+    let shape = ctx
+        .nodes_by_id
+        .get(cluster_id)
+        .copied()
+        .map(|n| n.shape.as_str())
+        .unwrap_or("");
+
+    let class = ctx
+        .nodes_by_id
+        .get(cluster_id)
+        .copied()
+        .map(|n| n.css_classes.trim())
+        .filter(|c| !c.is_empty())
+        .unwrap_or("statediagram-state statediagram-cluster");
+
+    let left = cluster.x - cluster.width / 2.0;
+    let top = cluster.y - cluster.height / 2.0;
+    let x = left - origin_x + 8.0;
+    let y = top - origin_y + 8.0;
+
+    if shape == "divider" {
+        let _ = write!(
+            out,
+            r#"<g class="{}" id="{}" data-look="classic"><g><rect class="divider" x="{}" y="{}" width="{}" height="{}" data-look="classic"/></g></g>"#,
+            escape_attr(class),
+            escape_attr(cluster_id),
+            fmt(x),
+            fmt(y),
+            fmt(cluster.width.max(1.0)),
+            fmt(cluster.height.max(1.0))
+        );
+        return;
+    }
+
+    let title = ctx
+        .nodes_by_id
+        .get(cluster_id)
+        .copied()
+        .map(state_node_label_text)
+        .unwrap_or_else(|| cluster_id.to_string());
+
+    let _ = write!(
+        out,
+        r#"<g class="{}" id="{}" data-id="{}" data-look="classic"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="classic"/></g><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="19"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="nodeLabel">{}</span></div></foreignObject></g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
+        escape_attr(class),
+        escape_attr(cluster_id),
+        escape_attr(cluster_id),
+        fmt(x),
+        fmt(y),
+        fmt(cluster.width.max(1.0)),
+        fmt(cluster.height.max(1.0)),
+        fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
+        fmt(y + 1.0),
+        fmt(cluster.title_label.width.max(0.0)),
+        escape_xml(&title),
+        fmt(x),
+        fmt(y + 21.0),
+        fmt(cluster.width.max(1.0)),
+        fmt((cluster.height - 29.0).max(1.0))
+    );
+}
+
+fn render_state_edge_path(
+    out: &mut String,
+    ctx: &StateRenderCtx<'_>,
+    edge: &StateSvgEdge,
+    origin_x: f64,
+    origin_y: f64,
+) {
+    let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() else {
+        return;
+    };
+    if le.points.len() < 2 {
+        return;
+    }
+
+    fn encode_path(
+        points: &[crate::model::LayoutPoint],
+        origin_x: f64,
+        origin_y: f64,
+    ) -> (String, String) {
+        let mut local_points: Vec<crate::model::LayoutPoint> = Vec::new();
+        for p in points {
+            local_points.push(crate::model::LayoutPoint {
+                x: p.x - origin_x,
+                y: p.y - origin_y,
+            });
+        }
+        let data_points = base64::engine::general_purpose::STANDARD
+            .encode(serde_json::to_vec(&local_points).unwrap_or_default());
+        let d = curve_basis_path_d(&local_points);
+        (d, data_points)
+    }
+
+    let mut local_points: Vec<crate::model::LayoutPoint> = Vec::new();
+    for p in &le.points {
+        local_points.push(crate::model::LayoutPoint {
+            x: p.x - origin_x,
+            y: p.y - origin_y,
+        });
+    }
+    let data_points = base64::engine::general_purpose::STANDARD
+        .encode(serde_json::to_vec(&local_points).unwrap_or_default());
+    let d = curve_basis_path_d(&local_points);
+
+    let mut classes = "edge-thickness-normal edge-pattern-solid".to_string();
+    for c in edge.classes.split_whitespace() {
+        if c.trim().is_empty() {
+            continue;
+        }
+        classes.push(' ');
+        classes.push_str(c.trim());
+    }
+
+    let marker_end = if edge.arrow_type_end.trim() == "arrow_barb" {
+        Some(format!("url(#{}_stateDiagram-barbEnd)", ctx.diagram_id))
+    } else {
+        None
+    };
+
+    if edge.start == edge.end {
+        let start = edge.start.as_str();
+        let id1 = format!("{start}-cyclic-special-1");
+        let idm = format!("{start}-cyclic-special-mid");
+        let id2 = format!("{start}-cyclic-special-2");
+
+        let pts = &le.points;
+        let seg1 = if pts.len() >= 3 {
+            &pts[0..3]
+        } else {
+            &pts[0..2]
+        };
+        let segm = if pts.len() >= 5 {
+            &pts[2..5]
+        } else {
+            &pts[0..2]
+        };
+        let seg2 = if pts.len() >= 3 {
+            &pts[pts.len().saturating_sub(3)..]
+        } else {
+            &pts[pts.len().saturating_sub(2)..]
+        };
+
+        let segments = [
+            (&id1, seg1, None),
+            (&idm, segm, None),
+            (&id2, seg2, marker_end.as_ref()),
+        ];
+        for (sid, pts, marker) in segments {
+            if pts.len() < 2 {
+                continue;
+            }
+            let (d, data_points) = encode_path(pts, origin_x, origin_y);
+            let _ = write!(
+                out,
+                r#"<path d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
+                escape_attr(&d),
+                escape_attr(sid),
+                escape_attr(&classes),
+                escape_attr(sid),
+                escape_attr(&data_points)
+            );
+            if let Some(m) = marker {
+                let _ = write!(out, r#" marker-end="{}""#, escape_attr(m));
+            }
+            out.push_str("/>");
+        }
+        return;
+    }
+
+    let _ = write!(
+        out,
+        r#"<path d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
+        escape_attr(&d),
+        escape_attr(&edge.id),
+        escape_attr(&classes),
+        escape_attr(&edge.id),
+        escape_attr(&data_points)
+    );
+    if let Some(m) = marker_end {
+        let _ = write!(out, r#" marker-end="{}""#, escape_attr(&m));
+    }
+    out.push_str("/>");
+}
+
+fn render_state_edge_label(
+    out: &mut String,
+    ctx: &StateRenderCtx<'_>,
+    edge: &StateSvgEdge,
+    origin_x: f64,
+    origin_y: f64,
+) {
+    let label_text = edge.label.trim();
+    if edge.start == edge.end {
+        let start = edge.start.as_str();
+        let id1 = format!("{start}-cyclic-special-1");
+        let idm = format!("{start}-cyclic-special-mid");
+        let id2 = format!("{start}-cyclic-special-2");
+
+        // Mermaid ties the visible self-loop label to the `*-mid` segment.
+        if !label_text.is_empty() {
+            if let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() {
+                if let Some(lbl) = le.label.as_ref() {
+                    let cx = lbl.x - origin_x;
+                    let cy = lbl.y - origin_y;
+                    let w = lbl.width.max(0.0);
+                    let h = lbl.height.max(0.0);
+                    let _ = write!(
+                        out,
+                        r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
+                        fmt(cx),
+                        fmt(cy),
+                        escape_attr(&idm),
+                        fmt(-w / 2.0),
+                        fmt(-h / 2.0),
+                        fmt(w),
+                        fmt(h),
+                        state_edge_label_html(label_text)
+                    );
+                }
+            }
+        } else {
+            let _ = write!(
+                out,
+                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+                escape_attr(&idm)
+            );
+        }
+
+        for sid in [id1, id2] {
+            let _ = write!(
+                out,
+                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+                escape_attr(&sid)
+            );
+        }
+        return;
+    }
+
+    if label_text.is_empty() {
+        let _ = write!(
+            out,
+            r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+            escape_attr(&edge.id)
+        );
+        return;
+    }
+
+    let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() else {
+        return;
+    };
+    let Some(lbl) = le.label.as_ref() else {
+        return;
+    };
+
+    let cx = lbl.x - origin_x;
+    let cy = lbl.y - origin_y;
+    let w = lbl.width.max(0.0);
+    let h = lbl.height.max(0.0);
+
+    let _ = write!(
+        out,
+        r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
+        fmt(cx),
+        fmt(cy),
+        escape_attr(&edge.id),
+        fmt(-w / 2.0),
+        fmt(-h / 2.0),
+        fmt(w),
+        fmt(h),
+        state_edge_label_html(label_text)
+    );
+}
+
+fn render_state_node_svg(
+    out: &mut String,
+    ctx: &StateRenderCtx<'_>,
+    node_id: &str,
+    origin_x: f64,
+    origin_y: f64,
+) {
+    let Some(node) = ctx.nodes_by_id.get(node_id).copied() else {
+        return;
+    };
+    let Some(ln) = ctx.layout_nodes_by_id.get(node_id).copied() else {
+        return;
+    };
+    if ln.is_cluster {
+        return;
+    }
+    let cx = ln.x - origin_x;
+    let cy = ln.y - origin_y;
+    let w = ln.width.max(1.0);
+    let h = ln.height.max(1.0);
+
+    let node_class = if node.css_classes.trim().is_empty() {
+        "node".to_string()
+    } else {
+        format!("node {}", node.css_classes.trim())
+    };
+
+    match node.shape.as_str() {
+        "stateStart" => {
+            let _ = write!(
+                out,
+                r#"<g class="node default" id="{}" transform="translate({}, {})"><circle class="state-start" r="7" width="14" height="14"/></g>"#,
+                escape_attr(&node.dom_id),
+                fmt(cx),
+                fmt(cy)
+            );
+        }
+        "stateEnd" => {
+            let _ = write!(
+                out,
+                r##"<g class="node default" id="{}" transform="translate({}, {})"><g><path d="M0,0" stroke="none" stroke-width="0" fill="#ECECFF" style=""/><path d="M0,0" stroke="#333333" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/><g><path d="M0,0" stroke="none" stroke-width="0" fill="#9370DB" style=""/><path d="M0,0" stroke="#9370DB" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/></g></g></g>"##,
+                escape_attr(&node.dom_id),
+                fmt(cx),
+                fmt(cy)
+            );
+        }
+        "fork" | "join" => {
+            let _ = write!(
+                out,
+                r##"<g class="{}" id="{}" transform="translate({}, {})"><g><path d="M0,0" stroke="none" stroke-width="0" fill="#333333" style=""/><path d="M0,0" stroke="#333333" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g></g>"##,
+                escape_attr(&node_class),
+                escape_attr(&node.dom_id),
+                fmt(cx),
+                fmt(cy)
+            );
+        }
+        "note" => {
+            let label = state_node_label_text(node);
+            let metrics = ctx.measurer.measure_wrapped(
+                &label,
+                &ctx.text_style,
+                Some(200.0),
+                WrapMode::HtmlLike,
+            );
+            let lw = metrics.width.max(0.0);
+            let lh = metrics.height.max(0.0);
+            let _ = write!(
+                out,
+                r##"<g class="{}" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="M0,0" stroke="none" stroke-width="0" fill="#fff5ad"/><path d="M0,0" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">{}</div></foreignObject></g></g>"##,
+                escape_attr(&node_class),
+                escape_attr(&node.dom_id),
+                fmt(cx),
+                fmt(cy),
+                fmt(-lw / 2.0),
+                fmt(-lh / 2.0),
+                fmt(lw),
+                fmt(lh),
+                state_node_label_html(&label)
+            );
+        }
+        "rectWithTitle" => {
+            let title = node
+                .label
+                .as_ref()
+                .map(state_value_to_label_text)
+                .unwrap_or_else(|| node.id.clone());
+            let desc = node
+                .description
+                .as_ref()
+                .map(|v| v.join("\n"))
+                .unwrap_or_default();
+            let title_metrics =
+                ctx.measurer
+                    .measure_wrapped(&title, &ctx.text_style, None, WrapMode::HtmlLike);
+            let desc_metrics =
+                ctx.measurer
+                    .measure_wrapped(&desc, &ctx.text_style, None, WrapMode::HtmlLike);
+            let _ = write!(
+                out,
+                r#"<g class="{}" id="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="" x="{}" y="{}" width="{}" height="{}"/><line class="divider" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="" transform="translate({}, {})"><foreignObject width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;">{}</div></foreignObject><foreignObject width="{}" height="{}" transform="translate( 0, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;">{}</div></foreignObject></g></g>"#,
+                escape_attr(&node_class),
+                escape_attr(&node.dom_id),
+                fmt(cx),
+                fmt(cy),
+                fmt(-w / 2.0),
+                fmt(-h / 2.0),
+                fmt(w),
+                fmt(h),
+                fmt(-w / 2.0),
+                fmt(w / 2.0),
+                fmt(0.0),
+                fmt(0.0),
+                fmt(-w / 2.0),
+                fmt(-h / 2.0),
+                fmt(title_metrics.width.max(0.0)),
+                fmt(title_metrics.height.max(0.0)),
+                fmt((w - title_metrics.width.max(0.0)) / 2.0),
+                state_node_label_inline_html(&title),
+                fmt(desc_metrics.width.max(0.0)),
+                fmt(desc_metrics.height.max(0.0)),
+                fmt(title_metrics.height.max(0.0) + 9.0),
+                state_node_label_inline_html(&desc)
+            );
+        }
+        _ => {
+            let label = state_node_label_text(node);
+            let metrics = ctx.measurer.measure_wrapped(
+                &label,
+                &ctx.text_style,
+                Some(200.0),
+                WrapMode::HtmlLike,
+            );
+            let lw = metrics.width.max(0.0);
+            let lh = metrics.height.max(0.0);
+
+            let link = ctx.links.get(node_id);
+            let link_open = if let Some(link) = link {
+                let url = link.url.trim();
+                if url.is_empty() {
+                    String::new()
+                } else {
+                    let title_attr = if !link.tooltip.trim().is_empty() {
+                        format!(r#" title="{}""#, escape_attr(link.tooltip.trim()))
+                    } else {
+                        String::new()
+                    };
+                    format!(r#"<a xlink:href="{}"{}>"#, escape_attr(url), title_attr)
+                }
+            } else {
+                String::new()
+            };
+            let link_close = if link_open.is_empty() { "" } else { "</a>" };
+
+            out.push_str(&format!(
+                r##"<g class="{}" id="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="M0,0" stroke="none" stroke-width="0" fill="#ECECFF" style=""/><path d="M0,0" stroke="#9370DB" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>{}<g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">{}</div></foreignObject></g>{}</g>"##,
+                escape_attr(&node_class),
+                escape_attr(&node.dom_id),
+                fmt(cx),
+                fmt(cy),
+                link_open,
+                fmt(-lw / 2.0),
+                fmt(-lh / 2.0),
+                fmt(lw),
+                fmt(lh),
+                state_node_label_html(&label),
+                link_close
+            ));
+        }
+    }
 }
 
 pub fn render_state_diagram_v2_debug_svg(

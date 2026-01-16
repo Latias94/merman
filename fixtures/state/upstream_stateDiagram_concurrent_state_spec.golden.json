@@ -129,7 +129,7 @@
         "labelType": "text",
         "labelpos": "c",
         "look": "classic",
-        "start": "divider-id-1_start",
+        "start": "id-38dvt516gkfs-1_start",
         "style": "fill:none",
         "thickness": "normal"
       },
@@ -189,7 +189,7 @@
       },
       {
         "centerLabel": true,
-        "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
+        "cssClasses": "statediagram-state statediagram-cluster",
         "cssCompiledStyles": [],
         "cssStyles": [],
         "dir": "TB",
@@ -208,11 +208,11 @@
       },
       {
         "centerLabel": true,
-        "cssClasses": "statediagram-state statediagram-cluster",
+        "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
         "cssCompiledStyles": [],
         "cssStyles": [],
         "dir": "TB",
-        "domId": "state-divider-id-1-7",
+        "domId": "state-divider-id-1-1",
         "id": "divider-id-1",
         "isGroup": true,
         "label": "",
@@ -231,7 +231,7 @@
         "cssCompiledStyles": [],
         "cssStyles": [],
         "dir": null,
-        "domId": "state-divider-id-1_start-7",
+        "domId": "state-divider-id-1_start-1",
         "id": "divider-id-1_start",
         "isGroup": false,
         "label": "divider-id-1_start",
@@ -284,7 +284,7 @@
       },
       {
         "centerLabel": true,
-        "cssClasses": "statediagram-state statediagram-cluster",
+        "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
         "cssCompiledStyles": [],
         "cssStyles": [],
         "dir": "TB",
@@ -360,6 +360,44 @@
       },
       {
         "centerLabel": true,
+        "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": "TB",
+        "domId": "state-id-38dvt516gkfs-1-7",
+        "id": "id-38dvt516gkfs-1",
+        "isGroup": true,
+        "label": "",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": "Active",
+        "rx": 10,
+        "ry": 10,
+        "shape": "divider",
+        "type": "group"
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-id-38dvt516gkfs-1_start-7",
+        "id": "id-38dvt516gkfs-1_start",
+        "isGroup": false,
+        "label": "id-38dvt516gkfs-1_start",
+        "labelStyle": "",
+        "look": "classic",
+        "padding": 8,
+        "parentId": "id-38dvt516gkfs-1",
+        "rx": 10,
+        "ry": 10,
+        "shape": "stateStart",
+        "type": null
+      },
+      {
+        "centerLabel": true,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
@@ -371,7 +409,7 @@
         "labelStyle": "",
         "look": "classic",
         "padding": 8,
-        "parentId": "divider-id-1",
+        "parentId": "id-38dvt516gkfs-1",
         "rx": 10,
         "ry": 10,
         "shape": "rect",
@@ -390,7 +428,7 @@
         "labelStyle": "",
         "look": "classic",
         "padding": 8,
-        "parentId": "divider-id-1",
+        "parentId": "id-38dvt516gkfs-1",
         "rx": 10,
         "ry": 10,
         "shape": "rect",
@@ -520,7 +558,7 @@
                 "description": null,
                 "state1": {
                   "classes": [],
-                  "id": "divider-id-1_start",
+                  "id": "id-38dvt516gkfs-1_start",
                   "type": "default"
                 },
                 "state2": {
@@ -559,7 +597,7 @@
                 "stmt": "relation"
               }
             ],
-            "id": "divider-id-1",
+            "id": "id-38dvt516gkfs-1",
             "stmt": "state",
             "type": "divider"
           }

@@ -948,7 +948,7 @@ struct StateDb {
     direction: Option<String>,
     acc_title: Option<String>,
     acc_descr: Option<String>,
-    divider_cnt: usize,
+    generated_id_cnt: usize,
     links: HashMap<String, Link>,
 }
 
@@ -957,9 +957,44 @@ impl StateDb {
         Self::default()
     }
 
-    fn get_divider_id(&mut self) -> String {
-        self.divider_cnt += 1;
-        format!("divider-id-{}", self.divider_cnt)
+    fn generate_id(&mut self) -> String {
+        self.generated_id_cnt += 1;
+        let cnt = self.generated_id_cnt as u64;
+
+        // Mermaid `@11.12.2` uses `Math.random().toString(36).substr(2, 12)` plus a monotonically
+        // increasing counter. We keep the same `id-<base36>-<n>` shape, but generate the middle
+        // segment deterministically to keep snapshots stable.
+        let mut x = cnt ^ 0x9e37_79b9_7f4a_7c15u64;
+        x = x.wrapping_mul(0xbf58_476d_1ce4_e5b9u64);
+        x ^= x >> 32;
+        x = x.wrapping_mul(0x94d0_49bb_1331_11ebu64);
+        x ^= x >> 32;
+
+        fn to_base36(mut v: u64) -> String {
+            const DIGITS: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyz";
+            if v == 0 {
+                return "0".to_string();
+            }
+            let mut buf = [0u8; 32];
+            let mut i = buf.len();
+            while v > 0 {
+                let rem = (v % 36) as usize;
+                v /= 36;
+                i -= 1;
+                buf[i] = DIGITS[rem];
+            }
+            String::from_utf8_lossy(&buf[i..]).to_string()
+        }
+
+        let mut mid = to_base36(x);
+        if mid.len() < 12 {
+            let pad = "0".repeat(12 - mid.len());
+            mid = format!("{pad}{mid}");
+        } else if mid.len() > 12 {
+            mid = mid[mid.len() - 12..].to_string();
+        }
+
+        format!("id-{mid}-{}", self.generated_id_cnt)
     }
 
     fn set_root_doc(&mut self, mut doc: Vec<Stmt>) {
@@ -996,7 +1031,7 @@ impl StateDb {
         }
 
         if saw_divider && !current.is_empty() {
-            let mut divider = StateStmt::new_typed(self.get_divider_id(), "divider");
+            let mut divider = StateStmt::new_typed(self.generate_id(), "divider");
             divider.doc = Some(std::mem::take(&mut current));
             out.push(Stmt::State(divider));
         }
@@ -1039,7 +1074,7 @@ impl StateDb {
         self.direction = None;
         self.acc_title = None;
         self.acc_descr = None;
-        self.divider_cnt = 0;
+        self.generated_id_cnt = 0;
         self.links.clear();
 
         let stmts = self.root_doc.clone();
@@ -1840,7 +1875,7 @@ fn build_layout_data(
         &mut edges,
         &mut node_db,
         &mut graph_item_count,
-        true,
+        false,
     )?;
 
     // Post-process label arrays into (label, description) like Mermaid's StateDB.extract().

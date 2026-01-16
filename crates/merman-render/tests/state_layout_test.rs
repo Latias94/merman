@@ -158,18 +158,48 @@ fn state_layout_composite_and_dividers_contain_children() {
     let active = cluster_by_id["Active"];
     let div1 = cluster_by_id["divider-id-1"];
     let div2 = cluster_by_id["divider-id-2"];
+    let div3_id = cluster_by_id
+        .keys()
+        .copied()
+        .find(|id| id.starts_with("id-"))
+        .expect("expected generated divider id (id-*)");
+    let div3 = cluster_by_id[div3_id];
 
     let active_rect = rect_from_cluster(active);
     let div1_rect = rect_from_cluster(div1);
     let div2_rect = rect_from_cluster(div2);
+    let div3_rect = rect_from_cluster(div3);
 
     assert!(rect_contains(active_rect, div1_rect, 1e-6));
     assert!(rect_contains(active_rect, div2_rect, 1e-6));
+    assert!(rect_contains(active_rect, div3_rect, 1e-6));
 
     let num_lock_off = node_by_id["NumLockOff"];
     let num_lock_on = node_by_id["NumLockOn"];
     assert!(rect_contains(div1_rect, rect_from_node(num_lock_off), 1e-6));
     assert!(rect_contains(div1_rect, rect_from_node(num_lock_on), 1e-6));
+
+    let caps_lock_off = node_by_id["CapsLockOff"];
+    let caps_lock_on = node_by_id["CapsLockOn"];
+    assert!(rect_contains(
+        div2_rect,
+        rect_from_node(caps_lock_off),
+        1e-6
+    ));
+    assert!(rect_contains(div2_rect, rect_from_node(caps_lock_on), 1e-6));
+
+    let scroll_lock_off = node_by_id["ScrollLockOff"];
+    let scroll_lock_on = node_by_id["ScrollLockOn"];
+    assert!(rect_contains(
+        div3_rect,
+        rect_from_node(scroll_lock_off),
+        1e-6
+    ));
+    assert!(rect_contains(
+        div3_rect,
+        rect_from_node(scroll_lock_on),
+        1e-6
+    ));
 }
 
 #[test]

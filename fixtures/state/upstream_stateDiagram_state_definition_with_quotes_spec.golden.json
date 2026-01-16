@@ -262,7 +262,7 @@
       },
       {
         "centerLabel": true,
-        "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
+        "cssClasses": "statediagram-state statediagram-cluster",
         "cssCompiledStyles": [],
         "cssStyles": [],
         "dir": "TB",

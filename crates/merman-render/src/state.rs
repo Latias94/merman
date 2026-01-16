@@ -119,7 +119,7 @@ fn value_to_label_text(v: &Value) -> String {
     }
 }
 
-fn state_text_style(effective_config: &Value) -> TextStyle {
+pub(crate) fn state_text_style(effective_config: &Value) -> TextStyle {
     // Mermaid's state diagram CSS uses 10px by default; model it via `state.textHeight`.
     let font_size = config_f64(effective_config, &["state", "textHeight"]).unwrap_or(10.0);
     TextStyle {
