@@ -2173,9 +2173,9 @@ fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str)
         &dependency,
         "6",
         "7",
-        "70",
-        "28",
-        "M 1,1 L1,13 L6,7 Z",
+        "190",
+        "240",
+        "M 5,7 L9,13 L1,7 L9,1 Z",
     );
     marker_path(
         out,
@@ -2187,7 +2187,7 @@ fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str)
         "7",
         "20",
         "28",
-        "M 1,1 L1,13 L13,7 Z",
+        "M 18,7 L9,13 L14,7 L9,1 Z",
     );
 
     marker_circle(
@@ -2196,7 +2196,7 @@ fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str)
         diagram_marker_class,
         "lollipopStart",
         &lollipop,
-        "18",
+        "13",
         "7",
         "190",
         "240",
@@ -2214,12 +2214,19 @@ fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str)
     );
 }
 
-fn class_edge_dom_id(edge: &crate::model::LayoutEdge) -> String {
+fn class_edge_dom_id(
+    edge: &crate::model::LayoutEdge,
+    relation_index_by_id: &std::collections::HashMap<&str, usize>,
+) -> String {
     if edge.id.starts_with("edgeNote") {
         return edge.id.clone();
     }
     // Mermaid uses `getEdgeId` with prefix `id`.
-    format!("id_{}_{}_1", edge.from, edge.to)
+    let idx = relation_index_by_id
+        .get(edge.id.as_str())
+        .copied()
+        .unwrap_or(1);
+    format!("id_{}_{}_{}", edge.from, edge.to, idx)
 }
 
 fn class_edge_pattern(line_type: i32) -> &'static str {
@@ -2295,6 +2302,115 @@ fn class_decode_entities_minimal(text: &str) -> String {
         .replace("&amp;", "&")
         .replace("&quot;", "\"")
         .replace("&#39;", "'")
+}
+
+fn splitmix64_next(state: &mut u64) -> u64 {
+    // Deterministic PRNG for "rough-like" stroke paths.
+    // (We do not use OS randomness to keep SVG output stable.)
+    *state = state.wrapping_add(0x9E3779B97F4A7C15);
+    let mut z = *state;
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
+    z ^ (z >> 31)
+}
+
+fn splitmix64_f64(state: &mut u64) -> f64 {
+    let v = splitmix64_next(state);
+    // Convert to [0,1).
+    (v as f64) / ((u64::MAX as f64) + 1.0)
+}
+
+fn class_rough_seed(diagram_id: &str, dom_id: &str) -> u64 {
+    // FNV-1a 64-bit.
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in diagram_id.as_bytes().iter().chain(dom_id.as_bytes().iter()) {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
+}
+
+fn class_rough_line_double_path(x1: f64, y1: f64, x2: f64, y2: f64, mut seed: u64) -> String {
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+
+    fn make_pair(seed: &mut u64, a0: f64, a1: f64, b0: f64, b1: f64) -> (f64, f64) {
+        let mut a = a0 + (a1 - a0) * splitmix64_f64(seed);
+        let mut b = b0 + (b1 - b0) * splitmix64_f64(seed);
+        if a > b {
+            std::mem::swap(&mut a, &mut b);
+        }
+        (a, b)
+    }
+
+    let (t1, t2) = make_pair(&mut seed, 0.20, 0.50, 0.55, 0.90);
+    let (t3, t4) = make_pair(&mut seed, 0.15, 0.55, 0.40, 0.95);
+
+    let c1x = x1 + dx * t1;
+    let c1y = y1 + dy * t1;
+    let c2x = x1 + dx * t2;
+    let c2y = y1 + dy * t2;
+
+    let c3x = x1 + dx * t3;
+    let c3y = y1 + dy * t3;
+    let c4x = x1 + dx * t4;
+    let c4y = y1 + dy * t4;
+
+    format!(
+        "M{} {} C{} {}, {} {}, {} {} M{} {} C{} {}, {} {}, {} {}",
+        fmt(x1),
+        fmt(y1),
+        fmt(c1x),
+        fmt(c1y),
+        fmt(c2x),
+        fmt(c2y),
+        fmt(x2),
+        fmt(y2),
+        fmt(x1),
+        fmt(y1),
+        fmt(c3x),
+        fmt(c3y),
+        fmt(c4x),
+        fmt(c4y),
+        fmt(x2),
+        fmt(y2),
+    )
+}
+
+fn class_rough_rect_stroke_path(left: f64, top: f64, width: f64, height: f64, seed: u64) -> String {
+    let right = left + width;
+    let bottom = top + height;
+
+    let mut out = String::new();
+    out.push_str(&class_rough_line_double_path(
+        left,
+        top,
+        right,
+        top,
+        seed ^ 0x01,
+    ));
+    out.push_str(&class_rough_line_double_path(
+        right,
+        top,
+        right,
+        bottom,
+        seed ^ 0x02,
+    ));
+    out.push_str(&class_rough_line_double_path(
+        right,
+        bottom,
+        left,
+        bottom,
+        seed ^ 0x03,
+    ));
+    out.push_str(&class_rough_line_double_path(
+        left,
+        bottom,
+        left,
+        top,
+        seed ^ 0x04,
+    ));
+    out
 }
 
 pub fn render_class_diagram_v2_svg(
@@ -2397,6 +2513,11 @@ pub fn render_class_diagram_v2_svg(
     for r in &model.relations {
         relations_by_id.insert(r.id.as_str(), r);
     }
+    let mut relation_index_by_id: std::collections::HashMap<&str, usize> =
+        std::collections::HashMap::new();
+    for (idx, r) in model.relations.iter().enumerate() {
+        relation_index_by_id.insert(r.id.as_str(), idx + 1);
+    }
 
     let mut note_by_id: std::collections::HashMap<&str, &ClassSvgNote> =
         std::collections::HashMap::new();
@@ -2438,7 +2559,7 @@ pub fn render_class_diagram_v2_svg(
             continue;
         }
 
-        let dom_id = class_edge_dom_id(e);
+        let dom_id = class_edge_dom_id(e, &relation_index_by_id);
         let d = curve_basis_path_d(&e.points);
         let points_b64 = base64::engine::general_purpose::STANDARD
             .encode(serde_json::to_vec(&e.points).unwrap_or_default());
@@ -2494,7 +2615,7 @@ pub fn render_class_diagram_v2_svg(
     // Edge labels + terminals.
     out.push_str(r#"<g class="edgeLabels">"#);
     for e in &edges {
-        let dom_id = class_edge_dom_id(e);
+        let dom_id = class_edge_dom_id(e, &relation_index_by_id);
         let label_text = if e.id.starts_with("edgeNote") {
             String::new()
         } else {
@@ -2617,9 +2738,16 @@ pub fn render_class_diagram_v2_svg(
             let top = -h / 2.0;
             let label_x = -fo_w / 2.0;
             let label_y = -fo_h / 2.0;
+            let note_stroke_d = class_rough_rect_stroke_path(
+                left,
+                top,
+                w,
+                h,
+                class_rough_seed(diagram_id, &note.id),
+            );
             let _ = write!(
                 &mut out,
-                r##"<g class="node undefined" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="M{} {} L{} {} L{} {} L{} {} Z" stroke="none" stroke-width="0" fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/><path d="M{} {} L{} {} L{} {} L{} {} Z" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/></g><g class="label" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="text-align: center; white-space: nowrap; display: table-cell; line-height: 1.5; max-width: 200px;" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"##,
+                r##"<g class="node undefined" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/></g><g class="label" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="text-align: center; white-space: nowrap; display: table-cell; line-height: 1.5; max-width: 200px;" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"##,
                 escape_attr(&note.id),
                 fmt(n.x),
                 fmt(n.y),
@@ -2631,14 +2759,7 @@ pub fn render_class_diagram_v2_svg(
                 fmt(top + h),
                 fmt(left),
                 fmt(top + h),
-                fmt(left),
-                fmt(top),
-                fmt(left + w),
-                fmt(top),
-                fmt(left + w),
-                fmt(top + h),
-                fmt(left),
-                fmt(top + h),
+                escape_attr(&note_stroke_d),
                 fmt(label_x),
                 fmt(label_y),
                 fmt(fo_w),
@@ -2715,9 +2836,10 @@ pub fn render_class_diagram_v2_svg(
         let h = n.height.max(1.0);
         let left = -w / 2.0;
         let top = -h / 2.0;
+        let rough_seed = class_rough_seed(diagram_id, &node.dom_id);
         let _ = write!(
             &mut out,
-            r#"<path d="M{} {} L{} {} L{} {} L{} {} Z" stroke="none" stroke-width="0" fill="{}" style=""/>"#,
+            r#"<path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="{}" style=""/>"#,
             fmt(left),
             fmt(top),
             fmt(left + w),
@@ -2728,17 +2850,11 @@ pub fn render_class_diagram_v2_svg(
             fmt(top + h),
             escape_attr(node_fill)
         );
+        let stroke_d = class_rough_rect_stroke_path(left, top, w, h, rough_seed);
         let _ = write!(
             &mut out,
-            r#"<path d="M{} {} L{} {} L{} {} L{} {} Z" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
-            fmt(left),
-            fmt(top),
-            fmt(left + w),
-            fmt(top),
-            fmt(left + w),
-            fmt(top + h),
-            fmt(left),
-            fmt(top + h),
+            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
+            escape_attr(&stroke_d),
             escape_attr(node_stroke),
             escape_attr(node_stroke_width),
         );
@@ -2919,13 +3035,11 @@ pub fn render_class_diagram_v2_svg(
         // Dividers (always present in Mermaid output).
         for y in [divider1_y, divider2_y] {
             out.push_str(r#"<g class="divider" style="">"#);
+            let d = class_rough_line_double_path(left, y, left + w, y, rough_seed ^ 0x55);
             let _ = write!(
                 &mut out,
-                r#"<path d="M{} {} L{} {}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
-                fmt(left),
-                fmt(y),
-                fmt(left + w),
-                fmt(y),
+                r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
+                escape_attr(&d),
                 escape_attr(node_stroke),
                 escape_attr(node_stroke_width),
             );

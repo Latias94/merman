@@ -146,7 +146,9 @@ output (DOM signature comparison; upstream is not byte-stable):
 Generate a report comparing upstream classDiagram SVGs and the current Rust Stage-B classDiagram
 output (DOM signature comparison; Stage-B is still being brought up):
 
-- `cargo run -p xtask -- compare-class-svgs --dom-mode structure --dom-decimals 3`
+- `cargo run -p xtask -- compare-class-svgs --dom-mode parity --dom-decimals 3`
+- Use the looser, structure-only mode while iterating on DOM shape:
+  - `cargo run -p xtask -- compare-class-svgs --dom-mode structure --dom-decimals 3`
 
 Notes:
 
