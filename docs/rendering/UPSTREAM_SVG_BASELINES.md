@@ -106,9 +106,9 @@ Outputs to:
 
 Generate a report comparing upstream flowchart SVGs and the current Rust Stage-B flowchart output:
 
-- `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3` (default `--dom-mode parity`)
-- Use the looser, structure-only mode while iterating on DOM shape:
-  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode structure --dom-decimals 3`
+- `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3` (default `--dom-mode structure`)
+- Use the stricter, parity-focused mode once edge routing/paths are closer to upstream:
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 ## Generate (StateDiagram Stage B)
 
