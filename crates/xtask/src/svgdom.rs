@@ -369,3 +369,62 @@ pub(crate) fn dom_diff(upstream: &SvgDomNode, local: &SvgDomNode) -> Option<Stri
     let mut path = vec![upstream.name.clone()];
     dom_diff_path(upstream, local, &mut path)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parity_keeps_path_commands_but_masks_numbers() {
+        let svg = r#"<svg width="100" height="100" viewBox="0 0 100 100"><path d="M 10 20 L 30 40"/></svg>"#;
+        let dom = dom_signature(svg, DomMode::Parity, 3).unwrap();
+        assert!(!dom.attrs.contains_key("viewBox"));
+        assert_eq!(dom.children.len(), 1);
+        assert_eq!(dom.children[0].name, "path");
+        assert_eq!(
+            dom.children[0].attrs.get("d").map(|s| s.as_str()),
+            Some("M<n><n>L<n><n>")
+        );
+    }
+
+    #[test]
+    fn parity_masks_relation_path_as_geom() {
+        let svg = r#"<svg><path class="relation" d="M0,0L1,1"/></svg>"#;
+        let dom = dom_signature(svg, DomMode::Parity, 3).unwrap();
+        assert_eq!(
+            dom.children[0].attrs.get("d").map(|s| s.as_str()),
+            Some("<geom>")
+        );
+    }
+
+    #[test]
+    fn structure_normalizes_identifier_tokens_and_ignores_text() {
+        let svg = r#"<svg><g id="foo_12"><text> hi   there </text></g></svg>"#;
+        let dom = dom_signature(svg, DomMode::Structure, 3).unwrap();
+        assert_eq!(
+            dom.children[0].attrs.get("id").map(|s| s.as_str()),
+            Some("foo_<n>")
+        );
+        assert_eq!(dom.children[0].children[0].text, None);
+    }
+
+    #[test]
+    fn non_strict_sorts_children_deterministically() {
+        let a = r#"<svg><g id="b"/><g id="a"/></svg>"#;
+        let b = r#"<svg><g id="a"/><g id="b"/></svg>"#;
+        let sig_a = dom_signature(a, DomMode::Parity, 3).unwrap();
+        let sig_b = dom_signature(b, DomMode::Parity, 3).unwrap();
+        assert_eq!(sig_a, sig_b);
+    }
+
+    #[test]
+    fn parity_masks_geometry_attrs_as_n() {
+        let svg = r#"<svg><rect x="12.3" y="4.56" width="7" height="8"/></svg>"#;
+        let dom = dom_signature(svg, DomMode::Parity, 3).unwrap();
+        let rect = &dom.children[0];
+        assert_eq!(rect.attrs.get("x").map(|s| s.as_str()), Some("<n>"));
+        assert_eq!(rect.attrs.get("y").map(|s| s.as_str()), Some("<n>"));
+        assert_eq!(rect.attrs.get("width").map(|s| s.as_str()), Some("<n>"));
+        assert_eq!(rect.attrs.get("height").map(|s| s.as_str()), Some("<n>"));
+    }
+}
