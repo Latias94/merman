@@ -19,12 +19,22 @@ pub(crate) struct FlowchartV2Model {
     pub class_defs: HashMap<String, Vec<String>>,
     #[serde(default)]
     pub direction: Option<String>,
+    #[serde(default, rename = "edgeDefaults")]
+    pub edge_defaults: Option<FlowEdgeDefaults>,
     pub nodes: Vec<FlowNode>,
     pub edges: Vec<FlowEdge>,
     #[serde(default)]
     pub subgraphs: Vec<FlowSubgraph>,
     #[serde(default)]
     pub tooltips: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct FlowEdgeDefaults {
+    #[serde(default)]
+    pub interpolate: Option<String>,
+    #[serde(default)]
+    pub style: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -59,6 +69,8 @@ pub(crate) struct FlowEdge {
     pub edge_type: Option<String>,
     #[serde(default)]
     pub stroke: Option<String>,
+    #[serde(default)]
+    pub interpolate: Option<String>,
     #[serde(default)]
     pub classes: Vec<String>,
     #[serde(default)]

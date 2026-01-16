@@ -341,6 +341,13 @@ pub fn render_flowchart_v2_svg(
     out.push_str("<g>");
     flowchart_markers(&mut out, diagram_id);
 
+    let default_edge_interpolate = model
+        .edge_defaults
+        .as_ref()
+        .and_then(|d| d.interpolate.as_deref())
+        .unwrap_or("basis")
+        .to_string();
+
     let ctx = FlowchartRenderCtx {
         diagram_id: diagram_id.to_string(),
         tx,
@@ -350,6 +357,7 @@ pub fn render_flowchart_v2_svg(
         class_defs: model.class_defs.clone(),
         node_border_color,
         node_fill_color,
+        default_edge_interpolate,
         node_order,
         subgraph_order,
         nodes_by_id,
@@ -4413,6 +4421,123 @@ fn er_unified_marker_id(diagram_id: &str, diagram_type: &str, legacy_marker: &st
     format!("{diagram_id}_{diagram_type}-{marker_type}{suffix}")
 }
 
+// Ported from D3 `curveLinear` (d3-shape v3.x).
+fn curve_linear_path_d(points: &[crate::model::LayoutPoint]) -> String {
+    let mut out = String::new();
+    let Some(first) = points.first() else {
+        return out;
+    };
+    let _ = write!(&mut out, "M {},{}", fmt(first.x), fmt(first.y));
+    for p in points.iter().skip(1) {
+        let _ = write!(&mut out, " L {},{}", fmt(p.x), fmt(p.y));
+    }
+    out
+}
+
+// Ported from D3 `curveStepAfter` (d3-shape v3.x).
+fn curve_step_after_path_d(points: &[crate::model::LayoutPoint]) -> String {
+    let mut out = String::new();
+    let Some(first) = points.first() else {
+        return out;
+    };
+    let mut prev_y = first.y;
+    let _ = write!(&mut out, "M {},{}", fmt(first.x), fmt(first.y));
+    for p in points.iter().skip(1) {
+        let _ = write!(&mut out, " L {},{}", fmt(p.x), fmt(prev_y));
+        let _ = write!(&mut out, " L {},{}", fmt(p.x), fmt(p.y));
+        prev_y = p.y;
+    }
+    out
+}
+
+// Ported from D3 `curveCardinal` (d3-shape v3.x).
+fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tension: f64) -> String {
+    let mut out = String::new();
+    if points.is_empty() {
+        return out;
+    }
+
+    let k = (1.0 - tension) / 6.0;
+
+    let mut p = 0u8;
+    let mut x0 = f64::NAN;
+    let mut y0 = f64::NAN;
+    let mut x1 = f64::NAN;
+    let mut y1 = f64::NAN;
+    let mut x2 = f64::NAN;
+    let mut y2 = f64::NAN;
+
+    fn cardinal_point(
+        out: &mut String,
+        k: f64,
+        x0: f64,
+        y0: f64,
+        x1: f64,
+        y1: f64,
+        x2: f64,
+        y2: f64,
+        x: f64,
+        y: f64,
+    ) {
+        let c1x = x1 + k * (x2 - x0);
+        let c1y = y1 + k * (y2 - y0);
+        let c2x = x2 + k * (x1 - x);
+        let c2y = y2 + k * (y1 - y);
+        let _ = write!(
+            out,
+            " C {},{} {},{} {},{}",
+            fmt(c1x),
+            fmt(c1y),
+            fmt(c2x),
+            fmt(c2y),
+            fmt(x2),
+            fmt(y2)
+        );
+    }
+
+    for pt in points {
+        let x = pt.x;
+        let y = pt.y;
+        match p {
+            0 => {
+                p = 1;
+                let _ = write!(&mut out, "M {},{}", fmt(x), fmt(y));
+            }
+            1 => {
+                p = 2;
+                x1 = x;
+                y1 = y;
+            }
+            2 => {
+                p = 3;
+                cardinal_point(&mut out, k, x0, y0, x1, y1, x2, y2, x, y);
+            }
+            _ => {
+                cardinal_point(&mut out, k, x0, y0, x1, y1, x2, y2, x, y);
+            }
+        }
+
+        x0 = x1;
+        x1 = x2;
+        x2 = x;
+        y0 = y1;
+        y1 = y2;
+        y2 = y;
+    }
+
+    match p {
+        2 => {
+            let _ = write!(&mut out, " L {},{}", fmt(x2), fmt(y2));
+        }
+        3 => {
+            cardinal_point(&mut out, k, x0, y0, x1, y1, x2, y2, x1, y1);
+        }
+        _ => {}
+    }
+
+    out
+}
+
 // Ported from D3 `curveBasis` (d3-shape v3.x), used by Mermaid ER renderer `@11.12.2`.
 fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {
     let mut out = String::new();
@@ -4702,6 +4827,7 @@ struct FlowchartRenderCtx<'a> {
     class_defs: std::collections::HashMap<String, Vec<String>>,
     node_border_color: String,
     node_fill_color: String,
+    default_edge_interpolate: String,
     node_order: Vec<String>,
     subgraph_order: Vec<String>,
     nodes_by_id: std::collections::HashMap<String, crate::flowchart::FlowNode>,
@@ -4725,36 +4851,28 @@ fn flowchart_node_dom_indices(
     model: &crate::flowchart::FlowchartV2Model,
 ) -> std::collections::HashMap<String, usize> {
     let mut out: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-    let mut next: usize = 0;
+    let mut vertex_counter: usize = 0;
 
-    let ensure =
-        |id: &str, out: &mut std::collections::HashMap<String, usize>, next: &mut usize| {
-            if !out.contains_key(id) {
-                out.insert(id.to_string(), *next);
-                *next += 1;
-            }
-        };
+    // Mermaid FlowDB assigns `domId` when a vertex is first created, but increments the internal
+    // `vertexCounter` on every `addVertex(...)` call (even for repeated references). This means the
+    // domId suffix depends on the full "first-use" order + repeat uses.
+    let touch = |id: &str, out: &mut std::collections::HashMap<String, usize>, c: &mut usize| {
+        if !out.contains_key(id) {
+            out.insert(id.to_string(), *c);
+        }
+        *c += 1;
+    };
 
     for e in &model.edges {
-        ensure(&e.from, &mut out, &mut next);
-        if flowchart_edge_label_is_non_empty(e) {
-            next += 1;
-        }
-        ensure(&e.to, &mut out, &mut next);
+        touch(&e.from, &mut out, &mut vertex_counter);
+        touch(&e.to, &mut out, &mut vertex_counter);
     }
 
     for n in &model.nodes {
-        ensure(&n.id, &mut out, &mut next);
+        touch(&n.id, &mut out, &mut vertex_counter);
     }
 
     out
-}
-
-fn flowchart_edge_label_is_non_empty(edge: &crate::flowchart::FlowEdge) -> bool {
-    edge.label
-        .as_deref()
-        .map(|s| !s.trim().is_empty())
-        .unwrap_or(false)
 }
 
 fn flowchart_css(
@@ -5417,7 +5535,17 @@ fn render_flowchart_edge_path(
         .cloned()
         .collect();
     let line_data = flowchart_fix_corners(&line_data);
-    let d = curve_basis_path_d(&line_data);
+    let interpolate = edge
+        .interpolate
+        .as_deref()
+        .unwrap_or(ctx.default_edge_interpolate.as_str());
+    let d = match interpolate {
+        "linear" => curve_linear_path_d(&line_data),
+        "stepAfter" => curve_step_after_path_d(&line_data),
+        "cardinal" => curve_cardinal_path_d(&line_data, 0.0),
+        // Mermaid defaults to `basis` for flowchart edges.
+        _ => curve_basis_path_d(&line_data),
+    };
 
     let points_json = serde_json::to_string(&local_points).unwrap_or_else(|_| "[]".to_string());
     let points_b64 = base64::engine::general_purpose::STANDARD.encode(points_json);
