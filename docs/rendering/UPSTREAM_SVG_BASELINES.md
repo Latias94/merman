@@ -83,7 +83,7 @@ Generate a small report comparing upstream SVGs and the current Rust Stage-B ER 
   - `cargo run -p xtask -- compare-er-svgs --check-markers`
 - Fail the command if the **SVG DOM** diverges (ignores attribute order/whitespace and rounds
   numeric tokens for comparison):
-  - `cargo run -p xtask -- compare-er-svgs --check-dom --dom-decimals 3`
+  - `cargo run -p xtask -- compare-er-svgs --check-dom --dom-decimals 3` (default `--dom-mode parity`)
   - Use a looser, structure-only mode while iterating on DOM shape (replaces numeric tokens with
     `<n>`, ignores `data-points`, and ignores `<style>` text):
     - `cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode structure --dom-decimals 3`
@@ -106,7 +106,9 @@ Outputs to:
 
 Generate a report comparing upstream flowchart SVGs and the current Rust Stage-B flowchart output:
 
-- `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode structure --dom-decimals 3`
+- `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3` (default `--dom-mode parity`)
+- Use the looser, structure-only mode while iterating on DOM shape:
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode structure --dom-decimals 3`
 
 ## Generate (StateDiagram Stage B)
 

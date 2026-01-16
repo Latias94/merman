@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use regex::Regex;
-use roxmltree::Document;
 
 mod svgdom;
 
@@ -291,7 +290,7 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut check_markers: bool = false;
     let mut check_dom: bool = false;
     let mut dom_decimals: u32 = 3;
-    let mut dom_mode: String = "strict".to_string();
+    let mut dom_mode: String = "parity".to_string();
 
     let mut i = 0;
     while i < args.len() {
@@ -315,7 +314,7 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 dom_mode = args
                     .get(i)
                     .map(|s| s.trim().to_string())
-                    .unwrap_or_else(|| "strict".to_string());
+                    .unwrap_or_else(|| "parity".to_string());
             }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -378,394 +377,7 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let re_marker_id = Regex::new(r#"<marker[^>]*\bid="([^"]+)""#).unwrap();
     let re_marker_ref = Regex::new(r#"marker-(?:start|end)="url\(#([^)]+)\)""#).unwrap();
 
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    struct SvgDomNode {
-        name: String,
-        attrs: std::collections::BTreeMap<String, String>,
-        text: Option<String>,
-        children: Vec<SvgDomNode>,
-    }
-
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    enum DomMode {
-        Strict,
-        Structure,
-        Parity,
-    }
-
-    fn parse_dom_mode(s: &str) -> DomMode {
-        match s {
-            "structure" => DomMode::Structure,
-            "parity" => DomMode::Parity,
-            _ => DomMode::Strict,
-        }
-    }
-
-    fn round_f64(v: f64, decimals: u32) -> f64 {
-        let p = 10_f64.powi(decimals as i32);
-        (v * p).round() / p
-    }
-
-    fn normalize_whitespace(s: &str) -> String {
-        let mut out = String::with_capacity(s.len());
-        let mut last_was_ws = false;
-        for ch in s.chars() {
-            if ch.is_whitespace() {
-                last_was_ws = true;
-                continue;
-            }
-            if last_was_ws && !out.is_empty() {
-                out.push(' ');
-            }
-            last_was_ws = false;
-            out.push(ch);
-        }
-        out.trim().to_string()
-    }
-
-    fn normalize_class_list(s: &str) -> String {
-        let mut parts: Vec<&str> = s.split_whitespace().collect();
-        parts.sort_unstable();
-        parts.dedup();
-        parts.join(" ")
-    }
-
-    fn normalize_css_value(s: &str) -> String {
-        // Keep semantics while reducing whitespace noise.
-        normalize_whitespace(&s.replace('\n', " "))
-    }
-
-    fn re_num() -> &'static Regex {
-        // -12, 12.34, .5, 1e-3, -2.0E+4
-        static ONCE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-        ONCE.get_or_init(|| Regex::new(r"-?(?:\d+\.\d+|\d+\.|\.\d+|\d+)(?:[eE][+-]?\d+)?").unwrap())
-    }
-
-    fn re_css_max_width() -> &'static Regex {
-        static ONCE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-        ONCE.get_or_init(|| Regex::new(r"(?i)max-width\s*:\s*[0-9.]+px").unwrap())
-    }
-
-    fn normalize_numeric_tokens(s: &str, decimals: u32) -> String {
-        // Pragmatic DOM compare: ignore float formatting differences by rounding all numeric tokens.
-        re_num()
-            .replace_all(s, |caps: &regex::Captures<'_>| {
-                let raw = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
-                let Ok(v) = raw.parse::<f64>() else {
-                    return raw.to_string();
-                };
-                let r = round_f64(v, decimals);
-                let r = if r == 0.0 { 0.0 } else { r };
-                let mut out = format!("{r}");
-                if out.contains('.') {
-                    while out.ends_with('0') {
-                        out.pop();
-                    }
-                    if out.ends_with('.') {
-                        out.pop();
-                    }
-                }
-                out
-            })
-            .to_string()
-    }
-
-    fn normalize_numeric_tokens_mode(s: &str, decimals: u32, mode: DomMode) -> String {
-        match mode {
-            DomMode::Strict => normalize_numeric_tokens(s, decimals),
-            DomMode::Structure => re_num().replace_all(s, "<n>").to_string(),
-            DomMode::Parity => normalize_numeric_tokens(s, decimals),
-        }
-    }
-
-    fn strip_css_property(style: &str, key: &str) -> String {
-        // Very small, pragmatic parser for `style="k: v; k2: v2;"` used on the root `<svg>`.
-        let mut out: Vec<String> = Vec::new();
-        for part in style.split(';') {
-            let part = part.trim();
-            if part.is_empty() {
-                continue;
-            }
-            let Some((k, v)) = part.split_once(':') else {
-                continue;
-            };
-            if k.trim().eq_ignore_ascii_case(key) {
-                continue;
-            }
-            out.push(format!("{}: {}", k.trim(), v.trim()));
-        }
-        if out.is_empty() {
-            String::new()
-        } else {
-            format!("{};", out.join("; "))
-        }
-    }
-
-    fn is_geometry_attr(name: &str) -> bool {
-        matches!(
-            name,
-            "viewBox"
-                | "transform"
-                | "d"
-                | "points"
-                | "x"
-                | "y"
-                | "x1"
-                | "y1"
-                | "x2"
-                | "y2"
-                | "cx"
-                | "cy"
-                | "r"
-                | "rx"
-                | "ry"
-                | "width"
-                | "height"
-        )
-    }
-
-    fn normalize_svg_attr(
-        element_name: &str,
-        name: &str,
-        value: &str,
-        decimals: u32,
-        mode: DomMode,
-    ) -> String {
-        match name {
-            "data-points" if mode == DomMode::Structure || mode == DomMode::Parity => {
-                "<data-points>".to_string()
-            }
-            "class" => normalize_class_list(value),
-            "style" => {
-                let v = if mode == DomMode::Parity && element_name == "svg" {
-                    strip_css_property(value, "max-width")
-                } else {
-                    value.to_string()
-                };
-                match mode {
-                    DomMode::Parity => {
-                        // Headless rendering does not currently match upstream max-width heuristics for
-                        // HTML labels. Treat `max-width: <n>px` as geometry noise for parity checks.
-                        let v = if element_name == "div" {
-                            re_css_max_width()
-                                .replace_all(&v, "max-width: <n>px")
-                                .to_string()
-                        } else {
-                            v
-                        };
-                        normalize_css_value(&normalize_numeric_tokens(&v, decimals))
-                    }
-                    DomMode::Strict | DomMode::Structure => {
-                        normalize_css_value(&normalize_numeric_tokens_mode(&v, decimals, mode))
-                    }
-                }
-            }
-            "viewBox" => {
-                if mode == DomMode::Parity {
-                    normalize_whitespace(&normalize_numeric_tokens_mode(
-                        value,
-                        decimals,
-                        DomMode::Structure,
-                    ))
-                } else {
-                    normalize_whitespace(&normalize_numeric_tokens_mode(value, decimals, mode))
-                }
-            }
-            "transform" => {
-                if mode == DomMode::Parity {
-                    normalize_whitespace(&normalize_numeric_tokens_mode(
-                        value,
-                        decimals,
-                        DomMode::Structure,
-                    ))
-                } else {
-                    normalize_whitespace(&normalize_numeric_tokens_mode(value, decimals, mode))
-                }
-            }
-            "d" => {
-                let v = value.replace(',', " ");
-                let m = if mode == DomMode::Parity {
-                    DomMode::Structure
-                } else {
-                    mode
-                };
-                normalize_numeric_tokens_mode(&v, decimals, m)
-                    .chars()
-                    .filter(|c| !c.is_whitespace())
-                    .collect()
-            }
-            "points" => {
-                let v = value.replace(',', " ");
-                let m = if mode == DomMode::Parity {
-                    DomMode::Structure
-                } else {
-                    mode
-                };
-                normalize_numeric_tokens_mode(&v, decimals, m)
-                    .chars()
-                    .filter(|c| !c.is_whitespace())
-                    .collect()
-            }
-            "x" | "y" | "x1" | "y1" | "x2" | "y2" | "cx" | "cy" | "r" | "rx" | "ry" | "width"
-            | "height" | "stroke-width" | "font-size" | "opacity" => {
-                if mode == DomMode::Parity && is_geometry_attr(name) {
-                    normalize_whitespace(&normalize_numeric_tokens_mode(
-                        value,
-                        decimals,
-                        DomMode::Structure,
-                    ))
-                } else {
-                    normalize_whitespace(&normalize_numeric_tokens_mode(value, decimals, mode))
-                }
-            }
-            _ => normalize_whitespace(value),
-        }
-    }
-
-    fn dom_node_from_xml(
-        node: roxmltree::Node<'_, '_>,
-        decimals: u32,
-        mode: DomMode,
-    ) -> Option<SvgDomNode> {
-        if !node.is_element() {
-            return None;
-        }
-        let name = node.tag_name().name().to_string();
-
-        let mut attrs: std::collections::BTreeMap<String, String> =
-            std::collections::BTreeMap::new();
-        for a in node.attributes() {
-            let key = a.name().to_string();
-            let val = normalize_svg_attr(&name, &key, a.value(), decimals, mode);
-            attrs.insert(key, val);
-        }
-
-        if (mode == DomMode::Structure || mode == DomMode::Parity) && name == "style" {
-            return Some(SvgDomNode {
-                name,
-                attrs,
-                text: None,
-                children: Vec::new(),
-            });
-        }
-
-        let mut text: Option<String> = None;
-        for child in node.children() {
-            if child.is_text() {
-                if let Some(t) = child.text() {
-                    let t = normalize_whitespace(t);
-                    if !t.is_empty() {
-                        text = Some(t);
-                        break;
-                    }
-                }
-            }
-        }
-
-        let mut children: Vec<SvgDomNode> = Vec::new();
-        for child in node.children() {
-            if let Some(c) = dom_node_from_xml(child, decimals, mode) {
-                children.push(c);
-            }
-        }
-
-        Some(SvgDomNode {
-            name,
-            attrs,
-            text,
-            children,
-        })
-    }
-
-    fn svg_dom_signature(svg: &str, decimals: u32, mode: DomMode) -> Result<SvgDomNode, String> {
-        let doc = Document::parse(svg).map_err(|e| format!("xml parse failed: {e}"))?;
-        let root = doc.root_element();
-        dom_node_from_xml(root, decimals, mode).ok_or_else(|| "missing root element".to_string())
-    }
-
-    fn truncate(s: &str, max_len: usize) -> String {
-        if s.len() <= max_len {
-            return s.to_string();
-        }
-        let mut out = s
-            .chars()
-            .take(max_len.saturating_sub(1))
-            .collect::<String>();
-        out.push('…');
-        out
-    }
-
-    fn dom_diff_path(
-        upstream: &SvgDomNode,
-        local: &SvgDomNode,
-        path: &mut Vec<String>,
-    ) -> Option<String> {
-        if upstream.name != local.name {
-            return Some(format!(
-                "{}: element name mismatch upstream={} local={}",
-                path.join("/"),
-                upstream.name,
-                local.name
-            ));
-        }
-
-        if upstream.attrs != local.attrs {
-            for (k, v_up) in &upstream.attrs {
-                match local.attrs.get(k) {
-                    None => return Some(format!("{}: missing attr `{k}`", path.join("/"))),
-                    Some(v_lo) if v_lo != v_up => {
-                        return Some(format!(
-                            "{}: attr `{k}` mismatch upstream=`{}` local=`{}`",
-                            path.join("/"),
-                            truncate(v_up, 120),
-                            truncate(v_lo, 120)
-                        ));
-                    }
-                    _ => {}
-                }
-            }
-            for k in local.attrs.keys() {
-                if !upstream.attrs.contains_key(k) {
-                    return Some(format!("{}: extra attr `{k}`", path.join("/")));
-                }
-            }
-            return Some(format!("{}: attrs mismatch", path.join("/")));
-        }
-
-        if upstream.text != local.text {
-            return Some(format!(
-                "{}: text mismatch upstream=`{}` local=`{}`",
-                path.join("/"),
-                truncate(upstream.text.as_deref().unwrap_or(""), 120),
-                truncate(local.text.as_deref().unwrap_or(""), 120)
-            ));
-        }
-
-        if upstream.children.len() != local.children.len() {
-            return Some(format!(
-                "{}: children count mismatch upstream={} local={}",
-                path.join("/"),
-                upstream.children.len(),
-                local.children.len()
-            ));
-        }
-
-        for (idx, (cu, cl)) in upstream
-            .children
-            .iter()
-            .zip(local.children.iter())
-            .enumerate()
-        {
-            path.push(format!("{}[{idx}]", cu.name));
-            let diff = dom_diff_path(cu, cl, path);
-            path.pop();
-            if diff.is_some() {
-                return diff;
-            }
-        }
-
-        None
-    }
+    let mode = svgdom::DomMode::parse(&dom_mode);
 
     #[derive(Default)]
     struct SvgSig {
@@ -949,40 +561,31 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
         let mut dom_ok = true;
         let dom_ok_str = if check_dom {
-            let dom_mode_parsed = parse_dom_mode(dom_mode.as_str());
-            let upstream_dom = match svg_dom_signature(&upstream_svg, dom_decimals, dom_mode_parsed)
-            {
-                Ok(v) => v,
+            let upstream_dom = match svgdom::dom_signature(&upstream_svg, mode, dom_decimals) {
+                Ok(v) => Some(v),
                 Err(err) => {
                     dom_ok = false;
                     dom_failures.push(format!("dom parse failed (upstream) for {stem}: {err}"));
-                    SvgDomNode {
-                        name: "<parse-failed>".to_string(),
-                        attrs: Default::default(),
-                        text: None,
-                        children: vec![],
-                    }
+                    None
                 }
             };
-            let local_dom = match svg_dom_signature(&local_svg, dom_decimals, dom_mode_parsed) {
-                Ok(v) => v,
+            let local_dom = match svgdom::dom_signature(&local_svg, mode, dom_decimals) {
+                Ok(v) => Some(v),
                 Err(err) => {
                     dom_ok = false;
                     dom_failures.push(format!("dom parse failed (local) for {stem}: {err}"));
-                    SvgDomNode {
-                        name: "<parse-failed>".to_string(),
-                        attrs: Default::default(),
-                        text: None,
-                        children: vec![],
-                    }
+                    None
                 }
             };
 
             if dom_ok {
-                let mut path = vec!["svg".to_string()];
-                if let Some(diff) = dom_diff_path(&upstream_dom, &local_dom, &mut path) {
-                    dom_ok = false;
-                    dom_failures.push(format!("{stem}: {diff}"));
+                if let (Some(upstream_dom), Some(local_dom)) =
+                    (upstream_dom.as_ref(), local_dom.as_ref())
+                {
+                    if let Some(diff) = svgdom::dom_diff(upstream_dom, local_dom) {
+                        dom_ok = false;
+                        dom_failures.push(format!("{stem}: {diff}"));
+                    }
                 }
             }
 
@@ -3184,7 +2787,7 @@ fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut filter: Option<String> = None;
     let mut check_dom: bool = false;
     let mut dom_decimals: u32 = 3;
-    let mut dom_mode: String = "structure".to_string();
+    let mut dom_mode: String = "parity".to_string();
 
     let mut i = 0;
     while i < args.len() {
@@ -3207,7 +2810,7 @@ fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 dom_mode = args
                     .get(i)
                     .map(|s| s.trim().to_string())
-                    .unwrap_or_else(|| "structure".to_string());
+                    .unwrap_or_else(|| "parity".to_string());
             }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -3274,226 +2877,7 @@ fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         source,
     })?;
 
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    struct SvgDomNode {
-        name: String,
-        attrs: std::collections::BTreeMap<String, String>,
-        text: Option<String>,
-        children: Vec<SvgDomNode>,
-    }
-
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    enum DomMode {
-        Strict,
-        Structure,
-        Parity,
-    }
-
-    fn parse_dom_mode(s: &str) -> DomMode {
-        match s {
-            "strict" => DomMode::Strict,
-            "parity" => DomMode::Parity,
-            _ => DomMode::Structure,
-        }
-    }
-
-    fn round_f64(v: f64, decimals: u32) -> f64 {
-        let p = 10_f64.powi(decimals as i32);
-        (v * p).round() / p
-    }
-
-    fn re_num() -> &'static Regex {
-        static ONCE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-        ONCE.get_or_init(|| Regex::new(r"-?(?:\d+\.\d+|\d+\.|\.\d+|\d+)(?:[eE][+-]?\d+)?").unwrap())
-    }
-
-    fn normalize_numeric_tokens(s: &str, decimals: u32) -> String {
-        re_num()
-            .replace_all(s, |caps: &regex::Captures<'_>| {
-                let raw = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
-                let Ok(v) = raw.parse::<f64>() else {
-                    return raw.to_string();
-                };
-                let r = round_f64(v, decimals);
-                let r = if r == 0.0 { 0.0 } else { r };
-                let mut out = format!("{r}");
-                if out.contains('.') {
-                    while out.ends_with('0') {
-                        out.pop();
-                    }
-                    if out.ends_with('.') {
-                        out.pop();
-                    }
-                }
-                out
-            })
-            .to_string()
-    }
-
-    fn normalize_numeric_tokens_mode(s: &str, decimals: u32, mode: DomMode) -> String {
-        match mode {
-            DomMode::Strict | DomMode::Parity => normalize_numeric_tokens(s, decimals),
-            DomMode::Structure => re_num().replace_all(s, "<n>").to_string(),
-        }
-    }
-
-    fn is_identifier_like_attr(key: &str) -> bool {
-        matches!(
-            key,
-            "id" | "data-id"
-                | "href"
-                | "xlink:href"
-                | "title"
-                | "aria-labelledby"
-                | "aria-describedby"
-                | "aria-label"
-                | "aria-roledescription"
-        )
-    }
-
-    fn re_trailing_counter() -> &'static Regex {
-        static ONCE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-        ONCE.get_or_init(|| Regex::new(r"([_-])\d+$").unwrap())
-    }
-
-    fn normalize_identifier_tokens(s: &str) -> String {
-        re_trailing_counter().replace(s, "$1<n>").to_string()
-    }
-
-    fn normalize_class_list(s: &str) -> String {
-        let mut parts: Vec<&str> = s.split_whitespace().collect();
-        parts.sort_unstable();
-        parts.dedup();
-        parts.join(" ")
-    }
-
-    fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDomNode {
-        let mut attrs: std::collections::BTreeMap<String, String> =
-            std::collections::BTreeMap::new();
-        if n.is_element() {
-            for a in n.attributes() {
-                let key = a.name().to_string();
-                let mut val = a.value().to_string();
-
-                if mode != DomMode::Strict {
-                    if key == "d" || key == "data-points" {
-                        val = "<geom>".to_string();
-                    }
-                    if key == "style" || key == "viewBox" {
-                        // Keep width/height to retain root sizing shape, but ignore the SVG root style/viewBox noise.
-                        if n.tag_name().name() == "svg" {
-                            continue;
-                        }
-                        if key == "style" {
-                            continue;
-                        }
-                    }
-                }
-
-                if key == "class" {
-                    val = normalize_class_list(&val);
-                }
-                if mode == DomMode::Structure && is_identifier_like_attr(&key) {
-                    val = normalize_identifier_tokens(&val);
-                } else {
-                    val = normalize_numeric_tokens_mode(&val, decimals, mode);
-                }
-                attrs.insert(key, val);
-            }
-        }
-
-        let text = n
-            .text()
-            .map(|t| t.split_whitespace().collect::<Vec<_>>().join(" "))
-            .filter(|t| !t.is_empty());
-        let mut children: Vec<SvgDomNode> = Vec::new();
-        for c in n.children().filter(|c| c.is_element()) {
-            children.push(build_node(c, mode, decimals));
-        }
-        if mode != DomMode::Strict {
-            fn find_first_cluster_id(n: &SvgDomNode) -> Option<&str> {
-                if n.name == "g" {
-                    if let Some(class) = n.attrs.get("class") {
-                        if class.split_whitespace().any(|c| c == "cluster") {
-                            if let Some(id) = n.attrs.get("id") {
-                                return Some(id.as_str());
-                            }
-                        }
-                    }
-                }
-                for c in &n.children {
-                    if let Some(id) = find_first_cluster_id(c) {
-                        return Some(id);
-                    }
-                }
-                None
-            }
-
-            fn sort_hint(n: &SvgDomNode) -> &str {
-                if let Some(id) = n.attrs.get("id") {
-                    return id.as_str();
-                }
-                if let Some(id) = n.attrs.get("data-id") {
-                    return id.as_str();
-                }
-                if n.name == "g" {
-                    fn find_first_data_id(n: &SvgDomNode) -> Option<&str> {
-                        if let Some(id) = n.attrs.get("data-id") {
-                            return Some(id.as_str());
-                        }
-                        for c in &n.children {
-                            if let Some(id) = find_first_data_id(c) {
-                                return Some(id);
-                            }
-                        }
-                        None
-                    }
-
-                    if let Some(class) = n.attrs.get("class") {
-                        if class.split_whitespace().any(|c| c == "root") {
-                            if let Some(id) = find_first_cluster_id(n) {
-                                return id;
-                            }
-                        }
-                        if class.split_whitespace().any(|c| c == "edgeLabel") {
-                            if let Some(id) = find_first_data_id(n) {
-                                return id;
-                            }
-                        }
-                    }
-                }
-                ""
-            }
-
-            children.sort_by(|a, b| {
-                let aclass = a.attrs.get("class").map(|s| s.as_str()).unwrap_or("");
-                let bclass = b.attrs.get("class").map(|s| s.as_str()).unwrap_or("");
-                let ahint = sort_hint(a);
-                let bhint = sort_hint(b);
-                a.name
-                    .cmp(&b.name)
-                    .then_with(|| ahint.cmp(bhint))
-                    .then_with(|| aclass.cmp(bclass))
-            });
-        }
-        SvgDomNode {
-            name: n.tag_name().name().to_string(),
-            attrs,
-            text: if mode == DomMode::Strict { text } else { None },
-            children,
-        }
-    }
-
-    fn dom_signature(svg: &str, mode: DomMode, decimals: u32) -> Result<SvgDomNode, String> {
-        let doc = roxmltree::Document::parse(svg).map_err(|e| e.to_string())?;
-        let root = doc
-            .descendants()
-            .find(|n| n.has_tag_name("svg"))
-            .ok_or_else(|| "missing <svg> root".to_string())?;
-        Ok(build_node(root, mode, decimals))
-    }
-
-    let mode = parse_dom_mode(&dom_mode);
+    let mode = svgdom::DomMode::parse(&dom_mode);
 
     let engine = merman::Engine::new();
     let mut report = String::new();
@@ -3585,14 +2969,14 @@ fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         let _ = fs::write(&local_out_path, &local_svg);
 
         if check_dom {
-            let a = match dom_signature(&upstream_svg, mode, dom_decimals) {
+            let a = match svgdom::dom_signature(&upstream_svg, mode, dom_decimals) {
                 Ok(v) => v,
                 Err(err) => {
                     failures.push(format!("upstream dom parse failed for {stem}: {err}"));
                     continue;
                 }
             };
-            let b = match dom_signature(&local_svg, mode, dom_decimals) {
+            let b = match svgdom::dom_signature(&local_svg, mode, dom_decimals) {
                 Ok(v) => v,
                 Err(err) => {
                     failures.push(format!("local dom parse failed for {stem}: {err}"));
@@ -3600,10 +2984,14 @@ fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
             if a != b {
+                let detail = svgdom::dom_diff(&a, &b)
+                    .map(|d| format!(" ({d})"))
+                    .unwrap_or_default();
                 failures.push(format!(
-                    "dom mismatch for {stem}: upstream={} local={}",
+                    "dom mismatch for {stem}: upstream={} local={}{}",
                     upstream_path.display(),
-                    local_out_path.display()
+                    local_out_path.display(),
+                    detail
                 ));
             }
         }
@@ -3645,7 +3033,7 @@ fn compare_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut out_path: Option<PathBuf> = None;
     let mut filter: Option<String> = None;
     let mut dom_decimals: u32 = 3;
-    let mut dom_mode: String = "structure".to_string();
+    let mut dom_mode: String = "parity".to_string();
 
     let mut i = 0;
     while i < args.len() {
