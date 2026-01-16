@@ -212,6 +212,28 @@ pub fn render_flowchart_v2_svg(
         }
     }
 
+    let cluster_ids: std::collections::HashSet<String> =
+        model.subgraphs.iter().map(|s| s.id.clone()).collect();
+    let mut recursive_clusters: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    for sg in model.subgraphs.iter() {
+        if sg.nodes.is_empty() {
+            continue;
+        }
+        let mut external = false;
+        for e in model.edges.iter() {
+            let from_in = flowchart_is_in_cluster(&parent, &cluster_ids, &e.from, &sg.id);
+            let to_in = flowchart_is_in_cluster(&parent, &cluster_ids, &e.to, &sg.id);
+            if from_in != to_in {
+                external = true;
+                break;
+            }
+        }
+        if !external {
+            recursive_clusters.insert(sg.id.clone());
+        }
+    }
+
     let mut layout_nodes_by_id: std::collections::HashMap<String, LayoutNode> =
         std::collections::HashMap::new();
     for n in layout.nodes.iter().cloned() {
@@ -254,18 +276,59 @@ pub fn render_flowchart_v2_svg(
         &model.class_defs,
     );
 
+    let node_border_color = theme_color(effective_config, "nodeBorder", "#9370DB");
+    let node_fill_color = theme_color(effective_config, "mainBkg", "#ECECFF");
+
     let mut out = String::new();
     let w_attr = fmt(vb_w.max(1.0));
     let h_attr = fmt(vb_h.max(1.0));
+
+    let acc_title = model
+        .acc_title
+        .as_deref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
+    let acc_descr = model
+        .acc_descr
+        .as_deref()
+        .map(|s| s.trim_end_matches('\n'))
+        .filter(|s| !s.trim().is_empty());
+    let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
+    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
+
     let _ = write!(
         &mut out,
-        r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" style="max-width: {}px; background-color: white;" viewBox="0 0 {} {}" role="graphics-document document" aria-roledescription="{}">"#,
+        r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" style="max-width: {}px; background-color: white;" viewBox="0 0 {} {}" role="graphics-document document" aria-roledescription="{}"{}{}>"#,
         escape_xml(diagram_id),
         w_attr,
         w_attr,
         h_attr,
-        diagram_type
+        diagram_type,
+        aria_describedby
+            .as_deref()
+            .map(|id| format!(r#" aria-describedby="{}""#, escape_attr(id)))
+            .unwrap_or_default(),
+        aria_labelledby
+            .as_deref()
+            .map(|id| format!(r#" aria-labelledby="{}""#, escape_attr(id)))
+            .unwrap_or_default(),
     );
+    if let (Some(id), Some(title)) = (aria_labelledby.as_deref(), acc_title) {
+        let _ = write!(
+            &mut out,
+            r#"<title id="{}">{}</title>"#,
+            escape_attr(id),
+            escape_xml(title)
+        );
+    }
+    if let (Some(id), Some(descr)) = (aria_describedby.as_deref(), acc_descr) {
+        let _ = write!(
+            &mut out,
+            r#"<desc id="{}">{}</desc>"#,
+            escape_attr(id),
+            escape_xml(descr)
+        );
+    }
     let _ = write!(&mut out, "<style>{}</style>", css);
 
     out.push_str("<g>");
@@ -278,11 +341,15 @@ pub fn render_flowchart_v2_svg(
         diagram_type: diagram_type.to_string(),
         measurer,
         class_defs: model.class_defs.clone(),
+        node_border_color,
+        node_fill_color,
         node_order,
         subgraph_order,
         nodes_by_id,
         edges_by_id,
         subgraphs_by_id,
+        tooltips: model.tooltips.clone(),
+        recursive_clusters,
         parent,
         layout_nodes_by_id,
         layout_edges_by_id,
@@ -2202,11 +2269,15 @@ struct FlowchartRenderCtx<'a> {
     ty: f64,
     measurer: &'a dyn TextMeasurer,
     class_defs: std::collections::HashMap<String, Vec<String>>,
+    node_border_color: String,
+    node_fill_color: String,
     node_order: Vec<String>,
     subgraph_order: Vec<String>,
     nodes_by_id: std::collections::HashMap<String, crate::flowchart::FlowNode>,
     edges_by_id: std::collections::HashMap<String, crate::flowchart::FlowEdge>,
     subgraphs_by_id: std::collections::HashMap<String, crate::flowchart::FlowSubgraph>,
+    tooltips: std::collections::HashMap<String, String>,
+    recursive_clusters: std::collections::HashSet<String>,
     parent: std::collections::HashMap<String, String>,
     layout_nodes_by_id: std::collections::HashMap<String, LayoutNode>,
     layout_edges_by_id: std::collections::HashMap<String, crate::model::LayoutEdge>,
@@ -2462,13 +2533,47 @@ fn flowchart_markers(out: &mut String, diagram_id: &str) {
     );
 }
 
+fn flowchart_is_in_cluster(
+    parent: &std::collections::HashMap<String, String>,
+    _cluster_ids: &std::collections::HashSet<String>,
+    node_id: &str,
+    cluster_id: &str,
+) -> bool {
+    if node_id == cluster_id {
+        return true;
+    }
+    let mut cur: Option<&str> = Some(node_id);
+    while let Some(id) = cur {
+        if id == cluster_id {
+            return true;
+        }
+        cur = parent.get(id).map(|s| s.as_str());
+    }
+    false
+}
+
+fn flowchart_effective_parent<'a>(ctx: &'a FlowchartRenderCtx<'_>, id: &str) -> Option<&'a str> {
+    let mut cur = ctx.parent.get(id).map(|s| s.as_str());
+    while let Some(p) = cur {
+        if ctx.subgraphs_by_id.contains_key(p) && !ctx.recursive_clusters.contains(p) {
+            cur = ctx.parent.get(p).map(|s| s.as_str());
+            continue;
+        }
+        return Some(p);
+    }
+    None
+}
+
 fn flowchart_root_children_clusters(
     ctx: &FlowchartRenderCtx<'_>,
     parent_cluster: Option<&str>,
 ) -> Vec<String> {
     let mut out = Vec::new();
     for (id, _) in &ctx.subgraphs_by_id {
-        let parent = ctx.parent.get(id).map(|s| s.as_str());
+        if !ctx.recursive_clusters.contains(id) {
+            continue;
+        }
+        let parent = flowchart_effective_parent(ctx, id.as_str());
         if parent == parent_cluster {
             out.push(id.clone());
         }
@@ -2500,7 +2605,7 @@ fn flowchart_root_children_nodes(
         if cluster_ids.contains(id.as_str()) {
             continue;
         }
-        let parent = ctx.parent.get(id).map(|s| s.as_str());
+        let parent = flowchart_effective_parent(ctx, id.as_str());
         if parent == parent_cluster {
             out.push(n.id.clone());
         }
@@ -2519,18 +2624,18 @@ fn flowchart_root_children_nodes(
 
 fn flowchart_lca(ctx: &FlowchartRenderCtx<'_>, a: &str, b: &str) -> Option<String> {
     let mut ancestors: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut cur = ctx.parent.get(a).cloned();
+    let mut cur = flowchart_effective_parent(ctx, a).map(|s| s.to_string());
     while let Some(p) = cur {
         ancestors.insert(p.clone());
-        cur = ctx.parent.get(&p).cloned();
+        cur = flowchart_effective_parent(ctx, &p).map(|s| s.to_string());
     }
 
-    let mut cur = ctx.parent.get(b).cloned();
+    let mut cur = flowchart_effective_parent(ctx, b).map(|s| s.to_string());
     while let Some(p) = cur {
         if ancestors.contains(&p) {
             return Some(p);
         }
-        cur = ctx.parent.get(&p).cloned();
+        cur = flowchart_effective_parent(ctx, &p).map(|s| s.to_string());
     }
     None
 }
@@ -2576,14 +2681,33 @@ fn render_flowchart_root(
 
     let _ = write!(out, r#"<g class="root"{}>"#, transform_attr);
 
+    let mut clusters_to_draw: Vec<&LayoutCluster> = Vec::new();
     if let Some(cid) = cluster_id {
         if let Some(cluster) = ctx.layout_clusters_by_id.get(cid) {
-            render_flowchart_cluster(out, ctx, cluster, origin_x, origin_y);
-        } else {
-            out.push_str(r#"<g class="clusters"/>"#);
+            clusters_to_draw.push(cluster);
         }
-    } else {
+    }
+    for id in ctx.subgraphs_by_id.keys() {
+        if cluster_id.is_some_and(|cid| cid == id.as_str()) {
+            continue;
+        }
+        if ctx.recursive_clusters.contains(id) {
+            continue;
+        }
+        if flowchart_effective_parent(ctx, id.as_str()) == cluster_id {
+            if let Some(cluster) = ctx.layout_clusters_by_id.get(id.as_str()) {
+                clusters_to_draw.push(cluster);
+            }
+        }
+    }
+    if clusters_to_draw.is_empty() {
         out.push_str(r#"<g class="clusters"/>"#);
+    } else {
+        out.push_str(r#"<g class="clusters">"#);
+        for cluster in clusters_to_draw {
+            render_flowchart_cluster(out, ctx, cluster, origin_x, origin_y);
+        }
+        out.push_str("</g>");
     }
 
     let edges = flowchart_edges_for_root(ctx, cluster_id);
@@ -2629,6 +2753,8 @@ fn render_flowchart_cluster(
     origin_x: f64,
     origin_y: f64,
 ) {
+    let left = (cluster.x - cluster.width / 2.0) + ctx.tx - origin_x;
+    let top = (cluster.y - cluster.height / 2.0) + ctx.ty - origin_y;
     let pad = cluster.padding.max(0.0);
     let rect_w = (cluster.width - pad * 2.0).max(1.0);
     let rect_h = (cluster.height - pad * 2.0).max(1.0);
@@ -2647,20 +2773,18 @@ fn render_flowchart_cluster(
 
     let _ = write!(
         out,
-        r#"<g class="clusters"><g class="cluster" id="{}" data-look="classic"><rect style="" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g></g>"#,
+        r#"<g class="cluster" id="{}" data-look="classic"><rect style="" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g>"#,
         escape_attr(&cluster.id),
-        fmt(pad),
-        fmt(pad),
+        fmt(left + pad),
+        fmt(top + pad),
         fmt(rect_w),
         fmt(rect_h),
-        fmt(label_x),
-        fmt(label_y),
+        fmt(left + label_x),
+        fmt(top + label_y),
         fmt(label_w),
         fmt(label_h),
         title_html
     );
-
-    let _ = (origin_x, origin_y);
 }
 
 fn flowchart_edge_marker_end(
@@ -2668,6 +2792,7 @@ fn flowchart_edge_marker_end(
     edge: &crate::flowchart::FlowEdge,
 ) -> Option<String> {
     match edge.edge_type.as_deref() {
+        Some("double_arrow_point") => Some(format!(r#"url(#{diagram_id}_flowchart-v2-pointEnd)"#)),
         Some("arrow_point") => Some(format!(r#"url(#{diagram_id}_flowchart-v2-pointEnd)"#)),
         Some("arrow_cross") => Some(format!(r#"url(#{diagram_id}_flowchart-v2-crossEnd)"#)),
         Some("arrow_circle") => Some(format!(r#"url(#{diagram_id}_flowchart-v2-circleEnd)"#)),
@@ -2676,17 +2801,35 @@ fn flowchart_edge_marker_end(
     }
 }
 
-fn flowchart_edge_classes(edge: &crate::flowchart::FlowEdge) -> (String, String) {
-    let thickness = match edge.stroke.as_deref() {
+fn flowchart_edge_marker_start(
+    diagram_id: &str,
+    edge: &crate::flowchart::FlowEdge,
+) -> Option<String> {
+    match edge.edge_type.as_deref() {
+        Some("double_arrow_point") => {
+            Some(format!(r#"url(#{diagram_id}_flowchart-v2-pointStart)"#))
+        }
+        _ => None,
+    }
+}
+
+fn flowchart_edge_class_attr(edge: &crate::flowchart::FlowEdge) -> String {
+    let thickness_1 = match edge.stroke.as_deref() {
         Some("thick") => "edge-thickness-thick",
         Some("invisible") => "edge-thickness-invisible",
         _ => "edge-thickness-normal",
     };
-    let pattern = match edge.stroke.as_deref() {
+    let pattern_1 = match edge.stroke.as_deref() {
         Some("dotted") => "edge-pattern-dotted",
         _ => "edge-pattern-solid",
     };
-    (thickness.to_string(), pattern.to_string())
+
+    let (thickness_2, pattern_2) = match edge.edge_type.as_deref() {
+        Some("double_arrow_point") => ("edge-thickness-normal", "edge-pattern-solid"),
+        _ => (thickness_1, pattern_1),
+    };
+
+    format!("{thickness_1} {pattern_1} {thickness_2} {pattern_2} flowchart-link")
 }
 
 fn render_flowchart_edge_path(
@@ -2722,10 +2865,14 @@ fn render_flowchart_edge_path(
     let points_json = serde_json::to_string(&local_points).unwrap_or_else(|_| "[]".to_string());
     let points_b64 = base64::engine::general_purpose::STANDARD.encode(points_json);
 
-    let (thickness, pattern) = flowchart_edge_classes(edge);
-    let class_attr = format!("{thickness} {pattern} {thickness} {pattern} flowchart-link");
+    let class_attr = flowchart_edge_class_attr(edge);
+    let marker_start = flowchart_edge_marker_start(&ctx.diagram_id, edge);
     let marker_end = flowchart_edge_marker_end(&ctx.diagram_id, edge);
 
+    let marker_start_attr = marker_start
+        .as_deref()
+        .map(|m| format!(r#" marker-start="{}""#, escape_attr(m)))
+        .unwrap_or_default();
     let marker_end_attr = marker_end
         .as_deref()
         .map(|m| format!(r#" marker-end="{}""#, escape_attr(m)))
@@ -2733,12 +2880,13 @@ fn render_flowchart_edge_path(
 
     let _ = write!(
         out,
-        r#"<path d="{}" id="{}" class="{}" style=";" data-edge="true" data-et="edge" data-id="{}" data-points="{}"{} />"#,
+        r#"<path d="{}" id="{}" class="{}" style=";" data-edge="true" data-et="edge" data-id="{}" data-points="{}"{}{} />"#,
         d,
         escape_attr(&edge.id),
         escape_attr(&class_attr),
         escape_attr(&edge.id),
         escape_attr(&points_b64),
+        marker_start_attr,
         marker_end_attr
     );
 }
@@ -2832,15 +2980,59 @@ fn render_flowchart_node(
         }
     }
 
-    let _ = write!(
-        out,
-        r#"<g class="{}" id="flowchart-{}-{}" transform="translate({}, {})">"#,
-        escape_attr(&class_attr),
-        escape_attr(node_id),
-        dom_idx,
-        fmt(x),
-        fmt(y)
-    );
+    let tooltip = ctx.tooltips.get(node_id).map(|s| s.as_str()).unwrap_or("");
+    let tooltip_attr = if tooltip.trim().is_empty() {
+        String::new()
+    } else {
+        format!(r#" title="{}""#, escape_attr(tooltip))
+    };
+
+    let is_clickable = node
+        .classes
+        .iter()
+        .any(|c| c.trim().eq_ignore_ascii_case("clickable"));
+    let href = node.link.as_deref().and_then(|u| {
+        let u = u.trim();
+        if u.starts_with("http://") || u.starts_with("https://") {
+            Some(u)
+        } else {
+            None
+        }
+    });
+    let wrapped_in_a = is_clickable || node.have_callback || node.link.is_some();
+
+    if wrapped_in_a {
+        if let Some(href) = href {
+            let _ = write!(
+                out,
+                r#"<a xlink:href="{}" transform="translate({}, {})">"#,
+                escape_attr(href),
+                fmt(x),
+                fmt(y)
+            );
+        } else {
+            let _ = write!(out, r#"<a transform="translate({}, {})">"#, fmt(x), fmt(y));
+        }
+        let _ = write!(
+            out,
+            r#"<g class="{}" id="flowchart-{}-{}"{}>"#,
+            escape_attr(&class_attr),
+            escape_attr(node_id),
+            dom_idx,
+            tooltip_attr
+        );
+    } else {
+        let _ = write!(
+            out,
+            r#"<g class="{}" id="flowchart-{}-{}" transform="translate({}, {})"{}>"#,
+            escape_attr(&class_attr),
+            escape_attr(node_id),
+            dom_idx,
+            fmt(x),
+            fmt(y),
+            tooltip_attr
+        );
+    }
 
     let shape = node.layout_shape.as_deref().unwrap_or("squareRect");
     let style = flowchart_inline_style_for_classes(&ctx.class_defs, &node.classes);
@@ -2854,18 +3046,97 @@ fn render_flowchart_node(
                 r#"<polygon points="{},0 {},{} {},{} 0,{}" class="label-container" transform="translate({}, {})"{} />"#,
                 fmt(w / 2.0),
                 fmt(w),
-                fmt(h / 2.0),
-                fmt(w / 2.0),
-                fmt(h),
-                fmt(h / 2.0),
-                fmt(-w / 2.0),
                 fmt(-h / 2.0),
+                fmt(w / 2.0),
+                fmt(-h),
+                fmt(-h / 2.0),
+                fmt(-w / 2.0 + 0.5),
+                fmt(h / 2.0),
                 if style.is_empty() {
                     String::new()
                 } else {
                     format!(r#" style="{}""#, escape_attr(&style))
                 }
             );
+        }
+        "circle" => {
+            let w = layout_node.width.max(1.0);
+            let h = layout_node.height.max(1.0);
+            let r = (w.min(h) / 2.0).max(0.5);
+            let _ = write!(
+                out,
+                r#"<circle class="basic label-container" style="{}" r="{}" cx="0" cy="0"/>"#,
+                escape_attr(&style),
+                fmt(r),
+            );
+        }
+        "doublecircle" => {
+            let w = layout_node.width.max(1.0);
+            let h = layout_node.height.max(1.0);
+            let r = (w.min(h) / 2.0).max(0.5);
+            let inner = (r - 5.0).max(0.5);
+            let _ = write!(
+                out,
+                r#"<g class="basic label-container" style="{}"><circle class="outer-circle" style="" r="{}" cx="0" cy="0"/><circle class="inner-circle" style="" r="{}" cx="0" cy="0"/></g>"#,
+                escape_attr(&style),
+                fmt(r),
+                fmt(inner),
+            );
+        }
+        "roundedRect" | "rounded" => {
+            let _ = write!(
+                out,
+                r#"<g class="basic label-container outer-path" style="{}">"#,
+                escape_attr(&style)
+            );
+            let _ = write!(
+                out,
+                r#"<path d="M0 0" stroke="none" stroke-width="0" fill="{}" style=""/>"#,
+                escape_attr(&ctx.node_fill_color)
+            );
+            let _ = write!(
+                out,
+                r#"<path d="M0 0" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"#,
+                escape_attr(&ctx.node_border_color)
+            );
+            out.push_str("</g>");
+        }
+        "hexagon" => {
+            let _ = write!(
+                out,
+                r#"<g class="basic label-container" style="{}">"#,
+                escape_attr(&style)
+            );
+            let _ = write!(
+                out,
+                r#"<path d="M0 0" stroke="none" stroke-width="0" fill="{}" style=""/>"#,
+                escape_attr(&ctx.node_fill_color)
+            );
+            let _ = write!(
+                out,
+                r#"<path d="M0 0" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"#,
+                escape_attr(&ctx.node_border_color)
+            );
+            out.push_str("</g>");
+        }
+        "odd" => {
+            let _ = write!(
+                out,
+                r#"<g class="basic label-container" transform="translate({},0)" style="{}">"#,
+                fmt(0.0),
+                escape_attr(&style)
+            );
+            let _ = write!(
+                out,
+                r#"<path d="M0 0" stroke="none" stroke-width="0" fill="{}" style=""/>"#,
+                escape_attr(&ctx.node_fill_color)
+            );
+            let _ = write!(
+                out,
+                r#"<path d="M0 0" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"#,
+                escape_attr(&ctx.node_border_color)
+            );
+            out.push_str("</g>");
         }
         _ => {
             let w = layout_node.width.max(1.0);
@@ -2900,6 +3171,9 @@ fn render_flowchart_node(
         fmt(metrics.height),
         label_html
     );
+    if wrapped_in_a {
+        out.push_str("</a>");
+    }
 }
 
 fn flowchart_escape_preserving_br(input: &str) -> String {
@@ -2932,11 +3206,19 @@ fn flowchart_label_html(label: &str, label_type: &str) -> String {
                 pulldown_cmark::Options::ENABLE_TABLES
                     | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
                     | pulldown_cmark::Options::ENABLE_TASKLISTS,
-            );
+            )
+            .map(|ev| match ev {
+                pulldown_cmark::Event::SoftBreak => pulldown_cmark::Event::HardBreak,
+                other => other,
+            });
             pulldown_cmark::html::push_html(&mut html_out, parser);
             let html_out = html_out.trim().to_string();
             merman_core::sanitize::remove_script(&html_out)
         }
-        _ => format!("<p>{}</p>", flowchart_escape_preserving_br(label)),
+        _ => {
+            let label = label.replace("\r\n", "\n");
+            let label = label.trim_end_matches('\n').replace('\n', "<br />");
+            format!("<p>{}</p>", flowchart_escape_preserving_br(&label))
+        }
     }
 }

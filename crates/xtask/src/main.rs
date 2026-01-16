@@ -2892,6 +2892,29 @@ fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
+    fn is_identifier_like_attr(key: &str) -> bool {
+        matches!(
+            key,
+            "id" | "data-id"
+                | "href"
+                | "xlink:href"
+                | "title"
+                | "aria-labelledby"
+                | "aria-describedby"
+                | "aria-label"
+                | "aria-roledescription"
+        )
+    }
+
+    fn re_trailing_counter() -> &'static Regex {
+        static ONCE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+        ONCE.get_or_init(|| Regex::new(r"([_-])\d+$").unwrap())
+    }
+
+    fn normalize_identifier_tokens(s: &str) -> String {
+        re_trailing_counter().replace(s, "$1<n>").to_string()
+    }
+
     fn normalize_class_list(s: &str) -> String {
         let mut parts: Vec<&str> = s.split_whitespace().collect();
         parts.sort_unstable();
@@ -2925,7 +2948,11 @@ fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 if key == "class" {
                     val = normalize_class_list(&val);
                 }
-                val = normalize_numeric_tokens_mode(&val, decimals, mode);
+                if mode == DomMode::Structure && is_identifier_like_attr(&key) {
+                    val = normalize_identifier_tokens(&val);
+                } else {
+                    val = normalize_numeric_tokens_mode(&val, decimals, mode);
+                }
                 attrs.insert(key, val);
             }
         }
@@ -2961,10 +2988,30 @@ fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 if let Some(id) = n.attrs.get("id") {
                     return id.as_str();
                 }
+                if let Some(id) = n.attrs.get("data-id") {
+                    return id.as_str();
+                }
                 if n.name == "g" {
+                    fn find_first_data_id(n: &SvgDomNode) -> Option<&str> {
+                        if let Some(id) = n.attrs.get("data-id") {
+                            return Some(id.as_str());
+                        }
+                        for c in &n.children {
+                            if let Some(id) = find_first_data_id(c) {
+                                return Some(id);
+                            }
+                        }
+                        None
+                    }
+
                     if let Some(class) = n.attrs.get("class") {
                         if class.split_whitespace().any(|c| c == "root") {
                             if let Some(id) = find_first_cluster_id(n) {
+                                return id;
+                            }
+                        }
+                        if class.split_whitespace().any(|c| c == "edgeLabel") {
+                            if let Some(id) = find_first_data_id(n) {
                                 return id;
                             }
                         }

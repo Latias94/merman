@@ -11,6 +11,10 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct FlowchartV2Model {
+    #[serde(default, rename = "accDescr")]
+    pub acc_descr: Option<String>,
+    #[serde(default, rename = "accTitle")]
+    pub acc_title: Option<String>,
     #[serde(default, rename = "classDefs")]
     pub class_defs: HashMap<String, Vec<String>>,
     #[serde(default)]
@@ -19,6 +23,8 @@ pub(crate) struct FlowchartV2Model {
     pub edges: Vec<FlowEdge>,
     #[serde(default)]
     pub subgraphs: Vec<FlowSubgraph>,
+    #[serde(default)]
+    pub tooltips: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -33,6 +39,12 @@ pub(crate) struct FlowNode {
     pub classes: Vec<String>,
     #[serde(default)]
     pub styles: Vec<String>,
+    #[serde(default)]
+    pub link: Option<String>,
+    #[serde(default, rename = "linkTarget")]
+    pub link_target: Option<String>,
+    #[serde(default, rename = "haveCallback")]
+    pub have_callback: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
