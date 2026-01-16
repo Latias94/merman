@@ -1319,8 +1319,14 @@ pub fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
             diagram_type: meta.diagram_type.clone(),
             message: e,
         })?;
-    let mut nodes = build.nodes;
-    let mut edges = build.edges;
+    let FlowchartBuildState {
+        nodes,
+        edges,
+        vertex_calls,
+        ..
+    } = build;
+    let mut nodes = nodes;
+    let mut edges = edges;
 
     let inherit_dir = meta
         .effective_config
@@ -1397,6 +1403,7 @@ pub fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
             "style": edge_defaults.style,
             "interpolate": edge_defaults.interpolate,
         },
+        "vertexCalls": vertex_calls,
         "nodes": nodes.into_iter().map(|n| {
             let layout_shape = get_layout_shape(&n);
             let label_raw = n.label.clone().unwrap_or_else(|| n.id.clone());
@@ -1525,6 +1532,7 @@ struct FlowchartBuildState {
     edges: Vec<Edge>,
     used_edge_ids: HashSet<String>,
     edge_pair_counts: HashMap<(String, String), usize>,
+    vertex_calls: Vec<String>,
 }
 
 impl FlowchartBuildState {
@@ -1535,6 +1543,7 @@ impl FlowchartBuildState {
             edges: Vec::new(),
             used_edge_ids: HashSet::new(),
             edge_pair_counts: HashMap::new(),
+            vertex_calls: Vec::new(),
         }
     }
 
@@ -1543,6 +1552,15 @@ impl FlowchartBuildState {
             match stmt {
                 Stmt::Chain { nodes, edges } => {
                     for mut n in nodes.iter().cloned() {
+                        // Mermaid FlowDB `vertexCounter` increments on every `addVertex(...)` call.
+                        // Our grammar models `shapeData` attachments in the AST, so we can replay the
+                        // observable call sequence:
+                        // - once for the vertex token itself
+                        // - once more if a `@{ ... }` shapeData block is present
+                        self.vertex_calls.push(n.id.clone());
+                        if n.shape_data.is_some() {
+                            self.vertex_calls.push(n.id.clone());
+                        }
                         if let Some(sd) = n.shape_data.take() {
                             apply_shape_data_to_node(&mut n, &sd)?;
                         }
@@ -1554,6 +1572,10 @@ impl FlowchartBuildState {
                 }
                 Stmt::Node(n) => {
                     let mut n = n.clone();
+                    self.vertex_calls.push(n.id.clone());
+                    if n.shape_data.is_some() {
+                        self.vertex_calls.push(n.id.clone());
+                    }
                     if let Some(sd) = n.shape_data.take() {
                         apply_shape_data_to_node(&mut n, &sd)?;
                     }
@@ -1562,6 +1584,12 @@ impl FlowchartBuildState {
                 Stmt::ShapeData { target, .. } => {
                     // Mermaid applies shapeData to edges if (and only if) an edge with that ID exists.
                     // For ordering parity we only insert a placeholder node when this currently refers to a node.
+                    if !self.used_edge_ids.contains(target) {
+                        // The upstream flowchart parser calls `addVertex(id)` and then
+                        // `addVertex(id, ..., shapeData)` for `id@{...}` statements.
+                        self.vertex_calls.push(target.clone());
+                        self.vertex_calls.push(target.clone());
+                    }
                     if !self.used_edge_ids.contains(target) && !self.node_index.contains_key(target)
                     {
                         let idx = self.nodes.len();
@@ -1589,11 +1617,40 @@ impl FlowchartBuildState {
                 }
                 Stmt::Subgraph(sg) => self.add_statements(&sg.statements)?,
                 Stmt::Direction(_)
-                | Stmt::Style(_)
                 | Stmt::ClassDef(_)
                 | Stmt::ClassAssign(_)
                 | Stmt::Click(_)
                 | Stmt::LinkStyle(_) => {}
+                Stmt::Style(s) => {
+                    // Mermaid's `style` statement routes through FlowDB `addVertex(id, ..., styles)`.
+                    // This increments `vertexCounter` for nodes (but is a no-op for edges).
+                    if !self.used_edge_ids.contains(&s.target) {
+                        self.vertex_calls.push(s.target.clone());
+                        if !self.node_index.contains_key(&s.target) {
+                            let idx = self.nodes.len();
+                            self.nodes.push(Node {
+                                id: s.target.clone(),
+                                label: None,
+                                label_type: TitleKind::Text,
+                                shape: None,
+                                shape_data: None,
+                                icon: None,
+                                form: None,
+                                pos: None,
+                                img: None,
+                                constraint: None,
+                                asset_width: None,
+                                asset_height: None,
+                                styles: Vec::new(),
+                                classes: Vec::new(),
+                                link: None,
+                                link_target: None,
+                                have_callback: false,
+                            });
+                            self.node_index.insert(s.target.clone(), idx);
+                        }
+                    }
+                }
             }
         }
         Ok(())

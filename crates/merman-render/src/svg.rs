@@ -4850,6 +4850,18 @@ struct FlowchartRenderCtx<'a> {
 fn flowchart_node_dom_indices(
     model: &crate::flowchart::FlowchartV2Model,
 ) -> std::collections::HashMap<String, usize> {
+    if !model.vertex_calls.is_empty() {
+        let mut out: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        let mut vertex_counter: usize = 0;
+        for id in &model.vertex_calls {
+            if !out.contains_key(id) {
+                out.insert(id.clone(), vertex_counter);
+            }
+            vertex_counter += 1;
+        }
+        return out;
+    }
+
     let mut out: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     let mut vertex_counter: usize = 0;
 
@@ -5721,6 +5733,205 @@ fn render_flowchart_node(
 
     let shape = node.layout_shape.as_deref().unwrap_or("squareRect");
     let style = flowchart_inline_style_for_classes(&ctx.class_defs, &node.classes);
+    let mut label_dx: f64 = 0.0;
+
+    fn parse_hex_color_to_srgba(s: &str) -> Option<roughr::Srgba> {
+        let s = s.trim();
+        let hex = s.strip_prefix('#')?;
+        let (r, g, b) = match hex.len() {
+            6 => {
+                let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+                let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+                let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+                (r, g, b)
+            }
+            3 => {
+                let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?;
+                let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?;
+                let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?;
+                (r, g, b)
+            }
+            _ => return None,
+        };
+        Some(roughr::Srgba::new(
+            r as f32 / 255.0,
+            g as f32 / 255.0,
+            b as f32 / 255.0,
+            1.0,
+        ))
+    }
+
+    fn path_from_points(points: &[(f64, f64)]) -> String {
+        let mut out = String::new();
+        for (i, (x, y)) in points.iter().copied().enumerate() {
+            let cmd = if i == 0 { 'M' } else { 'L' };
+            let _ = write!(&mut out, "{cmd}{x},{y} ");
+        }
+        out.push_str("Z");
+        out
+    }
+
+    fn arc_points(
+        x1: f64,
+        y1: f64,
+        x2: f64,
+        y2: f64,
+        rx: f64,
+        ry: f64,
+        clockwise: bool,
+    ) -> Vec<(f64, f64)> {
+        // Port of Mermaid `@11.12.2` `generateArcPoints(...)` in
+        // `packages/mermaid/src/rendering-util/rendering-elements/shapes/roundedRect.ts`.
+        let num_points: usize = 20;
+
+        let mid_x = (x1 + x2) / 2.0;
+        let mid_y = (y1 + y2) / 2.0;
+        let angle = (y2 - y1).atan2(x2 - x1);
+
+        let dx = (x2 - x1) / 2.0;
+        let dy = (y2 - y1) / 2.0;
+        let transformed_x = dx / rx;
+        let transformed_y = dy / ry;
+        let distance = (transformed_x * transformed_x + transformed_y * transformed_y).sqrt();
+        if distance > 1.0 {
+            return vec![(x1, y1), (x2, y2)];
+        }
+
+        let scaled_center_distance = (1.0 - distance * distance).sqrt();
+        let sign = if clockwise { -1.0 } else { 1.0 };
+        let center_x = mid_x + scaled_center_distance * ry * angle.sin() * sign;
+        let center_y = mid_y - scaled_center_distance * rx * angle.cos() * sign;
+
+        let start_angle = ((y1 - center_y) / ry).atan2((x1 - center_x) / rx);
+        let end_angle = ((y2 - center_y) / ry).atan2((x2 - center_x) / rx);
+
+        let mut angle_range = end_angle - start_angle;
+        if clockwise && angle_range < 0.0 {
+            angle_range += 2.0 * std::f64::consts::PI;
+        }
+        if !clockwise && angle_range > 0.0 {
+            angle_range -= 2.0 * std::f64::consts::PI;
+        }
+
+        let mut points: Vec<(f64, f64)> = Vec::with_capacity(num_points);
+        for i in 0..num_points {
+            let t = i as f64 / (num_points - 1) as f64;
+            let a = start_angle + t * angle_range;
+            let x = center_x + rx * a.cos();
+            let y = center_y + ry * a.sin();
+            points.push((x, y));
+        }
+        points
+    }
+
+    fn roughjs_paths_for_svg_path(
+        svg_path_data: &str,
+        fill: &str,
+        stroke: &str,
+    ) -> Option<(String, String, f32)> {
+        let fill = parse_hex_color_to_srgba(fill)?;
+        let stroke = parse_hex_color_to_srgba(stroke)?;
+        let base_options = roughr::core::OptionsBuilder::default()
+            .seed(0_u64)
+            .roughness(0.0)
+            .bowing(1.0)
+            .fill(fill)
+            .fill_style(roughr::core::FillStyle::Solid)
+            .stroke(stroke)
+            .stroke_width(1.3)
+            .stroke_line_dash(vec![0.0, 0.0])
+            .stroke_line_dash_offset(0.0)
+            .fill_line_dash(vec![0.0, 0.0])
+            .fill_line_dash_offset(0.0)
+            .disable_multi_stroke(false)
+            .disable_multi_stroke_fill(false)
+            .build()
+            .ok()?;
+
+        fn ops_to_svg_path_d(opset: &roughr::core::OpSet<f64>) -> String {
+            let mut out = String::new();
+            for op in &opset.ops {
+                match op.op {
+                    roughr::core::OpType::Move => {
+                        let _ = write!(&mut out, "M{} {} ", fmt(op.data[0]), fmt(op.data[1]));
+                    }
+                    roughr::core::OpType::BCurveTo => {
+                        let _ = write!(
+                            &mut out,
+                            "C{} {}, {} {}, {} {} ",
+                            fmt(op.data[0]),
+                            fmt(op.data[1]),
+                            fmt(op.data[2]),
+                            fmt(op.data[3]),
+                            fmt(op.data[4]),
+                            fmt(op.data[5])
+                        );
+                    }
+                    roughr::core::OpType::LineTo => {
+                        let _ = write!(&mut out, "L{} {} ", fmt(op.data[0]), fmt(op.data[1]));
+                    }
+                }
+            }
+            out.trim_end().to_string()
+        }
+
+        // Rough.js `generator.path(...)` has a special-case for solid fill:
+        // if `pointsOnPath` yields a single point-set, it builds the fill path from `svgPath`
+        // with `disableMultiStroke: true` and then removes subsequent `move` ops.
+        let sets = roughr::points_on_path::points_on_path::<f64>(
+            svg_path_data.to_string(),
+            Some(1.0),
+            Some(0.5),
+        );
+
+        let mut fill_opts = base_options.clone();
+        fill_opts.disable_multi_stroke = Some(true);
+
+        let fill_opset = if sets.len() == 1 {
+            let mut opset =
+                roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut fill_opts);
+            let mut merged: Vec<roughr::core::Op<f64>> = Vec::new();
+            for (idx, op) in opset.ops.iter().cloned().enumerate() {
+                if idx != 0 && op.op == roughr::core::OpType::Move {
+                    continue;
+                }
+                merged.push(op);
+            }
+            opset.ops = merged;
+            opset
+        } else {
+            roughr::renderer::solid_fill_polygon(&sets, &mut fill_opts)
+        };
+
+        let mut stroke_opts = base_options.clone();
+        let mut stroke_opset =
+            roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut stroke_opts);
+        // Roughr emits a `Move` op for SVG `M` segments, while Rough.js treats `M` as cursor state
+        // and does not emit an output op. Drop those by removing `Move` ops that are immediately
+        // followed by another `Move` (the real stroke for a segment starts with its own `Move`).
+        stroke_opset.ops = stroke_opset
+            .ops
+            .iter()
+            .cloned()
+            .enumerate()
+            .filter_map(|(idx, op)| {
+                if op.op == roughr::core::OpType::Move {
+                    if let Some(next) = stroke_opset.ops.get(idx + 1) {
+                        if next.op == roughr::core::OpType::Move {
+                            return None;
+                        }
+                    }
+                }
+                Some(op)
+            })
+            .collect();
+
+        Some((
+            ops_to_svg_path_d(&fill_opset),
+            ops_to_svg_path_d(&stroke_opset),
+            1.3,
+        ))
+    }
 
     match shape {
         "diamond" => {
@@ -5769,59 +5980,215 @@ fn render_flowchart_node(
             );
         }
         "roundedRect" | "rounded" => {
-            let _ = write!(
-                out,
-                r#"<g class="basic label-container outer-path" style="{}">"#,
-                escape_attr(&style)
-            );
-            let _ = write!(
-                out,
-                r#"<path d="M0 0" stroke="none" stroke-width="0" fill="{}" style=""/>"#,
-                escape_attr(&ctx.node_fill_color)
-            );
-            let _ = write!(
-                out,
-                r#"<path d="M0 0" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"#,
-                escape_attr(&ctx.node_border_color)
-            );
-            out.push_str("</g>");
+            let w = layout_node.width.max(1.0);
+            let h = layout_node.height.max(1.0);
+            let radius = 5.0;
+            let taper = 5.0;
+
+            let mut pts: Vec<(f64, f64)> = Vec::new();
+            pts.push((-w / 2.0 + taper, -h / 2.0));
+            pts.push((w / 2.0 - taper, -h / 2.0));
+            pts.extend(arc_points(
+                w / 2.0 - taper,
+                -h / 2.0,
+                w / 2.0,
+                -h / 2.0 + taper,
+                radius,
+                radius,
+                true,
+            ));
+            pts.push((w / 2.0, -h / 2.0 + taper));
+            pts.push((w / 2.0, h / 2.0 - taper));
+            pts.extend(arc_points(
+                w / 2.0,
+                h / 2.0 - taper,
+                w / 2.0 - taper,
+                h / 2.0,
+                radius,
+                radius,
+                true,
+            ));
+            pts.push((w / 2.0 - taper, h / 2.0));
+            pts.push((-w / 2.0 + taper, h / 2.0));
+            pts.extend(arc_points(
+                -w / 2.0 + taper,
+                h / 2.0,
+                -w / 2.0,
+                h / 2.0 - taper,
+                radius,
+                radius,
+                true,
+            ));
+            pts.push((-w / 2.0, h / 2.0 - taper));
+            pts.push((-w / 2.0, -h / 2.0 + taper));
+            pts.extend(arc_points(
+                -w / 2.0,
+                -h / 2.0 + taper,
+                -w / 2.0 + taper,
+                -h / 2.0,
+                radius,
+                radius,
+                true,
+            ));
+            let path_data = path_from_points(&pts);
+
+            if let Some((fill_d, stroke_d, stroke_w)) =
+                roughjs_paths_for_svg_path(&path_data, &ctx.node_fill_color, &ctx.node_border_color)
+            {
+                out.push_str(r#"<g class="basic label-container outer-path">"#);
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/>"#,
+                    escape_attr(&fill_d),
+                    escape_attr(&ctx.node_fill_color)
+                );
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
+                    escape_attr(&stroke_d),
+                    escape_attr(&ctx.node_border_color),
+                    stroke_w
+                );
+                out.push_str("</g>");
+            } else {
+                let _ = write!(
+                    out,
+                    r#"<rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}" rx="5" ry="5"/>"#,
+                    escape_attr(&style),
+                    fmt(-w / 2.0),
+                    fmt(-h / 2.0),
+                    fmt(w),
+                    fmt(h)
+                );
+            }
         }
         "hexagon" => {
-            let _ = write!(
-                out,
-                r#"<g class="basic label-container" style="{}">"#,
-                escape_attr(&style)
-            );
-            let _ = write!(
-                out,
-                r#"<path d="M0 0" stroke="none" stroke-width="0" fill="{}" style=""/>"#,
-                escape_attr(&ctx.node_fill_color)
-            );
-            let _ = write!(
-                out,
-                r#"<path d="M0 0" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"#,
-                escape_attr(&ctx.node_border_color)
-            );
-            out.push_str("</g>");
+            let w = layout_node.width.max(1.0);
+            let h = layout_node.height.max(1.0);
+            let half_width = w / 2.0;
+            let half_height = h / 2.0;
+            let fixed_length = half_height / 2.0;
+            let deduced_width = half_width - fixed_length;
+
+            let pts: Vec<(f64, f64)> = vec![
+                (-deduced_width, -half_height),
+                (0.0, -half_height),
+                (deduced_width, -half_height),
+                (half_width, 0.0),
+                (deduced_width, half_height),
+                (0.0, half_height),
+                (-deduced_width, half_height),
+                (-half_width, 0.0),
+            ];
+            let path_data = path_from_points(&pts);
+
+            if let Some((fill_d, stroke_d, stroke_w)) =
+                roughjs_paths_for_svg_path(&path_data, &ctx.node_fill_color, &ctx.node_border_color)
+            {
+                out.push_str(r#"<g class="basic label-container">"#);
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/>"#,
+                    escape_attr(&fill_d),
+                    escape_attr(&ctx.node_fill_color)
+                );
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
+                    escape_attr(&stroke_d),
+                    escape_attr(&ctx.node_border_color),
+                    stroke_w
+                );
+                out.push_str("</g>");
+            } else {
+                let _ = write!(
+                    out,
+                    r#"<polygon points="{},{} {},{} {},{} {},{} {},{} {},{} {},{} {},{}" class="label-container" transform="translate({}, {})"{} />"#,
+                    fmt(-deduced_width),
+                    fmt(-half_height),
+                    fmt(0.0),
+                    fmt(-half_height),
+                    fmt(deduced_width),
+                    fmt(-half_height),
+                    fmt(half_width),
+                    fmt(0.0),
+                    fmt(deduced_width),
+                    fmt(half_height),
+                    fmt(0.0),
+                    fmt(half_height),
+                    fmt(-deduced_width),
+                    fmt(half_height),
+                    fmt(-half_width),
+                    fmt(0.0),
+                    fmt(0.0),
+                    fmt(0.0),
+                    if style.is_empty() {
+                        String::new()
+                    } else {
+                        format!(r#" style="{}""#, escape_attr(&style))
+                    }
+                );
+            }
         }
         "odd" => {
-            let _ = write!(
-                out,
-                r#"<g class="basic label-container" transform="translate({},0)" style="{}">"#,
-                fmt(0.0),
-                escape_attr(&style)
-            );
-            let _ = write!(
-                out,
-                r#"<path d="M0 0" stroke="none" stroke-width="0" fill="{}" style=""/>"#,
-                escape_attr(&ctx.node_fill_color)
-            );
-            let _ = write!(
-                out,
-                r#"<path d="M0 0" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"#,
-                escape_attr(&ctx.node_border_color)
-            );
-            out.push_str("</g>");
+            let total_w = layout_node.width.max(1.0);
+            let h = layout_node.height.max(1.0);
+            let w = (total_w - h / 4.0).max(1.0);
+            let x = -w / 2.0;
+            let y = -h / 2.0;
+            let notch = y / 2.0;
+            let dx = -notch / 2.0;
+            label_dx = dx;
+
+            let pts: Vec<(f64, f64)> =
+                vec![(x + notch, y), (x, 0.0), (x + notch, -y), (-x, -y), (-x, y)];
+            let path_data = path_from_points(&pts);
+
+            if let Some((fill_d, stroke_d, stroke_w)) =
+                roughjs_paths_for_svg_path(&path_data, &ctx.node_fill_color, &ctx.node_border_color)
+            {
+                let _ = write!(
+                    out,
+                    r#"<g class="basic label-container" transform="translate({},0)">"#,
+                    fmt(dx)
+                );
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/>"#,
+                    escape_attr(&fill_d),
+                    escape_attr(&ctx.node_fill_color)
+                );
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
+                    escape_attr(&stroke_d),
+                    escape_attr(&ctx.node_border_color),
+                    stroke_w
+                );
+                out.push_str("</g>");
+            } else {
+                let _ = write!(
+                    out,
+                    r#"<polygon points="{},{} {},{} {},{} {},{} {},{}" class="label-container" transform="translate({}, {})"{} />"#,
+                    fmt(x + notch),
+                    fmt(y),
+                    fmt(x),
+                    fmt(0.0),
+                    fmt(x + notch),
+                    fmt(-y),
+                    fmt(-x),
+                    fmt(-y),
+                    fmt(-x),
+                    fmt(y),
+                    fmt(dx),
+                    fmt(0.0),
+                    if style.is_empty() {
+                        String::new()
+                    } else {
+                        format!(r#" style="{}""#, escape_attr(&style))
+                    }
+                );
+            }
         }
         _ => {
             let w = layout_node.width.max(1.0);
@@ -5850,7 +6217,7 @@ fn render_flowchart_node(
     let _ = write!(
         out,
         r#"<g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g>"#,
-        fmt(-metrics.width / 2.0),
+        fmt(-metrics.width / 2.0 + label_dx),
         fmt(-metrics.height / 2.0),
         fmt(metrics.width),
         fmt(metrics.height),

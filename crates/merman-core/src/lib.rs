@@ -321,6 +321,7 @@ Alice->Bob: Hi
                 "classDefs": {},
                 "tooltips": {},
                 "edgeDefaults": { "style": [], "interpolate": null },
+                "vertexCalls": ["A", "B"],
                 "nodes": [
                     { "id": "A", "label": "A", "labelType": "text", "shape": null, "layoutShape": "squareRect", "icon": null, "form": null, "pos": null, "img": null, "constraint": null, "assetWidth": null, "assetHeight": null, "styles": [], "classes": [], "link": null, "linkTarget": null, "haveCallback": false },
                     { "id": "B", "label": "B", "labelType": "text", "shape": null, "layoutShape": "squareRect", "icon": null, "form": null, "pos": null, "img": null, "constraint": null, "assetWidth": null, "assetHeight": null, "styles": [], "classes": [], "link": null, "linkTarget": null, "haveCallback": false }
@@ -383,6 +384,7 @@ Alice->Bob: Hi
                 "classDefs": {},
                 "tooltips": {},
                 "edgeDefaults": { "style": [], "interpolate": null },
+                "vertexCalls": ["A", "B"],
                 "nodes": [
                     { "id": "A", "label": "Start", "labelType": "text", "shape": "square", "layoutShape": "squareRect", "icon": null, "form": null, "pos": null, "img": null, "constraint": null, "assetWidth": null, "assetHeight": null, "styles": [], "classes": [], "link": null, "linkTarget": null, "haveCallback": false },
                     { "id": "B", "label": "Is it?", "labelType": "text", "shape": "diamond", "layoutShape": "diamond", "icon": null, "form": null, "pos": null, "img": null, "constraint": null, "assetWidth": null, "assetHeight": null, "styles": [], "classes": [], "link": null, "linkTarget": null, "haveCallback": false }

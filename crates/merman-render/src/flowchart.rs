@@ -21,6 +21,8 @@ pub(crate) struct FlowchartV2Model {
     pub direction: Option<String>,
     #[serde(default, rename = "edgeDefaults")]
     pub edge_defaults: Option<FlowEdgeDefaults>,
+    #[serde(default, rename = "vertexCalls")]
+    pub vertex_calls: Vec<String>,
     pub nodes: Vec<FlowNode>,
     pub edges: Vec<FlowEdge>,
     #[serde(default)]

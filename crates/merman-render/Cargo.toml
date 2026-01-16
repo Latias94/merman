@@ -12,6 +12,7 @@ pulldown-cmark.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+roughr.workspace = true
 
 [dev-dependencies]
 futures.workspace = true
