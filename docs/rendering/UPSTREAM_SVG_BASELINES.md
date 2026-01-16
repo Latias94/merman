@@ -60,10 +60,19 @@ Outputs to:
 
 ## Verify Baselines (All supported diagrams)
 
-Regenerate upstream SVGs into `target/upstream-svgs-check/` and verify they byte-match the pinned
+Regenerate upstream SVGs into `target/upstream-svgs-check/` and verify they match the pinned
 baselines under `fixtures/upstream-svgs/`:
 
 - `cargo run -p xtask -- check-upstream-svgs --diagram all`
+
+Notes:
+
+- Most diagrams are compared as **raw SVG bytes** (exact string match).
+- `state` diagrams are compared using a **structure-level DOM signature** by default because the
+  upstream Mermaid renderer uses rough/stochastic geometry output (not byte-stable). The DOM check
+  ignores `<path d>` / `data-points` payloads and normalizes generated ids.
+- To force DOM comparison for all diagrams (useful when iterating on tooling):
+  - `cargo run -p xtask -- check-upstream-svgs --diagram all --check-dom --dom-mode structure --dom-decimals 3`
 
 ## Compare (ER)
 
@@ -99,6 +108,23 @@ Generate a report comparing upstream flowchart SVGs and the current Rust Stage-B
 
 - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode structure --dom-decimals 3`
 
+## Generate (StateDiagram Stage B)
+
+Generate local Stage-B stateDiagram SVG outputs (not upstream baselines):
+
+- `cargo run -p xtask -- gen-state-svgs`
+
+Outputs to:
+
+- `target/svgs/state/*.svg`
+
+## Compare (StateDiagram)
+
+Generate a report comparing upstream stateDiagram SVGs and the current Rust Stage-B stateDiagram
+output (DOM signature comparison; upstream is not byte-stable):
+
+- `cargo run -p xtask -- compare-state-svgs --dom-mode structure --dom-decimals 3`
+
 Notes:
 
 - The flowchart DOM compare is intentionally looser than ER while Stage-B rendering is still being
@@ -110,10 +136,14 @@ Notes:
 - The generator passes `--svgId <fixture_stem>` to make the root SVG id deterministic.
 - If rendering fails for a fixture, the tool still writes as many SVGs as possible and records
   failures to `fixtures/upstream-svgs/<diagram>/_failures.txt` (the command will exit non-zero).
-- We currently store raw upstream SVG outputs. If diff noise becomes an issue, add a normalization
-  pass (whitespace + id rewrites) as a follow-up.
+- We currently store raw upstream SVG outputs. For `state` diagrams, upstream output is not
+  byte-stable, so baseline verification uses a structure-level DOM signature instead of a raw byte
+  compare.
 
 ## Known Upstream Rendering Failures (as of Mermaid 11.12.2)
 
 - `fixtures/state/upstream_state_parser_spec.mmd`: includes `__proto__`/`constructor` states; Mermaid CLI currently crashes.
 - `fixtures/class/upstream_text_label_variants_spec.mmd`: includes a whitespace-only label (`" "`); Mermaid CLI currently fails (NaN transforms / missing SVG in render tree).
+
+These fixtures are intentionally excluded from `xtask gen-upstream-svgs` / `xtask check-upstream-svgs`
+so baseline verification can remain actionable for the rest of the suite.
