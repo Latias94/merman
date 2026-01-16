@@ -5277,6 +5277,132 @@ fn render_flowchart_edge_path(
         return;
     }
 
+    fn flowchart_fix_corners(
+        points: &[crate::model::LayoutPoint],
+    ) -> Vec<crate::model::LayoutPoint> {
+        fn extract_corner_positions(points: &[crate::model::LayoutPoint]) -> Vec<usize> {
+            let mut corner_positions = Vec::new();
+            if points.len() < 3 {
+                return corner_positions;
+            }
+            for i in 1..points.len().saturating_sub(1) {
+                let prev = &points[i - 1];
+                let curr = &points[i];
+                let next = &points[i + 1];
+                if prev.x == curr.x
+                    && curr.y == next.y
+                    && (curr.x - next.x).abs() > 5.0
+                    && (curr.y - prev.y).abs() > 5.0
+                {
+                    corner_positions.push(i);
+                    continue;
+                }
+                if prev.y == curr.y
+                    && curr.x == next.x
+                    && (curr.x - prev.x).abs() > 5.0
+                    && (curr.y - next.y).abs() > 5.0
+                {
+                    corner_positions.push(i);
+                }
+            }
+            corner_positions
+        }
+
+        fn find_adjacent_point(
+            point_a: &crate::model::LayoutPoint,
+            point_b: &crate::model::LayoutPoint,
+            distance: f64,
+        ) -> crate::model::LayoutPoint {
+            let x_diff = point_b.x - point_a.x;
+            let y_diff = point_b.y - point_a.y;
+            let length = (x_diff * x_diff + y_diff * y_diff).sqrt();
+            if length <= 0.0 {
+                return crate::model::LayoutPoint {
+                    x: point_b.x,
+                    y: point_b.y,
+                };
+            }
+            let ratio = distance / length;
+            crate::model::LayoutPoint {
+                x: point_b.x - ratio * x_diff,
+                y: point_b.y - ratio * y_diff,
+            }
+        }
+
+        let corner_positions = extract_corner_positions(points);
+        if corner_positions.is_empty() {
+            return points.to_vec();
+        }
+
+        let mut out = Vec::new();
+        for (i, p) in points.iter().enumerate() {
+            if !corner_positions.contains(&i) {
+                out.push(crate::model::LayoutPoint { x: p.x, y: p.y });
+                continue;
+            }
+            if i == 0 || i + 1 >= points.len() {
+                out.push(crate::model::LayoutPoint { x: p.x, y: p.y });
+                continue;
+            }
+
+            let prev_point = &points[i - 1];
+            let next_point = &points[i + 1];
+            let corner_point = &points[i];
+
+            let new_prev = find_adjacent_point(prev_point, corner_point, 5.0);
+            let new_next = find_adjacent_point(next_point, corner_point, 5.0);
+            let x_diff = new_next.x - new_prev.x;
+            let y_diff = new_next.y - new_prev.y;
+
+            let new_prev_x = new_prev.x;
+            let new_prev_y = new_prev.y;
+            out.push(new_prev);
+
+            let a = 2.0 * 2.0_f64.sqrt();
+            let mut new_corner = crate::model::LayoutPoint {
+                x: corner_point.x,
+                y: corner_point.y,
+            };
+            if (next_point.x - prev_point.x).abs() > 10.0
+                && (next_point.y - prev_point.y).abs() >= 10.0
+            {
+                let r = 5.0;
+                if corner_point.x == new_prev_x {
+                    new_corner = crate::model::LayoutPoint {
+                        x: if x_diff < 0.0 {
+                            new_prev_x - r + a
+                        } else {
+                            new_prev_x + r - a
+                        },
+                        y: if y_diff < 0.0 {
+                            new_prev_y - a
+                        } else {
+                            new_prev_y + a
+                        },
+                    };
+                } else {
+                    new_corner = crate::model::LayoutPoint {
+                        x: if x_diff < 0.0 {
+                            new_prev_x - a
+                        } else {
+                            new_prev_x + a
+                        },
+                        y: if y_diff < 0.0 {
+                            new_prev_y - r + a
+                        } else {
+                            new_prev_y + r - a
+                        },
+                    };
+                }
+            }
+
+            out.push(new_corner);
+            out.push(new_next);
+        }
+
+        out
+    }
+
     let mut local_points: Vec<crate::model::LayoutPoint> = Vec::new();
     for p in &le.points {
         local_points.push(crate::model::LayoutPoint {
@@ -5285,13 +5411,13 @@ fn render_flowchart_edge_path(
         });
     }
 
-    let mut d = String::new();
-    if let Some(first) = local_points.first() {
-        let _ = write!(&mut d, "M{},{}", fmt(first.x), fmt(first.y));
-        for p in local_points.iter().skip(1) {
-            let _ = write!(&mut d, "L{},{}", fmt(p.x), fmt(p.y));
-        }
-    }
+    let line_data: Vec<crate::model::LayoutPoint> = local_points
+        .iter()
+        .filter(|p| !p.y.is_nan())
+        .cloned()
+        .collect();
+    let line_data = flowchart_fix_corners(&line_data);
+    let d = curve_basis_path_d(&line_data);
 
     let points_json = serde_json::to_string(&local_points).unwrap_or_else(|_| "[]".to_string());
     let points_b64 = base64::engine::general_purpose::STANDARD.encode(points_json);

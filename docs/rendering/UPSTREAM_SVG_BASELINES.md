@@ -110,6 +110,11 @@ Generate a report comparing upstream flowchart SVGs and the current Rust Stage-B
 - Use the stricter, parity-focused mode once edge routing/paths are closer to upstream:
   - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
+Notes:
+
+- Flowchart `parity` mode is expected to fail until Stage-B node shape paths (e.g. `roundedRect`, `hexagon`, `odd`)
+  and edge routing/point generation are brought in line with upstream Mermaid.
+
 ## Generate (StateDiagram Stage B)
 
 Generate local Stage-B stateDiagram SVG outputs (not upstream baselines):
