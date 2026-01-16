@@ -20,6 +20,7 @@ base64 = "0.22.1"
 lalrpop = "0.20.2"
 lalrpop-util = "0.20.2"
 logos = "0.14.4"
+pulldown-cmark = "0.12.2"
 regex = "1.11.1"
 roxmltree = "0.20.0"
 serde = { version = "1.0.217", features = ["derive"] }

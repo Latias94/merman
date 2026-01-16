@@ -8,6 +8,7 @@ license.workspace = true
 base64.workspace = true
 dugong = { path = "../dugong" }
 merman-core = { path = "../merman-core" }
+pulldown-cmark.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

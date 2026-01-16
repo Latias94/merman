@@ -7,9 +7,12 @@ use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use serde::Deserialize;
 use serde_json::Value;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Deserialize)]
-struct FlowchartV2Model {
+pub(crate) struct FlowchartV2Model {
+    #[serde(default, rename = "classDefs")]
+    pub class_defs: HashMap<String, Vec<String>>,
     #[serde(default)]
     pub direction: Option<String>,
     pub nodes: Vec<FlowNode>,
@@ -19,27 +22,47 @@ struct FlowchartV2Model {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct FlowNode {
+pub(crate) struct FlowNode {
     pub id: String,
     pub label: Option<String>,
+    #[serde(default, rename = "labelType")]
+    pub label_type: Option<String>,
     #[serde(rename = "layoutShape")]
     pub layout_shape: Option<String>,
+    #[serde(default)]
+    pub classes: Vec<String>,
+    #[serde(default)]
+    pub styles: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct FlowEdge {
+pub(crate) struct FlowEdge {
     pub id: String,
     pub from: String,
     pub to: String,
     pub label: Option<String>,
+    #[serde(default, rename = "labelType")]
+    pub label_type: Option<String>,
+    #[serde(default, rename = "type")]
+    pub edge_type: Option<String>,
+    #[serde(default)]
+    pub stroke: Option<String>,
+    #[serde(default)]
+    pub classes: Vec<String>,
+    #[serde(default)]
+    pub style: Vec<String>,
     pub length: usize,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct FlowSubgraph {
+pub(crate) struct FlowSubgraph {
     pub id: String,
     pub title: String,
     pub dir: Option<String>,
+    #[serde(default, rename = "labelType")]
+    pub label_type: Option<String>,
+    #[serde(default)]
+    pub classes: Vec<String>,
     pub nodes: Vec<String>,
 }
 
