@@ -105,6 +105,28 @@ fn normalize_class_list(s: &str) -> String {
     parts.join(" ")
 }
 
+fn is_geometry_attr(name: &str) -> bool {
+    matches!(
+        name,
+        "transform"
+            | "d"
+            | "points"
+            | "x"
+            | "y"
+            | "x1"
+            | "y1"
+            | "x2"
+            | "y2"
+            | "cx"
+            | "cy"
+            | "r"
+            | "rx"
+            | "ry"
+            | "width"
+            | "height"
+    )
+}
+
 fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDomNode {
     let mut attrs: BTreeMap<String, String> = BTreeMap::new();
     if n.is_element() {
@@ -112,9 +134,36 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             let key = a.name().to_string();
             let mut val = a.value().to_string();
 
+            let mut normalized_geom = false;
             if mode != DomMode::Strict {
-                if key == "d" || key == "data-points" {
-                    val = "<geom>".to_string();
+                if key == "data-points" {
+                    val = "<data-points>".to_string();
+                    normalized_geom = true;
+                }
+                if key == "d" || key == "points" {
+                    if mode == DomMode::Structure {
+                        val = "<geom>".to_string();
+                        normalized_geom = true;
+                    } else if mode == DomMode::Parity {
+                        if key == "d"
+                            && n.tag_name().name() == "path"
+                            && n.attribute("class")
+                                .is_some_and(|c| c.split_whitespace().any(|t| t == "relation"))
+                        {
+                            // Edge routing geometry differs across layout engines; treat edge path `d`
+                            // as geometry noise in parity mode.
+                            val = "<geom>".to_string();
+                            normalized_geom = true;
+                        } else {
+                            // Keep command letters but treat numeric payload as geometry noise.
+                            // This enables parity checks to catch path/points structure changes while
+                            // ignoring layout-specific numeric drift.
+                            let v = val.replace(',', " ");
+                            let v = normalize_numeric_tokens_mode(&v, decimals, DomMode::Structure);
+                            val = v.chars().filter(|c| !c.is_whitespace()).collect();
+                            normalized_geom = true;
+                        }
+                    }
                 }
                 if key == "style" || key == "viewBox" {
                     if n.tag_name().name() == "svg" {
@@ -131,6 +180,8 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             }
             if mode == DomMode::Structure && is_identifier_like_attr(&key) {
                 val = normalize_identifier_tokens(&val);
+            } else if !normalized_geom && mode == DomMode::Parity && is_geometry_attr(&key) {
+                val = normalize_numeric_tokens_mode(&val, decimals, DomMode::Structure);
             } else {
                 val = normalize_numeric_tokens_mode(&val, decimals, mode);
             }
