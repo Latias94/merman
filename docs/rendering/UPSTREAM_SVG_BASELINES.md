@@ -118,6 +118,16 @@ Outputs to:
 
 - `target/svgs/state/*.svg`
 
+## Generate (ClassDiagram Stage B)
+
+Generate local Stage-B classDiagram SVG outputs (not upstream baselines):
+
+- `cargo run -p xtask -- gen-class-svgs`
+
+Outputs to:
+
+- `target/svgs/class/*.svg`
+
 ## Compare (StateDiagram)
 
 Generate a report comparing upstream stateDiagram SVGs and the current Rust Stage-B stateDiagram

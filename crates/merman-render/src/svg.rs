@@ -2,7 +2,7 @@ use crate::model::{
     Bounds, ClassDiagramV2Layout, ErDiagramLayout, FlowchartV2Layout, LayoutCluster, LayoutNode,
     StateDiagramV2Layout,
 };
-use crate::text::{TextMeasurer, WrapMode};
+use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use base64::Engine as _;
 use serde::Deserialize;
@@ -2289,18 +2289,44 @@ fn class_apply_inline_styles(node: &ClassSvgNode) -> (Option<&str>, Option<&str>
     (fill, stroke, stroke_width)
 }
 
+fn class_decode_entities_minimal(text: &str) -> String {
+    text.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+}
+
 pub fn render_class_diagram_v2_svg(
     layout: &ClassDiagramV2Layout,
     semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
+    effective_config: &serde_json::Value,
     _diagram_title: Option<&str>,
-    _measurer: &dyn TextMeasurer,
+    measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let model: ClassSvgModel = serde_json::from_value(semantic.clone())?;
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let aria_roledescription = options.aria_roledescription.as_deref().unwrap_or("class");
+
+    let font_size = effective_config
+        .get("fontSize")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(16.0)
+        .max(1.0);
+    let line_height = font_size * 1.5;
+    let class_padding = effective_config
+        .get("class")
+        .and_then(|v| v.get("padding"))
+        .and_then(|v| v.as_f64())
+        .unwrap_or(5.0)
+        .max(0.0);
+    let text_style = TextStyle {
+        font_family: None,
+        font_size,
+        font_weight: None,
+    };
 
     let has_acc_title = model
         .acc_title
@@ -2580,13 +2606,44 @@ pub fn render_class_diagram_v2_svg(
         }
 
         if let Some(note) = note_by_id.get(n.id.as_str()).copied() {
+            let note_text = class_decode_entities_minimal(note.text.trim());
+            let metrics =
+                measurer.measure_wrapped(&note_text, &text_style, None, WrapMode::HtmlLike);
+            let fo_w = metrics.width.max(1.0);
+            let fo_h = metrics.height.max(line_height).max(1.0);
+            let w = n.width.max(1.0);
+            let h = n.height.max(1.0);
+            let left = -w / 2.0;
+            let top = -h / 2.0;
+            let label_x = -fo_w / 2.0;
+            let label_y = -fo_h / 2.0;
             let _ = write!(
                 &mut out,
-                r##"<g class="node undefined" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="M0,0" stroke="none" stroke-width="0" fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/><path d="M0,0" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/></g><g class="label" style="text-align:left !important;white-space:nowrap !important" transform="translate(0, 0)"><rect/><foreignObject width="0" height="24"><div style="text-align: center; white-space: nowrap; display: table-cell; line-height: 1.5; max-width: 200px;" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"##,
+                r##"<g class="node undefined" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="M{} {} L{} {} L{} {} L{} {} Z" stroke="none" stroke-width="0" fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/><path d="M{} {} L{} {} L{} {} L{} {} Z" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/></g><g class="label" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="text-align: center; white-space: nowrap; display: table-cell; line-height: 1.5; max-width: 200px;" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"##,
                 escape_attr(&note.id),
                 fmt(n.x),
                 fmt(n.y),
-                escape_xml(note.text.trim())
+                fmt(left),
+                fmt(top),
+                fmt(left + w),
+                fmt(top),
+                fmt(left + w),
+                fmt(top + h),
+                fmt(left),
+                fmt(top + h),
+                fmt(left),
+                fmt(top),
+                fmt(left + w),
+                fmt(top),
+                fmt(left + w),
+                fmt(top + h),
+                fmt(left),
+                fmt(top + h),
+                fmt(label_x),
+                fmt(label_y),
+                fmt(fo_w),
+                fmt(fo_h),
+                escape_xml(&note_text)
             );
             continue;
         }
@@ -2654,94 +2711,204 @@ pub fn render_class_diagram_v2_svg(
         out.push('>');
 
         out.push_str(r#"<g class="basic label-container">"#);
+        let w = n.width.max(1.0);
+        let h = n.height.max(1.0);
+        let left = -w / 2.0;
+        let top = -h / 2.0;
         let _ = write!(
             &mut out,
-            r#"<path d="M0,0" stroke="none" stroke-width="0" fill="{}" style=""/>"#,
+            r#"<path d="M{} {} L{} {} L{} {} L{} {} Z" stroke="none" stroke-width="0" fill="{}" style=""/>"#,
+            fmt(left),
+            fmt(top),
+            fmt(left + w),
+            fmt(top),
+            fmt(left + w),
+            fmt(top + h),
+            fmt(left),
+            fmt(top + h),
             escape_attr(node_fill)
         );
         let _ = write!(
             &mut out,
-            r#"<path d="M0,0" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
+            r#"<path d="M{} {} L{} {} L{} {} L{} {} Z" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
+            fmt(left),
+            fmt(top),
+            fmt(left + w),
+            fmt(top),
+            fmt(left + w),
+            fmt(top + h),
+            fmt(left),
+            fmt(top + h),
             escape_attr(node_stroke),
             escape_attr(node_stroke_width),
         );
         out.push_str("</g>");
 
-        // Annotation group.
-        out.push_str(r#"<g class="annotation-group text" transform="translate(0, 0)">"#);
+        let mut content_max_w: f64 = 0.0;
+        let title_text = class_decode_entities_minimal(node.text.trim());
+        let title_metrics =
+            measurer.measure_wrapped(&title_text, &text_style, None, WrapMode::HtmlLike);
+        content_max_w = content_max_w.max(title_metrics.width);
         for a in &node.annotations {
-            let text = format!("\u{00AB}{}\u{00BB}", a.trim());
+            let t = format!(
+                "\u{00AB}{}\u{00BB}",
+                class_decode_entities_minimal(a.trim())
+            );
+            let m = measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike);
+            content_max_w = content_max_w.max(m.width);
+        }
+        for m in &node.members {
+            let t = class_decode_entities_minimal(m.display_text.trim());
+            let mm = measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike);
+            content_max_w = content_max_w.max(mm.width);
+        }
+        for m in &node.methods {
+            let t = class_decode_entities_minimal(m.display_text.trim());
+            let mm = measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike);
+            content_max_w = content_max_w.max(mm.width);
+        }
+        content_max_w = content_max_w.max(0.0);
+        let content_x = -content_max_w / 2.0;
+
+        let mut cursor = top + class_padding;
+
+        // Annotation group.
+        if node.annotations.is_empty() {
+            out.push_str(r#"<g class="annotation-group text" transform="translate(0, -18)"/>"#);
+        } else {
+            let ann_y = cursor + line_height / 2.0;
             let _ = write!(
                 &mut out,
-                r#"<g class="label" style="" transform="translate(0,-12)"><foreignObject width="0" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
+                r#"<g class="annotation-group text" transform="translate(0, {})">"#,
+                fmt(ann_y)
             );
-            render_class_html_label(
-                &mut out,
-                "nodeLabel",
-                text.as_str(),
-                true,
-                Some("markdown-node-label"),
-            );
-            out.push_str("</div></foreignObject></g>");
+            for (idx, a) in node.annotations.iter().enumerate() {
+                let t = format!(
+                    "\u{00AB}{}\u{00BB}",
+                    class_decode_entities_minimal(a.trim())
+                );
+                let y = (idx as f64) * line_height - (line_height / 2.0);
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="label" style="" transform="translate(0,{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
+                    fmt(y),
+                    fmt(content_max_w.max(1.0)),
+                    fmt(line_height.max(1.0))
+                );
+                render_class_html_label(
+                    &mut out,
+                    "nodeLabel",
+                    t.as_str(),
+                    true,
+                    Some("markdown-node-label"),
+                );
+                out.push_str("</div></foreignObject></g>");
+            }
+            out.push_str("</g>");
+            cursor += (node.annotations.len() as f64) * line_height;
         }
-        out.push_str("</g>");
 
         // Label group (class name).
+        let label_y = cursor + line_height / 2.0;
         let _ = write!(
             &mut out,
-            r#"<g class="label-group text" transform="translate(0, 0)"><g class="label" style="font-weight: bolder" transform="translate(0,-12)"><foreignObject width="0" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
+            r#"<g class="label-group text" transform="translate({}, {})"><g class="label" style="font-weight: bolder" transform="translate(0,-12)"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
+            fmt(content_x),
+            fmt(label_y),
+            fmt(title_metrics.width.max(1.0)),
+            fmt(title_metrics.height.max(line_height).max(1.0))
         );
         render_class_html_label(
             &mut out,
             "nodeLabel",
-            node.label.as_str(),
+            title_text.as_str(),
             true,
             Some("markdown-node-label"),
         );
         out.push_str("</div></foreignObject></g></g>");
+        cursor += title_metrics.height.max(line_height);
 
         // Members.
-        out.push_str(r#"<g class="members-group text" transform="translate(0, 0)">"#);
-        for m in &node.members {
+        if node.members.is_empty() {
+            out.push_str(r#"<g class="members-group text" transform="translate(0, 0)"/>"#);
+        } else {
+            cursor += class_padding;
+            let members_y = cursor + line_height / 2.0;
             let _ = write!(
                 &mut out,
-                r#"<g class="label" style="" transform="translate(0,-12)"><foreignObject width="0" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
+                r#"<g class="members-group text" transform="translate({}, {})">"#,
+                fmt(content_x),
+                fmt(members_y)
             );
-            render_class_html_label(
-                &mut out,
-                "nodeLabel",
-                m.display_text.as_str(),
-                true,
-                Some("markdown-node-label"),
-            );
-            out.push_str("</div></foreignObject></g>");
+            for (idx, m) in node.members.iter().enumerate() {
+                let t = class_decode_entities_minimal(m.display_text.trim());
+                let mm = measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike);
+                let y = (idx as f64) * line_height - (line_height / 2.0);
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="label" style="" transform="translate(0,{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
+                    fmt(y),
+                    fmt(mm.width.max(1.0)),
+                    fmt(mm.height.max(line_height).max(1.0))
+                );
+                render_class_html_label(
+                    &mut out,
+                    "nodeLabel",
+                    t.as_str(),
+                    true,
+                    Some("markdown-node-label"),
+                );
+                out.push_str("</div></foreignObject></g>");
+            }
+            out.push_str("</g>");
+            cursor += (node.members.len() as f64) * line_height;
         }
-        out.push_str("</g>");
 
         // Methods.
-        out.push_str(r#"<g class="methods-group text" transform="translate(0, 0)">"#);
-        for m in &node.methods {
+        if node.methods.is_empty() {
+            out.push_str(r#"<g class="methods-group text" transform="translate(0, 0)"/>"#);
+        } else {
+            cursor += class_padding;
+            let methods_y = cursor + line_height / 2.0;
             let _ = write!(
                 &mut out,
-                r#"<g class="label" style="" transform="translate(0,-12)"><foreignObject width="0" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
+                r#"<g class="methods-group text" transform="translate({}, {})">"#,
+                fmt(content_x),
+                fmt(methods_y)
             );
-            render_class_html_label(
-                &mut out,
-                "nodeLabel",
-                m.display_text.as_str(),
-                true,
-                Some("markdown-node-label"),
-            );
-            out.push_str("</div></foreignObject></g>");
+            for (idx, m) in node.methods.iter().enumerate() {
+                let t = class_decode_entities_minimal(m.display_text.trim());
+                let mm = measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike);
+                let y = (idx as f64) * line_height - (line_height / 2.0);
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="label" style="" transform="translate(0,{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
+                    fmt(y),
+                    fmt(mm.width.max(1.0)),
+                    fmt(mm.height.max(line_height).max(1.0))
+                );
+                render_class_html_label(
+                    &mut out,
+                    "nodeLabel",
+                    t.as_str(),
+                    true,
+                    Some("markdown-node-label"),
+                );
+                out.push_str("</div></foreignObject></g>");
+            }
+            out.push_str("</g>");
         }
-        out.push_str("</g>");
 
         // Dividers (always present in Mermaid output).
         for _ in 0..2 {
             out.push_str(r#"<g class="divider" style="">"#);
             let _ = write!(
                 &mut out,
-                r#"<path d="M0,0" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
+                r#"<path d="M{} {} L{} {}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
+                fmt(left),
+                fmt(0.0),
+                fmt(left + w),
+                fmt(0.0),
                 escape_attr(node_stroke),
                 escape_attr(node_stroke_width),
             );
