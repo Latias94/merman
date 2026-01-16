@@ -83,6 +83,28 @@ Generate a small report comparing upstream SVGs and the current Rust Stage-B ER 
     HTML label `<div>` style attributes):
     - `cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
+## Generate (Flowchart Stage B)
+
+Generate local Stage-B flowchart SVG outputs (not upstream baselines):
+
+- `cargo run -p xtask -- gen-flowchart-svgs`
+
+Outputs to:
+
+- `target/svgs/flowchart/*.svg`
+
+## Compare (Flowchart)
+
+Generate a report comparing upstream flowchart SVGs and the current Rust Stage-B flowchart output:
+
+- `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode structure --dom-decimals 3`
+
+Notes:
+
+- The flowchart DOM compare is intentionally looser than ER while Stage-B rendering is still being
+  brought up. It ignores `<path d>` and `data-points` geometry payloads and normalizes child order
+  for container groups like `g.root` by using the first descendant cluster id as a sort hint.
+
 ## Notes
 
 - The generator passes `--svgId <fixture_stem>` to make the root SVG id deterministic.

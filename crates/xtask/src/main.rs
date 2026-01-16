@@ -68,9 +68,11 @@ fn main() -> Result<(), XtaskError> {
         "check-alignment" => check_alignment(args.collect()),
         "gen-debug-svgs" => gen_debug_svgs(args.collect()),
         "gen-er-svgs" => gen_er_svgs(args.collect()),
+        "gen-flowchart-svgs" => gen_flowchart_svgs(args.collect()),
         "gen-upstream-svgs" => gen_upstream_svgs(args.collect()),
         "check-upstream-svgs" => check_upstream_svgs(args.collect()),
         "compare-er-svgs" => compare_er_svgs(args.collect()),
+        "compare-flowchart-svgs" => compare_flowchart_svgs(args.collect()),
         other => Err(XtaskError::UnknownCommand(other.to_string())),
     }
 }
@@ -2578,4 +2580,571 @@ fn merge_yaml(mut base: YamlValue, overlay: YamlValue) -> YamlValue {
 
 fn yaml_to_json(v: &YamlValue) -> Result<JsonValue, serde_json::Error> {
     serde_json::to_value(v)
+}
+
+fn gen_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
+    let mut out_root: Option<PathBuf> = None;
+    let mut filter: Option<String> = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--out" => {
+                i += 1;
+                out_root = args.get(i).map(PathBuf::from);
+            }
+            "--filter" => {
+                i += 1;
+                filter = args.get(i).map(|s| s.to_string());
+            }
+            "--help" | "-h" => return Err(XtaskError::Usage),
+            _ => return Err(XtaskError::Usage),
+        }
+        i += 1;
+    }
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+    let out_root = out_root.unwrap_or_else(|| workspace_root.join("target").join("svgs"));
+
+    let fixtures_dir = workspace_root.join("fixtures").join("flowchart");
+    let out_dir = out_root.join("flowchart");
+
+    let mut mmd_files: Vec<PathBuf> = Vec::new();
+    let Ok(entries) = fs::read_dir(&fixtures_dir) else {
+        return Err(XtaskError::DebugSvgFailed(format!(
+            "failed to list fixtures directory {}",
+            fixtures_dir.display()
+        )));
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if !path.extension().is_some_and(|e| e == "mmd") {
+            continue;
+        }
+        if let Some(ref f) = filter {
+            if !path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.contains(f))
+            {
+                continue;
+            }
+        }
+        mmd_files.push(path);
+    }
+    mmd_files.sort();
+
+    if mmd_files.is_empty() {
+        return Err(XtaskError::DebugSvgFailed(format!(
+            "no .mmd fixtures matched under {}",
+            fixtures_dir.display()
+        )));
+    }
+
+    fs::create_dir_all(&out_dir).map_err(|source| XtaskError::WriteFile {
+        path: out_dir.display().to_string(),
+        source,
+    })?;
+
+    let engine = merman::Engine::new();
+    let mut failures: Vec<String> = Vec::new();
+
+    for mmd_path in mmd_files {
+        let text = match fs::read_to_string(&mmd_path) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!("failed to read {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
+
+        let parsed = match futures::executor::block_on(
+            engine.parse_diagram(&text, merman::ParseOptions::default()),
+        ) {
+            Ok(Some(v)) => v,
+            Ok(None) => {
+                failures.push(format!("no diagram detected in {}", mmd_path.display()));
+                continue;
+            }
+            Err(err) => {
+                failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
+
+        let layout_opts = merman_render::LayoutOptions::default();
+        let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
+
+        let merman_render::model::LayoutDiagram::FlowchartV2(layout) = &layouted.layout else {
+            failures.push(format!(
+                "unexpected layout type for {}: {}",
+                mmd_path.display(),
+                layouted.meta.diagram_type
+            ));
+            continue;
+        };
+
+        let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
+            failures.push(format!("invalid fixture filename {}", mmd_path.display()));
+            continue;
+        };
+
+        let svg_opts = merman_render::svg::SvgRenderOptions {
+            diagram_id: Some(stem.to_string()),
+            ..Default::default()
+        };
+
+        let svg = match merman_render::svg::render_flowchart_v2_svg(
+            layout,
+            &layouted.semantic,
+            &layouted.meta.effective_config,
+            layouted.meta.title.as_deref(),
+            layout_opts.text_measurer.as_ref(),
+            &svg_opts,
+        ) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!("render failed for {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
+
+        let out_path = out_dir.join(format!("{stem}.svg"));
+        if let Err(err) = fs::write(&out_path, svg) {
+            failures.push(format!("failed to write {}: {err}", out_path.display()));
+            continue;
+        }
+    }
+
+    if failures.is_empty() {
+        return Ok(());
+    }
+
+    Err(XtaskError::DebugSvgFailed(failures.join("\n")))
+}
+
+fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
+    let mut out_path: Option<PathBuf> = None;
+    let mut filter: Option<String> = None;
+    let mut check_dom: bool = false;
+    let mut dom_decimals: u32 = 3;
+    let mut dom_mode: String = "structure".to_string();
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--out" => {
+                i += 1;
+                out_path = args.get(i).map(PathBuf::from);
+            }
+            "--filter" => {
+                i += 1;
+                filter = args.get(i).map(|s| s.to_string());
+            }
+            "--check-dom" => check_dom = true,
+            "--dom-decimals" => {
+                i += 1;
+                dom_decimals = args.get(i).and_then(|s| s.parse::<u32>().ok()).unwrap_or(3);
+            }
+            "--dom-mode" => {
+                i += 1;
+                dom_mode = args
+                    .get(i)
+                    .map(|s| s.trim().to_string())
+                    .unwrap_or_else(|| "structure".to_string());
+            }
+            "--help" | "-h" => return Err(XtaskError::Usage),
+            _ => return Err(XtaskError::Usage),
+        }
+        i += 1;
+    }
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+    let fixtures_dir = workspace_root.join("fixtures").join("flowchart");
+    let upstream_dir = workspace_root
+        .join("fixtures")
+        .join("upstream-svgs")
+        .join("flowchart");
+    let out_path = out_path.unwrap_or_else(|| {
+        workspace_root
+            .join("target")
+            .join("compare")
+            .join("flowchart_report.md")
+    });
+    let out_svg_dir = out_path
+        .parent()
+        .unwrap_or(&workspace_root)
+        .join("flowchart");
+
+    let mut mmd_files: Vec<PathBuf> = Vec::new();
+    let Ok(entries) = fs::read_dir(&fixtures_dir) else {
+        return Err(XtaskError::SvgCompareFailed(format!(
+            "failed to list fixtures directory {}",
+            fixtures_dir.display()
+        )));
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if !path.extension().is_some_and(|e| e == "mmd") {
+            continue;
+        }
+        if let Some(ref f) = filter {
+            if !path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.contains(f))
+            {
+                continue;
+            }
+        }
+        mmd_files.push(path);
+    }
+    mmd_files.sort();
+
+    if mmd_files.is_empty() {
+        return Err(XtaskError::SvgCompareFailed(format!(
+            "no .mmd fixtures matched under {}",
+            fixtures_dir.display()
+        )));
+    }
+
+    fs::create_dir_all(&out_svg_dir).map_err(|source| XtaskError::WriteFile {
+        path: out_svg_dir.display().to_string(),
+        source,
+    })?;
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct SvgDomNode {
+        name: String,
+        attrs: std::collections::BTreeMap<String, String>,
+        text: Option<String>,
+        children: Vec<SvgDomNode>,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum DomMode {
+        Strict,
+        Structure,
+        Parity,
+    }
+
+    fn parse_dom_mode(s: &str) -> DomMode {
+        match s {
+            "strict" => DomMode::Strict,
+            "parity" => DomMode::Parity,
+            _ => DomMode::Structure,
+        }
+    }
+
+    fn round_f64(v: f64, decimals: u32) -> f64 {
+        let p = 10_f64.powi(decimals as i32);
+        (v * p).round() / p
+    }
+
+    fn re_num() -> &'static Regex {
+        static ONCE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+        ONCE.get_or_init(|| Regex::new(r"-?(?:\d+\.\d+|\d+\.|\.\d+|\d+)(?:[eE][+-]?\d+)?").unwrap())
+    }
+
+    fn normalize_numeric_tokens(s: &str, decimals: u32) -> String {
+        re_num()
+            .replace_all(s, |caps: &regex::Captures<'_>| {
+                let raw = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
+                let Ok(v) = raw.parse::<f64>() else {
+                    return raw.to_string();
+                };
+                let r = round_f64(v, decimals);
+                let r = if r == 0.0 { 0.0 } else { r };
+                let mut out = format!("{r}");
+                if out.contains('.') {
+                    while out.ends_with('0') {
+                        out.pop();
+                    }
+                    if out.ends_with('.') {
+                        out.pop();
+                    }
+                }
+                out
+            })
+            .to_string()
+    }
+
+    fn normalize_numeric_tokens_mode(s: &str, decimals: u32, mode: DomMode) -> String {
+        match mode {
+            DomMode::Strict | DomMode::Parity => normalize_numeric_tokens(s, decimals),
+            DomMode::Structure => re_num().replace_all(s, "<n>").to_string(),
+        }
+    }
+
+    fn normalize_class_list(s: &str) -> String {
+        let mut parts: Vec<&str> = s.split_whitespace().collect();
+        parts.sort_unstable();
+        parts.dedup();
+        parts.join(" ")
+    }
+
+    fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDomNode {
+        let mut attrs: std::collections::BTreeMap<String, String> =
+            std::collections::BTreeMap::new();
+        if n.is_element() {
+            for a in n.attributes() {
+                let key = a.name().to_string();
+                let mut val = a.value().to_string();
+
+                if mode != DomMode::Strict {
+                    if key == "d" || key == "data-points" {
+                        val = "<geom>".to_string();
+                    }
+                    if key == "style" || key == "viewBox" {
+                        // Keep width/height to retain root sizing shape, but ignore the SVG root style/viewBox noise.
+                        if n.tag_name().name() == "svg" {
+                            continue;
+                        }
+                        if key == "style" {
+                            continue;
+                        }
+                    }
+                }
+
+                if key == "class" {
+                    val = normalize_class_list(&val);
+                }
+                val = normalize_numeric_tokens_mode(&val, decimals, mode);
+                attrs.insert(key, val);
+            }
+        }
+
+        let text = n
+            .text()
+            .map(|t| t.split_whitespace().collect::<Vec<_>>().join(" "))
+            .filter(|t| !t.is_empty());
+        let mut children: Vec<SvgDomNode> = Vec::new();
+        for c in n.children().filter(|c| c.is_element()) {
+            children.push(build_node(c, mode, decimals));
+        }
+        if mode != DomMode::Strict {
+            fn find_first_cluster_id(n: &SvgDomNode) -> Option<&str> {
+                if n.name == "g" {
+                    if let Some(class) = n.attrs.get("class") {
+                        if class.split_whitespace().any(|c| c == "cluster") {
+                            if let Some(id) = n.attrs.get("id") {
+                                return Some(id.as_str());
+                            }
+                        }
+                    }
+                }
+                for c in &n.children {
+                    if let Some(id) = find_first_cluster_id(c) {
+                        return Some(id);
+                    }
+                }
+                None
+            }
+
+            fn sort_hint(n: &SvgDomNode) -> &str {
+                if let Some(id) = n.attrs.get("id") {
+                    return id.as_str();
+                }
+                if n.name == "g" {
+                    if let Some(class) = n.attrs.get("class") {
+                        if class.split_whitespace().any(|c| c == "root") {
+                            if let Some(id) = find_first_cluster_id(n) {
+                                return id;
+                            }
+                        }
+                    }
+                }
+                ""
+            }
+
+            children.sort_by(|a, b| {
+                let aclass = a.attrs.get("class").map(|s| s.as_str()).unwrap_or("");
+                let bclass = b.attrs.get("class").map(|s| s.as_str()).unwrap_or("");
+                let ahint = sort_hint(a);
+                let bhint = sort_hint(b);
+                a.name
+                    .cmp(&b.name)
+                    .then_with(|| ahint.cmp(bhint))
+                    .then_with(|| aclass.cmp(bclass))
+            });
+        }
+        SvgDomNode {
+            name: n.tag_name().name().to_string(),
+            attrs,
+            text: if mode == DomMode::Strict { text } else { None },
+            children,
+        }
+    }
+
+    fn dom_signature(svg: &str, mode: DomMode, decimals: u32) -> Result<SvgDomNode, String> {
+        let doc = roxmltree::Document::parse(svg).map_err(|e| e.to_string())?;
+        let root = doc
+            .descendants()
+            .find(|n| n.has_tag_name("svg"))
+            .ok_or_else(|| "missing <svg> root".to_string())?;
+        Ok(build_node(root, mode, decimals))
+    }
+
+    let mode = parse_dom_mode(&dom_mode);
+
+    let engine = merman::Engine::new();
+    let mut report = String::new();
+    let _ = writeln!(
+        &mut report,
+        "# Flowchart SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/flowchart/*.svg` (Mermaid 11.12.2)\n- Local: `render_flowchart_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
+        dom_mode, dom_decimals
+    );
+
+    let mut failures: Vec<String> = Vec::new();
+    for mmd_path in mmd_files {
+        let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
+            failures.push(format!("invalid fixture filename {}", mmd_path.display()));
+            continue;
+        };
+        let upstream_path = upstream_dir.join(format!("{stem}.svg"));
+        let upstream_svg = match fs::read_to_string(&upstream_path) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!(
+                    "missing upstream svg {}: {err}",
+                    upstream_path.display()
+                ));
+                continue;
+            }
+        };
+
+        let text = match fs::read_to_string(&mmd_path) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!("failed to read {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
+
+        let parsed = match futures::executor::block_on(
+            engine.parse_diagram(&text, merman::ParseOptions::default()),
+        ) {
+            Ok(Some(v)) => v,
+            Ok(None) => {
+                failures.push(format!("no diagram detected in {}", mmd_path.display()));
+                continue;
+            }
+            Err(err) => {
+                failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
+
+        let layout_opts = merman_render::LayoutOptions::default();
+        let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
+
+        let merman_render::model::LayoutDiagram::FlowchartV2(layout) = &layouted.layout else {
+            failures.push(format!(
+                "unexpected layout type for {}: {}",
+                mmd_path.display(),
+                layouted.meta.diagram_type
+            ));
+            continue;
+        };
+
+        let svg_opts = merman_render::svg::SvgRenderOptions {
+            diagram_id: Some(stem.to_string()),
+            ..Default::default()
+        };
+
+        let local_svg = match merman_render::svg::render_flowchart_v2_svg(
+            layout,
+            &layouted.semantic,
+            &layouted.meta.effective_config,
+            layouted.meta.title.as_deref(),
+            layout_opts.text_measurer.as_ref(),
+            &svg_opts,
+        ) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!("render failed for {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
+
+        let local_out_path = out_svg_dir.join(format!("{stem}.svg"));
+        let _ = fs::write(&local_out_path, &local_svg);
+
+        if check_dom {
+            let a = match dom_signature(&upstream_svg, mode, dom_decimals) {
+                Ok(v) => v,
+                Err(err) => {
+                    failures.push(format!("upstream dom parse failed for {stem}: {err}"));
+                    continue;
+                }
+            };
+            let b = match dom_signature(&local_svg, mode, dom_decimals) {
+                Ok(v) => v,
+                Err(err) => {
+                    failures.push(format!("local dom parse failed for {stem}: {err}"));
+                    continue;
+                }
+            };
+            if a != b {
+                failures.push(format!(
+                    "dom mismatch for {stem}: upstream={} local={}",
+                    upstream_path.display(),
+                    local_out_path.display()
+                ));
+            }
+        }
+    }
+
+    if failures.is_empty() {
+        let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
+    } else {
+        let _ = writeln!(&mut report, "\n## Mismatches\n");
+        for f in &failures {
+            let _ = writeln!(&mut report, "- {f}");
+        }
+        let _ = writeln!(
+            &mut report,
+            "\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    }
+
+    if let Some(parent) = out_path.parent() {
+        fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
+            path: parent.display().to_string(),
+            source,
+        })?;
+    }
+    fs::write(&out_path, report).map_err(|source| XtaskError::WriteFile {
+        path: out_path.display().to_string(),
+        source,
+    })?;
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(XtaskError::SvgCompareFailed(failures.join("\n")))
+    }
 }
