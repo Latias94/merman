@@ -3,8 +3,8 @@
   "layout": {
     "ClassDiagramV2": {
       "bounds": {
-        "max_x": 430.5,
-        "max_y": 146.0,
+        "max_x": 640.8,
+        "max_y": 233.0,
         "min_x": 0.0,
         "min_y": 0.0
       },
@@ -20,16 +20,16 @@
           "label": null,
           "points": [
             {
-              "x": 347.2,
-              "y": 30.0
+              "x": 512.02,
+              "y": 39.0
             },
             {
-              "x": 281.225,
-              "y": 55.0
+              "x": 416.21,
+              "y": 64.0
             },
             {
-              "x": 215.25,
-              "y": 80.0
+              "x": 320.4,
+              "y": 89.0
             }
           ],
           "start_label_left": null,
@@ -42,28 +42,28 @@
       ],
       "nodes": [
         {
-          "height": 66.0,
+          "height": 144.0,
           "id": "Something",
           "is_cluster": false,
-          "width": 58.3,
-          "x": 215.25,
-          "y": 113.0
+          "width": 125.28,
+          "x": 320.4,
+          "y": 161.0
         },
         {
-          "height": 30.0,
+          "height": 39.0,
           "id": "note0",
           "is_cluster": false,
-          "width": 213.9,
-          "x": 106.95,
-          "y": 15.0
+          "width": 333.24,
+          "x": 166.62,
+          "y": 19.5
         },
         {
-          "height": 30.0,
+          "height": 39.0,
           "id": "note1",
           "is_cluster": false,
-          "width": 166.6,
-          "x": 347.2,
-          "y": 15.0
+          "width": 257.56,
+          "x": 512.02,
+          "y": 19.5
         }
       ]
     }

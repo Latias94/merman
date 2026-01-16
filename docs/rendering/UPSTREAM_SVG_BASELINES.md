@@ -128,6 +128,12 @@ Outputs to:
 
 - `target/svgs/class/*.svg`
 
+Notes:
+
+- Stage-B class layout sizes nodes using the global Mermaid `fontSize` and a fixed `line-height: 1.5`
+  (matching upstream HTML label structure) to keep layout and SVG rendering consistent and avoid
+  label overlap.
+
 ## Compare (StateDiagram)
 
 Generate a report comparing upstream stateDiagram SVGs and the current Rust Stage-B stateDiagram

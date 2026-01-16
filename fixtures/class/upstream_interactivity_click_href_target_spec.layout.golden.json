@@ -3,8 +3,8 @@
   "layout": {
     "ClassDiagramV2": {
       "bounds": {
-        "max_x": 37.3,
-        "max_y": 36.0,
+        "max_x": 67.68,
+        "max_y": 84.0,
         "min_x": 0.0,
         "min_y": 0.0
       },
@@ -12,12 +12,12 @@
       "edges": [],
       "nodes": [
         {
-          "height": 36.0,
+          "height": 84.0,
           "id": "Class1",
           "is_cluster": false,
-          "width": 37.3,
-          "x": 18.65,
-          "y": 18.0
+          "width": 67.68,
+          "x": 33.84,
+          "y": 42.0
         }
       ]
     }

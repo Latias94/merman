@@ -103,6 +103,14 @@ fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
     cur.as_bool()
 }
 
+fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
+    let mut cur = cfg;
+    for key in path {
+        cur = cur.get(*key)?;
+    }
+    cur.as_str().map(|s| s.to_string())
+}
+
 fn normalize_dir(direction: &str) -> String {
     match direction.trim().to_uppercase().as_str() {
         "TB" | "TD" => "TB".to_string(),
@@ -758,9 +766,15 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
 }
 
 fn class_text_style(effective_config: &Value) -> TextStyle {
-    let font_size = config_f64(effective_config, &["class", "textHeight"]).unwrap_or(10.0);
+    let font_family = config_string(effective_config, &["fontFamily"]);
+    // Mermaid class diagram node labels inherit the global `fontSize` (via the root `#id{font-size}` rule)
+    // and render via HTML labels (`foreignObject`). Prefer the global value for sizing/layout parity.
+    let font_size = config_f64(effective_config, &["fontSize"])
+        .or_else(|| config_f64(effective_config, &["class", "fontSize"]))
+        .unwrap_or(16.0)
+        .max(1.0);
     TextStyle {
-        font_family: None,
+        font_family,
         font_size,
         font_weight: None,
     }
@@ -771,87 +785,69 @@ fn class_box_dimensions(
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
     wrap_mode: WrapMode,
-    padding: f64,
+    _padding: f64,
     hide_empty_members_box: bool,
 ) -> (f64, f64) {
-    let p = padding.max(0.0);
-    let gap = p;
-    let text_padding = if wrap_mode == WrapMode::HtmlLike {
-        0.0
-    } else {
-        3.0
-    };
+    let font_size = text_style.font_size.max(1.0);
+    let line_height = font_size * 1.5;
 
     let label_text = decode_entities_minimal(&node.text);
-    let label_metrics = measurer.measure_wrapped(&label_text, text_style, None, wrap_mode);
-    let mut max_w = label_metrics.width;
+    let mut max_w = measurer
+        .measure_wrapped(&label_text, text_style, None, wrap_mode)
+        .width;
 
-    let mut bbox_h = label_metrics.height;
-    if let Some(a) = node.annotations.first() {
-        let t = format!("?{}?", decode_entities_minimal(a));
+    for a in &node.annotations {
+        let t = format!("\u{00AB}{}\u{00BB}", decode_entities_minimal(a.trim()));
         let m = measurer.measure_wrapped(&t, text_style, None, wrap_mode);
         max_w = max_w.max(m.width);
-        bbox_h += m.height;
     }
 
-    let mut members_h = 0.0;
-    for (idx, m) in node.members.iter().enumerate() {
-        let t = decode_entities_minimal(&m.display_text);
+    for m in &node.members {
+        let t = decode_entities_minimal(m.display_text.trim());
         let metrics = measurer.measure_wrapped(&t, text_style, None, wrap_mode);
         max_w = max_w.max(metrics.width);
-        members_h += metrics.height;
-        if idx + 1 < node.members.len() {
-            members_h += text_padding;
-        }
-    }
-    if members_h <= 0.0 {
-        members_h = gap / 2.0;
     }
 
-    let mut methods_h = 0.0;
-    for (idx, m) in node.methods.iter().enumerate() {
-        let t = decode_entities_minimal(&m.display_text);
+    for m in &node.methods {
+        let t = decode_entities_minimal(m.display_text.trim());
         let metrics = measurer.measure_wrapped(&t, text_style, None, wrap_mode);
         max_w = max_w.max(metrics.width);
-        methods_h += metrics.height;
-        if idx + 1 < node.methods.len() {
-            methods_h += text_padding;
-        }
     }
 
     let has_members = !node.members.is_empty();
     let has_methods = !node.methods.is_empty();
 
-    if has_members {
-        bbox_h += gap * 2.0 + members_h;
-    }
-    if has_methods {
-        if has_members {
-            bbox_h += gap * 4.0;
-        } else {
-            bbox_h += gap * 4.0 + gap / 2.0;
-        }
-        bbox_h += methods_h;
-    }
+    // Mermaid class node sizing is row-based (via HTML labels) with a fixed line-height of `1.5`.
+    // Use a deterministic, layout-friendly approximation matching upstream structure:
+    // - width: add one line-height of horizontal padding for title-only nodes, two for nodes with
+    //   members/methods compartments.
+    // - height: top padding = 0.5 line-height; bottom padding = 0 for title-only nodes, 0.5 otherwise.
+    let rect_w = if has_members || has_methods {
+        max_w + 2.0 * line_height
+    } else {
+        max_w + line_height
+    };
 
-    let mut h = bbox_h;
-    if !has_members && !has_methods {
-        h += gap;
-    } else if has_members && !has_methods {
-        h += gap * 2.0;
-    }
+    let ann_rows = node.annotations.len();
+    let member_rows = if has_members { node.members.len() } else { 0 };
+    let method_rows = if has_methods { node.methods.len() } else { 0 };
+    let divider_rows = if hide_empty_members_box && !has_members && !has_methods {
+        0
+    } else {
+        2
+    };
+    let title_rows = 1;
+    let total_rows = ann_rows + title_rows + divider_rows + member_rows + method_rows;
 
-    let render_extra_box = !has_members && !has_methods && !hide_empty_members_box;
+    let top_pad = line_height / 2.0;
+    let bottom_pad = if member_rows == 0 && method_rows == 0 {
+        0.0
+    } else {
+        line_height / 2.0
+    };
+    let rect_h = top_pad + (total_rows as f64) * line_height + bottom_pad;
 
-    let w = max_w;
-    let mut rect_w = w + 2.0 * p;
-    let mut rect_h = h + 2.0 * p;
-    if render_extra_box {
-        rect_h += p * 2.0;
-    } else if !has_members && !has_methods {
-        rect_h -= p;
-    }
-
+    let mut rect_w = rect_w;
     if node.r#type == "group" {
         rect_w = rect_w.max(500.0);
     }

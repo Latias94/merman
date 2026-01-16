@@ -3,8 +3,8 @@
   "layout": {
     "ClassDiagramV2": {
       "bounds": {
-        "max_x": 36.0,
-        "max_y": 137.0,
+        "max_x": 65.6,
+        "max_y": 242.0,
         "min_x": 0.0,
         "min_y": 0.0
       },
@@ -18,23 +18,23 @@
           "from_cluster": null,
           "id": "0",
           "label": {
-            "height": 15.0,
-            "width": 12.9,
-            "x": 18.0,
-            "y": 68.5
+            "height": 24.0,
+            "width": 20.64,
+            "x": 32.8,
+            "y": 121.0
           },
           "points": [
             {
-              "x": 18.0,
-              "y": 36.0
+              "x": 32.8,
+              "y": 84.0
             },
             {
-              "x": 18.0,
-              "y": 68.5
+              "x": 32.8,
+              "y": 121.0
             },
             {
-              "x": 18.0,
-              "y": 101.0
+              "x": 32.8,
+              "y": 158.0
             }
           ],
           "start_label_left": null,
@@ -47,20 +47,20 @@
       ],
       "nodes": [
         {
-          "height": 36.0,
+          "height": 84.0,
           "id": "Car",
           "is_cluster": false,
-          "width": 24.6,
-          "x": 18.0,
-          "y": 18.0
+          "width": 47.36,
+          "x": 32.8,
+          "y": 42.0
         },
         {
-          "height": 36.0,
+          "height": 84.0,
           "id": "Engine",
           "is_cluster": false,
-          "width": 36.0,
-          "x": 18.0,
-          "y": 119.0
+          "width": 65.6,
+          "x": 32.8,
+          "y": 200.0
         }
       ]
     }

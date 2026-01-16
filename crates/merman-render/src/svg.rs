@@ -2316,7 +2316,7 @@ pub fn render_class_diagram_v2_svg(
         .unwrap_or(16.0)
         .max(1.0);
     let line_height = font_size * 1.5;
-    let class_padding = effective_config
+    let _class_padding = effective_config
         .get("class")
         .and_then(|v| v.get("padding"))
         .and_then(|v| v.as_f64())
@@ -2744,55 +2744,70 @@ pub fn render_class_diagram_v2_svg(
         );
         out.push_str("</g>");
 
-        let mut content_max_w: f64 = 0.0;
         let title_text = class_decode_entities_minimal(node.text.trim());
         let title_metrics =
             measurer.measure_wrapped(&title_text, &text_style, None, WrapMode::HtmlLike);
-        content_max_w = content_max_w.max(title_metrics.width);
+        let ann_rows = node.annotations.len();
+        let members_rows = node.members.len();
+        let methods_rows = node.methods.len();
+        let half_lh = line_height / 2.0;
+
+        let title_y = top + (ann_rows as f64 + 1.0) * line_height;
+        let annotation_group_y = if ann_rows == 0 {
+            title_y
+        } else {
+            top + line_height
+        };
+        let divider1_y = top + (ann_rows as f64 + 2.0) * line_height;
+        let members_group_y = top + (ann_rows as f64 + 3.0) * line_height;
+        let divider2_y = members_group_y + (members_rows as f64) * line_height;
+        let bottom = h / 2.0;
+        let methods_group_y = if methods_rows > 0 {
+            bottom - (methods_rows as f64) * line_height
+        } else {
+            // Upstream still emits a `methods-group` even when empty; keep it deterministic.
+            divider2_y + line_height
+        };
+
+        let title_x = -title_metrics.width.max(0.0) / 2.0;
+
+        let mut ann_max_w: f64 = 0.0;
         for a in &node.annotations {
             let t = format!(
                 "\u{00AB}{}\u{00BB}",
                 class_decode_entities_minimal(a.trim())
             );
             let m = measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike);
-            content_max_w = content_max_w.max(m.width);
+            ann_max_w = ann_max_w.max(m.width);
         }
-        for m in &node.members {
-            let t = class_decode_entities_minimal(m.display_text.trim());
-            let mm = measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike);
-            content_max_w = content_max_w.max(mm.width);
-        }
-        for m in &node.methods {
-            let t = class_decode_entities_minimal(m.display_text.trim());
-            let mm = measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike);
-            content_max_w = content_max_w.max(mm.width);
-        }
-        content_max_w = content_max_w.max(0.0);
-        let content_x = -content_max_w / 2.0;
-
-        let mut cursor = top + class_padding;
+        let ann_x = -ann_max_w.max(0.0) / 2.0;
+        let members_x = left + half_lh;
 
         // Annotation group.
         if node.annotations.is_empty() {
-            out.push_str(r#"<g class="annotation-group text" transform="translate(0, -18)"/>"#);
-        } else {
-            let ann_y = cursor + line_height / 2.0;
             let _ = write!(
                 &mut out,
-                r#"<g class="annotation-group text" transform="translate(0, {})">"#,
-                fmt(ann_y)
+                r#"<g class="annotation-group text" transform="translate(0, {})"/>"#,
+                fmt(annotation_group_y)
+            );
+        } else {
+            let _ = write!(
+                &mut out,
+                r#"<g class="annotation-group text" transform="translate({}, {})">"#,
+                fmt(ann_x),
+                fmt(annotation_group_y)
             );
             for (idx, a) in node.annotations.iter().enumerate() {
                 let t = format!(
                     "\u{00AB}{}\u{00BB}",
                     class_decode_entities_minimal(a.trim())
                 );
-                let y = (idx as f64) * line_height - (line_height / 2.0);
+                let y = (idx as f64) * line_height - half_lh;
                 let _ = write!(
                     &mut out,
                     r#"<g class="label" style="" transform="translate(0,{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
                     fmt(y),
-                    fmt(content_max_w.max(1.0)),
+                    fmt(ann_max_w.max(1.0)),
                     fmt(line_height.max(1.0))
                 );
                 render_class_html_label(
@@ -2805,16 +2820,14 @@ pub fn render_class_diagram_v2_svg(
                 out.push_str("</div></foreignObject></g>");
             }
             out.push_str("</g>");
-            cursor += (node.annotations.len() as f64) * line_height;
         }
 
         // Label group (class name).
-        let label_y = cursor + line_height / 2.0;
         let _ = write!(
             &mut out,
             r#"<g class="label-group text" transform="translate({}, {})"><g class="label" style="font-weight: bolder" transform="translate(0,-12)"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
-            fmt(content_x),
-            fmt(label_y),
+            fmt(title_x),
+            fmt(title_y),
             fmt(title_metrics.width.max(1.0)),
             fmt(title_metrics.height.max(line_height).max(1.0))
         );
@@ -2826,24 +2839,26 @@ pub fn render_class_diagram_v2_svg(
             Some("markdown-node-label"),
         );
         out.push_str("</div></foreignObject></g></g>");
-        cursor += title_metrics.height.max(line_height);
 
         // Members.
         if node.members.is_empty() {
-            out.push_str(r#"<g class="members-group text" transform="translate(0, 0)"/>"#);
+            let _ = write!(
+                &mut out,
+                r#"<g class="members-group text" transform="translate({}, {})"/>"#,
+                fmt(members_x),
+                fmt(members_group_y)
+            );
         } else {
-            cursor += class_padding;
-            let members_y = cursor + line_height / 2.0;
             let _ = write!(
                 &mut out,
                 r#"<g class="members-group text" transform="translate({}, {})">"#,
-                fmt(content_x),
-                fmt(members_y)
+                fmt(members_x),
+                fmt(members_group_y)
             );
             for (idx, m) in node.members.iter().enumerate() {
                 let t = class_decode_entities_minimal(m.display_text.trim());
                 let mm = measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike);
-                let y = (idx as f64) * line_height - (line_height / 2.0);
+                let y = (idx as f64) * line_height - half_lh;
                 let _ = write!(
                     &mut out,
                     r#"<g class="label" style="" transform="translate(0,{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
@@ -2861,25 +2876,27 @@ pub fn render_class_diagram_v2_svg(
                 out.push_str("</div></foreignObject></g>");
             }
             out.push_str("</g>");
-            cursor += (node.members.len() as f64) * line_height;
         }
 
         // Methods.
         if node.methods.is_empty() {
-            out.push_str(r#"<g class="methods-group text" transform="translate(0, 0)"/>"#);
+            let _ = write!(
+                &mut out,
+                r#"<g class="methods-group text" transform="translate({}, {})"/>"#,
+                fmt(members_x),
+                fmt(methods_group_y)
+            );
         } else {
-            cursor += class_padding;
-            let methods_y = cursor + line_height / 2.0;
             let _ = write!(
                 &mut out,
                 r#"<g class="methods-group text" transform="translate({}, {})">"#,
-                fmt(content_x),
-                fmt(methods_y)
+                fmt(members_x),
+                fmt(methods_group_y)
             );
             for (idx, m) in node.methods.iter().enumerate() {
                 let t = class_decode_entities_minimal(m.display_text.trim());
                 let mm = measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike);
-                let y = (idx as f64) * line_height - (line_height / 2.0);
+                let y = (idx as f64) * line_height - half_lh;
                 let _ = write!(
                     &mut out,
                     r#"<g class="label" style="" transform="translate(0,{})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
@@ -2900,15 +2917,15 @@ pub fn render_class_diagram_v2_svg(
         }
 
         // Dividers (always present in Mermaid output).
-        for _ in 0..2 {
+        for y in [divider1_y, divider2_y] {
             out.push_str(r#"<g class="divider" style="">"#);
             let _ = write!(
                 &mut out,
                 r#"<path d="M{} {} L{} {}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
                 fmt(left),
-                fmt(0.0),
+                fmt(y),
                 fmt(left + w),
-                fmt(0.0),
+                fmt(y),
                 escape_attr(node_stroke),
                 escape_attr(node_stroke_width),
             );
