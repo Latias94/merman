@@ -78,3 +78,10 @@ Debug SVG exporter:
 - usage: `docs/rendering/CLASS_DEBUG_SVG.md`
 - bulk export helper (writes to `target/debug-svgs/class/*.svg`):
   `cargo run -p xtask -- gen-debug-svgs --diagram class`
+
+Stage-B SVG DOM comparison (against upstream baselines):
+
+- `cargo run -p xtask -- compare-class-svgs --dom-mode structure --dom-decimals 3`
+- Exclusions (see `docs/rendering/UPSTREAM_SVG_BASELINES.md`):
+  - `fixtures/class/upstream_text_label_variants_spec.mmd` (upstream CLI failure at 11.12.2)
+  - `fixtures/class/upstream_parser_class_spec.mmd` (upstream prototype-key rendering artifacts)

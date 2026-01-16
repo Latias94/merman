@@ -32,9 +32,9 @@ Legend:
 | Diagram | Parse | Layout | Render | Upstream SVG | Compare |
 |---|---:|---:|---|---:|---:|
 | ER | yes | yes | Stage B + debug | yes | yes (`xtask compare-er-svgs`) |
-| Flowchart | yes | yes | debug | yes | no |
-| State | yes | yes | debug | yes | no |
-| Class | yes | yes | debug | yes | no |
+| Flowchart | yes | yes | Stage B + debug | yes | yes (`xtask compare-flowchart-svgs`) |
+| State | yes | yes | Stage B + debug | yes | yes (`xtask compare-state-svgs`) |
+| Class | yes | yes | Stage B + debug | yes | yes (`xtask compare-class-svgs`) |
 | Others (gantt, sequence, …) | yes | no | no | no | no |
 
 ## Alignment Sanity Checks
@@ -42,4 +42,3 @@ Legend:
 - Internal consistency: `cargo run -p xtask -- check-alignment`
   - ensures every fixture has a `.golden.json`
   - ensures coverage docs reference existing local paths
-

@@ -125,6 +125,20 @@ output (DOM signature comparison; upstream is not byte-stable):
 
 - `cargo run -p xtask -- compare-state-svgs --dom-mode structure --dom-decimals 3`
 
+## Compare (ClassDiagram)
+
+Generate a report comparing upstream classDiagram SVGs and the current Rust Stage-B classDiagram
+output (DOM signature comparison; Stage-B is still being brought up):
+
+- `cargo run -p xtask -- compare-class-svgs --dom-mode structure --dom-decimals 3`
+
+Notes:
+
+- `fixtures/class/upstream_text_label_variants_spec.mmd` is excluded (Mermaid CLI failure at 11.12.2).
+- `fixtures/class/upstream_parser_class_spec.mmd` is excluded because the upstream SVG contains
+  prototype-key rendering artifacts (nested `g.root` / `translate(NaN, ...)`), while `merman`
+  renders deterministically.
+
 Notes:
 
 - The flowchart DOM compare is intentionally looser than ER while Stage-B rendering is still being
@@ -140,10 +154,10 @@ Notes:
   byte-stable, so baseline verification uses a structure-level DOM signature instead of a raw byte
   compare.
 
-## Known Upstream Rendering Failures (as of Mermaid 11.12.2)
+## Known Upstream Rendering Failures / Anomalies (as of Mermaid 11.12.2)
 
-- `fixtures/state/upstream_state_parser_spec.mmd`: includes `__proto__`/`constructor` states; Mermaid CLI currently crashes.
-- `fixtures/class/upstream_text_label_variants_spec.mmd`: includes a whitespace-only label (`" "`); Mermaid CLI currently fails (NaN transforms / missing SVG in render tree).
+- `fixtures/state/upstream_state_parser_spec.mmd`: includes `__proto__`/`constructor` states; Mermaid CLI currently crashes (excluded from `gen-upstream-svgs` / `check-upstream-svgs`).
+- `fixtures/class/upstream_text_label_variants_spec.mmd`: includes a whitespace-only label (`" "`); Mermaid CLI currently fails (NaN transforms / missing SVG in render tree; excluded from `gen-upstream-svgs` / `check-upstream-svgs`).
+- `fixtures/class/upstream_parser_class_spec.mmd`: includes `__proto__`/`constructor` classes; Mermaid CLI renders but produces invalid transforms (NaN) and duplicated root groups (excluded from `compare-class-svgs`).
 
-These fixtures are intentionally excluded from `xtask gen-upstream-svgs` / `xtask check-upstream-svgs`
-so baseline verification can remain actionable for the rest of the suite.
+These exclusions keep baseline verification and compare reports actionable for the rest of the suite.

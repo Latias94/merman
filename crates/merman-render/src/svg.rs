@@ -14,6 +14,11 @@ pub struct SvgRenderOptions {
     pub viewbox_padding: f64,
     /// Optional diagram id used for Mermaid-like marker ids.
     pub diagram_id: Option<String>,
+    /// Optional override for the root SVG `aria-roledescription` attribute.
+    ///
+    /// This is primarily used to reproduce Mermaid's per-header accessibility metadata quirks
+    /// (e.g. `classDiagram-v2` differs from `classDiagram` at Mermaid 11.12.2).
+    pub aria_roledescription: Option<String>,
     /// When true, include edge polylines.
     pub include_edges: bool,
     /// When true, include node bounding boxes and ids.
@@ -31,6 +36,7 @@ impl Default for SvgRenderOptions {
         Self {
             viewbox_padding: 8.0,
             diagram_id: None,
+            aria_roledescription: None,
             include_edges: true,
             include_nodes: true,
             include_clusters: true,
@@ -1909,6 +1915,851 @@ pub fn render_class_diagram_v2_debug_svg(
 
     out.push_str("</svg>\n");
     out
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ClassSvgModel {
+    #[serde(rename = "accTitle")]
+    acc_title: Option<String>,
+    #[serde(rename = "accDescr")]
+    acc_descr: Option<String>,
+    direction: String,
+    classes: std::collections::BTreeMap<String, ClassSvgNode>,
+    #[serde(default)]
+    relations: Vec<ClassSvgRelation>,
+    #[serde(default)]
+    notes: Vec<ClassSvgNote>,
+    #[serde(default)]
+    namespaces: std::collections::BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ClassSvgNode {
+    id: String,
+    #[serde(rename = "domId")]
+    dom_id: String,
+    #[serde(rename = "cssClasses")]
+    css_classes: String,
+    label: String,
+    text: String,
+    #[serde(default)]
+    annotations: Vec<String>,
+    #[serde(default)]
+    members: Vec<ClassSvgMember>,
+    #[serde(default)]
+    methods: Vec<ClassSvgMember>,
+    #[serde(default)]
+    styles: Vec<String>,
+    #[serde(default)]
+    link: Option<String>,
+    #[serde(rename = "linkTarget")]
+    #[serde(default)]
+    link_target: Option<String>,
+    #[serde(default)]
+    tooltip: Option<String>,
+    #[serde(rename = "haveCallback")]
+    #[serde(default)]
+    have_callback: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ClassSvgMember {
+    #[serde(rename = "displayText")]
+    display_text: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ClassSvgRelation {
+    id: String,
+    id1: String,
+    id2: String,
+    #[serde(rename = "relationTitle1")]
+    relation_title_1: String,
+    #[serde(rename = "relationTitle2")]
+    relation_title_2: String,
+    title: String,
+    relation: ClassSvgRelationShape,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ClassSvgRelationShape {
+    type1: i32,
+    type2: i32,
+    #[serde(rename = "lineType")]
+    line_type: i32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ClassSvgNote {
+    id: String,
+    text: String,
+    #[serde(rename = "class")]
+    class_id: Option<String>,
+}
+
+fn class_marker_name(ty: i32, is_start: bool) -> Option<&'static str> {
+    // Mermaid class diagram relationType constants.
+    // -1 = none, 0 = aggregation, 1 = extension, 2 = composition, 3 = dependency, 4 = lollipop
+    match ty {
+        0 => Some(if is_start {
+            "aggregationStart"
+        } else {
+            "aggregationEnd"
+        }),
+        1 => Some(if is_start {
+            "extensionStart"
+        } else {
+            "extensionEnd"
+        }),
+        2 => Some(if is_start {
+            "compositionStart"
+        } else {
+            "compositionEnd"
+        }),
+        3 => Some(if is_start {
+            "dependencyStart"
+        } else {
+            "dependencyEnd"
+        }),
+        4 => Some(if is_start {
+            "lollipopStart"
+        } else {
+            "lollipopEnd"
+        }),
+        _ => None,
+    }
+}
+
+fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str) {
+    // Match Mermaid unified output: multiple <defs> wrappers, one marker each.
+    fn marker_path(
+        out: &mut String,
+        diagram_id: &str,
+        diagram_marker_class: &str,
+        name: &str,
+        class: &str,
+        ref_x: &str,
+        ref_y: &str,
+        marker_w: &str,
+        marker_h: &str,
+        d: &str,
+    ) {
+        let _ = write!(
+            out,
+            r#"<defs><marker id="{}_{}-{}" class="{}" refX="{}" refY="{}" markerWidth="{}" markerHeight="{}" orient="auto"><path d="{}"/></marker></defs>"#,
+            escape_xml(diagram_id),
+            escape_xml(diagram_marker_class),
+            escape_xml(name),
+            escape_xml(class),
+            ref_x,
+            ref_y,
+            marker_w,
+            marker_h,
+            escape_xml(d)
+        );
+    }
+
+    fn marker_circle(
+        out: &mut String,
+        diagram_id: &str,
+        diagram_marker_class: &str,
+        name: &str,
+        class: &str,
+        ref_x: &str,
+        ref_y: &str,
+        marker_w: &str,
+        marker_h: &str,
+    ) {
+        let _ = write!(
+            out,
+            r#"<defs><marker id="{}_{}-{}" class="{}" refX="{}" refY="{}" markerWidth="{}" markerHeight="{}" orient="auto"><circle stroke="black" fill="transparent" cx="7" cy="7" r="6"/></marker></defs>"#,
+            escape_xml(diagram_id),
+            escape_xml(diagram_marker_class),
+            escape_xml(name),
+            escape_xml(class),
+            ref_x,
+            ref_y,
+            marker_w,
+            marker_h
+        );
+    }
+
+    let aggregation = format!("marker aggregation {diagram_marker_class}");
+    let extension = format!("marker extension {diagram_marker_class}");
+    let composition = format!("marker composition {diagram_marker_class}");
+    let dependency = format!("marker dependency {diagram_marker_class}");
+    let lollipop = format!("marker lollipop {diagram_marker_class}");
+
+    marker_path(
+        out,
+        diagram_id,
+        diagram_marker_class,
+        "aggregationStart",
+        &aggregation,
+        "18",
+        "7",
+        "190",
+        "240",
+        "M 18,7 L9,13 L1,7 L9,1 Z",
+    );
+    marker_path(
+        out,
+        diagram_id,
+        diagram_marker_class,
+        "aggregationEnd",
+        &aggregation,
+        "1",
+        "7",
+        "20",
+        "28",
+        "M 18,7 L9,13 L1,7 L9,1 Z",
+    );
+
+    marker_path(
+        out,
+        diagram_id,
+        diagram_marker_class,
+        "extensionStart",
+        &extension,
+        "18",
+        "7",
+        "190",
+        "240",
+        "M 1,7 L18,13 V 1 Z",
+    );
+    marker_path(
+        out,
+        diagram_id,
+        diagram_marker_class,
+        "extensionEnd",
+        &extension,
+        "1",
+        "7",
+        "20",
+        "28",
+        "M 1,1 V 13 L18,7 Z",
+    );
+
+    marker_path(
+        out,
+        diagram_id,
+        diagram_marker_class,
+        "compositionStart",
+        &composition,
+        "18",
+        "7",
+        "190",
+        "240",
+        "M 18,7 L9,13 L1,7 L9,1 Z",
+    );
+    marker_path(
+        out,
+        diagram_id,
+        diagram_marker_class,
+        "compositionEnd",
+        &composition,
+        "1",
+        "7",
+        "20",
+        "28",
+        "M 18,7 L9,13 L1,7 L9,1 Z",
+    );
+
+    marker_path(
+        out,
+        diagram_id,
+        diagram_marker_class,
+        "dependencyStart",
+        &dependency,
+        "6",
+        "7",
+        "70",
+        "28",
+        "M 1,1 L1,13 L6,7 Z",
+    );
+    marker_path(
+        out,
+        diagram_id,
+        diagram_marker_class,
+        "dependencyEnd",
+        &dependency,
+        "13",
+        "7",
+        "20",
+        "28",
+        "M 1,1 L1,13 L13,7 Z",
+    );
+
+    marker_circle(
+        out,
+        diagram_id,
+        diagram_marker_class,
+        "lollipopStart",
+        &lollipop,
+        "18",
+        "7",
+        "190",
+        "240",
+    );
+    marker_circle(
+        out,
+        diagram_id,
+        diagram_marker_class,
+        "lollipopEnd",
+        &lollipop,
+        "1",
+        "7",
+        "190",
+        "240",
+    );
+}
+
+fn class_edge_dom_id(edge: &crate::model::LayoutEdge) -> String {
+    if edge.id.starts_with("edgeNote") {
+        return edge.id.clone();
+    }
+    // Mermaid uses `getEdgeId` with prefix `id`.
+    format!("id_{}_{}_1", edge.from, edge.to)
+}
+
+fn class_edge_pattern(line_type: i32) -> &'static str {
+    // Mermaid class diagram `lineType` uses "dottedLine" for `..` which maps to the dashed pattern.
+    if line_type == 1 {
+        "edge-pattern-dashed"
+    } else {
+        "edge-pattern-solid"
+    }
+}
+
+fn class_note_edge_pattern() -> &'static str {
+    "edge-pattern-dotted"
+}
+
+fn render_class_html_label(
+    out: &mut String,
+    span_class: &str,
+    text: &str,
+    include_p: bool,
+    extra_span_class: Option<&str>,
+) {
+    let mut class = span_class.to_string();
+    if let Some(extra) = extra_span_class {
+        if !extra.trim().is_empty() {
+            class.push(' ');
+            class.push_str(extra.trim());
+        }
+    }
+    if include_p {
+        let _ = write!(
+            out,
+            r#"<span class="{}"><p>{}</p></span>"#,
+            escape_xml(&class),
+            escape_xml(text)
+        );
+    } else {
+        let _ = write!(
+            out,
+            r#"<span class="{}">{}</span>"#,
+            escape_xml(&class),
+            escape_xml(text)
+        );
+    }
+}
+
+fn class_apply_inline_styles(node: &ClassSvgNode) -> (Option<&str>, Option<&str>, Option<&str>) {
+    let mut fill: Option<&str> = None;
+    let mut stroke: Option<&str> = None;
+    let mut stroke_width: Option<&str> = None;
+    for raw in &node.styles {
+        let Some((k, v)) = raw.split_once(':') else {
+            continue;
+        };
+        let key = k.trim();
+        let val = v.trim();
+        if key.eq_ignore_ascii_case("fill") && !val.is_empty() {
+            fill = Some(val);
+        }
+        if key.eq_ignore_ascii_case("stroke") && !val.is_empty() {
+            stroke = Some(val);
+        }
+        if key.eq_ignore_ascii_case("stroke-width") && !val.is_empty() {
+            stroke_width = Some(val);
+        }
+    }
+    (fill, stroke, stroke_width)
+}
+
+pub fn render_class_diagram_v2_svg(
+    layout: &ClassDiagramV2Layout,
+    semantic: &serde_json::Value,
+    _effective_config: &serde_json::Value,
+    _diagram_title: Option<&str>,
+    _measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let model: ClassSvgModel = serde_json::from_value(semantic.clone())?;
+
+    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let aria_roledescription = options.aria_roledescription.as_deref().unwrap_or("class");
+
+    let has_acc_title = model
+        .acc_title
+        .as_deref()
+        .is_some_and(|s| !s.trim().is_empty());
+    let has_acc_descr = model
+        .acc_descr
+        .as_deref()
+        .is_some_and(|s| !s.trim().is_empty());
+
+    let mut out = String::new();
+    let _ = write!(
+        &mut out,
+        r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="classDiagram" role="graphics-document document" aria-roledescription="{}""#,
+        escape_xml(diagram_id),
+        escape_attr(aria_roledescription)
+    );
+    if has_acc_title {
+        let _ = write!(
+            &mut out,
+            r#" aria-labelledby="chart-title-{}""#,
+            escape_xml(diagram_id)
+        );
+    }
+    if has_acc_descr {
+        let _ = write!(
+            &mut out,
+            r#" aria-describedby="chart-desc-{}""#,
+            escape_xml(diagram_id)
+        );
+    }
+    out.push('>');
+
+    if has_acc_title {
+        let _ = write!(
+            &mut out,
+            r#"<title id="chart-title-{}">{}"#,
+            escape_xml(diagram_id),
+            escape_xml(model.acc_title.as_deref().unwrap_or_default())
+        );
+        out.push_str("</title>");
+    }
+    if has_acc_descr {
+        let _ = write!(
+            &mut out,
+            r#"<desc id="chart-desc-{}">{}"#,
+            escape_xml(diagram_id),
+            escape_xml(model.acc_descr.as_deref().unwrap_or_default())
+        );
+        out.push_str("</desc>");
+    }
+
+    // Mermaid emits a single `<style>` element with diagram-scoped CSS.
+    out.push_str("<style></style>");
+
+    // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
+    out.push_str("<g>");
+    class_markers(&mut out, diagram_id, aria_roledescription);
+
+    let mut class_nodes_by_id: std::collections::HashMap<&str, &ClassSvgNode> =
+        std::collections::HashMap::new();
+    for (id, n) in &model.classes {
+        class_nodes_by_id.insert(id.as_str(), n);
+    }
+
+    let mut relations_by_id: std::collections::HashMap<&str, &ClassSvgRelation> =
+        std::collections::HashMap::new();
+    for r in &model.relations {
+        relations_by_id.insert(r.id.as_str(), r);
+    }
+
+    let mut note_by_id: std::collections::HashMap<&str, &ClassSvgNote> =
+        std::collections::HashMap::new();
+    for n in &model.notes {
+        note_by_id.insert(n.id.as_str(), n);
+    }
+
+    out.push_str(r#"<g class="root">"#);
+
+    // Clusters (namespaces).
+    out.push_str(r#"<g class="clusters">"#);
+    let mut clusters = layout.clusters.clone();
+    clusters.sort_by(|a, b| a.id.cmp(&b.id));
+    for c in &clusters {
+        let left = c.x - c.width / 2.0;
+        let top = c.y - c.height / 2.0;
+        let _ = write!(
+            &mut out,
+            r#"<g class="cluster undefined" id="{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+            escape_attr(&c.id),
+            fmt(left),
+            fmt(top),
+            fmt(c.width.max(1.0)),
+            fmt(c.height.max(1.0)),
+            fmt(left + (c.width.max(1.0) - c.title_label.width.max(0.0)) / 2.0),
+            fmt(top),
+            fmt(c.title_label.width.max(0.0)),
+            escape_xml(&c.title)
+        );
+    }
+    out.push_str("</g>");
+
+    // Edge paths.
+    out.push_str(r#"<g class="edgePaths">"#);
+    let mut edges = layout.edges.clone();
+    edges.sort_by(|a, b| a.id.cmp(&b.id));
+    for e in &edges {
+        if e.points.len() < 2 {
+            continue;
+        }
+
+        let dom_id = class_edge_dom_id(e);
+        let d = curve_basis_path_d(&e.points);
+        let points_b64 = base64::engine::general_purpose::STANDARD
+            .encode(serde_json::to_vec(&e.points).unwrap_or_default());
+
+        let mut class = String::from("edge-thickness-normal ");
+        if e.id.starts_with("edgeNote") {
+            class.push_str(class_note_edge_pattern());
+        } else if let Some(rel) = relations_by_id.get(e.id.as_str()) {
+            class.push_str(class_edge_pattern(rel.relation.line_type));
+        } else {
+            class.push_str("edge-pattern-solid");
+        }
+        class.push_str(" relation");
+
+        let mut marker_start: Option<String> = None;
+        let mut marker_end: Option<String> = None;
+        if !e.id.starts_with("edgeNote") {
+            if let Some(rel) = relations_by_id.get(e.id.as_str()) {
+                if let Some(name) = class_marker_name(rel.relation.type1, true) {
+                    marker_start = Some(format!(
+                        "url(#{}_{aria_roledescription}-{name})",
+                        diagram_id
+                    ));
+                }
+                if let Some(name) = class_marker_name(rel.relation.type2, false) {
+                    marker_end = Some(format!(
+                        "url(#{}_{aria_roledescription}-{name})",
+                        diagram_id
+                    ));
+                }
+            }
+        }
+
+        let _ = write!(
+            &mut out,
+            r#"<path d="{}" id="{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
+            escape_attr(&d),
+            escape_attr(&dom_id),
+            escape_attr(&class),
+            escape_attr(&dom_id),
+            escape_attr(&points_b64),
+        );
+        if let Some(url) = marker_start {
+            let _ = write!(&mut out, r#" marker-start="{}""#, escape_attr(&url));
+        }
+        if let Some(url) = marker_end {
+            let _ = write!(&mut out, r#" marker-end="{}""#, escape_attr(&url));
+        }
+        out.push_str("/>");
+    }
+    out.push_str("</g>");
+
+    // Edge labels + terminals.
+    out.push_str(r#"<g class="edgeLabels">"#);
+    for e in &edges {
+        let dom_id = class_edge_dom_id(e);
+        let label_text = if e.id.starts_with("edgeNote") {
+            String::new()
+        } else {
+            relations_by_id
+                .get(e.id.as_str())
+                .map(|r| r.title.clone())
+                .unwrap_or_default()
+        };
+
+        if label_text.trim().is_empty() {
+            let _ = write!(
+                &mut out,
+                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+                escape_attr(&dom_id)
+            );
+        } else if let Some(lbl) = e.label.as_ref() {
+            let _ = write!(
+                &mut out,
+                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
+                fmt(lbl.x),
+                fmt(lbl.y),
+                escape_attr(&dom_id),
+                fmt(-lbl.width / 2.0),
+                fmt(-lbl.height / 2.0),
+                fmt(lbl.width.max(0.0)),
+                fmt(lbl.height.max(0.0)),
+            );
+            render_class_html_label(&mut out, "edgeLabel", label_text.trim(), true, None);
+            out.push_str("</div></foreignObject></g></g>");
+        } else {
+            let _ = write!(
+                &mut out,
+                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+                escape_attr(&dom_id)
+            );
+        }
+
+        let Some(rel) = relations_by_id.get(e.id.as_str()).copied() else {
+            continue;
+        };
+
+        let start_text = if rel.relation_title_1 == "none" {
+            ""
+        } else {
+            rel.relation_title_1.as_str()
+        };
+        let end_text = if rel.relation_title_2 == "none" {
+            ""
+        } else {
+            rel.relation_title_2.as_str()
+        };
+
+        if let Some(lbl) = e.start_label_left.as_ref() {
+            if !start_text.trim().is_empty() {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
+                    fmt(lbl.x),
+                    fmt(lbl.y),
+                    escape_xml(start_text.trim())
+                );
+            }
+        }
+        if let Some(lbl) = e.start_label_right.as_ref() {
+            if !start_text.trim().is_empty() {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
+                    fmt(lbl.x),
+                    fmt(lbl.y),
+                    escape_xml(start_text.trim())
+                );
+            }
+        }
+        if let Some(lbl) = e.end_label_left.as_ref() {
+            if !end_text.trim().is_empty() {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"/><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g>"#,
+                    fmt(lbl.x),
+                    fmt(lbl.y),
+                    escape_xml(end_text.trim())
+                );
+            }
+        }
+        if let Some(lbl) = e.end_label_right.as_ref() {
+            if !end_text.trim().is_empty() {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"/><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g>"#,
+                    fmt(lbl.x),
+                    fmt(lbl.y),
+                    escape_xml(end_text.trim())
+                );
+            }
+        }
+    }
+    out.push_str("</g>");
+
+    // Nodes.
+    out.push_str(r#"<g class="nodes">"#);
+
+    // Render all non-cluster nodes, using the semantic model to decide node type/labels.
+    let mut nodes = layout.nodes.clone();
+    nodes.sort_by(|a, b| a.id.cmp(&b.id));
+    for n in &nodes {
+        if n.is_cluster {
+            continue;
+        }
+
+        if let Some(note) = note_by_id.get(n.id.as_str()).copied() {
+            let _ = write!(
+                &mut out,
+                r##"<g class="node undefined" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="M0,0" stroke="none" stroke-width="0" fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/><path d="M0,0" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/></g><g class="label" style="text-align:left !important;white-space:nowrap !important" transform="translate(0, 0)"><rect/><foreignObject width="0" height="24"><div style="text-align: center; white-space: nowrap; display: table-cell; line-height: 1.5; max-width: 200px;" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"##,
+                escape_attr(&note.id),
+                fmt(n.x),
+                fmt(n.y),
+                escape_xml(note.text.trim())
+            );
+            continue;
+        }
+
+        let Some(node) = class_nodes_by_id.get(n.id.as_str()).copied() else {
+            continue;
+        };
+
+        let (style_fill, style_stroke, style_stroke_width) = class_apply_inline_styles(node);
+        let node_fill = style_fill.unwrap_or("#ECECFF");
+        let node_stroke = style_stroke.unwrap_or("#9370DB");
+        let node_stroke_width = style_stroke_width
+            .unwrap_or("1.3")
+            .trim_end_matches("px")
+            .trim();
+
+        let node_classes = format!("node {}", node.css_classes.trim());
+        let tooltip = node.tooltip.as_deref().unwrap_or("").trim();
+        let has_tooltip = !tooltip.is_empty();
+
+        let link = node
+            .link
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        let include_href = link.is_some_and(|s| !s.to_ascii_lowercase().starts_with("javascript:"));
+        let have_callback = node.have_callback;
+
+        if let Some(link) = link {
+            let _ = write!(
+                &mut out,
+                r#"<a{}{} transform="translate({}, {})">"#,
+                if include_href {
+                    format!(r#" xlink:href="{}""#, escape_attr(link))
+                } else {
+                    String::new()
+                },
+                if have_callback {
+                    r#" class="null clickable""#.to_string()
+                } else {
+                    String::new()
+                },
+                fmt(n.x),
+                fmt(n.y)
+            );
+        }
+
+        let _ = write!(
+            &mut out,
+            r#"<g class="{}" id="{}""#,
+            escape_attr(&node_classes),
+            escape_attr(&node.dom_id),
+        );
+        if has_tooltip {
+            let _ = write!(&mut out, r#" title="{}""#, escape_attr(tooltip));
+        }
+        if link.is_none() {
+            let _ = write!(
+                &mut out,
+                r#" transform="translate({}, {})""#,
+                fmt(n.x),
+                fmt(n.y)
+            );
+        }
+        out.push('>');
+
+        out.push_str(r#"<g class="basic label-container">"#);
+        let _ = write!(
+            &mut out,
+            r#"<path d="M0,0" stroke="none" stroke-width="0" fill="{}" style=""/>"#,
+            escape_attr(node_fill)
+        );
+        let _ = write!(
+            &mut out,
+            r#"<path d="M0,0" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
+            escape_attr(node_stroke),
+            escape_attr(node_stroke_width),
+        );
+        out.push_str("</g>");
+
+        // Annotation group.
+        out.push_str(r#"<g class="annotation-group text" transform="translate(0, 0)">"#);
+        for a in &node.annotations {
+            let text = format!("\u{00AB}{}\u{00BB}", a.trim());
+            let _ = write!(
+                &mut out,
+                r#"<g class="label" style="" transform="translate(0,-12)"><foreignObject width="0" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
+            );
+            render_class_html_label(
+                &mut out,
+                "nodeLabel",
+                text.as_str(),
+                true,
+                Some("markdown-node-label"),
+            );
+            out.push_str("</div></foreignObject></g>");
+        }
+        out.push_str("</g>");
+
+        // Label group (class name).
+        let _ = write!(
+            &mut out,
+            r#"<g class="label-group text" transform="translate(0, 0)"><g class="label" style="font-weight: bolder" transform="translate(0,-12)"><foreignObject width="0" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
+        );
+        render_class_html_label(
+            &mut out,
+            "nodeLabel",
+            node.label.as_str(),
+            true,
+            Some("markdown-node-label"),
+        );
+        out.push_str("</div></foreignObject></g></g>");
+
+        // Members.
+        out.push_str(r#"<g class="members-group text" transform="translate(0, 0)">"#);
+        for m in &node.members {
+            let _ = write!(
+                &mut out,
+                r#"<g class="label" style="" transform="translate(0,-12)"><foreignObject width="0" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
+            );
+            render_class_html_label(
+                &mut out,
+                "nodeLabel",
+                m.display_text.as_str(),
+                true,
+                Some("markdown-node-label"),
+            );
+            out.push_str("</div></foreignObject></g>");
+        }
+        out.push_str("</g>");
+
+        // Methods.
+        out.push_str(r#"<g class="methods-group text" transform="translate(0, 0)">"#);
+        for m in &node.methods {
+            let _ = write!(
+                &mut out,
+                r#"<g class="label" style="" transform="translate(0,-12)"><foreignObject width="0" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
+            );
+            render_class_html_label(
+                &mut out,
+                "nodeLabel",
+                m.display_text.as_str(),
+                true,
+                Some("markdown-node-label"),
+            );
+            out.push_str("</div></foreignObject></g>");
+        }
+        out.push_str("</g>");
+
+        // Dividers (always present in Mermaid output).
+        for _ in 0..2 {
+            out.push_str(r#"<g class="divider" style="">"#);
+            let _ = write!(
+                &mut out,
+                r#"<path d="M0,0" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
+                escape_attr(node_stroke),
+                escape_attr(node_stroke_width),
+            );
+            out.push_str("</g>");
+        }
+
+        out.push_str("</g>");
+        if link.is_some() {
+            out.push_str("</a>");
+        }
+    }
+
+    out.push_str("</g>"); // nodes
+    out.push_str("</g>"); // root
+    out.push_str("</g>"); // wrapper
+    out.push_str("</svg>");
+
+    Ok(out)
 }
 
 pub fn render_er_diagram_debug_svg(layout: &ErDiagramLayout, options: &SvgRenderOptions) -> String {
