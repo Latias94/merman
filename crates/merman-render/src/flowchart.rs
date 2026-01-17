@@ -297,6 +297,7 @@ fn edge_in_cluster(
 struct FlowchartClusterDbEntry {
     anchor_id: String,
     external_connections: bool,
+    has_cluster_edges: bool,
 }
 
 fn flowchart_find_common_edges(
@@ -391,8 +392,25 @@ fn adjust_flowchart_clusters_and_edges(graph: &mut Graph<NodeLabel, EdgeLabel, G
             FlowchartClusterDbEntry {
                 anchor_id,
                 external_connections: false,
+                has_cluster_edges: false,
             },
         );
+    }
+
+    // Mermaid edges can reference subgraph ids directly (e.g. `router --> subnet1`). Those edges
+    // must be "faked" by redirecting the endpoint to a real leaf node in the cluster, while
+    // recording `fromCluster`/`toCluster` so renderers can clip the route to the cluster boundary.
+    //
+    // Without this, Dagre-style ranking/normalization cannot assign proper ranks to the endpoint
+    // (cluster nodes do not participate in `asNonCompoundGraph`), causing short/degenerate edge
+    // point lists and SVG parity mismatches.
+    for e in graph.edges() {
+        if let Some(entry) = cluster_db.get_mut(&e.v) {
+            entry.has_cluster_edges = true;
+        }
+        if let Some(entry) = cluster_db.get_mut(&e.w) {
+            entry.has_cluster_edges = true;
+        }
     }
 
     for id in cluster_db.keys().cloned().collect::<Vec<_>>() {
@@ -437,7 +455,7 @@ fn adjust_flowchart_clusters_and_edges(graph: &mut Graph<NodeLabel, EdgeLabel, G
         let Some(entry) = cluster_db.get(id) else {
             return id.to_string();
         };
-        if !entry.external_connections {
+        if !entry.external_connections && !entry.has_cluster_edges {
             return id.to_string();
         }
         entry.anchor_id.clone()
