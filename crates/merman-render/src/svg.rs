@@ -5749,6 +5749,14 @@ fn render_flowchart_edge_path(
     let mut points_for_render = if is_cyclic_special {
         local_points.clone()
     } else if le.to_cluster.is_some() || le.from_cluster.is_some() {
+        // Edges that are clipped to a cluster boundary are especially sensitive to redundant
+        // intermediate points; a smaller command sequence tends to match Mermaid's output better.
+        simplify_collinear_points(&local_points)
+    } else if local_points.len() > 5 {
+        // Mermaid's Dagre typically emits a small number of bend points, but our current
+        // Dagre-ish pipeline can over-produce intermediate collinear points for some long edges.
+        // This changes the number of basis curve segments (and therefore the SVG `d` command
+        // sequence). For very long point lists, compress redundant collinear points.
         simplify_collinear_points(&local_points)
     } else {
         local_points.clone()
@@ -5770,15 +5778,33 @@ fn render_flowchart_edge_path(
         }
     }
 
+    let interpolate = edge
+        .interpolate
+        .as_deref()
+        .unwrap_or(ctx.default_edge_interpolate.as_str());
+
+    // D3's `curveBasis` emits only a straight `M ... L ...` when there are exactly two points.
+    // Mermaid's Dagre pipeline typically provides at least one intermediate point even for
+    // straight-looking edges, resulting in `C` segments in the SVG `d`. To keep our output closer
+    // to Mermaid's command sequence, re-insert a midpoint when our route collapses to two points
+    // after normalization.
+    if !is_cyclic_special && points_for_render.len() == 2 && interpolate != "linear" {
+        let a = &points_for_render[0];
+        let b = &points_for_render[1];
+        points_for_render.insert(
+            1,
+            crate::model::LayoutPoint {
+                x: (a.x + b.x) / 2.0,
+                y: (a.y + b.y) / 2.0,
+            },
+        );
+    }
+
     let line_data: Vec<crate::model::LayoutPoint> = points_for_render
         .iter()
         .filter(|p| !p.y.is_nan())
         .cloned()
         .collect();
-    let interpolate = edge
-        .interpolate
-        .as_deref()
-        .unwrap_or(ctx.default_edge_interpolate.as_str());
     let d = match interpolate {
         "linear" => curve_linear_path_d(&line_data),
         "stepAfter" => curve_step_after_path_d(&line_data),
