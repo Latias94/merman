@@ -54,6 +54,14 @@ Outputs to:
 
 - `fixtures/upstream-svgs/er/*.svg`
 
+## Generate (Sequence)
+
+- `cargo run -p xtask -- gen-upstream-svgs --diagram sequence`
+
+Outputs to:
+
+- `fixtures/upstream-svgs/sequence/*.svg`
+
 ## Generate (All supported diagrams)
 
 - `cargo run -p xtask -- gen-upstream-svgs --diagram all`

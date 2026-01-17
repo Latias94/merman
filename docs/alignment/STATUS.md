@@ -35,7 +35,8 @@ Legend:
 | Flowchart | yes | yes | Stage B + debug | yes | yes (`xtask compare-flowchart-svgs`) |
 | State | yes | yes | Stage B + debug | yes | yes (`xtask compare-state-svgs`) |
 | Class | yes | yes | Stage B + debug | yes | yes (`xtask compare-class-svgs`) |
-| Others (gantt, sequence, …) | yes | no | no | no | no |
+| Sequence | yes | no | no | yes | no |
+| Others (gantt, …) | yes | no | no | no | no |
 
 ## Alignment Sanity Checks
 

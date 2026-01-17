@@ -832,7 +832,7 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     match diagram.as_str() {
         "all" => {
             let mut failures: Vec<String> = Vec::new();
-            for d in ["er", "flowchart", "state", "class"] {
+            for d in ["er", "flowchart", "state", "class", "sequence"] {
                 if let Err(err) = run_one(&workspace_root, &out_root, &mmdc, d, filter) {
                     failures.push(format!("{d}: {err}"));
                 }
@@ -843,11 +843,11 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 Err(XtaskError::UpstreamSvgFailed(failures.join("\n")))
             }
         }
-        "er" | "flowchart" | "state" | "class" => {
+        "er" | "flowchart" | "state" | "class" | "sequence" => {
             run_one(&workspace_root, &out_root, &mmdc, &diagram, filter)
         }
         other => Err(XtaskError::UpstreamSvgFailed(format!(
-            "unsupported diagram for upstream svg export: {other} (supported: er, flowchart, state, class, all)"
+            "unsupported diagram for upstream svg export: {other} (supported: er, flowchart, state, class, sequence, all)"
         ))),
     }
 }
@@ -1056,7 +1056,7 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     match diagram.as_str() {
         "all" => {
             let mut failures: Vec<String> = Vec::new();
-            for d in ["er", "flowchart", "state", "class"] {
+            for d in ["er", "flowchart", "state", "class", "sequence"] {
                 if let Err(err) = check_one(
                     &workspace_root,
                     &baseline_root,
@@ -1076,7 +1076,7 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 Err(XtaskError::UpstreamSvgFailed(failures.join("\n")))
             }
         }
-        "er" | "flowchart" | "state" | "class" => check_one(
+        "er" | "flowchart" | "state" | "class" | "sequence" => check_one(
             &workspace_root,
             &baseline_root,
             &out_root,
@@ -1087,7 +1087,7 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             dom_decimals,
         ),
         other => Err(XtaskError::UpstreamSvgFailed(format!(
-            "unsupported diagram for upstream svg check: {other} (supported: er, flowchart, state, class, all)"
+            "unsupported diagram for upstream svg check: {other} (supported: er, flowchart, state, class, sequence, all)"
         ))),
     }
 }
