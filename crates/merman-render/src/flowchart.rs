@@ -648,6 +648,52 @@ pub fn layout_flowchart_v2(
 ) -> Result<FlowchartV2Layout> {
     let model: FlowchartV2Model = serde_json::from_value(semantic.clone())?;
 
+    // Mermaid's dagre adapter expands self-loop edges into a chain of two special label nodes plus
+    // three edges. This avoids `v == w` edges in Dagre and is required for SVG parity (Mermaid
+    // uses `*-cyclic-special-*` ids when rendering self-loops).
+    let mut render_edges: Vec<FlowEdge> = Vec::new();
+    let mut self_loop_label_node_ids: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
+    for e in &model.edges {
+        if e.from != e.to {
+            render_edges.push(e.clone());
+            continue;
+        }
+
+        let node_id = e.from.clone();
+        let special_id_1 = format!("{node_id}---{node_id}---1");
+        let special_id_2 = format!("{node_id}---{node_id}---2");
+        self_loop_label_node_ids.insert(special_id_1.clone());
+        self_loop_label_node_ids.insert(special_id_2.clone());
+
+        let mut edge1 = e.clone();
+        edge1.id = format!("{node_id}-cyclic-special-1");
+        edge1.from = node_id.clone();
+        edge1.to = special_id_1.clone();
+        edge1.label = None;
+        edge1.label_type = None;
+        edge1.edge_type = Some("arrow_open".to_string());
+
+        let mut edge_mid = e.clone();
+        edge_mid.id = format!("{node_id}-cyclic-special-mid");
+        edge_mid.from = special_id_1.clone();
+        edge_mid.to = special_id_2.clone();
+        edge_mid.label = None;
+        edge_mid.label_type = None;
+        edge_mid.edge_type = Some("arrow_open".to_string());
+
+        let mut edge2 = e.clone();
+        edge2.id = format!("{node_id}-cyclic-special-2");
+        edge2.from = special_id_2.clone();
+        edge2.to = node_id.clone();
+        edge2.label = None;
+        edge2.label_type = None;
+
+        render_edges.push(edge1);
+        render_edges.push(edge_mid);
+        render_edges.push(edge2);
+    }
+
     let nodesep = config_f64(effective_config, &["flowchart", "nodeSpacing"]).unwrap_or(50.0);
     let ranksep = config_f64(effective_config, &["flowchart", "rankSpacing"]).unwrap_or(50.0);
     let node_padding = config_f64(effective_config, &["flowchart", "padding"]).unwrap_or(15.0);
@@ -759,13 +805,34 @@ pub fn layout_flowchart_v2(
         }
     }
 
+    // Materialize self-loop helper label nodes and place them in the same parent cluster as the
+    // base node (if any), matching Mermaid `@11.12.2` dagre layout adapter behavior.
+    for id in &self_loop_label_node_ids {
+        if !g.has_node(id) {
+            g.set_node(
+                id.clone(),
+                NodeLabel {
+                    width: 10.0,
+                    height: 10.0,
+                    ..Default::default()
+                },
+            );
+        }
+        let Some((base, _)) = id.split_once("---") else {
+            continue;
+        };
+        if let Some(p) = g.parent(base) {
+            g.set_parent(id.clone(), p.to_string());
+        }
+    }
+
     let effective_dir_by_id = if has_subgraphs {
         compute_effective_dir_by_id(&subgraphs_by_id, &g, &diagram_direction, inherit_dir)
     } else {
         HashMap::new()
     };
 
-    for e in &model.edges {
+    for e in &render_edges {
         if edge_label_is_non_empty(e) {
             let label_text = e.label.as_deref().unwrap_or_default();
             let metrics =
@@ -897,8 +964,11 @@ pub fn layout_flowchart_v2(
         dugong::layout_dagreish(cg);
     }
 
-    let leaf_node_ids: std::collections::HashSet<&str> =
-        model.nodes.iter().map(|n| n.id.as_str()).collect();
+    let mut leaf_node_ids: std::collections::HashSet<String> =
+        model.nodes.iter().map(|n| n.id.clone()).collect();
+    for id in &self_loop_label_node_ids {
+        leaf_node_ids.insert(id.clone());
+    }
 
     fn graph_content_rect(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Option<Rect> {
         let mut out: Option<Rect> = None;
@@ -942,7 +1012,7 @@ pub fn layout_flowchart_v2(
             String,
             Graph<NodeLabel, EdgeLabel, GraphLabel>,
         >,
-        leaf_node_ids: &std::collections::HashSet<&str>,
+        leaf_node_ids: &std::collections::HashSet<String>,
         y_shift: f64,
         base_pos: &mut std::collections::HashMap<String, (f64, f64)>,
         leaf_rects: &mut std::collections::HashMap<String, Rect>,
@@ -952,7 +1022,7 @@ pub fn layout_flowchart_v2(
         edge_override_to_cluster: &mut std::collections::HashMap<String, Option<String>>,
     ) {
         for id in graph.node_ids() {
-            if !leaf_node_ids.contains(id.as_str()) {
+            if !leaf_node_ids.contains(&id) {
                 continue;
             }
             let Some(n) = graph.node(&id) else { continue };
@@ -1066,8 +1136,7 @@ pub fn layout_flowchart_v2(
 
     let mut extra_children: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
-    let labeled_edges: std::collections::HashSet<&str> = model
-        .edges
+    let labeled_edges: std::collections::HashSet<&str> = render_edges
         .iter()
         .filter(|e| edge_label_is_non_empty(e))
         .map(|e| e.id.as_str())
@@ -1110,6 +1179,18 @@ pub fn layout_flowchart_v2(
             Some(cluster_id.as_str()),
             &mut extra_children,
         );
+    }
+
+    // Ensure Mermaid-style self-loop helper nodes participate in cluster bounding/packing.
+    // These nodes are not part of the semantic `subgraph ... end` membership list, but are
+    // parented into the same clusters as their base node.
+    for id in &self_loop_label_node_ids {
+        if let Some(p) = g.parent(id) {
+            extra_children
+                .entry(p.to_string())
+                .or_default()
+                .push(id.clone());
+        }
     }
 
     // The Mermaid-like recursive cluster behavior above can increase the effective size of a root
@@ -1334,7 +1415,7 @@ pub fn layout_flowchart_v2(
             if leaves.is_empty() {
                 continue;
             }
-            if has_external_edges(&leaves, &model.edges) {
+            if has_external_edges(&leaves, &render_edges) {
                 continue;
             }
 
@@ -1357,10 +1438,13 @@ pub fn layout_flowchart_v2(
             };
 
             let mut members = leaves.iter().cloned().collect::<Vec<_>>();
+            if let Some(extra) = extra_children.get(&sg.id) {
+                members.extend(extra.iter().cloned());
+            }
 
             // Ensure internal labeled edge nodes participate in translation.
             let mut internal_edge_ids: Vec<String> = Vec::new();
-            for e in &model.edges {
+            for e in &render_edges {
                 if leaves.contains(&e.from) && leaves.contains(&e.to) {
                     internal_edge_ids.push(e.id.clone());
                     if edge_label_is_non_empty(e) {
@@ -1439,6 +1523,29 @@ pub fn layout_flowchart_v2(
             id: n.id.clone(),
             x,
             // Mermaid shifts regular nodes by `subGraphTitleTotalMargin / 2` after Dagre layout.
+            y: y + y_shift,
+            width,
+            height,
+            is_cluster: false,
+        });
+    }
+    for id in &self_loop_label_node_ids {
+        let (x, y) = base_pos
+            .get(id)
+            .copied()
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing positioned node {id}"),
+            })?;
+        let (width, height) = leaf_rects
+            .get(id)
+            .map(|r| (r.width(), r.height()))
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing sized node {id}"),
+            })?;
+        out_nodes.push(LayoutNode {
+            id: id.clone(),
+            x,
+            // Treat self-loop helper nodes like regular nodes for the subgraph-title y-shift.
             y: y + y_shift,
             width,
             height,
@@ -1661,7 +1768,7 @@ pub fn layout_flowchart_v2(
     clusters.sort_by(|a, b| a.id.cmp(&b.id));
 
     let mut out_edges: Vec<LayoutEdge> = Vec::new();
-    for e in &model.edges {
+    for e in &render_edges {
         let (dx, dy) = edge_packed_shift.get(&e.id).copied().unwrap_or((0.0, 0.0));
         let (mut points, mut label_pos, label_pos_already_shifted, from_cluster, to_cluster) =
             if let Some(points) = edge_override_points.get(&e.id) {

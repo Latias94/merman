@@ -157,6 +157,51 @@ pub fn render_flowchart_v2_svg(
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_type = "flowchart-v2";
 
+    // Mermaid expands self-loop edges into a chain of helper nodes plus `*-cyclic-special-*` edge
+    // segments during Dagre layout. Replicate that expansion here so rendered SVG ids match.
+    let mut render_edges: Vec<crate::flowchart::FlowEdge> = Vec::new();
+    let mut self_loop_label_node_ids: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
+    for e in &model.edges {
+        if e.from != e.to {
+            render_edges.push(e.clone());
+            continue;
+        }
+
+        let node_id = e.from.clone();
+        let special_id_1 = format!("{node_id}---{node_id}---1");
+        let special_id_2 = format!("{node_id}---{node_id}---2");
+        self_loop_label_node_ids.insert(special_id_1.clone());
+        self_loop_label_node_ids.insert(special_id_2.clone());
+
+        let mut edge1 = e.clone();
+        edge1.id = format!("{node_id}-cyclic-special-1");
+        edge1.from = node_id.clone();
+        edge1.to = special_id_1.clone();
+        edge1.label = None;
+        edge1.label_type = None;
+        edge1.edge_type = Some("arrow_open".to_string());
+
+        let mut edge_mid = e.clone();
+        edge_mid.id = format!("{node_id}-cyclic-special-mid");
+        edge_mid.from = special_id_1.clone();
+        edge_mid.to = special_id_2.clone();
+        edge_mid.label = None;
+        edge_mid.label_type = None;
+        edge_mid.edge_type = Some("arrow_open".to_string());
+
+        let mut edge2 = e.clone();
+        edge2.id = format!("{node_id}-cyclic-special-2");
+        edge2.from = special_id_2.clone();
+        edge2.to = node_id.clone();
+        edge2.label = None;
+        edge2.label_type = None;
+
+        render_edges.push(edge1);
+        render_edges.push(edge_mid);
+        render_edges.push(edge2);
+    }
+
     let font_family = config_string(effective_config, &["fontFamily"])
         .map(|s| normalize_css_font_family(&s))
         .unwrap_or_else(|| "\"trebuchet ms\", verdana, arial, sans-serif".to_string());
@@ -201,10 +246,25 @@ pub fn render_flowchart_v2_svg(
     for n in model.nodes.iter().cloned() {
         nodes_by_id.insert(n.id.clone(), n);
     }
+    for id in &self_loop_label_node_ids {
+        nodes_by_id
+            .entry(id.clone())
+            .or_insert(crate::flowchart::FlowNode {
+                id: id.clone(),
+                label: Some(String::new()),
+                label_type: None,
+                layout_shape: None,
+                classes: Vec::new(),
+                styles: Vec::new(),
+                have_callback: false,
+                link: None,
+                link_target: None,
+            });
+    }
 
     let mut edges_by_id: std::collections::HashMap<String, crate::flowchart::FlowEdge> =
         std::collections::HashMap::new();
-    for e in model.edges.iter().cloned() {
+    for e in render_edges.iter().cloned() {
         edges_by_id.insert(e.id.clone(), e);
     }
 
@@ -221,6 +281,14 @@ pub fn render_flowchart_v2_svg(
             parent.insert(child.clone(), sg.id.clone());
         }
     }
+    for id in &self_loop_label_node_ids {
+        let Some((base, _)) = id.split_once("---") else {
+            continue;
+        };
+        if let Some(p) = parent.get(base).cloned() {
+            parent.insert(id.clone(), p);
+        }
+    }
 
     let mut recursive_clusters: std::collections::HashSet<String> =
         std::collections::HashSet::new();
@@ -229,7 +297,7 @@ pub fn render_flowchart_v2_svg(
             continue;
         }
         let mut external = false;
-        for e in model.edges.iter() {
+        for e in render_edges.iter() {
             // Match Mermaid `adjustClustersAndEdges`: a cluster is considered to have external
             // connections if an edge crosses its descendant boundary. Edges that connect directly
             // to the cluster node itself do not count.
@@ -5473,13 +5541,7 @@ fn render_flowchart_edge_path(
         let x = node.x;
         let y = node.y;
 
-        let dx = (x - inside_point.x).abs();
         let w = node.width / 2.0;
-        let mut r = if inside_point.x < outside_point.x {
-            w - dx
-        } else {
-            w + dx
-        };
         let h = node.height / 2.0;
 
         let q_abs = (outside_point.y - inside_point.y).abs();
@@ -5491,7 +5553,7 @@ fn render_flowchart_edge_path(
             } else {
                 y - h - outside_point.y
             };
-            r = if q_abs == 0.0 {
+            let r = if q_abs == 0.0 {
                 0.0
             } else {
                 (r_abs * q) / q_abs
@@ -5522,11 +5584,11 @@ fn render_flowchart_edge_path(
             return res;
         }
 
-        if inside_point.x < outside_point.x {
-            r = outside_point.x - w - x;
+        let r = if inside_point.x < outside_point.x {
+            outside_point.x - w - x
         } else {
-            r = x - w - outside_point.x;
-        }
+            x - w - outside_point.x
+        };
         let q = if r_abs == 0.0 {
             0.0
         } else {
@@ -5792,15 +5854,42 @@ fn render_flowchart_node(
     origin_x: f64,
     origin_y: f64,
 ) {
-    let Some(node) = ctx.nodes_by_id.get(node_id) else {
-        return;
-    };
     let Some(layout_node) = ctx.layout_nodes_by_id.get(node_id) else {
         return;
     };
 
     let x = layout_node.x + ctx.tx - origin_x;
     let y = layout_node.y + ctx.ty - origin_y;
+
+    fn is_self_loop_label_node_id(id: &str) -> bool {
+        let mut parts = id.split("---");
+        let Some(a) = parts.next() else {
+            return false;
+        };
+        let Some(b) = parts.next() else {
+            return false;
+        };
+        let Some(n) = parts.next() else {
+            return false;
+        };
+        parts.next().is_none() && a == b && (n == "1" || n == "2")
+    }
+
+    if is_self_loop_label_node_id(node_id) {
+        let _ = write!(
+            out,
+            r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0, 0)"><rect/><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 10px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g>"#,
+            escape_attr(node_id),
+            fmt(x),
+            fmt(y)
+        );
+        return;
+    }
+
+    let Some(node) = ctx.nodes_by_id.get(node_id) else {
+        return;
+    };
+
     let dom_idx = ctx.node_dom_index.get(node_id).copied().unwrap_or(0);
 
     let mut class_attr = "node default".to_string();
