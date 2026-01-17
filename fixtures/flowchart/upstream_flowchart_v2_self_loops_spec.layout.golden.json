@@ -6,7 +6,7 @@
         "max_x": 225.9,
         "max_y": 211.5,
         "min_x": -105.16,
-        "min_y": -63.75
+        "min_y": -67.25
       },
       "clusters": [
         {
@@ -33,7 +33,7 @@
         {
           "diff": -15.0,
           "effective_dir": "LR",
-          "height": 71.0,
+          "height": 218.0,
           "id": "C",
           "offset_y": 16.5,
           "padding": 8.0,
@@ -42,19 +42,19 @@
           "title_label": {
             "height": 24.0,
             "width": 9.6,
-            "x": 88.4,
-            "y": 12.75
+            "x": 41.16,
+            "y": -45.25
           },
           "title_margin_bottom": 5.0,
           "title_margin_top": 10.0,
-          "width": 50.56,
-          "x": 88.4,
-          "y": 26.25
+          "width": 220.64,
+          "x": 41.16,
+          "y": 41.75
         },
         {
           "diff": -15.0,
           "effective_dir": "TB",
-          "height": 160.0,
+          "height": 187.0,
           "id": "C1",
           "offset_y": 16.5,
           "padding": 8.0,
@@ -63,14 +63,14 @@
           "title_label": {
             "height": 24.0,
             "width": 18.56,
-            "x": 58.4,
+            "x": 41.16,
             "y": -29.75
           },
           "title_margin_bottom": 5.0,
           "title_margin_top": 10.0,
-          "width": 170.16,
-          "x": 58.4,
-          "y": 28.25
+          "width": 204.64,
+          "x": 41.16,
+          "y": 41.75
         },
         {
           "diff": -15.0,
@@ -480,7 +480,7 @@
           "end_label_right": null,
           "end_marker": null,
           "from": "D",
-          "from_cluster": null,
+          "from_cluster": "D",
           "id": "D-cyclic-special-1",
           "label": null,
           "points": [
@@ -568,14 +568,14 @@
           "start_marker": null,
           "stroke_dasharray": null,
           "to": "D",
-          "to_cluster": null
+          "to_cluster": "D"
         },
         {
           "end_label_left": null,
           "end_label_right": null,
           "end_marker": null,
           "from": "C1",
-          "from_cluster": null,
+          "from_cluster": "C1",
           "id": "C1-cyclic-special-1",
           "label": null,
           "points": [
@@ -663,7 +663,7 @@
           "start_marker": null,
           "stroke_dasharray": null,
           "to": "C1",
-          "to_cluster": null
+          "to_cluster": "C1"
         }
       ],
       "nodes": [
@@ -698,22 +698,6 @@
           "width": 78.56,
           "x": -5.88,
           "y": 84.75
-        },
-        {
-          "height": 40.0,
-          "id": "D",
-          "is_cluster": false,
-          "width": 25.6,
-          "x": -5.88,
-          "y": 80.25
-        },
-        {
-          "height": 40.0,
-          "id": "C1",
-          "is_cluster": false,
-          "width": 34.56,
-          "x": 88.4,
-          "y": 33.75
         },
         {
           "height": 10.0,
@@ -828,20 +812,20 @@
           "y": 77.25
         },
         {
-          "height": 160.0,
+          "height": 187.0,
           "id": "C1",
           "is_cluster": true,
-          "width": 170.16,
-          "x": 58.4,
-          "y": 28.25
+          "width": 204.64,
+          "x": 41.16,
+          "y": 41.75
         },
         {
-          "height": 71.0,
+          "height": 218.0,
           "id": "C",
           "is_cluster": true,
-          "width": 50.56,
-          "x": 88.4,
-          "y": 26.25
+          "width": 220.64,
+          "x": 41.16,
+          "y": 41.75
         }
       ]
     }

@@ -3,16 +3,16 @@
   "layout": {
     "FlowchartV2": {
       "bounds": {
-        "max_x": 209.0,
-        "max_y": 534.0,
+        "max_x": 217.0,
+        "max_y": 542.0,
         "min_x": -2.32,
-        "min_y": -42.0
+        "min_y": -50.0
       },
       "clusters": [
         {
           "diff": -15.0,
           "effective_dir": "LR",
-          "height": 458.0,
+          "height": 592.0,
           "id": "project",
           "offset_y": 16.5,
           "padding": 8.0,
@@ -21,13 +21,13 @@
           "title_label": {
             "height": 24.0,
             "width": 48.16,
-            "x": 89.22,
-            "y": 29.0
+            "x": 107.34,
+            "y": -38.0
           },
           "title_margin_bottom": 0.0,
           "title_margin_top": 0.0,
-          "width": 183.08,
-          "x": 89.22,
+          "width": 219.32,
+          "x": 107.34,
           "y": 246.0
         },
         {
@@ -339,22 +339,6 @@
           "y": -7.0
         },
         {
-          "height": 40.0,
-          "id": "subnet1",
-          "is_cluster": false,
-          "width": 66.24,
-          "x": 101.98,
-          "y": 447.0
-        },
-        {
-          "height": 40.0,
-          "id": "subnet2",
-          "is_cluster": false,
-          "width": 66.24,
-          "x": 139.64,
-          "y": 45.0
-        },
-        {
           "height": 174.0,
           "id": "subnet1",
           "is_cluster": true,
@@ -371,11 +355,11 @@
           "y": 45.0
         },
         {
-          "height": 458.0,
+          "height": 592.0,
           "id": "project",
           "is_cluster": true,
-          "width": 183.08,
-          "x": 89.22,
+          "width": 219.32,
+          "x": 107.34,
           "y": 246.0
         }
       ]

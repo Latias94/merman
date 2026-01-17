@@ -85,22 +85,6 @@
       ],
       "nodes": [
         {
-          "height": 40.0,
-          "id": "X",
-          "is_cluster": false,
-          "width": 25.6,
-          "x": 12.8,
-          "y": 20.0
-        },
-        {
-          "height": 40.0,
-          "id": "Y",
-          "is_cluster": false,
-          "width": 25.6,
-          "x": 288.4,
-          "y": 20.0
-        },
-        {
           "height": 54.0,
           "id": "A",
           "is_cluster": false,

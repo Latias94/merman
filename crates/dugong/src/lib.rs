@@ -686,6 +686,11 @@ pub mod acyclic {
     }
 
     fn dfs_fas(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<EdgeKey> {
+        // Ported from Dagre `lib/acyclic.js` (dfsFAS) as used by Mermaid `@11.12.2`.
+        //
+        // NOTE: Mermaid's graph construction (notably cluster extraction / edge normalization)
+        // impacts insertion order of the underlying graphlib nodes. Iterating nodes in reverse
+        // insertion order matches Mermaid's observed behavior more closely across fixtures.
         let mut fas: Vec<EdgeKey> = Vec::new();
         let mut stack: BTreeSet<String> = BTreeSet::new();
         let mut visited: BTreeSet<String> = BTreeSet::new();
@@ -714,11 +719,6 @@ pub mod acyclic {
             stack.remove(v);
         }
 
-        // Dagre's graphlib returns nodes in insertion order, but Mermaid's flowchart graph
-        // construction can effectively re-insert nodes during cluster extraction and edge
-        // normalization, which affects the DFS-based cycle breaker traversal order. Iterating in
-        // reverse insertion order matches Mermaid's `@11.12.2` behavior more closely on cyclic
-        // flowcharts.
         let node_ids = g.node_ids();
         for v in node_ids.into_iter().rev() {
             dfs(g, &v, &mut visited, &mut stack, &mut fas);

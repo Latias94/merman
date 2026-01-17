@@ -426,6 +426,7 @@ pub fn render_flowchart_v2_svg(
         ty,
         diagram_type: diagram_type.to_string(),
         measurer,
+        html_labels,
         class_defs: model.class_defs.clone(),
         node_border_color,
         node_fill_color,
@@ -4908,6 +4909,7 @@ struct FlowchartRenderCtx<'a> {
     tx: f64,
     ty: f64,
     measurer: &'a dyn TextMeasurer,
+    html_labels: bool,
     class_defs: std::collections::HashMap<String, Vec<String>>,
     node_border_color: String,
     node_fill_color: String,
@@ -5388,6 +5390,11 @@ fn render_flowchart_root(
         out.push_str(r#"<g class="edgeLabels"/>"#);
     } else {
         out.push_str(r#"<g class="edgeLabels">"#);
+        if !ctx.html_labels {
+            for _ in &edges {
+                out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
+            }
+        }
         for e in &edges {
             render_flowchart_edge_label(out, ctx, e, origin_x, origin_y);
         }
@@ -5426,13 +5433,33 @@ fn render_flowchart_cluster(
     let label_x = pad + rect_w / 2.0 - label_w / 2.0;
     let label_y = pad;
 
-    let title_html = flowchart_label_html(
-        &cluster.title,
-        ctx.subgraphs_by_id
-            .get(&cluster.id)
-            .and_then(|s| s.label_type.as_deref())
-            .unwrap_or("text"),
-    );
+    let label_type = ctx
+        .subgraphs_by_id
+        .get(&cluster.id)
+        .and_then(|s| s.label_type.as_deref())
+        .unwrap_or("text");
+
+    if !ctx.html_labels {
+        let title_text = flowchart_label_plain_text(&cluster.title, label_type);
+        let cx = left + pad + rect_w / 2.0;
+        let cy = top + pad + label_h / 2.0;
+        let _ = write!(
+            out,
+            r#"<g class="cluster" id="{}" data-look="classic"><rect style="" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><g><rect class="background" style="stroke: none"/>"#,
+            escape_attr(&cluster.id),
+            fmt(left + pad),
+            fmt(top + pad),
+            fmt(rect_w),
+            fmt(rect_h),
+            fmt(cx),
+            fmt(cy)
+        );
+        write_flowchart_svg_text(out, &title_text, true);
+        out.push_str("</g></g></g>");
+        return;
+    }
+
+    let title_html = flowchart_label_html(&cluster.title, label_type);
 
     let _ = write!(
         out,
@@ -5793,6 +5820,38 @@ fn render_flowchart_edge_label(
 ) {
     let label_text = edge.label.as_deref().unwrap_or_default();
     let label_type = edge.label_type.as_deref().unwrap_or("text");
+    let label_text_plain = flowchart_label_plain_text(label_text, label_type);
+
+    if !ctx.html_labels {
+        if let Some(le) = ctx.layout_edges_by_id.get(&edge.id) {
+            if let Some(lbl) = le.label.as_ref() {
+                if !label_text_plain.trim().is_empty() {
+                    let x = lbl.x + ctx.tx - origin_x;
+                    let y = lbl.y + ctx.ty - origin_y;
+                    let _ = write!(
+                        out,
+                        r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate(0, 0)">"#,
+                        fmt(x),
+                        fmt(y),
+                        escape_attr(&edge.id)
+                    );
+                    write_flowchart_svg_text(out, &label_text_plain, false);
+                    out.push_str("</g></g>");
+                    return;
+                }
+            }
+        }
+
+        let _ = write!(
+            out,
+            r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)">"#,
+            escape_attr(&edge.id)
+        );
+        write_flowchart_svg_text(out, "", false);
+        out.push_str("</g></g>");
+        return;
+    }
+
     let label_html = if label_text.trim().is_empty() {
         String::new()
     } else {
@@ -6436,16 +6495,28 @@ fn render_flowchart_node(
         ctx.wrap_mode,
     );
     let label_type = node.label_type.as_deref().unwrap_or("text");
-    let label_html = flowchart_label_html(label_text, label_type);
-    let _ = write!(
-        out,
-        r#"<g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g>"#,
-        fmt(-metrics.width / 2.0 + label_dx),
-        fmt(-metrics.height / 2.0),
-        fmt(metrics.width),
-        fmt(metrics.height),
-        label_html
-    );
+    if !ctx.html_labels {
+        let label_text_plain = flowchart_label_plain_text(label_text, label_type);
+        let _ = write!(
+            out,
+            r#"<g class="label" style="" transform="translate({}, {})"><rect/><g><rect class="background" style="stroke: none"/>"#,
+            fmt(label_dx),
+            fmt(-metrics.height / 2.0)
+        );
+        write_flowchart_svg_text(out, &label_text_plain, true);
+        out.push_str("</g></g></g>");
+    } else {
+        let label_html = flowchart_label_html(label_text, label_type);
+        let _ = write!(
+            out,
+            r#"<g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g>"#,
+            fmt(-metrics.width / 2.0 + label_dx),
+            fmt(-metrics.height / 2.0),
+            fmt(metrics.width),
+            fmt(metrics.height),
+            label_html
+        );
+    }
     if wrapped_in_a {
         out.push_str("</a>");
     }
@@ -6496,4 +6567,67 @@ fn flowchart_label_html(label: &str, label_type: &str) -> String {
             format!("<p>{}</p>", flowchart_escape_preserving_br(&label))
         }
     }
+}
+
+fn flowchart_label_plain_text(label: &str, label_type: &str) -> String {
+    match label_type {
+        "markdown" => {
+            let mut out = String::new();
+            let parser = pulldown_cmark::Parser::new_ext(
+                label,
+                pulldown_cmark::Options::ENABLE_TABLES
+                    | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
+                    | pulldown_cmark::Options::ENABLE_TASKLISTS,
+            );
+            for ev in parser {
+                match ev {
+                    pulldown_cmark::Event::Text(t) => out.push_str(&t),
+                    pulldown_cmark::Event::Code(t) => out.push_str(&t),
+                    pulldown_cmark::Event::SoftBreak | pulldown_cmark::Event::HardBreak => {
+                        out.push('\n');
+                    }
+                    _ => {}
+                }
+            }
+            out.trim().to_string()
+        }
+        _ => {
+            let mut t = label.replace("\r\n", "\n");
+            t = t.replace("<br />", "\n");
+            t = t.replace("<br/>", "\n");
+            t = t.replace("<br>", "\n");
+            t.trim_end_matches('\n').to_string()
+        }
+    }
+}
+
+fn write_flowchart_svg_text(out: &mut String, text: &str, include_style: bool) {
+    // Mirrors Mermaid's SVG text structure when `flowchart.htmlLabels=false`.
+    if include_style {
+        out.push_str(r#"<text y="-10.1" style="">"#);
+    } else {
+        out.push_str(r#"<text y="-10.1">"#);
+    }
+
+    let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text);
+    if lines.len() == 1 && lines[0].is_empty() {
+        out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em"/>"#);
+        out.push_str("</text>");
+        return;
+    }
+
+    for (idx, line) in lines.iter().enumerate() {
+        if idx == 0 {
+            out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em">"#);
+        } else {
+            out.push_str(r#"<tspan class="text-outer-tspan" x="0" dy="1.1em">"#);
+        }
+        out.push_str(
+            r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal">"#,
+        );
+        out.push_str(&escape_xml(line));
+        out.push_str("</tspan></tspan>");
+    }
+
+    out.push_str("</text>");
 }

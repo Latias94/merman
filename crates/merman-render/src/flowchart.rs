@@ -747,6 +747,8 @@ pub fn layout_flowchart_v2(
     for sg in &model.subgraphs {
         subgraphs_by_id.insert(sg.id.clone(), sg.clone());
     }
+    let subgraph_ids: std::collections::HashSet<&str> =
+        model.subgraphs.iter().map(|sg| sg.id.as_str()).collect();
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: true,
         // Mermaid's Dagre adapter always enables `compound: true`, even if there are no explicit
@@ -765,6 +767,12 @@ pub fn layout_flowchart_v2(
     });
 
     for n in &model.nodes {
+        // Mermaid treats the subgraph id as the "group node" id (a cluster can be referenced in
+        // edges). Avoid introducing a separate leaf node that would collide with the cluster node
+        // of the same id.
+        if subgraph_ids.contains(n.id.as_str()) {
+            continue;
+        }
         let label = n.label.as_deref().unwrap_or(&n.id);
         let metrics = measurer.measure_wrapped(label, &text_style, Some(wrapping_width), wrap_mode);
         let (width, height) = node_dimensions(n.layout_shape.as_deref(), metrics, node_padding);
@@ -964,8 +972,12 @@ pub fn layout_flowchart_v2(
         dugong::layout_dagreish(cg);
     }
 
-    let mut leaf_node_ids: std::collections::HashSet<String> =
-        model.nodes.iter().map(|n| n.id.clone()).collect();
+    let mut leaf_node_ids: std::collections::HashSet<String> = model
+        .nodes
+        .iter()
+        .filter(|n| !subgraph_ids.contains(n.id.as_str()))
+        .map(|n| n.id.clone())
+        .collect();
     for id in &self_loop_label_node_ids {
         leaf_node_ids.insert(id.clone());
     }
@@ -1507,6 +1519,9 @@ pub fn layout_flowchart_v2(
 
     let mut out_nodes: Vec<LayoutNode> = Vec::new();
     for n in &model.nodes {
+        if subgraph_ids.contains(n.id.as_str()) {
+            continue;
+        }
         let (x, y) = base_pos
             .get(&n.id)
             .copied()
@@ -1770,61 +1785,76 @@ pub fn layout_flowchart_v2(
     let mut out_edges: Vec<LayoutEdge> = Vec::new();
     for e in &render_edges {
         let (dx, dy) = edge_packed_shift.get(&e.id).copied().unwrap_or((0.0, 0.0));
-        let (mut points, mut label_pos, label_pos_already_shifted, from_cluster, to_cluster) =
-            if let Some(points) = edge_override_points.get(&e.id) {
-                let from_cluster = edge_override_from_cluster
-                    .get(&e.id)
-                    .cloned()
-                    .unwrap_or(None);
-                let to_cluster = edge_override_to_cluster.get(&e.id).cloned().unwrap_or(None);
-                (
-                    points.clone(),
-                    edge_override_label.get(&e.id).cloned().unwrap_or(None),
-                    false,
-                    from_cluster,
-                    to_cluster,
-                )
-            } else {
-                let (v, w) = edge_endpoints_by_id
-                    .get(&e.id)
-                    .cloned()
-                    .unwrap_or_else(|| (e.from.clone(), e.to.clone()));
-                let Some(label) = g.edge(&v, &w, Some(&e.id)) else {
-                    return Err(Error::InvalidModel {
-                        message: format!("missing layout edge {}", e.id),
-                    });
-                };
-                let from_cluster = label
-                    .extras
-                    .get("fromCluster")
-                    .and_then(|v| v.as_str().map(|s| s.to_string()));
-                let to_cluster = label
-                    .extras
-                    .get("toCluster")
-                    .and_then(|v| v.as_str().map(|s| s.to_string()));
-                let points = label
-                    .points
-                    .iter()
-                    .map(|p| LayoutPoint {
-                        x: p.x,
-                        // Mermaid shifts all edge points by `subGraphTitleTotalMargin / 2` after Dagre layout.
-                        y: p.y + y_shift,
-                    })
-                    .collect::<Vec<_>>();
-                let label_pos = match (label.x, label.y) {
-                    (Some(x), Some(y)) if label.width > 0.0 || label.height > 0.0 => {
-                        Some(LayoutLabel {
-                            x,
-                            // Mermaid shifts edge label y by `subGraphTitleTotalMargin / 2` when positioning.
-                            y: y + y_shift,
-                            width: label.width,
-                            height: label.height,
-                        })
-                    }
-                    _ => None,
-                };
-                (points, label_pos, false, from_cluster, to_cluster)
+        let (
+            mut points,
+            mut label_pos,
+            label_pos_already_shifted,
+            mut from_cluster,
+            mut to_cluster,
+        ) = if let Some(points) = edge_override_points.get(&e.id) {
+            let from_cluster = edge_override_from_cluster
+                .get(&e.id)
+                .cloned()
+                .unwrap_or(None);
+            let to_cluster = edge_override_to_cluster.get(&e.id).cloned().unwrap_or(None);
+            (
+                points.clone(),
+                edge_override_label.get(&e.id).cloned().unwrap_or(None),
+                false,
+                from_cluster,
+                to_cluster,
+            )
+        } else {
+            let (v, w) = edge_endpoints_by_id
+                .get(&e.id)
+                .cloned()
+                .unwrap_or_else(|| (e.from.clone(), e.to.clone()));
+            let Some(label) = g.edge(&v, &w, Some(&e.id)) else {
+                return Err(Error::InvalidModel {
+                    message: format!("missing layout edge {}", e.id),
+                });
             };
+            let from_cluster = label
+                .extras
+                .get("fromCluster")
+                .and_then(|v| v.as_str().map(|s| s.to_string()));
+            let to_cluster = label
+                .extras
+                .get("toCluster")
+                .and_then(|v| v.as_str().map(|s| s.to_string()));
+            let points = label
+                .points
+                .iter()
+                .map(|p| LayoutPoint {
+                    x: p.x,
+                    // Mermaid shifts all edge points by `subGraphTitleTotalMargin / 2` after Dagre layout.
+                    y: p.y + y_shift,
+                })
+                .collect::<Vec<_>>();
+            let label_pos = match (label.x, label.y) {
+                (Some(x), Some(y)) if label.width > 0.0 || label.height > 0.0 => {
+                    Some(LayoutLabel {
+                        x,
+                        // Mermaid shifts edge label y by `subGraphTitleTotalMargin / 2` when positioning.
+                        y: y + y_shift,
+                        width: label.width,
+                        height: label.height,
+                    })
+                }
+                _ => None,
+            };
+            (points, label_pos, false, from_cluster, to_cluster)
+        };
+
+        // Match Mermaid's dagre adapter: self-loop special edges on group nodes are annotated with
+        // `fromCluster` / `toCluster` so downstream renderers can clip routes to the cluster
+        // boundary.
+        if subgraph_ids.contains(e.from.as_str()) && e.id.ends_with("-cyclic-special-1") {
+            from_cluster = Some(e.from.clone());
+        }
+        if subgraph_ids.contains(e.to.as_str()) && e.id.ends_with("-cyclic-special-2") {
+            to_cluster = Some(e.to.clone());
+        }
 
         if dx.abs() > 1e-6 || dy.abs() > 1e-6 {
             for p in &mut points {
