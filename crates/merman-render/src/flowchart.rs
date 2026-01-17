@@ -652,8 +652,9 @@ pub fn layout_flowchart_v2(
     // three edges. This avoids `v == w` edges in Dagre and is required for SVG parity (Mermaid
     // uses `*-cyclic-special-*` ids when rendering self-loops).
     let mut render_edges: Vec<FlowEdge> = Vec::new();
-    let mut self_loop_label_node_ids: std::collections::BTreeSet<String> =
-        std::collections::BTreeSet::new();
+    let mut self_loop_label_node_ids: Vec<String> = Vec::new();
+    let mut self_loop_label_node_id_set: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
     for e in &model.edges {
         if e.from != e.to {
             render_edges.push(e.clone());
@@ -663,8 +664,12 @@ pub fn layout_flowchart_v2(
         let node_id = e.from.clone();
         let special_id_1 = format!("{node_id}---{node_id}---1");
         let special_id_2 = format!("{node_id}---{node_id}---2");
-        self_loop_label_node_ids.insert(special_id_1.clone());
-        self_loop_label_node_ids.insert(special_id_2.clone());
+        if self_loop_label_node_id_set.insert(special_id_1.clone()) {
+            self_loop_label_node_ids.push(special_id_1.clone());
+        }
+        if self_loop_label_node_id_set.insert(special_id_2.clone()) {
+            self_loop_label_node_ids.push(special_id_2.clone());
+        }
 
         let mut edge1 = e.clone();
         edge1.id = format!("{node_id}-cyclic-special-1");
@@ -766,6 +771,27 @@ pub fn layout_flowchart_v2(
         ..Default::default()
     });
 
+    // Mermaid's flowchart Dagre adapter inserts subgraph ("group") nodes before laying out the
+    // leaf nodes they contain.
+    for sg in &model.subgraphs {
+        let metrics = measurer.measure_wrapped(
+            &sg.title,
+            &text_style,
+            Some(cluster_title_wrapping_width),
+            wrap_mode,
+        );
+        let width = metrics.width + cluster_padding * 2.0;
+        let height = metrics.height + cluster_padding * 2.0;
+        g.set_node(
+            sg.id.clone(),
+            NodeLabel {
+                width,
+                height,
+                ..Default::default()
+            },
+        );
+    }
+
     for n in &model.nodes {
         // Mermaid treats the subgraph id as the "group node" id (a cluster can be referenced in
         // edges). Avoid introducing a separate leaf node that would collide with the cluster node
@@ -778,25 +804,6 @@ pub fn layout_flowchart_v2(
         let (width, height) = node_dimensions(n.layout_shape.as_deref(), metrics, node_padding);
         g.set_node(
             n.id.clone(),
-            NodeLabel {
-                width,
-                height,
-                ..Default::default()
-            },
-        );
-    }
-
-    for sg in &model.subgraphs {
-        let metrics = measurer.measure_wrapped(
-            &sg.title,
-            &text_style,
-            Some(cluster_title_wrapping_width),
-            wrap_mode,
-        );
-        let width = metrics.width + cluster_padding * 2.0;
-        let height = metrics.height + cluster_padding * 2.0;
-        g.set_node(
-            sg.id.clone(),
             NodeLabel {
                 width,
                 height,

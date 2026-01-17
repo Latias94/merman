@@ -5745,23 +5745,28 @@ fn render_flowchart_edge_path(
         })
     }
 
-    let mut points_for_render = if le.to_cluster.is_some() || le.from_cluster.is_some() {
+    let is_cyclic_special = edge.id.contains("-cyclic-special-");
+    let mut points_for_render = if is_cyclic_special {
+        local_points.clone()
+    } else if le.to_cluster.is_some() || le.from_cluster.is_some() {
         simplify_collinear_points(&local_points)
     } else {
         local_points.clone()
     };
-    if let Some(tc) = le.to_cluster.as_deref() {
-        if let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y) {
-            points_for_render = cut_path_at_intersect(&points_for_render, &boundary);
+    if !is_cyclic_special {
+        if let Some(tc) = le.to_cluster.as_deref() {
+            if let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y) {
+                points_for_render = cut_path_at_intersect(&points_for_render, &boundary);
+            }
         }
-    }
-    if let Some(fc) = le.from_cluster.as_deref() {
-        if let Some(boundary) = boundary_for_cluster(ctx, fc, origin_x, origin_y) {
-            let mut rev = points_for_render.clone();
-            rev.reverse();
-            rev = cut_path_at_intersect(&rev, &boundary);
-            rev.reverse();
-            points_for_render = rev;
+        if let Some(fc) = le.from_cluster.as_deref() {
+            if let Some(boundary) = boundary_for_cluster(ctx, fc, origin_x, origin_y) {
+                let mut rev = points_for_render.clone();
+                rev.reverse();
+                rev = cut_path_at_intersect(&rev, &boundary);
+                rev.reverse();
+                points_for_render = rev;
+            }
         }
     }
 
