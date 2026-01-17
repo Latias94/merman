@@ -40,6 +40,19 @@ To avoid subjective drift, we need:
 - `dugong` exposes a Dagre-style entrypoint:
   - `layout(graph)` mutates the graph by setting node positions and edge routes (points), matching
     upstream semantics.
+  - `layout_dagreish(graph)` provides a parity-oriented pipeline that mirrors Dagre’s layout
+    sequence more closely (rank/normalize/order/BK positioning), and is used by `merman` where SVG
+    parity requires Dagre-compatible behavior.
+
+### Dagre pipeline notes (connectivity + compound graphs)
+
+Upstream Dagre runs ranking on a **non-compound view** of the graph:
+
+- `nestingGraph.run(g)`
+- `rank(asNonCompoundGraph(g))`
+
+This is important because cluster nodes (nodes with children) do not participate in ranking and
+would otherwise break network-simplex connectivity assumptions.
 
 ### Testing strategy (primary)
 

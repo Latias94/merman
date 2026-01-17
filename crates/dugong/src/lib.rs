@@ -4189,7 +4189,21 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
         nesting_graph::run(g);
     }
 
-    rank::rank(g);
+    // Match upstream Dagre: ranking runs on a non-compound view of the graph so cluster nodes
+    // (nodes with children) do not participate in ranking / network-simplex connectivity.
+    //
+    // `nesting_graph::run` materializes border nodes and nesting edges; those border nodes are
+    // leaf nodes and remain in the non-compound graph, providing the constraints Dagre expects.
+    let mut rank_graph = util::as_non_compound_graph(g);
+    rank::rank(&mut rank_graph);
+    for v in rank_graph.node_ids() {
+        let Some(rank) = rank_graph.node(&v).and_then(|n| n.rank) else {
+            continue;
+        };
+        if let Some(n) = g.node_mut(&v) {
+            n.rank = Some(rank);
+        }
+    }
 
     // Mirror Dagre's `injectEdgeLabelProxies` / `removeEdgeLabelProxies` to compute label ranks.
     // These label ranks are used by `normalize::run` to materialize `edge-label` dummy nodes with

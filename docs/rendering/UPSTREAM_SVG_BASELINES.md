@@ -106,14 +106,12 @@ Outputs to:
 
 Generate a report comparing upstream flowchart SVGs and the current Rust Stage-B flowchart output:
 
-- `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-decimals 3` (default `--dom-mode structure`)
-- Use the stricter, parity-focused mode once edge routing/paths are closer to upstream:
-  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- Use the looser, structure-only mode while iterating on large layout/routing refactors:
+  - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode structure --dom-decimals 3`
 
 Notes:
 
-- Flowchart `parity` mode is expected to fail until Stage-B node shape paths (e.g. `roundedRect`, `hexagon`, `odd`)
-  and edge routing/point generation are brought in line with upstream Mermaid.
 - Flowchart `domId` suffixes depend on FlowDB `vertexCounter` (Jison `addVertex(...)` call order, including `@{...}` shapeData passes).
   The flowchart semantic model includes `vertexCalls` to make this deterministic and reproducible in Rust.
 
