@@ -182,6 +182,9 @@ pub fn render_flowchart_v2_svg(
     let diagram_padding = config_f64(effective_config, &["flowchart", "diagramPadding"])
         .unwrap_or(8.0)
         .max(0.0);
+    let title_top_margin = config_f64(effective_config, &["flowchart", "titleTopMargin"])
+        .unwrap_or(25.0)
+        .max(0.0);
     let node_padding = config_f64(effective_config, &["flowchart", "padding"])
         .unwrap_or(15.0)
         .max(0.0);
@@ -219,8 +222,6 @@ pub fn render_flowchart_v2_svg(
         }
     }
 
-    let cluster_ids: std::collections::HashSet<String> =
-        model.subgraphs.iter().map(|s| s.id.clone()).collect();
     let mut recursive_clusters: std::collections::HashSet<String> =
         std::collections::HashSet::new();
     for sg in model.subgraphs.iter() {
@@ -229,8 +230,11 @@ pub fn render_flowchart_v2_svg(
         }
         let mut external = false;
         for e in model.edges.iter() {
-            let from_in = flowchart_is_in_cluster(&parent, &cluster_ids, &e.from, &sg.id);
-            let to_in = flowchart_is_in_cluster(&parent, &cluster_ids, &e.to, &sg.id);
+            // Match Mermaid `adjustClustersAndEdges`: a cluster is considered to have external
+            // connections if an edge crosses its descendant boundary. Edges that connect directly
+            // to the cluster node itself do not count.
+            let from_in = flowchart_is_strict_descendant(&parent, &e.from, &sg.id);
+            let to_in = flowchart_is_strict_descendant(&parent, &e.to, &sg.id);
             if from_in != to_in {
                 external = true;
                 break;
@@ -379,7 +383,19 @@ pub fn render_flowchart_v2_svg(
 
     render_flowchart_root(&mut out, &ctx, None, 0.0, 0.0);
 
-    out.push_str("</g></svg>\n");
+    out.push_str("</g>");
+    if let Some(title) = diagram_title.map(str::trim).filter(|t| !t.is_empty()) {
+        let title_x = vb_w / 2.0;
+        let title_y = -title_top_margin;
+        let _ = write!(
+            &mut out,
+            r#"<text text-anchor="middle" x="{}" y="{}" class="flowchartTitleText">{}</text>"#,
+            fmt(title_x),
+            fmt(title_y),
+            escape_xml(title)
+        );
+    }
+    out.push_str("</svg>\n");
     Ok(out)
 }
 
@@ -5113,6 +5129,24 @@ fn flowchart_is_in_cluster(
     false
 }
 
+fn flowchart_is_strict_descendant(
+    parent: &std::collections::HashMap<String, String>,
+    node_id: &str,
+    cluster_id: &str,
+) -> bool {
+    if node_id == cluster_id {
+        return false;
+    }
+    let mut cur: Option<&str> = Some(node_id);
+    while let Some(id) = cur {
+        if id == cluster_id {
+            return true;
+        }
+        cur = parent.get(id).map(|s| s.as_str());
+    }
+    false
+}
+
 fn flowchart_effective_parent<'a>(ctx: &'a FlowchartRenderCtx<'_>, id: &str) -> Option<&'a str> {
     let mut cur = ctx.parent.get(id).map(|s| s.as_str());
     while let Some(p) = cur {
@@ -5407,132 +5441,6 @@ fn render_flowchart_edge_path(
         return;
     }
 
-    fn flowchart_fix_corners(
-        points: &[crate::model::LayoutPoint],
-    ) -> Vec<crate::model::LayoutPoint> {
-        fn extract_corner_positions(points: &[crate::model::LayoutPoint]) -> Vec<usize> {
-            let mut corner_positions = Vec::new();
-            if points.len() < 3 {
-                return corner_positions;
-            }
-            for i in 1..points.len().saturating_sub(1) {
-                let prev = &points[i - 1];
-                let curr = &points[i];
-                let next = &points[i + 1];
-                if prev.x == curr.x
-                    && curr.y == next.y
-                    && (curr.x - next.x).abs() > 5.0
-                    && (curr.y - prev.y).abs() > 5.0
-                {
-                    corner_positions.push(i);
-                    continue;
-                }
-                if prev.y == curr.y
-                    && curr.x == next.x
-                    && (curr.x - prev.x).abs() > 5.0
-                    && (curr.y - next.y).abs() > 5.0
-                {
-                    corner_positions.push(i);
-                }
-            }
-            corner_positions
-        }
-
-        fn find_adjacent_point(
-            point_a: &crate::model::LayoutPoint,
-            point_b: &crate::model::LayoutPoint,
-            distance: f64,
-        ) -> crate::model::LayoutPoint {
-            let x_diff = point_b.x - point_a.x;
-            let y_diff = point_b.y - point_a.y;
-            let length = (x_diff * x_diff + y_diff * y_diff).sqrt();
-            if length <= 0.0 {
-                return crate::model::LayoutPoint {
-                    x: point_b.x,
-                    y: point_b.y,
-                };
-            }
-            let ratio = distance / length;
-            crate::model::LayoutPoint {
-                x: point_b.x - ratio * x_diff,
-                y: point_b.y - ratio * y_diff,
-            }
-        }
-
-        let corner_positions = extract_corner_positions(points);
-        if corner_positions.is_empty() {
-            return points.to_vec();
-        }
-
-        let mut out = Vec::new();
-        for (i, p) in points.iter().enumerate() {
-            if !corner_positions.contains(&i) {
-                out.push(crate::model::LayoutPoint { x: p.x, y: p.y });
-                continue;
-            }
-            if i == 0 || i + 1 >= points.len() {
-                out.push(crate::model::LayoutPoint { x: p.x, y: p.y });
-                continue;
-            }
-
-            let prev_point = &points[i - 1];
-            let next_point = &points[i + 1];
-            let corner_point = &points[i];
-
-            let new_prev = find_adjacent_point(prev_point, corner_point, 5.0);
-            let new_next = find_adjacent_point(next_point, corner_point, 5.0);
-            let x_diff = new_next.x - new_prev.x;
-            let y_diff = new_next.y - new_prev.y;
-
-            let new_prev_x = new_prev.x;
-            let new_prev_y = new_prev.y;
-            out.push(new_prev);
-
-            let a = 2.0 * 2.0_f64.sqrt();
-            let mut new_corner = crate::model::LayoutPoint {
-                x: corner_point.x,
-                y: corner_point.y,
-            };
-            if (next_point.x - prev_point.x).abs() > 10.0
-                && (next_point.y - prev_point.y).abs() >= 10.0
-            {
-                let r = 5.0;
-                if corner_point.x == new_prev_x {
-                    new_corner = crate::model::LayoutPoint {
-                        x: if x_diff < 0.0 {
-                            new_prev_x - r + a
-                        } else {
-                            new_prev_x + r - a
-                        },
-                        y: if y_diff < 0.0 {
-                            new_prev_y - a
-                        } else {
-                            new_prev_y + a
-                        },
-                    };
-                } else {
-                    new_corner = crate::model::LayoutPoint {
-                        x: if x_diff < 0.0 {
-                            new_prev_x - a
-                        } else {
-                            new_prev_x + a
-                        },
-                        y: if y_diff < 0.0 {
-                            new_prev_y - r + a
-                        } else {
-                            new_prev_y + r - a
-                        },
-                    };
-                }
-            }
-
-            out.push(new_corner);
-            out.push(new_next);
-        }
-
-        out
-    }
-
     let mut local_points: Vec<crate::model::LayoutPoint> = Vec::new();
     for p in &le.points {
         local_points.push(crate::model::LayoutPoint {
@@ -5541,12 +5449,238 @@ fn render_flowchart_edge_path(
         });
     }
 
-    let line_data: Vec<crate::model::LayoutPoint> = local_points
+    #[derive(Debug, Clone, Copy)]
+    struct BoundaryNode {
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+    }
+
+    fn outside_node(node: &BoundaryNode, point: &crate::model::LayoutPoint) -> bool {
+        let dx = (point.x - node.x).abs();
+        let dy = (point.y - node.y).abs();
+        let w = node.width / 2.0;
+        let h = node.height / 2.0;
+        dx >= w || dy >= h
+    }
+
+    fn rect_intersection(
+        node: &BoundaryNode,
+        outside_point: &crate::model::LayoutPoint,
+        inside_point: &crate::model::LayoutPoint,
+    ) -> crate::model::LayoutPoint {
+        let x = node.x;
+        let y = node.y;
+
+        let dx = (x - inside_point.x).abs();
+        let w = node.width / 2.0;
+        let mut r = if inside_point.x < outside_point.x {
+            w - dx
+        } else {
+            w + dx
+        };
+        let h = node.height / 2.0;
+
+        let q_abs = (outside_point.y - inside_point.y).abs();
+        let r_abs = (outside_point.x - inside_point.x).abs();
+
+        if (y - outside_point.y).abs() * w > (x - outside_point.x).abs() * h {
+            let q = if inside_point.y < outside_point.y {
+                outside_point.y - h - y
+            } else {
+                y - h - outside_point.y
+            };
+            r = if q_abs == 0.0 {
+                0.0
+            } else {
+                (r_abs * q) / q_abs
+            };
+            let mut res = crate::model::LayoutPoint {
+                x: if inside_point.x < outside_point.x {
+                    inside_point.x + r
+                } else {
+                    inside_point.x - r_abs + r
+                },
+                y: if inside_point.y < outside_point.y {
+                    inside_point.y + q_abs - q
+                } else {
+                    inside_point.y - q_abs + q
+                },
+            };
+
+            if r == 0.0 {
+                res.x = outside_point.x;
+                res.y = outside_point.y;
+            }
+            if r_abs == 0.0 {
+                res.x = outside_point.x;
+            }
+            if q_abs == 0.0 {
+                res.y = outside_point.y;
+            }
+            return res;
+        }
+
+        if inside_point.x < outside_point.x {
+            r = outside_point.x - w - x;
+        } else {
+            r = x - w - outside_point.x;
+        }
+        let q = if r_abs == 0.0 {
+            0.0
+        } else {
+            (q_abs * r) / r_abs
+        };
+        let mut ix = if inside_point.x < outside_point.x {
+            inside_point.x + r_abs - r
+        } else {
+            inside_point.x - r_abs + r
+        };
+        let mut iy = if inside_point.y < outside_point.y {
+            inside_point.y + q
+        } else {
+            inside_point.y - q
+        };
+
+        if r == 0.0 {
+            ix = outside_point.x;
+            iy = outside_point.y;
+        }
+        if r_abs == 0.0 {
+            ix = outside_point.x;
+        }
+        if q_abs == 0.0 {
+            iy = outside_point.y;
+        }
+
+        crate::model::LayoutPoint { x: ix, y: iy }
+    }
+
+    fn cut_path_at_intersect(
+        input: &[crate::model::LayoutPoint],
+        boundary: &BoundaryNode,
+    ) -> Vec<crate::model::LayoutPoint> {
+        if input.is_empty() {
+            return Vec::new();
+        }
+        let mut out: Vec<crate::model::LayoutPoint> = Vec::new();
+        let mut last_point_outside = input[0].clone();
+        let mut is_inside = false;
+
+        for point in input {
+            if !outside_node(boundary, point) && !is_inside {
+                let inter = rect_intersection(boundary, &last_point_outside, point);
+                if !out.iter().any(|p| p.x == inter.x && p.y == inter.y) {
+                    out.push(inter);
+                }
+                is_inside = true;
+            } else {
+                last_point_outside = point.clone();
+                if !is_inside {
+                    out.push(point.clone());
+                }
+            }
+        }
+        out
+    }
+
+    fn simplify_collinear_points(
+        input: &[crate::model::LayoutPoint],
+    ) -> Vec<crate::model::LayoutPoint> {
+        // Mermaid's dagre pipeline tends to avoid emitting redundant collinear points for
+        // cluster-related edges. Our current Dagre-ish layout can produce extra points on the same
+        // segment, which changes the number of basis curve segments (and therefore the SVG `d`
+        // command sequence). Compressing these points improves parity while preserving geometry.
+        if input.len() <= 2 {
+            return input.to_vec();
+        }
+
+        const EPS: f64 = 1e-9;
+
+        fn is_collinear(
+            a: &crate::model::LayoutPoint,
+            b: &crate::model::LayoutPoint,
+            c: &crate::model::LayoutPoint,
+        ) -> bool {
+            let abx = b.x - a.x;
+            let aby = b.y - a.y;
+            let bcx = c.x - b.x;
+            let bcy = c.y - b.y;
+            (abx * bcy - aby * bcx).abs() <= EPS
+        }
+
+        fn is_between(
+            a: &crate::model::LayoutPoint,
+            b: &crate::model::LayoutPoint,
+            c: &crate::model::LayoutPoint,
+        ) -> bool {
+            let min_x = a.x.min(c.x) - EPS;
+            let max_x = a.x.max(c.x) + EPS;
+            let min_y = a.y.min(c.y) - EPS;
+            let max_y = a.y.max(c.y) + EPS;
+            b.x >= min_x && b.x <= max_x && b.y >= min_y && b.y <= max_y
+        }
+
+        let mut out: Vec<crate::model::LayoutPoint> = Vec::with_capacity(input.len());
+        out.push(input[0].clone());
+        for i in 1..input.len().saturating_sub(1) {
+            let prev = out.last().unwrap_or(&input[i - 1]);
+            let curr = &input[i];
+            let next = &input[i + 1];
+            if is_collinear(prev, curr, next) && is_between(prev, curr, next) {
+                continue;
+            }
+            // Drop exact duplicates as well.
+            if (curr.x - prev.x).abs() <= EPS && (curr.y - prev.y).abs() <= EPS {
+                continue;
+            }
+            out.push(curr.clone());
+        }
+        out.push(input[input.len() - 1].clone());
+        out
+    }
+
+    fn boundary_for_cluster(
+        ctx: &FlowchartRenderCtx<'_>,
+        cluster_id: &str,
+        origin_x: f64,
+        origin_y: f64,
+    ) -> Option<BoundaryNode> {
+        let n = ctx.layout_clusters_by_id.get(cluster_id)?;
+        Some(BoundaryNode {
+            x: n.x + ctx.tx - origin_x,
+            y: n.y + ctx.ty - origin_y,
+            width: n.width,
+            height: n.height,
+        })
+    }
+
+    let mut points_for_render = if le.to_cluster.is_some() || le.from_cluster.is_some() {
+        simplify_collinear_points(&local_points)
+    } else {
+        local_points.clone()
+    };
+    if let Some(tc) = le.to_cluster.as_deref() {
+        if let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y) {
+            points_for_render = cut_path_at_intersect(&points_for_render, &boundary);
+        }
+    }
+    if let Some(fc) = le.from_cluster.as_deref() {
+        if let Some(boundary) = boundary_for_cluster(ctx, fc, origin_x, origin_y) {
+            let mut rev = points_for_render.clone();
+            rev.reverse();
+            rev = cut_path_at_intersect(&rev, &boundary);
+            rev.reverse();
+            points_for_render = rev;
+        }
+    }
+
+    let line_data: Vec<crate::model::LayoutPoint> = points_for_render
         .iter()
         .filter(|p| !p.y.is_nan())
         .cloned()
         .collect();
-    let line_data = flowchart_fix_corners(&line_data);
     let interpolate = edge
         .interpolate
         .as_deref()

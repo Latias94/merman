@@ -714,8 +714,13 @@ pub mod acyclic {
             stack.remove(v);
         }
 
+        // Dagre's graphlib returns nodes in insertion order, but Mermaid's flowchart graph
+        // construction can effectively re-insert nodes during cluster extraction and edge
+        // normalization, which affects the DFS-based cycle breaker traversal order. Iterating in
+        // reverse insertion order matches Mermaid's `@11.12.2` behavior more closely on cyclic
+        // flowcharts.
         let node_ids = g.node_ids();
-        for v in node_ids {
+        for v in node_ids.into_iter().rev() {
             dfs(g, &v, &mut visited, &mut stack, &mut fas);
         }
         fas
@@ -1245,6 +1250,12 @@ pub mod util {
         }
 
         for e in g.edges() {
+            // In Dagre, the ranker runs on a non-compound view of the graph where compound nodes
+            // (nodes with children) do not participate in ranking. Avoid implicitly reintroducing
+            // those nodes via `set_edge_named` which would otherwise `ensure_node` endpoints.
+            if !g.children(&e.v).is_empty() || !g.children(&e.w).is_empty() {
+                continue;
+            }
             if let Some(lbl) = g.edge_by_key(e) {
                 simplified.set_edge_named(
                     e.v.clone(),
@@ -3113,7 +3124,40 @@ pub mod nesting_graph {
 
         g.graph_mut().node_rank_factor = Some(node_sep);
 
-        let _ = alg::components(g);
+        // Dagre assumes the nesting graph pass makes the graph connected before ranking.
+        // Our upstream parity tests include cases where the input graph is not fully connected
+        // by the nesting edges alone (e.g. edges incident on cluster nodes). Connect any
+        // remaining components through the nesting root so network-simplex does not panic.
+        let comps = alg::components(g);
+        if comps.len() > 1 {
+            for comp in comps {
+                if comp.iter().any(|v| v == &root) {
+                    continue;
+                }
+                let Some(v) = comp.first() else {
+                    continue;
+                };
+                if v == &root {
+                    continue;
+                }
+                if g.edge(&root, v, None).is_some() {
+                    continue;
+                }
+                g.set_edge_with_label(
+                    root.clone(),
+                    v.clone(),
+                    EdgeLabel {
+                        weight: 0.0,
+                        // Match Dagre's nesting graph behavior: connect components through the
+                        // nesting root using the same `nodeSep`-scaled minlen so rank constraints
+                        // remain consistent with compound graphs.
+                        minlen: node_sep.max(1),
+                        nesting_edge: true,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
     }
 
     pub fn cleanup(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {

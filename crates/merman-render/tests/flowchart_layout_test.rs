@@ -505,11 +505,11 @@ fn flowchart_edge_label_is_included_in_subgraph_bounds() {
 
     assert!(
         lmin_x + 1e-6 >= cmin_x && lmax_x <= cmax_x + 1e-6,
-        "edge label should fit horizontally in cluster A"
+        "edge label should fit horizontally in cluster A (cluster=[{cmin_x:.3},{cmax_x:.3}] label=[{lmin_x:.3},{lmax_x:.3}])"
     );
     assert!(
         lmin_y + 1e-6 >= cmin_y && lmax_y <= cmax_y + 1e-6,
-        "edge label should fit vertically in cluster A"
+        "edge label should fit vertically in cluster A (cluster=[{cmin_y:.3},{cmax_y:.3}] label=[{lmin_y:.3},{lmax_y:.3}])"
     );
 }
 

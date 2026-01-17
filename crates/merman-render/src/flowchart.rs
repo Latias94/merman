@@ -124,6 +124,114 @@ fn rank_dir_from_flow(direction: &str) -> RankDir {
     }
 }
 
+fn normalize_dir(s: &str) -> String {
+    s.trim().to_uppercase()
+}
+
+fn toggled_dir(parent: &str) -> String {
+    let parent = normalize_dir(parent);
+    if parent == "TB" || parent == "TD" {
+        "LR".to_string()
+    } else {
+        "TB".to_string()
+    }
+}
+
+fn flow_dir_from_rankdir(rankdir: RankDir) -> &'static str {
+    match rankdir {
+        RankDir::TB => "TB",
+        RankDir::BT => "BT",
+        RankDir::LR => "LR",
+        RankDir::RL => "RL",
+    }
+}
+
+fn effective_cluster_dir(sg: &FlowSubgraph, parent_dir: &str, inherit_dir: bool) -> String {
+    if let Some(dir) = sg.dir.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        return normalize_dir(dir);
+    }
+    if inherit_dir {
+        return normalize_dir(parent_dir);
+    }
+    toggled_dir(parent_dir)
+}
+
+fn compute_effective_dir_by_id(
+    subgraphs_by_id: &HashMap<String, FlowSubgraph>,
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    diagram_dir: &str,
+    inherit_dir: bool,
+) -> HashMap<String, String> {
+    fn compute_one(
+        id: &str,
+        subgraphs_by_id: &HashMap<String, FlowSubgraph>,
+        g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        diagram_dir: &str,
+        inherit_dir: bool,
+        visiting: &mut std::collections::HashSet<String>,
+        memo: &mut HashMap<String, String>,
+    ) -> String {
+        if let Some(dir) = memo.get(id) {
+            return dir.clone();
+        }
+        if !visiting.insert(id.to_string()) {
+            let dir = toggled_dir(diagram_dir);
+            memo.insert(id.to_string(), dir.clone());
+            return dir;
+        }
+
+        let parent_dir = g
+            .parent(id)
+            .and_then(|p| subgraphs_by_id.contains_key(p).then_some(p.to_string()))
+            .map(|p| {
+                compute_one(
+                    &p,
+                    subgraphs_by_id,
+                    g,
+                    diagram_dir,
+                    inherit_dir,
+                    visiting,
+                    memo,
+                )
+            })
+            .unwrap_or_else(|| normalize_dir(diagram_dir));
+
+        let dir = subgraphs_by_id
+            .get(id)
+            .map(|sg| effective_cluster_dir(sg, &parent_dir, inherit_dir))
+            .unwrap_or_else(|| toggled_dir(&parent_dir));
+
+        memo.insert(id.to_string(), dir.clone());
+        let _ = visiting.remove(id);
+        dir
+    }
+
+    let mut memo: HashMap<String, String> = HashMap::new();
+    let mut visiting: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for id in subgraphs_by_id.keys() {
+        let _ = compute_one(
+            id,
+            subgraphs_by_id,
+            g,
+            diagram_dir,
+            inherit_dir,
+            &mut visiting,
+            &mut memo,
+        );
+    }
+    memo
+}
+
+fn dir_to_rankdir(dir: &str) -> RankDir {
+    match normalize_dir(dir).as_str() {
+        "TB" | "TD" => RankDir::TB,
+        "BT" => RankDir::BT,
+        "LR" => RankDir::LR,
+        "RL" => RankDir::RL,
+        _ => RankDir::TB,
+    }
+}
+
 fn edge_label_is_non_empty(edge: &FlowEdge) -> bool {
     edge.label
         .as_deref()
@@ -160,6 +268,377 @@ fn lowest_common_parent(
     }
 
     None
+}
+
+fn extract_descendants(id: &str, g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<String> {
+    let children = g.children(id);
+    let mut out: Vec<String> = children.iter().map(|s| s.to_string()).collect();
+    for child in children {
+        out.extend(extract_descendants(child, g));
+    }
+    out
+}
+
+fn edge_in_cluster(
+    edge: &dugong::graphlib::EdgeKey,
+    cluster_id: &str,
+    descendants: &std::collections::HashMap<String, Vec<String>>,
+) -> bool {
+    if edge.v == cluster_id || edge.w == cluster_id {
+        return false;
+    }
+    let Some(cluster_desc) = descendants.get(cluster_id) else {
+        return false;
+    };
+    cluster_desc.contains(&edge.v) || cluster_desc.contains(&edge.w)
+}
+
+#[derive(Debug, Clone)]
+struct FlowchartClusterDbEntry {
+    anchor_id: String,
+    external_connections: bool,
+}
+
+fn flowchart_find_common_edges(
+    graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    id1: &str,
+    id2: &str,
+) -> Vec<(String, String)> {
+    let edges1: Vec<(String, String)> = graph
+        .edge_keys()
+        .into_iter()
+        .filter(|edge| edge.v == id1 || edge.w == id1)
+        .map(|edge| (edge.v, edge.w))
+        .collect();
+    let edges2: Vec<(String, String)> = graph
+        .edge_keys()
+        .into_iter()
+        .filter(|edge| edge.v == id2 || edge.w == id2)
+        .map(|edge| (edge.v, edge.w))
+        .collect();
+
+    let edges1_prim: Vec<(String, String)> = edges1
+        .into_iter()
+        .map(|(v, w)| {
+            (
+                if v == id1 { id2.to_string() } else { v },
+                if w == id1 { id2.to_string() } else { w },
+            )
+        })
+        .collect();
+
+    let mut out = Vec::new();
+    for e1 in edges1_prim {
+        if edges2.iter().any(|e2| *e2 == e1) {
+            out.push(e1);
+        }
+    }
+    out
+}
+
+fn flowchart_find_non_cluster_child(
+    id: &str,
+    graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    cluster_id: &str,
+) -> Option<String> {
+    let children = graph.children(id);
+    if children.is_empty() {
+        return Some(id.to_string());
+    }
+
+    let mut reserve: Option<String> = None;
+    for child in children {
+        let Some(child_id) = flowchart_find_non_cluster_child(child, graph, cluster_id) else {
+            continue;
+        };
+        let common_edges = flowchart_find_common_edges(graph, cluster_id, &child_id);
+        if !common_edges.is_empty() {
+            reserve = Some(child_id);
+        } else {
+            return Some(child_id);
+        }
+    }
+    reserve
+}
+
+fn adjust_flowchart_clusters_and_edges(graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+    use serde_json::Value;
+
+    fn is_descendant(
+        node_id: &str,
+        cluster_id: &str,
+        descendants: &std::collections::HashMap<String, Vec<String>>,
+    ) -> bool {
+        descendants
+            .get(cluster_id)
+            .is_some_and(|ds| ds.iter().any(|n| n == node_id))
+    }
+
+    let mut descendants: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    let mut cluster_db: std::collections::HashMap<String, FlowchartClusterDbEntry> =
+        std::collections::HashMap::new();
+
+    for id in graph.node_ids() {
+        if graph.children(&id).is_empty() {
+            continue;
+        }
+        descendants.insert(id.clone(), extract_descendants(&id, graph));
+        let anchor_id =
+            flowchart_find_non_cluster_child(&id, graph, &id).unwrap_or_else(|| id.clone());
+        cluster_db.insert(
+            id,
+            FlowchartClusterDbEntry {
+                anchor_id,
+                external_connections: false,
+            },
+        );
+    }
+
+    for id in cluster_db.keys().cloned().collect::<Vec<_>>() {
+        if graph.children(&id).is_empty() {
+            continue;
+        }
+        let mut has_external = false;
+        for e in graph.edges() {
+            let d1 = is_descendant(e.v.as_str(), id.as_str(), &descendants);
+            let d2 = is_descendant(e.w.as_str(), id.as_str(), &descendants);
+            if d1 ^ d2 {
+                has_external = true;
+                break;
+            }
+        }
+        if let Some(entry) = cluster_db.get_mut(&id) {
+            entry.external_connections = has_external;
+        }
+    }
+
+    for id in cluster_db.keys().cloned().collect::<Vec<_>>() {
+        let Some(non_cluster_child) = cluster_db.get(&id).map(|e| e.anchor_id.clone()) else {
+            continue;
+        };
+        let parent = graph.parent(&non_cluster_child);
+        if parent.is_some_and(|p| p != id.as_str())
+            && parent.is_some_and(|p| cluster_db.contains_key(p))
+            && parent.is_some_and(|p| !cluster_db.get(p).is_some_and(|e| e.external_connections))
+        {
+            if let Some(p) = parent {
+                if let Some(entry) = cluster_db.get_mut(&id) {
+                    entry.anchor_id = p.to_string();
+                }
+            }
+        }
+    }
+
+    fn get_anchor_id(
+        id: &str,
+        cluster_db: &std::collections::HashMap<String, FlowchartClusterDbEntry>,
+    ) -> String {
+        let Some(entry) = cluster_db.get(id) else {
+            return id.to_string();
+        };
+        if !entry.external_connections {
+            return id.to_string();
+        }
+        entry.anchor_id.clone()
+    }
+
+    let edge_keys = graph.edge_keys();
+    for ek in edge_keys {
+        if !cluster_db.contains_key(&ek.v) && !cluster_db.contains_key(&ek.w) {
+            continue;
+        }
+
+        let Some(mut edge_label) = graph.edge_by_key(&ek).cloned() else {
+            continue;
+        };
+
+        let v = get_anchor_id(&ek.v, &cluster_db);
+        let w = get_anchor_id(&ek.w, &cluster_db);
+
+        // Match Mermaid `adjustClustersAndEdges`: edges that touch cluster nodes are removed and
+        // re-inserted even when their endpoints do not change. This affects edge iteration order
+        // and therefore cycle-breaking determinism in Dagre's acyclic pass.
+        let _ = graph.remove_edge_key(&ek);
+
+        if v != ek.v {
+            if let Some(parent) = graph.parent(&v) {
+                if let Some(entry) = cluster_db.get_mut(parent) {
+                    entry.external_connections = true;
+                }
+            }
+            edge_label
+                .extras
+                .insert("fromCluster".to_string(), Value::String(ek.v.clone()));
+        }
+
+        if w != ek.w {
+            if let Some(parent) = graph.parent(&w) {
+                if let Some(entry) = cluster_db.get_mut(parent) {
+                    entry.external_connections = true;
+                }
+            }
+            edge_label
+                .extras
+                .insert("toCluster".to_string(), Value::String(ek.w.clone()));
+        }
+
+        graph.set_edge_named(v, w, ek.name, Some(edge_label));
+    }
+}
+
+fn copy_cluster(
+    cluster_id: &str,
+    graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    new_graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    root_id: &str,
+    descendants: &std::collections::HashMap<String, Vec<String>>,
+) {
+    let mut nodes: Vec<String> = graph
+        .children(cluster_id)
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    if cluster_id != root_id {
+        nodes.push(cluster_id.to_string());
+    }
+
+    for node in nodes {
+        if !graph.has_node(&node) {
+            continue;
+        }
+
+        if !graph.children(&node).is_empty() {
+            copy_cluster(&node, graph, new_graph, root_id, descendants);
+        } else {
+            let data = graph.node(&node).cloned().unwrap_or_default();
+            new_graph.set_node(node.clone(), data);
+
+            if let Some(parent) = graph.parent(&node) {
+                if parent != root_id {
+                    new_graph.set_parent(node.clone(), parent.to_string());
+                }
+            }
+            if cluster_id != root_id && node != cluster_id {
+                new_graph.set_parent(node.clone(), cluster_id.to_string());
+            }
+
+            // Copy edges that are internal to this cluster. Mermaid performs this while iterating
+            // nodes because the source graph is mutated (nodes and incident edges are removed).
+            let edge_keys = graph.edge_keys();
+            for ek in edge_keys {
+                if !edge_in_cluster(&ek, root_id, descendants) {
+                    continue;
+                }
+                if new_graph.has_edge(&ek.v, &ek.w, ek.name.as_deref()) {
+                    continue;
+                }
+                let Some(lbl) = graph.edge_by_key(&ek).cloned() else {
+                    continue;
+                };
+                new_graph.set_edge_named(ek.v, ek.w, ek.name, Some(lbl));
+            }
+        }
+
+        let _ = graph.remove_node(&node);
+    }
+}
+
+fn extract_clusters_recursively(
+    graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    subgraphs_by_id: &std::collections::HashMap<String, FlowSubgraph>,
+    effective_dir_by_id: &std::collections::HashMap<String, String>,
+    extracted: &mut std::collections::HashMap<String, Graph<NodeLabel, EdgeLabel, GraphLabel>>,
+    depth: usize,
+) {
+    if depth > 10 {
+        return;
+    }
+
+    let node_ids = graph.node_ids();
+    let mut descendants: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    for id in &node_ids {
+        if graph.children(id).is_empty() {
+            continue;
+        }
+        descendants.insert(id.clone(), extract_descendants(id, graph));
+    }
+
+    let mut external: std::collections::HashMap<String, bool> = std::collections::HashMap::new();
+    for id in descendants.keys() {
+        let Some(ds) = descendants.get(id) else {
+            continue;
+        };
+        let mut has_external = false;
+        for e in graph.edges() {
+            let d1 = ds.contains(&e.v);
+            let d2 = ds.contains(&e.w);
+            if d1 ^ d2 {
+                has_external = true;
+                break;
+            }
+        }
+        external.insert(id.clone(), has_external);
+    }
+
+    let mut extracted_here: Vec<(String, Graph<NodeLabel, EdgeLabel, GraphLabel>)> = Vec::new();
+
+    let candidates: Vec<String> = node_ids
+        .into_iter()
+        .filter(|id| graph.has_node(id))
+        .filter(|id| !graph.children(id).is_empty())
+        .filter(|id| !external.get(id).copied().unwrap_or(false))
+        .collect();
+
+    for id in candidates {
+        if !graph.has_node(&id) {
+            continue;
+        }
+        if graph.children(&id).is_empty() {
+            continue;
+        }
+
+        let mut cluster_graph: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
+            multigraph: true,
+            compound: true,
+            directed: true,
+        });
+
+        // Mermaid's `extractor(...)` uses:
+        // - `clusterData.dir` when explicitly set for the subgraph
+        // - otherwise: toggle relative to the current graph's rankdir (TB<->LR)
+        let dir = subgraphs_by_id
+            .get(&id)
+            .and_then(|sg| sg.dir.as_deref())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(normalize_dir)
+            .unwrap_or_else(|| toggled_dir(flow_dir_from_rankdir(graph.graph().rankdir)));
+
+        cluster_graph.set_graph(GraphLabel {
+            rankdir: dir_to_rankdir(&dir),
+            nodesep: 50.0,
+            ranksep: 50.0,
+            edgesep: 20.0,
+            acyclicer: None,
+            ..Default::default()
+        });
+
+        copy_cluster(&id, graph, &mut cluster_graph, &id, &descendants);
+        extracted_here.push((id, cluster_graph));
+    }
+
+    for (id, mut g) in extracted_here {
+        extract_clusters_recursively(
+            &mut g,
+            subgraphs_by_id,
+            effective_dir_by_id,
+            extracted,
+            depth + 1,
+        );
+        extracted.insert(id, g);
+    }
 }
 
 pub fn layout_flowchart_v2(
@@ -215,8 +694,13 @@ pub fn layout_flowchart_v2(
         font_weight,
     };
 
-    let diagram_direction = model.direction.as_deref().unwrap_or("TB");
+    let diagram_direction = normalize_dir(model.direction.as_deref().unwrap_or("TB"));
     let has_subgraphs = !model.subgraphs.is_empty();
+    let mut subgraphs_by_id: std::collections::HashMap<String, FlowSubgraph> =
+        std::collections::HashMap::new();
+    for sg in &model.subgraphs {
+        subgraphs_by_id.insert(sg.id.clone(), sg.clone());
+    }
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
         multigraph: true,
         // Mermaid's Dagre adapter always enables `compound: true`, even if there are no explicit
@@ -225,11 +709,12 @@ pub fn layout_flowchart_v2(
         directed: true,
     });
     g.set_graph(GraphLabel {
-        rankdir: rank_dir_from_flow(diagram_direction),
+        rankdir: rank_dir_from_flow(&diagram_direction),
         nodesep,
         ranksep,
         // Dagre layout defaults `edgesep` to 20 when unspecified.
         edgesep: 20.0,
+        acyclicer: None,
         ..Default::default()
     });
 
@@ -274,8 +759,11 @@ pub fn layout_flowchart_v2(
         }
     }
 
-    let mut extra_children: std::collections::HashMap<String, Vec<String>> =
-        std::collections::HashMap::new();
+    let effective_dir_by_id = if has_subgraphs {
+        compute_effective_dir_by_id(&subgraphs_by_id, &g, &diagram_direction, inherit_dir)
+    } else {
+        HashMap::new()
+    };
 
     for e in &model.edges {
         if edge_label_is_non_empty(e) {
@@ -298,13 +786,6 @@ pub fn layout_flowchart_v2(
             };
 
             g.set_edge_named(e.from.clone(), e.to.clone(), Some(e.id.clone()), Some(el));
-
-            if let Some(parent) = lowest_common_parent(&g, &e.from, &e.to) {
-                extra_children
-                    .entry(parent)
-                    .or_default()
-                    .push(edge_label_leaf_id(e));
-            }
         } else {
             let el = EdgeLabel {
                 width: 0.0,
@@ -318,6 +799,32 @@ pub fn layout_flowchart_v2(
             };
             g.set_edge_named(e.from.clone(), e.to.clone(), Some(e.id.clone()), Some(el));
         }
+    }
+
+    if has_subgraphs {
+        adjust_flowchart_clusters_and_edges(&mut g);
+    }
+
+    let mut edge_endpoints_by_id: HashMap<String, (String, String)> = HashMap::new();
+    for ek in g.edge_keys() {
+        let Some(edge_id) = ek.name.as_deref() else {
+            continue;
+        };
+        edge_endpoints_by_id.insert(edge_id.to_string(), (ek.v.clone(), ek.w.clone()));
+    }
+
+    let mut extracted_graphs: std::collections::HashMap<
+        String,
+        Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    > = std::collections::HashMap::new();
+    if has_subgraphs {
+        extract_clusters_recursively(
+            &mut g,
+            &subgraphs_by_id,
+            &effective_dir_by_id,
+            &mut extracted_graphs,
+            0,
+        );
     }
 
     dugong::layout_dagreish(&mut g);
@@ -379,323 +886,230 @@ pub fn layout_flowchart_v2(
         std::collections::HashMap::new();
     let mut edge_override_label: std::collections::HashMap<String, Option<LayoutLabel>> =
         std::collections::HashMap::new();
+    let mut edge_override_from_cluster: std::collections::HashMap<String, Option<String>> =
+        std::collections::HashMap::new();
+    let mut edge_override_to_cluster: std::collections::HashMap<String, Option<String>> =
+        std::collections::HashMap::new();
     let mut edge_packed_shift: std::collections::HashMap<String, (f64, f64)> =
         std::collections::HashMap::new();
 
-    for n in &model.nodes {
-        let Some(label) = g.node(&n.id) else {
-            return Err(Error::InvalidModel {
-                message: format!("missing layout node {}", n.id),
-            });
-        };
-        let x = label.x.unwrap_or(0.0);
-        let y = label.y.unwrap_or(0.0);
-        base_pos.insert(n.id.clone(), (x, y));
-        leaf_rects.insert(
-            n.id.clone(),
-            Rect::from_center(x, y, label.width, label.height),
-        );
+    for cg in extracted_graphs.values_mut() {
+        dugong::layout_dagreish(cg);
     }
 
-    // Record edge label bounding boxes (they participate in cluster sizing/packing like in Mermaid).
-    for e in &model.edges {
-        if !edge_label_is_non_empty(e) {
-            continue;
+    let leaf_node_ids: std::collections::HashSet<&str> =
+        model.nodes.iter().map(|n| n.id.as_str()).collect();
+
+    fn graph_content_rect(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Option<Rect> {
+        let mut out: Option<Rect> = None;
+        for id in g.node_ids() {
+            let Some(n) = g.node(&id) else { continue };
+            let (Some(x), Some(y)) = (n.x, n.y) else {
+                continue;
+            };
+            let r = Rect::from_center(x, y, n.width, n.height);
+            if let Some(ref mut cur) = out {
+                cur.union(r);
+            } else {
+                out = Some(r);
+            }
         }
-        let Some(lbl) = g.edge(&e.from, &e.to, Some(&e.id)) else {
-            continue;
-        };
-        let (Some(x), Some(y)) = (lbl.x, lbl.y) else {
-            continue;
-        };
-        if lbl.width <= 0.0 && lbl.height <= 0.0 {
-            continue;
-        }
-        let leaf_id = edge_label_leaf_id(e);
-        base_pos.insert(leaf_id.clone(), (x, y));
-        leaf_rects.insert(leaf_id, Rect::from_center(x, y, lbl.width, lbl.height));
-    }
-
-    let mut subgraphs_by_id: std::collections::HashMap<String, FlowSubgraph> =
-        std::collections::HashMap::new();
-    for sg in &model.subgraphs {
-        subgraphs_by_id.insert(sg.id.clone(), sg.clone());
-    }
-
-    fn normalize_dir(s: &str) -> String {
-        s.trim().to_uppercase()
-    }
-
-    fn toggled_dir(parent: &str) -> String {
-        let parent = normalize_dir(parent);
-        if parent == "TB" || parent == "TD" {
-            "LR".to_string()
-        } else {
-            "TB".to_string()
-        }
-    }
-
-    fn effective_cluster_dir(sg: &FlowSubgraph, diagram_dir: &str, inherit_dir: bool) -> String {
-        if let Some(dir) = sg.dir.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-            return normalize_dir(dir);
-        }
-        if inherit_dir {
-            return normalize_dir(diagram_dir);
-        }
-        toggled_dir(diagram_dir)
-    }
-
-    fn dir_to_rankdir(dir: &str) -> RankDir {
-        match normalize_dir(dir).as_str() {
-            "TB" | "TD" => RankDir::TB,
-            "BT" => RankDir::BT,
-            "LR" => RankDir::LR,
-            "RL" => RankDir::RL,
-            _ => RankDir::TB,
-        }
-    }
-
-    // Apply Mermaid-like "recursive cluster" layout for clusters with:
-    // - leaf-only membership (no nested subgraph ids),
-    // - no external connections (all edges are internal to the cluster membership).
-    //
-    // This captures the key behavior where a cluster's `dir` influences internal layout.
-    {
-        let subgraph_ids: std::collections::HashSet<String> =
-            subgraphs_by_id.keys().cloned().collect();
-
-        for sg in model.subgraphs.iter() {
-            let has_nested = sg.nodes.iter().any(|m| subgraph_ids.contains(m));
-            if has_nested {
+        for ek in g.edge_keys() {
+            let Some(e) = g.edge_by_key(&ek) else {
+                continue;
+            };
+            let (Some(x), Some(y)) = (e.x, e.y) else {
+                continue;
+            };
+            if e.width <= 0.0 && e.height <= 0.0 {
                 continue;
             }
+            let r = Rect::from_center(x, y, e.width, e.height);
+            if let Some(ref mut cur) = out {
+                cur.union(r);
+            } else {
+                out = Some(r);
+            }
+        }
+        out
+    }
 
-            let members: std::collections::HashSet<&str> =
-                sg.nodes.iter().map(|s| s.as_str()).collect();
-            if members.is_empty() {
+    fn place_graph(
+        graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        offset: (f64, f64),
+        is_root: bool,
+        extracted_graphs: &std::collections::HashMap<
+            String,
+            Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        >,
+        leaf_node_ids: &std::collections::HashSet<&str>,
+        y_shift: f64,
+        base_pos: &mut std::collections::HashMap<String, (f64, f64)>,
+        leaf_rects: &mut std::collections::HashMap<String, Rect>,
+        edge_override_points: &mut std::collections::HashMap<String, Vec<LayoutPoint>>,
+        edge_override_label: &mut std::collections::HashMap<String, Option<LayoutLabel>>,
+        edge_override_from_cluster: &mut std::collections::HashMap<String, Option<String>>,
+        edge_override_to_cluster: &mut std::collections::HashMap<String, Option<String>>,
+    ) {
+        for id in graph.node_ids() {
+            if !leaf_node_ids.contains(id.as_str()) {
                 continue;
             }
+            let Some(n) = graph.node(&id) else { continue };
+            let x = n.x.unwrap_or(0.0) + offset.0;
+            let y = n.y.unwrap_or(0.0) + offset.1;
+            base_pos.insert(id.clone(), (x, y));
+            leaf_rects.insert(id, Rect::from_center(x, y, n.width, n.height));
+        }
 
-            let mut has_external = false;
-            let mut internal_edges: Vec<&FlowEdge> = Vec::new();
-            for e in &model.edges {
-                let in_from = members.contains(e.from.as_str());
-                let in_to = members.contains(e.to.as_str());
-                match (in_from, in_to) {
-                    (true, true) => internal_edges.push(e),
-                    (true, false) | (false, true) => {
-                        has_external = true;
-                        break;
-                    }
-                    (false, false) => {}
-                }
-            }
-            if has_external {
+        for ek in graph.edge_keys() {
+            let Some(edge_id) = ek.name.as_deref() else {
                 continue;
-            }
+            };
+            let Some(lbl) = graph.edge_by_key(&ek) else {
+                continue;
+            };
 
-            let dir = effective_cluster_dir(sg, diagram_direction, inherit_dir);
-            let label_leaves_for_edges = internal_edges
-                .iter()
-                .filter(|e| edge_label_is_non_empty(e))
-                .map(|e| edge_label_leaf_id(e))
-                .collect::<Vec<_>>();
-
-            let mut g_inner: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
-                multigraph: true,
-                compound: true,
-                directed: true,
-            });
-            g_inner.set_graph(GraphLabel {
-                rankdir: dir_to_rankdir(&dir),
-                nodesep: 50.0,
-                ranksep: 50.0,
-                edgesep: 20.0,
-                ..Default::default()
-            });
-
-            for node_id in &sg.nodes {
-                let Some(orig) = g.node(node_id) else {
-                    continue;
-                };
-                g_inner.set_node(
-                    node_id.clone(),
-                    NodeLabel {
-                        width: orig.width,
-                        height: orig.height,
-                        ..Default::default()
-                    },
-                );
-            }
-
-            for e in &internal_edges {
-                if edge_label_is_non_empty(e) {
-                    let label_text = e.label.as_deref().unwrap_or_default();
-                    let metrics = measurer.measure_wrapped(
-                        label_text,
-                        &text_style,
-                        Some(wrapping_width),
-                        wrap_mode,
-                    );
-                    let label_width = metrics.width.max(1.0);
-                    let label_height = metrics.height.max(1.0);
-
-                    let minlen = e.length.max(1);
-                    let el = EdgeLabel {
-                        width: label_width,
-                        height: label_height,
-                        labelpos: LabelPos::C,
-                        labeloffset: 10.0,
-                        minlen,
-                        weight: 1.0,
-                        ..Default::default()
-                    };
-
-                    g_inner.set_edge_named(
-                        e.from.clone(),
-                        e.to.clone(),
-                        Some(e.id.clone()),
-                        Some(el),
-                    );
-                } else {
-                    let el = EdgeLabel {
-                        width: 0.0,
-                        height: 0.0,
-                        labelpos: LabelPos::C,
-                        labeloffset: 10.0,
-                        minlen: e.length.max(1),
-                        weight: 1.0,
-                        ..Default::default()
-                    };
-                    g_inner.set_edge_named(
-                        e.from.clone(),
-                        e.to.clone(),
-                        Some(e.id.clone()),
-                        Some(el),
-                    );
+            if let (Some(x), Some(y)) = (lbl.x, lbl.y) {
+                if lbl.width > 0.0 || lbl.height > 0.0 {
+                    let lx = x + offset.0;
+                    let ly = y + offset.1;
+                    let leaf_id = format!("edge-label::{edge_id}");
+                    base_pos.insert(leaf_id.clone(), (lx, ly));
+                    leaf_rects.insert(leaf_id, Rect::from_center(lx, ly, lbl.width, lbl.height));
                 }
             }
 
-            dugong::layout_dagreish(&mut g_inner);
-
-            // Translate the inner layout back into the diagram coordinate space by matching the
-            // original membership bounding box center.
-            let mut old_rect: Option<Rect> = None;
-            for id in sg.nodes.iter().chain(label_leaves_for_edges.iter()) {
-                let Some(r) = leaf_rects.get(id).copied() else {
-                    continue;
-                };
-                if let Some(ref mut cur) = old_rect {
-                    cur.union(r);
-                } else {
-                    old_rect = Some(r);
-                }
-            }
-            let Some(old_rect) = old_rect else { continue };
-
-            let mut new_rect: Option<Rect> = None;
-            for node_id in sg.nodes.iter() {
-                let Some(inner) = g_inner.node(node_id) else {
-                    continue;
-                };
-                let x = inner.x.unwrap_or(0.0);
-                let y = inner.y.unwrap_or(0.0);
-                let r = Rect::from_center(x, y, inner.width, inner.height);
-                if let Some(ref mut cur) = new_rect {
-                    cur.union(r);
-                } else {
-                    new_rect = Some(r);
-                }
-            }
-            for e in &internal_edges {
-                if !edge_label_is_non_empty(e) {
-                    continue;
-                }
-                let Some(lbl) = g_inner.edge(&e.from, &e.to, Some(&e.id)) else {
-                    continue;
-                };
-                let (Some(x), Some(y)) = (lbl.x, lbl.y) else {
-                    continue;
-                };
-                if lbl.width <= 0.0 && lbl.height <= 0.0 {
-                    continue;
-                }
-                let r = Rect::from_center(x, y, lbl.width, lbl.height);
-                if let Some(ref mut cur) = new_rect {
-                    cur.union(r);
-                } else {
-                    new_rect = Some(r);
-                }
-            }
-            let Some(new_rect) = new_rect else { continue };
-
-            let (ocx, ocy) = old_rect.center();
-            let (ncx, ncy) = new_rect.center();
-            let dx = ocx - ncx;
-            let dy = ocy - ncy;
-
-            // Apply translated positions to base_pos and leaf_rects.
-            for node_id in sg.nodes.iter() {
-                let Some(inner) = g_inner.node(node_id) else {
-                    continue;
-                };
-                let x = inner.x.unwrap_or(0.0) + dx;
-                let y = inner.y.unwrap_or(0.0) + dy;
-                base_pos.insert(node_id.clone(), (x, y));
-                leaf_rects.insert(
-                    node_id.clone(),
-                    Rect::from_center(x, y, inner.width, inner.height),
-                );
-            }
-            for e in &internal_edges {
-                if !edge_label_is_non_empty(e) {
-                    continue;
-                }
-                let Some(lbl) = g_inner.edge(&e.from, &e.to, Some(&e.id)) else {
-                    continue;
-                };
-                let (Some(x), Some(y)) = (lbl.x, lbl.y) else {
-                    continue;
-                };
-                if lbl.width <= 0.0 && lbl.height <= 0.0 {
-                    continue;
-                }
-                let leaf_id = edge_label_leaf_id(e);
-                let x = x + dx;
-                let y = y + dy;
-                base_pos.insert(leaf_id.clone(), (x, y));
-                leaf_rects.insert(leaf_id, Rect::from_center(x, y, lbl.width, lbl.height));
-            }
-
-            // Capture edge point overrides for internal edges.
-            for e in &internal_edges {
-                let Some(lbl) = g_inner.edge(&e.from, &e.to, Some(&e.id)) else {
-                    continue;
-                };
+            if !is_root {
                 let points = lbl
                     .points
                     .iter()
                     .map(|p| LayoutPoint {
-                        x: p.x + dx,
-                        y: p.y + dy + y_shift,
+                        x: p.x + offset.0,
+                        y: p.y + offset.1 + y_shift,
                     })
                     .collect::<Vec<_>>();
                 let label_pos = match (lbl.x, lbl.y) {
                     (Some(x), Some(y)) if lbl.width > 0.0 || lbl.height > 0.0 => {
                         Some(LayoutLabel {
-                            x: x + dx,
-                            y: y + dy + y_shift,
+                            x: x + offset.0,
+                            y: y + offset.1 + y_shift,
                             width: lbl.width,
                             height: lbl.height,
                         })
                     }
                     _ => None,
                 };
-
-                edge_override_points.insert(e.id.clone(), points);
-                edge_override_label.insert(e.id.clone(), label_pos);
+                edge_override_points.insert(edge_id.to_string(), points);
+                edge_override_label.insert(edge_id.to_string(), label_pos);
+                let from_cluster = lbl
+                    .extras
+                    .get("fromCluster")
+                    .and_then(|v| v.as_str().map(|s| s.to_string()));
+                let to_cluster = lbl
+                    .extras
+                    .get("toCluster")
+                    .and_then(|v| v.as_str().map(|s| s.to_string()));
+                edge_override_from_cluster.insert(edge_id.to_string(), from_cluster);
+                edge_override_to_cluster.insert(edge_id.to_string(), to_cluster);
             }
         }
+
+        for id in graph.node_ids() {
+            let Some(child) = extracted_graphs.get(&id) else {
+                continue;
+            };
+            let Some(n) = graph.node(&id) else {
+                continue;
+            };
+            let (Some(px), Some(py)) = (n.x, n.y) else {
+                continue;
+            };
+            let parent_x = px + offset.0;
+            let parent_y = py + offset.1;
+            let Some(r) = graph_content_rect(child) else {
+                continue;
+            };
+            let (cx, cy) = r.center();
+            let child_offset = (parent_x - cx, parent_y - cy);
+            place_graph(
+                child,
+                child_offset,
+                false,
+                extracted_graphs,
+                leaf_node_ids,
+                y_shift,
+                base_pos,
+                leaf_rects,
+                edge_override_points,
+                edge_override_label,
+                edge_override_from_cluster,
+                edge_override_to_cluster,
+            );
+        }
+    }
+
+    place_graph(
+        &g,
+        (0.0, 0.0),
+        true,
+        &extracted_graphs,
+        &leaf_node_ids,
+        y_shift,
+        &mut base_pos,
+        &mut leaf_rects,
+        &mut edge_override_points,
+        &mut edge_override_label,
+        &mut edge_override_from_cluster,
+        &mut edge_override_to_cluster,
+    );
+
+    let mut extra_children: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    let labeled_edges: std::collections::HashSet<&str> = model
+        .edges
+        .iter()
+        .filter(|e| edge_label_is_non_empty(e))
+        .map(|e| e.id.as_str())
+        .collect();
+
+    fn collect_extra_children(
+        graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        labeled_edges: &std::collections::HashSet<&str>,
+        implicit_root: Option<&str>,
+        out: &mut std::collections::HashMap<String, Vec<String>>,
+    ) {
+        for ek in graph.edge_keys() {
+            let Some(edge_id) = ek.name.as_deref() else {
+                continue;
+            };
+            if !labeled_edges.contains(edge_id) {
+                continue;
+            }
+            // Mermaid's recursive cluster extractor removes the root cluster node from the
+            // extracted graph. In that case, the "lowest common parent" of edges whose endpoints
+            // belong to the extracted cluster becomes `None`, even though the label should still
+            // participate in the extracted cluster's bounding box. Use `implicit_root` to map
+            // those labels back to the extracted cluster id.
+            let parent = lowest_common_parent(graph, &ek.v, &ek.w)
+                .or_else(|| implicit_root.map(|s| s.to_string()));
+            let Some(parent) = parent else {
+                continue;
+            };
+            out.entry(parent)
+                .or_default()
+                .push(format!("edge-label::{edge_id}"));
+        }
+    }
+
+    collect_extra_children(&g, &labeled_edges, None, &mut extra_children);
+    for (cluster_id, cg) in &extracted_graphs {
+        collect_extra_children(
+            cg,
+            &labeled_edges,
+            Some(cluster_id.as_str()),
+            &mut extra_children,
+        );
     }
 
     // The Mermaid-like recursive cluster behavior above can increase the effective size of a root
@@ -771,7 +1185,7 @@ pub fn layout_flowchart_v2(
             Y,
         }
 
-        let pack_axis = match normalize_dir(diagram_direction).as_str() {
+        let pack_axis = match diagram_direction.as_str() {
             "LR" | "RL" => PackAxis::Y,
             _ => PackAxis::X,
         };
@@ -1009,19 +1423,25 @@ pub fn layout_flowchart_v2(
 
     let mut out_nodes: Vec<LayoutNode> = Vec::new();
     for n in &model.nodes {
-        let Some(label) = g.node(&n.id) else {
-            return Err(Error::InvalidModel {
-                message: format!("missing layout node {}", n.id),
-            });
-        };
-        let (x, y) = base_pos.get(&n.id).copied().unwrap_or((0.0, 0.0));
+        let (x, y) = base_pos
+            .get(&n.id)
+            .copied()
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing positioned node {}", n.id),
+            })?;
+        let (width, height) = leaf_rects
+            .get(&n.id)
+            .map(|r| (r.width(), r.height()))
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing sized node {}", n.id),
+            })?;
         out_nodes.push(LayoutNode {
             id: n.id.clone(),
             x,
             // Mermaid shifts regular nodes by `subGraphTitleTotalMargin / 2` after Dagre layout.
             y: y + y_shift,
-            width: label.width,
-            height: label.height,
+            width,
+            height,
             is_cluster: false,
         });
     }
@@ -1206,7 +1626,10 @@ pub fn layout_flowchart_v2(
         };
         let offset_y = title_metrics.height - node_padding / 2.0;
 
-        let effective_dir = effective_cluster_dir(sg, diagram_direction, inherit_dir);
+        let effective_dir = effective_dir_by_id
+            .get(&sg.id)
+            .cloned()
+            .unwrap_or_else(|| effective_cluster_dir(sg, &diagram_direction, inherit_dir));
 
         clusters.push(LayoutCluster {
             id: sg.id.clone(),
@@ -1240,19 +1663,38 @@ pub fn layout_flowchart_v2(
     let mut out_edges: Vec<LayoutEdge> = Vec::new();
     for e in &model.edges {
         let (dx, dy) = edge_packed_shift.get(&e.id).copied().unwrap_or((0.0, 0.0));
-        let (mut points, mut label_pos, label_pos_already_shifted) =
+        let (mut points, mut label_pos, label_pos_already_shifted, from_cluster, to_cluster) =
             if let Some(points) = edge_override_points.get(&e.id) {
+                let from_cluster = edge_override_from_cluster
+                    .get(&e.id)
+                    .cloned()
+                    .unwrap_or(None);
+                let to_cluster = edge_override_to_cluster.get(&e.id).cloned().unwrap_or(None);
                 (
                     points.clone(),
                     edge_override_label.get(&e.id).cloned().unwrap_or(None),
                     false,
+                    from_cluster,
+                    to_cluster,
                 )
             } else {
-                let Some(label) = g.edge(&e.from, &e.to, Some(&e.id)) else {
+                let (v, w) = edge_endpoints_by_id
+                    .get(&e.id)
+                    .cloned()
+                    .unwrap_or_else(|| (e.from.clone(), e.to.clone()));
+                let Some(label) = g.edge(&v, &w, Some(&e.id)) else {
                     return Err(Error::InvalidModel {
                         message: format!("missing layout edge {}", e.id),
                     });
                 };
+                let from_cluster = label
+                    .extras
+                    .get("fromCluster")
+                    .and_then(|v| v.as_str().map(|s| s.to_string()));
+                let to_cluster = label
+                    .extras
+                    .get("toCluster")
+                    .and_then(|v| v.as_str().map(|s| s.to_string()));
                 let points = label
                     .points
                     .iter()
@@ -1274,7 +1716,7 @@ pub fn layout_flowchart_v2(
                     }
                     _ => None,
                 };
-                (points, label_pos, false)
+                (points, label_pos, false, from_cluster, to_cluster)
             };
 
         if dx.abs() > 1e-6 || dy.abs() > 1e-6 {
@@ -1293,8 +1735,8 @@ pub fn layout_flowchart_v2(
             id: e.id.clone(),
             from: e.from.clone(),
             to: e.to.clone(),
-            from_cluster: None,
-            to_cluster: None,
+            from_cluster,
+            to_cluster,
             points,
             label: label_pos,
             start_label_left: None,
