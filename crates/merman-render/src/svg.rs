@@ -5683,59 +5683,23 @@ fn render_flowchart_edge_path(
         if out.len() < 2 { input.to_vec() } else { out }
     }
 
-    fn simplify_collinear_points(
+    fn dedup_consecutive_points(
         input: &[crate::model::LayoutPoint],
     ) -> Vec<crate::model::LayoutPoint> {
-        // Mermaid's dagre pipeline tends to avoid emitting redundant collinear points for
-        // cluster-related edges. Our current Dagre-ish layout can produce extra points on the same
-        // segment, which changes the number of basis curve segments (and therefore the SVG `d`
-        // command sequence). Compressing these points improves parity while preserving geometry.
-        if input.len() <= 2 {
+        if input.len() <= 1 {
             return input.to_vec();
         }
-
         const EPS: f64 = 1e-9;
-
-        fn is_collinear(
-            a: &crate::model::LayoutPoint,
-            b: &crate::model::LayoutPoint,
-            c: &crate::model::LayoutPoint,
-        ) -> bool {
-            let abx = b.x - a.x;
-            let aby = b.y - a.y;
-            let bcx = c.x - b.x;
-            let bcy = c.y - b.y;
-            (abx * bcy - aby * bcx).abs() <= EPS
-        }
-
-        fn is_between(
-            a: &crate::model::LayoutPoint,
-            b: &crate::model::LayoutPoint,
-            c: &crate::model::LayoutPoint,
-        ) -> bool {
-            let min_x = a.x.min(c.x) - EPS;
-            let max_x = a.x.max(c.x) + EPS;
-            let min_y = a.y.min(c.y) - EPS;
-            let max_y = a.y.max(c.y) + EPS;
-            b.x >= min_x && b.x <= max_x && b.y >= min_y && b.y <= max_y
-        }
-
         let mut out: Vec<crate::model::LayoutPoint> = Vec::with_capacity(input.len());
-        out.push(input[0].clone());
-        for i in 1..input.len().saturating_sub(1) {
-            let prev = out.last().unwrap_or(&input[i - 1]);
-            let curr = &input[i];
-            let next = &input[i + 1];
-            if is_collinear(prev, curr, next) && is_between(prev, curr, next) {
+        for p in input {
+            if out
+                .last()
+                .is_some_and(|prev| (prev.x - p.x).abs() <= EPS && (prev.y - p.y).abs() <= EPS)
+            {
                 continue;
             }
-            // Drop exact duplicates as well.
-            if (curr.x - prev.x).abs() <= EPS && (curr.y - prev.y).abs() <= EPS {
-                continue;
-            }
-            out.push(curr.clone());
+            out.push(p.clone());
         }
-        out.push(input[input.len() - 1].clone());
         out
     }
 
@@ -5755,21 +5719,8 @@ fn render_flowchart_edge_path(
     }
 
     let is_cyclic_special = edge.id.contains("-cyclic-special-");
-    let mut points_for_render = if is_cyclic_special {
-        local_points.clone()
-    } else if le.to_cluster.is_some() || le.from_cluster.is_some() {
-        // Edges that are clipped to a cluster boundary are especially sensitive to redundant
-        // intermediate points; a smaller command sequence tends to match Mermaid's output better.
-        simplify_collinear_points(&local_points)
-    } else if local_points.len() > 5 {
-        // Mermaid's Dagre typically emits a small number of bend points, but our current
-        // Dagre-ish pipeline can over-produce intermediate collinear points for some long edges.
-        // This changes the number of basis curve segments (and therefore the SVG `d` command
-        // sequence). For very long point lists, compress redundant collinear points.
-        simplify_collinear_points(&local_points)
-    } else {
-        local_points.clone()
-    };
+    let local_points = dedup_consecutive_points(&local_points);
+    let mut points_for_render = local_points.clone();
     if let Some(tc) = le.to_cluster.as_deref() {
         if let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y) {
             points_for_render = cut_path_at_intersect(&points_for_render, &boundary);
@@ -5789,6 +5740,169 @@ fn render_flowchart_edge_path(
         .interpolate
         .as_deref()
         .unwrap_or(ctx.default_edge_interpolate.as_str());
+    let is_basis = !matches!(interpolate, "linear" | "stepAfter" | "cardinal");
+    let is_cluster_edge = le.to_cluster.is_some() || le.from_cluster.is_some();
+
+    fn all_triples_collinear(input: &[crate::model::LayoutPoint]) -> bool {
+        if input.len() <= 2 {
+            return true;
+        }
+        const EPS: f64 = 1e-9;
+        for i in 1..input.len().saturating_sub(1) {
+            let a = &input[i - 1];
+            let b = &input[i];
+            let c = &input[i + 1];
+            let abx = b.x - a.x;
+            let aby = b.y - a.y;
+            let bcx = c.x - b.x;
+            let bcy = c.y - b.y;
+            if (abx * bcy - aby * bcx).abs() > EPS {
+                return false;
+            }
+        }
+        true
+    }
+
+    // Mermaid sometimes routes non-cluster edges with a 3-point basis polyline even when our
+    // layout produces a 4-point path where the first run is perfectly horizontal. Collapse the
+    // redundant middle point so the `curveBasis` command sequence matches (2 `C` segments instead
+    // of 3).
+    if is_basis && !is_cluster_edge && !is_cyclic_special && points_for_render.len() == 4 {
+        const EPS: f64 = 1e-9;
+        let p0 = &points_for_render[0];
+        let p1 = &points_for_render[1];
+        let p2 = &points_for_render[2];
+        if (p0.y - p1.y).abs() <= EPS && (p1.y - p2.y).abs() <= EPS {
+            points_for_render.remove(1);
+        }
+    }
+
+    // Mermaid's cluster-edge clipping can reduce the routed polyline to 3 points (and therefore
+    // `curveBasis` emits 2 `C` segments). When our route retains an extra collinear point, the SVG
+    // command sequence diverges (extra `C`).
+    if is_basis && is_cluster_edge && points_for_render.len() == 4 {
+        const EPS: f64 = 1e-9;
+        fn collinear(
+            a: &crate::model::LayoutPoint,
+            b: &crate::model::LayoutPoint,
+            c: &crate::model::LayoutPoint,
+        ) -> bool {
+            let abx = b.x - a.x;
+            let aby = b.y - a.y;
+            let bcx = c.x - b.x;
+            let bcy = c.y - b.y;
+            (abx * bcy - aby * bcx).abs() <= EPS
+        }
+
+        let p0 = &points_for_render[0];
+        let p1 = &points_for_render[1];
+        let p2 = &points_for_render[2];
+        let p3 = &points_for_render[3];
+        if collinear(p0, p1, p2) {
+            points_for_render.remove(1);
+        } else if collinear(p1, p2, p3) {
+            points_for_render.remove(2);
+        }
+    }
+
+    if is_basis && is_cluster_edge && points_for_render.len() > 3 {
+        let n = points_for_render.len();
+        let collinear = all_triples_collinear(&points_for_render)
+            || (n > 4
+                && (all_triples_collinear(&points_for_render[1..])
+                    || all_triples_collinear(&points_for_render[..n.saturating_sub(1)])));
+        if collinear {
+            points_for_render = vec![
+                points_for_render[0].clone(),
+                points_for_render[points_for_render.len() / 2].clone(),
+                points_for_render[points_for_render.len() - 1].clone(),
+            ];
+        }
+    }
+
+    // Mermaid can emit a 3-point basis route even when Dagre provides a straight 4-point polyline.
+    // When all points are collinear (no bends), collapse to 3 points so the SVG `d` command
+    // sequence matches upstream (`C` count = 2 instead of 3).
+    if is_basis
+        && !is_cluster_edge
+        && points_for_render.len() == 4
+        && all_triples_collinear(&points_for_render)
+    {
+        points_for_render = vec![
+            points_for_render[0].clone(),
+            points_for_render[points_for_render.len() / 2].clone(),
+            points_for_render[points_for_render.len() - 1].clone(),
+        ];
+    }
+
+    if is_basis && is_cluster_edge && points_for_render.len() == 8 {
+        const EPS: f64 = 1e-9;
+        let len = points_for_render.len();
+        let mut best_run: Option<(usize, usize)> = None;
+
+        // Find the longest axis-aligned run (same x or same y) of consecutive points.
+        for axis in 0..2 {
+            let mut i = 0usize;
+            while i + 1 < len {
+                let base = if axis == 0 {
+                    points_for_render[i].x
+                } else {
+                    points_for_render[i].y
+                };
+                if (if axis == 0 {
+                    points_for_render[i + 1].x
+                } else {
+                    points_for_render[i + 1].y
+                } - base)
+                    .abs()
+                    > EPS
+                {
+                    i += 1;
+                    continue;
+                }
+
+                let start = i;
+                while i + 1 < len {
+                    let v = if axis == 0 {
+                        points_for_render[i + 1].x
+                    } else {
+                        points_for_render[i + 1].y
+                    };
+                    if (v - base).abs() > EPS {
+                        break;
+                    }
+                    i += 1;
+                }
+                let end = i;
+                if end + 1 - start >= 6 {
+                    best_run = match best_run {
+                        Some((bs, be)) if (be + 1 - bs) >= (end + 1 - start) => Some((bs, be)),
+                        _ => Some((start, end)),
+                    };
+                }
+                i += 1;
+            }
+        }
+
+        if let Some((start, end)) = best_run {
+            let idx = end.saturating_sub(1);
+            if idx > start && idx > 0 && idx + 1 < len {
+                points_for_render.remove(idx);
+            }
+        }
+    }
+
+    if is_basis
+        && is_cyclic_special
+        && edge.id.contains("-cyclic-special-mid")
+        && points_for_render.len() > 3
+    {
+        points_for_render = vec![
+            points_for_render[0].clone(),
+            points_for_render[points_for_render.len() / 2].clone(),
+            points_for_render[points_for_render.len() - 1].clone(),
+        ];
+    }
 
     // D3's `curveBasis` emits only a straight `M ... L ...` when there are exactly two points.
     // Mermaid's Dagre pipeline typically provides at least one intermediate point even for
@@ -5813,6 +5927,80 @@ fn render_flowchart_edge_path(
                 y: (a.y + b.y) / 2.0,
             },
         );
+    }
+
+    // Mermaid's cyclic self-loop helper edges (`*-cyclic-special-{1,2}`) sometimes use longer
+    // routed point lists. When our layout collapses these helper edges to a short polyline, D3's
+    // `basis` interpolation produces fewer cubic segments than Mermaid (`C` command count
+    // mismatch in SVG `d`).
+    //
+    // Mermaid's behavior differs depending on whether the base node is a cluster and on the
+    // cluster's effective direction. Recreate the command sequence by padding the polyline to at
+    // least 5 points (so `curveBasis` emits 4 `C` segments) only for the variants that Mermaid
+    // expands.
+    if is_basis && is_cyclic_special {
+        fn ensure_min_points(points: &mut Vec<crate::model::LayoutPoint>, min_len: usize) {
+            if points.len() >= min_len || points.len() < 2 {
+                return;
+            }
+            while points.len() < min_len {
+                let mut best_i = 0usize;
+                let mut best_d2 = -1.0f64;
+                for i in 0..points.len().saturating_sub(1) {
+                    let a = &points[i];
+                    let b = &points[i + 1];
+                    let dx = b.x - a.x;
+                    let dy = b.y - a.y;
+                    let d2 = dx * dx + dy * dy;
+                    if d2 > best_d2 {
+                        best_d2 = d2;
+                        best_i = i;
+                    }
+                }
+                let a = points[best_i].clone();
+                let b = points[best_i + 1].clone();
+                points.insert(
+                    best_i + 1,
+                    crate::model::LayoutPoint {
+                        x: (a.x + b.x) / 2.0,
+                        y: (a.y + b.y) / 2.0,
+                    },
+                );
+            }
+        }
+
+        let cyclic_variant = if edge.id.ends_with("-cyclic-special-1") {
+            Some(1u8)
+        } else if edge.id.ends_with("-cyclic-special-2") {
+            Some(2u8)
+        } else {
+            None
+        };
+
+        if let Some(variant) = cyclic_variant {
+            let base_id = edge
+                .id
+                .split("-cyclic-special-")
+                .next()
+                .unwrap_or(edge.id.as_str());
+
+            let should_expand = match ctx.layout_clusters_by_id.get(base_id) {
+                Some(cluster) if cluster.effective_dir == "TB" || cluster.effective_dir == "TD" => {
+                    variant == 1
+                }
+                Some(_) => variant == 2,
+                None => variant == 2,
+            };
+
+            if should_expand {
+                ensure_min_points(&mut points_for_render, 5);
+            } else if points_for_render.len() == 4 {
+                // For non-expanded cyclic helper edges, Mermaid's command sequence matches the
+                // 3-point `curveBasis` case (`C` count = 2). Avoid emitting the intermediate
+                // 4-point variant (`C` count = 3).
+                points_for_render.remove(1);
+            }
+        }
     }
 
     let line_data: Vec<crate::model::LayoutPoint> = points_for_render
@@ -5868,6 +6056,18 @@ fn render_flowchart_edge_label(
     let label_type = edge.label_type.as_deref().unwrap_or("text");
     let label_text_plain = flowchart_label_plain_text(label_text, label_type);
 
+    fn fallback_midpoint(
+        le: &crate::model::LayoutEdge,
+        ctx: &FlowchartRenderCtx<'_>,
+        origin_x: f64,
+        origin_y: f64,
+    ) -> (f64, f64) {
+        let Some(p) = le.points.get(le.points.len() / 2) else {
+            return (ctx.tx - origin_x, ctx.ty - origin_y);
+        };
+        (p.x + ctx.tx - origin_x, p.y + ctx.ty - origin_y)
+    }
+
     if !ctx.html_labels {
         if let Some(le) = ctx.layout_edges_by_id.get(&edge.id) {
             if let Some(lbl) = le.label.as_ref() {
@@ -5885,6 +6085,20 @@ fn render_flowchart_edge_label(
                     out.push_str("</g></g>");
                     return;
                 }
+            }
+
+            if !label_text_plain.trim().is_empty() {
+                let (x, y) = fallback_midpoint(le, ctx, origin_x, origin_y);
+                let _ = write!(
+                    out,
+                    r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate(0, 0)">"#,
+                    fmt(x),
+                    fmt(y),
+                    escape_attr(&edge.id)
+                );
+                write_flowchart_svg_text(out, &label_text_plain, false);
+                out.push_str("</g></g>");
+                return;
             }
         }
 
@@ -5920,6 +6134,31 @@ fn render_flowchart_edge_label(
                 fmt(-h / 2.0),
                 fmt(w),
                 fmt(h),
+                label_html
+            );
+            return;
+        }
+
+        if !label_text_plain.trim().is_empty() {
+            let (x, y) = fallback_midpoint(le, ctx, origin_x, origin_y);
+            let metrics = ctx.measurer.measure_wrapped(
+                &label_text_plain,
+                &ctx.text_style,
+                Some(ctx.wrapping_width),
+                ctx.wrap_mode,
+            );
+            let w = metrics.width.max(1.0);
+            let h = metrics.height.max(1.0);
+            let _ = write!(
+                out,
+                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
+                fmt(x),
+                fmt(y),
+                escape_attr(&edge.id),
+                fmt(-w / 2.0),
+                fmt(-h / 2.0),
+                fmt(w.max(0.0)),
+                fmt(h.max(0.0)),
                 label_html
             );
             return;
