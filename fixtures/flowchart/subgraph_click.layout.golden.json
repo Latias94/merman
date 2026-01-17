@@ -3,10 +3,10 @@
   "layout": {
     "FlowchartV2": {
       "bounds": {
-        "max_x": 137.4,
-        "max_y": 139.0,
-        "min_x": -67.8,
-        "min_y": 69.0
+        "max_x": 115.4,
+        "max_y": 55.0,
+        "min_x": -89.8,
+        "min_y": -15.0
       },
       "clusters": [
         {
@@ -21,14 +21,14 @@
           "title_label": {
             "height": 24.0,
             "width": 9.6,
-            "x": 34.8,
-            "y": 81.0
+            "x": 12.8,
+            "y": -3.0
           },
           "title_margin_bottom": 0.0,
           "title_margin_top": 0.0,
           "width": 205.2,
-          "x": 34.8,
-          "y": 104.0
+          "x": 12.8,
+          "y": 20.0
         }
       ],
       "edges": [
@@ -42,16 +42,16 @@
           "label": null,
           "points": [
             {
-              "x": 9.8,
-              "y": 104.0
+              "x": -12.2,
+              "y": 20.0
             },
             {
-              "x": 34.8,
-              "y": 104.0
+              "x": 12.8,
+              "y": 20.0
             },
             {
-              "x": 59.8,
-              "y": 104.0
+              "x": 37.8,
+              "y": 20.0
             }
           ],
           "start_label_left": null,
@@ -68,24 +68,24 @@
           "id": "A",
           "is_cluster": false,
           "width": 69.6,
-          "x": -25.0,
-          "y": 104.0
+          "x": -47.0,
+          "y": 20.0
         },
         {
           "height": 54.0,
           "id": "B",
           "is_cluster": false,
           "width": 69.6,
-          "x": 94.6,
-          "y": 104.0
+          "x": 72.6,
+          "y": 20.0
         },
         {
           "height": 70.0,
           "id": "S",
           "is_cluster": true,
           "width": 205.2,
-          "x": 34.8,
-          "y": 104.0
+          "x": 12.8,
+          "y": 20.0
         }
       ]
     }

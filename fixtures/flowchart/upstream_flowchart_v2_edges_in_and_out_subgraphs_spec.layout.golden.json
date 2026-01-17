@@ -1,0 +1,384 @@
+{
+  "diagramType": "flowchart-v2",
+  "layout": {
+    "FlowchartV2": {
+      "bounds": {
+        "max_x": 209.0,
+        "max_y": 534.0,
+        "min_x": -2.32,
+        "min_y": -42.0
+      },
+      "clusters": [
+        {
+          "diff": -15.0,
+          "effective_dir": "LR",
+          "height": 458.0,
+          "id": "project",
+          "offset_y": 16.5,
+          "padding": 8.0,
+          "requested_dir": null,
+          "title": "project",
+          "title_label": {
+            "height": 24.0,
+            "width": 48.16,
+            "x": 89.22,
+            "y": 29.0
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 183.08,
+          "x": 89.22,
+          "y": 246.0
+        },
+        {
+          "diff": -15.0,
+          "effective_dir": "TB",
+          "height": 174.0,
+          "id": "subnet1",
+          "offset_y": 16.5,
+          "padding": 8.0,
+          "requested_dir": null,
+          "title": "subnet1",
+          "title_label": {
+            "height": 24.0,
+            "width": 50.24,
+            "x": 101.98,
+            "y": 372.0
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 138.72,
+          "x": 101.98,
+          "y": 447.0
+        },
+        {
+          "diff": -15.0,
+          "effective_dir": "TB",
+          "height": 174.0,
+          "id": "subnet2",
+          "offset_y": 16.5,
+          "padding": 8.0,
+          "requested_dir": null,
+          "title": "subnet2",
+          "title_label": {
+            "height": 24.0,
+            "width": 50.24,
+            "x": 139.64,
+            "y": -30.0
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 138.72,
+          "x": 139.64,
+          "y": 45.0
+        }
+      ],
+      "edges": [
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "internet",
+          "from_cluster": null,
+          "id": "L_internet_router_0",
+          "label": null,
+          "points": [
+            {
+              "x": 56.32,
+              "y": 273.0
+            },
+            {
+              "x": 56.32,
+              "y": 298.0
+            },
+            {
+              "x": 56.32,
+              "y": 323.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "router",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "router",
+          "from_cluster": null,
+          "id": "L_router_subnet1_0",
+          "label": null,
+          "points": [
+            {
+              "x": 56.32,
+              "y": 377.0
+            },
+            {
+              "x": 56.32,
+              "y": 402.0
+            },
+            {
+              "x": 81.687,
+              "y": 427.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "subnet1",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "router",
+          "from_cluster": null,
+          "id": "L_router_subnet2_0",
+          "label": null,
+          "points": [
+            {
+              "x": 106.96,
+              "y": 331.053
+            },
+            {
+              "x": 195.3,
+              "y": 298.0
+            },
+            {
+              "x": 195.3,
+              "y": 246.0
+            },
+            {
+              "x": 195.3,
+              "y": 194.0
+            },
+            {
+              "x": 195.3,
+              "y": 142.0
+            },
+            {
+              "x": 195.3,
+              "y": 90.0
+            },
+            {
+              "x": 164.378,
+              "y": 65.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "subnet2",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "subnet1",
+          "from_cluster": null,
+          "id": "L_subnet1_nat_0",
+          "label": null,
+          "points": [
+            {
+              "x": 122.273,
+              "y": 427.0
+            },
+            {
+              "x": 147.64,
+              "y": 402.0
+            },
+            {
+              "x": 147.64,
+              "y": 350.0
+            },
+            {
+              "x": 147.64,
+              "y": 298.0
+            },
+            {
+              "x": 147.64,
+              "y": 246.0
+            },
+            {
+              "x": 147.64,
+              "y": 194.0
+            },
+            {
+              "x": 125.688,
+              "y": 169.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "nat",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "subnet2",
+          "from_cluster": null,
+          "id": "L_subnet2_nat_0",
+          "label": null,
+          "points": [
+            {
+              "x": 122.902,
+              "y": 65.0
+            },
+            {
+              "x": 101.98,
+              "y": 90.0
+            },
+            {
+              "x": 101.98,
+              "y": 115.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "nat",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "nat",
+          "from_cluster": null,
+          "id": "L_nat_internet_0",
+          "label": null,
+          "points": [
+            {
+              "x": 78.272,
+              "y": 169.0
+            },
+            {
+              "x": 56.32,
+              "y": 194.0
+            },
+            {
+              "x": 56.32,
+              "y": 219.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "internet",
+          "to_cluster": null
+        }
+      ],
+      "nodes": [
+        {
+          "height": 54.0,
+          "id": "internet",
+          "is_cluster": false,
+          "width": 112.64,
+          "x": 56.32,
+          "y": 246.0
+        },
+        {
+          "height": 54.0,
+          "id": "nat",
+          "is_cluster": false,
+          "width": 80.64,
+          "x": 101.98,
+          "y": 142.0
+        },
+        {
+          "height": 54.0,
+          "id": "router",
+          "is_cluster": false,
+          "width": 101.28,
+          "x": 56.32,
+          "y": 350.0
+        },
+        {
+          "height": 54.0,
+          "id": "lb1",
+          "is_cluster": false,
+          "width": 80.32,
+          "x": 101.98,
+          "y": 499.0
+        },
+        {
+          "height": 54.0,
+          "id": "lb2",
+          "is_cluster": false,
+          "width": 80.32,
+          "x": 139.64,
+          "y": 97.0
+        },
+        {
+          "height": 54.0,
+          "id": "compute1",
+          "is_cluster": false,
+          "width": 122.72,
+          "x": 101.98,
+          "y": 395.0
+        },
+        {
+          "height": 54.0,
+          "id": "compute2",
+          "is_cluster": false,
+          "width": 122.72,
+          "x": 139.64,
+          "y": -7.0
+        },
+        {
+          "height": 40.0,
+          "id": "subnet1",
+          "is_cluster": false,
+          "width": 66.24,
+          "x": 101.98,
+          "y": 447.0
+        },
+        {
+          "height": 40.0,
+          "id": "subnet2",
+          "is_cluster": false,
+          "width": 66.24,
+          "x": 139.64,
+          "y": 45.0
+        },
+        {
+          "height": 174.0,
+          "id": "subnet1",
+          "is_cluster": true,
+          "width": 138.72,
+          "x": 101.98,
+          "y": 447.0
+        },
+        {
+          "height": 174.0,
+          "id": "subnet2",
+          "is_cluster": true,
+          "width": 138.72,
+          "x": 139.64,
+          "y": 45.0
+        },
+        {
+          "height": 458.0,
+          "id": "project",
+          "is_cluster": true,
+          "width": 183.08,
+          "x": 89.22,
+          "y": 246.0
+        }
+      ]
+    }
+  }
+}

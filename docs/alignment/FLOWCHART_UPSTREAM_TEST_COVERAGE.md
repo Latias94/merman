@@ -154,6 +154,16 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/flowChartShape
 
 - rendering-only (SVG shape geometry) and out of scope for headless parsing parity.
 
+### `cypress/integration/rendering/flowchart-v2.spec.js` (rendering)
+
+Source: `repo-ref/mermaid/cypress/integration/rendering/flowchart-v2.spec.js`
+
+- nested subgraphs (reverse order): `fixtures/flowchart/upstream_flowchart_v2_nested_subgraphs_reverse_order_spec.mmd`
+- nested subgraphs (several levels): `fixtures/flowchart/upstream_flowchart_v2_nested_subgraphs_several_levels_spec.mmd`
+- nested subgraphs (edges in/out): `fixtures/flowchart/upstream_flowchart_v2_edges_in_and_out_subgraphs_spec.mmd`
+- nested subgraphs (mixed directions): `fixtures/flowchart/upstream_flowchart_v2_subgraphs_different_directions_spec.mmd`
+- YAML config for spacing in subgraphs: `fixtures/flowchart/upstream_flowchart_v2_subgraph_nodeSpacing_rankSpacing_yaml_spec.mmd`
+
 ## Deferred / intentionally not snapshotted
 
 - `parser/flow-huge.spec.js`: performance/stress coverage is deferred (headless functional parity is validated via smaller fixtures + unit tests).
