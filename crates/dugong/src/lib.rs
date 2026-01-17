@@ -1250,12 +1250,6 @@ pub mod util {
         }
 
         for e in g.edges() {
-            // In Dagre, the ranker runs on a non-compound view of the graph where compound nodes
-            // (nodes with children) do not participate in ranking. Avoid implicitly reintroducing
-            // those nodes via `set_edge_named` which would otherwise `ensure_node` endpoints.
-            if !g.children(&e.v).is_empty() || !g.children(&e.w).is_empty() {
-                continue;
-            }
             if let Some(lbl) = g.edge_by_key(e) {
                 simplified.set_edge_named(
                     e.v.clone(),
@@ -4240,7 +4234,15 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     // leaf nodes and remain in the non-compound graph, providing the constraints Dagre expects.
     let mut rank_graph = util::as_non_compound_graph(g);
     rank::rank(&mut rank_graph);
-    for v in rank_graph.node_ids() {
+    // Mirror Dagre's JS behavior: `rank(asNonCompoundGraph(g))` mutates the same label objects
+    // for leaf nodes, but does not propagate ranks to compound nodes (nodes with children).
+    //
+    // In Rust we don't share label objects between graphs, so we copy ranks explicitly for leaf
+    // nodes only.
+    for v in g.node_ids() {
+        if !g.children(&v).is_empty() {
+            continue;
+        }
         let Some(rank) = rank_graph.node(&v).and_then(|n| n.rank) else {
             continue;
         };
