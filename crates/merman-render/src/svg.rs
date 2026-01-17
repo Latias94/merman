@@ -5653,6 +5653,15 @@ fn render_flowchart_edge_path(
         if input.is_empty() {
             return Vec::new();
         }
+        // Mermaid's `cutPathAtIntersect` assumes the first point is outside the boundary rect and
+        // the last point(s) are inside. If the first point is already inside, upstream will
+        // generate a degenerate path (often a single `M`) because the intersection is computed
+        // against the same point. Our current layout can occasionally violate this assumption for
+        // cluster-adjacent self-loop helper edges. In that case, avoid clipping to preserve a
+        // usable route.
+        if !outside_node(boundary, &input[0]) {
+            return input.to_vec();
+        }
         let mut out: Vec<crate::model::LayoutPoint> = Vec::new();
         let mut last_point_outside = input[0].clone();
         let mut is_inside = false;
@@ -5671,7 +5680,7 @@ fn render_flowchart_edge_path(
                 }
             }
         }
-        out
+        if out.len() < 2 { input.to_vec() } else { out }
     }
 
     fn simplify_collinear_points(
@@ -5761,20 +5770,18 @@ fn render_flowchart_edge_path(
     } else {
         local_points.clone()
     };
-    if !is_cyclic_special {
-        if let Some(tc) = le.to_cluster.as_deref() {
-            if let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y) {
-                points_for_render = cut_path_at_intersect(&points_for_render, &boundary);
-            }
+    if let Some(tc) = le.to_cluster.as_deref() {
+        if let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y) {
+            points_for_render = cut_path_at_intersect(&points_for_render, &boundary);
         }
-        if let Some(fc) = le.from_cluster.as_deref() {
-            if let Some(boundary) = boundary_for_cluster(ctx, fc, origin_x, origin_y) {
-                let mut rev = points_for_render.clone();
-                rev.reverse();
-                rev = cut_path_at_intersect(&rev, &boundary);
-                rev.reverse();
-                points_for_render = rev;
-            }
+    }
+    if let Some(fc) = le.from_cluster.as_deref() {
+        if let Some(boundary) = boundary_for_cluster(ctx, fc, origin_x, origin_y) {
+            let mut rev = points_for_render.clone();
+            rev.reverse();
+            rev = cut_path_at_intersect(&rev, &boundary);
+            rev.reverse();
+            points_for_render = rev;
         }
     }
 
@@ -5788,7 +5795,15 @@ fn render_flowchart_edge_path(
     // straight-looking edges, resulting in `C` segments in the SVG `d`. To keep our output closer
     // to Mermaid's command sequence, re-insert a midpoint when our route collapses to two points
     // after normalization.
-    if !is_cyclic_special && points_for_render.len() == 2 && interpolate != "linear" {
+    if points_for_render.len() == 1 {
+        // Avoid emitting a degenerate `M x,y` path for clipped cluster-adjacent edges.
+        points_for_render = local_points.clone();
+    }
+
+    if points_for_render.len() == 2
+        && interpolate != "linear"
+        && (!is_cyclic_special || le.to_cluster.is_some() || le.from_cluster.is_some())
+    {
         let a = &points_for_render[0];
         let b = &points_for_render[1];
         points_for_render.insert(

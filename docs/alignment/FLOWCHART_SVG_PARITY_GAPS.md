@@ -22,6 +22,7 @@ Edge path command count (`C`) differs from upstream:
 Self-loop special edges still diverge in curve segment count:
 
 - `*-cyclic-special-2` (upstream `C=4`, local `C=2`): `A`, `B1`, `C2`, `D1`
+- `D-cyclic-special-2` (upstream `C=4`, local `C=3`)
 - `*-cyclic-special-1` (upstream `C=4`, local `C=2`): `C1`
 - `*-cyclic-special-mid` (upstream `C=2`, local `C=4`): `A`, `B1`, `C1`, `C2`, `D1`
 
