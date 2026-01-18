@@ -102,6 +102,14 @@ Outputs to:
 
 - `fixtures/upstream-svgs/journey/*.svg`
 
+## Generate (Kanban)
+
+- `cargo run -p xtask -- gen-upstream-svgs --diagram kanban`
+
+Outputs to:
+
+- `fixtures/upstream-svgs/kanban/*.svg`
+
 ## Generate (All supported diagrams)
 
 - `cargo run -p xtask -- gen-upstream-svgs --diagram all`
@@ -241,6 +249,18 @@ Generate a report comparing upstream packet SVGs and the current Rust Stage-B pa
 Generate a report comparing upstream timeline SVGs and the current Rust Stage-B timeline output:
 
 - `cargo run -p xtask -- compare-timeline-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
+## Compare (Journey)
+
+Generate a report comparing upstream journey SVGs and the current Rust Stage-B journey output:
+
+- `cargo run -p xtask -- compare-journey-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
+## Compare (Kanban)
+
+Generate a report comparing upstream kanban SVGs and the current Rust Stage-B kanban output:
+
+- `cargo run -p xtask -- compare-kanban-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 ## Notes
 
