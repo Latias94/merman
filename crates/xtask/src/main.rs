@@ -1309,9 +1309,13 @@ fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 workspace_root.join("fixtures").join("er"),
                 out_root.join("er"),
             ),
+            "sequence" => (
+                workspace_root.join("fixtures").join("sequence"),
+                out_root.join("sequence"),
+            ),
             other => {
                 return Err(XtaskError::DebugSvgFailed(format!(
-                    "unsupported diagram for debug svg export: {other} (supported: flowchart, state, class, er)"
+                    "unsupported diagram for debug svg export: {other} (supported: flowchart, state, class, er, sequence)"
                 )));
             }
         };
@@ -1414,6 +1418,12 @@ fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 }
                 merman_render::model::LayoutDiagram::ErDiagram(layout) => {
                     merman_render::svg::render_er_diagram_debug_svg(
+                        layout,
+                        &merman_render::svg::SvgRenderOptions::default(),
+                    )
+                }
+                merman_render::model::LayoutDiagram::SequenceDiagram(layout) => {
+                    merman_render::svg::render_sequence_diagram_debug_svg(
                         layout,
                         &merman_render::svg::SvgRenderOptions::default(),
                     )

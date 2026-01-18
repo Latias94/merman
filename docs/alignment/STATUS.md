@@ -35,8 +35,11 @@ Legend:
 | Flowchart | yes | yes | Stage B + debug | yes | yes (`xtask compare-flowchart-svgs`) |
 | State | yes | yes | Stage B + debug | yes | yes (`xtask compare-state-svgs`) |
 | Class | yes | yes | Stage B + debug | yes | yes (`xtask compare-class-svgs`) |
-| Sequence | yes | no | no | yes | no |
+| Sequence | yes | yes | debug | yes | no |
 | Others (gantt, …) | yes | no | no | no | no |
+
+Note: Sequence layout snapshots currently validate internal layout stability only; SVG parity
+against Mermaid upstream baselines is not implemented yet.
 
 ## Alignment Sanity Checks
 

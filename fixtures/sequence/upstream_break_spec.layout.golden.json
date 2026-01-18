@@ -1,0 +1,302 @@
+{
+  "diagramType": "sequence",
+  "layout": {
+    "SequenceDiagram": {
+      "bounds": {
+        "max_x": 800.0,
+        "max_y": 337.0,
+        "min_x": -50.0,
+        "min_y": -10.0
+      },
+      "clusters": [],
+      "edges": [
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Consumer",
+          "from_cluster": null,
+          "id": "msg-0",
+          "label": {
+            "height": 17.6,
+            "width": 102.56,
+            "x": 173.5,
+            "y": 80.0
+          },
+          "points": [
+            {
+              "x": 76.0,
+              "y": 109.0
+            },
+            {
+              "x": 271.0,
+              "y": 109.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "API",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "API",
+          "from_cluster": null,
+          "id": "msg-1",
+          "label": {
+            "height": 17.6,
+            "width": 143.52,
+            "x": 373.5,
+            "y": 124.0
+          },
+          "points": [
+            {
+              "x": 276.0,
+              "y": 153.0
+            },
+            {
+              "x": 471.0,
+              "y": 153.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "BookingService",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "API",
+          "from_cluster": null,
+          "id": "msg-3",
+          "label": {
+            "height": 17.6,
+            "width": 81.76,
+            "x": 176.5,
+            "y": 168.0
+          },
+          "points": [
+            {
+              "x": 274.0,
+              "y": 197.0
+            },
+            {
+              "x": 79.0,
+              "y": 197.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Consumer",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "API",
+          "from_cluster": null,
+          "id": "msg-5",
+          "label": {
+            "height": 17.6,
+            "width": 134.4,
+            "x": 473.5,
+            "y": 212.0
+          },
+          "points": [
+            {
+              "x": 276.0,
+              "y": 241.0
+            },
+            {
+              "x": 671.0,
+              "y": 241.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "BillingService",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "actor-top-Consumer",
+          "from_cluster": null,
+          "id": "lifeline-Consumer",
+          "label": null,
+          "points": [
+            {
+              "x": 75.0,
+              "y": 65.0
+            },
+            {
+              "x": 75.0,
+              "y": 261.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "actor-bottom-Consumer",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "actor-top-API",
+          "from_cluster": null,
+          "id": "lifeline-API",
+          "label": null,
+          "points": [
+            {
+              "x": 275.0,
+              "y": 65.0
+            },
+            {
+              "x": 275.0,
+              "y": 261.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "actor-bottom-API",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "actor-top-BookingService",
+          "from_cluster": null,
+          "id": "lifeline-BookingService",
+          "label": null,
+          "points": [
+            {
+              "x": 475.0,
+              "y": 65.0
+            },
+            {
+              "x": 475.0,
+              "y": 261.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "actor-bottom-BookingService",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "actor-top-BillingService",
+          "from_cluster": null,
+          "id": "lifeline-BillingService",
+          "label": null,
+          "points": [
+            {
+              "x": 675.0,
+              "y": 65.0
+            },
+            {
+              "x": 675.0,
+              "y": 261.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "actor-bottom-BillingService",
+          "to_cluster": null
+        }
+      ],
+      "nodes": [
+        {
+          "height": 65.0,
+          "id": "actor-top-Consumer",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 75.0,
+          "y": 32.5
+        },
+        {
+          "height": 65.0,
+          "id": "actor-top-API",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 275.0,
+          "y": 32.5
+        },
+        {
+          "height": 65.0,
+          "id": "actor-top-BookingService",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 475.0,
+          "y": 32.5
+        },
+        {
+          "height": 65.0,
+          "id": "actor-top-BillingService",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 675.0,
+          "y": 32.5
+        },
+        {
+          "height": 65.0,
+          "id": "actor-bottom-Consumer",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 75.0,
+          "y": 293.5
+        },
+        {
+          "height": 65.0,
+          "id": "actor-bottom-API",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 275.0,
+          "y": 293.5
+        },
+        {
+          "height": 65.0,
+          "id": "actor-bottom-BookingService",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 475.0,
+          "y": 293.5
+        },
+        {
+          "height": 65.0,
+          "id": "actor-bottom-BillingService",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 675.0,
+          "y": 293.5
+        }
+      ]
+    }
+  }
+}

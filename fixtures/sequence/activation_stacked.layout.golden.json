@@ -1,0 +1,261 @@
+{
+  "diagramType": "sequence",
+  "layout": {
+    "SequenceDiagram": {
+      "bounds": {
+        "max_x": 669.44,
+        "max_y": 337.0,
+        "min_x": -50.0,
+        "min_y": -10.0
+      },
+      "clusters": [],
+      "edges": [
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Alice",
+          "from_cluster": null,
+          "id": "msg-0",
+          "label": {
+            "height": 17.6,
+            "width": 160.32,
+            "x": 186.78,
+            "y": 80.0
+          },
+          "points": [
+            {
+              "x": 76.0,
+              "y": 109.0
+            },
+            {
+              "x": 297.56,
+              "y": 109.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Bob",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Bob",
+          "from_cluster": null,
+          "id": "msg-2",
+          "label": {
+            "height": 17.6,
+            "width": 199.36,
+            "x": 421.5,
+            "y": 124.0
+          },
+          "points": [
+            {
+              "x": 302.56,
+              "y": 153.0
+            },
+            {
+              "x": 540.44,
+              "y": 153.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Carol",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Bob",
+          "from_cluster": null,
+          "id": "msg-4",
+          "label": {
+            "height": 17.6,
+            "width": 206.56,
+            "x": 189.78,
+            "y": 168.0
+          },
+          "points": [
+            {
+              "x": 300.56,
+              "y": 197.0
+            },
+            {
+              "x": 79.0,
+              "y": 197.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Alice",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Carol",
+          "from_cluster": null,
+          "id": "msg-6",
+          "label": {
+            "height": 17.6,
+            "width": 222.88,
+            "x": 424.5,
+            "y": 212.0
+          },
+          "points": [
+            {
+              "x": 543.44,
+              "y": 241.0
+            },
+            {
+              "x": 305.56,
+              "y": 241.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Bob",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "actor-top-Alice",
+          "from_cluster": null,
+          "id": "lifeline-Alice",
+          "label": null,
+          "points": [
+            {
+              "x": 75.0,
+              "y": 65.0
+            },
+            {
+              "x": 75.0,
+              "y": 261.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "actor-bottom-Alice",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "actor-top-Bob",
+          "from_cluster": null,
+          "id": "lifeline-Bob",
+          "label": null,
+          "points": [
+            {
+              "x": 301.56,
+              "y": 65.0
+            },
+            {
+              "x": 301.56,
+              "y": 261.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "actor-bottom-Bob",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "actor-top-Carol",
+          "from_cluster": null,
+          "id": "lifeline-Carol",
+          "label": null,
+          "points": [
+            {
+              "x": 544.44,
+              "y": 65.0
+            },
+            {
+              "x": 544.44,
+              "y": 261.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "actor-bottom-Carol",
+          "to_cluster": null
+        }
+      ],
+      "nodes": [
+        {
+          "height": 65.0,
+          "id": "actor-top-Alice",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 75.0,
+          "y": 32.5
+        },
+        {
+          "height": 65.0,
+          "id": "actor-top-Bob",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 301.56,
+          "y": 32.5
+        },
+        {
+          "height": 65.0,
+          "id": "actor-top-Carol",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 544.44,
+          "y": 32.5
+        },
+        {
+          "height": 65.0,
+          "id": "actor-bottom-Alice",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 75.0,
+          "y": 293.5
+        },
+        {
+          "height": 65.0,
+          "id": "actor-bottom-Bob",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 301.56,
+          "y": 293.5
+        },
+        {
+          "height": 65.0,
+          "id": "actor-bottom-Carol",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 544.44,
+          "y": 293.5
+        }
+      ]
+    }
+  }
+}
