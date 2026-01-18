@@ -94,6 +94,14 @@ Outputs to:
 
 - `fixtures/upstream-svgs/timeline/*.svg`
 
+## Generate (Journey)
+
+- `cargo run -p xtask -- gen-upstream-svgs --diagram journey`
+
+Outputs to:
+
+- `fixtures/upstream-svgs/journey/*.svg`
+
 ## Generate (All supported diagrams)
 
 - `cargo run -p xtask -- gen-upstream-svgs --diagram all`

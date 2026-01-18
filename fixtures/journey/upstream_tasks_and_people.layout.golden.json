@@ -1,0 +1,410 @@
+{
+  "diagramType": "journey",
+  "layout": {
+    "JourneyDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": -25.0,
+        "max_x": 1900.0,
+        "max_y": 515.0
+      },
+      "left_margin": 150.0,
+      "max_actor_label_width": 0.0,
+      "width": 1900.0,
+      "height": 470.0,
+      "svg_height": 565.0,
+      "title": "Adding journey diagram functionality to mermaid",
+      "title_x": 150.0,
+      "title_y": 25.0,
+      "actor_legend": [
+        {
+          "actor": "",
+          "pos": 0.0,
+          "color": "#8FBC8F",
+          "circle_cx": 20.0,
+          "circle_cy": 60.0,
+          "circle_r": 7.0,
+          "label_lines": [
+            {
+              "text": "",
+              "x": 40.0,
+              "y": 67.0,
+              "tspan_x": 50.0,
+              "text_margin": 5.0
+            }
+          ]
+        },
+        {
+          "actor": "Alice",
+          "pos": 1.0,
+          "color": "#7CFC00",
+          "circle_cx": 20.0,
+          "circle_cy": 80.0,
+          "circle_r": 7.0,
+          "label_lines": [
+            {
+              "text": "Alice",
+              "x": 40.0,
+              "y": 87.0,
+              "tspan_x": 50.0,
+              "text_margin": 5.0
+            }
+          ]
+        },
+        {
+          "actor": "Bob",
+          "pos": 2.0,
+          "color": "#00FFFF",
+          "circle_cx": 20.0,
+          "circle_cy": 100.0,
+          "circle_r": 7.0,
+          "label_lines": [
+            {
+              "text": "Bob",
+              "x": 40.0,
+              "y": 107.0,
+              "tspan_x": 50.0,
+              "text_margin": 5.0
+            }
+          ]
+        },
+        {
+          "actor": "Charlie",
+          "pos": 3.0,
+          "color": "#20B2AA",
+          "circle_cx": 20.0,
+          "circle_cy": 120.0,
+          "circle_r": 7.0,
+          "label_lines": [
+            {
+              "text": "Charlie",
+              "x": 40.0,
+              "y": 127.0,
+              "tspan_x": 50.0,
+              "text_margin": 5.0
+            }
+          ]
+        }
+      ],
+      "sections": [
+        {
+          "section": "Documentation",
+          "num": 0.0,
+          "x": 150.0,
+          "y": 50.0,
+          "width": 950.0,
+          "height": 50.0,
+          "fill": "#191970",
+          "task_count": 5.0
+        },
+        {
+          "section": "Another section",
+          "num": 1.0,
+          "x": 1150.0,
+          "y": 50.0,
+          "width": 550.0,
+          "height": 50.0,
+          "fill": "#8B008B",
+          "task_count": 3.0
+        }
+      ],
+      "tasks": [
+        {
+          "index": 0.0,
+          "section": "Documentation",
+          "task": "A task",
+          "score": 5.0,
+          "x": 150.0,
+          "y": 110.0,
+          "width": 150.0,
+          "height": 50.0,
+          "fill": "#191970",
+          "num": 0.0,
+          "people": [
+            "Alice",
+            "Bob",
+            "Charlie"
+          ],
+          "actor_circles": [
+            {
+              "actor": "Alice",
+              "pos": 1.0,
+              "color": "#7CFC00",
+              "cx": 164.0,
+              "cy": 110.0,
+              "r": 7.0
+            },
+            {
+              "actor": "Bob",
+              "pos": 2.0,
+              "color": "#00FFFF",
+              "cx": 174.0,
+              "cy": 110.0,
+              "r": 7.0
+            },
+            {
+              "actor": "Charlie",
+              "pos": 3.0,
+              "color": "#20B2AA",
+              "cx": 184.0,
+              "cy": 110.0,
+              "r": 7.0
+            }
+          ],
+          "line_id": "task0",
+          "line_x1": 225.0,
+          "line_y1": 110.0,
+          "line_x2": 225.0,
+          "line_y2": 450.0,
+          "face_cx": 225.0,
+          "face_cy": 300.0,
+          "mouth": "Smile"
+        },
+        {
+          "index": 1.0,
+          "section": "Documentation",
+          "task": "B task",
+          "score": 3.0,
+          "x": 350.0,
+          "y": 110.0,
+          "width": 150.0,
+          "height": 50.0,
+          "fill": "#191970",
+          "num": 0.0,
+          "people": [
+            "Bob",
+            "Charlie"
+          ],
+          "actor_circles": [
+            {
+              "actor": "Bob",
+              "pos": 2.0,
+              "color": "#00FFFF",
+              "cx": 364.0,
+              "cy": 110.0,
+              "r": 7.0
+            },
+            {
+              "actor": "Charlie",
+              "pos": 3.0,
+              "color": "#20B2AA",
+              "cx": 374.0,
+              "cy": 110.0,
+              "r": 7.0
+            }
+          ],
+          "line_id": "task1",
+          "line_x1": 425.0,
+          "line_y1": 110.0,
+          "line_x2": 425.0,
+          "line_y2": 450.0,
+          "face_cx": 425.0,
+          "face_cy": 360.0,
+          "mouth": "Ambivalent"
+        },
+        {
+          "index": 2.0,
+          "section": "Documentation",
+          "task": "C task",
+          "score": 5.0,
+          "x": 550.0,
+          "y": 110.0,
+          "width": 150.0,
+          "height": 50.0,
+          "fill": "#191970",
+          "num": 0.0,
+          "people": [],
+          "actor_circles": [],
+          "line_id": "task2",
+          "line_x1": 625.0,
+          "line_y1": 110.0,
+          "line_x2": 625.0,
+          "line_y2": 450.0,
+          "face_cx": 625.0,
+          "face_cy": 300.0,
+          "mouth": "Smile"
+        },
+        {
+          "index": 3.0,
+          "section": "Documentation",
+          "task": "D task",
+          "score": 5.0,
+          "x": 750.0,
+          "y": 110.0,
+          "width": 150.0,
+          "height": 50.0,
+          "fill": "#191970",
+          "num": 0.0,
+          "people": [
+            "Charlie",
+            "Alice"
+          ],
+          "actor_circles": [
+            {
+              "actor": "Charlie",
+              "pos": 3.0,
+              "color": "#20B2AA",
+              "cx": 764.0,
+              "cy": 110.0,
+              "r": 7.0
+            },
+            {
+              "actor": "Alice",
+              "pos": 1.0,
+              "color": "#7CFC00",
+              "cx": 774.0,
+              "cy": 110.0,
+              "r": 7.0
+            }
+          ],
+          "line_id": "task3",
+          "line_x1": 825.0,
+          "line_y1": 110.0,
+          "line_x2": 825.0,
+          "line_y2": 450.0,
+          "face_cx": 825.0,
+          "face_cy": 300.0,
+          "mouth": "Smile"
+        },
+        {
+          "index": 4.0,
+          "section": "Documentation",
+          "task": "E task",
+          "score": 5.0,
+          "x": 950.0,
+          "y": 110.0,
+          "width": 150.0,
+          "height": 50.0,
+          "fill": "#191970",
+          "num": 0.0,
+          "people": [
+            ""
+          ],
+          "actor_circles": [
+            {
+              "actor": "",
+              "pos": 0.0,
+              "color": "#8FBC8F",
+              "cx": 964.0,
+              "cy": 110.0,
+              "r": 7.0
+            }
+          ],
+          "line_id": "task4",
+          "line_x1": 1025.0,
+          "line_y1": 110.0,
+          "line_x2": 1025.0,
+          "line_y2": 450.0,
+          "face_cx": 1025.0,
+          "face_cy": 300.0,
+          "mouth": "Smile"
+        },
+        {
+          "index": 5.0,
+          "section": "Another section",
+          "task": "P task",
+          "score": 5.0,
+          "x": 1150.0,
+          "y": 110.0,
+          "width": 150.0,
+          "height": 50.0,
+          "fill": "#8B008B",
+          "num": 1.0,
+          "people": [
+            ""
+          ],
+          "actor_circles": [
+            {
+              "actor": "",
+              "pos": 0.0,
+              "color": "#8FBC8F",
+              "cx": 1164.0,
+              "cy": 110.0,
+              "r": 7.0
+            }
+          ],
+          "line_id": "task5",
+          "line_x1": 1225.0,
+          "line_y1": 110.0,
+          "line_x2": 1225.0,
+          "line_y2": 450.0,
+          "face_cx": 1225.0,
+          "face_cy": 300.0,
+          "mouth": "Smile"
+        },
+        {
+          "index": 6.0,
+          "section": "Another section",
+          "task": "Q task",
+          "score": 5.0,
+          "x": 1350.0,
+          "y": 110.0,
+          "width": 150.0,
+          "height": 50.0,
+          "fill": "#8B008B",
+          "num": 1.0,
+          "people": [
+            ""
+          ],
+          "actor_circles": [
+            {
+              "actor": "",
+              "pos": 0.0,
+              "color": "#8FBC8F",
+              "cx": 1364.0,
+              "cy": 110.0,
+              "r": 7.0
+            }
+          ],
+          "line_id": "task6",
+          "line_x1": 1425.0,
+          "line_y1": 110.0,
+          "line_x2": 1425.0,
+          "line_y2": 450.0,
+          "face_cx": 1425.0,
+          "face_cy": 300.0,
+          "mouth": "Smile"
+        },
+        {
+          "index": 7.0,
+          "section": "Another section",
+          "task": "R task",
+          "score": 5.0,
+          "x": 1550.0,
+          "y": 110.0,
+          "width": 150.0,
+          "height": 50.0,
+          "fill": "#8B008B",
+          "num": 1.0,
+          "people": [
+            ""
+          ],
+          "actor_circles": [
+            {
+              "actor": "",
+              "pos": 0.0,
+              "color": "#8FBC8F",
+              "cx": 1564.0,
+              "cy": 110.0,
+              "r": 7.0
+            }
+          ],
+          "line_id": "task7",
+          "line_x1": 1625.0,
+          "line_y1": 110.0,
+          "line_x2": 1625.0,
+          "line_y2": 450.0,
+          "face_cx": 1625.0,
+          "face_cy": 300.0,
+          "mouth": "Smile"
+        }
+      ],
+      "activity_line": {
+        "x1": 150.0,
+        "y1": 200.0,
+        "x2": 1746.0,
+        "y2": 200.0
+      }
+    }
+  }
+}

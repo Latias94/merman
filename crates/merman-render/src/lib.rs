@@ -4,6 +4,7 @@ pub mod class;
 pub mod er;
 pub mod flowchart;
 pub mod info;
+pub mod journey;
 pub mod model;
 pub mod packet;
 pub mod pie;
@@ -85,6 +86,11 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
             options.text_measurer.as_ref(),
         )?),
         "timeline" => LayoutDiagram::TimelineDiagram(timeline::layout_timeline_diagram(
+            &parsed.model,
+            &meta.effective_config,
+            options.text_measurer.as_ref(),
+        )?),
+        "journey" => LayoutDiagram::JourneyDiagram(journey::layout_journey_diagram(
             &parsed.model,
             &meta.effective_config,
             options.text_measurer.as_ref(),

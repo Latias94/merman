@@ -290,6 +290,104 @@ pub struct TimelineDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JourneyActorLegendLineLayout {
+    pub text: String,
+    pub x: f64,
+    pub y: f64,
+    pub tspan_x: f64,
+    pub text_margin: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JourneyActorLegendItemLayout {
+    pub actor: String,
+    pub pos: i64,
+    pub color: String,
+    pub circle_cx: f64,
+    pub circle_cy: f64,
+    pub circle_r: f64,
+    pub label_lines: Vec<JourneyActorLegendLineLayout>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum JourneyMouthKind {
+    Smile,
+    Sad,
+    Ambivalent,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JourneyTaskActorCircleLayout {
+    pub actor: String,
+    pub pos: i64,
+    pub color: String,
+    pub cx: f64,
+    pub cy: f64,
+    pub r: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JourneyTaskLayout {
+    pub index: i64,
+    pub section: String,
+    pub task: String,
+    pub score: i64,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub fill: String,
+    pub num: i64,
+    pub people: Vec<String>,
+    pub actor_circles: Vec<JourneyTaskActorCircleLayout>,
+    pub line_id: String,
+    pub line_x1: f64,
+    pub line_y1: f64,
+    pub line_x2: f64,
+    pub line_y2: f64,
+    pub face_cx: f64,
+    pub face_cy: f64,
+    pub mouth: JourneyMouthKind,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JourneySectionLayout {
+    pub section: String,
+    pub num: i64,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub fill: String,
+    pub task_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JourneyLineLayout {
+    pub x1: f64,
+    pub y1: f64,
+    pub x2: f64,
+    pub y2: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JourneyDiagramLayout {
+    pub bounds: Option<Bounds>,
+    pub left_margin: f64,
+    pub max_actor_label_width: f64,
+    pub width: f64,
+    pub height: f64,
+    pub svg_height: f64,
+    pub title: Option<String>,
+    pub title_x: f64,
+    pub title_y: f64,
+    pub actor_legend: Vec<JourneyActorLegendItemLayout>,
+    pub sections: Vec<JourneySectionLayout>,
+    pub tasks: Vec<JourneyTaskLayout>,
+    pub activity_line: JourneyLineLayout,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LayoutDiagram {
     FlowchartV2(FlowchartV2Layout),
     StateDiagramV2(StateDiagramV2Layout),
@@ -300,6 +398,7 @@ pub enum LayoutDiagram {
     PacketDiagram(PacketDiagramLayout),
     TimelineDiagram(TimelineDiagramLayout),
     PieDiagram(PieDiagramLayout),
+    JourneyDiagram(JourneyDiagramLayout),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
