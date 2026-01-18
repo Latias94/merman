@@ -3,9 +3,9 @@
   "layout": {
     "SequenceDiagram": {
       "bounds": {
-        "max_x": 400.0,
-        "max_y": 293.0,
-        "min_x": -50.0,
+        "max_x": 500.0,
+        "max_y": 303.0,
+        "min_x": -150.0,
         "min_y": -10.0
       },
       "clusters": [],
@@ -44,66 +44,6 @@
           "end_label_left": null,
           "end_label_right": null,
           "end_marker": null,
-          "from": "Alice",
-          "from_cluster": null,
-          "id": "msg-2",
-          "label": {
-            "height": 17.6,
-            "width": 65.12,
-            "x": 73.5,
-            "y": 124.0
-          },
-          "points": [
-            {
-              "x": 76.0,
-              "y": 153.0
-            },
-            {
-              "x": 71.0,
-              "y": 153.0
-            }
-          ],
-          "start_label_left": null,
-          "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "Alice",
-          "to_cluster": null
-        },
-        {
-          "end_label_left": null,
-          "end_label_right": null,
-          "end_marker": null,
-          "from": "Bob",
-          "from_cluster": null,
-          "id": "msg-3",
-          "label": {
-            "height": 17.6,
-            "width": 56.16,
-            "x": 273.5,
-            "y": 168.0
-          },
-          "points": [
-            {
-              "x": 276.0,
-              "y": 197.0
-            },
-            {
-              "x": 271.0,
-              "y": 197.0
-            }
-          ],
-          "start_label_left": null,
-          "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "Bob",
-          "to_cluster": null
-        },
-        {
-          "end_label_left": null,
-          "end_label_right": null,
-          "end_marker": null,
           "from": "actor-top-Alice",
           "from_cluster": null,
           "id": "lifeline-Alice",
@@ -115,7 +55,7 @@
             },
             {
               "x": 75.0,
-              "y": 217.0
+              "y": 227.0
             }
           ],
           "start_label_left": null,
@@ -140,7 +80,7 @@
             },
             {
               "x": 275.0,
-              "y": 217.0
+              "y": 227.0
             }
           ],
           "start_label_left": null,
@@ -169,12 +109,28 @@
           "y": 32.5
         },
         {
+          "height": 39.0,
+          "id": "note-2",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": -25.0,
+          "y": 138.5
+        },
+        {
+          "height": 39.0,
+          "id": "note-3",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 375.0,
+          "y": 187.5
+        },
+        {
           "height": 65.0,
           "id": "actor-bottom-Alice",
           "is_cluster": false,
           "width": 150.0,
           "x": 75.0,
-          "y": 249.5
+          "y": 259.5
         },
         {
           "height": 65.0,
@@ -182,7 +138,7 @@
           "is_cluster": false,
           "width": 150.0,
           "x": 275.0,
-          "y": 249.5
+          "y": 259.5
         }
       ]
     }

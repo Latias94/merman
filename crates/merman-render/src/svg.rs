@@ -407,6 +407,28 @@ pub fn render_sequence_diagram_svg(
         );
     }
 
+    // Mermaid renders `rect` blocks as root-level `<rect class="rect"/>` nodes before actors.
+    for msg in &model.messages {
+        if msg.message_type != 22 {
+            continue;
+        }
+        let fill = msg.message.as_str().unwrap_or_default();
+        let node_id = format!("rect-{}", msg.id);
+        let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
+            continue;
+        };
+        let (x, y) = node_left_top(n);
+        let _ = write!(
+            &mut out,
+            r#"<rect x="{x}" y="{y}" fill="{fill}" width="{w}" height="{h}" class="rect"/>"#,
+            x = fmt(x),
+            y = fmt(y),
+            w = fmt(n.width),
+            h = fmt(n.height),
+            fill = escape_xml(fill)
+        );
+    }
+
     // Mermaid draws bottom actors first (reverse DOM order).
     for (idx, actor_id) in model.actor_order.iter().enumerate().rev() {
         let Some(actor) = model.actors.get(actor_id) else {
@@ -479,18 +501,35 @@ pub fn render_sequence_diagram_svg(
 
     // Notes are rendered as `<g><rect class="note"/><text class="noteText"><tspan>...</tspan></text></g>`
     // before blocks and messages.
-    for note in &model.notes {
-        let _ = note.placement;
-        let _ = note.wrap;
-        let _ = note.actor.clone();
+    //
+    // Mermaid determines note ordering from the directive messages (type=2). Headless layout emits
+    // note geometry as `note-<id>` nodes, so SVG can render them 1:1 (including viewBox expansion).
+    for msg in &model.messages {
+        if msg.message_type != 2 {
+            continue;
+        }
+        let node_id = format!("note-{}", msg.id);
+        let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
+            continue;
+        };
+        let (x, y) = node_left_top(n);
+        let cx = x + (n.width / 2.0);
+        let text_y = y + 5.0;
         out.push_str(r#"<g>"#);
-        out.push_str(
-            r##"<rect x="0" y="0" fill="#EDF2AE" stroke="#666" width="150" height="39" class="note"/>"##,
+        let _ = write!(
+            &mut out,
+            r##"<rect x="{x}" y="{y}" fill="#EDF2AE" stroke="#666" width="{w}" height="{h}" class="note"/>"##,
+            x = fmt(x),
+            y = fmt(y),
+            w = fmt(n.width),
+            h = fmt(n.height)
         );
         let _ = write!(
             &mut out,
-            r#"<text x="75" y="0" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="noteText" dy="1em" style="font-size: 16px; font-weight: 400;"><tspan x="75">{}</tspan></text>"#,
-            escape_xml(&note.message)
+            r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="noteText" dy="1em" style="font-size: 16px; font-weight: 400;"><tspan x="{x}">{text}</tspan></text>"#,
+            x = fmt(cx),
+            y = fmt(text_y),
+            text = escape_xml(msg.message.as_str().unwrap_or_default())
         );
         out.push_str("</g>");
     }

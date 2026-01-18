@@ -133,6 +133,10 @@ pub fn layout_sequence_diagram(
             let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
                 continue;
             };
+            if msg.message_type == 2 {
+                // Notes do not affect participant spacing in Mermaid.
+                continue;
+            }
             let touches_pair = (from == left && to == right) || (from == right && to == left);
             if !touches_pair {
                 continue;
@@ -165,10 +169,6 @@ pub fn layout_sequence_diagram(
     let message_step = message_margin + (message_font_size / 2.0) + bottom_margin_adj;
     let msg_label_offset = (message_step - message_font_size) + bottom_margin_adj;
 
-    // Messages are laid out below the top actor boxes.
-    let mut msg_line_y = actor_height + message_step;
-    let mut last_message_y = actor_height;
-
     let mut edges: Vec<LayoutEdge> = Vec::new();
     let mut nodes: Vec<LayoutNode> = Vec::new();
     let clusters: Vec<LayoutCluster> = Vec::new();
@@ -195,7 +195,149 @@ pub fn layout_sequence_diagram(
         actor_index.insert(id.as_str(), i);
     }
 
+    #[derive(Debug, Clone)]
+    struct RectOpen {
+        start_id: String,
+        top_y: f64,
+        min_x: f64,
+        max_x: f64,
+        max_y: f64,
+    }
+
+    // Mermaid's sequence renderer advances a "cursor" even for non-message directives (notes,
+    // rect blocks). To avoid overlapping bottom actors and to match upstream viewBox sizes, we
+    // model these increments in headless layout as well.
+    let note_width_single = actor_width_min;
+    let rect_step_start = 20.0;
+    let rect_step_end = 10.0;
+    let note_gap = 10.0;
+    let note_text_pad_total = message_font_size * 1.3375; // 16px -> 21.4px, yielding 39px total for 1 line.
+    let note_top_offset = message_step - note_gap;
+
+    let mut cursor_y = actor_height + message_step;
+    let mut rect_stack: Vec<RectOpen> = Vec::new();
+
     for msg in &model.messages {
+        match msg.message_type {
+            // rect start: advances cursor but draws later as a background `<rect>`.
+            22 => {
+                rect_stack.push(RectOpen {
+                    start_id: msg.id.clone(),
+                    top_y: cursor_y - note_top_offset,
+                    min_x: f64::INFINITY,
+                    max_x: f64::NEG_INFINITY,
+                    max_y: f64::NEG_INFINITY,
+                });
+                cursor_y += rect_step_start;
+                continue;
+            }
+            // rect end
+            23 => {
+                if let Some(open) = rect_stack.pop() {
+                    let rect_left = if open.min_x.is_finite() {
+                        open.min_x
+                    } else {
+                        actor_centers_x
+                            .iter()
+                            .copied()
+                            .fold(f64::INFINITY, f64::min)
+                            - 11.0
+                    };
+                    let rect_right = if open.max_x.is_finite() {
+                        open.max_x
+                    } else {
+                        actor_centers_x
+                            .iter()
+                            .copied()
+                            .fold(f64::NEG_INFINITY, f64::max)
+                            + 11.0
+                    };
+                    let rect_bottom = if open.max_y.is_finite() {
+                        open.max_y + 10.0
+                    } else {
+                        open.top_y + 10.0
+                    };
+                    let rect_w = (rect_right - rect_left).max(1.0);
+                    let rect_h = (rect_bottom - open.top_y).max(1.0);
+
+                    nodes.push(LayoutNode {
+                        id: format!("rect-{}", open.start_id),
+                        x: rect_left + rect_w / 2.0,
+                        y: open.top_y + rect_h / 2.0,
+                        width: rect_w,
+                        height: rect_h,
+                        is_cluster: false,
+                    });
+
+                    if let Some(parent) = rect_stack.last_mut() {
+                        parent.min_x = parent.min_x.min(rect_left - 10.0);
+                        parent.max_x = parent.max_x.max(rect_right + 10.0);
+                        parent.max_y = parent.max_y.max(rect_bottom);
+                    }
+                }
+                cursor_y += rect_step_end;
+                continue;
+            }
+            _ => {}
+        }
+
+        // Notes (type=2) are laid out as nodes, not message edges.
+        if msg.message_type == 2 {
+            let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
+                continue;
+            };
+            let (Some(fi), Some(ti)) =
+                (actor_index.get(from).copied(), actor_index.get(to).copied())
+            else {
+                continue;
+            };
+            let fx = actor_centers_x[fi];
+            let tx = actor_centers_x[ti];
+
+            let placement = msg.placement.unwrap_or(2);
+            let (note_x, note_w) = match placement {
+                // leftOf
+                0 => (fx - 25.0 - note_width_single, note_width_single),
+                // rightOf
+                1 => (fx + 25.0, note_width_single),
+                // over
+                _ => {
+                    if (fx - tx).abs() < 0.0001 {
+                        (fx - (note_width_single / 2.0), note_width_single)
+                    } else {
+                        let left = fx.min(tx) - 25.0;
+                        let right = fx.max(tx) + 25.0;
+                        let w = (right - left).max(note_width_single);
+                        (left, w)
+                    }
+                }
+            };
+
+            let text = msg.message.as_str().unwrap_or_default();
+            let metrics = measurer.measure_wrapped(text, &msg_text_style, None, WrapMode::SvgLike);
+            let note_h = (metrics.height + note_text_pad_total).max(1.0);
+            let note_y = cursor_y - note_top_offset;
+
+            nodes.push(LayoutNode {
+                id: format!("note-{}", msg.id),
+                x: note_x + note_w / 2.0,
+                y: note_y + note_h / 2.0,
+                width: note_w.max(1.0),
+                height: note_h,
+                is_cluster: false,
+            });
+
+            for open in rect_stack.iter_mut() {
+                open.min_x = open.min_x.min(note_x - 10.0);
+                open.max_x = open.max_x.max(note_x + note_w + 10.0);
+                open.max_y = open.max_y.max(note_y + note_h);
+            }
+
+            cursor_y += note_h + note_gap;
+            continue;
+        }
+
+        // Regular message edges.
         let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
             continue;
         };
@@ -210,7 +352,7 @@ pub fn layout_sequence_diagram(
         // These small offsets match Mermaid's default arrow rendering (marker-end).
         let x1 = from_x + sign * 1.0;
         let x2 = to_x - sign * 4.0;
-        let y = msg_line_y;
+        let y = cursor_y;
 
         let text = msg.message.as_str().unwrap_or_default();
         let label = if text.is_empty() {
@@ -242,12 +384,19 @@ pub fn layout_sequence_diagram(
             stroke_dasharray: None,
         });
 
-        last_message_y = y;
-        msg_line_y += message_step;
+        for open in rect_stack.iter_mut() {
+            let lx = from_x.min(to_x) - 11.0;
+            let rx = from_x.max(to_x) + 11.0;
+            open.min_x = open.min_x.min(lx);
+            open.max_x = open.max_x.max(rx);
+            open.max_y = open.max_y.max(y);
+        }
+
+        cursor_y += message_step;
     }
 
-    let bottom_box_top_y =
-        last_message_y + (message_margin - message_font_size + bottom_margin_adj);
+    let bottom_margin = message_margin - message_font_size + bottom_margin_adj;
+    let bottom_box_top_y = (cursor_y - message_step) + bottom_margin;
     for (idx, id) in model.actor_order.iter().enumerate() {
         let w = actor_widths[idx];
         let cx = actor_centers_x[idx];
@@ -287,28 +436,32 @@ pub fn layout_sequence_diagram(
         });
     }
 
-    let content_width = {
-        let last = model.actor_order.len() - 1;
-        let last_center = actor_centers_x[last];
-        let last_w = actor_widths[last];
-        (last_center + last_w / 2.0).max(1.0)
-    };
-    let content_height = (bottom_box_top_y + actor_height).max(1.0);
+    let mut content_min_x = f64::INFINITY;
+    let mut content_min_y = f64::INFINITY;
+    let mut content_max_x = f64::NEG_INFINITY;
+    let mut content_max_y = f64::NEG_INFINITY;
+    for n in &nodes {
+        let left = n.x - n.width / 2.0;
+        let right = n.x + n.width / 2.0;
+        let top = n.y - n.height / 2.0;
+        let bottom = n.y + n.height / 2.0;
+        content_min_x = content_min_x.min(left);
+        content_min_y = content_min_y.min(top);
+        content_max_x = content_max_x.max(right);
+        content_max_y = content_max_y.max(bottom);
+    }
+    if !content_min_x.is_finite() || !content_min_y.is_finite() {
+        content_min_x = 0.0;
+        content_min_y = 0.0;
+        content_max_x = actor_width_min.max(1.0);
+        content_max_y = (bottom_box_top_y + actor_height).max(1.0);
+    }
 
-    let bounds = Bounds::from_points([
-        (-diagram_margin_x, -diagram_margin_y),
-        (
-            content_width + diagram_margin_x,
-            content_height + diagram_margin_y + bottom_margin_adj,
-        ),
-    ])
-    .or_else(|| {
-        Some(Bounds {
-            min_x: -diagram_margin_x,
-            min_y: -diagram_margin_y,
-            max_x: content_width + diagram_margin_x,
-            max_y: content_height + diagram_margin_y + bottom_margin_adj,
-        })
+    let bounds = Some(Bounds {
+        min_x: content_min_x - diagram_margin_x,
+        min_y: content_min_y - diagram_margin_y,
+        max_x: content_max_x + diagram_margin_x,
+        max_y: content_max_y + diagram_margin_y + bottom_margin_adj,
     });
 
     Ok(SequenceDiagramLayout {

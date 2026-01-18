@@ -3,8 +3,8 @@
   "layout": {
     "SequenceDiagram": {
       "bounds": {
-        "max_x": 400.0,
-        "max_y": 293.0,
+        "max_x": 520.0,
+        "max_y": 358.0,
         "min_x": -50.0,
         "min_y": -10.0
       },
@@ -46,51 +46,21 @@
           "end_marker": null,
           "from": "Bob",
           "from_cluster": null,
-          "id": "msg-3",
-          "label": {
-            "height": 17.6,
-            "width": 69.44,
-            "x": 273.5,
-            "y": 124.0
-          },
-          "points": [
-            {
-              "x": 276.0,
-              "y": 153.0
-            },
-            {
-              "x": 271.0,
-              "y": 153.0
-            }
-          ],
-          "start_label_left": null,
-          "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "Bob",
-          "to_cluster": null
-        },
-        {
-          "end_label_left": null,
-          "end_label_right": null,
-          "end_marker": null,
-          "from": "Bob",
-          "from_cluster": null,
           "id": "msg-5",
           "label": {
             "height": 17.6,
             "width": 110.72,
             "x": 176.5,
-            "y": 168.0
+            "y": 223.0
           },
           "points": [
             {
               "x": 274.0,
-              "y": 197.0
+              "y": 252.0
             },
             {
               "x": 79.0,
-              "y": 197.0
+              "y": 252.0
             }
           ],
           "start_label_left": null,
@@ -115,7 +85,7 @@
             },
             {
               "x": 75.0,
-              "y": 217.0
+              "y": 282.0
             }
           ],
           "start_label_left": null,
@@ -140,7 +110,7 @@
             },
             {
               "x": 275.0,
-              "y": 217.0
+              "y": 282.0
             }
           ],
           "start_label_left": null,
@@ -169,12 +139,36 @@
           "y": 32.5
         },
         {
+          "height": 39.0,
+          "id": "note-3",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 375.0,
+          "y": 178.5
+        },
+        {
+          "height": 69.0,
+          "id": "rect-2",
+          "is_cluster": false,
+          "width": 170.0,
+          "x": 375.0,
+          "y": 173.5
+        },
+        {
+          "height": 143.0,
+          "id": "rect-1",
+          "is_cluster": false,
+          "width": 406.0,
+          "x": 267.0,
+          "y": 190.5
+        },
+        {
           "height": 65.0,
           "id": "actor-bottom-Alice",
           "is_cluster": false,
           "width": 150.0,
           "x": 75.0,
-          "y": 249.5
+          "y": 314.5
         },
         {
           "height": 65.0,
@@ -182,7 +176,7 @@
           "is_cluster": false,
           "width": 150.0,
           "x": 275.0,
-          "y": 249.5
+          "y": 314.5
         }
       ]
     }

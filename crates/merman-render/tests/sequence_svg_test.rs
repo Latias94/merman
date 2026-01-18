@@ -34,12 +34,11 @@ fn attr_f64(tag: &str, name: &str) -> Option<f64> {
     rest[..end].parse::<f64>().ok()
 }
 
-#[test]
-fn sequence_alt_multiple_elses_separators_touch_frame_edges() {
+fn render_sequence_svg_from_fixture(fixture: &str) -> String {
     let path = workspace_root()
         .join("fixtures")
         .join("sequence")
-        .join("upstream_alt_multiple_elses_spec.mmd");
+        .join(fixture);
     let text = std::fs::read_to_string(&path).expect("fixture");
 
     let engine = Engine::new();
@@ -53,7 +52,7 @@ fn sequence_alt_multiple_elses_separators_touch_frame_edges() {
         panic!("expected SequenceDiagram layout");
     };
 
-    let svg = render_sequence_diagram_svg(
+    render_sequence_diagram_svg(
         layout,
         &out.semantic,
         &out.meta.effective_config,
@@ -61,7 +60,12 @@ fn sequence_alt_multiple_elses_separators_touch_frame_edges() {
         layout_options.text_measurer.as_ref(),
         &SvgRenderOptions::default(),
     )
-    .expect("render svg");
+    .expect("render svg")
+}
+
+#[test]
+fn sequence_alt_multiple_elses_separators_touch_frame_edges() {
+    let svg = render_sequence_svg_from_fixture("upstream_alt_multiple_elses_spec.mmd");
 
     let line_tags = extract_self_closing_tags(&svg, "line");
     let loop_lines: Vec<&str> = line_tags
@@ -117,3 +121,56 @@ fn sequence_alt_multiple_elses_separators_touch_frame_edges() {
     }
 }
 
+#[test]
+fn sequence_rect_block_is_root_level_before_actors() {
+    let svg = render_sequence_svg_from_fixture("upstream_rect_block_spec.mmd");
+
+    let fill_pos = svg
+        .find(r#"fill="rgb(200, 255, 200)""#)
+        .expect("expected rect fill to match directive payload");
+    let rect_pos = svg[..fill_pos]
+        .rfind("<rect")
+        .expect("expected rect tag for fill");
+    let rect_end_rel = svg[rect_pos..]
+        .find("/>")
+        .expect("expected self-closing rect tag");
+    let rect_tag = &svg[rect_pos..(rect_pos + rect_end_rel + 2)];
+    assert!(rect_tag.contains(r#"class="rect""#), "expected rect class");
+
+    let actor_pos = svg
+        .find(r#"class="actor actor-bottom""#)
+        .expect("expected bottom actors");
+    assert!(
+        rect_pos < actor_pos,
+        "expected rect blocks to be emitted before actor groups"
+    );
+}
+
+#[test]
+fn sequence_nested_rect_blocks_render_in_start_order() {
+    let svg = render_sequence_svg_from_fixture("upstream_nested_rect_blocks_spec.mmd");
+
+    let outer = svg
+        .find(r#"fill="rgb(200, 255, 200)""#)
+        .expect("expected outer rect fill");
+    let inner = svg
+        .find(r#"fill="rgb(0, 0, 0)""#)
+        .expect("expected inner rect fill");
+    assert!(
+        outer < inner,
+        "expected nested rect blocks to be emitted in start order"
+    );
+}
+
+#[test]
+fn sequence_notes_expand_viewbox_left_for_leftof_notes() {
+    let svg = render_sequence_svg_from_fixture("notes_placements.mmd");
+    assert!(
+        svg.contains(r#"viewBox="-150.000 -10.000"#),
+        "expected viewBox min_x to expand for left-of notes"
+    );
+    assert!(
+        svg.contains(r#"max-width: 750.000px"#),
+        "expected max-width to reflect expanded viewBox width"
+    );
+}
