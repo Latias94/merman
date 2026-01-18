@@ -325,12 +325,35 @@ struct SequenceSvgNote {
 pub fn render_sequence_diagram_svg(
     layout: &SequenceDiagramLayout,
     semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
+    effective_config: &serde_json::Value,
     _diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let model: SequenceSvgModel = serde_json::from_value(semantic.clone())?;
+
+    let seq_cfg = effective_config
+        .get("sequence")
+        .unwrap_or(&serde_json::Value::Null);
+    let actor_height = seq_cfg
+        .get("height")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(65.0)
+        .max(1.0);
+    let _box_text_margin = seq_cfg
+        .get("boxTextMargin")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(5.0)
+        .max(0.0);
+    let label_box_height = seq_cfg
+        .get("labelBoxHeight")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(20.0)
+        .max(0.0);
+    let right_angles = seq_cfg
+        .get("rightAngles")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
@@ -434,30 +457,112 @@ pub fn render_sequence_diagram_svg(
         let Some(actor) = model.actors.get(actor_id) else {
             continue;
         };
+        let actor_type = actor.actor_type.as_str();
         let node_id = format!("actor-bottom-{actor_id}");
         let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
             continue;
         };
         let (x, y) = node_left_top(n);
-        let _ = write!(
-            &mut out,
-            r##"<g><rect x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" rx="3" ry="3" class="actor actor-bottom"/><text x="{cx}" y="{cy}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
-            x = fmt(x),
-            y = fmt(y),
-            w = fmt(n.width),
-            h = fmt(n.height),
-            name = escape_xml(actor_id),
-            cx = fmt(n.x),
-            cy = fmt(n.y),
-            label = escape_xml(&actor.description)
-        );
+        match actor_type {
+            // Actor-man variants are drawn later (after `<defs>`), but Mermaid keeps stable
+            // indices by emitting empty `<g/>` placeholders here.
+            "actor" | "boundary" | "control" | "entity" => {
+                out.push_str("<g/>");
+            }
+            "collections" => {
+                const OFFSET: f64 = 6.0;
+                let front_x = x - OFFSET;
+                let front_y = y + OFFSET;
+                let cx = front_x + (n.width / 2.0);
+                let cy = front_y + (n.height / 2.0);
+                let _ = write!(
+                    &mut out,
+                    r##"<g><rect x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" class="actor actor-bottom"/><rect x="{sx}" y="{sy}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" class="actor"/><text x="{cx}" y="{cy}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+                    x = fmt(x),
+                    y = fmt(y),
+                    sx = fmt(front_x),
+                    sy = fmt(front_y),
+                    w = fmt(n.width),
+                    h = fmt(n.height),
+                    name = escape_xml(actor_id),
+                    cx = fmt(cx),
+                    cy = fmt(cy),
+                    label = escape_xml(&actor.description)
+                );
+            }
+            "queue" => {
+                let ry = n.height / 2.0;
+                let rx = ry / (2.5 + n.height / 50.0);
+                let body_w = n.width - 2.0 * rx;
+                let y_mid = y + ry;
+                let _ = write!(
+                    &mut out,
+                    r##"<g><g transform="translate({tx1}, {ty})"><path d="M {x},{y_mid} a {rx},{ry} 0 0 0 0,{h} h {body_w} a {rx},{ry} 0 0 0 0,-{h} Z" class="actor actor-bottom"/></g><g transform="translate({tx2}, {ty})"><path d="M {x},{y_mid} a {rx},{ry} 0 0 0 0,{h}" stroke="#666" stroke-width="1px" class="actor actor-bottom"/></g><text x="{cx}" y="{y_mid}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+                    tx1 = fmt(rx),
+                    tx2 = fmt(n.width - rx),
+                    ty = fmt(-n.height / 2.0),
+                    x = fmt(x),
+                    y_mid = fmt(y_mid),
+                    rx = fmt(rx),
+                    ry = fmt(ry),
+                    h = fmt(n.height),
+                    body_w = fmt(body_w),
+                    cx = fmt(n.x),
+                    label = escape_xml(&actor.description)
+                );
+            }
+            "database" => {
+                // Mermaid's database actor uses a cylinder glyph and updates the actor height after
+                // the top render; the footer render uses that updated height (≈ width/4 + labelBoxHeight).
+                let w = n.width / 4.0;
+                let h = n.width / 4.0;
+                let rx = w / 2.0;
+                let ry = rx / (2.5 + w / 50.0);
+                let footer_h = h + label_box_height;
+                let tx = w * 1.5;
+                let ty = (footer_h / 4.0) - 2.0 * ry;
+                let y_text = y + ((footer_h + h) / 4.0) + (footer_h / 2.0);
+                let _ = write!(
+                    &mut out,
+                    r##"<g><g transform="translate({tx}, {ty})"><path d="M {x},{y1} a {rx},{ry} 0 0 0 {w},0 a {rx},{ry} 0 0 0 -{w},0 l 0,{h2} a {rx},{ry} 0 0 0 {w},0 l 0,-{h2}" fill="#eaeaea" stroke="#000" stroke-width="1" class="actor actor-bottom"/></g><text x="{cx}" y="{cy}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+                    tx = fmt(tx),
+                    ty = fmt(ty),
+                    x = fmt(x),
+                    y1 = fmt(y + ry),
+                    rx = fmt(rx),
+                    ry = fmt(ry),
+                    w = fmt(w),
+                    h2 = fmt(h - 2.0 * ry),
+                    cx = fmt(n.x),
+                    cy = fmt(y_text),
+                    label = escape_xml(&actor.description)
+                );
+            }
+            _ => {
+                let _ = write!(
+                    &mut out,
+                    r##"<g><rect x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" rx="3" ry="3" class="actor actor-bottom"/><text x="{cx}" y="{cy}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+                    x = fmt(x),
+                    y = fmt(y),
+                    w = fmt(n.width),
+                    h = fmt(n.height),
+                    name = escape_xml(actor_id),
+                    cx = fmt(n.x),
+                    cy = fmt(n.y),
+                    label = escape_xml(&actor.description)
+                );
+            }
+        }
 
-        let _ = idx; // keep idx stable for future actor-type rendering
-        let _ = actor.actor_type.as_str();
+        let _ = idx;
     }
 
     // Top actors + lifelines.
     for (idx, actor_id) in model.actor_order.iter().enumerate().rev() {
+        let Some(actor) = model.actors.get(actor_id) else {
+            continue;
+        };
+        let actor_type = actor.actor_type.as_str();
         let node_top_id = format!("actor-top-{actor_id}");
         let node_bottom_id = format!("actor-bottom-{actor_id}");
         let Some(top) = nodes_by_id.get(node_top_id.as_str()).copied() else {
@@ -470,27 +575,119 @@ pub fn render_sequence_diagram_svg(
         let (bottom_x, bottom_y) = node_left_top(bottom);
         let _ = bottom_x;
 
-        let _ = write!(
-            &mut out,
-            r##"<g><line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}"/><g id="root-{idx}"><rect x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" rx="3" ry="3" class="actor actor-top"/><text x="{cx}" y="{cy}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g></g>"##,
-            idx = idx,
-            cx = fmt(top.x),
-            y1 = fmt(top_y + top.height),
-            y2 = fmt(bottom_y),
-            name = escape_xml(actor_id),
-            x = fmt(top_x),
-            y = fmt(top_y),
-            w = fmt(top.width),
-            h = fmt(top.height),
-            cy = fmt(top.y),
-            label = escape_xml(
-                model
-                    .actors
-                    .get(actor_id)
-                    .map(|a| a.description.as_str())
-                    .unwrap_or(actor_id)
-            )
-        );
+        let (y1, y2) = edges_by_id
+            .get(format!("lifeline-{actor_id}").as_str())
+            .and_then(|e| Some((e.points.first()?.y, e.points.get(1)?.y)))
+            .unwrap_or((top_y + top.height, bottom_y));
+
+        match actor_type {
+            "actor" | "boundary" | "control" | "entity" => {
+                let _ = write!(
+                    &mut out,
+                    r##"<g><line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}"/></g>"##,
+                    idx = idx,
+                    cx = fmt(top.x),
+                    y1 = fmt(y1),
+                    y2 = fmt(y2),
+                    name = escape_xml(actor_id)
+                );
+            }
+            "collections" => {
+                const OFFSET: f64 = 6.0;
+                let front_x = top_x - OFFSET;
+                let front_y = top_y + OFFSET;
+                let cx = front_x + (top.width / 2.0);
+                let cy = front_y + (top.height / 2.0);
+                let _ = write!(
+                    &mut out,
+                    r##"<g><line id="actor{idx}" x1="{cx2}" y1="{y1}" x2="{cx2}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}"/><g id="root-{idx}"><rect x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" class="actor actor-top"/><rect x="{sx}" y="{sy}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" class="actor"/><text x="{tx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{tx}" dy="0">{label}</tspan></text></g></g>"##,
+                    idx = idx,
+                    cx2 = fmt(top.x),
+                    y1 = fmt(y1),
+                    y2 = fmt(y2),
+                    name = escape_xml(actor_id),
+                    x = fmt(top_x),
+                    y = fmt(top_y),
+                    sx = fmt(front_x),
+                    sy = fmt(front_y),
+                    w = fmt(top.width),
+                    h = fmt(top.height),
+                    tx = fmt(cx),
+                    ty = fmt(cy),
+                    label = escape_xml(&actor.description)
+                );
+            }
+            "queue" => {
+                let ry = top.height / 2.0;
+                let rx = ry / (2.5 + top.height / 50.0);
+                let body_w = top.width - 2.0 * rx;
+                let y_mid = top_y + ry;
+                let _ = write!(
+                    &mut out,
+                    r##"<g><line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}"/><g id="root-{idx}"><g transform="translate({tx1}, {ty})"><path d="M {x},{y_mid} a {rx},{ry} 0 0 0 0,{h} h {body_w} a {rx},{ry} 0 0 0 0,-{h} Z" class="actor actor-top"/></g><g transform="translate({tx2}, {ty})"><path d="M {x},{y_mid} a {rx},{ry} 0 0 0 0,{h}" stroke="#666" stroke-width="1px" class="actor actor-top"/></g><text x="{cx}" y="{y_mid}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g></g>"##,
+                    idx = idx,
+                    cx = fmt(top.x),
+                    y1 = fmt(y1),
+                    y2 = fmt(y2),
+                    name = escape_xml(actor_id),
+                    tx1 = fmt(rx),
+                    tx2 = fmt(top.width - rx),
+                    ty = fmt(-top.height / 2.0),
+                    x = fmt(top_x),
+                    y_mid = fmt(y_mid),
+                    rx = fmt(rx),
+                    ry = fmt(ry),
+                    h = fmt(top.height),
+                    body_w = fmt(body_w),
+                    label = escape_xml(&actor.description)
+                );
+            }
+            "database" => {
+                let w = top.width / 4.0;
+                let h = top.width / 4.0;
+                let rx = w / 2.0;
+                let ry = rx / (2.5 + w / 50.0);
+                let tx = w * 1.5;
+                let ty = (actor_height + ry) / 4.0;
+                let y_text = top_y + actor_height + (ry / 2.0);
+                let _ = write!(
+                    &mut out,
+                    r##"<g><line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}"/><g id="root-{idx}"><g transform="translate({tx}, {ty})"><path d="M {x},{y1p} a {rx},{ry} 0 0 0 {w},0 a {rx},{ry} 0 0 0 -{w},0 l 0,{h2} a {rx},{ry} 0 0 0 {w},0 l 0,-{h2}" fill="#eaeaea" stroke="#000" stroke-width="1" class="actor actor-top"/></g><text x="{cx}" y="{cy}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g></g>"##,
+                    idx = idx,
+                    cx = fmt(top.x),
+                    y1 = fmt(y1),
+                    y2 = fmt(y2),
+                    name = escape_xml(actor_id),
+                    tx = fmt(tx),
+                    ty = fmt(ty),
+                    x = fmt(top_x),
+                    y1p = fmt(top_y + ry),
+                    rx = fmt(rx),
+                    ry = fmt(ry),
+                    w = fmt(w),
+                    h2 = fmt(h - 2.0 * ry),
+                    cy = fmt(y_text),
+                    label = escape_xml(&actor.description)
+                );
+            }
+            _ => {
+                let _ = write!(
+                    &mut out,
+                    r##"<g><line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}"/><g id="root-{idx}"><rect x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" rx="3" ry="3" class="actor actor-top"/><text x="{cx}" y="{cy}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g></g>"##,
+                    idx = idx,
+                    cx = fmt(top.x),
+                    y1 = fmt(y1),
+                    y2 = fmt(y2),
+                    name = escape_xml(actor_id),
+                    x = fmt(top_x),
+                    y = fmt(top_y),
+                    w = fmt(top.width),
+                    h = fmt(top.height),
+                    cy = fmt(top.y),
+                    label = escape_xml(&actor.description)
+                );
+            }
+        }
     }
 
     // CSS is ignored by DOM compare in non-strict modes; keep a placeholder `<style>` node.
@@ -498,6 +695,82 @@ pub fn render_sequence_diagram_svg(
 
     // Mermaid's sequence output includes a shared set of <defs> for icons/markers.
     out.push_str(MERMAID_SEQUENCE_BASE_DEFS_11_12_2);
+
+    // Actor-man variants (actor/boundary/control/entity) are emitted after `<defs>`.
+    for (actor_idx, actor_id) in model.actor_order.iter().enumerate() {
+        let Some(actor) = model.actors.get(actor_id) else {
+            continue;
+        };
+        let actor_type = actor.actor_type.as_str();
+        if !matches!(actor_type, "actor" | "boundary" | "control" | "entity") {
+            continue;
+        }
+        let node_id = format!("actor-top-{actor_id}");
+        let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
+            continue;
+        };
+        let (_x, actor_y) = node_left_top(n);
+        let cx = n.x;
+
+        match actor_type {
+            "boundary" => {
+                let radius = 30.0;
+                let x_left = cx - radius * 2.5;
+                let last_idx = model.actor_order.len().saturating_sub(1);
+                let _ = last_idx;
+                let _ = write!(
+                    &mut out,
+                    r##"<g class="actor-man actor-top" name="{name}" transform="translate(0,22)"><line id="actor-man-torso{idx}" x1="{x1}" y1="{y_t}" x2="{x2}" y2="{y_t}"/><line id="actor-man-arms{idx}" x1="{x1}" y1="{y0}" x2="{x1}" y2="{y20}"/><circle cx="{cx}" cy="{cy}" r="30"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+                    name = escape_xml(actor_id),
+                    idx = actor_idx,
+                    x1 = fmt(x_left),
+                    x2 = fmt(cx - 15.0),
+                    y_t = fmt(actor_y + 10.0),
+                    y0 = fmt(actor_y + 0.0),
+                    y20 = fmt(actor_y + 20.0),
+                    cx = fmt(cx),
+                    cy = fmt(actor_y + 10.0),
+                    // drawTextCandidate adds rect.height/2. Top render uses the config height.
+                    ty = fmt(actor_y + (radius / 2.0 + 3.0) + (actor_height / 2.0)),
+                    label = escape_xml(&actor.description)
+                );
+            }
+            "control" => {
+                let r = 18.0;
+                let cy = actor_y + 30.0;
+                let _ = write!(
+                    &mut out,
+                    r##"<g class="actor-man actor-top" name="{name}"><defs><marker id="filled-head-control" refX="11" refY="5.8" markerWidth="20" markerHeight="28" orient="172.5"><path d="M 14.4 5.6 L 7.2 10.4 L 8.8 5.6 L 7.2 0.8 Z"/></marker></defs><circle cx="{cx}" cy="{cy}" r="18" fill="#eaeaf7" stroke="#666" stroke-width="1.2"/><line marker-end="url(#filled-head-control)" transform="translate({cx}, {ly})"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+                    name = escape_xml(actor_id),
+                    cx = fmt(cx),
+                    cy = fmt(cy),
+                    ly = fmt(cy - r),
+                    ty = fmt(actor_y + (r + 10.0) + (actor_height / 2.0)),
+                    label = escape_xml(&actor.description)
+                );
+            }
+            "entity" => {
+                let r = 18.0;
+                let cy = actor_y + 25.0;
+                let _ = write!(
+                    &mut out,
+                    r##"<g class="actor-man actor-top" name="{name}" transform="translate(0, 9)"><circle cx="{cx}" cy="{cy}" r="18" width="{w}" height="{h}"/><line x1="{x1}" x2="{x2}" y1="{y}" y2="{y}" stroke="#333" stroke-width="2"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+                    name = escape_xml(actor_id),
+                    cx = fmt(cx),
+                    cy = fmt(cy),
+                    w = fmt(n.width),
+                    h = fmt(actor_height),
+                    x1 = fmt(cx - r),
+                    x2 = fmt(cx + r),
+                    y = fmt(cy + r),
+                    ty = fmt(actor_y + ((cy + r - actor_y) / 2.0) + (actor_height / 2.0)),
+                    label = escape_xml(&actor.description)
+                );
+            }
+            // `actor` stickman is not yet exercised by fixtures; render as a basic participant for now.
+            _ => {}
+        }
+    }
 
     // Notes are rendered as `<g><rect class="note"/><text class="noteText"><tspan>...</tspan></text></g>`
     // before blocks and messages.
@@ -951,20 +1224,137 @@ pub fn render_sequence_diagram_svg(
         };
 
         // Mermaid uses `stroke="none"` and assigns actual stroke via CSS.
-        let _ = write!(
-            &mut out,
-            r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" class="{class}" stroke-width="2" stroke="none"{marker_start}{marker_end}{style}/>"#,
-            x1 = fmt(p0.x),
-            y1 = fmt(p0.y),
-            x2 = fmt(p1.x),
-            y2 = fmt(p1.y),
-            class = class,
-            marker_start = marker_start.unwrap_or(""),
-            marker_end = marker_end.unwrap_or(""),
-            style = style
-        );
+        if from == to {
+            let startx = p0.x;
+            let y = p0.y;
+            let d = if right_angles {
+                let actor_w = nodes_by_id
+                    .get(format!("actor-top-{from}").as_str())
+                    .map(|n| n.width)
+                    .unwrap_or(actor_height);
+                let text_dx = edge.label.as_ref().map(|l| l.width / 2.0).unwrap_or(0.0);
+                let dx = (actor_w / 2.0).max(text_dx);
+                format!(
+                    "M  {x},{y} H {hx} V {vy} H {x}",
+                    x = fmt(startx),
+                    y = fmt(y),
+                    hx = fmt(startx + dx),
+                    vy = fmt(y + 25.0)
+                )
+            } else {
+                format!(
+                    "M {x},{y} C {x2},{y2} {x2},{y3} {x},{y4}",
+                    x = fmt(startx),
+                    y = fmt(y),
+                    x2 = fmt(startx + 60.0),
+                    y2 = fmt(y - 10.0),
+                    y3 = fmt(y + 30.0),
+                    y4 = fmt(y + 20.0)
+                )
+            };
+            let _ = write!(
+                &mut out,
+                r#"<path d="{d}" class="{class}" stroke-width="2" stroke="none"{marker_start}{marker_end}{style}/>"#,
+                d = d,
+                class = class,
+                marker_start = marker_start.unwrap_or(""),
+                marker_end = marker_end.unwrap_or(""),
+                style = style
+            );
+        } else {
+            let _ = write!(
+                &mut out,
+                r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" class="{class}" stroke-width="2" stroke="none"{marker_start}{marker_end}{style}/>"#,
+                x1 = fmt(p0.x),
+                y1 = fmt(p0.y),
+                x2 = fmt(p1.x),
+                y2 = fmt(p1.y),
+                class = class,
+                marker_start = marker_start.unwrap_or(""),
+                marker_end = marker_end.unwrap_or(""),
+                style = style
+            );
+        }
 
         let _ = (from, to);
+    }
+
+    // Actor-man footers (actor/boundary/control/entity) are emitted after messages.
+    let last_idx = model.actor_order.len().saturating_sub(1);
+    for (actor_idx, actor_id) in model.actor_order.iter().enumerate() {
+        let Some(actor) = model.actors.get(actor_id) else {
+            continue;
+        };
+        let actor_type = actor.actor_type.as_str();
+        if !matches!(actor_type, "boundary" | "control" | "entity") {
+            continue;
+        }
+        let node_id = format!("actor-bottom-{actor_id}");
+        let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
+            continue;
+        };
+        let (_x, actor_y) = node_left_top(n);
+        let cx = n.x;
+
+        match actor_type {
+            "boundary" => {
+                let radius = 30.0;
+                let x_left = cx - radius * 2.5;
+                let footer_h = 60.0 + label_box_height;
+                let _ = write!(
+                    &mut out,
+                    r##"<g class="actor-man actor-bottom" name="{name}" transform="translate(0,22)"><line id="actor-man-torso{idx}" x1="{x1}" y1="{y_t}" x2="{x2}" y2="{y_t}"/><line id="actor-man-arms{idx}" x1="{x1}" y1="{y0}" x2="{x1}" y2="{y20}"/><circle cx="{cx}" cy="{cy}" r="30"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+                    name = escape_xml(actor_id),
+                    idx = last_idx,
+                    x1 = fmt(x_left),
+                    x2 = fmt(cx - 15.0),
+                    y_t = fmt(actor_y + 10.0),
+                    y0 = fmt(actor_y + 0.0),
+                    y20 = fmt(actor_y + 20.0),
+                    cx = fmt(cx),
+                    cy = fmt(actor_y + 10.0),
+                    ty = fmt(actor_y + (radius / 2.0 - 4.0) + (footer_h / 2.0)),
+                    label = escape_xml(&actor.description)
+                );
+            }
+            "control" => {
+                let r = 18.0;
+                let cy = actor_y + 30.0;
+                let footer_h = 36.0 + 2.0 * label_box_height;
+                let _ = write!(
+                    &mut out,
+                    r##"<g class="actor-man actor-bottom" name="{name}"><defs><marker id="filled-head-control" refX="11" refY="5.8" markerWidth="20" markerHeight="28" orient="172.5"><path d="M 14.4 5.6 L 7.2 10.4 L 8.8 5.6 L 7.2 0.8 Z"/></marker></defs><circle cx="{cx}" cy="{cy}" r="18" fill="#eaeaf7" stroke="#666" stroke-width="1.2"/><line marker-end="url(#filled-head-control)" transform="translate({cx}, {ly})"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+                    name = escape_xml(actor_id),
+                    cx = fmt(cx),
+                    cy = fmt(cy),
+                    ly = fmt(cy - r),
+                    ty = fmt(actor_y + (r + 5.0) + (footer_h / 2.0)),
+                    label = escape_xml(&actor.description)
+                );
+            }
+            "entity" => {
+                let r = 18.0;
+                let cy = actor_y + 10.0;
+                let footer_h = 36.0 + label_box_height;
+                let _ = write!(
+                    &mut out,
+                    r##"<g class="actor-man actor-bottom" name="{name}" transform="translate(0, 9)"><circle cx="{cx}" cy="{cy}" r="18" width="{w}" height="{h}"/><line x1="{x1}" x2="{x2}" y1="{y}" y2="{y}" stroke="#333" stroke-width="2"/><text x="{cx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-man" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+                    name = escape_xml(actor_id),
+                    cx = fmt(cx),
+                    cy = fmt(cy),
+                    w = fmt(n.width),
+                    h = fmt(footer_h),
+                    x1 = fmt(cx - r),
+                    x2 = fmt(cx + r),
+                    y = fmt(cy + r),
+                    ty = fmt(actor_y + ((cy - actor_y + r - 5.0) / 2.0) + (footer_h / 2.0)),
+                    label = escape_xml(&actor.description)
+                );
+            }
+            _ => {}
+        }
+
+        let _ = actor_idx;
     }
 
     if let Some(title) = model.title.as_deref() {

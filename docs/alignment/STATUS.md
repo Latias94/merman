@@ -45,6 +45,10 @@ the dashed separators are extended by a tiny epsilon to avoid visible end gaps w
 exactly on the frame boundary.
 Recent progress: sequence headless layout now models notes and `rect` blocks as layout nodes (`note-*`, `rect-*`),
 so SVG viewBox/bounds can expand to match upstream baselines (e.g. left-of notes and nested rect blocks).
+Recent progress: sequence headless layout now models self-messages with `startx == stopx` and adds the extra
+vertical bump Mermaid applies for the loop curve; Stage B SVG renders self-messages as `<path>` and renders
+participant types (`boundary`, `control`, `entity`, `database`, `collections`, `queue`) with Mermaid-like DOM
+structure (the `participant_types` upstream baseline now matches in DOM parity mode).
 
 ## Alignment Sanity Checks
 

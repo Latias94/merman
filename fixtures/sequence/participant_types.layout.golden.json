@@ -4,7 +4,7 @@
     "SequenceDiagram": {
       "bounds": {
         "max_x": 1200.0,
-        "max_y": 205.0,
+        "max_y": 250.0,
         "min_x": -50.0,
         "min_y": -10.0
       },
@@ -20,7 +20,7 @@
           "label": {
             "height": 17.6,
             "width": 36.216,
-            "x": 73.5,
+            "x": 76.0,
             "y": 80.0
           },
           "points": [
@@ -29,7 +29,7 @@
               "y": 109.0
             },
             {
-              "x": 71.0,
+              "x": 76.0,
               "y": 109.0
             }
           ],
@@ -51,11 +51,11 @@
           "points": [
             {
               "x": 75.0,
-              "y": 65.0
+              "y": 80.0
             },
             {
               "x": 75.0,
-              "y": 129.0
+              "y": 159.0
             }
           ],
           "start_label_left": null,
@@ -76,11 +76,11 @@
           "points": [
             {
               "x": 275.0,
-              "y": 65.0
+              "y": 75.0
             },
             {
               "x": 275.0,
-              "y": 129.0
+              "y": 159.0
             }
           ],
           "start_label_left": null,
@@ -101,11 +101,11 @@
           "points": [
             {
               "x": 475.0,
-              "y": 65.0
+              "y": 75.0
             },
             {
               "x": 475.0,
-              "y": 129.0
+              "y": 159.0
             }
           ],
           "start_label_left": null,
@@ -126,11 +126,11 @@
           "points": [
             {
               "x": 675.0,
-              "y": 65.0
+              "y": 75.0
             },
             {
               "x": 675.0,
-              "y": 129.0
+              "y": 159.0
             }
           ],
           "start_label_left": null,
@@ -155,7 +155,7 @@
             },
             {
               "x": 875.0,
-              "y": 129.0
+              "y": 159.0
             }
           ],
           "start_label_left": null,
@@ -180,7 +180,7 @@
             },
             {
               "x": 1075.0,
-              "y": 129.0
+              "y": 159.0
             }
           ],
           "start_label_left": null,
@@ -193,28 +193,28 @@
       ],
       "nodes": [
         {
-          "height": 65.0,
+          "height": 80.0,
           "id": "actor-top-boundary",
           "is_cluster": false,
           "width": 150.0,
           "x": 75.0,
-          "y": 32.5
+          "y": 40.0
         },
         {
-          "height": 65.0,
+          "height": 76.0,
           "id": "actor-top-C",
           "is_cluster": false,
           "width": 150.0,
           "x": 275.0,
-          "y": 32.5
+          "y": 38.0
         },
         {
-          "height": 65.0,
+          "height": 56.0,
           "id": "actor-top-E",
           "is_cluster": false,
           "width": 150.0,
           "x": 475.0,
-          "y": 32.5
+          "y": 28.0
         },
         {
           "height": 65.0,
@@ -241,28 +241,28 @@
           "y": 32.5
         },
         {
-          "height": 65.0,
+          "height": 80.0,
           "id": "actor-bottom-boundary",
           "is_cluster": false,
           "width": 150.0,
           "x": 75.0,
-          "y": 161.5
+          "y": 199.0
         },
         {
-          "height": 65.0,
+          "height": 76.0,
           "id": "actor-bottom-C",
           "is_cluster": false,
           "width": 150.0,
           "x": 275.0,
-          "y": 161.5
+          "y": 197.0
         },
         {
-          "height": 65.0,
+          "height": 56.0,
           "id": "actor-bottom-E",
           "is_cluster": false,
           "width": 150.0,
           "x": 475.0,
-          "y": 161.5
+          "y": 187.0
         },
         {
           "height": 65.0,
@@ -270,7 +270,7 @@
           "is_cluster": false,
           "width": 150.0,
           "x": 675.0,
-          "y": 161.5
+          "y": 191.5
         },
         {
           "height": 65.0,
@@ -278,7 +278,7 @@
           "is_cluster": false,
           "width": 150.0,
           "x": 875.0,
-          "y": 161.5
+          "y": 191.5
         },
         {
           "height": 65.0,
@@ -286,7 +286,7 @@
           "is_cluster": false,
           "width": 150.0,
           "x": 1075.0,
-          "y": 161.5
+          "y": 191.5
         }
       ]
     }

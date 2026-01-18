@@ -58,6 +58,33 @@ fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
     cur.as_str().map(|s| s.to_string())
 }
 
+fn sequence_actor_visual_height(actor_type: &str, base_height: f64, label_box_height: f64) -> f64 {
+    match actor_type {
+        // Mermaid (11.12.2) derives these from the actor-type glyph bbox + label box height.
+        // These heights are used by the footer actor rendering and affect the final SVG viewBox.
+        "boundary" => (60.0 + label_box_height).max(1.0),
+        "entity" => (36.0 + label_box_height).max(1.0),
+        // Control uses an extra label-box height in Mermaid.
+        "control" => (36.0 + 2.0 * label_box_height).max(1.0),
+        _ => base_height.max(1.0),
+    }
+}
+
+fn sequence_actor_lifeline_start_y(
+    actor_type: &str,
+    base_height: f64,
+    box_text_margin: f64,
+) -> f64 {
+    match actor_type {
+        // Hard-coded in Mermaid's sequence svgDraw.js for these actor types.
+        "boundary" => 80.0,
+        "control" | "entity" => 75.0,
+        // For database, Mermaid starts the lifeline slightly below the actor box.
+        "database" => base_height + 2.0 * box_text_margin,
+        _ => base_height,
+    }
+}
+
 pub fn layout_sequence_diagram(
     semantic: &Value,
     effective_config: &Value,
@@ -74,6 +101,8 @@ pub fn layout_sequence_diagram(
     let actor_height = config_f64(seq_cfg, &["height"]).unwrap_or(65.0);
     let message_margin = config_f64(seq_cfg, &["messageMargin"]).unwrap_or(35.0);
     let wrap_padding = config_f64(seq_cfg, &["wrapPadding"]).unwrap_or(10.0);
+    let box_text_margin = config_f64(seq_cfg, &["boxTextMargin"]).unwrap_or(5.0);
+    let label_box_height = config_f64(seq_cfg, &["labelBoxHeight"]).unwrap_or(20.0);
 
     let message_font_family = config_string(seq_cfg, &["messageFontFamily"])
         .or_else(|| config_string(effective_config, &["fontFamily"]));
@@ -184,13 +213,19 @@ pub fn layout_sequence_diagram(
     for (idx, id) in model.actor_order.iter().enumerate() {
         let w = actor_widths[idx];
         let cx = actor_centers_x[idx];
-        let top_y = actor_height / 2.0;
+        let actor_type = model
+            .actors
+            .get(id)
+            .map(|a| a.actor_type.as_str())
+            .unwrap_or("participant");
+        let visual_h = sequence_actor_visual_height(actor_type, actor_height, label_box_height);
+        let top_y = visual_h / 2.0;
         nodes.push(LayoutNode {
             id: format!("actor-top-{id}"),
             x: cx,
             y: top_y,
             width: w,
-            height: actor_height,
+            height: visual_h,
             is_cluster: false,
         });
     }
@@ -357,7 +392,14 @@ pub fn layout_sequence_diagram(
 
         // These small offsets match Mermaid's default arrow rendering (marker-end).
         let x1 = from_x + sign * 1.0;
-        let x2 = to_x - sign * 4.0;
+        let is_self = from == to;
+        let x2 = if is_self {
+            // Mermaid uses `startx === stopx` to render self-messages as a `<path>` (curved or
+            // right-angled). Keep start/stop identical in layout so SVG can emit the correct DOM.
+            x1
+        } else {
+            to_x - sign * 4.0
+        };
         let y = cursor_y;
 
         let text = msg.message.as_str().unwrap_or_default();
@@ -399,6 +441,10 @@ pub fn layout_sequence_diagram(
         }
 
         cursor_y += message_step;
+        if is_self {
+            // Mermaid adds extra vertical space for self-messages to accommodate the loop curve.
+            cursor_y += 30.0;
+        }
     }
 
     let bottom_margin = message_margin - message_font_size + bottom_margin_adj;
@@ -406,12 +452,18 @@ pub fn layout_sequence_diagram(
     for (idx, id) in model.actor_order.iter().enumerate() {
         let w = actor_widths[idx];
         let cx = actor_centers_x[idx];
+        let actor_type = model
+            .actors
+            .get(id)
+            .map(|a| a.actor_type.as_str())
+            .unwrap_or("participant");
+        let visual_h = sequence_actor_visual_height(actor_type, actor_height, label_box_height);
         nodes.push(LayoutNode {
             id: format!("actor-bottom-{id}"),
             x: cx,
-            y: bottom_box_top_y + actor_height / 2.0,
+            y: bottom_box_top_y + visual_h / 2.0,
             width: w,
-            height: actor_height,
+            height: visual_h,
             is_cluster: false,
         });
 
@@ -424,7 +476,7 @@ pub fn layout_sequence_diagram(
             points: vec![
                 LayoutPoint {
                     x: cx,
-                    y: actor_height,
+                    y: sequence_actor_lifeline_start_y(actor_type, actor_height, box_text_margin),
                 },
                 LayoutPoint {
                     x: cx,
