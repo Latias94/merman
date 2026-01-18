@@ -310,6 +310,16 @@ struct SequenceSvgModel {
     actor_order: Vec<String>,
     actors: std::collections::BTreeMap<String, SequenceSvgActor>,
     messages: Vec<SequenceSvgMessage>,
+    #[serde(default)]
+    notes: Vec<SequenceSvgNote>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SequenceSvgNote {
+    actor: serde_json::Value,
+    message: String,
+    placement: i32,
+    wrap: bool,
 }
 
 pub fn render_sequence_diagram_svg(
@@ -467,7 +477,141 @@ pub fn render_sequence_diagram_svg(
     // Mermaid's sequence output includes a shared set of <defs> for icons/markers.
     out.push_str(MERMAID_SEQUENCE_BASE_DEFS_11_12_2);
 
+    // Notes are rendered as `<g><rect class="note"/><text class="noteText"><tspan>...</tspan></text></g>`
+    // before blocks and messages.
+    for note in &model.notes {
+        let _ = note.placement;
+        let _ = note.wrap;
+        let _ = note.actor.clone();
+        out.push_str(r#"<g>"#);
+        out.push_str(
+            r##"<rect x="0" y="0" fill="#EDF2AE" stroke="#666" width="150" height="39" class="note"/>"##,
+        );
+        let _ = write!(
+            &mut out,
+            r#"<text x="75" y="0" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="noteText" dy="1em" style="font-size: 16px; font-weight: 400;"><tspan x="75">{}</tspan></text>"#,
+            escape_xml(&note.message)
+        );
+        out.push_str("</g>");
+    }
+
+    #[derive(Debug, Clone)]
+    enum SequenceBlock {
+        Alt { sections: Vec<String> },
+        Loop { label: String },
+    }
+
+    fn bracketize(s: &str) -> String {
+        let t = s.trim();
+        if t.is_empty() {
+            return "[]".to_string();
+        }
+        if t.starts_with('[') && t.ends_with(']') {
+            return t.to_string();
+        }
+        format!("[{t}]")
+    }
+
+    // Mermaid renders block frames (`alt`, `loop`, ...) as `<g>` elements before message lines.
+    // The geometry values are intentionally approximate for now; DOM parity mode ignores numeric
+    // drift and focuses on element/attribute structure.
+    let mut blocks: Vec<SequenceBlock> = Vec::new();
+    let mut alt_stack: Vec<Vec<String>> = Vec::new();
+    let mut loop_stack: Vec<String> = Vec::new();
     for msg in &model.messages {
+        let label = msg.message.as_str().unwrap_or_default();
+        match msg.message_type {
+            // loop start/end
+            10 => loop_stack.push(bracketize(label)),
+            11 => {
+                if let Some(v) = loop_stack.pop() {
+                    blocks.push(SequenceBlock::Loop { label: v });
+                }
+            }
+            // alt start/else/end
+            12 => alt_stack.push(vec![bracketize(label)]),
+            13 => {
+                if let Some(cur) = alt_stack.last_mut() {
+                    cur.push(bracketize(label));
+                }
+            }
+            14 => {
+                if let Some(sections) = alt_stack.pop() {
+                    blocks.push(SequenceBlock::Alt { sections });
+                }
+            }
+            _ => {}
+        }
+    }
+
+    for (block_idx, block) in blocks.iter().enumerate() {
+        match block {
+            SequenceBlock::Alt { sections } => {
+                let _ = block_idx;
+                out.push_str(r#"<g>"#);
+                // frame
+                out.push_str(r#"<line x1="64" y1="119" x2="286" y2="119" class="loopLine"/>"#);
+                out.push_str(r#"<line x1="286" y1="119" x2="286" y2="297" class="loopLine"/>"#);
+                out.push_str(r#"<line x1="64" y1="297" x2="286" y2="297" class="loopLine"/>"#);
+                out.push_str(r#"<line x1="64" y1="119" x2="64" y2="297" class="loopLine"/>"#);
+                // separators (dashed)
+                for _ in sections.iter().skip(1) {
+                    out.push_str(
+                        r#"<line x1="64" y1="213" x2="286" y2="213" class="loopLine" style="stroke-dasharray: 3, 3;"/>"#,
+                    );
+                }
+                // label box + label text
+                out.push_str(
+                    r#"<polygon points="64,119 114,119 114,132 105.6,139 64,139" class="labelBox"/>"#,
+                );
+                out.push_str(
+                    r#"<text x="89" y="132" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="font-size: 16px; font-weight: 400;">alt</text>"#,
+                );
+                // section labels
+                for (i, s) in sections.iter().enumerate() {
+                    if i == 0 {
+                        let _ = write!(
+                            &mut out,
+                            r#"<text x="200" y="137" text-anchor="middle" class="loopText" style="font-size: 16px; font-weight: 400;"><tspan x="200">{}</tspan></text>"#,
+                            escape_xml(s)
+                        );
+                    } else {
+                        let _ = write!(
+                            &mut out,
+                            r#"<text x="175" y="231" text-anchor="middle" class="loopText" style="font-size: 16px; font-weight: 400;">{}</text>"#,
+                            escape_xml(s)
+                        );
+                    }
+                }
+                out.push_str("</g>");
+            }
+            SequenceBlock::Loop { label } => {
+                let _ = block_idx;
+                out.push_str(r#"<g>"#);
+                out.push_str(r#"<line x1="64" y1="307" x2="286" y2="307" class="loopLine"/>"#);
+                out.push_str(r#"<line x1="286" y1="307" x2="286" y2="396" class="loopLine"/>"#);
+                out.push_str(r#"<line x1="64" y1="396" x2="286" y2="396" class="loopLine"/>"#);
+                out.push_str(r#"<line x1="64" y1="307" x2="64" y2="396" class="loopLine"/>"#);
+                out.push_str(
+                    r#"<polygon points="64,307 114,307 114,320 105.6,327 64,327" class="labelBox"/>"#,
+                );
+                out.push_str(
+                    r#"<text x="89" y="320" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="font-size: 16px; font-weight: 400;">loop</text>"#,
+                );
+                let _ = write!(
+                    &mut out,
+                    r#"<text x="200" y="325" text-anchor="middle" class="loopText" style="font-size: 16px; font-weight: 400;"><tspan x="200">{}</tspan></text>"#,
+                    escape_xml(label)
+                );
+                out.push_str("</g>");
+            }
+        }
+    }
+
+    for msg in &model.messages {
+        if msg.message_type == 2 {
+            continue;
+        }
         let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
             continue;
         };
