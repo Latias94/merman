@@ -1163,9 +1163,10 @@ pub fn render_sequence_diagram_svg(
                     );
 
                     // separators (dashed)
-                    const DASH_EPS: f64 = 0.01;
-                    let dash_x1 = frame_x1 - DASH_EPS;
-                    let dash_x2 = frame_x2 + DASH_EPS;
+                    // Keep separator endpoints identical to the frame endpoints to match upstream
+                    // Mermaid output and avoid sub-pixel gaps at the frame border.
+                    let dash_x1 = frame_x1;
+                    let dash_x2 = frame_x2;
                     let mut section_max_ys: Vec<f64> = Vec::new();
                     for sec in sections {
                         let mut sec_max_y = f64::NEG_INFINITY;

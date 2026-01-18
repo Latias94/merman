@@ -41,8 +41,8 @@ Legend:
 Note: Sequence SVG Stage B is in progress; `xtask compare-sequence-svgs` is expected to report
 mismatches until the renderer reaches parity with upstream baselines.
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
-the dashed separators are extended by a tiny epsilon to avoid visible end gaps when the dash period lands
-exactly on the frame boundary.
+the dashed separators now use the exact same x-coordinates as the frame edges to match upstream SVG and
+avoid sub-pixel gaps at the frame border.
 Recent progress: sequence headless layout now models notes and `rect` blocks as layout nodes (`note-*`, `rect-*`),
 so SVG viewBox/bounds can expand to match upstream baselines (e.g. left-of notes and nested rect blocks).
 Recent progress: sequence headless layout now models self-messages with `startx == stopx` and adds the extra
