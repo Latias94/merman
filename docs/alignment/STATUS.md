@@ -49,6 +49,9 @@ Recent progress: sequence headless layout now models self-messages with `startx 
 vertical bump Mermaid applies for the loop curve; Stage B SVG renders self-messages as `<path>` and renders
 participant types (`boundary`, `control`, `entity`, `database`, `collections`, `queue`) with Mermaid-like DOM
 structure (the `participant_types` upstream baseline now matches in DOM parity mode).
+Recent progress: sequence Stage B now treats HTML `<br>` variants as line breaks in participant labels, notes,
+and message texts, matching upstream DOM structure in `html_br_variants_and_wrap`; empty message labels
+(trailing colon) now still produce a message text node like upstream.
 
 ## Alignment Sanity Checks
 

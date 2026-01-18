@@ -354,6 +354,12 @@ pub fn render_sequence_diagram_svg(
         .get("rightAngles")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
+    let actor_label_font_size = seq_cfg
+        .get("messageFontSize")
+        .and_then(|v| v.as_f64())
+        .or_else(|| effective_config.get("fontSize").and_then(|v| v.as_f64()))
+        .unwrap_or(16.0)
+        .max(1.0);
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
@@ -383,6 +389,62 @@ pub fn render_sequence_diagram_svg(
 
     fn node_left_top(n: &LayoutNode) -> (f64, f64) {
         (n.x - n.width / 2.0, n.y - n.height / 2.0)
+    }
+
+    fn split_html_br_lines(text: &str) -> Vec<&str> {
+        let b = text.as_bytes();
+        let mut parts: Vec<&str> = Vec::new();
+        let mut start = 0usize;
+        let mut i = 0usize;
+        while i + 3 < b.len() {
+            if b[i] != b'<' {
+                i += 1;
+                continue;
+            }
+            let b1 = b[i + 1];
+            let b2 = b[i + 2];
+            if !matches!(b1, b'b' | b'B') || !matches!(b2, b'r' | b'R') {
+                i += 1;
+                continue;
+            }
+            let mut j = i + 3;
+            while j < b.len() && matches!(b[j], b' ' | b'\t' | b'\r' | b'\n') {
+                j += 1;
+            }
+            if j < b.len() && b[j] == b'/' {
+                j += 1;
+            }
+            if j < b.len() && b[j] == b'>' {
+                parts.push(&text[start..i]);
+                start = j + 1;
+                i = start;
+                continue;
+            }
+            i += 1;
+        }
+        parts.push(&text[start..]);
+        parts
+    }
+
+    fn write_actor_label(out: &mut String, cx: f64, cy: f64, label: &str, font_size: f64) {
+        let lines = split_html_br_lines(label);
+        let n = lines.len().max(1) as f64;
+        for (i, line) in lines.into_iter().enumerate() {
+            let dy = if n <= 1.0 {
+                0.0
+            } else {
+                (i as f64 - (n - 1.0) / 2.0) * font_size
+            };
+            let _ = write!(
+                out,
+                r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: {fs}px; font-weight: 400;"><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
+                x = fmt(cx),
+                y = fmt(cy),
+                fs = fmt(font_size),
+                dy = fmt(dy),
+                text = escape_xml(line)
+            );
+        }
     }
 
     let mut out = String::new();
@@ -475,41 +537,65 @@ pub fn render_sequence_diagram_svg(
                 let front_y = y + OFFSET;
                 let cx = front_x + (n.width / 2.0);
                 let cy = front_y + (n.height / 2.0);
+                out.push_str("<g>");
                 let _ = write!(
                     &mut out,
-                    r##"<g><rect x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" class="actor actor-bottom"/><rect x="{sx}" y="{sy}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" class="actor"/><text x="{cx}" y="{cy}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+                    r##"<rect x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" class="actor actor-bottom"/>"##,
                     x = fmt(x),
                     y = fmt(y),
+                    w = fmt(n.width),
+                    h = fmt(n.height),
+                    name = escape_xml(actor_id)
+                );
+                let _ = write!(
+                    &mut out,
+                    r##"<rect x="{sx}" y="{sy}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" class="actor"/>"##,
                     sx = fmt(front_x),
                     sy = fmt(front_y),
                     w = fmt(n.width),
                     h = fmt(n.height),
-                    name = escape_xml(actor_id),
-                    cx = fmt(cx),
-                    cy = fmt(cy),
-                    label = escape_xml(&actor.description)
+                    name = escape_xml(actor_id)
                 );
+                write_actor_label(&mut out, cx, cy, &actor.description, actor_label_font_size);
+                out.push_str("</g>");
             }
             "queue" => {
                 let ry = n.height / 2.0;
                 let rx = ry / (2.5 + n.height / 50.0);
                 let body_w = n.width - 2.0 * rx;
                 let y_mid = y + ry;
+                out.push_str("<g>");
                 let _ = write!(
                     &mut out,
-                    r##"<g><g transform="translate({tx1}, {ty})"><path d="M {x},{y_mid} a {rx},{ry} 0 0 0 0,{h} h {body_w} a {rx},{ry} 0 0 0 0,-{h} Z" class="actor actor-bottom"/></g><g transform="translate({tx2}, {ty})"><path d="M {x},{y_mid} a {rx},{ry} 0 0 0 0,{h}" stroke="#666" stroke-width="1px" class="actor actor-bottom"/></g><text x="{cx}" y="{y_mid}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+                    r##"<g transform="translate({tx1}, {ty})"><path d="M {x},{y_mid} a {rx},{ry} 0 0 0 0,{h} h {body_w} a {rx},{ry} 0 0 0 0,-{h} Z" class="actor actor-bottom"/></g>"##,
                     tx1 = fmt(rx),
-                    tx2 = fmt(n.width - rx),
                     ty = fmt(-n.height / 2.0),
                     x = fmt(x),
                     y_mid = fmt(y_mid),
                     rx = fmt(rx),
                     ry = fmt(ry),
                     h = fmt(n.height),
-                    body_w = fmt(body_w),
-                    cx = fmt(n.x),
-                    label = escape_xml(&actor.description)
+                    body_w = fmt(body_w)
                 );
+                let _ = write!(
+                    &mut out,
+                    r##"<g transform="translate({tx2}, {ty})"><path d="M {x},{y_mid} a {rx},{ry} 0 0 0 0,{h}" stroke="#666" stroke-width="1px" class="actor actor-bottom"/></g>"##,
+                    tx2 = fmt(n.width - rx),
+                    ty = fmt(-n.height / 2.0),
+                    x = fmt(x),
+                    y_mid = fmt(y_mid),
+                    rx = fmt(rx),
+                    ry = fmt(ry),
+                    h = fmt(n.height)
+                );
+                write_actor_label(
+                    &mut out,
+                    n.x,
+                    y_mid,
+                    &actor.description,
+                    actor_label_font_size,
+                );
+                out.push_str("</g>");
             }
             "database" => {
                 // Mermaid's database actor uses a cylinder glyph and updates the actor height after
@@ -522,9 +608,10 @@ pub fn render_sequence_diagram_svg(
                 let tx = w * 1.5;
                 let ty = (footer_h / 4.0) - 2.0 * ry;
                 let y_text = y + ((footer_h + h) / 4.0) + (footer_h / 2.0);
+                out.push_str("<g>");
                 let _ = write!(
                     &mut out,
-                    r##"<g><g transform="translate({tx}, {ty})"><path d="M {x},{y1} a {rx},{ry} 0 0 0 {w},0 a {rx},{ry} 0 0 0 -{w},0 l 0,{h2} a {rx},{ry} 0 0 0 {w},0 l 0,-{h2}" fill="#eaeaea" stroke="#000" stroke-width="1" class="actor actor-bottom"/></g><text x="{cx}" y="{cy}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+                    r##"<g transform="translate({tx}, {ty})"><path d="M {x},{y1} a {rx},{ry} 0 0 0 {w},0 a {rx},{ry} 0 0 0 -{w},0 l 0,{h2} a {rx},{ry} 0 0 0 {w},0 l 0,-{h2}" fill="#eaeaea" stroke="#000" stroke-width="1" class="actor actor-bottom"/></g>"##,
                     tx = fmt(tx),
                     ty = fmt(ty),
                     x = fmt(x),
@@ -532,25 +619,36 @@ pub fn render_sequence_diagram_svg(
                     rx = fmt(rx),
                     ry = fmt(ry),
                     w = fmt(w),
-                    h2 = fmt(h - 2.0 * ry),
-                    cx = fmt(n.x),
-                    cy = fmt(y_text),
-                    label = escape_xml(&actor.description)
+                    h2 = fmt(h - 2.0 * ry)
                 );
+                write_actor_label(
+                    &mut out,
+                    n.x,
+                    y_text,
+                    &actor.description,
+                    actor_label_font_size,
+                );
+                out.push_str("</g>");
             }
             _ => {
+                out.push_str("<g>");
                 let _ = write!(
                     &mut out,
-                    r##"<g><rect x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" rx="3" ry="3" class="actor actor-bottom"/><text x="{cx}" y="{cy}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+                    r##"<rect x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" rx="3" ry="3" class="actor actor-bottom"/>"##,
                     x = fmt(x),
                     y = fmt(y),
                     w = fmt(n.width),
                     h = fmt(n.height),
-                    name = escape_xml(actor_id),
-                    cx = fmt(n.x),
-                    cy = fmt(n.y),
-                    label = escape_xml(&actor.description)
+                    name = escape_xml(actor_id)
                 );
+                write_actor_label(
+                    &mut out,
+                    n.x,
+                    n.y,
+                    &actor.description,
+                    actor_label_font_size,
+                );
+                out.push_str("</g>");
             }
         }
 
@@ -598,40 +696,56 @@ pub fn render_sequence_diagram_svg(
                 let front_y = top_y + OFFSET;
                 let cx = front_x + (top.width / 2.0);
                 let cy = front_y + (top.height / 2.0);
+                out.push_str("<g>");
                 let _ = write!(
                     &mut out,
-                    r##"<g><line id="actor{idx}" x1="{cx2}" y1="{y1}" x2="{cx2}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}"/><g id="root-{idx}"><rect x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" class="actor actor-top"/><rect x="{sx}" y="{sy}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" class="actor"/><text x="{tx}" y="{ty}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{tx}" dy="0">{label}</tspan></text></g></g>"##,
+                    r##"<line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}"/><g id="root-{idx}">"##,
                     idx = idx,
-                    cx2 = fmt(top.x),
+                    cx = fmt(top.x),
                     y1 = fmt(y1),
                     y2 = fmt(y2),
                     name = escape_xml(actor_id),
+                );
+                let _ = write!(
+                    &mut out,
+                    r##"<rect x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" class="actor actor-top"/>"##,
                     x = fmt(top_x),
                     y = fmt(top_y),
+                    w = fmt(top.width),
+                    h = fmt(top.height),
+                    name = escape_xml(actor_id),
+                );
+                let _ = write!(
+                    &mut out,
+                    r##"<rect x="{sx}" y="{sy}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" class="actor"/>"##,
                     sx = fmt(front_x),
                     sy = fmt(front_y),
                     w = fmt(top.width),
                     h = fmt(top.height),
-                    tx = fmt(cx),
-                    ty = fmt(cy),
-                    label = escape_xml(&actor.description)
+                    name = escape_xml(actor_id),
                 );
+                write_actor_label(&mut out, cx, cy, &actor.description, actor_label_font_size);
+                out.push_str("</g></g>");
             }
             "queue" => {
                 let ry = top.height / 2.0;
                 let rx = ry / (2.5 + top.height / 50.0);
                 let body_w = top.width - 2.0 * rx;
                 let y_mid = top_y + ry;
+                out.push_str("<g>");
                 let _ = write!(
                     &mut out,
-                    r##"<g><line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}"/><g id="root-{idx}"><g transform="translate({tx1}, {ty})"><path d="M {x},{y_mid} a {rx},{ry} 0 0 0 0,{h} h {body_w} a {rx},{ry} 0 0 0 0,-{h} Z" class="actor actor-top"/></g><g transform="translate({tx2}, {ty})"><path d="M {x},{y_mid} a {rx},{ry} 0 0 0 0,{h}" stroke="#666" stroke-width="1px" class="actor actor-top"/></g><text x="{cx}" y="{y_mid}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g></g>"##,
+                    r##"<line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}"/><g id="root-{idx}">"##,
                     idx = idx,
                     cx = fmt(top.x),
                     y1 = fmt(y1),
                     y2 = fmt(y2),
                     name = escape_xml(actor_id),
+                );
+                let _ = write!(
+                    &mut out,
+                    r##"<g transform="translate({tx1}, {ty})"><path d="M {x},{y_mid} a {rx},{ry} 0 0 0 0,{h} h {body_w} a {rx},{ry} 0 0 0 0,-{h} Z" class="actor actor-top"/></g>"##,
                     tx1 = fmt(rx),
-                    tx2 = fmt(top.width - rx),
                     ty = fmt(-top.height / 2.0),
                     x = fmt(top_x),
                     y_mid = fmt(y_mid),
@@ -639,8 +753,26 @@ pub fn render_sequence_diagram_svg(
                     ry = fmt(ry),
                     h = fmt(top.height),
                     body_w = fmt(body_w),
-                    label = escape_xml(&actor.description)
                 );
+                let _ = write!(
+                    &mut out,
+                    r##"<g transform="translate({tx2}, {ty})"><path d="M {x},{y_mid} a {rx},{ry} 0 0 0 0,{h}" stroke="#666" stroke-width="1px" class="actor actor-top"/></g>"##,
+                    tx2 = fmt(top.width - rx),
+                    ty = fmt(-top.height / 2.0),
+                    x = fmt(top_x),
+                    y_mid = fmt(y_mid),
+                    rx = fmt(rx),
+                    ry = fmt(ry),
+                    h = fmt(top.height),
+                );
+                write_actor_label(
+                    &mut out,
+                    top.x,
+                    y_mid,
+                    &actor.description,
+                    actor_label_font_size,
+                );
+                out.push_str("</g></g>");
             }
             "database" => {
                 let w = top.width / 4.0;
@@ -650,14 +782,19 @@ pub fn render_sequence_diagram_svg(
                 let tx = w * 1.5;
                 let ty = (actor_height + ry) / 4.0;
                 let y_text = top_y + actor_height + (ry / 2.0);
+                out.push_str("<g>");
                 let _ = write!(
                     &mut out,
-                    r##"<g><line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}"/><g id="root-{idx}"><g transform="translate({tx}, {ty})"><path d="M {x},{y1p} a {rx},{ry} 0 0 0 {w},0 a {rx},{ry} 0 0 0 -{w},0 l 0,{h2} a {rx},{ry} 0 0 0 {w},0 l 0,-{h2}" fill="#eaeaea" stroke="#000" stroke-width="1" class="actor actor-top"/></g><text x="{cx}" y="{cy}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g></g>"##,
+                    r##"<line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}"/><g id="root-{idx}">"##,
                     idx = idx,
                     cx = fmt(top.x),
                     y1 = fmt(y1),
                     y2 = fmt(y2),
                     name = escape_xml(actor_id),
+                );
+                let _ = write!(
+                    &mut out,
+                    r##"<g transform="translate({tx}, {ty})"><path d="M {x},{y1p} a {rx},{ry} 0 0 0 {w},0 a {rx},{ry} 0 0 0 -{w},0 l 0,{h2} a {rx},{ry} 0 0 0 {w},0 l 0,-{h2}" fill="#eaeaea" stroke="#000" stroke-width="1" class="actor actor-top"/></g>"##,
                     tx = fmt(tx),
                     ty = fmt(ty),
                     x = fmt(top_x),
@@ -666,26 +803,44 @@ pub fn render_sequence_diagram_svg(
                     ry = fmt(ry),
                     w = fmt(w),
                     h2 = fmt(h - 2.0 * ry),
-                    cy = fmt(y_text),
-                    label = escape_xml(&actor.description)
                 );
+                write_actor_label(
+                    &mut out,
+                    top.x,
+                    y_text,
+                    &actor.description,
+                    actor_label_font_size,
+                );
+                out.push_str("</g></g>");
             }
             _ => {
+                out.push_str("<g>");
                 let _ = write!(
                     &mut out,
-                    r##"<g><line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}"/><g id="root-{idx}"><rect x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" rx="3" ry="3" class="actor actor-top"/><text x="{cx}" y="{cy}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g></g>"##,
+                    r##"<line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}"/><g id="root-{idx}">"##,
                     idx = idx,
                     cx = fmt(top.x),
                     y1 = fmt(y1),
                     y2 = fmt(y2),
                     name = escape_xml(actor_id),
+                );
+                let _ = write!(
+                    &mut out,
+                    r##"<rect x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" rx="3" ry="3" class="actor actor-top"/>"##,
                     x = fmt(top_x),
                     y = fmt(top_y),
                     w = fmt(top.width),
                     h = fmt(top.height),
-                    cy = fmt(top.y),
-                    label = escape_xml(&actor.description)
+                    name = escape_xml(actor_id),
                 );
+                write_actor_label(
+                    &mut out,
+                    top.x,
+                    top.y,
+                    &actor.description,
+                    actor_label_font_size,
+                );
+                out.push_str("</g></g>");
             }
         }
     }
@@ -788,6 +943,7 @@ pub fn render_sequence_diagram_svg(
         let (x, y) = node_left_top(n);
         let cx = x + (n.width / 2.0);
         let text_y = y + 5.0;
+        let line_step = actor_label_font_size * 1.1875;
         out.push_str(r#"<g>"#);
         let _ = write!(
             &mut out,
@@ -797,13 +953,19 @@ pub fn render_sequence_diagram_svg(
             w = fmt(n.width),
             h = fmt(n.height)
         );
-        let _ = write!(
-            &mut out,
-            r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="noteText" dy="1em" style="font-size: 16px; font-weight: 400;"><tspan x="{x}">{text}</tspan></text>"#,
-            x = fmt(cx),
-            y = fmt(text_y),
-            text = escape_xml(msg.message.as_str().unwrap_or_default())
-        );
+        let raw = msg.message.as_str().unwrap_or_default();
+        let lines = split_html_br_lines(raw);
+        for (i, line) in lines.into_iter().enumerate() {
+            let y = text_y + (i as f64) * line_step;
+            let _ = write!(
+                &mut out,
+                r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="noteText" dy="1em" style="font-size: {fs}px; font-weight: 400;"><tspan x="{x}">{text}</tspan></text>"#,
+                x = fmt(cx),
+                y = fmt(y),
+                fs = fmt(actor_label_font_size),
+                text = escape_xml(line)
+            );
+        }
         out.push_str("</g>");
     }
 
@@ -1188,13 +1350,19 @@ pub fn render_sequence_diagram_svg(
 
         let text = msg.message.as_str().unwrap_or_default();
         if let Some(lbl) = &edge.label {
-            let _ = write!(
-                &mut out,
-                r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">{text}</text>"#,
-                x = fmt(lbl.x),
-                y = fmt(lbl.y),
-                text = escape_xml(text)
-            );
+            let line_step = actor_label_font_size * 1.1875;
+            let lines = split_html_br_lines(text);
+            for (i, line) in lines.into_iter().enumerate() {
+                let y = lbl.y + (i as f64) * line_step;
+                let _ = write!(
+                    &mut out,
+                    r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: {fs}px; font-weight: 400;">{text}</text>"#,
+                    x = fmt(lbl.x),
+                    y = fmt(y),
+                    fs = fmt(actor_label_font_size),
+                    text = escape_xml(line)
+                );
+            }
         }
 
         let p0 = &edge.points[0];

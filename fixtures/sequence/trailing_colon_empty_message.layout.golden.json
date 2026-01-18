@@ -17,7 +17,12 @@
           "from": "Alice",
           "from_cluster": null,
           "id": "msg-0",
-          "label": null,
+          "label": {
+            "height": 16.0,
+            "width": 1.0,
+            "x": 173.5,
+            "y": 80.0
+          },
           "points": [
             {
               "x": 76.0,

@@ -58,6 +58,68 @@ fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
     cur.as_str().map(|s| s.to_string())
 }
 
+fn split_html_br_lines(text: &str) -> Vec<&str> {
+    let b = text.as_bytes();
+    let mut parts: Vec<&str> = Vec::new();
+    let mut start = 0usize;
+    let mut i = 0usize;
+    while i + 3 < b.len() {
+        if b[i] != b'<' {
+            i += 1;
+            continue;
+        }
+        let b1 = b[i + 1];
+        let b2 = b[i + 2];
+        if !matches!(b1, b'b' | b'B') || !matches!(b2, b'r' | b'R') {
+            i += 1;
+            continue;
+        }
+        let mut j = i + 3;
+        while j < b.len() && matches!(b[j], b' ' | b'\t' | b'\r' | b'\n') {
+            j += 1;
+        }
+        if j < b.len() && b[j] == b'/' {
+            j += 1;
+        }
+        if j < b.len() && b[j] == b'>' {
+            parts.push(&text[start..i]);
+            start = j + 1;
+            i = start;
+            continue;
+        }
+        i += 1;
+    }
+    parts.push(&text[start..]);
+    parts
+}
+
+fn measure_svg_like_with_html_br(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    style: &TextStyle,
+) -> (f64, f64) {
+    let lines = split_html_br_lines(text);
+    let default_line_height = (style.font_size.max(1.0) * 1.1).max(1.0);
+    if lines.len() <= 1 {
+        let metrics = measurer.measure_wrapped(text, style, None, WrapMode::SvgLike);
+        return (
+            metrics.width.max(0.0),
+            metrics.height.max(default_line_height),
+        );
+    }
+    let mut max_w: f64 = 0.0;
+    let mut line_h: f64 = 0.0;
+    for line in &lines {
+        let metrics = measurer.measure_wrapped(line, style, None, WrapMode::SvgLike);
+        max_w = max_w.max(metrics.width.max(0.0));
+        line_h = line_h.max(metrics.height.max(default_line_height));
+    }
+    (
+        max_w,
+        (line_h * lines.len() as f64).max(default_line_height),
+    )
+}
+
 fn sequence_actor_visual_height(actor_type: &str, base_height: f64, label_box_height: f64) -> f64 {
     match actor_type {
         // Mermaid (11.12.2) derives these from the actor-type glyph bbox + label box height.
@@ -147,9 +209,8 @@ pub fn layout_sequence_diagram(
         let a = model.actors.get(id).ok_or_else(|| Error::InvalidModel {
             message: format!("missing actor {id}"),
         })?;
-        let metrics =
-            measurer.measure_wrapped(&a.description, &actor_text_style, None, WrapMode::SvgLike);
-        let w = (metrics.width + 2.0 * wrap_padding).max(actor_width_min);
+        let (w0, _h0) = measure_svg_like_with_html_br(measurer, &a.description, &actor_text_style);
+        let w = (w0 + 2.0 * wrap_padding).max(actor_width_min);
         actor_widths.push(w.max(1.0));
     }
 
@@ -180,8 +241,8 @@ pub fn layout_sequence_diagram(
             if text.is_empty() {
                 continue;
             }
-            let metrics = measurer.measure_wrapped(text, &msg_text_style, None, WrapMode::SvgLike);
-            max_label_w = max_label_w.max(metrics.width * message_width_scale);
+            let (w, _h) = measure_svg_like_with_html_br(measurer, text, &msg_text_style);
+            max_label_w = max_label_w.max(w * message_width_scale);
         }
 
         let required_gap = (max_label_w + 2.0 * wrap_padding).max(base_gap).round();
@@ -355,8 +416,8 @@ pub fn layout_sequence_diagram(
             };
 
             let text = msg.message.as_str().unwrap_or_default();
-            let metrics = measurer.measure_wrapped(text, &msg_text_style, None, WrapMode::SvgLike);
-            let note_h = (metrics.height + note_text_pad_total).max(1.0);
+            let (_w, h) = measure_svg_like_with_html_br(measurer, text, &msg_text_style);
+            let note_h = (h + note_text_pad_total).max(1.0);
             let note_y = cursor_y - note_top_offset;
 
             nodes.push(LayoutNode {
@@ -404,14 +465,21 @@ pub fn layout_sequence_diagram(
 
         let text = msg.message.as_str().unwrap_or_default();
         let label = if text.is_empty() {
-            None
-        } else {
-            let metrics = measurer.measure_wrapped(text, &msg_text_style, None, WrapMode::SvgLike);
+            // Mermaid renders an (empty) message text node even when the label is empty (e.g.
+            // trailing colon `Alice->Bob:`). Keep a placeholder label to preserve DOM structure.
             Some(LayoutLabel {
                 x: (x1 + x2) / 2.0,
                 y: y - msg_label_offset,
-                width: (metrics.width * message_width_scale).max(1.0),
-                height: metrics.height.max(1.0),
+                width: 1.0,
+                height: message_font_size.max(1.0),
+            })
+        } else {
+            let (w, h) = measure_svg_like_with_html_br(measurer, text, &msg_text_style);
+            Some(LayoutLabel {
+                x: (x1 + x2) / 2.0,
+                y: y - msg_label_offset,
+                width: (w * message_width_scale).max(1.0),
+                height: h.max(1.0),
             })
         };
 
