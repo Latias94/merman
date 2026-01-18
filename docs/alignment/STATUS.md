@@ -43,6 +43,8 @@ mismatches until the renderer reaches parity with upstream baselines.
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
 the dashed separators are extended by a tiny epsilon to avoid visible end gaps when the dash period lands
 exactly on the frame boundary.
+Recent progress: sequence headless layout now models notes and `rect` blocks as layout nodes (`note-*`, `rect-*`),
+so SVG viewBox/bounds can expand to match upstream baselines (e.g. left-of notes and nested rect blocks).
 
 ## Alignment Sanity Checks
 
