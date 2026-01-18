@@ -2,27 +2,95 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
-      "bounds": {
-        "max_x": 600.0,
-        "max_y": 401.0,
-        "min_x": -150.0,
-        "min_y": -10.0
-      },
-      "clusters": [],
+      "nodes": [
+        {
+          "id": "actor-top-Alice",
+          "x": 75.0,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-Bob",
+          "x": 275.0,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-Carl",
+          "x": 475.0,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "note-0",
+          "x": -25.0,
+          "y": 94.5,
+          "width": 150.0,
+          "height": 39.0,
+          "is_cluster": false
+        },
+        {
+          "id": "note-1",
+          "x": 375.0,
+          "y": 143.5,
+          "width": 150.0,
+          "height": 39.0,
+          "is_cluster": false
+        },
+        {
+          "id": "note-2",
+          "x": 475.0,
+          "y": 192.5,
+          "width": 150.0,
+          "height": 39.0,
+          "is_cluster": false
+        },
+        {
+          "id": "note-3",
+          "x": 175.0,
+          "y": 241.5,
+          "width": 250.0,
+          "height": 39.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-Alice",
+          "x": 75.0,
+          "y": 357.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-Bob",
+          "x": 275.0,
+          "y": 357.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-Carl",
+          "x": 475.0,
+          "y": 357.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        }
+      ],
       "edges": [
         {
-          "end_label_left": null,
-          "end_label_right": null,
-          "end_marker": null,
-          "from": "Alice",
-          "from_cluster": null,
           "id": "msg-4",
-          "label": {
-            "height": 17.6,
-            "width": 70.748,
-            "x": 173.5,
-            "y": 276.0
-          },
+          "from": "Alice",
+          "to": "Bob",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 76.0,
@@ -33,46 +101,51 @@
               "y": 305.0
             }
           ],
+          "label": {
+            "x": 173.5,
+            "y": 276.0,
+            "width": 70.748,
+            "height": 17.6
+          },
           "start_label_left": null,
           "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "Bob",
-          "to_cluster": null
-        },
-        {
           "end_label_left": null,
           "end_label_right": null,
+          "start_marker": null,
           "end_marker": null,
-          "from": "actor-top-Alice",
-          "from_cluster": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "lifeline-Alice",
-          "label": null,
-          "points": [
-            {
-              "x": 75.0,
-              "y": 65.0
-            },
-            {
-              "x": 75.0,
-              "y": 325.0
-            }
-          ],
-          "start_label_left": null,
-          "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
+          "from": "actor-top-Alice",
           "to": "actor-bottom-Alice",
-          "to_cluster": null
-        },
-        {
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 75.0,
+              "y": 65.0
+            },
+            {
+              "x": 75.0,
+              "y": 325.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
           "end_label_left": null,
           "end_label_right": null,
+          "start_marker": null,
           "end_marker": null,
-          "from": "actor-top-Bob",
-          "from_cluster": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "lifeline-Bob",
-          "label": null,
+          "from": "actor-top-Bob",
+          "to": "actor-bottom-Bob",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 275.0,
@@ -83,21 +156,21 @@
               "y": 325.0
             }
           ],
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "actor-bottom-Bob",
-          "to_cluster": null
-        },
-        {
           "end_label_left": null,
           "end_label_right": null,
+          "start_marker": null,
           "end_marker": null,
-          "from": "actor-top-Carl",
-          "from_cluster": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "lifeline-Carl",
-          "label": null,
+          "from": "actor-top-Carl",
+          "to": "actor-bottom-Carl",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 475.0,
@@ -108,96 +181,23 @@
               "y": 325.0
             }
           ],
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
           "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "actor-bottom-Carl",
-          "to_cluster": null
+          "end_marker": null,
+          "stroke_dasharray": null
         }
       ],
-      "nodes": [
-        {
-          "height": 65.0,
-          "id": "actor-top-Alice",
-          "is_cluster": false,
-          "width": 150.0,
-          "x": 75.0,
-          "y": 32.5
-        },
-        {
-          "height": 65.0,
-          "id": "actor-top-Bob",
-          "is_cluster": false,
-          "width": 150.0,
-          "x": 275.0,
-          "y": 32.5
-        },
-        {
-          "height": 65.0,
-          "id": "actor-top-Carl",
-          "is_cluster": false,
-          "width": 150.0,
-          "x": 475.0,
-          "y": 32.5
-        },
-        {
-          "height": 39.0,
-          "id": "note-0",
-          "is_cluster": false,
-          "width": 150.0,
-          "x": -25.0,
-          "y": 94.5
-        },
-        {
-          "height": 39.0,
-          "id": "note-1",
-          "is_cluster": false,
-          "width": 150.0,
-          "x": 375.0,
-          "y": 143.5
-        },
-        {
-          "height": 39.0,
-          "id": "note-2",
-          "is_cluster": false,
-          "width": 150.0,
-          "x": 475.0,
-          "y": 192.5
-        },
-        {
-          "height": 39.0,
-          "id": "note-3",
-          "is_cluster": false,
-          "width": 250.0,
-          "x": 175.0,
-          "y": 241.5
-        },
-        {
-          "height": 65.0,
-          "id": "actor-bottom-Alice",
-          "is_cluster": false,
-          "width": 150.0,
-          "x": 75.0,
-          "y": 357.5
-        },
-        {
-          "height": 65.0,
-          "id": "actor-bottom-Bob",
-          "is_cluster": false,
-          "width": 150.0,
-          "x": 275.0,
-          "y": 357.5
-        },
-        {
-          "height": 65.0,
-          "id": "actor-bottom-Carl",
-          "is_cluster": false,
-          "width": 150.0,
-          "x": 475.0,
-          "y": 357.5
-        }
-      ]
+      "clusters": [],
+      "bounds": {
+        "min_x": -150.0,
+        "min_y": -10.0,
+        "max_x": 600.0,
+        "max_y": 401.0
+      }
     }
   }
 }

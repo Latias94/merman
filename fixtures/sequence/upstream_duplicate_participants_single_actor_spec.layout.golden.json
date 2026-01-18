@@ -2,22 +2,31 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
-      "bounds": {
-        "max_x": 200.0,
-        "max_y": 161.0,
-        "min_x": -50.0,
-        "min_y": -10.0
-      },
-      "clusters": [],
+      "nodes": [
+        {
+          "id": "actor-top-Alice",
+          "x": 75.0,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-Alice",
+          "x": 75.0,
+          "y": 117.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        }
+      ],
       "edges": [
         {
-          "end_label_left": null,
-          "end_label_right": null,
-          "end_marker": null,
-          "from": "actor-top-Alice",
-          "from_cluster": null,
           "id": "lifeline-Alice",
-          "label": null,
+          "from": "actor-top-Alice",
+          "to": "actor-bottom-Alice",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 75.0,
@@ -28,32 +37,23 @@
               "y": 85.0
             }
           ],
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
           "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "actor-bottom-Alice",
-          "to_cluster": null
+          "end_marker": null,
+          "stroke_dasharray": null
         }
       ],
-      "nodes": [
-        {
-          "height": 65.0,
-          "id": "actor-top-Alice",
-          "is_cluster": false,
-          "width": 150.0,
-          "x": 75.0,
-          "y": 32.5
-        },
-        {
-          "height": 65.0,
-          "id": "actor-bottom-Alice",
-          "is_cluster": false,
-          "width": 150.0,
-          "x": 75.0,
-          "y": 117.5
-        }
-      ]
+      "clusters": [],
+      "bounds": {
+        "min_x": -50.0,
+        "min_y": -10.0,
+        "max_x": 200.0,
+        "max_y": 161.0
+      }
     }
   }
 }

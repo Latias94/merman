@@ -2,112 +2,137 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
-      "bounds": {
-        "max_x": 400.0,
-        "max_y": 353.0,
-        "min_x": -50.0,
-        "min_y": -10.0
-      },
-      "clusters": [],
+      "nodes": [
+        {
+          "id": "actor-top-Service",
+          "x": 75.0,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-DB",
+          "x": 275.0,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-Service",
+          "x": 75.0,
+          "y": 468.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-DB",
+          "x": 275.0,
+          "y": 468.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        }
+      ],
       "edges": [
         {
-          "end_label_left": null,
-          "end_label_right": null,
-          "end_marker": null,
-          "from": "Service",
-          "from_cluster": null,
           "id": "msg-1",
-          "label": {
-            "height": 17.6,
-            "width": 63.379,
-            "x": 173.5,
-            "y": 80.0
-          },
+          "from": "Service",
+          "to": "DB",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 76.0,
-              "y": 109.0
+              "y": 168.0
             },
             {
               "x": 271.0,
-              "y": 109.0
+              "y": 168.0
             }
           ],
+          "label": {
+            "x": 173.5,
+            "y": 139.0,
+            "width": 63.379,
+            "height": 17.6
+          },
           "start_label_left": null,
           "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "DB",
-          "to_cluster": null
-        },
-        {
           "end_label_left": null,
           "end_label_right": null,
+          "start_marker": null,
           "end_marker": null,
-          "from": "Service",
-          "from_cluster": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "msg-3",
-          "label": {
-            "height": 17.6,
-            "width": 82.961,
-            "x": 76.0,
-            "y": 124.0
-          },
-          "points": [
-            {
-              "x": 76.0,
-              "y": 153.0
-            },
-            {
-              "x": 76.0,
-              "y": 153.0
-            }
-          ],
-          "start_label_left": null,
-          "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "Service",
-          "to_cluster": null
-        },
-        {
-          "end_label_left": null,
-          "end_label_right": null,
-          "end_marker": null,
           "from": "Service",
-          "from_cluster": null,
-          "id": "msg-5",
-          "label": {
-            "height": 17.6,
-            "width": 168.237,
-            "x": 76.0,
-            "y": 198.0
-          },
-          "points": [
-            {
-              "x": 76.0,
-              "y": 227.0
-            },
-            {
-              "x": 76.0,
-              "y": 227.0
-            }
-          ],
-          "start_label_left": null,
-          "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
           "to": "Service",
-          "to_cluster": null
-        },
-        {
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 76.0,
+              "y": 257.0
+            },
+            {
+              "x": 76.0,
+              "y": 257.0
+            }
+          ],
+          "label": {
+            "x": 76.0,
+            "y": 228.0,
+            "width": 82.961,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
           "end_label_left": null,
           "end_label_right": null,
+          "start_marker": null,
           "end_marker": null,
-          "from": "actor-top-Service",
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-5",
+          "from": "Service",
+          "to": "Service",
           "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 76.0,
+              "y": 376.0
+            },
+            {
+              "x": 76.0,
+              "y": 376.0
+            }
+          ],
+          "label": {
+            "x": 76.0,
+            "y": 347.0,
+            "width": 168.237,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "lifeline-Service",
-          "label": null,
+          "from": "actor-top-Service",
+          "to": "actor-bottom-Service",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 75.0,
@@ -115,24 +140,24 @@
             },
             {
               "x": 75.0,
-              "y": 277.0
+              "y": 436.0
             }
           ],
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "actor-bottom-Service",
-          "to_cluster": null
-        },
-        {
           "end_label_left": null,
           "end_label_right": null,
+          "start_marker": null,
           "end_marker": null,
-          "from": "actor-top-DB",
-          "from_cluster": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "lifeline-DB",
-          "label": null,
+          "from": "actor-top-DB",
+          "to": "actor-bottom-DB",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 275.0,
@@ -140,51 +165,26 @@
             },
             {
               "x": 275.0,
-              "y": 277.0
+              "y": 436.0
             }
           ],
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
           "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "actor-bottom-DB",
-          "to_cluster": null
+          "end_marker": null,
+          "stroke_dasharray": null
         }
       ],
-      "nodes": [
-        {
-          "height": 65.0,
-          "id": "actor-top-Service",
-          "is_cluster": false,
-          "width": 150.0,
-          "x": 75.0,
-          "y": 32.5
-        },
-        {
-          "height": 65.0,
-          "id": "actor-top-DB",
-          "is_cluster": false,
-          "width": 150.0,
-          "x": 275.0,
-          "y": 32.5
-        },
-        {
-          "height": 65.0,
-          "id": "actor-bottom-Service",
-          "is_cluster": false,
-          "width": 150.0,
-          "x": 75.0,
-          "y": 309.5
-        },
-        {
-          "height": 65.0,
-          "id": "actor-bottom-DB",
-          "is_cluster": false,
-          "width": 150.0,
-          "x": 275.0,
-          "y": 309.5
-        }
-      ]
+      "clusters": [],
+      "bounds": {
+        "min_x": -50.0,
+        "min_y": -10.0,
+        "max_x": 400.0,
+        "max_y": 512.0
+      }
     }
   }
 }

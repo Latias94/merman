@@ -297,6 +297,531 @@ pub fn layout_sequence_diagram(
         actor_index.insert(id.as_str(), i);
     }
 
+    fn bracketize(s: &str) -> String {
+        let t = s.trim();
+        if t.is_empty() {
+            return "\u{200B}".to_string();
+        }
+        if t.starts_with('[') && t.ends_with(']') {
+            return t.to_string();
+        }
+        format!("[{t}]")
+    }
+
+    fn block_label_text(raw_label: &str) -> String {
+        bracketize(raw_label)
+    }
+
+    // Mermaid advances the "cursor" for sequence blocks (loop/alt/opt/par/break/critical) even
+    // though these directives are not message edges. The cursor increment depends on the wrapped
+    // block label height; precompute these increments per directive message id.
+    let block_base_step = message_step + bottom_margin_adj;
+    let line_step = message_font_size * 1.1875;
+    let block_extra_per_line = (line_step - box_text_margin).max(0.0);
+    let block_end_step = 10.0;
+
+    let mut msg_by_id: std::collections::HashMap<&str, &SequenceMessage> =
+        std::collections::HashMap::new();
+    for msg in &model.messages {
+        msg_by_id.insert(msg.id.as_str(), msg);
+    }
+
+    fn message_span_x(
+        msg: &SequenceMessage,
+        actor_index: &std::collections::HashMap<&str, usize>,
+        actor_centers_x: &[f64],
+        measurer: &dyn TextMeasurer,
+        msg_text_style: &TextStyle,
+        message_width_scale: f64,
+    ) -> Option<(f64, f64)> {
+        let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
+            return None;
+        };
+        let (Some(fi), Some(ti)) = (actor_index.get(from).copied(), actor_index.get(to).copied())
+        else {
+            return None;
+        };
+        let from_x = actor_centers_x[fi];
+        let to_x = actor_centers_x[ti];
+        let sign = if to_x >= from_x { 1.0 } else { -1.0 };
+        let x1 = from_x + sign * 1.0;
+        let x2 = if from == to { x1 } else { to_x - sign * 4.0 };
+        let cx = (x1 + x2) / 2.0;
+
+        let text = msg.message.as_str().unwrap_or_default();
+        let w = if text.is_empty() {
+            1.0
+        } else {
+            let (w, _h) = measure_svg_like_with_html_br(measurer, text, msg_text_style);
+            (w * message_width_scale).max(1.0)
+        };
+        Some((cx - w / 2.0, cx + w / 2.0))
+    }
+
+    fn block_frame_width(
+        message_ids: &[String],
+        msg_by_id: &std::collections::HashMap<&str, &SequenceMessage>,
+        actor_index: &std::collections::HashMap<&str, usize>,
+        actor_centers_x: &[f64],
+        actor_widths: &[f64],
+        message_margin: f64,
+        box_text_margin: f64,
+        bottom_margin_adj: f64,
+        measurer: &dyn TextMeasurer,
+        msg_text_style: &TextStyle,
+        message_width_scale: f64,
+    ) -> Option<f64> {
+        let mut actor_idxs: Vec<usize> = Vec::new();
+        for msg_id in message_ids {
+            let Some(msg) = msg_by_id.get(msg_id.as_str()).copied() else {
+                continue;
+            };
+            let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
+                continue;
+            };
+            if let Some(i) = actor_index.get(from).copied() {
+                actor_idxs.push(i);
+            }
+            if let Some(i) = actor_index.get(to).copied() {
+                actor_idxs.push(i);
+            }
+        }
+        actor_idxs.sort();
+        actor_idxs.dedup();
+        if actor_idxs.is_empty() {
+            return None;
+        }
+
+        if actor_idxs.len() == 1 {
+            let i = actor_idxs[0];
+            let actor_w = actor_widths.get(i).copied().unwrap_or(150.0);
+            let center_x = message_ids
+                .iter()
+                .find_map(|id| {
+                    let msg = msg_by_id.get(id.as_str()).copied()?;
+                    let (l, r) = message_span_x(
+                        msg,
+                        actor_index,
+                        actor_centers_x,
+                        measurer,
+                        msg_text_style,
+                        message_width_scale,
+                    )?;
+                    Some((l + r) / 2.0)
+                })
+                .unwrap_or(actor_centers_x[i] + 1.0);
+
+            let half_width =
+                actor_w / 2.0 + (message_margin / 2.0) + box_text_margin + bottom_margin_adj;
+            let w = (2.0 * half_width).max(1.0);
+            return Some(w);
+        }
+
+        let min_i = actor_idxs.first().copied()?;
+        let max_i = actor_idxs.last().copied()?;
+        let mut x1 = actor_centers_x[min_i] - 11.0;
+        let mut x2 = actor_centers_x[max_i] + 11.0;
+
+        // Expand multi-actor blocks to include overflowing message labels (e.g. long self messages).
+        for msg_id in message_ids {
+            let Some(msg) = msg_by_id.get(msg_id.as_str()).copied() else {
+                continue;
+            };
+            let Some((l, r)) = message_span_x(
+                msg,
+                actor_index,
+                actor_centers_x,
+                measurer,
+                msg_text_style,
+                message_width_scale,
+            ) else {
+                continue;
+            };
+            if l < x1 {
+                x1 = l.floor();
+            }
+            if r > x2 {
+                x2 = r.ceil();
+            }
+        }
+
+        Some((x2 - x1).max(1.0))
+    }
+
+    #[derive(Debug, Clone)]
+    enum BlockStackEntry {
+        Loop {
+            start_id: String,
+            raw_label: String,
+            messages: Vec<String>,
+        },
+        Opt {
+            start_id: String,
+            raw_label: String,
+            messages: Vec<String>,
+        },
+        Break {
+            start_id: String,
+            raw_label: String,
+            messages: Vec<String>,
+        },
+        Alt {
+            section_directives: Vec<(String, String)>,
+            sections: Vec<Vec<String>>,
+        },
+        Par {
+            section_directives: Vec<(String, String)>,
+            sections: Vec<Vec<String>>,
+        },
+        Critical {
+            section_directives: Vec<(String, String)>,
+            sections: Vec<Vec<String>>,
+        },
+    }
+
+    let mut directive_steps: std::collections::HashMap<String, f64> =
+        std::collections::HashMap::new();
+    let mut stack: Vec<BlockStackEntry> = Vec::new();
+    for msg in &model.messages {
+        let raw_label = msg.message.as_str().unwrap_or_default();
+        match msg.message_type {
+            // loop start/end
+            10 => stack.push(BlockStackEntry::Loop {
+                start_id: msg.id.clone(),
+                raw_label: raw_label.to_string(),
+                messages: Vec::new(),
+            }),
+            11 => {
+                if let Some(BlockStackEntry::Loop {
+                    start_id,
+                    raw_label,
+                    messages,
+                }) = stack.pop()
+                {
+                    if let Some(w) = block_frame_width(
+                        &messages,
+                        &msg_by_id,
+                        &actor_index,
+                        &actor_centers_x,
+                        &actor_widths,
+                        message_margin,
+                        box_text_margin,
+                        bottom_margin_adj,
+                        measurer,
+                        &msg_text_style,
+                        message_width_scale,
+                    ) {
+                        let label = block_label_text(&raw_label);
+                        let metrics = measurer.measure_wrapped(
+                            &label,
+                            &msg_text_style,
+                            Some(w),
+                            WrapMode::SvgLike,
+                        );
+                        let extra =
+                            (metrics.line_count.saturating_sub(1) as f64) * block_extra_per_line;
+                        directive_steps.insert(start_id, block_base_step + extra);
+                    } else {
+                        directive_steps.insert(start_id, block_base_step);
+                    }
+                }
+                directive_steps.insert(msg.id.clone(), block_end_step);
+            }
+            // opt start/end
+            15 => stack.push(BlockStackEntry::Opt {
+                start_id: msg.id.clone(),
+                raw_label: raw_label.to_string(),
+                messages: Vec::new(),
+            }),
+            16 => {
+                if let Some(BlockStackEntry::Opt {
+                    start_id,
+                    raw_label,
+                    messages,
+                }) = stack.pop()
+                {
+                    if let Some(w) = block_frame_width(
+                        &messages,
+                        &msg_by_id,
+                        &actor_index,
+                        &actor_centers_x,
+                        &actor_widths,
+                        message_margin,
+                        box_text_margin,
+                        bottom_margin_adj,
+                        measurer,
+                        &msg_text_style,
+                        message_width_scale,
+                    ) {
+                        let label = block_label_text(&raw_label);
+                        let metrics = measurer.measure_wrapped(
+                            &label,
+                            &msg_text_style,
+                            Some(w),
+                            WrapMode::SvgLike,
+                        );
+                        let extra =
+                            (metrics.line_count.saturating_sub(1) as f64) * block_extra_per_line;
+                        directive_steps.insert(start_id, block_base_step + extra);
+                    } else {
+                        directive_steps.insert(start_id, block_base_step);
+                    }
+                }
+                directive_steps.insert(msg.id.clone(), block_end_step);
+            }
+            // break start/end
+            30 => stack.push(BlockStackEntry::Break {
+                start_id: msg.id.clone(),
+                raw_label: raw_label.to_string(),
+                messages: Vec::new(),
+            }),
+            31 => {
+                if let Some(BlockStackEntry::Break {
+                    start_id,
+                    raw_label,
+                    messages,
+                }) = stack.pop()
+                {
+                    if let Some(w) = block_frame_width(
+                        &messages,
+                        &msg_by_id,
+                        &actor_index,
+                        &actor_centers_x,
+                        &actor_widths,
+                        message_margin,
+                        box_text_margin,
+                        bottom_margin_adj,
+                        measurer,
+                        &msg_text_style,
+                        message_width_scale,
+                    ) {
+                        let label = block_label_text(&raw_label);
+                        let metrics = measurer.measure_wrapped(
+                            &label,
+                            &msg_text_style,
+                            Some(w),
+                            WrapMode::SvgLike,
+                        );
+                        let extra =
+                            (metrics.line_count.saturating_sub(1) as f64) * block_extra_per_line;
+                        directive_steps.insert(start_id, block_base_step + extra);
+                    } else {
+                        directive_steps.insert(start_id, block_base_step);
+                    }
+                }
+                directive_steps.insert(msg.id.clone(), block_end_step);
+            }
+            // alt start/else/end
+            12 => stack.push(BlockStackEntry::Alt {
+                section_directives: vec![(msg.id.clone(), raw_label.to_string())],
+                sections: vec![Vec::new()],
+            }),
+            13 => {
+                if let Some(BlockStackEntry::Alt {
+                    section_directives,
+                    sections,
+                }) = stack.last_mut()
+                {
+                    section_directives.push((msg.id.clone(), raw_label.to_string()));
+                    sections.push(Vec::new());
+                }
+            }
+            14 => {
+                if let Some(BlockStackEntry::Alt {
+                    section_directives,
+                    sections,
+                }) = stack.pop()
+                {
+                    let mut message_ids: Vec<String> = Vec::new();
+                    for sec in &sections {
+                        message_ids.extend(sec.iter().cloned());
+                    }
+                    if let Some(w) = block_frame_width(
+                        &message_ids,
+                        &msg_by_id,
+                        &actor_index,
+                        &actor_centers_x,
+                        &actor_widths,
+                        message_margin,
+                        box_text_margin,
+                        bottom_margin_adj,
+                        measurer,
+                        &msg_text_style,
+                        message_width_scale,
+                    ) {
+                        for (idx, (id, raw)) in section_directives.into_iter().enumerate() {
+                            let label = if raw.trim().is_empty() && idx != 0 {
+                                "\u{200B}".to_string()
+                            } else {
+                                block_label_text(&raw)
+                            };
+                            let metrics = measurer.measure_wrapped(
+                                &label,
+                                &msg_text_style,
+                                Some(w),
+                                WrapMode::SvgLike,
+                            );
+                            let extra = (metrics.line_count.saturating_sub(1) as f64)
+                                * block_extra_per_line;
+                            directive_steps.insert(id, block_base_step + extra);
+                        }
+                    } else {
+                        for (id, _raw) in section_directives {
+                            directive_steps.insert(id, block_base_step);
+                        }
+                    }
+                }
+                directive_steps.insert(msg.id.clone(), block_end_step);
+            }
+            // par start/and/end
+            19 | 32 => stack.push(BlockStackEntry::Par {
+                section_directives: vec![(msg.id.clone(), raw_label.to_string())],
+                sections: vec![Vec::new()],
+            }),
+            20 => {
+                if let Some(BlockStackEntry::Par {
+                    section_directives,
+                    sections,
+                }) = stack.last_mut()
+                {
+                    section_directives.push((msg.id.clone(), raw_label.to_string()));
+                    sections.push(Vec::new());
+                }
+            }
+            21 => {
+                if let Some(BlockStackEntry::Par {
+                    section_directives,
+                    sections,
+                }) = stack.pop()
+                {
+                    let mut message_ids: Vec<String> = Vec::new();
+                    for sec in &sections {
+                        message_ids.extend(sec.iter().cloned());
+                    }
+                    if let Some(w) = block_frame_width(
+                        &message_ids,
+                        &msg_by_id,
+                        &actor_index,
+                        &actor_centers_x,
+                        &actor_widths,
+                        message_margin,
+                        box_text_margin,
+                        bottom_margin_adj,
+                        measurer,
+                        &msg_text_style,
+                        message_width_scale,
+                    ) {
+                        for (idx, (id, raw)) in section_directives.into_iter().enumerate() {
+                            let label = if raw.trim().is_empty() && idx != 0 {
+                                "\u{200B}".to_string()
+                            } else {
+                                block_label_text(&raw)
+                            };
+                            let metrics = measurer.measure_wrapped(
+                                &label,
+                                &msg_text_style,
+                                Some(w),
+                                WrapMode::SvgLike,
+                            );
+                            let extra = (metrics.line_count.saturating_sub(1) as f64)
+                                * block_extra_per_line;
+                            directive_steps.insert(id, block_base_step + extra);
+                        }
+                    } else {
+                        for (id, _raw) in section_directives {
+                            directive_steps.insert(id, block_base_step);
+                        }
+                    }
+                }
+                directive_steps.insert(msg.id.clone(), block_end_step);
+            }
+            // critical start/option/end
+            27 => stack.push(BlockStackEntry::Critical {
+                section_directives: vec![(msg.id.clone(), raw_label.to_string())],
+                sections: vec![Vec::new()],
+            }),
+            28 => {
+                if let Some(BlockStackEntry::Critical {
+                    section_directives,
+                    sections,
+                }) = stack.last_mut()
+                {
+                    section_directives.push((msg.id.clone(), raw_label.to_string()));
+                    sections.push(Vec::new());
+                }
+            }
+            29 => {
+                if let Some(BlockStackEntry::Critical {
+                    section_directives,
+                    sections,
+                }) = stack.pop()
+                {
+                    let mut message_ids: Vec<String> = Vec::new();
+                    for sec in &sections {
+                        message_ids.extend(sec.iter().cloned());
+                    }
+                    if let Some(w) = block_frame_width(
+                        &message_ids,
+                        &msg_by_id,
+                        &actor_index,
+                        &actor_centers_x,
+                        &actor_widths,
+                        message_margin,
+                        box_text_margin,
+                        bottom_margin_adj,
+                        measurer,
+                        &msg_text_style,
+                        message_width_scale,
+                    ) {
+                        for (idx, (id, raw)) in section_directives.into_iter().enumerate() {
+                            let label = if raw.trim().is_empty() && idx != 0 {
+                                "\u{200B}".to_string()
+                            } else {
+                                block_label_text(&raw)
+                            };
+                            let metrics = measurer.measure_wrapped(
+                                &label,
+                                &msg_text_style,
+                                Some(w),
+                                WrapMode::SvgLike,
+                            );
+                            let extra = (metrics.line_count.saturating_sub(1) as f64)
+                                * block_extra_per_line;
+                            directive_steps.insert(id, block_base_step + extra);
+                        }
+                    } else {
+                        for (id, _raw) in section_directives {
+                            directive_steps.insert(id, block_base_step);
+                        }
+                    }
+                }
+                directive_steps.insert(msg.id.clone(), block_end_step);
+            }
+            _ => {
+                // If this is a "real" message edge, attach it to all active block scopes so block
+                // width computations can account for overflowing message labels.
+                if msg.from.is_some() && msg.to.is_some() {
+                    for entry in stack.iter_mut() {
+                        match entry {
+                            BlockStackEntry::Alt { sections, .. }
+                            | BlockStackEntry::Par { sections, .. }
+                            | BlockStackEntry::Critical { sections, .. } => {
+                                if let Some(cur) = sections.last_mut() {
+                                    cur.push(msg.id.clone());
+                                }
+                            }
+                            BlockStackEntry::Loop { messages, .. }
+                            | BlockStackEntry::Opt { messages, .. }
+                            | BlockStackEntry::Break { messages, .. } => {
+                                messages.push(msg.id.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     #[derive(Debug, Clone)]
     struct RectOpen {
         start_id: String,
@@ -320,6 +845,10 @@ pub fn layout_sequence_diagram(
     let mut rect_stack: Vec<RectOpen> = Vec::new();
 
     for msg in &model.messages {
+        if let Some(step) = directive_steps.get(msg.id.as_str()).copied() {
+            cursor_y += step;
+            continue;
+        }
         match msg.message_type {
             // rect start: advances cursor but draws later as a background `<rect>`.
             22 => {
