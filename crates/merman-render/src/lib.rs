@@ -5,6 +5,7 @@ pub mod er;
 pub mod flowchart;
 pub mod info;
 pub mod model;
+pub mod packet;
 pub mod pie;
 pub mod sequence;
 pub mod state;
@@ -73,6 +74,11 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
             options.text_measurer.as_ref(),
         )?),
         "info" => LayoutDiagram::InfoDiagram(info::layout_info_diagram(
+            &parsed.model,
+            &meta.effective_config,
+            options.text_measurer.as_ref(),
+        )?),
+        "packet" => LayoutDiagram::PacketDiagram(packet::layout_packet_diagram(
             &parsed.model,
             &meta.effective_config,
             options.text_measurer.as_ref(),

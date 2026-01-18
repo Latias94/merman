@@ -78,6 +78,14 @@ Outputs to:
 
 - `fixtures/upstream-svgs/pie/*.svg`
 
+## Generate (Packet)
+
+- `cargo run -p xtask -- gen-upstream-svgs --diagram packet`
+
+Outputs to:
+
+- `fixtures/upstream-svgs/packet/*.svg`
+
 ## Generate (All supported diagrams)
 
 - `cargo run -p xtask -- gen-upstream-svgs --diagram all`
@@ -205,6 +213,12 @@ Generate a report comparing upstream info SVGs and the current Rust Stage-B info
 Generate a report comparing upstream pie SVGs and the current Rust Stage-B pie output:
 
 - `cargo run -p xtask -- compare-pie-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
+## Compare (Packet)
+
+Generate a report comparing upstream packet SVGs and the current Rust Stage-B packet output:
+
+- `cargo run -p xtask -- compare-packet-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 ## Notes
 

@@ -1,0 +1,71 @@
+{
+  "diagramType": "packet",
+  "layout": {
+    "PacketDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1026.0,
+        "max_y": 156.0
+      },
+      "width": 1026.0,
+      "height": 156.0,
+      "row_height": 32.0,
+      "padding_x": 5.0,
+      "padding_y": 15.0,
+      "bit_width": 32.0,
+      "bits_per_row": 32.0,
+      "show_bits": true,
+      "words": [
+        {
+          "blocks": [
+            {
+              "start": 0.0,
+              "end": 10.0,
+              "label": "test",
+              "x": 1.0,
+              "y": 15.0,
+              "width": 347.0,
+              "height": 32.0
+            },
+            {
+              "start": 11.0,
+              "end": 31.0,
+              "label": "multiple",
+              "x": 353.0,
+              "y": 15.0,
+              "width": 667.0,
+              "height": 32.0
+            }
+          ]
+        },
+        {
+          "blocks": [
+            {
+              "start": 32.0,
+              "end": 63.0,
+              "label": "multiple",
+              "x": 1.0,
+              "y": 62.0,
+              "width": 1019.0,
+              "height": 32.0
+            }
+          ]
+        },
+        {
+          "blocks": [
+            {
+              "start": 64.0,
+              "end": 90.0,
+              "label": "multiple",
+              "x": 1.0,
+              "y": 109.0,
+              "width": 859.0,
+              "height": 32.0
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

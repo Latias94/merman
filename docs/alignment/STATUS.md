@@ -38,6 +38,7 @@ Legend:
 | Sequence | yes | yes | Stage B + debug | yes | yes (`xtask compare-sequence-svgs`) |
 | Info | yes | yes | Stage B | yes | yes (`xtask compare-info-svgs`) |
 | Pie | yes | yes | Stage B | yes | yes (`xtask compare-pie-svgs`) |
+| Packet | yes | yes | Stage B | yes | yes (`xtask compare-packet-svgs`) |
 | Others (gantt, …) | yes | no | no | no | no |
 
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
@@ -58,6 +59,8 @@ Recent progress: sequence Stage B now matches upstream SVG DOM for the current f
 (`cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity --dom-decimals 3`).
 Recent progress: `info` and `pie` Stage B parity renderers exist and are validated against upstream
 SVG baselines via `xtask compare-info-svgs` / `xtask compare-pie-svgs`.
+Recent progress: `packet` Stage B parity renderer exists and is validated against upstream SVG
+baselines via `xtask compare-packet-svgs`.
 
 ## Alignment Sanity Checks
 
