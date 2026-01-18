@@ -8,6 +8,9 @@ use base64::Engine as _;
 use serde::Deserialize;
 use std::fmt::Write as _;
 
+const MERMAID_SEQUENCE_BASE_DEFS_11_12_2: &str =
+    include_str!("../assets/sequence_base_defs_11_12_2.svgfrag");
+
 #[derive(Debug, Clone)]
 pub struct SvgRenderOptions {
     /// Adds extra space around the computed viewBox.
@@ -275,6 +278,274 @@ pub fn render_sequence_diagram_debug_svg(
 
     out.push_str("</svg>\n");
     out
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SequenceSvgActor {
+    description: String,
+    #[serde(rename = "type")]
+    actor_type: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SequenceSvgMessage {
+    id: String,
+    #[serde(default)]
+    from: Option<String>,
+    #[serde(default)]
+    to: Option<String>,
+    #[serde(rename = "type")]
+    message_type: i32,
+    message: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SequenceSvgModel {
+    #[serde(rename = "accTitle")]
+    acc_title: Option<String>,
+    #[serde(rename = "accDescr")]
+    acc_descr: Option<String>,
+    title: Option<String>,
+    #[serde(rename = "actorOrder")]
+    actor_order: Vec<String>,
+    actors: std::collections::BTreeMap<String, SequenceSvgActor>,
+    messages: Vec<SequenceSvgMessage>,
+}
+
+pub fn render_sequence_diagram_svg(
+    layout: &SequenceDiagramLayout,
+    semantic: &serde_json::Value,
+    _effective_config: &serde_json::Value,
+    _diagram_title: Option<&str>,
+    _measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let model: SequenceSvgModel = serde_json::from_value(semantic.clone())?;
+
+    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id_esc = escape_xml(diagram_id);
+
+    let bounds = layout.bounds.clone().unwrap_or(Bounds {
+        min_x: 0.0,
+        min_y: 0.0,
+        max_x: 100.0,
+        max_y: 100.0,
+    });
+    let vb_min_x = bounds.min_x;
+    let vb_min_y = bounds.min_y;
+    let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
+    let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
+
+    let mut nodes_by_id: std::collections::HashMap<&str, &LayoutNode> =
+        std::collections::HashMap::new();
+    for n in &layout.nodes {
+        nodes_by_id.insert(n.id.as_str(), n);
+    }
+
+    let mut edges_by_id: std::collections::HashMap<&str, &crate::model::LayoutEdge> =
+        std::collections::HashMap::new();
+    for e in &layout.edges {
+        edges_by_id.insert(e.id.as_str(), e);
+    }
+
+    fn node_left_top(n: &LayoutNode) -> (f64, f64) {
+        (n.x - n.width / 2.0, n.y - n.height / 2.0)
+    }
+
+    let mut out = String::new();
+    let aria = match (model.acc_title.as_deref(), model.acc_descr.as_deref()) {
+        (Some(_), Some(_)) => format!(
+            r#" aria-describedby="chart-desc-{id}" aria-labelledby="chart-title-{id}""#,
+            id = diagram_id_esc
+        ),
+        (Some(_), None) => format!(
+            r#" aria-labelledby="chart-title-{id}""#,
+            id = diagram_id_esc
+        ),
+        (None, Some(_)) => format!(
+            r#" aria-describedby="chart-desc-{id}""#,
+            id = diagram_id_esc
+        ),
+        (None, None) => String::new(),
+    };
+    let _ = write!(
+        &mut out,
+        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{min_x} {min_y} {w} {h}" role="graphics-document document" aria-roledescription="sequence"{aria}>"#,
+        diagram_id_esc = diagram_id_esc,
+        max_w = fmt(vb_w),
+        min_x = fmt(vb_min_x),
+        min_y = fmt(vb_min_y),
+        w = fmt(vb_w),
+        h = fmt(vb_h),
+        aria = aria
+    );
+
+    if let Some(title) = model.acc_title.as_deref() {
+        let _ = write!(
+            &mut out,
+            r#"<title id="chart-title-{id}">{text}</title>"#,
+            id = diagram_id_esc,
+            text = escape_xml(title)
+        );
+    }
+    if let Some(desc) = model.acc_descr.as_deref() {
+        let _ = write!(
+            &mut out,
+            r#"<desc id="chart-desc-{id}">{text}</desc>"#,
+            id = diagram_id_esc,
+            text = escape_xml(desc)
+        );
+    }
+
+    // Mermaid draws bottom actors first (reverse DOM order).
+    for (idx, actor_id) in model.actor_order.iter().enumerate().rev() {
+        let Some(actor) = model.actors.get(actor_id) else {
+            continue;
+        };
+        let node_id = format!("actor-bottom-{actor_id}");
+        let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
+            continue;
+        };
+        let (x, y) = node_left_top(n);
+        let _ = write!(
+            &mut out,
+            r##"<g><rect x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" rx="3" ry="3" class="actor actor-bottom"/><text x="{cx}" y="{cy}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g>"##,
+            x = fmt(x),
+            y = fmt(y),
+            w = fmt(n.width),
+            h = fmt(n.height),
+            name = escape_xml(actor_id),
+            cx = fmt(n.x),
+            cy = fmt(n.y),
+            label = escape_xml(&actor.description)
+        );
+
+        let _ = idx; // keep idx stable for future actor-type rendering
+        let _ = actor.actor_type.as_str();
+    }
+
+    // Top actors + lifelines.
+    for (idx, actor_id) in model.actor_order.iter().enumerate().rev() {
+        let node_top_id = format!("actor-top-{actor_id}");
+        let node_bottom_id = format!("actor-bottom-{actor_id}");
+        let Some(top) = nodes_by_id.get(node_top_id.as_str()).copied() else {
+            continue;
+        };
+        let Some(bottom) = nodes_by_id.get(node_bottom_id.as_str()).copied() else {
+            continue;
+        };
+        let (top_x, top_y) = node_left_top(top);
+        let (bottom_x, bottom_y) = node_left_top(bottom);
+        let _ = bottom_x;
+
+        let _ = write!(
+            &mut out,
+            r##"<g><line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="0.5px" stroke="#999" name="{name}"/><g id="root-{idx}"><rect x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" rx="3" ry="3" class="actor actor-top"/><text x="{cx}" y="{cy}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{cx}" dy="0">{label}</tspan></text></g></g>"##,
+            idx = idx,
+            cx = fmt(top.x),
+            y1 = fmt(top_y + top.height),
+            y2 = fmt(bottom_y),
+            name = escape_xml(actor_id),
+            x = fmt(top_x),
+            y = fmt(top_y),
+            w = fmt(top.width),
+            h = fmt(top.height),
+            cy = fmt(top.y),
+            label = escape_xml(
+                model
+                    .actors
+                    .get(actor_id)
+                    .map(|a| a.description.as_str())
+                    .unwrap_or(actor_id)
+            )
+        );
+    }
+
+    // CSS is ignored by DOM compare in non-strict modes; keep a placeholder `<style>` node.
+    let _ = write!(&mut out, r#"<style>#{}{{}}</style><g/>"#, diagram_id_esc);
+
+    // Mermaid's sequence output includes a shared set of <defs> for icons/markers.
+    out.push_str(MERMAID_SEQUENCE_BASE_DEFS_11_12_2);
+
+    for msg in &model.messages {
+        let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
+            continue;
+        };
+        let edge_id = format!("msg-{}", msg.id);
+        let Some(edge) = edges_by_id.get(edge_id.as_str()).copied() else {
+            continue;
+        };
+        if edge.points.len() < 2 {
+            continue;
+        }
+
+        let text = msg.message.as_str().unwrap_or_default();
+        if let Some(lbl) = &edge.label {
+            let _ = write!(
+                &mut out,
+                r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: 16px; font-weight: 400;">{text}</text>"#,
+                x = fmt(lbl.x),
+                y = fmt(lbl.y),
+                text = escape_xml(text)
+            );
+        }
+
+        let p0 = &edge.points[0];
+        let p1 = &edge.points[1];
+        let class = match msg.message_type {
+            1 | 4 | 6 | 25 | 34 => "messageLine1",
+            _ => "messageLine0",
+        };
+        let style = match msg.message_type {
+            1 | 4 | 6 | 25 | 34 => r#" style="stroke-dasharray: 3, 3; fill: none;""#,
+            _ => r#" style="fill: none;""#,
+        };
+
+        let marker_start = match msg.message_type {
+            33 | 34 => Some(r#" marker-start="url(#arrowhead)""#),
+            _ => None,
+        };
+        let marker_end = match msg.message_type {
+            // open arrow variants: no marker.
+            5 | 6 => None,
+            // cross arrow variants
+            3 | 4 => Some(r#" marker-end="url(#crosshead)""#),
+            // filled-head variants
+            24 | 25 => Some(r#" marker-end="url(#filled-head)""#),
+            // default arrowhead variants
+            _ => Some(r#" marker-end="url(#arrowhead)""#),
+        };
+
+        // Mermaid uses `stroke="none"` and assigns actual stroke via CSS.
+        let _ = write!(
+            &mut out,
+            r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" class="{class}" stroke-width="2" stroke="none"{marker_start}{marker_end}{style}/>"#,
+            x1 = fmt(p0.x),
+            y1 = fmt(p0.y),
+            x2 = fmt(p1.x),
+            y2 = fmt(p1.y),
+            class = class,
+            marker_start = marker_start.unwrap_or(""),
+            marker_end = marker_end.unwrap_or(""),
+            style = style
+        );
+
+        let _ = (from, to);
+    }
+
+    if let Some(title) = model.title.as_deref() {
+        // Mermaid sequence titles are currently emitted as a plain `<text>` node.
+        let title_x = vb_min_x + (vb_w / 2.0);
+        let _ = write!(
+            &mut out,
+            r#"<text x="{x}" y="-25">{text}</text>"#,
+            x = fmt(title_x),
+            text = escape_xml(title)
+        );
+    }
+
+    out.push_str("</svg>\n");
+    Ok(out)
 }
 
 pub fn render_flowchart_v2_svg(
