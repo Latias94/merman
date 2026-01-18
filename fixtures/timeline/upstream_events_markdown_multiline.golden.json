@@ -1,47 +1,47 @@
 {
   "diagramType": "timeline",
   "model": {
-    "accDescr": null,
+    "type": "timeline",
+    "title": null,
     "accTitle": null,
+    "accDescr": null,
     "sections": [
       "abc-123"
     ],
     "tasks": [
       {
+        "id": 0,
+        "section": "abc-123",
+        "type": "abc-123",
+        "task": "task1",
+        "score": 0,
         "events": [
           "event1"
-        ],
-        "id": 0,
-        "score": 0,
-        "section": "abc-123",
-        "task": "task1",
-        "type": "abc-123"
+        ]
       },
       {
+        "id": 1,
+        "section": "abc-123",
+        "type": "abc-123",
+        "task": "task2",
+        "score": 0,
         "events": [
           "[event1](http://example.com)"
-        ],
-        "id": 1,
-        "score": 0,
-        "section": "abc-123",
-        "task": "task2",
-        "type": "abc-123"
+        ]
       },
       {
+        "id": 2,
+        "section": "abc-123",
+        "type": "abc-123",
+        "task": "task3",
+        "score": 0,
         "events": [
           "event2",
           "event3",
           "event4",
           "event5"
-        ],
-        "id": 2,
-        "score": 0,
-        "section": "abc-123",
-        "task": "task3",
-        "type": "abc-123"
+        ]
       }
-    ],
-    "title": null,
-    "type": "timeline"
+    ]
   }
 }

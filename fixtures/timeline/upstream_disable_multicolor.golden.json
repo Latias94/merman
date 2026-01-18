@@ -1,0 +1,42 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Disable multicolor",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "",
+        "type": "",
+        "task": "A ",
+        "score": 0,
+        "events": [
+          "first"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "",
+        "type": "",
+        "task": "B ",
+        "score": 0,
+        "events": [
+          "second"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "",
+        "type": "",
+        "task": "C ",
+        "score": 0,
+        "events": [
+          "third"
+        ]
+      }
+    ]
+  }
+}

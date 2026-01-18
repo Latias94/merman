@@ -1,26 +1,26 @@
 {
   "diagramType": "timeline",
   "model": {
-    "accDescr": null,
+    "type": "timeline",
+    "title": ";my;title;",
     "accTitle": null,
+    "accDescr": null,
     "sections": [
       ";a;bc-123;"
     ],
     "tasks": [
       {
+        "id": 0,
+        "section": ";a;bc-123;",
+        "type": ";a;bc-123;",
+        "task": ";ta;sk1;",
+        "score": 0,
         "events": [
           ";ev;ent1; ",
           ";ev;ent2; ",
           ";ev;ent3;"
-        ],
-        "id": 0,
-        "score": 0,
-        "section": ";a;bc-123;",
-        "task": ";ta;sk1;",
-        "type": ";a;bc-123;"
+        ]
       }
-    ],
-    "title": ";my;title;",
-    "type": "timeline"
+    ]
   }
 }

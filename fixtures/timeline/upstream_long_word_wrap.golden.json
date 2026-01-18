@@ -2,23 +2,21 @@
   "diagramType": "timeline",
   "model": {
     "type": "timeline",
-    "title": "#my#title#",
+    "title": null,
     "accTitle": null,
     "accDescr": null,
     "sections": [
-      "#a#bc-123#"
+      "wrap"
     ],
     "tasks": [
       {
         "id": 0,
-        "section": "#a#bc-123#",
-        "type": "#a#bc-123#",
-        "task": "task1",
+        "section": "wrap",
+        "type": "wrap",
+        "task": "period1",
         "score": 0,
         "events": [
-          "#ev#ent1# ",
-          "#ev#ent2# ",
-          "#ev#ent3#"
+          "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious"
         ]
       }
     ]

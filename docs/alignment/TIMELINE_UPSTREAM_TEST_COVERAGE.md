@@ -20,3 +20,12 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/timeline/timeline.spec.j
 - semicolons in title/section/events: `fixtures/timeline/upstream_semicolons.mmd`
 - hashtags in title/section/events: `fixtures/timeline/upstream_hashtags.mmd`
 
+## Additional Fixtures (non-spec)
+
+These fixtures are not derived from `timeline.spec.js`, but cover behavior documented in
+`repo-ref/mermaid/packages/mermaid/src/docs/syntax/timeline.md` and/or exercise rendering edge cases:
+
+- no explicit sections (default section + multi-line events): `fixtures/timeline/upstream_no_sections.mmd`
+- `<br>` wrapping in section/task/event labels: `fixtures/timeline/upstream_br_wrapping.mmd`
+- long single-word wrap (produces an empty first `<tspan>` upstream): `fixtures/timeline/upstream_long_word_wrap.mmd`
+- init config `timeline.disableMulticolor=true` (no sections): `fixtures/timeline/upstream_disable_multicolor.mmd`

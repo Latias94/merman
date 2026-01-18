@@ -1,0 +1,147 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "bounds": {
+        "min_x": 95.0,
+        "min_y": -50.0,
+        "max_x": 1090.0,
+        "max_y": 412.8
+      },
+      "left_margin": 150.0,
+      "base_x": 200.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 590.0,
+      "sections": [],
+      "orphan_tasks": [
+        {
+          "node": {
+            "x": 200.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 66.4,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "A ",
+            "label_lines": [
+              "A"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 295.0,
+            "y1": 116.4,
+            "x2": 295.0,
+            "y2": 362.8
+          },
+          "events": [
+            {
+              "x": 200.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section--1",
+              "label": "first",
+              "label_lines": [
+                "first"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 400.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 66.4,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "B ",
+            "label_lines": [
+              "B"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 495.0,
+            "y1": 116.4,
+            "x2": 495.0,
+            "y2": 362.8
+          },
+          "events": [
+            {
+              "x": 400.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section--1",
+              "label": "second",
+              "label_lines": [
+                "second"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 600.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 66.4,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "C ",
+            "label_lines": [
+              "C"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 695.0,
+            "y1": 116.4,
+            "x2": 695.0,
+            "y2": 362.8
+          },
+          "events": [
+            {
+              "x": 600.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section--1",
+              "label": "third",
+              "label_lines": [
+                "third"
+              ],
+              "kind": "event"
+            }
+          ]
+        }
+      ],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "y1": 166.4,
+        "x2": 1040.0,
+        "y2": 166.4
+      },
+      "title": "Disable multicolor",
+      "title_x": 145.0,
+      "title_y": 20.0
+    }
+  }
+}
