@@ -89,6 +89,12 @@ pub fn layout_sequence_diagram(
     let actor_font_weight = config_string(seq_cfg, &["actorFontWeight"])
         .or_else(|| config_string(effective_config, &["fontWeight"]));
 
+    // Mermaid measures SVG text widths using actual font metrics (default: trebuchet).
+    // Our deterministic headless measurer underestimates some glyph widths for this font, which
+    // makes participant spacing too tight and cascades into block widths (e.g. `rect`) and note
+    // placements. Apply a small, sequence-specific correction factor for message text widths.
+    let message_width_scale = 1.316;
+
     let actor_text_style = TextStyle {
         font_family: actor_font_family,
         font_size: actor_font_size,
@@ -146,10 +152,10 @@ pub fn layout_sequence_diagram(
                 continue;
             }
             let metrics = measurer.measure_wrapped(text, &msg_text_style, None, WrapMode::SvgLike);
-            max_label_w = max_label_w.max(metrics.width);
+            max_label_w = max_label_w.max(metrics.width * message_width_scale);
         }
 
-        let required_gap = (max_label_w + 2.0 * wrap_padding).max(base_gap);
+        let required_gap = (max_label_w + 2.0 * wrap_padding).max(base_gap).round();
         gaps.push(required_gap);
     }
 
@@ -362,7 +368,7 @@ pub fn layout_sequence_diagram(
             Some(LayoutLabel {
                 x: (x1 + x2) / 2.0,
                 y: y - msg_label_offset,
-                width: metrics.width.max(1.0),
+                width: (metrics.width * message_width_scale).max(1.0),
                 height: metrics.height.max(1.0),
             })
         };
