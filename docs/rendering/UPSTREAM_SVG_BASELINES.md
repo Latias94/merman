@@ -86,6 +86,14 @@ Outputs to:
 
 - `fixtures/upstream-svgs/packet/*.svg`
 
+## Generate (Timeline)
+
+- `cargo run -p xtask -- gen-upstream-svgs --diagram timeline`
+
+Outputs to:
+
+- `fixtures/upstream-svgs/timeline/*.svg`
+
 ## Generate (All supported diagrams)
 
 - `cargo run -p xtask -- gen-upstream-svgs --diagram all`
@@ -219,6 +227,12 @@ Generate a report comparing upstream pie SVGs and the current Rust Stage-B pie o
 Generate a report comparing upstream packet SVGs and the current Rust Stage-B packet output:
 
 - `cargo run -p xtask -- compare-packet-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
+## Compare (Timeline)
+
+Generate a report comparing upstream timeline SVGs and the current Rust Stage-B timeline output:
+
+- `cargo run -p xtask -- compare-timeline-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 ## Notes
 

@@ -1,7 +1,7 @@
 use crate::model::{
     Bounds, ClassDiagramV2Layout, ErDiagramLayout, FlowchartV2Layout, InfoDiagramLayout,
     LayoutCluster, LayoutNode, PacketDiagramLayout, PieDiagramLayout, SequenceDiagramLayout,
-    StateDiagramV2Layout,
+    StateDiagramV2Layout, TimelineDiagramLayout,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
@@ -3005,6 +3005,17 @@ fn packet_css(diagram_id: &str) -> String {
     out
 }
 
+fn timeline_css(diagram_id: &str) -> String {
+    let id = escape_xml(diagram_id);
+    let mut out = info_css(diagram_id);
+    let _ = write!(
+        &mut out,
+        r#"#{} .edge{{stroke-width:3;}}#{} .edge{{fill:none;}}#{} .eventWrapper{{filter:brightness(120%);}}"#,
+        id, id, id
+    );
+    out
+}
+
 fn pie_legend_rect_style(fill: &str) -> String {
     // Mermaid emits legend colors via inline `style` in rgb() form for default themes.
     // The compare tooling ignores `style`, but we keep this for human inspection parity.
@@ -3378,6 +3389,208 @@ pub fn render_packet_diagram_svg(
             );
         }
     }
+
+    out.push_str("</svg>\n");
+    Ok(out)
+}
+
+pub fn render_timeline_diagram_svg(
+    layout: &TimelineDiagramLayout,
+    semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    _diagram_title: Option<&str>,
+    _measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let _ = (semantic, effective_config);
+
+    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id_esc = escape_xml(diagram_id);
+
+    let bounds = layout.bounds.clone().unwrap_or(Bounds {
+        min_x: 0.0,
+        min_y: 0.0,
+        max_x: 100.0,
+        max_y: 100.0,
+    });
+    let vb_min_x = bounds.min_x;
+    let vb_min_y = bounds.min_y;
+    let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
+    let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
+
+    fn node_line_class(section_class: &str) -> String {
+        let rest = section_class
+            .strip_prefix("section-")
+            .unwrap_or(section_class);
+        format!("node-line-{rest}")
+    }
+
+    fn render_node(out: &mut String, n: &crate::model::TimelineNodeLayout) {
+        let w = n.width.max(1.0);
+        let h = n.height.max(1.0);
+        let rd = 5.0;
+        let d = format!(
+            "M0 {y0} v{v1} q0,-5 5,-5 h{hw} q5,0 5,5 v{v2} H0 Z",
+            y0 = fmt(h - rd),
+            v1 = fmt(-h + 2.0 * rd),
+            hw = fmt(w - 2.0 * rd),
+            v2 = fmt(h - rd),
+        );
+
+        let _ = write!(
+            out,
+            r#"<g class="timeline-node {section_class}">"#,
+            section_class = escape_attr(&n.section_class)
+        );
+        out.push_str("<g>");
+        let _ = write!(
+            out,
+            r#"<path id="node-undefined" class="node-bkg node-undefined" d="{d}"/>"#,
+            d = escape_attr(&d)
+        );
+        let _ = write!(
+            out,
+            r#"<line class="{line_class}" x1="0" y1="{y}" x2="{x2}" y2="{y}"/>"#,
+            line_class = escape_attr(&node_line_class(&n.section_class)),
+            y = fmt(h),
+            x2 = fmt(w)
+        );
+        out.push_str("</g>");
+
+        let tx = w / 2.0;
+        let ty = n.padding / 2.0;
+        let _ = write!(
+            out,
+            r#"<g transform="translate({x}, {y})">"#,
+            x = fmt(tx),
+            y = fmt(ty)
+        );
+        out.push_str(r#"<text dy="1em" alignment-baseline="middle" dominant-baseline="middle" text-anchor="middle">"#);
+        for (idx, line) in n.label_lines.iter().enumerate() {
+            let dy = if idx == 0 { "1em" } else { "1.1em" };
+            let _ = write!(
+                out,
+                r#"<tspan x="0" dy="{dy}">{text}</tspan>"#,
+                dy = dy,
+                text = escape_xml(line)
+            );
+        }
+        out.push_str("</text></g></g>");
+    }
+
+    let mut out = String::new();
+    let _ = write!(
+        &mut out,
+        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{min_x} {min_y} {w} {h}" role="graphics-document document" aria-roledescription="timeline">"#,
+        diagram_id_esc = diagram_id_esc,
+        min_x = fmt(vb_min_x),
+        min_y = fmt(vb_min_y),
+        w = fmt(vb_w),
+        h = fmt(vb_h),
+        max_w = fmt(vb_w),
+    );
+    let css = timeline_css(diagram_id);
+    let _ = write!(&mut out, r#"<style>{}</style>"#, css);
+    out.push_str(r#"<g/>"#);
+    out.push_str(r#"<g/>"#);
+    out.push_str(
+        r#"<defs><marker id="arrowhead" refX="5" refY="2" markerWidth="6" markerHeight="4" orient="auto"><path d="M 0,0 V 4 L6,2 Z"/></marker></defs>"#,
+    );
+
+    for section in &layout.sections {
+        let node = &section.node;
+        let _ = write!(
+            &mut out,
+            r#"<g transform="translate({x}, {y})">"#,
+            x = fmt(node.x),
+            y = fmt(node.y)
+        );
+        render_node(&mut out, node);
+        out.push_str("</g>");
+
+        for task in &section.tasks {
+            let task_node = &task.node;
+            let _ = write!(
+                &mut out,
+                r#"<g class="taskWrapper" transform="translate({x}, {y})">"#,
+                x = fmt(task_node.x),
+                y = fmt(task_node.y)
+            );
+            render_node(&mut out, task_node);
+            out.push_str("</g>");
+
+            let _ = write!(
+                &mut out,
+                r#"<g class="lineWrapper"><line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="2" stroke="black" marker-end="url(#arrowhead)" stroke-dasharray="5,5"/></g>"#,
+                x1 = fmt(task.connector.x1),
+                y1 = fmt(task.connector.y1),
+                x2 = fmt(task.connector.x2),
+                y2 = fmt(task.connector.y2),
+            );
+
+            for ev in &task.events {
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="eventWrapper" transform="translate({x}, {y})">"#,
+                    x = fmt(ev.x),
+                    y = fmt(ev.y)
+                );
+                render_node(&mut out, ev);
+                out.push_str("</g>");
+            }
+        }
+    }
+
+    for task in &layout.orphan_tasks {
+        let task_node = &task.node;
+        let _ = write!(
+            &mut out,
+            r#"<g class="taskWrapper" transform="translate({x}, {y})">"#,
+            x = fmt(task_node.x),
+            y = fmt(task_node.y)
+        );
+        render_node(&mut out, task_node);
+        out.push_str("</g>");
+
+        let _ = write!(
+            &mut out,
+            r#"<g class="lineWrapper"><line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="2" stroke="black" marker-end="url(#arrowhead)" stroke-dasharray="5,5"/></g>"#,
+            x1 = fmt(task.connector.x1),
+            y1 = fmt(task.connector.y1),
+            x2 = fmt(task.connector.x2),
+            y2 = fmt(task.connector.y2),
+        );
+
+        for ev in &task.events {
+            let _ = write!(
+                &mut out,
+                r#"<g class="eventWrapper" transform="translate({x}, {y})">"#,
+                x = fmt(ev.x),
+                y = fmt(ev.y)
+            );
+            render_node(&mut out, ev);
+            out.push_str("</g>");
+        }
+    }
+
+    if let Some(title) = layout.title.as_deref().filter(|t| !t.trim().is_empty()) {
+        let _ = write!(
+            &mut out,
+            r#"<text x="{x}" font-size="4ex" font-weight="bold" y="{y}">{text}</text>"#,
+            x = fmt(layout.title_x),
+            y = fmt(layout.title_y),
+            text = escape_xml(title)
+        );
+    }
+
+    let _ = write!(
+        &mut out,
+        r#"<g class="lineWrapper"><line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="4" stroke="black" marker-end="url(#arrowhead)"/></g>"#,
+        x1 = fmt(layout.activity_line.x1),
+        y1 = fmt(layout.activity_line.y1),
+        x2 = fmt(layout.activity_line.x2),
+        y2 = fmt(layout.activity_line.y2),
+    );
 
     out.push_str("</svg>\n");
     Ok(out)

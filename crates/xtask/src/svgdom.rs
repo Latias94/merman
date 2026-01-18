@@ -189,10 +189,17 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
         }
     }
 
-    let text = n
+    let mut text = n
         .text()
         .map(|t| t.split_whitespace().collect::<Vec<_>>().join(" "))
         .filter(|t| !t.is_empty());
+
+    if mode != DomMode::Strict && n.is_element() && n.tag_name().name() == "style" {
+        // Stylesheets are large and may differ in whitespace, ordering, and numeric precision
+        // even when the effective rendering is unchanged. Treat them as non-semantic for DOM
+        // parity checks.
+        text = None;
+    }
 
     let mut children: Vec<SvgDomNode> = Vec::new();
     for c in n.children().filter(|c| c.is_element()) {

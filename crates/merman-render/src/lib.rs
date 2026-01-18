@@ -11,6 +11,7 @@ pub mod sequence;
 pub mod state;
 pub mod svg;
 pub mod text;
+pub mod timeline;
 
 use crate::model::{LayoutDiagram, LayoutMeta, LayoutedDiagram};
 use crate::text::{DeterministicTextMeasurer, TextMeasurer};
@@ -79,6 +80,11 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
             options.text_measurer.as_ref(),
         )?),
         "packet" => LayoutDiagram::PacketDiagram(packet::layout_packet_diagram(
+            &parsed.model,
+            &meta.effective_config,
+            options.text_measurer.as_ref(),
+        )?),
+        "timeline" => LayoutDiagram::TimelineDiagram(timeline::layout_timeline_diagram(
             &parsed.model,
             &meta.effective_config,
             options.text_measurer.as_ref(),

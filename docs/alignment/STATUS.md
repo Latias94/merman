@@ -39,6 +39,7 @@ Legend:
 | Info | yes | yes | Stage B | yes | yes (`xtask compare-info-svgs`) |
 | Pie | yes | yes | Stage B | yes | yes (`xtask compare-pie-svgs`) |
 | Packet | yes | yes | Stage B | yes | yes (`xtask compare-packet-svgs`) |
+| Timeline | yes | yes | Stage B | yes | yes (`xtask compare-timeline-svgs`) |
 | Others (gantt, …) | yes | no | no | no | no |
 
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
@@ -61,6 +62,8 @@ Recent progress: `info` and `pie` Stage B parity renderers exist and are validat
 SVG baselines via `xtask compare-info-svgs` / `xtask compare-pie-svgs`.
 Recent progress: `packet` Stage B parity renderer exists and is validated against upstream SVG
 baselines via `xtask compare-packet-svgs`.
+Recent progress: `timeline` Stage B parity renderer exists and is validated against upstream SVG
+baselines via `xtask compare-timeline-svgs`.
 
 ## Alignment Sanity Checks
 
