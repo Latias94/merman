@@ -35,11 +35,9 @@ Legend:
 | Flowchart | yes | yes | Stage B + debug | yes | yes (`xtask compare-flowchart-svgs`) |
 | State | yes | yes | Stage B + debug | yes | yes (`xtask compare-state-svgs`) |
 | Class | yes | yes | Stage B + debug | yes | yes (`xtask compare-class-svgs`) |
-| Sequence | yes | yes | Stage B (wip) + debug | yes | yes (`xtask compare-sequence-svgs`) |
+| Sequence | yes | yes | Stage B + debug | yes | yes (`xtask compare-sequence-svgs`) |
 | Others (gantt, …) | yes | no | no | no | no |
 
-Note: Sequence SVG Stage B is in progress; `xtask compare-sequence-svgs` is expected to report
-mismatches until the renderer reaches parity with upstream baselines.
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
 the dashed separators now use the exact same x-coordinates as the frame edges to match upstream SVG and
 avoid sub-pixel gaps at the frame border.
@@ -54,6 +52,8 @@ empty block labels are rendered as a zero-width space (matching upstream SVG beh
 Recent progress: sequence Stage B now treats HTML `<br>` variants as line breaks in participant labels, notes,
 and message texts, matching upstream DOM structure in `html_br_variants_and_wrap`; empty message labels
 (trailing colon) now still produce a message text node like upstream.
+Recent progress: sequence Stage B now matches upstream SVG DOM for the current fixture set in parity mode
+(`cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity --dom-decimals 3`).
 
 ## Alignment Sanity Checks
 
