@@ -163,12 +163,55 @@ pub struct SequenceDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InfoDiagramLayout {
+    pub bounds: Option<Bounds>,
+    pub version: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PieSliceLayout {
+    pub label: String,
+    pub value: f64,
+    pub start_angle: f64,
+    pub end_angle: f64,
+    pub is_full_circle: bool,
+    pub percent: i64,
+    pub text_x: f64,
+    pub text_y: f64,
+    pub fill: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PieLegendItemLayout {
+    pub label: String,
+    pub value: f64,
+    pub fill: String,
+    pub y: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PieDiagramLayout {
+    pub bounds: Option<Bounds>,
+    pub center_x: f64,
+    pub center_y: f64,
+    pub radius: f64,
+    pub outer_radius: f64,
+    pub legend_x: f64,
+    pub legend_start_y: f64,
+    pub legend_step_y: f64,
+    pub slices: Vec<PieSliceLayout>,
+    pub legend_items: Vec<PieLegendItemLayout>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LayoutDiagram {
     FlowchartV2(FlowchartV2Layout),
     StateDiagramV2(StateDiagramV2Layout),
     ClassDiagramV2(ClassDiagramV2Layout),
     ErDiagram(ErDiagramLayout),
     SequenceDiagram(SequenceDiagramLayout),
+    InfoDiagram(InfoDiagramLayout),
+    PieDiagram(PieDiagramLayout),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

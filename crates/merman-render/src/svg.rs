@@ -1,6 +1,6 @@
 use crate::model::{
-    Bounds, ClassDiagramV2Layout, ErDiagramLayout, FlowchartV2Layout, LayoutCluster, LayoutNode,
-    SequenceDiagramLayout, StateDiagramV2Layout,
+    Bounds, ClassDiagramV2Layout, ErDiagramLayout, FlowchartV2Layout, InfoDiagramLayout,
+    LayoutCluster, LayoutNode, PieDiagramLayout, SequenceDiagramLayout, StateDiagramV2Layout,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
@@ -2920,6 +2920,296 @@ pub fn render_sequence_diagram_svg(
     }
 
     out.push_str("</svg>\n");
+    Ok(out)
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct PieSvgSection {
+    label: String,
+    value: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct PieSvgModel {
+    #[serde(rename = "accTitle")]
+    acc_title: Option<String>,
+    #[serde(rename = "accDescr")]
+    acc_descr: Option<String>,
+    #[serde(rename = "showData")]
+    show_data: bool,
+    title: Option<String>,
+    sections: Vec<PieSvgSection>,
+}
+
+fn info_css(diagram_id: &str) -> String {
+    let id = escape_xml(diagram_id);
+    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
+    let mut out = String::new();
+    let _ = write!(
+        &mut out,
+        r#"#{}{{font-family:{};font-size:16px;fill:#333;}}"#,
+        id, font
+    );
+    out.push_str(
+        r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .error-icon{{fill:#552222;}}#{} .error-text{{fill:#552222;stroke:#552222;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
+        id, id, id, id, id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .marker{{fill:#333333;stroke:#333333;}}#{} .marker.cross{{stroke:#333333;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} svg{{font-family:{};font-size:16px;}}#{} p{{margin:0;}}#{} :root{{--mermaid-font-family:{};}}"#,
+        id, font, id, id, font
+    );
+    out
+}
+
+fn pie_css(diagram_id: &str) -> String {
+    let id = escape_xml(diagram_id);
+    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
+    let mut out = info_css(diagram_id);
+    let _ = write!(
+        &mut out,
+        r#"#{} .pieCircle{{stroke:black;stroke-width:2px;opacity:0.7;}}#{} .pieOuterCircle{{stroke:black;stroke-width:2px;fill:none;}}#{} .pieTitleText{{text-anchor:middle;font-size:25px;fill:black;font-family:{};}}#{} .slice{{font-family:{};fill:#333;font-size:17px;}}#{} .legend text{{fill:black;font-family:{};font-size:17px;}}"#,
+        id, id, id, font, id, font, id, font
+    );
+    out
+}
+
+fn pie_legend_rect_style(fill: &str) -> String {
+    // Mermaid emits legend colors via inline `style` in rgb() form for default themes.
+    // The compare tooling ignores `style`, but we keep this for human inspection parity.
+    let rgb = match fill {
+        "#ECECFF" => "rgb(236, 236, 255)",
+        "#ffffde" => "rgb(255, 255, 222)",
+        "hsl(80, 100%, 56.2745098039%)" => "rgb(181, 255, 32)",
+        other => other,
+    };
+    format!("fill: {rgb}; stroke: {rgb};")
+}
+
+fn pie_polar_xy(radius: f64, angle: f64) -> (f64, f64) {
+    let x = radius * angle.sin();
+    let y = -radius * angle.cos();
+    (x, y)
+}
+
+pub fn render_info_diagram_svg(
+    layout: &InfoDiagramLayout,
+    _semantic: &serde_json::Value,
+    _effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id_esc = escape_xml(diagram_id);
+
+    let mut out = String::new();
+    let _ = write!(
+        &mut out,
+        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: 400px; background-color: white;" role="graphics-document document" aria-roledescription="info">"#,
+    );
+    let css = info_css(diagram_id);
+    let _ = write!(&mut out, r#"<style>{}</style>"#, css);
+    out.push_str(r#"<g/>"#);
+    let _ = write!(
+        &mut out,
+        r#"<g><text x="100" y="40" class="version" font-size="32" style="text-anchor: middle;">{}</text></g>"#,
+        escape_xml(&layout.version)
+    );
+    out.push_str("</svg>\n");
+    Ok(out)
+}
+
+pub fn render_pie_diagram_svg(
+    layout: &PieDiagramLayout,
+    semantic: &serde_json::Value,
+    _effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let model: PieSvgModel = serde_json::from_value(semantic.clone())?;
+
+    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id_esc = escape_xml(diagram_id);
+
+    let bounds = layout.bounds.clone().unwrap_or(Bounds {
+        min_x: 0.0,
+        min_y: 0.0,
+        max_x: 450.0,
+        max_y: 450.0,
+    });
+    let vb_min_x = bounds.min_x;
+    let vb_min_y = bounds.min_y;
+    let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
+    let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
+
+    let aria = match (model.acc_title.as_deref(), model.acc_descr.as_deref()) {
+        (Some(_), Some(_)) => format!(
+            r#" aria-describedby="chart-desc-{id}" aria-labelledby="chart-title-{id}""#,
+            id = diagram_id_esc
+        ),
+        (Some(_), None) => format!(
+            r#" aria-labelledby="chart-title-{id}""#,
+            id = diagram_id_esc
+        ),
+        (None, Some(_)) => format!(
+            r#" aria-describedby="chart-desc-{id}""#,
+            id = diagram_id_esc
+        ),
+        (None, None) => String::new(),
+    };
+
+    let mut out = String::new();
+    let _ = write!(
+        &mut out,
+        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="{min_x} {min_y} {w} {h}" style="max-width: {max_w}px; background-color: white;" role="graphics-document document" aria-roledescription="pie"{aria}>"#,
+        diagram_id_esc = diagram_id_esc,
+        min_x = fmt(vb_min_x),
+        min_y = fmt(vb_min_y),
+        w = fmt(vb_w),
+        h = fmt(vb_h),
+        max_w = fmt(vb_w),
+        aria = aria
+    );
+
+    if let Some(t) = model.acc_title.as_deref() {
+        let _ = write!(
+            &mut out,
+            r#"<title id="chart-title-{id}">{text}</title>"#,
+            id = diagram_id_esc,
+            text = escape_xml(t)
+        );
+    }
+    if let Some(d) = model.acc_descr.as_deref() {
+        let _ = write!(
+            &mut out,
+            r#"<desc id="chart-desc-{id}">{text}</desc>"#,
+            id = diagram_id_esc,
+            text = escape_xml(d)
+        );
+    }
+
+    let css = pie_css(diagram_id);
+    let _ = write!(&mut out, r#"<style>{}</style>"#, css);
+    out.push_str(r#"<g/>"#);
+
+    let _ = write!(
+        &mut out,
+        r#"<g transform="translate({x},{y})">"#,
+        x = fmt(layout.center_x),
+        y = fmt(layout.center_y)
+    );
+    let _ = write!(
+        &mut out,
+        r#"<circle cx="0" cy="0" r="{r}" class="pieOuterCircle"/>"#,
+        r = fmt(layout.outer_radius)
+    );
+
+    for slice in &layout.slices {
+        let r = layout.radius;
+        if slice.is_full_circle {
+            let d = format!(
+                "M0,-{r}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,-{r}Z",
+                r = fmt(r)
+            );
+            let _ = write!(
+                &mut out,
+                r#"<path d="{d}" fill="{fill}" class="pieCircle"/>"#,
+                d = d,
+                fill = escape_xml(&slice.fill)
+            );
+        } else {
+            let (x0, y0) = pie_polar_xy(r, slice.start_angle);
+            let (x1, y1) = pie_polar_xy(r, slice.end_angle);
+            let large = if (slice.end_angle - slice.start_angle) > std::f64::consts::PI {
+                1
+            } else {
+                0
+            };
+            let d = format!(
+                "M{x0},{y0}A{r},{r},0,{large},1,{x1},{y1}L0,0Z",
+                x0 = fmt(x0),
+                y0 = fmt(y0),
+                r = fmt(r),
+                large = large,
+                x1 = fmt(x1),
+                y1 = fmt(y1)
+            );
+            let _ = write!(
+                &mut out,
+                r#"<path d="{d}" fill="{fill}" class="pieCircle"/>"#,
+                d = d,
+                fill = escape_xml(&slice.fill)
+            );
+        }
+    }
+
+    for slice in &layout.slices {
+        let _ = write!(
+            &mut out,
+            r#"<text transform="translate({x},{y})" class="slice" style="text-anchor: middle;">{text}</text>"#,
+            x = fmt(slice.text_x),
+            y = fmt(slice.text_y),
+            text = escape_xml(&format!("{}%", slice.percent))
+        );
+    }
+
+    match model.title.as_deref() {
+        Some(t) => {
+            let _ = write!(
+                &mut out,
+                r#"<text x="0" y="-200" class="pieTitleText">{text}</text>"#,
+                text = escape_xml(t)
+            );
+        }
+        None => {
+            out.push_str(r#"<text x="0" y="-200" class="pieTitleText"/>"#);
+        }
+    }
+
+    for item in &layout.legend_items {
+        let _ = write!(
+            &mut out,
+            r#"<g class="legend" transform="translate({x},{y})">"#,
+            x = fmt(layout.legend_x),
+            y = fmt(item.y)
+        );
+        let style = pie_legend_rect_style(&item.fill);
+        let _ = write!(
+            &mut out,
+            r#"<rect width="18" height="18" style="{style}"/>"#,
+            style = escape_xml(&style)
+        );
+        let text = if model.show_data {
+            format!("{} [{}]", item.label, fmt(item.value))
+        } else {
+            item.label.clone()
+        };
+        let _ = write!(
+            &mut out,
+            r#"<text x="22" y="14">{text}</text>"#,
+            text = escape_xml(&text)
+        );
+        out.push_str("</g>");
+    }
+
+    out.push_str("</g></svg>\n");
     Ok(out)
 }
 

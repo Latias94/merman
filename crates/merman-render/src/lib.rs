@@ -3,7 +3,9 @@
 pub mod class;
 pub mod er;
 pub mod flowchart;
+pub mod info;
 pub mod model;
+pub mod pie;
 pub mod sequence;
 pub mod state;
 pub mod svg;
@@ -66,6 +68,16 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
             options.text_measurer.as_ref(),
         )?),
         "sequence" => LayoutDiagram::SequenceDiagram(sequence::layout_sequence_diagram(
+            &parsed.model,
+            &meta.effective_config,
+            options.text_measurer.as_ref(),
+        )?),
+        "info" => LayoutDiagram::InfoDiagram(info::layout_info_diagram(
+            &parsed.model,
+            &meta.effective_config,
+            options.text_measurer.as_ref(),
+        )?),
+        "pie" => LayoutDiagram::PieDiagram(pie::layout_pie_diagram(
             &parsed.model,
             &meta.effective_config,
             options.text_measurer.as_ref(),

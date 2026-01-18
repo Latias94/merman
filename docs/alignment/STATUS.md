@@ -36,6 +36,8 @@ Legend:
 | State | yes | yes | Stage B + debug | yes | yes (`xtask compare-state-svgs`) |
 | Class | yes | yes | Stage B + debug | yes | yes (`xtask compare-class-svgs`) |
 | Sequence | yes | yes | Stage B + debug | yes | yes (`xtask compare-sequence-svgs`) |
+| Info | yes | yes | Stage B | yes | yes (`xtask compare-info-svgs`) |
+| Pie | yes | yes | Stage B | yes | yes (`xtask compare-pie-svgs`) |
 | Others (gantt, …) | yes | no | no | no | no |
 
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
@@ -54,6 +56,8 @@ and message texts, matching upstream DOM structure in `html_br_variants_and_wrap
 (trailing colon) now still produce a message text node like upstream.
 Recent progress: sequence Stage B now matches upstream SVG DOM for the current fixture set in parity mode
 (`cargo run -p xtask -- compare-sequence-svgs --check-dom --dom-mode parity --dom-decimals 3`).
+Recent progress: `info` and `pie` Stage B parity renderers exist and are validated against upstream
+SVG baselines via `xtask compare-info-svgs` / `xtask compare-pie-svgs`.
 
 ## Alignment Sanity Checks
 

@@ -62,6 +62,22 @@ Outputs to:
 
 - `fixtures/upstream-svgs/sequence/*.svg`
 
+## Generate (Info)
+
+- `cargo run -p xtask -- gen-upstream-svgs --diagram info`
+
+Outputs to:
+
+- `fixtures/upstream-svgs/info/*.svg`
+
+## Generate (Pie)
+
+- `cargo run -p xtask -- gen-upstream-svgs --diagram pie`
+
+Outputs to:
+
+- `fixtures/upstream-svgs/pie/*.svg`
+
 ## Generate (All supported diagrams)
 
 - `cargo run -p xtask -- gen-upstream-svgs --diagram all`
@@ -177,6 +193,18 @@ Notes:
 - The flowchart DOM compare is intentionally looser than ER while Stage-B rendering is still being
   brought up. It ignores `<path d>` and `data-points` geometry payloads and normalizes child order
   for container groups like `g.root` by using the first descendant cluster id as a sort hint.
+
+## Compare (Info)
+
+Generate a report comparing upstream info SVGs and the current Rust Stage-B info output:
+
+- `cargo run -p xtask -- compare-info-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
+## Compare (Pie)
+
+Generate a report comparing upstream pie SVGs and the current Rust Stage-B pie output:
+
+- `cargo run -p xtask -- compare-pie-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 ## Notes
 
