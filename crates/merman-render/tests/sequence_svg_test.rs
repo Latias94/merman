@@ -166,11 +166,11 @@ fn sequence_nested_rect_blocks_render_in_start_order() {
 fn sequence_notes_expand_viewbox_left_for_leftof_notes() {
     let svg = render_sequence_svg_from_fixture("notes_placements.mmd");
     assert!(
-        svg.contains(r#"viewBox="-150.000 -10.000"#),
+        svg.contains(r#"viewBox="-150 -10"#),
         "expected viewBox min_x to expand for left-of notes"
     );
     assert!(
-        svg.contains(r#"max-width: 750.000px"#),
+        svg.contains(r#"max-width: 750px"#),
         "expected max-width to reflect expanded viewBox width"
     );
 }

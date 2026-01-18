@@ -11,7 +11,20 @@ fn fmt(v: f64) -> String {
     if v.abs() < 0.0005 {
         return "0".to_string();
     }
-    format!("{v:.3}")
+    let mut r = (v * 1000.0).round() / 1000.0;
+    if r.abs() < 0.0005 {
+        r = 0.0;
+    }
+    let mut s = format!("{r:.3}");
+    if s.contains('.') {
+        while s.ends_with('0') {
+            s.pop();
+        }
+        if s.ends_with('.') {
+            s.pop();
+        }
+    }
+    if s == "-0" { "0".to_string() } else { s }
 }
 
 #[test]
