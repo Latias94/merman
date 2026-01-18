@@ -3,6 +3,10 @@
   "model": {
     "accDescr": null,
     "accTitle": null,
+    "actorOrder": [
+      "Service",
+      "DB"
+    ],
     "actors": {
       "DB": {
         "description": "DB",

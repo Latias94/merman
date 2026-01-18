@@ -3,6 +3,12 @@
   "model": {
     "accDescr": null,
     "accTitle": null,
+    "actorOrder": [
+      "Consumer",
+      "API",
+      "BookingService",
+      "BillingService"
+    ],
     "actors": {
       "API": {
         "description": "API",

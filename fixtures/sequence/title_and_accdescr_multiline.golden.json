@@ -3,6 +3,10 @@
   "model": {
     "accDescr": "Accessibility\nDescription",
     "accTitle": "This is the title",
+    "actorOrder": [
+      "Alice",
+      "Bob"
+    ],
     "actors": {
       "Alice": {
         "description": "Alice",

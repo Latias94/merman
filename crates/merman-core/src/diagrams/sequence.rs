@@ -814,6 +814,7 @@ impl SequenceDb {
             "title": self.title,
             "accTitle": self.acc_title,
             "accDescr": self.acc_descr,
+            "actorOrder": self.actor_order,
             "actors": Value::Object(actors_json),
             "messages": messages_json,
             "notes": notes_json,

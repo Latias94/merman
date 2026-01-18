@@ -3,6 +3,11 @@
   "model": {
     "accDescr": null,
     "accTitle": null,
+    "actorOrder": [
+      "Alice",
+      "Bob",
+      "Carl"
+    ],
     "actors": {
       "Alice": {
         "description": "Alice",

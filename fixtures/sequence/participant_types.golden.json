@@ -3,6 +3,14 @@
   "model": {
     "accDescr": null,
     "accTitle": null,
+    "actorOrder": [
+      "boundary",
+      "C",
+      "E",
+      "D",
+      "L",
+      "Q"
+    ],
     "actors": {
       "C": {
         "description": "C",
