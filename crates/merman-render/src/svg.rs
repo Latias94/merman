@@ -496,9 +496,20 @@ pub fn render_sequence_diagram_svg(
     }
 
     #[derive(Debug, Clone)]
+    struct AltSection {
+        label: String,
+        message_ids: Vec<String>,
+    }
+
+    #[derive(Debug, Clone)]
     enum SequenceBlock {
-        Alt { sections: Vec<String> },
-        Loop { label: String },
+        Alt {
+            sections: Vec<AltSection>,
+        },
+        Loop {
+            label: String,
+            message_ids: Vec<String>,
+        },
     }
 
     fn bracketize(s: &str) -> String {
@@ -512,98 +523,338 @@ pub fn render_sequence_diagram_svg(
         format!("[{t}]")
     }
 
+    fn frame_x_from_actors(
+        model: &SequenceSvgModel,
+        nodes_by_id: &std::collections::HashMap<&str, &LayoutNode>,
+    ) -> Option<(f64, f64)> {
+        const SIDE_PAD: f64 = 11.0;
+        let mut min_x = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        for actor_id in &model.actor_order {
+            let node_id = format!("actor-top-{actor_id}");
+            let n = nodes_by_id.get(node_id.as_str()).copied()?;
+            min_x = min_x.min(n.x);
+            max_x = max_x.max(n.x);
+        }
+        if !min_x.is_finite() || !max_x.is_finite() {
+            return None;
+        }
+        Some((min_x - SIDE_PAD, max_x + SIDE_PAD))
+    }
+
+    fn msg_line_y(
+        edges_by_id: &std::collections::HashMap<&str, &crate::model::LayoutEdge>,
+        msg_id: &str,
+    ) -> Option<f64> {
+        let edge_id = format!("msg-{msg_id}");
+        let e = edges_by_id.get(edge_id.as_str()).copied()?;
+        Some(e.points.first()?.y)
+    }
+
     // Mermaid renders block frames (`alt`, `loop`, ...) as `<g>` elements before message lines.
-    // The geometry values are intentionally approximate for now; DOM parity mode ignores numeric
-    // drift and focuses on element/attribute structure.
+    // Use layout-derived message y-coordinates for separator placement to avoid visual artifacts
+    // like dashed lines ending in a gap right before the frame border.
     let mut blocks: Vec<SequenceBlock> = Vec::new();
-    let mut alt_stack: Vec<Vec<String>> = Vec::new();
-    let mut loop_stack: Vec<String> = Vec::new();
+
+    #[derive(Debug, Clone)]
+    enum BlockStackEntry {
+        Alt {
+            labels: Vec<String>,
+            sections: Vec<Vec<String>>,
+        },
+        Loop {
+            label: String,
+            messages: Vec<String>,
+        },
+    }
+
+    let mut stack: Vec<BlockStackEntry> = Vec::new();
     for msg in &model.messages {
         let label = msg.message.as_str().unwrap_or_default();
         match msg.message_type {
             // loop start/end
-            10 => loop_stack.push(bracketize(label)),
+            10 => stack.push(BlockStackEntry::Loop {
+                label: bracketize(label),
+                messages: Vec::new(),
+            }),
             11 => {
-                if let Some(v) = loop_stack.pop() {
-                    blocks.push(SequenceBlock::Loop { label: v });
+                if let Some(BlockStackEntry::Loop { label, messages }) = stack.pop() {
+                    blocks.push(SequenceBlock::Loop {
+                        label,
+                        message_ids: messages,
+                    });
                 }
             }
             // alt start/else/end
-            12 => alt_stack.push(vec![bracketize(label)]),
+            12 => stack.push(BlockStackEntry::Alt {
+                labels: vec![bracketize(label)],
+                sections: vec![Vec::new()],
+            }),
             13 => {
-                if let Some(cur) = alt_stack.last_mut() {
-                    cur.push(bracketize(label));
+                if let Some(BlockStackEntry::Alt { labels, sections }) = stack.last_mut() {
+                    labels.push(bracketize(label));
+                    sections.push(Vec::new());
                 }
             }
             14 => {
-                if let Some(sections) = alt_stack.pop() {
-                    blocks.push(SequenceBlock::Alt { sections });
+                if let Some(BlockStackEntry::Alt { labels, sections }) = stack.pop() {
+                    let mut out_sections = Vec::new();
+                    for (i, lbl) in labels.into_iter().enumerate() {
+                        let message_ids = sections.get(i).cloned().unwrap_or_default();
+                        out_sections.push(AltSection {
+                            label: lbl,
+                            message_ids,
+                        });
+                    }
+                    blocks.push(SequenceBlock::Alt {
+                        sections: out_sections,
+                    });
                 }
             }
-            _ => {}
+            _ => {
+                // If this is a "real" message edge, attach it to all active block scopes.
+                if msg.from.is_some() && msg.to.is_some() {
+                    for entry in stack.iter_mut() {
+                        match entry {
+                            BlockStackEntry::Alt { sections, .. } => {
+                                if let Some(cur) = sections.last_mut() {
+                                    cur.push(msg.id.clone());
+                                }
+                            }
+                            BlockStackEntry::Loop { messages, .. } => {
+                                messages.push(msg.id.clone());
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
-    for (block_idx, block) in blocks.iter().enumerate() {
-        match block {
-            SequenceBlock::Alt { sections } => {
-                let _ = block_idx;
-                out.push_str(r#"<g>"#);
-                // frame
-                out.push_str(r#"<line x1="64" y1="119" x2="286" y2="119" class="loopLine"/>"#);
-                out.push_str(r#"<line x1="286" y1="119" x2="286" y2="297" class="loopLine"/>"#);
-                out.push_str(r#"<line x1="64" y1="297" x2="286" y2="297" class="loopLine"/>"#);
-                out.push_str(r#"<line x1="64" y1="119" x2="64" y2="297" class="loopLine"/>"#);
-                // separators (dashed)
-                for _ in sections.iter().skip(1) {
-                    out.push_str(
-                        r#"<line x1="64" y1="213" x2="286" y2="213" class="loopLine" style="stroke-dasharray: 3, 3;"/>"#,
+    if let Some((frame_x1, frame_x2)) = frame_x_from_actors(&model, &nodes_by_id) {
+        for block in &blocks {
+            match block {
+                SequenceBlock::Alt { sections } => {
+                    if sections.is_empty() {
+                        continue;
+                    }
+
+                    let mut min_y = f64::INFINITY;
+                    let mut max_y = f64::NEG_INFINITY;
+                    for sec in sections {
+                        for msg_id in &sec.message_ids {
+                            if let Some(y) = msg_line_y(&edges_by_id, msg_id) {
+                                min_y = min_y.min(y);
+                                max_y = max_y.max(y);
+                            }
+                        }
+                    }
+                    if !min_y.is_finite() || !max_y.is_finite() {
+                        continue;
+                    }
+
+                    let frame_y1 = min_y - 79.0;
+                    let frame_y2 = max_y + 10.0;
+
+                    out.push_str(r#"<g>"#);
+
+                    // frame
+                    let _ = write!(
+                        &mut out,
+                        r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y1}" class="loopLine"/>"#,
+                        x1 = fmt(frame_x1),
+                        x2 = fmt(frame_x2),
+                        y1 = fmt(frame_y1)
                     );
-                }
-                // label box + label text
-                out.push_str(
-                    r#"<polygon points="64,119 114,119 114,132 105.6,139 64,139" class="labelBox"/>"#,
-                );
-                out.push_str(
-                    r#"<text x="89" y="132" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="font-size: 16px; font-weight: 400;">alt</text>"#,
-                );
-                // section labels
-                for (i, s) in sections.iter().enumerate() {
-                    if i == 0 {
+                    let _ = write!(
+                        &mut out,
+                        r#"<line x1="{x2}" y1="{y1}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
+                        x2 = fmt(frame_x2),
+                        y1 = fmt(frame_y1),
+                        y2 = fmt(frame_y2)
+                    );
+                    let _ = write!(
+                        &mut out,
+                        r#"<line x1="{x1}" y1="{y2}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
+                        x1 = fmt(frame_x1),
+                        x2 = fmt(frame_x2),
+                        y2 = fmt(frame_y2)
+                    );
+                    let _ = write!(
+                        &mut out,
+                        r#"<line x1="{x1}" y1="{y1}" x2="{x1}" y2="{y2}" class="loopLine"/>"#,
+                        x1 = fmt(frame_x1),
+                        y1 = fmt(frame_y1),
+                        y2 = fmt(frame_y2)
+                    );
+
+                    // separators (dashed)
+                    const DASH_EPS: f64 = 0.01;
+                    let dash_x1 = frame_x1 - DASH_EPS;
+                    let dash_x2 = frame_x2 + DASH_EPS;
+                    let mut section_max_ys: Vec<f64> = Vec::new();
+                    for sec in sections {
+                        let mut sec_max_y = f64::NEG_INFINITY;
+                        for msg_id in &sec.message_ids {
+                            if let Some(y) = msg_line_y(&edges_by_id, msg_id) {
+                                sec_max_y = sec_max_y.max(y);
+                            }
+                        }
+                        if !sec_max_y.is_finite() {
+                            sec_max_y = min_y;
+                        }
+                        section_max_ys.push(sec_max_y);
+                    }
+                    let mut sep_ys: Vec<f64> = Vec::new();
+                    for sec_max_y in section_max_ys
+                        .iter()
+                        .take(section_max_ys.len().saturating_sub(1))
+                    {
+                        sep_ys.push(*sec_max_y + 15.0);
+                    }
+                    for y in &sep_ys {
                         let _ = write!(
                             &mut out,
-                            r#"<text x="200" y="137" text-anchor="middle" class="loopText" style="font-size: 16px; font-weight: 400;"><tspan x="200">{}</tspan></text>"#,
-                            escape_xml(s)
-                        );
-                    } else {
-                        let _ = write!(
-                            &mut out,
-                            r#"<text x="175" y="231" text-anchor="middle" class="loopText" style="font-size: 16px; font-weight: 400;">{}</text>"#,
-                            escape_xml(s)
+                            r#"<line x1="{x1}" y1="{y}" x2="{x2}" y2="{y}" class="loopLine" style="stroke-dasharray: 3, 3;"/>"#,
+                            x1 = fmt(dash_x1),
+                            x2 = fmt(dash_x2),
+                            y = fmt(*y)
                         );
                     }
+
+                    // label box + label text
+                    // This matches Mermaid's label-box shape: a 50px-wide header with a 8.4px cut.
+                    let x1 = frame_x1;
+                    let y1 = frame_y1;
+                    let x2 = x1 + 50.0;
+                    let y2 = y1 + 13.0;
+                    let y3 = y1 + 20.0;
+                    let x3 = x2 - 8.4;
+                    let _ = write!(
+                        &mut out,
+                        r#"<polygon points="{x1},{y1} {x2},{y1} {x2},{y2} {x3},{y3} {x1},{y3}" class="labelBox"/>"#,
+                        x1 = fmt(x1),
+                        y1 = fmt(y1),
+                        x2 = fmt(x2),
+                        y2 = fmt(y2),
+                        x3 = fmt(x3),
+                        y3 = fmt(y3)
+                    );
+                    let label_cx = x1 + 25.0;
+                    let label_cy = y1 + 13.0;
+                    let _ = write!(
+                        &mut out,
+                        r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="font-size: 16px; font-weight: 400;">alt</text>"#,
+                        x = fmt(label_cx),
+                        y = fmt(label_cy)
+                    );
+
+                    // section labels
+                    let text_x = (frame_x1 + frame_x2) / 2.0;
+                    for (i, sec) in sections.iter().enumerate() {
+                        if i == 0 {
+                            let y = frame_y1 + 18.0;
+                            let _ = write!(
+                                &mut out,
+                                r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText" style="font-size: 16px; font-weight: 400;"><tspan x="{x}">{text}</tspan></text>"#,
+                                x = fmt(text_x),
+                                y = fmt(y),
+                                text = escape_xml(&sec.label)
+                            );
+                            continue;
+                        }
+                        let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
+                        let _ = write!(
+                            &mut out,
+                            r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText" style="font-size: 16px; font-weight: 400;">{text}</text>"#,
+                            x = fmt(text_x),
+                            y = fmt(y),
+                            text = escape_xml(&sec.label)
+                        );
+                    }
+
+                    out.push_str("</g>");
                 }
-                out.push_str("</g>");
-            }
-            SequenceBlock::Loop { label } => {
-                let _ = block_idx;
-                out.push_str(r#"<g>"#);
-                out.push_str(r#"<line x1="64" y1="307" x2="286" y2="307" class="loopLine"/>"#);
-                out.push_str(r#"<line x1="286" y1="307" x2="286" y2="396" class="loopLine"/>"#);
-                out.push_str(r#"<line x1="64" y1="396" x2="286" y2="396" class="loopLine"/>"#);
-                out.push_str(r#"<line x1="64" y1="307" x2="64" y2="396" class="loopLine"/>"#);
-                out.push_str(
-                    r#"<polygon points="64,307 114,307 114,320 105.6,327 64,327" class="labelBox"/>"#,
-                );
-                out.push_str(
-                    r#"<text x="89" y="320" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="font-size: 16px; font-weight: 400;">loop</text>"#,
-                );
-                let _ = write!(
-                    &mut out,
-                    r#"<text x="200" y="325" text-anchor="middle" class="loopText" style="font-size: 16px; font-weight: 400;"><tspan x="200">{}</tspan></text>"#,
-                    escape_xml(label)
-                );
-                out.push_str("</g>");
+                SequenceBlock::Loop { label, message_ids } => {
+                    let mut min_y = f64::INFINITY;
+                    let mut max_y = f64::NEG_INFINITY;
+                    for msg_id in message_ids {
+                        if let Some(y) = msg_line_y(&edges_by_id, msg_id) {
+                            min_y = min_y.min(y);
+                            max_y = max_y.max(y);
+                        }
+                    }
+                    if !min_y.is_finite() || !max_y.is_finite() {
+                        continue;
+                    }
+
+                    let frame_y1 = min_y - 40.0;
+                    let frame_y2 = max_y + 10.0;
+
+                    out.push_str(r#"<g>"#);
+                    let _ = write!(
+                        &mut out,
+                        r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y1}" class="loopLine"/>"#,
+                        x1 = fmt(frame_x1),
+                        x2 = fmt(frame_x2),
+                        y1 = fmt(frame_y1)
+                    );
+                    let _ = write!(
+                        &mut out,
+                        r#"<line x1="{x2}" y1="{y1}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
+                        x2 = fmt(frame_x2),
+                        y1 = fmt(frame_y1),
+                        y2 = fmt(frame_y2)
+                    );
+                    let _ = write!(
+                        &mut out,
+                        r#"<line x1="{x1}" y1="{y2}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
+                        x1 = fmt(frame_x1),
+                        x2 = fmt(frame_x2),
+                        y2 = fmt(frame_y2)
+                    );
+                    let _ = write!(
+                        &mut out,
+                        r#"<line x1="{x1}" y1="{y1}" x2="{x1}" y2="{y2}" class="loopLine"/>"#,
+                        x1 = fmt(frame_x1),
+                        y1 = fmt(frame_y1),
+                        y2 = fmt(frame_y2)
+                    );
+                    let x1 = frame_x1;
+                    let y1 = frame_y1;
+                    let x2 = x1 + 50.0;
+                    let y2 = y1 + 13.0;
+                    let y3 = y1 + 20.0;
+                    let x3 = x2 - 8.4;
+                    let _ = write!(
+                        &mut out,
+                        r#"<polygon points="{x1},{y1} {x2},{y1} {x2},{y2} {x3},{y3} {x1},{y3}" class="labelBox"/>"#,
+                        x1 = fmt(x1),
+                        y1 = fmt(y1),
+                        x2 = fmt(x2),
+                        y2 = fmt(y2),
+                        x3 = fmt(x3),
+                        y3 = fmt(y3)
+                    );
+                    let label_cx = x1 + 25.0;
+                    let label_cy = y1 + 13.0;
+                    let _ = write!(
+                        &mut out,
+                        r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="font-size: 16px; font-weight: 400;">loop</text>"#,
+                        x = fmt(label_cx),
+                        y = fmt(label_cy)
+                    );
+                    let text_x = (frame_x1 + frame_x2) / 2.0;
+                    let text_y = frame_y1 + 18.0;
+                    let _ = write!(
+                        &mut out,
+                        r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText" style="font-size: 16px; font-weight: 400;"><tspan x="{x}">{text}</tspan></text>"#,
+                        x = fmt(text_x),
+                        y = fmt(text_y),
+                        text = escape_xml(label)
+                    );
+                    out.push_str("</g>");
+                }
             }
         }
     }

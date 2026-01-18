@@ -40,6 +40,9 @@ Legend:
 
 Note: Sequence SVG Stage B is in progress; `xtask compare-sequence-svgs` is expected to report
 mismatches until the renderer reaches parity with upstream baselines.
+Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
+the dashed separators are extended by a tiny epsilon to avoid visible end gaps when the dash period lands
+exactly on the frame boundary.
 
 ## Alignment Sanity Checks
 
