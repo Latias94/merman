@@ -13,33 +13,31 @@
       "interpolate": null
     },
     "vertexCalls": [
-      "internet",
-      "nat",
-      "router",
-      "lb1",
-      "lb2",
-      "compute1",
-      "compute2",
-      "router",
-      "nat",
-      "compute1",
-      "lb1",
-      "compute2",
-      "lb2",
-      "internet",
-      "router",
-      "router",
-      "subnet1",
-      "subnet2",
-      "subnet1",
-      "subnet2",
-      "nat",
-      "internet"
+      "L1",
+      "L2",
+      "L2",
+      "C",
+      "M1",
+      "C",
+      "R1",
+      "R2",
+      "R2",
+      "C",
+      "C",
+      "E1",
+      "C",
+      "E2",
+      "C",
+      "E3",
+      "C",
+      "E4",
+      "C",
+      "E5"
     ],
     "nodes": [
       {
-        "id": "internet",
-        "label": "internet",
+        "id": "L1",
+        "label": "L1",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -57,8 +55,8 @@
         "haveCallback": false
       },
       {
-        "id": "nat",
-        "label": "nat",
+        "id": "L2",
+        "label": "L2",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -76,8 +74,8 @@
         "haveCallback": false
       },
       {
-        "id": "router",
-        "label": "router",
+        "id": "C",
+        "label": "C",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -95,8 +93,8 @@
         "haveCallback": false
       },
       {
-        "id": "lb1",
-        "label": "lb1",
+        "id": "M1",
+        "label": "M1",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -114,8 +112,8 @@
         "haveCallback": false
       },
       {
-        "id": "lb2",
-        "label": "lb2",
+        "id": "R1",
+        "label": "R1",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -133,8 +131,8 @@
         "haveCallback": false
       },
       {
-        "id": "compute1",
-        "label": "compute1",
+        "id": "R2",
+        "label": "R2",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -152,8 +150,8 @@
         "haveCallback": false
       },
       {
-        "id": "compute2",
-        "label": "compute2",
+        "id": "E1",
+        "label": "E1",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -171,8 +169,8 @@
         "haveCallback": false
       },
       {
-        "id": "subnet1",
-        "label": "subnet1",
+        "id": "E2",
+        "label": "E2",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -190,8 +188,46 @@
         "haveCallback": false
       },
       {
-        "id": "subnet2",
-        "label": "subnet2",
+        "id": "E3",
+        "label": "E3",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "E4",
+        "label": "E4",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "E5",
+        "label": "E5",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -211,12 +247,12 @@
     ],
     "edges": [
       {
-        "from": "internet",
-        "to": "router",
-        "id": "L_internet_router_0",
+        "from": "L1",
+        "to": "L2",
+        "id": "L_L1_L2_0",
         "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
+        "arrow": "---",
+        "type": "arrow_open",
         "stroke": "normal",
         "length": 1,
         "label": null,
@@ -228,12 +264,12 @@
         "animation": null
       },
       {
-        "from": "router",
-        "to": "subnet1",
-        "id": "L_router_subnet1_0",
+        "from": "L2",
+        "to": "C",
+        "id": "L_L2_C_0",
         "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
+        "arrow": "---",
+        "type": "arrow_open",
         "stroke": "normal",
         "length": 1,
         "label": null,
@@ -245,13 +281,30 @@
         "animation": null
       },
       {
-        "from": "router",
-        "to": "subnet2",
-        "id": "L_router_subnet2_0",
+        "from": "M1",
+        "to": "C",
+        "id": "L_M1_C_0",
         "isUserDefinedId": false,
-        "arrow": "-->",
+        "arrow": "--->",
         "type": "arrow_point",
         "stroke": "normal",
+        "length": 2,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "R1",
+        "to": "R2",
+        "id": "L_R1_R2_0",
+        "isUserDefinedId": false,
+        "arrow": ".->",
+        "type": "arrow_point",
+        "stroke": "dotted",
         "length": 1,
         "label": null,
         "labelType": "text",
@@ -262,13 +315,13 @@
         "animation": null
       },
       {
-        "from": "subnet1",
-        "to": "nat",
-        "id": "L_subnet1_nat_0",
+        "from": "R2",
+        "to": "C",
+        "id": "L_R2_C_0",
         "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
+        "arrow": "<.->",
+        "type": "double_arrow_point",
+        "stroke": "dotted",
         "length": 1,
         "label": null,
         "labelType": "text",
@@ -279,14 +332,48 @@
         "animation": null
       },
       {
-        "from": "subnet2",
-        "to": "nat",
-        "id": "L_subnet2_nat_0",
+        "from": "C",
+        "to": "E1",
+        "id": "L_C_E1_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
         "stroke": "normal",
         "length": 1,
+        "label": "Label 1",
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "C",
+        "to": "E2",
+        "id": "L_C_E2_0",
+        "isUserDefinedId": false,
+        "arrow": "--->",
+        "type": "double_arrow_point",
+        "stroke": "normal",
+        "length": 2,
+        "label": "Label 2",
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "C",
+        "to": "E3",
+        "id": "L_C_E3_0",
+        "isUserDefinedId": false,
+        "arrow": "---->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 3,
         "label": null,
         "labelType": "text",
         "style": [],
@@ -296,14 +383,31 @@
         "animation": null
       },
       {
-        "from": "nat",
-        "to": "internet",
-        "id": "L_nat_internet_0",
+        "from": "C",
+        "to": "E4",
+        "id": "L_C_E4_0",
         "isUserDefinedId": false,
-        "arrow": "-->",
+        "arrow": "<-...->",
+        "type": "double_arrow_point",
+        "stroke": "dotted",
+        "length": 3,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "C",
+        "to": "E5",
+        "id": "L_C_E5_0",
+        "isUserDefinedId": false,
+        "arrow": "======>",
         "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
+        "stroke": "thick",
+        "length": 5,
         "label": null,
         "labelType": "text",
         "style": [],
@@ -313,42 +417,6 @@
         "animation": null
       }
     ],
-    "subgraphs": [
-      {
-        "id": "subnet1",
-        "nodes": [
-          "compute1",
-          "lb1"
-        ],
-        "title": "subnet1",
-        "classes": [],
-        "dir": null,
-        "labelType": "text"
-      },
-      {
-        "id": "subnet2",
-        "nodes": [
-          "compute2",
-          "lb2"
-        ],
-        "title": "subnet2",
-        "classes": [],
-        "dir": null,
-        "labelType": "text"
-      },
-      {
-        "id": "project",
-        "nodes": [
-          "router",
-          "nat",
-          "subnet1",
-          "subnet2"
-        ],
-        "title": "project",
-        "classes": [],
-        "dir": null,
-        "labelType": "text"
-      }
-    ]
+    "subgraphs": []
   }
 }

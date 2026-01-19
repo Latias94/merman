@@ -158,6 +158,14 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/flowChartShape
 
 Source: `repo-ref/mermaid/cypress/integration/rendering/flowchart-v2.spec.js`
 
+- simple flowchart smoke: `fixtures/flowchart/upstream_flowchart_v2_simple_flowchart_spec.mmd`
+- `diagramPadding: 0`: `fixtures/flowchart/upstream_flowchart_v2_diagramPadding_0_spec.mmd`
+- `useMaxWidth: true`: `fixtures/flowchart/upstream_flowchart_v2_useMaxWidth_true_spec.mmd`
+- `useMaxWidth: false`: `fixtures/flowchart/upstream_flowchart_v2_useMaxWidth_false_spec.mmd`
+- escaped HTML in labels when `htmlLabels: false`: `fixtures/flowchart/upstream_flowchart_v2_escaped_without_html_labels_spec.mmd`
+- unescaped HTML in labels when `htmlLabels: true` + `securityLevel: loose`: `fixtures/flowchart/upstream_flowchart_v2_unescaped_with_html_labels_spec.mmd`
+- edge to subgraph/cluster arrowhead clipping: `fixtures/flowchart/upstream_flowchart_v2_link_to_subgraph_arrowhead_spec.mmd`
+- edge length matrix rendering: `fixtures/flowchart/upstream_flowchart_v2_edge_lengths_spec.mmd`
 - nested subgraphs (reverse order): `fixtures/flowchart/upstream_flowchart_v2_nested_subgraphs_reverse_order_spec.mmd`
 - nested subgraphs (several levels): `fixtures/flowchart/upstream_flowchart_v2_nested_subgraphs_several_levels_spec.mmd`
 - nested subgraphs (edges in/out): `fixtures/flowchart/upstream_flowchart_v2_edges_in_and_out_subgraphs_spec.mmd`

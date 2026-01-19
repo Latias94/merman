@@ -3,7 +3,7 @@
   "model": {
     "type": "flowchart-v2",
     "keyword": "flowchart",
-    "direction": "LR",
+    "direction": "TB",
     "accTitle": null,
     "accDescr": null,
     "classDefs": {},
@@ -14,16 +14,14 @@
     },
     "vertexCalls": [
       "a",
-      "b",
-      "B",
       "b"
     ],
     "nodes": [
       {
         "id": "a",
-        "label": "a",
-        "labelType": "text",
-        "shape": null,
+        "label": "<strong>Haiya</strong>",
+        "labelType": "string",
+        "shape": "square",
         "layoutShape": "squareRect",
         "icon": null,
         "form": null,
@@ -56,25 +54,6 @@
         "link": null,
         "linkTarget": null,
         "haveCallback": false
-      },
-      {
-        "id": "B",
-        "label": "B",
-        "labelType": "text",
-        "shape": null,
-        "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
       }
     ],
     "edges": [
@@ -83,10 +62,10 @@
         "to": "b",
         "id": "L_a_b_0",
         "isUserDefinedId": false,
-        "arrow": "-->",
+        "arrow": "---->",
         "type": "arrow_point",
         "stroke": "normal",
-        "length": 1,
+        "length": 3,
         "label": null,
         "labelType": "text",
         "style": [],
@@ -96,27 +75,6 @@
         "animation": null
       }
     ],
-    "subgraphs": [
-      {
-        "id": "A",
-        "nodes": [
-          "B"
-        ],
-        "title": "A",
-        "classes": [],
-        "dir": null,
-        "labelType": "text"
-      },
-      {
-        "id": "B",
-        "nodes": [
-          "b"
-        ],
-        "title": "B",
-        "classes": [],
-        "dir": null,
-        "labelType": "text"
-      }
-    ]
+    "subgraphs": []
   }
 }

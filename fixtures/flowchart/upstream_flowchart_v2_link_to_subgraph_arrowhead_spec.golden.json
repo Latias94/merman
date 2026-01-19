@@ -3,7 +3,7 @@
   "model": {
     "type": "flowchart-v2",
     "keyword": "flowchart",
-    "direction": "LR",
+    "direction": "TB",
     "accTitle": null,
     "accDescr": null,
     "classDefs": {},
@@ -13,17 +13,23 @@
       "interpolate": null
     },
     "vertexCalls": [
-      "X",
-      "Y",
-      "A",
-      "C",
-      "B",
-      "D"
+      "P1",
+      "P1",
+      "P1.5",
+      "P2",
+      "P2.5",
+      "P3",
+      "P2",
+      "P4",
+      "P3",
+      "P6",
+      "P1.5",
+      "P5"
     ],
     "nodes": [
       {
-        "id": "X",
-        "label": "X",
+        "id": "P1",
+        "label": "P1",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -41,8 +47,8 @@
         "haveCallback": false
       },
       {
-        "id": "Y",
-        "label": "Y",
+        "id": "P1.5",
+        "label": "P1.5",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -60,11 +66,30 @@
         "haveCallback": false
       },
       {
-        "id": "A",
+        "id": "P2",
+        "label": "P2",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "P2.5",
         "label": "A",
         "labelType": "text",
-        "shape": null,
-        "layoutShape": "squareRect",
+        "shape": "circle",
+        "layoutShape": "circle",
         "icon": null,
         "form": null,
         "pos": null,
@@ -79,8 +104,8 @@
         "haveCallback": false
       },
       {
-        "id": "C",
-        "label": "C",
+        "id": "P3",
+        "label": "P3",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -98,8 +123,8 @@
         "haveCallback": false
       },
       {
-        "id": "B",
-        "label": "B",
+        "id": "P4",
+        "label": "P4",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -117,8 +142,27 @@
         "haveCallback": false
       },
       {
-        "id": "D",
-        "label": "D",
+        "id": "P6",
+        "label": "P6",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "P5",
+        "label": "P5",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -138,9 +182,60 @@
     ],
     "edges": [
       {
-        "from": "X",
-        "to": "Y",
-        "id": "L_X_Y_0",
+        "from": "P1",
+        "to": "P1.5",
+        "id": "L_P1_P1.5_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "P2",
+        "to": "P4",
+        "id": "L_P2_P4_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "P3",
+        "to": "P6",
+        "id": "L_P3_P6_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "P1.5",
+        "to": "P5",
+        "id": "L_P1.5_P5_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
@@ -157,23 +252,13 @@
     ],
     "subgraphs": [
       {
-        "id": "X",
+        "id": "P1.5",
         "nodes": [
-          "A",
-          "C"
+          "P2",
+          "P2.5",
+          "P3"
         ],
-        "title": "X",
-        "classes": [],
-        "dir": "LR",
-        "labelType": "text"
-      },
-      {
-        "id": "Y",
-        "nodes": [
-          "B",
-          "D"
-        ],
-        "title": "Y",
+        "title": "P1.5",
         "classes": [],
         "dir": null,
         "labelType": "text"
