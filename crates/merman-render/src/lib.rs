@@ -3,6 +3,7 @@
 pub mod class;
 pub mod er;
 pub mod flowchart;
+pub mod gantt;
 pub mod gitgraph;
 pub mod info;
 pub mod journey;
@@ -88,6 +89,11 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
             options.text_measurer.as_ref(),
         )?),
         "timeline" => LayoutDiagram::TimelineDiagram(timeline::layout_timeline_diagram(
+            &parsed.model,
+            &meta.effective_config,
+            options.text_measurer.as_ref(),
+        )?),
+        "gantt" => LayoutDiagram::GanttDiagram(gantt::layout_gantt_diagram(
             &parsed.model,
             &meta.effective_config,
             options.text_measurer.as_ref(),

@@ -1,0 +1,269 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1200.0,
+        "max_y": 196.0
+      },
+      "width": 1200.0,
+      "height": 196.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "YYYY-MM-DD",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "Documentation"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 2.0,
+          "x": 0.0,
+          "y": 96.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 3.0,
+          "x": 0.0,
+          "y": 120.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "Documentation",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 98.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Documentation"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "c",
+          "task": "task C",
+          "section": "Documentation",
+          "task_type": "Documentation",
+          "order": 2.0,
+          "start_ms": 1705680000000.0,
+          "end_ms": 1706284800000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "c",
+            "x": 75.0,
+            "y": 98.0,
+            "width": 735.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "c-text",
+            "text": "task C",
+            "font_size": 11.0,
+            "width": 30.47,
+            "x": 442.5,
+            "y": 111.5,
+            "class": "taskText taskText0 width-30.47"
+          }
+        },
+        {
+          "id": "a",
+          "task": "task A",
+          "section": "Documentation",
+          "task_type": "Documentation",
+          "order": 0.0,
+          "start_ms": 1706284800000.0,
+          "end_ms": 1706371200000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "a",
+            "x": 810.0,
+            "y": 50.0,
+            "width": 105.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "a-text",
+            "text": "task A",
+            "font_size": 11.0,
+            "width": 30.47,
+            "x": 862.5,
+            "y": 63.5,
+            "class": "taskText taskText0 width-30.47"
+          }
+        },
+        {
+          "id": "d",
+          "task": "task D",
+          "section": "Documentation",
+          "task_type": "Documentation",
+          "order": 3.0,
+          "start_ms": 1706284800000.0,
+          "end_ms": 1706371200000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "d",
+            "x": 810.0,
+            "y": 122.0,
+            "width": 105.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "d-text",
+            "text": "task D",
+            "font_size": 11.0,
+            "width": 30.47,
+            "x": 862.5,
+            "y": 135.5,
+            "class": "taskText taskText0 width-30.47"
+          }
+        },
+        {
+          "id": "b",
+          "task": "task B",
+          "section": "Documentation",
+          "task_type": "Documentation",
+          "order": 1.0,
+          "start_ms": 1706371200000.0,
+          "end_ms": 1706544000000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "b",
+            "x": 915.0,
+            "y": 74.0,
+            "width": 210.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "b-text",
+            "text": "task B",
+            "font_size": 11.0,
+            "width": 30.47,
+            "x": 1020.0,
+            "y": 87.5,
+            "class": "taskText taskText0 width-30.47"
+          }
+        }
+      ],
+      "excludes": [],
+      "bottom_ticks": [
+        {
+          "time_ms": 1705680000000.0,
+          "x": 75.0,
+          "label": "2024-01-20"
+        },
+        {
+          "time_ms": 1705766400000.0,
+          "x": 180.0,
+          "label": "2024-01-21"
+        },
+        {
+          "time_ms": 1705852800000.0,
+          "x": 285.0,
+          "label": "2024-01-22"
+        },
+        {
+          "time_ms": 1705939200000.0,
+          "x": 390.0,
+          "label": "2024-01-23"
+        },
+        {
+          "time_ms": 1706025600000.0,
+          "x": 495.0,
+          "label": "2024-01-24"
+        },
+        {
+          "time_ms": 1706112000000.0,
+          "x": 600.0,
+          "label": "2024-01-25"
+        },
+        {
+          "time_ms": 1706198400000.0,
+          "x": 705.0,
+          "label": "2024-01-26"
+        },
+        {
+          "time_ms": 1706284800000.0,
+          "x": 810.0,
+          "label": "2024-01-27"
+        },
+        {
+          "time_ms": 1706371200000.0,
+          "x": 915.0,
+          "label": "2024-01-28"
+        },
+        {
+          "time_ms": 1706457600000.0,
+          "x": 1020.0,
+          "label": "2024-01-29"
+        },
+        {
+          "time_ms": 1706544000000.0,
+          "x": 1125.0,
+          "label": "2024-01-30"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Relative start/end mix",
+      "title_x": 600.0,
+      "title_y": 25.0
+    }
+  }
+}

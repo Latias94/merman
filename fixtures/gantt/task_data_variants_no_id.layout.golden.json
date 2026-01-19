@@ -1,0 +1,264 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1200.0,
+        "max_y": 196.0
+      },
+      "width": 1200.0,
+      "height": 196.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "YYYY-MM-DD",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "testa1"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 2.0,
+          "x": 0.0,
+          "y": 96.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 3.0,
+          "x": 0.0,
+          "y": 120.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "testa1",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 98.0,
+          "dy_em": -0.0,
+          "lines": [
+            "testa1"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "id1",
+          "task": "test1",
+          "section": "testa1",
+          "task_type": "testa1",
+          "order": 0.0,
+          "start_ms": 1356969600000.0,
+          "end_ms": 1358179200000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "id1",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 544.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "id1-text",
+            "text": "test1",
+            "font_size": 11.0,
+            "width": 25.08,
+            "x": 347.0,
+            "y": 63.5,
+            "class": "taskText taskText0 width-25.080000000000002"
+          }
+        },
+        {
+          "id": "task1",
+          "task": "test2",
+          "section": "testa1",
+          "task_type": "testa1",
+          "order": 1.0,
+          "start_ms": 1358179200000.0,
+          "end_ms": 1358265600000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task1",
+            "x": 619.0,
+            "y": 74.0,
+            "width": 39.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "task1-text",
+            "text": "test2",
+            "font_size": 11.0,
+            "width": 25.08,
+            "x": 638.5,
+            "y": 87.5,
+            "class": "taskText taskText0 width-25.080000000000002"
+          }
+        },
+        {
+          "id": "task2",
+          "task": "test3",
+          "section": "testa1",
+          "task_type": "testa1",
+          "order": 2.0,
+          "start_ms": 1358265600000.0,
+          "end_ms": 1359129600000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task2",
+            "x": 658.0,
+            "y": 98.0,
+            "width": 389.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "task2-text",
+            "text": "test3",
+            "font_size": 11.0,
+            "width": 25.08,
+            "x": 852.5,
+            "y": 111.5,
+            "class": "taskText taskText0 width-25.080000000000002"
+          }
+        },
+        {
+          "id": "task3",
+          "task": "test4",
+          "section": "testa1",
+          "task_type": "testa1",
+          "order": 3.0,
+          "start_ms": 1359129600000.0,
+          "end_ms": 1359302400000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task3",
+            "x": 1047.0,
+            "y": 122.0,
+            "width": 78.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "task3-text",
+            "text": "test4",
+            "font_size": 11.0,
+            "width": 25.08,
+            "x": 1086.0,
+            "y": 135.5,
+            "class": "taskText taskText0 width-25.080000000000002"
+          }
+        }
+      ],
+      "excludes": [],
+      "bottom_ticks": [
+        {
+          "time_ms": 1356969600000.0,
+          "x": 75.0,
+          "label": "2013-01-01"
+        },
+        {
+          "time_ms": 1357228800000.0,
+          "x": 192.0,
+          "label": "2013-01-04"
+        },
+        {
+          "time_ms": 1357488000000.0,
+          "x": 308.0,
+          "label": "2013-01-07"
+        },
+        {
+          "time_ms": 1357747200000.0,
+          "x": 425.0,
+          "label": "2013-01-10"
+        },
+        {
+          "time_ms": 1358006400000.0,
+          "x": 542.0,
+          "label": "2013-01-13"
+        },
+        {
+          "time_ms": 1358265600000.0,
+          "x": 658.0,
+          "label": "2013-01-16"
+        },
+        {
+          "time_ms": 1358524800000.0,
+          "x": 775.0,
+          "label": "2013-01-19"
+        },
+        {
+          "time_ms": 1358784000000.0,
+          "x": 892.0,
+          "label": "2013-01-22"
+        },
+        {
+          "time_ms": 1359043200000.0,
+          "x": 1008.0,
+          "label": "2013-01-25"
+        },
+        {
+          "time_ms": 1359302400000.0,
+          "x": 1125.0,
+          "label": "2013-01-28"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Task data variants (no id)",
+      "title_x": 600.0,
+      "title_y": 25.0
+    }
+  }
+}

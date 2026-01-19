@@ -1,0 +1,162 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1200.0,
+        "max_y": 124.0
+      },
+      "width": 1200.0,
+      "height": 124.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "YYYY-MM-DD",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "full ending task on last day"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "full ending task on last day",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 62.0,
+          "dy_em": -0.0,
+          "lines": [
+            "full ending task on last day"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "id6",
+          "task": "test6",
+          "section": "full ending task on last day",
+          "task_type": "full ending task on last day",
+          "order": 0.0,
+          "start_ms": 1549987200000.0,
+          "end_ms": 1550419200000.0,
+          "render_end_ms": 1550160000000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "id6",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 420.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "id6-text",
+            "text": "test6",
+            "font_size": 11.0,
+            "width": 25.08,
+            "x": 285.0,
+            "y": 63.5,
+            "class": "taskText taskText0 width-25.080000000000002"
+          }
+        }
+      ],
+      "excludes": [
+        {
+          "id": "exclude-2019-02-15",
+          "start_ms": 1550160000000.0,
+          "end_ms": 1550419199999.0,
+          "x": 495.0,
+          "y": 35.0,
+          "width": 630.0,
+          "height": 39.0
+        }
+      ],
+      "bottom_ticks": [
+        {
+          "time_ms": 1549987200000.0,
+          "x": 75.0,
+          "label": "2019-02-13"
+        },
+        {
+          "time_ms": 1550030400000.0,
+          "x": 180.0,
+          "label": "2019-02-13"
+        },
+        {
+          "time_ms": 1550073600000.0,
+          "x": 285.0,
+          "label": "2019-02-14"
+        },
+        {
+          "time_ms": 1550116800000.0,
+          "x": 390.0,
+          "label": "2019-02-14"
+        },
+        {
+          "time_ms": 1550160000000.0,
+          "x": 495.0,
+          "label": "2019-02-15"
+        },
+        {
+          "time_ms": 1550203200000.0,
+          "x": 600.0,
+          "label": "2019-02-15"
+        },
+        {
+          "time_ms": 1550246400000.0,
+          "x": 705.0,
+          "label": "2019-02-16"
+        },
+        {
+          "time_ms": 1550289600000.0,
+          "x": 810.0,
+          "label": "2019-02-16"
+        },
+        {
+          "time_ms": 1550332800000.0,
+          "x": 915.0,
+          "label": "2019-02-17"
+        },
+        {
+          "time_ms": 1550376000000.0,
+          "x": 1020.0,
+          "label": "2019-02-17"
+        },
+        {
+          "time_ms": 1550419200000.0,
+          "x": 1125.0,
+          "label": "2019-02-18"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Ignore weekends - full ending task on last day",
+      "title_x": 600.0,
+      "title_y": 25.0
+    }
+  }
+}

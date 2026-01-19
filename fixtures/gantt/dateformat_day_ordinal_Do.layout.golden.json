@@ -1,0 +1,147 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1200.0,
+        "max_y": 124.0
+      },
+      "width": 1200.0,
+      "height": 124.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "YYYY-MM-Do",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "A"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "A",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 62.0,
+          "dy_em": -0.0,
+          "lines": [
+            "A"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "t1",
+          "task": "Task",
+          "section": "A",
+          "task_type": "A",
+          "order": 0.0,
+          "start_ms": 1388505600000.0,
+          "end_ms": 1388678400000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "t1",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 1050.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "t1-text",
+            "text": "Task",
+            "font_size": 11.0,
+            "width": 22.11,
+            "x": 600.0,
+            "y": 63.5,
+            "class": "taskText taskText0 width-22.11"
+          }
+        }
+      ],
+      "excludes": [],
+      "bottom_ticks": [
+        {
+          "time_ms": 1388505600000.0,
+          "x": 75.0,
+          "label": "2014-01-01"
+        },
+        {
+          "time_ms": 1388523600000.0,
+          "x": 184.0,
+          "label": "2014-01-01"
+        },
+        {
+          "time_ms": 1388541600000.0,
+          "x": 294.0,
+          "label": "2014-01-01"
+        },
+        {
+          "time_ms": 1388559600000.0,
+          "x": 403.0,
+          "label": "2014-01-01"
+        },
+        {
+          "time_ms": 1388577600000.0,
+          "x": 513.0,
+          "label": "2014-01-01"
+        },
+        {
+          "time_ms": 1388595600000.0,
+          "x": 622.0,
+          "label": "2014-01-02"
+        },
+        {
+          "time_ms": 1388613600000.0,
+          "x": 731.0,
+          "label": "2014-01-02"
+        },
+        {
+          "time_ms": 1388631600000.0,
+          "x": 841.0,
+          "label": "2014-01-02"
+        },
+        {
+          "time_ms": 1388649600000.0,
+          "x": 950.0,
+          "label": "2014-01-02"
+        },
+        {
+          "time_ms": 1388667600000.0,
+          "x": 1059.0,
+          "label": "2014-01-02"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Ordinal day (Do)",
+      "title_x": 600.0,
+      "title_y": 25.0
+    }
+  }
+}

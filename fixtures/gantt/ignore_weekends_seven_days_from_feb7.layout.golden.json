@@ -1,0 +1,186 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1200.0,
+        "max_y": 124.0
+      },
+      "width": 1200.0,
+      "height": 124.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "YYYY-MM-DD",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "weekends skip test"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "weekends skip test",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 62.0,
+          "dy_em": -0.0,
+          "lines": [
+            "weekends skip test"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "id3",
+          "task": "test3",
+          "section": "weekends skip test",
+          "task_type": "weekends skip test",
+          "order": 0.0,
+          "start_ms": 1549468800000.0,
+          "end_ms": 1550592000000.0,
+          "render_end_ms": 1550592000000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "id3",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 1050.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "id3-text",
+            "text": "test3",
+            "font_size": 11.0,
+            "width": 25.08,
+            "x": 600.0,
+            "y": 63.5,
+            "class": "taskText taskText0 width-25.080000000000002"
+          }
+        }
+      ],
+      "excludes": [
+        {
+          "id": "exclude-2019-02-08",
+          "start_ms": 1549555200000.0,
+          "end_ms": 1549814399999.0,
+          "x": 156.0,
+          "y": 35.0,
+          "width": 242.0,
+          "height": 39.0
+        },
+        {
+          "id": "exclude-2019-02-15",
+          "start_ms": 1550160000000.0,
+          "end_ms": 1550419199999.0,
+          "x": 721.0,
+          "y": 35.0,
+          "width": 242.0,
+          "height": 39.0
+        }
+      ],
+      "bottom_ticks": [
+        {
+          "time_ms": 1549468800000.0,
+          "x": 75.0,
+          "label": "2019-02-07"
+        },
+        {
+          "time_ms": 1549555200000.0,
+          "x": 156.0,
+          "label": "2019-02-08"
+        },
+        {
+          "time_ms": 1549641600000.0,
+          "x": 237.0,
+          "label": "2019-02-09"
+        },
+        {
+          "time_ms": 1549728000000.0,
+          "x": 317.0,
+          "label": "2019-02-10"
+        },
+        {
+          "time_ms": 1549814400000.0,
+          "x": 398.0,
+          "label": "2019-02-11"
+        },
+        {
+          "time_ms": 1549900800000.0,
+          "x": 479.0,
+          "label": "2019-02-12"
+        },
+        {
+          "time_ms": 1549987200000.0,
+          "x": 560.0,
+          "label": "2019-02-13"
+        },
+        {
+          "time_ms": 1550073600000.0,
+          "x": 640.0,
+          "label": "2019-02-14"
+        },
+        {
+          "time_ms": 1550160000000.0,
+          "x": 721.0,
+          "label": "2019-02-15"
+        },
+        {
+          "time_ms": 1550246400000.0,
+          "x": 802.0,
+          "label": "2019-02-16"
+        },
+        {
+          "time_ms": 1550332800000.0,
+          "x": 883.0,
+          "label": "2019-02-17"
+        },
+        {
+          "time_ms": 1550419200000.0,
+          "x": 963.0,
+          "label": "2019-02-18"
+        },
+        {
+          "time_ms": 1550505600000.0,
+          "x": 1044.0,
+          "label": "2019-02-19"
+        },
+        {
+          "time_ms": 1550592000000.0,
+          "x": 1125.0,
+          "label": "2019-02-20"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Ignore weekends - 7d from 2019-02-07",
+      "title_x": 600.0,
+      "title_y": 25.0
+    }
+  }
+}

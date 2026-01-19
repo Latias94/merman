@@ -1,0 +1,191 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1200.0,
+        "max_y": 148.0
+      },
+      "width": 1200.0,
+      "height": 148.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "YYYY-MM-DD",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "Task endTime is on the 31st day of the month"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "Task endTime is on the 31st day of the month",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 74.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Task endTime is on the 31st day of the month"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "id1",
+          "task": "test1",
+          "section": "Task endTime is on the 31st day of the month",
+          "task_type": "Task endTime is on the 31st day of the month",
+          "order": 0.0,
+          "start_ms": 1569772800000.0,
+          "end_ms": 1570723200000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "id1",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 373.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "id1-text",
+            "text": "test1",
+            "font_size": 11.0,
+            "width": 25.08,
+            "x": 261.5,
+            "y": 63.5,
+            "class": "taskText taskText0 width-25.080000000000002"
+          }
+        },
+        {
+          "id": "id2",
+          "task": "test2",
+          "section": "Task endTime is on the 31st day of the month",
+          "task_type": "Task endTime is on the 31st day of the month",
+          "order": 1.0,
+          "start_ms": 1570723200000.0,
+          "end_ms": 1572451200000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "id2",
+            "x": 448.0,
+            "y": 74.0,
+            "width": 677.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "id2-text",
+            "text": "test2",
+            "font_size": 11.0,
+            "width": 25.08,
+            "x": 786.5,
+            "y": 87.5,
+            "class": "taskText taskText0 width-25.080000000000002"
+          }
+        }
+      ],
+      "excludes": [],
+      "bottom_ticks": [
+        {
+          "time_ms": 1569772800000.0,
+          "x": 75.0,
+          "label": "2019-09-30"
+        },
+        {
+          "time_ms": 1570032000000.0,
+          "x": 177.0,
+          "label": "2019-10-03"
+        },
+        {
+          "time_ms": 1570291200000.0,
+          "x": 278.0,
+          "label": "2019-10-06"
+        },
+        {
+          "time_ms": 1570550400000.0,
+          "x": 380.0,
+          "label": "2019-10-09"
+        },
+        {
+          "time_ms": 1570809600000.0,
+          "x": 481.0,
+          "label": "2019-10-12"
+        },
+        {
+          "time_ms": 1571068800000.0,
+          "x": 583.0,
+          "label": "2019-10-15"
+        },
+        {
+          "time_ms": 1571328000000.0,
+          "x": 685.0,
+          "label": "2019-10-18"
+        },
+        {
+          "time_ms": 1571587200000.0,
+          "x": 786.0,
+          "label": "2019-10-21"
+        },
+        {
+          "time_ms": 1571846400000.0,
+          "x": 888.0,
+          "label": "2019-10-24"
+        },
+        {
+          "time_ms": 1572105600000.0,
+          "x": 990.0,
+          "label": "2019-10-27"
+        },
+        {
+          "time_ms": 1572364800000.0,
+          "x": 1091.0,
+          "label": "2019-10-30"
+        }
+      ],
+      "top_ticks": [],
+      "title": "End date on 31st",
+      "title_x": 600.0,
+      "title_y": 25.0
+    }
+  }
+}

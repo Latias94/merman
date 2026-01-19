@@ -1,0 +1,206 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1200.0,
+        "max_y": 148.0
+      },
+      "width": 1200.0,
+      "height": 148.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "YYYY-MM-DD hh:mm:ss A",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "A"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "A",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 74.0,
+          "dy_em": -0.0,
+          "lines": [
+            "A"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "n1",
+          "task": "Noon",
+          "section": "A",
+          "task_type": "A",
+          "order": 0.0,
+          "start_ms": 1388548800000.0,
+          "end_ms": 1388552400000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "n1",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 81.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "n1-text",
+            "text": "Noon",
+            "font_size": 11.0,
+            "width": 20.79,
+            "x": 115.5,
+            "y": 63.5,
+            "class": "taskText taskText0 width-20.79"
+          }
+        },
+        {
+          "id": "n2",
+          "task": "Midnight",
+          "section": "A",
+          "task_type": "A",
+          "order": 1.0,
+          "start_ms": 1388592000000.0,
+          "end_ms": 1388595600000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "n2",
+            "x": 1044.0,
+            "y": 74.0,
+            "width": 81.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "n2-text",
+            "text": "Midnight",
+            "font_size": 11.0,
+            "width": 36.41,
+            "x": 1084.5,
+            "y": 87.5,
+            "class": "taskText taskText0 width-36.410000000000004"
+          }
+        }
+      ],
+      "excludes": [],
+      "bottom_ticks": [
+        {
+          "time_ms": 1388548800000.0,
+          "x": 75.0,
+          "label": "2014-01-01"
+        },
+        {
+          "time_ms": 1388552400000.0,
+          "x": 156.0,
+          "label": "2014-01-01"
+        },
+        {
+          "time_ms": 1388556000000.0,
+          "x": 237.0,
+          "label": "2014-01-01"
+        },
+        {
+          "time_ms": 1388559600000.0,
+          "x": 317.0,
+          "label": "2014-01-01"
+        },
+        {
+          "time_ms": 1388563200000.0,
+          "x": 398.0,
+          "label": "2014-01-01"
+        },
+        {
+          "time_ms": 1388566800000.0,
+          "x": 479.0,
+          "label": "2014-01-01"
+        },
+        {
+          "time_ms": 1388570400000.0,
+          "x": 560.0,
+          "label": "2014-01-01"
+        },
+        {
+          "time_ms": 1388574000000.0,
+          "x": 640.0,
+          "label": "2014-01-01"
+        },
+        {
+          "time_ms": 1388577600000.0,
+          "x": 721.0,
+          "label": "2014-01-01"
+        },
+        {
+          "time_ms": 1388581200000.0,
+          "x": 802.0,
+          "label": "2014-01-01"
+        },
+        {
+          "time_ms": 1388584800000.0,
+          "x": 883.0,
+          "label": "2014-01-01"
+        },
+        {
+          "time_ms": 1388588400000.0,
+          "x": 963.0,
+          "label": "2014-01-01"
+        },
+        {
+          "time_ms": 1388592000000.0,
+          "x": 1044.0,
+          "label": "2014-01-02"
+        },
+        {
+          "time_ms": 1388595600000.0,
+          "x": 1125.0,
+          "label": "2014-01-02"
+        }
+      ],
+      "top_ticks": [],
+      "title": "12h AM/PM (A)",
+      "title_x": 600.0,
+      "title_y": 25.0
+    }
+  }
+}

@@ -1,0 +1,186 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1200.0,
+        "max_y": 148.0
+      },
+      "width": 1200.0,
+      "height": 148.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "YYYY-MM-DD",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "A"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "A",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 74.0,
+          "dy_em": -0.0,
+          "lines": [
+            "A"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "a1",
+          "task": "Task1",
+          "section": "A",
+          "task_type": "A",
+          "order": 0.0,
+          "start_ms": 1389024000000.0,
+          "end_ms": 1389283200000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "a1",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 788.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0 clickable"
+          },
+          "label": {
+            "id": "a1-text",
+            "text": "Task1",
+            "font_size": 11.0,
+            "width": 28.27,
+            "x": 469.0,
+            "y": 63.5,
+            "class": "clickable taskText taskText0 width-28.27"
+          }
+        },
+        {
+          "id": "a2",
+          "task": "Task2",
+          "section": "A",
+          "task_type": "A",
+          "order": 1.0,
+          "start_ms": 1389110400000.0,
+          "end_ms": 1389369600000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "a2",
+            "x": 338.0,
+            "y": 74.0,
+            "width": 787.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0 clickable"
+          },
+          "label": {
+            "id": "a2-text",
+            "text": "Task2",
+            "font_size": 11.0,
+            "width": 28.27,
+            "x": 731.5,
+            "y": 87.5,
+            "class": "clickable taskText taskText0 width-28.27"
+          }
+        }
+      ],
+      "excludes": [],
+      "bottom_ticks": [
+        {
+          "time_ms": 1389024000000.0,
+          "x": 75.0,
+          "label": "2014-01-07"
+        },
+        {
+          "time_ms": 1389060000000.0,
+          "x": 184.0,
+          "label": "2014-01-07"
+        },
+        {
+          "time_ms": 1389096000000.0,
+          "x": 294.0,
+          "label": "2014-01-07"
+        },
+        {
+          "time_ms": 1389132000000.0,
+          "x": 403.0,
+          "label": "2014-01-08"
+        },
+        {
+          "time_ms": 1389168000000.0,
+          "x": 513.0,
+          "label": "2014-01-08"
+        },
+        {
+          "time_ms": 1389204000000.0,
+          "x": 622.0,
+          "label": "2014-01-09"
+        },
+        {
+          "time_ms": 1389240000000.0,
+          "x": 731.0,
+          "label": "2014-01-09"
+        },
+        {
+          "time_ms": 1389276000000.0,
+          "x": 841.0,
+          "label": "2014-01-09"
+        },
+        {
+          "time_ms": 1389312000000.0,
+          "x": 950.0,
+          "label": "2014-01-10"
+        },
+        {
+          "time_ms": 1389348000000.0,
+          "x": 1059.0,
+          "label": "2014-01-10"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Click multiple ids href",
+      "title_x": 600.0,
+      "title_y": 25.0
+    }
+  }
+}

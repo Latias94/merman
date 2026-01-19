@@ -1,0 +1,186 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1200.0,
+        "max_y": 148.0
+      },
+      "width": 1200.0,
+      "height": 148.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "YYYY-MM-DD",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "Vacation"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "Vacation",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 74.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Vacation"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task2",
+          "task": "London Trip 2",
+          "section": "Vacation",
+          "task_type": "Vacation",
+          "order": 1.0,
+          "start_ms": -55763884800000.0,
+          "end_ms": -55763280000000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task2",
+            "x": 75.0,
+            "y": 74.0,
+            "width": 0.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "task2-text",
+            "text": "London Trip 2",
+            "font_size": 11.0,
+            "width": 62.81,
+            "x": 80.0,
+            "y": 87.5,
+            "class": "taskTextOutsideRight taskTextOutside0 width-62.81000000000001"
+          }
+        },
+        {
+          "id": "task1",
+          "task": "London Trip 1",
+          "section": "Vacation",
+          "task_type": "Vacation",
+          "order": 0.0,
+          "start_ms": 1732982400000.0,
+          "end_ms": 1733587200000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task1",
+            "x": 1125.0,
+            "y": 50.0,
+            "width": 0.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "task1-text",
+            "text": "London Trip 1",
+            "font_size": 11.0,
+            "width": 62.81,
+            "x": 1120.0,
+            "y": 63.5,
+            "class": "taskTextOutsideLeft taskTextOutside0"
+          }
+        }
+      ],
+      "excludes": [],
+      "bottom_ticks": [
+        {
+          "time_ms": -55763884800000.0,
+          "x": 75.0,
+          "label": "0202-12-01"
+        },
+        {
+          "time_ms": -49931107200000.0,
+          "x": 182.0,
+          "label": "0387-10-01"
+        },
+        {
+          "time_ms": -44098243200000.0,
+          "x": 288.0,
+          "label": "0572-08-01"
+        },
+        {
+          "time_ms": -38265552000000.0,
+          "x": 395.0,
+          "label": "0757-06-01"
+        },
+        {
+          "time_ms": -32432774400000.0,
+          "x": 501.0,
+          "label": "0942-04-01"
+        },
+        {
+          "time_ms": -26599910400000.0,
+          "x": 608.0,
+          "label": "1127-02-01"
+        },
+        {
+          "time_ms": -20767219200000.0,
+          "x": 714.0,
+          "label": "1311-12-01"
+        },
+        {
+          "time_ms": -14934355200000.0,
+          "x": 821.0,
+          "label": "1496-10-01"
+        },
+        {
+          "time_ms": -9101577600000.0,
+          "x": 927.0,
+          "label": "1681-08-01"
+        },
+        {
+          "time_ms": -3268886400000.0,
+          "x": 1034.0,
+          "label": "1866-06-01"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Year typo fallback",
+      "title_x": 600.0,
+      "title_y": 25.0
+    }
+  }
+}

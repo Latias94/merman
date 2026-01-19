@@ -1,0 +1,308 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1200.0,
+        "max_y": 220.0
+      },
+      "width": 1200.0,
+      "height": 220.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "YYYY-MM-DD",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "Documentation"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 2.0,
+          "x": 0.0,
+          "y": 96.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 3.0,
+          "x": 0.0,
+          "y": 120.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 4.0,
+          "x": 0.0,
+          "y": 144.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "Documentation",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 110.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Documentation"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task1",
+          "task": "test1",
+          "section": "Documentation",
+          "task_type": "Documentation",
+          "order": 0.0,
+          "start_ms": 1388505600000.0,
+          "end_ms": 1388764800000.0,
+          "render_end_ms": null,
+          "milestone": true,
+          "vert": false,
+          "bar": {
+            "id": "task1",
+            "x": 590.0,
+            "y": 50.0,
+            "width": 20.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task milestone task0"
+          },
+          "label": {
+            "id": "task1-text",
+            "text": "test1",
+            "font_size": 11.0,
+            "width": 25.08,
+            "x": 615.0,
+            "y": 63.5,
+            "class": "taskTextOutsideRight taskTextOutside0 width-25.080000000000002"
+          }
+        },
+        {
+          "id": "task2",
+          "task": "test2",
+          "section": "Documentation",
+          "task_type": "Documentation",
+          "order": 1.0,
+          "start_ms": 1388505600000.0,
+          "end_ms": 1388764800000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task2",
+            "x": 75.0,
+            "y": 74.0,
+            "width": 1050.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task done0"
+          },
+          "label": {
+            "id": "task2-text",
+            "text": "test2",
+            "font_size": 11.0,
+            "width": 25.08,
+            "x": 600.0,
+            "y": 87.5,
+            "class": "taskText taskText0 width-25.080000000000002"
+          }
+        },
+        {
+          "id": "task3",
+          "task": "test3",
+          "section": "Documentation",
+          "task_type": "Documentation",
+          "order": 2.0,
+          "start_ms": 1388505600000.0,
+          "end_ms": 1388764800000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task3",
+            "x": 75.0,
+            "y": 98.0,
+            "width": 1050.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task crit0"
+          },
+          "label": {
+            "id": "task3-text",
+            "text": "test3",
+            "font_size": 11.0,
+            "width": 25.08,
+            "x": 600.0,
+            "y": 111.5,
+            "class": "taskText taskText0 width-25.080000000000002"
+          }
+        },
+        {
+          "id": "task4",
+          "task": "test4",
+          "section": "Documentation",
+          "task_type": "Documentation",
+          "order": 3.0,
+          "start_ms": 1388505600000.0,
+          "end_ms": 1388764800000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task4",
+            "x": 75.0,
+            "y": 122.0,
+            "width": 1050.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task active0"
+          },
+          "label": {
+            "id": "task4-text",
+            "text": "test4",
+            "font_size": 11.0,
+            "width": 25.08,
+            "x": 600.0,
+            "y": 135.5,
+            "class": "taskText taskText0 width-25.080000000000002"
+          }
+        },
+        {
+          "id": "task5",
+          "task": "test5",
+          "section": "Documentation",
+          "task_type": "Documentation",
+          "order": 4.0,
+          "start_ms": 1388505600000.0,
+          "end_ms": 1388764800000.0,
+          "render_end_ms": null,
+          "milestone": true,
+          "vert": false,
+          "bar": {
+            "id": "task5",
+            "x": 590.0,
+            "y": 146.0,
+            "width": 20.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task milestone doneCrit0"
+          },
+          "label": {
+            "id": "task5-text",
+            "text": "test5",
+            "font_size": 11.0,
+            "width": 25.08,
+            "x": 615.0,
+            "y": 159.5,
+            "class": "taskTextOutsideRight taskTextOutside0 width-25.080000000000002"
+          }
+        }
+      ],
+      "excludes": [],
+      "bottom_ticks": [
+        {
+          "time_ms": 1388505600000.0,
+          "x": 75.0,
+          "label": "2014-01-01"
+        },
+        {
+          "time_ms": 1388530800000.0,
+          "x": 177.0,
+          "label": "2014-01-01"
+        },
+        {
+          "time_ms": 1388556000000.0,
+          "x": 279.0,
+          "label": "2014-01-01"
+        },
+        {
+          "time_ms": 1388581200000.0,
+          "x": 381.0,
+          "label": "2014-01-01"
+        },
+        {
+          "time_ms": 1388606400000.0,
+          "x": 483.0,
+          "label": "2014-01-02"
+        },
+        {
+          "time_ms": 1388631600000.0,
+          "x": 585.0,
+          "label": "2014-01-02"
+        },
+        {
+          "time_ms": 1388656800000.0,
+          "x": 688.0,
+          "label": "2014-01-02"
+        },
+        {
+          "time_ms": 1388682000000.0,
+          "x": 790.0,
+          "label": "2014-01-03"
+        },
+        {
+          "time_ms": 1388707200000.0,
+          "x": 892.0,
+          "label": "2014-01-03"
+        },
+        {
+          "time_ms": 1388732400000.0,
+          "x": 994.0,
+          "label": "2014-01-03"
+        },
+        {
+          "time_ms": 1388757600000.0,
+          "x": 1096.0,
+          "label": "2014-01-03"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Task tags",
+      "title_x": 600.0,
+      "title_y": 25.0
+    }
+  }
+}

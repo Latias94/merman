@@ -1,0 +1,210 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1200.0,
+        "max_y": 148.0
+      },
+      "width": 1200.0,
+      "height": 148.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "YYYY-MM-DD",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "weekends skip test"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "weekends skip test",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 74.0,
+          "dy_em": -0.0,
+          "lines": [
+            "weekends skip test"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "id1",
+          "task": "test1",
+          "section": "weekends skip test",
+          "task_type": "weekends skip test",
+          "order": 0.0,
+          "start_ms": 1548950400000.0,
+          "end_ms": 1549209600000.0,
+          "render_end_ms": 1549036800000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "id1",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 175.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "id1-text",
+            "text": "test1",
+            "font_size": 11.0,
+            "width": 25.08,
+            "x": 162.5,
+            "y": 63.5,
+            "class": "taskText taskText0 width-25.080000000000002"
+          }
+        },
+        {
+          "id": "id2",
+          "task": "test2",
+          "section": "weekends skip test",
+          "task_type": "weekends skip test",
+          "order": 1.0,
+          "start_ms": 1549209600000.0,
+          "end_ms": 1549468800000.0,
+          "render_end_ms": 1549382400000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "id2",
+            "x": 600.0,
+            "y": 74.0,
+            "width": 350.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "id2-text",
+            "text": "test2",
+            "font_size": 11.0,
+            "width": 25.08,
+            "x": 775.0,
+            "y": 87.5,
+            "class": "taskText taskText0 width-25.080000000000002"
+          }
+        }
+      ],
+      "excludes": [
+        {
+          "id": "exclude-2019-02-01",
+          "start_ms": 1548950400000.0,
+          "end_ms": 1549209599999.0,
+          "x": 75.0,
+          "y": 35.0,
+          "width": 525.0,
+          "height": 63.0
+        },
+        {
+          "id": "exclude-2019-02-06",
+          "start_ms": 1549382400000.0,
+          "end_ms": 1549468799999.0,
+          "x": 950.0,
+          "y": 35.0,
+          "width": 175.0,
+          "height": 63.0
+        }
+      ],
+      "bottom_ticks": [
+        {
+          "time_ms": 1548950400000.0,
+          "x": 75.0,
+          "label": "2019-02-01"
+        },
+        {
+          "time_ms": 1549000800000.0,
+          "x": 177.0,
+          "label": "2019-02-01"
+        },
+        {
+          "time_ms": 1549051200000.0,
+          "x": 279.0,
+          "label": "2019-02-02"
+        },
+        {
+          "time_ms": 1549101600000.0,
+          "x": 381.0,
+          "label": "2019-02-02"
+        },
+        {
+          "time_ms": 1549152000000.0,
+          "x": 483.0,
+          "label": "2019-02-03"
+        },
+        {
+          "time_ms": 1549202400000.0,
+          "x": 585.0,
+          "label": "2019-02-03"
+        },
+        {
+          "time_ms": 1549252800000.0,
+          "x": 688.0,
+          "label": "2019-02-04"
+        },
+        {
+          "time_ms": 1549303200000.0,
+          "x": 790.0,
+          "label": "2019-02-05"
+        },
+        {
+          "time_ms": 1549353600000.0,
+          "x": 892.0,
+          "label": "2019-02-05"
+        },
+        {
+          "time_ms": 1549404000000.0,
+          "x": 994.0,
+          "label": "2019-02-06"
+        },
+        {
+          "time_ms": 1549454400000.0,
+          "x": 1096.0,
+          "label": "2019-02-06"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Excludes weekends + specific days",
+      "title_x": 600.0,
+      "title_y": 25.0
+    }
+  }
+}

@@ -1,0 +1,247 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1200.0,
+        "max_y": 172.0
+      },
+      "width": 1200.0,
+      "height": 172.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "YYYY-MM-DD",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "A",
+        "B"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 2.0,
+          "x": 0.0,
+          "y": 96.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section1"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "A",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 74.0,
+          "dy_em": -0.0,
+          "lines": [
+            "A"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        },
+        {
+          "section": "B",
+          "index": 1.0,
+          "x": 10.0,
+          "y": 110.0,
+          "dy_em": -0.0,
+          "lines": [
+            "B"
+          ],
+          "class": "sectionTitle sectionTitle1"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "des1",
+          "task": "Completed task",
+          "section": "A",
+          "task_type": "A",
+          "order": 0.0,
+          "start_ms": 1388937600000.0,
+          "end_ms": 1389110400000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "des1",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 191.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task done0"
+          },
+          "label": {
+            "id": "des1-text",
+            "text": "Completed task",
+            "font_size": 11.0,
+            "width": 70.51,
+            "x": 170.5,
+            "y": 63.5,
+            "class": "taskText taskText0 width-70.51"
+          }
+        },
+        {
+          "id": "des2",
+          "task": "Active task",
+          "section": "A",
+          "task_type": "A",
+          "order": 1.0,
+          "start_ms": 1389196800000.0,
+          "end_ms": 1389456000000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "des2",
+            "x": 361.0,
+            "y": 74.0,
+            "width": 287.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task active0"
+          },
+          "label": {
+            "id": "des2-text",
+            "text": "Active task",
+            "font_size": 11.0,
+            "width": 52.47,
+            "x": 504.5,
+            "y": 87.5,
+            "class": "taskText taskText0 width-52.470000000000006"
+          }
+        },
+        {
+          "id": "des3",
+          "task": "Future task",
+          "section": "B",
+          "task_type": "B",
+          "order": 2.0,
+          "start_ms": 1389456000000.0,
+          "end_ms": 1389888000000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "des3",
+            "x": 648.0,
+            "y": 98.0,
+            "width": 477.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task1"
+          },
+          "label": {
+            "id": "des3-text",
+            "text": "Future task",
+            "font_size": 11.0,
+            "width": 54.12,
+            "x": 886.5,
+            "y": 111.5,
+            "class": "taskText taskText1 width-54.12"
+          }
+        }
+      ],
+      "excludes": [],
+      "bottom_ticks": [
+        {
+          "time_ms": 1388937600000.0,
+          "x": 75.0,
+          "label": "2014-01-06"
+        },
+        {
+          "time_ms": 1389024000000.0,
+          "x": 170.0,
+          "label": "2014-01-07"
+        },
+        {
+          "time_ms": 1389110400000.0,
+          "x": 266.0,
+          "label": "2014-01-08"
+        },
+        {
+          "time_ms": 1389196800000.0,
+          "x": 361.0,
+          "label": "2014-01-09"
+        },
+        {
+          "time_ms": 1389283200000.0,
+          "x": 457.0,
+          "label": "2014-01-10"
+        },
+        {
+          "time_ms": 1389369600000.0,
+          "x": 552.0,
+          "label": "2014-01-11"
+        },
+        {
+          "time_ms": 1389456000000.0,
+          "x": 648.0,
+          "label": "2014-01-12"
+        },
+        {
+          "time_ms": 1389542400000.0,
+          "x": 743.0,
+          "label": "2014-01-13"
+        },
+        {
+          "time_ms": 1389628800000.0,
+          "x": 839.0,
+          "label": "2014-01-14"
+        },
+        {
+          "time_ms": 1389715200000.0,
+          "x": 934.0,
+          "label": "2014-01-15"
+        },
+        {
+          "time_ms": 1389801600000.0,
+          "x": 1030.0,
+          "label": "2014-01-16"
+        },
+        {
+          "time_ms": 1389888000000.0,
+          "x": 1125.0,
+          "label": "2014-01-17"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Order and tags",
+      "title_x": 600.0,
+      "title_y": 25.0
+    }
+  }
+}

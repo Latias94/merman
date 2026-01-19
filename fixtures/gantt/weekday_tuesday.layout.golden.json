@@ -1,0 +1,41 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1200.0,
+        "max_y": 100.0
+      },
+      "width": 1200.0,
+      "height": 100.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [],
+      "rows": [],
+      "section_titles": [],
+      "tasks": [],
+      "excludes": [],
+      "bottom_ticks": [],
+      "top_ticks": [],
+      "title": "Weekday tuesday",
+      "title_x": 600.0,
+      "title_y": 25.0
+    }
+  }
+}

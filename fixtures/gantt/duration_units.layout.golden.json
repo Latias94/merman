@@ -1,0 +1,264 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1200.0,
+        "max_y": 196.0
+      },
+      "width": 1200.0,
+      "height": 196.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "YYYY-MM-DD",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "testa1"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 2.0,
+          "x": 0.0,
+          "y": 96.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 3.0,
+          "x": 0.0,
+          "y": 120.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "testa1",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 98.0,
+          "dy_em": -0.0,
+          "lines": [
+            "testa1"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "d1",
+          "task": "days",
+          "section": "testa1",
+          "task_type": "testa1",
+          "order": 0.0,
+          "start_ms": 1356969600000.0,
+          "end_ms": 1357142400000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "d1",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 1050.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "d1-text",
+            "text": "days",
+            "font_size": 11.0,
+            "width": 20.24,
+            "x": 600.0,
+            "y": 63.5,
+            "class": "taskText taskText0 width-20.240000000000002"
+          }
+        },
+        {
+          "id": "h1",
+          "task": "hours",
+          "section": "testa1",
+          "task_type": "testa1",
+          "order": 1.0,
+          "start_ms": 1356969600000.0,
+          "end_ms": 1356976800000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "h1",
+            "x": 75.0,
+            "y": 74.0,
+            "width": 44.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "h1-text",
+            "text": "hours",
+            "font_size": 11.0,
+            "width": 23.65,
+            "x": 97.0,
+            "y": 87.5,
+            "class": "taskText taskText0 width-23.65"
+          }
+        },
+        {
+          "id": "m1",
+          "task": "minutes",
+          "section": "testa1",
+          "task_type": "testa1",
+          "order": 2.0,
+          "start_ms": 1356969600000.0,
+          "end_ms": 1356969720000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "m1",
+            "x": 75.0,
+            "y": 98.0,
+            "width": 1.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "m1-text",
+            "text": "minutes",
+            "font_size": 11.0,
+            "width": 35.31,
+            "x": 81.0,
+            "y": 111.5,
+            "class": "taskTextOutsideRight taskTextOutside0 width-35.31"
+          }
+        },
+        {
+          "id": "s1",
+          "task": "seconds",
+          "section": "testa1",
+          "task_type": "testa1",
+          "order": 3.0,
+          "start_ms": 1356969600000.0,
+          "end_ms": 1356969602000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "s1",
+            "x": 75.0,
+            "y": 122.0,
+            "width": 0.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "s1-text",
+            "text": "seconds",
+            "font_size": 11.0,
+            "width": 33.11,
+            "x": 80.0,
+            "y": 135.5,
+            "class": "taskTextOutsideRight taskTextOutside0 width-33.11"
+          }
+        }
+      ],
+      "excludes": [],
+      "bottom_ticks": [
+        {
+          "time_ms": 1356969600000.0,
+          "x": 75.0,
+          "label": "2013-01-01"
+        },
+        {
+          "time_ms": 1356987600000.0,
+          "x": 184.0,
+          "label": "2013-01-01"
+        },
+        {
+          "time_ms": 1357005600000.0,
+          "x": 294.0,
+          "label": "2013-01-01"
+        },
+        {
+          "time_ms": 1357023600000.0,
+          "x": 403.0,
+          "label": "2013-01-01"
+        },
+        {
+          "time_ms": 1357041600000.0,
+          "x": 513.0,
+          "label": "2013-01-01"
+        },
+        {
+          "time_ms": 1357059600000.0,
+          "x": 622.0,
+          "label": "2013-01-02"
+        },
+        {
+          "time_ms": 1357077600000.0,
+          "x": 731.0,
+          "label": "2013-01-02"
+        },
+        {
+          "time_ms": 1357095600000.0,
+          "x": 841.0,
+          "label": "2013-01-02"
+        },
+        {
+          "time_ms": 1357113600000.0,
+          "x": 950.0,
+          "label": "2013-01-02"
+        },
+        {
+          "time_ms": 1357131600000.0,
+          "x": 1059.0,
+          "label": "2013-01-02"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Duration units",
+      "title_x": 600.0,
+      "title_y": 25.0
+    }
+  }
+}

@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 base64.workspace = true
+chrono.workspace = true
 dugong = { path = "../dugong" }
 merman-core = { path = "../merman-core" }
 pulldown-cmark.workspace = true

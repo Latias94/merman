@@ -1,0 +1,152 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1200.0,
+        "max_y": 124.0
+      },
+      "width": 1200.0,
+      "height": 124.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "X",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "T"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1162.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "T",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 62.0,
+          "dy_em": -0.0,
+          "lines": [
+            "T"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "id1",
+          "task": "t1",
+          "section": "T",
+          "task_type": "T",
+          "order": 0.0,
+          "start_ms": 20000.0,
+          "end_ms": 21000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "id1",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 1050.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "id1-text",
+            "text": "t1",
+            "font_size": 11.0,
+            "width": 10.89,
+            "x": 600.0,
+            "y": 63.5,
+            "class": "taskText taskText0 width-10.89"
+          }
+        }
+      ],
+      "excludes": [],
+      "bottom_ticks": [
+        {
+          "time_ms": 20000.0,
+          "x": 75.0,
+          "label": "1970-01-01"
+        },
+        {
+          "time_ms": 20100.0,
+          "x": 180.0,
+          "label": "1970-01-01"
+        },
+        {
+          "time_ms": 20200.0,
+          "x": 285.0,
+          "label": "1970-01-01"
+        },
+        {
+          "time_ms": 20300.0,
+          "x": 390.0,
+          "label": "1970-01-01"
+        },
+        {
+          "time_ms": 20400.0,
+          "x": 495.0,
+          "label": "1970-01-01"
+        },
+        {
+          "time_ms": 20500.0,
+          "x": 600.0,
+          "label": "1970-01-01"
+        },
+        {
+          "time_ms": 20600.0,
+          "x": 705.0,
+          "label": "1970-01-01"
+        },
+        {
+          "time_ms": 20700.0,
+          "x": 810.0,
+          "label": "1970-01-01"
+        },
+        {
+          "time_ms": 20800.0,
+          "x": 915.0,
+          "label": "1970-01-01"
+        },
+        {
+          "time_ms": 20900.0,
+          "x": 1020.0,
+          "label": "1970-01-01"
+        },
+        {
+          "time_ms": 21000.0,
+          "x": 1125.0,
+          "label": "1970-01-01"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Timestamp X",
+      "title_x": 600.0,
+      "title_y": 25.0
+    }
+  }
+}
