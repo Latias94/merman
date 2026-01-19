@@ -1,58 +1,58 @@
 {
   "diagramType": "gantt",
   "model": {
-    "accDescr": null,
+    "type": "gantt",
+    "title": "Weekends start Friday",
     "accTitle": null,
-    "axisFormat": "",
-    "clickEvents": {},
+    "accDescr": null,
     "dateFormat": "YYYY-MM-DD",
-    "displayMode": "",
+    "axisFormat": "",
+    "tickInterval": null,
+    "todayMarker": "",
+    "includes": [],
     "excludes": [
       "weekends"
     ],
-    "includes": [],
     "inclusiveEndDates": false,
-    "links": {},
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "friday",
+    "displayMode": "",
     "sections": [
       "friday-saturday weekends skip test"
     ],
     "tasks": [
       {
-        "active": false,
-        "classes": [],
-        "crit": false,
-        "done": false,
-        "endTime": "2024-03-04T00:00:00.000",
+        "section": "friday-saturday weekends skip test",
+        "type": "friday-saturday weekends skip test",
+        "task": "test1",
         "id": "id1",
-        "manualEndTime": false,
-        "milestone": false,
-        "order": 0,
         "prevTaskId": null,
+        "order": 0,
         "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2024-03-04T00:00:00.000",
         "raw": {
           "data": ": id1,2024-02-28,3d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2024-02-28"
+          },
           "endTime": {
             "data": "3d"
-          },
-          "startTime": {
-            "startData": "2024-02-28",
-            "type": "getStartDate"
           }
         },
-        "renderEndTime": "2024-03-04T00:00:00.000",
-        "section": "friday-saturday weekends skip test",
         "startTime": "2024-02-28T00:00:00.000",
-        "task": "test1",
-        "type": "friday-saturday weekends skip test",
-        "vert": false
+        "endTime": "2024-03-04T00:00:00.000"
       }
     ],
-    "tickInterval": null,
-    "title": "Weekends start Friday",
-    "todayMarker": "",
-    "topAxis": false,
-    "type": "gantt",
-    "weekday": "sunday",
-    "weekend": "friday"
+    "links": {},
+    "clickEvents": {}
   }
 }

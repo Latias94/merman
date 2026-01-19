@@ -1,99 +1,99 @@
 {
   "diagramType": "gantt",
   "model": {
-    "accDescr": null,
+    "type": "gantt",
+    "title": "Callback no args",
     "accTitle": null,
-    "axisFormat": "",
-    "clickEvents": {
-      "cl2": {
-        "function_args": [
-          "cl2"
-        ],
-        "function_name": "ganttTestClick",
-        "raw_function_args": null
-      }
-    },
+    "accDescr": null,
     "dateFormat": "YYYY-MM-DD",
-    "displayMode": "",
-    "excludes": [],
+    "axisFormat": "",
+    "tickInterval": null,
+    "todayMarker": "",
     "includes": [],
+    "excludes": [],
     "inclusiveEndDates": false,
-    "links": {
-      "cl1": "https://mermaidjs.github.io/"
-    },
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
     "sections": [
       "Clickable"
     ],
     "tasks": [
       {
-        "active": true,
+        "section": "Clickable",
+        "type": "Clickable",
+        "task": "Visit mermaidjs",
+        "id": "cl1",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
         "classes": [
           "clickable"
         ],
-        "crit": false,
+        "active": true,
         "done": false,
-        "endTime": "2014-01-10T00:00:00.000",
-        "id": "cl1",
-        "manualEndTime": false,
+        "crit": false,
         "milestone": false,
-        "order": 0,
-        "prevTaskId": null,
-        "processed": true,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
         "raw": {
           "data": ":active, cl1, 2014-01-07, 3d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2014-01-07"
+          },
           "endTime": {
             "data": "3d"
-          },
-          "startTime": {
-            "startData": "2014-01-07",
-            "type": "getStartDate"
           }
         },
-        "renderEndTime": null,
-        "section": "Clickable",
         "startTime": "2014-01-07T00:00:00.000",
-        "task": "Visit mermaidjs",
-        "type": "Clickable",
-        "vert": false
+        "endTime": "2014-01-10T00:00:00.000"
       },
       {
-        "active": false,
+        "section": "Clickable",
+        "type": "Clickable",
+        "task": "Calling a callback",
+        "id": "cl2",
+        "prevTaskId": "cl1",
+        "order": 1,
+        "processed": true,
         "classes": [
           "clickable"
         ],
-        "crit": false,
+        "active": false,
         "done": false,
-        "endTime": "2014-01-13T00:00:00.000",
-        "id": "cl2",
-        "manualEndTime": false,
+        "crit": false,
         "milestone": false,
-        "order": 1,
-        "prevTaskId": "cl1",
-        "processed": true,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
         "raw": {
           "data": ":cl2, after cl1, 3d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after cl1"
+          },
           "endTime": {
             "data": "3d"
-          },
-          "startTime": {
-            "startData": "after cl1",
-            "type": "getStartDate"
           }
         },
-        "renderEndTime": null,
-        "section": "Clickable",
         "startTime": "2014-01-10T00:00:00.000",
-        "task": "Calling a callback",
-        "type": "Clickable",
-        "vert": false
+        "endTime": "2014-01-13T00:00:00.000"
       }
     ],
-    "tickInterval": null,
-    "title": "Callback no args",
-    "todayMarker": "",
-    "topAxis": false,
-    "type": "gantt",
-    "weekday": "sunday",
-    "weekend": "saturday"
+    "links": {
+      "cl1": "https://mermaidjs.github.io/"
+    },
+    "clickEvents": {
+      "cl2": {
+        "function_name": "ganttTestClick",
+        "function_args": [
+          "cl2"
+        ],
+        "raw_function_args": null
+      }
+    }
   }
 }

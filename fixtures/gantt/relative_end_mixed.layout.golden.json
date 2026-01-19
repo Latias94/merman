@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 1200.0,
+        "max_x": 1184.0,
         "max_y": 196.0
       },
-      "width": 1200.0,
+      "width": 1184.0,
       "height": 196.0,
       "left_padding": 75.0,
       "right_padding": 75.0,
@@ -34,7 +34,7 @@
           "index": 0.0,
           "x": 0.0,
           "y": 48.0,
-          "width": 1162.5,
+          "width": 1146.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -42,7 +42,7 @@
           "index": 1.0,
           "x": 0.0,
           "y": 72.0,
-          "width": 1162.5,
+          "width": 1146.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -50,7 +50,7 @@
           "index": 2.0,
           "x": 0.0,
           "y": 96.0,
-          "width": 1162.5,
+          "width": 1146.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -58,7 +58,7 @@
           "index": 3.0,
           "x": 0.0,
           "y": 120.0,
-          "width": 1162.5,
+          "width": 1146.5,
           "height": 24.0,
           "class": "section section0"
         }
@@ -92,7 +92,7 @@
             "id": "c",
             "x": 75.0,
             "y": 98.0,
-            "width": 735.0,
+            "width": 724.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -103,7 +103,7 @@
             "text": "task C",
             "font_size": 11.0,
             "width": 30.47,
-            "x": 442.5,
+            "x": 437.0,
             "y": 111.5,
             "class": "taskText taskText0 width-30.47"
           }
@@ -121,9 +121,9 @@
           "vert": false,
           "bar": {
             "id": "a",
-            "x": 810.0,
+            "x": 799.0,
             "y": 50.0,
-            "width": 105.0,
+            "width": 103.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -134,7 +134,7 @@
             "text": "task A",
             "font_size": 11.0,
             "width": 30.47,
-            "x": 862.5,
+            "x": 850.5,
             "y": 63.5,
             "class": "taskText taskText0 width-30.47"
           }
@@ -152,9 +152,9 @@
           "vert": false,
           "bar": {
             "id": "d",
-            "x": 810.0,
+            "x": 799.0,
             "y": 122.0,
-            "width": 105.0,
+            "width": 103.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -165,7 +165,7 @@
             "text": "task D",
             "font_size": 11.0,
             "width": 30.47,
-            "x": 862.5,
+            "x": 850.5,
             "y": 135.5,
             "class": "taskText taskText0 width-30.47"
           }
@@ -183,9 +183,9 @@
           "vert": false,
           "bar": {
             "id": "b",
-            "x": 915.0,
+            "x": 902.0,
             "y": 74.0,
-            "width": 210.0,
+            "width": 207.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -196,13 +196,14 @@
             "text": "task B",
             "font_size": 11.0,
             "width": 30.47,
-            "x": 1020.0,
+            "x": 1005.5,
             "y": 87.5,
             "class": "taskText taskText0 width-30.47"
           }
         }
       ],
       "excludes": [],
+      "has_excludes_layer": false,
       "bottom_ticks": [
         {
           "time_ms": 1705680000000.0,
@@ -211,58 +212,58 @@
         },
         {
           "time_ms": 1705766400000.0,
-          "x": 180.0,
+          "x": 178.0,
           "label": "2024-01-21"
         },
         {
           "time_ms": 1705852800000.0,
-          "x": 285.0,
+          "x": 282.0,
           "label": "2024-01-22"
         },
         {
           "time_ms": 1705939200000.0,
-          "x": 390.0,
+          "x": 385.0,
           "label": "2024-01-23"
         },
         {
           "time_ms": 1706025600000.0,
-          "x": 495.0,
+          "x": 489.0,
           "label": "2024-01-24"
         },
         {
           "time_ms": 1706112000000.0,
-          "x": 600.0,
+          "x": 592.0,
           "label": "2024-01-25"
         },
         {
           "time_ms": 1706198400000.0,
-          "x": 705.0,
+          "x": 695.0,
           "label": "2024-01-26"
         },
         {
           "time_ms": 1706284800000.0,
-          "x": 810.0,
+          "x": 799.0,
           "label": "2024-01-27"
         },
         {
           "time_ms": 1706371200000.0,
-          "x": 915.0,
+          "x": 902.0,
           "label": "2024-01-28"
         },
         {
           "time_ms": 1706457600000.0,
-          "x": 1020.0,
+          "x": 1006.0,
           "label": "2024-01-29"
         },
         {
           "time_ms": 1706544000000.0,
-          "x": 1125.0,
+          "x": 1109.0,
           "label": "2024-01-30"
         }
       ],
       "top_ticks": [],
       "title": "Relative start/end mix",
-      "title_x": 600.0,
+      "title_x": 592.0,
       "title_y": 25.0
     }
   }

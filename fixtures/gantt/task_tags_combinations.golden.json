@@ -1,172 +1,172 @@
 {
   "diagramType": "gantt",
   "model": {
-    "accDescr": null,
+    "type": "gantt",
+    "title": "Task tags",
     "accTitle": null,
-    "axisFormat": "",
-    "clickEvents": {},
+    "accDescr": null,
     "dateFormat": "YYYY-MM-DD",
-    "displayMode": "",
-    "excludes": [],
+    "axisFormat": "",
+    "tickInterval": null,
+    "todayMarker": "",
     "includes": [],
+    "excludes": [],
     "inclusiveEndDates": false,
-    "links": {},
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
     "sections": [
       "Documentation"
     ],
     "tasks": [
       {
-        "active": false,
-        "classes": [],
-        "crit": false,
-        "done": false,
-        "endTime": "2014-01-04T00:00:00.000",
+        "section": "Documentation",
+        "type": "Documentation",
+        "task": "test1",
         "id": "task1",
-        "manualEndTime": true,
-        "milestone": true,
-        "order": 0,
         "prevTaskId": null,
+        "order": 0,
         "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": true,
+        "vert": false,
+        "manualEndTime": true,
+        "renderEndTime": null,
         "raw": {
           "data": ": milestone, 2014-01-01, 2014-01-04",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2014-01-01"
+          },
           "endTime": {
             "data": "2014-01-04"
-          },
-          "startTime": {
-            "startData": "2014-01-01",
-            "type": "getStartDate"
           }
         },
-        "renderEndTime": null,
-        "section": "Documentation",
         "startTime": "2014-01-01T00:00:00.000",
-        "task": "test1",
-        "type": "Documentation",
-        "vert": false
+        "endTime": "2014-01-04T00:00:00.000"
       },
       {
-        "active": false,
-        "classes": [],
-        "crit": false,
-        "done": true,
-        "endTime": "2014-01-04T00:00:00.000",
+        "section": "Documentation",
+        "type": "Documentation",
+        "task": "test2",
         "id": "task2",
-        "manualEndTime": true,
-        "milestone": false,
-        "order": 1,
         "prevTaskId": "task1",
+        "order": 1,
         "processed": true,
+        "classes": [],
+        "active": false,
+        "done": true,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": true,
+        "renderEndTime": null,
         "raw": {
           "data": ": done, 2014-01-01, 2014-01-04",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2014-01-01"
+          },
           "endTime": {
             "data": "2014-01-04"
-          },
-          "startTime": {
-            "startData": "2014-01-01",
-            "type": "getStartDate"
           }
         },
-        "renderEndTime": null,
-        "section": "Documentation",
         "startTime": "2014-01-01T00:00:00.000",
-        "task": "test2",
-        "type": "Documentation",
-        "vert": false
+        "endTime": "2014-01-04T00:00:00.000"
       },
       {
-        "active": false,
-        "classes": [],
-        "crit": true,
-        "done": false,
-        "endTime": "2014-01-04T00:00:00.000",
+        "section": "Documentation",
+        "type": "Documentation",
+        "task": "test3",
         "id": "task3",
-        "manualEndTime": true,
-        "milestone": false,
-        "order": 2,
         "prevTaskId": "task2",
+        "order": 2,
         "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": true,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": true,
+        "renderEndTime": null,
         "raw": {
           "data": ": crit, 2014-01-01, 2014-01-04",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2014-01-01"
+          },
           "endTime": {
             "data": "2014-01-04"
-          },
-          "startTime": {
-            "startData": "2014-01-01",
-            "type": "getStartDate"
           }
         },
-        "renderEndTime": null,
-        "section": "Documentation",
         "startTime": "2014-01-01T00:00:00.000",
-        "task": "test3",
-        "type": "Documentation",
-        "vert": false
+        "endTime": "2014-01-04T00:00:00.000"
       },
       {
-        "active": true,
-        "classes": [],
-        "crit": false,
-        "done": false,
-        "endTime": "2014-01-04T00:00:00.000",
+        "section": "Documentation",
+        "type": "Documentation",
+        "task": "test4",
         "id": "task4",
-        "manualEndTime": true,
-        "milestone": false,
-        "order": 3,
         "prevTaskId": "task3",
+        "order": 3,
         "processed": true,
+        "classes": [],
+        "active": true,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": true,
+        "renderEndTime": null,
         "raw": {
           "data": ": active, 2014-01-01, 2014-01-04",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2014-01-01"
+          },
           "endTime": {
             "data": "2014-01-04"
-          },
-          "startTime": {
-            "startData": "2014-01-01",
-            "type": "getStartDate"
           }
         },
-        "renderEndTime": null,
-        "section": "Documentation",
         "startTime": "2014-01-01T00:00:00.000",
-        "task": "test4",
-        "type": "Documentation",
-        "vert": false
+        "endTime": "2014-01-04T00:00:00.000"
       },
       {
-        "active": false,
-        "classes": [],
-        "crit": true,
-        "done": true,
-        "endTime": "2014-01-04T00:00:00.000",
+        "section": "Documentation",
+        "type": "Documentation",
+        "task": "test5",
         "id": "task5",
-        "manualEndTime": true,
-        "milestone": true,
-        "order": 4,
         "prevTaskId": "task4",
+        "order": 4,
         "processed": true,
+        "classes": [],
+        "active": false,
+        "done": true,
+        "crit": true,
+        "milestone": true,
+        "vert": false,
+        "manualEndTime": true,
+        "renderEndTime": null,
         "raw": {
           "data": ": crit,milestone,done, 2014-01-01, 2014-01-04",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2014-01-01"
+          },
           "endTime": {
             "data": "2014-01-04"
-          },
-          "startTime": {
-            "startData": "2014-01-01",
-            "type": "getStartDate"
           }
         },
-        "renderEndTime": null,
-        "section": "Documentation",
         "startTime": "2014-01-01T00:00:00.000",
-        "task": "test5",
-        "type": "Documentation",
-        "vert": false
+        "endTime": "2014-01-04T00:00:00.000"
       }
     ],
-    "tickInterval": null,
-    "title": "Task tags",
-    "todayMarker": "",
-    "topAxis": false,
-    "type": "gantt",
-    "weekday": "sunday",
-    "weekend": "saturday"
+    "links": {},
+    "clickEvents": {}
   }
 }

@@ -1,56 +1,56 @@
 {
   "diagramType": "gantt",
   "model": {
-    "accDescr": null,
+    "type": "gantt",
+    "title": "Timestamp X",
     "accTitle": null,
-    "axisFormat": "",
-    "clickEvents": {},
+    "accDescr": null,
     "dateFormat": "X",
-    "displayMode": "",
-    "excludes": [],
+    "axisFormat": "",
+    "tickInterval": null,
+    "todayMarker": "",
     "includes": [],
+    "excludes": [],
     "inclusiveEndDates": false,
-    "links": {},
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
     "sections": [
       "T"
     ],
     "tasks": [
       {
-        "active": false,
-        "classes": [],
-        "crit": false,
-        "done": false,
-        "endTime": 21000,
+        "section": "T",
+        "type": "T",
+        "task": "t1",
         "id": "id1",
-        "manualEndTime": false,
-        "milestone": false,
-        "order": 0,
         "prevTaskId": null,
+        "order": 0,
         "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
         "raw": {
           "data": ": id1,20,1s",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "20"
+          },
           "endTime": {
             "data": "1s"
-          },
-          "startTime": {
-            "startData": "20",
-            "type": "getStartDate"
           }
         },
-        "renderEndTime": null,
-        "section": "T",
-        "startTime": 20000,
-        "task": "t1",
-        "type": "T",
-        "vert": false
+        "startTime": 20,
+        "endTime": 1020
       }
     ],
-    "tickInterval": null,
-    "title": "Timestamp X",
-    "todayMarker": "",
-    "topAxis": false,
-    "type": "gantt",
-    "weekday": "sunday",
-    "weekend": "saturday"
+    "links": {},
+    "clickEvents": {}
   }
 }

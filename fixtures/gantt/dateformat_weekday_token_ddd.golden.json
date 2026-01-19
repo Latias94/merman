@@ -1,56 +1,56 @@
 {
   "diagramType": "gantt",
   "model": {
-    "accDescr": null,
+    "type": "gantt",
+    "title": "Weekday token (ddd)",
     "accTitle": null,
-    "axisFormat": "",
-    "clickEvents": {},
+    "accDescr": null,
     "dateFormat": "ddd YYYY-MM-DD",
-    "displayMode": "",
-    "excludes": [],
+    "axisFormat": "",
+    "tickInterval": null,
+    "todayMarker": "",
     "includes": [],
+    "excludes": [],
     "inclusiveEndDates": false,
-    "links": {},
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
     "sections": [
       "A"
     ],
     "tasks": [
       {
-        "active": false,
-        "classes": [],
-        "crit": false,
-        "done": false,
-        "endTime": "2014-01-08T00:00:00.000",
+        "section": "A",
+        "type": "A",
+        "task": "Task",
         "id": "t1",
-        "manualEndTime": false,
-        "milestone": false,
-        "order": 0,
         "prevTaskId": null,
+        "order": 0,
         "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
         "raw": {
           "data": ": t1, Tue 2014-01-07, 1d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "Tue 2014-01-07"
+          },
           "endTime": {
             "data": "1d"
-          },
-          "startTime": {
-            "startData": "Tue 2014-01-07",
-            "type": "getStartDate"
           }
         },
-        "renderEndTime": null,
-        "section": "A",
         "startTime": "2014-01-07T00:00:00.000",
-        "task": "Task",
-        "type": "A",
-        "vert": false
+        "endTime": "2014-01-08T00:00:00.000"
       }
     ],
-    "tickInterval": null,
-    "title": "Weekday token (ddd)",
-    "todayMarker": "",
-    "topAxis": false,
-    "type": "gantt",
-    "weekday": "sunday",
-    "weekend": "saturday"
+    "links": {},
+    "clickEvents": {}
   }
 }

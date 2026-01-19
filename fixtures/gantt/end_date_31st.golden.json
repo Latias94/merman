@@ -1,85 +1,85 @@
 {
   "diagramType": "gantt",
   "model": {
-    "accDescr": null,
+    "type": "gantt",
+    "title": "End date on 31st",
     "accTitle": null,
-    "axisFormat": "",
-    "clickEvents": {},
+    "accDescr": null,
     "dateFormat": "YYYY-MM-DD",
-    "displayMode": "",
-    "excludes": [],
+    "axisFormat": "",
+    "tickInterval": null,
+    "todayMarker": "",
     "includes": [],
+    "excludes": [],
     "inclusiveEndDates": false,
-    "links": {},
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
     "sections": [
       "Task endTime is on the 31st day of the month"
     ],
     "tasks": [
       {
-        "active": false,
-        "classes": [],
-        "crit": false,
-        "done": false,
-        "endTime": "2019-10-11T00:00:00.000",
+        "section": "Task endTime is on the 31st day of the month",
+        "type": "Task endTime is on the 31st day of the month",
+        "task": "test1",
         "id": "id1",
-        "manualEndTime": false,
-        "milestone": false,
-        "order": 0,
         "prevTaskId": null,
+        "order": 0,
         "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
         "raw": {
           "data": ": id1,2019-09-30,11d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2019-09-30"
+          },
           "endTime": {
             "data": "11d"
-          },
-          "startTime": {
-            "startData": "2019-09-30",
-            "type": "getStartDate"
           }
         },
-        "renderEndTime": null,
-        "section": "Task endTime is on the 31st day of the month",
         "startTime": "2019-09-30T00:00:00.000",
-        "task": "test1",
-        "type": "Task endTime is on the 31st day of the month",
-        "vert": false
+        "endTime": "2019-10-11T00:00:00.000"
       },
       {
-        "active": false,
-        "classes": [],
-        "crit": false,
-        "done": false,
-        "endTime": "2019-10-31T00:00:00.000",
+        "section": "Task endTime is on the 31st day of the month",
+        "type": "Task endTime is on the 31st day of the month",
+        "task": "test2",
         "id": "id2",
-        "manualEndTime": false,
-        "milestone": false,
-        "order": 1,
         "prevTaskId": "id1",
+        "order": 1,
         "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
         "raw": {
           "data": ": id2,after id1,20d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after id1"
+          },
           "endTime": {
             "data": "20d"
-          },
-          "startTime": {
-            "startData": "after id1",
-            "type": "getStartDate"
           }
         },
-        "renderEndTime": null,
-        "section": "Task endTime is on the 31st day of the month",
         "startTime": "2019-10-11T00:00:00.000",
-        "task": "test2",
-        "type": "Task endTime is on the 31st day of the month",
-        "vert": false
+        "endTime": "2019-10-31T00:00:00.000"
       }
     ],
-    "tickInterval": null,
-    "title": "End date on 31st",
-    "todayMarker": "",
-    "topAxis": false,
-    "type": "gantt",
-    "weekday": "sunday",
-    "weekend": "saturday"
+    "links": {},
+    "clickEvents": {}
   }
 }

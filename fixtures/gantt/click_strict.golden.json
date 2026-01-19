@@ -1,61 +1,61 @@
 {
   "diagramType": "gantt",
   "model": {
-    "accDescr": null,
+    "type": "gantt",
+    "title": "Click behavior strict",
     "accTitle": null,
-    "axisFormat": "",
-    "clickEvents": {},
+    "accDescr": null,
     "dateFormat": "YYYY-MM-DD",
-    "displayMode": "",
-    "excludes": [],
+    "axisFormat": "",
+    "tickInterval": null,
+    "todayMarker": "",
     "includes": [],
+    "excludes": [],
     "inclusiveEndDates": false,
-    "links": {
-      "a1": "about:blank"
-    },
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
     "sections": [
       "A"
     ],
     "tasks": [
       {
-        "active": false,
+        "section": "A",
+        "type": "A",
+        "task": "Task1 ",
+        "id": "a1",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
         "classes": [
           "clickable",
           "clickable"
         ],
-        "crit": false,
+        "active": false,
         "done": false,
-        "endTime": "2024-01-02T00:00:00.000",
-        "id": "a1",
-        "manualEndTime": false,
+        "crit": false,
         "milestone": false,
-        "order": 0,
-        "prevTaskId": null,
-        "processed": true,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
         "raw": {
           "data": ":a1, 2024-01-01, 1d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2024-01-01"
+          },
           "endTime": {
             "data": "1d"
-          },
-          "startTime": {
-            "startData": "2024-01-01",
-            "type": "getStartDate"
           }
         },
-        "renderEndTime": null,
-        "section": "A",
         "startTime": "2024-01-01T00:00:00.000",
-        "task": "Task1",
-        "type": "A",
-        "vert": false
+        "endTime": "2024-01-02T00:00:00.000"
       }
     ],
-    "tickInterval": null,
-    "title": "Click behavior strict",
-    "todayMarker": "",
-    "topAxis": false,
-    "type": "gantt",
-    "weekday": "sunday",
-    "weekend": "saturday"
+    "links": {
+      "a1": "about:blank"
+    },
+    "clickEvents": {}
   }
 }

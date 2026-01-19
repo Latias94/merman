@@ -8,7 +8,10 @@ use chrono::{Datelike, Local, TimeZone, Timelike};
 use serde::Deserialize;
 use std::collections::HashMap;
 
-const DEFAULT_WIDTH: f64 = 1200.0;
+// Mermaid's gantt renderer derives the width from the parent element's `offsetWidth`.
+// In Mermaid CLI (and typical browser defaults), the body margin results in an effective
+// width of 1184px for a 1200px viewport, which matches our upstream SVG baselines.
+const DEFAULT_WIDTH: f64 = 1184.0;
 const MS_PER_DAY: i64 = 86_400_000;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -330,7 +333,9 @@ fn end_of_day_ms(ms: i64) -> Option<i64> {
 
 fn scale_time(ms: i64, min_ms: i64, max_ms: i64, range: f64) -> f64 {
     if max_ms <= min_ms {
-        return 0.0;
+        // D3 scaleTime returns the midpoint of the range for degenerate domains.
+        // This matters for fixtures where parsing fails and `startTime == endTime` (width=0).
+        return (range / 2.0).round();
     }
     let t = (ms - min_ms) as f64 / (max_ms - min_ms) as f64;
     (t * range).round()
@@ -370,25 +375,107 @@ fn get_max_intersections(tasks: &mut [GanttTaskModel], order_offset: i64) -> i64
     max_i
 }
 
-fn auto_tick_interval(min_ms: i64, max_ms: i64) -> (i64, &'static str) {
-    let span = (max_ms - min_ms).abs().max(1) as f64;
-    let approx = span / 10.0;
-
-    for (unit_ms, name) in [
-        (MS_PER_DAY * 30, "month"),
-        (MS_PER_DAY * 7, "week"),
-        (MS_PER_DAY, "day"),
-        (3_600_000, "hour"),
-        (60_000, "minute"),
-        (1_000, "second"),
-        (1, "millisecond"),
-    ] {
-        if approx >= unit_ms as f64 {
-            let every = (approx / unit_ms as f64).round().max(1.0) as i64;
-            return (every, name);
-        }
+fn tick_step(start: f64, stop: f64, count: f64) -> i64 {
+    if !start.is_finite() || !stop.is_finite() || !count.is_finite() || count <= 0.0 {
+        return 1;
     }
-    (1, "day")
+    let span = (stop - start).abs();
+    if span <= 0.0 {
+        return 1;
+    }
+    let step0 = span / count;
+    let power = 10f64.powf(step0.log10().floor());
+    let error = step0 / power;
+    let factor = if error >= 7.5 {
+        10.0
+    } else if error >= 3.5 {
+        5.0
+    } else if error >= 1.5 {
+        2.0
+    } else {
+        1.0
+    };
+    (factor * power).round().max(1.0) as i64
+}
+
+fn auto_tick_interval(min_ms: i64, max_ms: i64) -> (i64, &'static str) {
+    // Matches the shape of d3-time's default tick interval selection (used by Mermaid when no
+    // custom tickInterval is specified). The key properties we need for SVG DOM parity are:
+    // - choosing from the same "nice" interval set (e.g. 1h/3h/6h/12h, not 2h)
+    // - aligning ticks to interval boundaries (handled in build_ticks)
+    const TARGET_TICKS: f64 = 10.0;
+    const MS: f64 = 1.0;
+    const SEC: f64 = 1_000.0;
+    const MIN: f64 = 60_000.0;
+    const HOUR: f64 = 3_600_000.0;
+    const DAY: f64 = MS_PER_DAY as f64;
+    const WEEK: f64 = (MS_PER_DAY * 7) as f64;
+    const MONTH: f64 = (MS_PER_DAY * 30) as f64;
+    const YEAR: f64 = (MS_PER_DAY * 365) as f64;
+
+    let span_ms = (max_ms - min_ms).abs().max(1) as f64;
+    let target = span_ms / TARGET_TICKS;
+
+    let mut intervals: Vec<(f64, i64, &'static str)> = Vec::new();
+    for (every, unit_ms) in [
+        (1, MS),
+        (2, MS),
+        (5, MS),
+        (10, MS),
+        (20, MS),
+        (50, MS),
+        (100, MS),
+        (200, MS),
+        (500, MS),
+    ] {
+        intervals.push((unit_ms * every as f64, every, "millisecond"));
+    }
+    for (every, unit_ms, unit) in [
+        (1, SEC, "second"),
+        (5, SEC, "second"),
+        (15, SEC, "second"),
+        (30, SEC, "second"),
+        (1, MIN, "minute"),
+        (5, MIN, "minute"),
+        (15, MIN, "minute"),
+        (30, MIN, "minute"),
+        (1, HOUR, "hour"),
+        (3, HOUR, "hour"),
+        (6, HOUR, "hour"),
+        (12, HOUR, "hour"),
+        (1, DAY, "day"),
+        (2, DAY, "day"),
+        (1, WEEK, "week"),
+        (1, MONTH, "month"),
+        (3, MONTH, "month"),
+        (1, YEAR, "year"),
+    ] {
+        intervals.push((unit_ms * (every as f64), every, unit));
+    }
+    intervals.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut i = 0usize;
+    while i < intervals.len() && intervals[i].0 < target {
+        i += 1;
+    }
+
+    if i == 0 {
+        let (_dur, every, unit) = intervals[0];
+        return (every, unit);
+    }
+
+    if i >= intervals.len() {
+        let years = tick_step(min_ms as f64 / YEAR, max_ms as f64 / YEAR, TARGET_TICKS);
+        return (years, "year");
+    }
+
+    let (d0, e0, u0) = intervals[i - 1];
+    let (d1, e1, u1) = intervals[i];
+    if target / d0 < d1 / target {
+        (e0, u0)
+    } else {
+        (e1, u1)
+    }
 }
 
 fn parse_tick_interval(s: &str) -> Option<(i64, &str)> {
@@ -447,8 +534,250 @@ fn add_interval(ms: i64, every: i64, unit: &str) -> Option<i64> {
                 naive.time().second(),
             )?
         }
+        "year" => {
+            let y = naive.date().year() + every as i32;
+            let m = naive.date().month();
+            let d = naive.date().day().min(28);
+            let date = chrono::NaiveDate::from_ymd_opt(y, m, d)?;
+            date.and_hms_opt(
+                naive.time().hour(),
+                naive.time().minute(),
+                naive.time().second(),
+            )?
+        }
         _ => return None,
     };
+
+    let out = Local.from_local_datetime(&next).single()?;
+    Some(out.with_timezone(&chrono::Utc).timestamp_millis())
+}
+
+fn weekday_from_str(s: &str) -> Option<chrono::Weekday> {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "monday" => Some(chrono::Weekday::Mon),
+        "tuesday" => Some(chrono::Weekday::Tue),
+        "wednesday" => Some(chrono::Weekday::Wed),
+        "thursday" => Some(chrono::Weekday::Thu),
+        "friday" => Some(chrono::Weekday::Fri),
+        "saturday" => Some(chrono::Weekday::Sat),
+        "sunday" => Some(chrono::Weekday::Sun),
+        _ => None,
+    }
+}
+
+fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>) -> Option<i64> {
+    let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(min_ms)?;
+    let dt = dt_utc.with_timezone(&Local);
+    let naive = dt.naive_local();
+
+    let start = match unit {
+        "millisecond" => {
+            let e = every.max(1);
+            // D3's `millisecond.every(e)` aligns using `Math.floor(date / e) * e`, and `range`
+            // starts at `ceil(start)`. Use Euclidean division so negative timestamps match D3.
+            let q = min_ms.div_euclid(e);
+            let r = min_ms.rem_euclid(e);
+            let aligned = if r == 0 { q * e } else { (q + 1) * e };
+            return Some(aligned);
+        }
+        "second" => {
+            let base = naive.date().and_hms_opt(
+                naive.time().hour(),
+                naive.time().minute(),
+                naive.time().second(),
+            )?;
+            let mut cur = base;
+            if cur < naive {
+                cur += chrono::Duration::seconds(1);
+            }
+            let e = every.max(1);
+            loop {
+                let sec = cur.time().second() as i64;
+                let rem = (sec % e + e) % e;
+                if rem == 0 {
+                    break;
+                }
+                cur += chrono::Duration::seconds(1);
+            }
+            cur
+        }
+        "minute" => {
+            let base = naive
+                .date()
+                .and_hms_opt(naive.time().hour(), naive.time().minute(), 0)?;
+            let mut cur = base;
+            if cur < naive {
+                cur += chrono::Duration::minutes(1);
+            }
+            let e = every.max(1);
+            loop {
+                let min = cur.time().minute() as i64;
+                let rem = (min % e + e) % e;
+                if rem == 0 {
+                    break;
+                }
+                cur += chrono::Duration::minutes(1);
+            }
+            cur
+        }
+        "hour" => {
+            let base = naive.date().and_hms_opt(naive.time().hour(), 0, 0)?;
+            let mut cur = base;
+            if cur < naive {
+                cur += chrono::Duration::hours(1);
+            }
+            let e = every.max(1);
+            loop {
+                let hour = cur.time().hour() as i64;
+                let rem = (hour % e + e) % e;
+                if rem == 0 {
+                    break;
+                }
+                cur += chrono::Duration::hours(1);
+            }
+            cur
+        }
+        "day" => {
+            let mut cur = naive.date().and_hms_opt(0, 0, 0)?;
+            if cur < naive {
+                cur += chrono::Duration::days(1);
+            }
+            let e = every.max(1);
+            if e > 1 {
+                // D3's `timeDay.every(e)` uses `date.getDate() - 1` as the interval field, so the
+                // modulus resets at each month boundary (days 1, 1+e, 1+2e, ... within a month).
+                let mut d = cur.date();
+                let day0 = d.day0() as i64;
+                let rem = (day0 % e + e) % e;
+                if rem != 0 {
+                    d += chrono::Duration::days(e - rem);
+                }
+                cur = d.and_hms_opt(0, 0, 0)?;
+            }
+            cur
+        }
+        "week" => {
+            let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 4)?; // Sunday
+            let start = week_start
+                .and_then(weekday_from_str)
+                .unwrap_or(chrono::Weekday::Sun);
+
+            let mut d = naive.date();
+            let cur_wd = d.weekday().num_days_from_sunday() as i64;
+            let start_wd = start.num_days_from_sunday() as i64;
+            let delta = (cur_wd - start_wd + 7) % 7;
+            d -= chrono::Duration::days(delta);
+            let mut cur = d.and_hms_opt(0, 0, 0)?;
+            if cur < naive {
+                cur += chrono::Duration::days(7);
+            }
+
+            let e = every.max(1);
+            if e > 1 {
+                let mut ws = cur.date();
+                loop {
+                    let weeks = ws.signed_duration_since(epoch).num_days() / 7;
+                    let rem = (weeks % e as i64 + e as i64) % e as i64;
+                    if rem == 0 {
+                        break;
+                    }
+                    ws += chrono::Duration::days(7);
+                }
+                cur = ws.and_hms_opt(0, 0, 0)?;
+            }
+            cur
+        }
+        "month" => {
+            let month_index = |y: i32, m: u32| (y as i64) * 12 + (m as i64 - 1);
+
+            let mut y = naive.date().year();
+            let mut m = naive.date().month();
+            let mut cur = chrono::NaiveDate::from_ymd_opt(y, m, 1)?.and_hms_opt(0, 0, 0)?;
+            if cur < naive {
+                m += 1;
+                if m > 12 {
+                    m = 1;
+                    y += 1;
+                }
+                cur = chrono::NaiveDate::from_ymd_opt(y, m, 1)?.and_hms_opt(0, 0, 0)?;
+            }
+
+            let e = every.max(1);
+            if e > 1 {
+                let mut idx = month_index(y, m);
+                let rem = (idx % e as i64 + e as i64) % e as i64;
+                if rem != 0 {
+                    idx += (e as i64) - rem;
+                    y = (idx / 12) as i32;
+                    m = (idx % 12) as u32 + 1;
+                    cur = chrono::NaiveDate::from_ymd_opt(y, m, 1)?.and_hms_opt(0, 0, 0)?;
+                }
+            }
+            cur
+        }
+        "year" => {
+            let mut y = naive.date().year();
+            let mut cur = chrono::NaiveDate::from_ymd_opt(y, 1, 1)?.and_hms_opt(0, 0, 0)?;
+            if cur < naive {
+                y += 1;
+                cur = chrono::NaiveDate::from_ymd_opt(y, 1, 1)?.and_hms_opt(0, 0, 0)?;
+            }
+            let e = every.max(1) as i32;
+            if e > 1 {
+                let rem = (y % e + e) % e;
+                if rem != 0 {
+                    y += e - rem;
+                    cur = chrono::NaiveDate::from_ymd_opt(y, 1, 1)?.and_hms_opt(0, 0, 0)?;
+                }
+            }
+            cur
+        }
+        _ => return None,
+    };
+
+    let out = Local.from_local_datetime(&start).single()?;
+    Some(out.with_timezone(&chrono::Utc).timestamp_millis())
+}
+
+fn add_d3_time_day_every(ms: i64, every: i64) -> Option<i64> {
+    let dt_utc = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)?;
+    let dt = dt_utc.with_timezone(&Local);
+    let naive = dt.naive_local();
+
+    let e = every.max(1);
+    if e <= 1 {
+        return add_interval(ms, 1, "day");
+    }
+
+    // D3's `timeDay.every(e)` uses a filtered interval based on `(date.getDate() - 1) % e`.
+    // This means the modulus resets at month boundaries, and the "next tick" is not simply
+    // `+e days` for months with non-multiple-of-e lengths.
+    let cur_date = naive.date();
+    let day0 = cur_date.day0() as i64;
+    let next_day0 = day0 + 1;
+    let rem = (next_day0 % e + e) % e;
+    let delta = if rem == 0 { 0 } else { e - rem };
+    let cand_day0 = next_day0 + delta;
+
+    let (y, m) = (cur_date.year(), cur_date.month());
+    let first_this_month = chrono::NaiveDate::from_ymd_opt(y, m, 1)?;
+    let (ny, nm) = if m == 12 { (y + 1, 1) } else { (y, m + 1) };
+    let first_next_month = chrono::NaiveDate::from_ymd_opt(ny, nm, 1)?;
+    let days_in_month = first_next_month
+        .signed_duration_since(first_this_month)
+        .num_days();
+
+    let next_date = if cand_day0 < days_in_month {
+        chrono::NaiveDate::from_ymd_opt(y, m, (cand_day0 + 1) as u32)?
+    } else {
+        first_next_month
+    };
+
+    let next = next_date.and_hms_opt(
+        naive.time().hour(),
+        naive.time().minute(),
+        naive.time().second(),
+    )?;
 
     let out = Local.from_local_datetime(&next).single()?;
     Some(out.with_timezone(&chrono::Utc).timestamp_millis())
@@ -476,13 +805,18 @@ fn build_ticks(
     left_padding: f64,
     axis_format: &str,
     tick_interval: Option<&str>,
+    week_start: Option<&str>,
 ) -> Vec<GanttAxisTickLayout> {
-    let (every, unit) = tick_interval
-        .and_then(parse_tick_interval)
-        .unwrap_or_else(|| auto_tick_interval(min_ms, max_ms));
+    let parsed = tick_interval.and_then(parse_tick_interval);
+    let (every, unit) = parsed.unwrap_or_else(|| auto_tick_interval(min_ms, max_ms));
+    let week_start = if parsed.is_some() && unit == "week" {
+        week_start
+    } else {
+        None
+    };
 
     let mut ticks = Vec::new();
-    let mut cur = min_ms;
+    let mut cur = ceil_tick_start(min_ms, every, unit, week_start).unwrap_or(min_ms);
     let max_ticks = 2000;
     for _ in 0..max_ticks {
         if cur > max_ms {
@@ -497,7 +831,12 @@ fn build_ticks(
             x,
             label,
         });
-        let Some(next) = add_interval(cur, every, unit) else {
+        let next = if unit == "day" && every > 1 {
+            add_d3_time_day_every(cur, every)
+        } else {
+            add_interval(cur, every, unit)
+        };
+        let Some(next) = next else {
             break;
         };
         if next <= cur {
@@ -597,13 +936,14 @@ pub fn layout_gantt_diagram(
         (0, 0)
     };
     let range = (width - left_padding - right_padding).max(1.0);
+    let has_excludes_layer = has_tasks && (!m.excludes.is_empty() || !m.includes.is_empty());
 
     // Sort by start time for rendering.
     m.tasks.sort_by(|a, b| a.start_ms.cmp(&b.start_ms));
 
     // Exclude day ranges.
     let mut excludes_layout: Vec<GanttExcludeRangeLayout> = Vec::new();
-    if has_tasks && (!m.excludes.is_empty() || !m.includes.is_empty()) {
+    if has_excludes_layer {
         let span_days = (max_ms - min_ms).abs() / MS_PER_DAY;
         if span_days <= 365 * 5 {
             let mut cur = start_of_day_ms(min_ms).unwrap_or(min_ms);
@@ -784,26 +1124,36 @@ pub fn layout_gantt_diagram(
             class: format!("task{task_class}"),
         };
 
-        let mut label_start_x = start_x;
-        let mut label_end_x = render_end_x;
-        if t.milestone {
-            label_start_x += 0.5 * (end_x - start_x) - 0.5 * bar_height;
-            label_end_x = label_start_x + bar_height;
-        }
-
-        let metrics = text_measurer.measure(&t.task, &text_style);
+        // Mermaid measures `textWidth` via `this.getBBox().width`, which does not include trailing
+        // whitespace. Preserve the original task text for rendering, but trim it for measurement.
+        let metrics = text_measurer.measure(t.task.trim_end(), &text_style);
         let text_width = metrics.width;
+
+        // Mermaid uses `renderEndTime` for the X-position calculation but `endTime` for the class
+        // overflow check. Mirror this quirk for DOM parity.
+        let mut start_x_for_label = start_x;
+        let mut end_x_for_label = render_end_x;
+        if t.milestone {
+            start_x_for_label += 0.5 * (end_x - start_x) - 0.5 * bar_height;
+            end_x_for_label = start_x_for_label + bar_height;
+        }
+        let start_x_for_class = start_x;
+        let end_x_for_class = if t.milestone {
+            start_x + bar_height
+        } else {
+            end_x
+        };
 
         let label_x = if t.vert {
             start_x + left_padding
-        } else if text_width > (label_end_x - label_start_x).abs() {
-            if label_end_x + text_width + 1.5 * left_padding > width {
-                label_start_x + left_padding - 5.0
+        } else if text_width > (end_x_for_label - start_x_for_label).abs() {
+            if end_x_for_label + text_width + 1.5 * left_padding > width {
+                start_x_for_label + left_padding - 5.0
             } else {
-                label_end_x + left_padding + 5.0
+                end_x_for_label + left_padding + 5.0
             }
         } else {
-            (label_end_x - label_start_x) / 2.0 + label_start_x + left_padding
+            (end_x_for_label - start_x_for_label) / 2.0 + start_x_for_label + left_padding
         };
 
         let label_y = if t.vert {
@@ -818,11 +1168,10 @@ pub fn layout_gantt_diagram(
             format!("{} ", t.classes.join(" "))
         };
 
-        let outside_left = !t.vert
-            && text_width > (label_end_x - label_start_x).abs()
-            && (label_end_x + text_width + 1.5 * left_padding > width);
-        let outside_right =
-            !t.vert && text_width > (label_end_x - label_start_x).abs() && !outside_left;
+        let class_overflows = !t.vert && text_width > (end_x_for_class - start_x_for_class).abs();
+        let outside_left =
+            class_overflows && (end_x_for_class + text_width + 1.5 * left_padding > width);
+        let outside_right = class_overflows && !outside_left;
 
         let label_class = if outside_left {
             format!("{base_classes}taskTextOutsideLeft taskTextOutside{sec_num}")
@@ -894,6 +1243,11 @@ pub fn layout_gantt_diagram(
 
     let axis_format = axis_format_to_strftime(&m.axis_format, &m.date_format, cfg_axis_format);
     let tick_interval = m.tick_interval.as_deref();
+    let week_start = if m.weekday.trim().is_empty() {
+        gantt_cfg.get("weekday").and_then(|v| v.as_str())
+    } else {
+        Some(m.weekday.as_str())
+    };
     let bottom_ticks = if has_tasks {
         build_ticks(
             min_ms,
@@ -902,6 +1256,7 @@ pub fn layout_gantt_diagram(
             left_padding,
             &axis_format,
             tick_interval,
+            week_start,
         )
     } else {
         Vec::new()
@@ -915,6 +1270,7 @@ pub fn layout_gantt_diagram(
             left_padding,
             &axis_format,
             tick_interval,
+            week_start,
         )
     } else {
         Vec::new()
@@ -956,6 +1312,7 @@ pub fn layout_gantt_diagram(
         section_titles,
         tasks,
         excludes: excludes_layout,
+        has_excludes_layer,
         bottom_ticks,
         top_ticks,
         title: m.title.clone(),

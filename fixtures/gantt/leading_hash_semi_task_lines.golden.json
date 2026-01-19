@@ -1,85 +1,85 @@
 {
   "diagramType": "gantt",
   "model": {
-    "accDescr": null,
+    "type": "gantt",
+    "title": "Leading markers in tasks",
     "accTitle": null,
-    "axisFormat": "",
-    "clickEvents": {},
+    "accDescr": null,
     "dateFormat": "YYYY-MM-DD",
-    "displayMode": "",
-    "excludes": [],
+    "axisFormat": "",
+    "tickInterval": null,
+    "todayMarker": "",
     "includes": [],
+    "excludes": [],
     "inclusiveEndDates": false,
-    "links": {},
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
     "sections": [
       "Documentation"
     ],
     "tasks": [
       {
-        "active": false,
-        "classes": [],
-        "crit": false,
-        "done": false,
-        "endTime": "2014-01-04T00:00:00.000",
+        "section": "Documentation",
+        "type": "Documentation",
+        "task": "Design jison grammar",
         "id": "des1",
-        "manualEndTime": true,
-        "milestone": false,
-        "order": 0,
         "prevTaskId": null,
+        "order": 0,
         "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": true,
+        "renderEndTime": null,
         "raw": {
           "data": ":des1, 2014-01-01, 2014-01-04",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2014-01-01"
+          },
           "endTime": {
             "data": "2014-01-04"
-          },
-          "startTime": {
-            "startData": "2014-01-01",
-            "type": "getStartDate"
           }
         },
-        "renderEndTime": null,
-        "section": "Documentation",
         "startTime": "2014-01-01T00:00:00.000",
-        "task": "Design jison grammar",
-        "type": "Documentation",
-        "vert": false
+        "endTime": "2014-01-04T00:00:00.000"
       },
       {
-        "active": false,
-        "classes": [],
-        "crit": false,
-        "done": false,
-        "endTime": "2014-01-04T00:00:00.000",
+        "section": "Documentation",
+        "type": "Documentation",
+        "task": "Design jison grammar",
         "id": "des2",
-        "manualEndTime": true,
-        "milestone": false,
-        "order": 1,
         "prevTaskId": "des1",
+        "order": 1,
         "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": true,
+        "renderEndTime": null,
         "raw": {
           "data": ":des2, 2014-01-01, 2014-01-04",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2014-01-01"
+          },
           "endTime": {
             "data": "2014-01-04"
-          },
-          "startTime": {
-            "startData": "2014-01-01",
-            "type": "getStartDate"
           }
         },
-        "renderEndTime": null,
-        "section": "Documentation",
         "startTime": "2014-01-01T00:00:00.000",
-        "task": "Design jison grammar",
-        "type": "Documentation",
-        "vert": false
+        "endTime": "2014-01-04T00:00:00.000"
       }
     ],
-    "tickInterval": null,
-    "title": "Leading markers in tasks",
-    "todayMarker": "",
-    "topAxis": false,
-    "type": "gantt",
-    "weekday": "sunday",
-    "weekend": "saturday"
+    "links": {},
+    "clickEvents": {}
   }
 }

@@ -1,69 +1,69 @@
 {
   "diagramType": "gantt",
   "model": {
-    "accDescr": null,
+    "type": "gantt",
+    "title": "Click callback args parsing",
     "accTitle": null,
+    "accDescr": null,
+    "dateFormat": "YYYY-MM-DD",
     "axisFormat": "",
+    "tickInterval": null,
+    "todayMarker": "",
+    "includes": [],
+    "excludes": [],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
+    "sections": [
+      "A"
+    ],
+    "tasks": [
+      {
+        "section": "A",
+        "type": "A",
+        "task": "Task1",
+        "id": "a1",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
+        "classes": [
+          "clickable"
+        ],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": a1, 2014-01-07, 3d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2014-01-07"
+          },
+          "endTime": {
+            "data": "3d"
+          }
+        },
+        "startTime": "2014-01-07T00:00:00.000",
+        "endTime": "2014-01-10T00:00:00.000"
+      }
+    ],
+    "links": {},
     "clickEvents": {
       "a1": {
+        "function_name": "cb",
         "function_args": [
           "a,b",
           "c",
           "1",
           "d"
         ],
-        "function_name": "cb",
         "raw_function_args": "\"a,b\", \"c\", 1, \"d\""
       }
-    },
-    "dateFormat": "YYYY-MM-DD",
-    "displayMode": "",
-    "excludes": [],
-    "includes": [],
-    "inclusiveEndDates": false,
-    "links": {},
-    "sections": [
-      "A"
-    ],
-    "tasks": [
-      {
-        "active": false,
-        "classes": [
-          "clickable"
-        ],
-        "crit": false,
-        "done": false,
-        "endTime": "2014-01-10T00:00:00.000",
-        "id": "a1",
-        "manualEndTime": false,
-        "milestone": false,
-        "order": 0,
-        "prevTaskId": null,
-        "processed": true,
-        "raw": {
-          "data": ": a1, 2014-01-07, 3d",
-          "endTime": {
-            "data": "3d"
-          },
-          "startTime": {
-            "startData": "2014-01-07",
-            "type": "getStartDate"
-          }
-        },
-        "renderEndTime": null,
-        "section": "A",
-        "startTime": "2014-01-07T00:00:00.000",
-        "task": "Task1",
-        "type": "A",
-        "vert": false
-      }
-    ],
-    "tickInterval": null,
-    "title": "Click callback args parsing",
-    "todayMarker": "",
-    "topAxis": false,
-    "type": "gantt",
-    "weekday": "sunday",
-    "weekend": "saturday"
+    }
   }
 }

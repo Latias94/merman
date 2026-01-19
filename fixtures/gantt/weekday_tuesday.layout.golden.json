@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 1200.0,
+        "max_x": 1184.0,
         "max_y": 100.0
       },
-      "width": 1200.0,
+      "width": 1184.0,
       "height": 100.0,
       "left_padding": 75.0,
       "right_padding": 75.0,
@@ -31,10 +31,11 @@
       "section_titles": [],
       "tasks": [],
       "excludes": [],
+      "has_excludes_layer": false,
       "bottom_ticks": [],
       "top_ticks": [],
       "title": "Weekday tuesday",
-      "title_x": 600.0,
+      "title_x": 592.0,
       "title_y": 25.0
     }
   }

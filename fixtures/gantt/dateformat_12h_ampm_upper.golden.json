@@ -1,85 +1,85 @@
 {
   "diagramType": "gantt",
   "model": {
-    "accDescr": null,
+    "type": "gantt",
+    "title": "12h AM/PM (A)",
     "accTitle": null,
-    "axisFormat": "",
-    "clickEvents": {},
+    "accDescr": null,
     "dateFormat": "YYYY-MM-DD hh:mm:ss A",
-    "displayMode": "",
-    "excludes": [],
+    "axisFormat": "",
+    "tickInterval": null,
+    "todayMarker": "",
     "includes": [],
+    "excludes": [],
     "inclusiveEndDates": false,
-    "links": {},
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
     "sections": [
       "A"
     ],
     "tasks": [
       {
-        "active": false,
-        "classes": [],
-        "crit": false,
-        "done": false,
-        "endTime": "2014-01-01T13:00:00.000",
+        "section": "A",
+        "type": "A",
+        "task": "Noon",
         "id": "n1",
-        "manualEndTime": false,
-        "milestone": false,
-        "order": 0,
         "prevTaskId": null,
+        "order": 0,
         "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
         "raw": {
           "data": ": n1, 2014-01-01 12:00:00 PM, 1h",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2014-01-01 12:00:00 PM"
+          },
           "endTime": {
             "data": "1h"
-          },
-          "startTime": {
-            "startData": "2014-01-01 12:00:00 PM",
-            "type": "getStartDate"
           }
         },
-        "renderEndTime": null,
-        "section": "A",
         "startTime": "2014-01-01T12:00:00.000",
-        "task": "Noon",
-        "type": "A",
-        "vert": false
+        "endTime": "2014-01-01T13:00:00.000"
       },
       {
-        "active": false,
-        "classes": [],
-        "crit": false,
-        "done": false,
-        "endTime": "2014-01-02T01:00:00.000",
+        "section": "A",
+        "type": "A",
+        "task": "Midnight",
         "id": "n2",
-        "manualEndTime": false,
-        "milestone": false,
-        "order": 1,
         "prevTaskId": "n1",
+        "order": 1,
         "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
         "raw": {
           "data": ": n2, 2014-01-02 12:00:00 AM, 1h",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2014-01-02 12:00:00 AM"
+          },
           "endTime": {
             "data": "1h"
-          },
-          "startTime": {
-            "startData": "2014-01-02 12:00:00 AM",
-            "type": "getStartDate"
           }
         },
-        "renderEndTime": null,
-        "section": "A",
         "startTime": "2014-01-02T00:00:00.000",
-        "task": "Midnight",
-        "type": "A",
-        "vert": false
+        "endTime": "2014-01-02T01:00:00.000"
       }
     ],
-    "tickInterval": null,
-    "title": "12h AM/PM (A)",
-    "todayMarker": "",
-    "topAxis": false,
-    "type": "gantt",
-    "weekday": "sunday",
-    "weekend": "saturday"
+    "links": {},
+    "clickEvents": {}
   }
 }

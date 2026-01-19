@@ -109,8 +109,19 @@ fn normalize_identifier_tokens(s: &str) -> String {
     re_trailing_counter().replace(&s, "$1<n>").to_string()
 }
 
-fn normalize_class_list(s: &str) -> String {
-    let mut parts: Vec<&str> = s.split_whitespace().collect();
+fn normalize_class_list(s: &str, mode: DomMode) -> String {
+    let mut parts: Vec<String> = s
+        .split_whitespace()
+        .map(|t| {
+            if mode != DomMode::Strict && t.starts_with("width-") {
+                let suffix = &t["width-".len()..];
+                if suffix.parse::<f64>().is_ok() {
+                    return "width-<n>".to_string();
+                }
+            }
+            t.to_string()
+        })
+        .collect();
     parts.sort_unstable();
     parts.dedup();
     parts.join(" ")
@@ -187,7 +198,7 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             }
 
             if key == "class" {
-                val = normalize_class_list(&val);
+                val = normalize_class_list(&val, mode);
                 val = normalize_gitgraph_dynamic_commit_ids(&val);
             }
             if mode == DomMode::Structure && is_identifier_like_attr(&key) {

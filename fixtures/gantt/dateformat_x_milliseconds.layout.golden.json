@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 1200.0,
+        "max_x": 1184.0,
         "max_y": 196.0
       },
-      "width": 1200.0,
+      "width": 1184.0,
       "height": 196.0,
       "left_padding": 75.0,
       "right_padding": 75.0,
@@ -35,7 +35,7 @@
           "index": 0.0,
           "x": 0.0,
           "y": 48.0,
-          "width": 1162.5,
+          "width": 1146.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -43,7 +43,7 @@
           "index": 1.0,
           "x": 0.0,
           "y": 72.0,
-          "width": 1162.5,
+          "width": 1146.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -51,7 +51,7 @@
           "index": 2.0,
           "x": 0.0,
           "y": 96.0,
-          "width": 1162.5,
+          "width": 1146.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -59,7 +59,7 @@
           "index": 3.0,
           "x": 0.0,
           "y": 120.0,
-          "width": 1162.5,
+          "width": 1146.5,
           "height": 24.0,
           "class": "section section1"
         }
@@ -104,7 +104,7 @@
             "id": "id1",
             "x": 75.0,
             "y": 50.0,
-            "width": 600.0,
+            "width": 591.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -115,7 +115,7 @@
             "text": "test1",
             "font_size": 11.0,
             "width": 25.08,
-            "x": 375.0,
+            "x": 370.5,
             "y": 63.5,
             "class": "taskText taskText0 width-25.080000000000002"
           }
@@ -133,9 +133,9 @@
           "vert": false,
           "bar": {
             "id": "id2",
-            "x": 675.0,
+            "x": 666.0,
             "y": 74.0,
-            "width": 150.0,
+            "width": 148.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -146,7 +146,7 @@
             "text": "test2",
             "font_size": 11.0,
             "width": 25.08,
-            "x": 750.0,
+            "x": 740.0,
             "y": 87.5,
             "class": "taskText taskText0 width-25.080000000000002"
           }
@@ -164,9 +164,9 @@
           "vert": false,
           "bar": {
             "id": "id3",
-            "x": 675.0,
+            "x": 666.0,
             "y": 98.0,
-            "width": 300.0,
+            "width": 295.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -177,7 +177,7 @@
             "text": "test3",
             "font_size": 11.0,
             "width": 25.08,
-            "x": 825.0,
+            "x": 813.5,
             "y": 111.5,
             "class": "taskText taskText1 width-25.080000000000002"
           }
@@ -195,9 +195,9 @@
           "vert": false,
           "bar": {
             "id": "id4",
-            "x": 975.0,
+            "x": 961.0,
             "y": 122.0,
-            "width": 150.0,
+            "width": 148.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -208,13 +208,14 @@
             "text": "test4",
             "font_size": 11.0,
             "width": 25.08,
-            "x": 1050.0,
+            "x": 1035.0,
             "y": 135.5,
             "class": "taskText taskText1 width-25.080000000000002"
           }
         }
       ],
       "excludes": [],
+      "has_excludes_layer": false,
       "bottom_ticks": [
         {
           "time_ms": 0.0,
@@ -222,49 +223,44 @@
           "label": "1970-01-01"
         },
         {
-          "time_ms": 4.0,
-          "x": 195.0,
+          "time_ms": 5.0,
+          "x": 223.0,
           "label": "1970-01-01"
         },
         {
-          "time_ms": 8.0,
-          "x": 315.0,
+          "time_ms": 10.0,
+          "x": 370.0,
           "label": "1970-01-01"
         },
         {
-          "time_ms": 12.0,
-          "x": 435.0,
-          "label": "1970-01-01"
-        },
-        {
-          "time_ms": 16.0,
-          "x": 555.0,
+          "time_ms": 15.0,
+          "x": 518.0,
           "label": "1970-01-01"
         },
         {
           "time_ms": 20.0,
-          "x": 675.0,
+          "x": 666.0,
           "label": "1970-01-01"
         },
         {
-          "time_ms": 24.0,
-          "x": 795.0,
+          "time_ms": 25.0,
+          "x": 814.0,
           "label": "1970-01-01"
         },
         {
-          "time_ms": 28.0,
-          "x": 915.0,
+          "time_ms": 30.0,
+          "x": 961.0,
           "label": "1970-01-01"
         },
         {
-          "time_ms": 32.0,
-          "x": 1035.0,
+          "time_ms": 35.0,
+          "x": 1109.0,
           "label": "1970-01-01"
         }
       ],
       "top_ticks": [],
       "title": "Milliseconds (dateFormat x)",
-      "title_x": 600.0,
+      "title_x": 592.0,
       "title_y": 25.0
     }
   }

@@ -59,11 +59,34 @@ pub struct DeterministicTextMeasurer {
 }
 
 impl DeterministicTextMeasurer {
+    fn replace_br_variants(text: &str) -> String {
+        let mut out = String::with_capacity(text.len());
+        let mut i = 0usize;
+        while i < text.len() {
+            if text[i..].starts_with("<br") {
+                let next = text[i + 3..].chars().next();
+                let is_valid = match next {
+                    None => true,
+                    Some(ch) => ch.is_whitespace() || ch == '/' || ch == '>',
+                };
+                if is_valid {
+                    if let Some(rel_end) = text[i..].find('>') {
+                        i += rel_end + 1;
+                        out.push('\n');
+                        continue;
+                    }
+                }
+            }
+
+            let ch = text[i..].chars().next().unwrap();
+            out.push(ch);
+            i += ch.len_utf8();
+        }
+        out
+    }
+
     pub fn normalized_text_lines(text: &str) -> Vec<String> {
-        let t = text
-            .replace("<br/>", "\n")
-            .replace("<br />", "\n")
-            .replace("<br>", "\n");
+        let t = Self::replace_br_variants(text);
         let out = t.split('\n').map(|s| s.to_string()).collect::<Vec<_>>();
         if out.is_empty() {
             return vec!["".to_string()];

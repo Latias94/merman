@@ -1,56 +1,56 @@
 {
   "diagramType": "gantt",
   "model": {
-    "accDescr": "Line 1\nLine 2 indented\nLine 3",
+    "type": "gantt",
+    "title": "Accessibility accDescr block",
     "accTitle": null,
-    "axisFormat": "",
-    "clickEvents": {},
+    "accDescr": "Line 1\nLine 2 indented\nLine 3",
     "dateFormat": "YYYY-MM-DD",
-    "displayMode": "",
-    "excludes": [],
+    "axisFormat": "",
+    "tickInterval": null,
+    "todayMarker": "",
     "includes": [],
+    "excludes": [],
     "inclusiveEndDates": false,
-    "links": {},
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
     "sections": [
       "A"
     ],
     "tasks": [
       {
-        "active": false,
-        "classes": [],
-        "crit": false,
-        "done": false,
-        "endTime": "2019-02-02T00:00:00.000",
+        "section": "A",
+        "type": "A",
+        "task": "Task1",
         "id": "a1",
-        "manualEndTime": false,
-        "milestone": false,
-        "order": 0,
         "prevTaskId": null,
+        "order": 0,
         "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
         "raw": {
           "data": ": a1, 2019-02-01, 1d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2019-02-01"
+          },
           "endTime": {
             "data": "1d"
-          },
-          "startTime": {
-            "startData": "2019-02-01",
-            "type": "getStartDate"
           }
         },
-        "renderEndTime": null,
-        "section": "A",
         "startTime": "2019-02-01T00:00:00.000",
-        "task": "Task1",
-        "type": "A",
-        "vert": false
+        "endTime": "2019-02-02T00:00:00.000"
       }
     ],
-    "tickInterval": null,
-    "title": "Accessibility accDescr block",
-    "todayMarker": "",
-    "topAxis": false,
-    "type": "gantt",
-    "weekday": "sunday",
-    "weekend": "saturday"
+    "links": {},
+    "clickEvents": {}
   }
 }

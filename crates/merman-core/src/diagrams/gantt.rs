@@ -156,11 +156,20 @@ impl GanttDb {
     }
 
     fn find_task_by_id(&self, id: &str) -> Option<&RawTask> {
+        // Mermaid's upstream ganttDb uses a plain JS object (`taskDb`) for id → index mapping,
+        // which makes `__proto__` non-addressable via `taskDb[id]` (prototype mutation). Mirror
+        // that observable behavior for parity.
+        if id == "__proto__" {
+            return None;
+        }
         let pos = self.task_index.get(id).copied()?;
         self.raw_tasks.get(pos)
     }
 
     fn find_task_by_id_mut(&mut self, id: &str) -> Option<&mut RawTask> {
+        if id == "__proto__" {
+            return None;
+        }
         let pos = self.task_index.get(id).copied()?;
         self.raw_tasks.get_mut(pos)
     }
@@ -1353,6 +1362,18 @@ fn get_start_date(db: &GanttDb, date_format: &str, raw: &str) -> Result<Option<D
         });
     }
 
+    // Mermaid's ganttDb special-cases timestamp formats `x` / `X`: for positive integer strings,
+    // it uses `new Date(Number(str))` rather than strict dayjs parsing. This treats the numeric
+    // payload as *milliseconds* for both `x` and `X`.
+    let fmt = date_format.trim();
+    if (fmt == "x" || fmt == "X") && !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()) {
+        if let Ok(ms) = s.parse::<i64>() {
+            if let Some(dt) = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms) {
+                return Ok(Some(dt.with_timezone(&FixedOffset::east_opt(0).unwrap())));
+            }
+        }
+    }
+
     if let Some(dt) = parse_dayjs_like_strict(date_format, s) {
         return Ok(Some(dt));
     }
@@ -1702,14 +1723,15 @@ fn fix_task_dates(
 }
 
 fn strip_inline_comment(line: &str) -> &str {
-    let mut pos = 0usize;
-    while let Some(rel) = line[pos..].find("%%") {
-        let idx = pos + rel;
-        if line.get(idx + 2..idx + 3) == Some("{") {
-            pos = idx + 2;
-            continue;
-        }
-        return &line[..idx];
+    // Mermaid gantt does not treat `%%` as an inline comment delimiter for statements like `title`
+    // or task lines (see `fixtures/gantt/task_inline_percent_comment.mmd`). It does, however,
+    // accept full-line `%% ...` comments (and directive lines `%%{...}%%`).
+    let t = line.trim_start();
+    if t.starts_with("%%{") {
+        return line;
+    }
+    if t.starts_with("%%") {
+        return "";
     }
     line
 }
@@ -2134,7 +2156,9 @@ fn parse_gantt_statement(
         });
     };
 
-    let task_txt = task_stmt[..colon].trim();
+    // Mermaid passes `taskTxt` through to the DB without trimming. This preserves any trailing
+    // whitespace before the `:` delimiter (e.g. `Task1 :id,...` yields `Task1 `).
+    let task_txt = &task_stmt[..colon];
     let mut task_data = task_stmt[colon + 1..].to_string();
     task_data = split_statement_suffix(&task_data).to_string();
     if task_txt.is_empty() || task_data.trim().is_empty() {
@@ -2813,8 +2837,8 @@ t1: id1,20,1s
 "#,
         );
         let t0 = &model["tasks"][0];
-        assert_eq!(t0["startTime"].as_i64().unwrap(), 20_000);
-        assert_eq!(t0["endTime"].as_i64().unwrap(), 21_000);
+        assert_eq!(t0["startTime"].as_i64().unwrap(), 20);
+        assert_eq!(t0["endTime"].as_i64().unwrap(), 1_020);
     }
 
     #[test]

@@ -1,59 +1,59 @@
 {
   "diagramType": "gantt",
   "model": {
-    "accDescr": null,
+    "type": "gantt",
+    "title": "Excludes weekdays keyword is accepted",
     "accTitle": null,
-    "axisFormat": "",
-    "clickEvents": {},
+    "accDescr": null,
     "dateFormat": "YYYY-MM-DD",
-    "displayMode": "",
+    "axisFormat": "",
+    "tickInterval": null,
+    "todayMarker": "off",
+    "includes": [],
     "excludes": [
       "weekdays",
       "2019-02-01"
     ],
-    "includes": [],
     "inclusiveEndDates": false,
-    "links": {},
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
     "sections": [
       "Demo"
     ],
     "tasks": [
       {
-        "active": false,
-        "classes": [],
-        "crit": false,
-        "done": false,
-        "endTime": "2019-02-02T00:00:00.000",
+        "section": "Demo",
+        "type": "Demo",
+        "task": "Task1",
         "id": "t1",
-        "manualEndTime": false,
-        "milestone": false,
-        "order": 0,
         "prevTaskId": null,
+        "order": 0,
         "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2019-02-02T00:00:00.000",
         "raw": {
           "data": ": t1, 2019-02-01, 1d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2019-02-01"
+          },
           "endTime": {
             "data": "1d"
-          },
-          "startTime": {
-            "startData": "2019-02-01",
-            "type": "getStartDate"
           }
         },
-        "renderEndTime": "2019-02-02T00:00:00.000",
-        "section": "Demo",
         "startTime": "2019-02-01T00:00:00.000",
-        "task": "Task1",
-        "type": "Demo",
-        "vert": false
+        "endTime": "2019-02-02T00:00:00.000"
       }
     ],
-    "tickInterval": null,
-    "title": "Excludes weekdays keyword is accepted",
-    "todayMarker": "off",
-    "topAxis": false,
-    "type": "gantt",
-    "weekday": "sunday",
-    "weekend": "saturday"
+    "links": {},
+    "clickEvents": {}
   }
 }

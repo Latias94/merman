@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 1200.0,
+        "max_x": 1184.0,
         "max_y": 172.0
       },
-      "width": 1200.0,
+      "width": 1184.0,
       "height": 172.0,
       "left_padding": 75.0,
       "right_padding": 75.0,
@@ -35,7 +35,7 @@
           "index": 0.0,
           "x": 0.0,
           "y": 48.0,
-          "width": 1162.5,
+          "width": 1146.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -43,7 +43,7 @@
           "index": 1.0,
           "x": 0.0,
           "y": 72.0,
-          "width": 1162.5,
+          "width": 1146.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -51,7 +51,7 @@
           "index": 2.0,
           "x": 0.0,
           "y": 96.0,
-          "width": 1162.5,
+          "width": 1146.5,
           "height": 24.0,
           "class": "section section1"
         }
@@ -96,7 +96,7 @@
             "id": "id1",
             "x": 75.0,
             "y": 50.0,
-            "width": 865.0,
+            "width": 852.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -107,7 +107,7 @@
             "text": "test1",
             "font_size": 11.0,
             "width": 25.08,
-            "x": 507.5,
+            "x": 501.0,
             "y": 63.5,
             "class": "taskText taskText0 width-25.080000000000002"
           }
@@ -125,9 +125,9 @@
           "vert": false,
           "bar": {
             "id": "id3",
-            "x": 940.0,
+            "x": 927.0,
             "y": 98.0,
-            "width": 123.0,
+            "width": 121.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -138,7 +138,7 @@
             "text": "test3",
             "font_size": 11.0,
             "width": 25.08,
-            "x": 1001.5,
+            "x": 987.5,
             "y": 111.5,
             "class": "taskText taskText1 width-25.080000000000002"
           }
@@ -156,9 +156,9 @@
           "vert": false,
           "bar": {
             "id": "id2",
-            "x": 1063.0,
+            "x": 1048.0,
             "y": 74.0,
-            "width": 62.0,
+            "width": 61.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -169,13 +169,14 @@
             "text": "test2",
             "font_size": 11.0,
             "width": 25.08,
-            "x": 1094.0,
+            "x": 1078.5,
             "y": 87.5,
             "class": "taskText taskText0 width-25.080000000000002"
           }
         }
       ],
       "excludes": [],
+      "has_excludes_layer": false,
       "bottom_ticks": [
         {
           "time_ms": 1356969600000.0,
@@ -184,48 +185,48 @@
         },
         {
           "time_ms": 1357142400000.0,
-          "x": 199.0,
+          "x": 197.0,
           "label": "2013-01-03"
         },
         {
           "time_ms": 1357315200000.0,
-          "x": 322.0,
+          "x": 318.0,
           "label": "2013-01-05"
         },
         {
           "time_ms": 1357488000000.0,
-          "x": 446.0,
+          "x": 440.0,
           "label": "2013-01-07"
         },
         {
           "time_ms": 1357660800000.0,
-          "x": 569.0,
+          "x": 562.0,
           "label": "2013-01-09"
         },
         {
           "time_ms": 1357833600000.0,
-          "x": 693.0,
+          "x": 683.0,
           "label": "2013-01-11"
         },
         {
           "time_ms": 1358006400000.0,
-          "x": 816.0,
+          "x": 805.0,
           "label": "2013-01-13"
         },
         {
           "time_ms": 1358179200000.0,
-          "x": 940.0,
+          "x": 927.0,
           "label": "2013-01-15"
         },
         {
           "time_ms": 1358352000000.0,
-          "x": 1063.0,
+          "x": 1048.0,
           "label": "2013-01-17"
         }
       ],
       "top_ticks": [],
       "title": "Relative refs across sections",
-      "title_x": 600.0,
+      "title_x": 592.0,
       "title_y": 25.0
     }
   }

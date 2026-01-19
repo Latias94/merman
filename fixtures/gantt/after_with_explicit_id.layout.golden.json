@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 1200.0,
+        "max_x": 1184.0,
         "max_y": 148.0
       },
-      "width": 1200.0,
+      "width": 1184.0,
       "height": 148.0,
       "left_padding": 75.0,
       "right_padding": 75.0,
@@ -34,7 +34,7 @@
           "index": 0.0,
           "x": 0.0,
           "y": 48.0,
-          "width": 1162.5,
+          "width": 1146.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -42,7 +42,7 @@
           "index": 1.0,
           "x": 0.0,
           "y": 72.0,
-          "width": 1162.5,
+          "width": 1146.5,
           "height": 24.0,
           "class": "section section0"
         }
@@ -76,7 +76,7 @@
             "id": "id1",
             "x": 75.0,
             "y": 50.0,
-            "width": 980.0,
+            "width": 965.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -87,7 +87,7 @@
             "text": "test1",
             "font_size": 11.0,
             "width": 25.08,
-            "x": 565.0,
+            "x": 557.5,
             "y": 63.5,
             "class": "taskText taskText0 width-25.080000000000002"
           }
@@ -105,9 +105,9 @@
           "vert": false,
           "bar": {
             "id": "id2",
-            "x": 1055.0,
+            "x": 1040.0,
             "y": 74.0,
-            "width": 70.0,
+            "width": 69.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -118,13 +118,14 @@
             "text": "test2",
             "font_size": 11.0,
             "width": 25.08,
-            "x": 1090.0,
+            "x": 1074.5,
             "y": 87.5,
             "class": "taskText taskText0 width-25.080000000000002"
           }
         }
       ],
       "excludes": [],
+      "has_excludes_layer": false,
       "bottom_ticks": [
         {
           "time_ms": 1356969600000.0,
@@ -133,43 +134,43 @@
         },
         {
           "time_ms": 1357142400000.0,
-          "x": 215.0,
+          "x": 213.0,
           "label": "2013-01-03"
         },
         {
           "time_ms": 1357315200000.0,
-          "x": 355.0,
+          "x": 351.0,
           "label": "2013-01-05"
         },
         {
           "time_ms": 1357488000000.0,
-          "x": 495.0,
+          "x": 489.0,
           "label": "2013-01-07"
         },
         {
           "time_ms": 1357660800000.0,
-          "x": 635.0,
+          "x": 626.0,
           "label": "2013-01-09"
         },
         {
           "time_ms": 1357833600000.0,
-          "x": 775.0,
+          "x": 764.0,
           "label": "2013-01-11"
         },
         {
           "time_ms": 1358006400000.0,
-          "x": 915.0,
+          "x": 902.0,
           "label": "2013-01-13"
         },
         {
           "time_ms": 1358179200000.0,
-          "x": 1055.0,
+          "x": 1040.0,
           "label": "2013-01-15"
         }
       ],
       "top_ticks": [],
       "title": "After with explicit id",
-      "title_x": 600.0,
+      "title_x": 592.0,
       "title_y": 25.0
     }
   }

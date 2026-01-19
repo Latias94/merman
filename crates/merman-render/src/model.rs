@@ -593,6 +593,8 @@ pub struct GanttDiagramLayout {
     pub section_titles: Vec<GanttSectionTitleLayout>,
     pub tasks: Vec<GanttTaskLayout>,
     pub excludes: Vec<GanttExcludeRangeLayout>,
+    #[serde(default)]
+    pub has_excludes_layer: bool,
     pub bottom_ticks: Vec<GanttAxisTickLayout>,
     #[serde(default)]
     pub top_ticks: Vec<GanttAxisTickLayout>,

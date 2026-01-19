@@ -2,92 +2,92 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "bounds": {
-        "max_x": 106.5,
-        "max_y": 171.0,
-        "min_x": 0.0,
-        "min_y": 0.0
-      },
-      "clusters": [
+      "nodes": [
         {
-          "diff": 0.0,
-          "effective_dir": "TB",
-          "height": 90.0,
+          "id": "State1",
+          "x": 26.5,
+          "y": 15.5,
+          "width": 44.8,
+          "height": 31.0,
+          "is_cluster": false
+        },
+        {
+          "id": "State1----note-0",
+          "x": 26.5,
+          "y": 133.5,
+          "width": 53.0,
+          "height": 105.0,
+          "is_cluster": false
+        },
+        {
           "id": "State1----parent",
-          "offset_y": 0.0,
-          "padding": 16.0,
-          "requested_dir": null,
-          "title": "Line1<br>Line2<br/>Line3<br />Line4<br\t/>Line5",
-          "title_label": {
-            "height": 60.0,
-            "width": 76.5,
-            "x": 53.25,
-            "y": 112.0
-          },
-          "title_margin_bottom": 0.0,
-          "title_margin_top": 0.0,
-          "width": 106.5,
-          "x": 53.25,
-          "y": 126.0
+          "x": 26.5,
+          "y": 133.5,
+          "width": 53.0,
+          "height": 105.0,
+          "is_cluster": true
         }
       ],
       "edges": [
         {
-          "end_label_left": null,
-          "end_label_right": null,
-          "end_marker": null,
-          "from": "State1",
-          "from_cluster": null,
           "id": "State1-State1----note-0",
-          "label": null,
+          "from": "State1",
+          "to": "State1----note-0",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
-              "x": 53.25,
+              "x": 26.5,
               "y": 31.0
             },
             {
-              "x": 53.25,
+              "x": 26.5,
               "y": 56.0
             },
             {
-              "x": 53.25,
+              "x": 26.5,
               "y": 81.0
             }
           ],
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
           "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "State1----note-0",
-          "to_cluster": null
+          "end_marker": null,
+          "stroke_dasharray": null
         }
       ],
-      "nodes": [
+      "clusters": [
         {
-          "height": 31.0,
-          "id": "State1",
-          "is_cluster": false,
-          "width": 44.8,
-          "x": 53.25,
-          "y": 15.5
-        },
-        {
-          "height": 90.0,
-          "id": "State1----note-0",
-          "is_cluster": false,
-          "width": 106.5,
-          "x": 53.25,
-          "y": 126.0
-        },
-        {
-          "height": 90.0,
           "id": "State1----parent",
-          "is_cluster": true,
-          "width": 106.5,
-          "x": 53.25,
-          "y": 126.0
+          "x": 26.5,
+          "y": 133.5,
+          "width": 53.0,
+          "height": 105.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
+          "title": "Line1<br>Line2<br/>Line3<br />Line4<br\t/>Line5",
+          "title_label": {
+            "x": 26.5,
+            "y": 119.5,
+            "width": 23.0,
+            "height": 75.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 16.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
         }
-      ]
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 53.0,
+        "max_y": 186.0
+      }
     }
   }
 }

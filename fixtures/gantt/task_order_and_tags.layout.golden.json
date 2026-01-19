@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 1200.0,
+        "max_x": 1184.0,
         "max_y": 172.0
       },
-      "width": 1200.0,
+      "width": 1184.0,
       "height": 172.0,
       "left_padding": 75.0,
       "right_padding": 75.0,
@@ -35,7 +35,7 @@
           "index": 0.0,
           "x": 0.0,
           "y": 48.0,
-          "width": 1162.5,
+          "width": 1146.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -43,7 +43,7 @@
           "index": 1.0,
           "x": 0.0,
           "y": 72.0,
-          "width": 1162.5,
+          "width": 1146.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -51,7 +51,7 @@
           "index": 2.0,
           "x": 0.0,
           "y": 96.0,
-          "width": 1162.5,
+          "width": 1146.5,
           "height": 24.0,
           "class": "section section1"
         }
@@ -96,7 +96,7 @@
             "id": "des1",
             "x": 75.0,
             "y": 50.0,
-            "width": 191.0,
+            "width": 188.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -107,7 +107,7 @@
             "text": "Completed task",
             "font_size": 11.0,
             "width": 70.51,
-            "x": 170.5,
+            "x": 169.0,
             "y": 63.5,
             "class": "taskText taskText0 width-70.51"
           }
@@ -125,9 +125,9 @@
           "vert": false,
           "bar": {
             "id": "des2",
-            "x": 361.0,
+            "x": 357.0,
             "y": 74.0,
-            "width": 287.0,
+            "width": 282.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -138,7 +138,7 @@
             "text": "Active task",
             "font_size": 11.0,
             "width": 52.47,
-            "x": 504.5,
+            "x": 498.0,
             "y": 87.5,
             "class": "taskText taskText0 width-52.470000000000006"
           }
@@ -156,9 +156,9 @@
           "vert": false,
           "bar": {
             "id": "des3",
-            "x": 648.0,
+            "x": 639.0,
             "y": 98.0,
-            "width": 477.0,
+            "width": 470.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -169,13 +169,14 @@
             "text": "Future task",
             "font_size": 11.0,
             "width": 54.12,
-            "x": 886.5,
+            "x": 874.0,
             "y": 111.5,
             "class": "taskText taskText1 width-54.12"
           }
         }
       ],
       "excludes": [],
+      "has_excludes_layer": false,
       "bottom_ticks": [
         {
           "time_ms": 1388937600000.0,
@@ -184,63 +185,63 @@
         },
         {
           "time_ms": 1389024000000.0,
-          "x": 170.0,
+          "x": 169.0,
           "label": "2014-01-07"
         },
         {
           "time_ms": 1389110400000.0,
-          "x": 266.0,
+          "x": 263.0,
           "label": "2014-01-08"
         },
         {
           "time_ms": 1389196800000.0,
-          "x": 361.0,
+          "x": 357.0,
           "label": "2014-01-09"
         },
         {
           "time_ms": 1389283200000.0,
-          "x": 457.0,
+          "x": 451.0,
           "label": "2014-01-10"
         },
         {
           "time_ms": 1389369600000.0,
-          "x": 552.0,
+          "x": 545.0,
           "label": "2014-01-11"
         },
         {
           "time_ms": 1389456000000.0,
-          "x": 648.0,
+          "x": 639.0,
           "label": "2014-01-12"
         },
         {
           "time_ms": 1389542400000.0,
-          "x": 743.0,
+          "x": 733.0,
           "label": "2014-01-13"
         },
         {
           "time_ms": 1389628800000.0,
-          "x": 839.0,
+          "x": 827.0,
           "label": "2014-01-14"
         },
         {
           "time_ms": 1389715200000.0,
-          "x": 934.0,
+          "x": 921.0,
           "label": "2014-01-15"
         },
         {
           "time_ms": 1389801600000.0,
-          "x": 1030.0,
+          "x": 1015.0,
           "label": "2014-01-16"
         },
         {
           "time_ms": 1389888000000.0,
-          "x": 1125.0,
+          "x": 1109.0,
           "label": "2014-01-17"
         }
       ],
       "top_ticks": [],
       "title": "Order and tags",
-      "title_x": 600.0,
+      "title_x": 592.0,
       "title_y": 25.0
     }
   }
