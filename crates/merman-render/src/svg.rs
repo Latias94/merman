@@ -6247,6 +6247,11 @@ pub fn render_flowchart_v2_svg(
     let diagram_padding = config_f64(effective_config, &["flowchart", "diagramPadding"])
         .unwrap_or(8.0)
         .max(0.0);
+    let use_max_width = effective_config
+        .get("flowchart")
+        .and_then(|v| v.get("useMaxWidth"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true);
     let title_top_margin = config_f64(effective_config, &["flowchart", "titleTopMargin"])
         .unwrap_or(25.0)
         .max(0.0);
@@ -6395,23 +6400,43 @@ pub fn render_flowchart_v2_svg(
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
 
-    let _ = write!(
-        &mut out,
-        r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" style="max-width: {}px; background-color: white;" viewBox="0 0 {} {}" role="graphics-document document" aria-roledescription="{}"{}{}>"#,
-        escape_xml(diagram_id),
-        w_attr,
-        w_attr,
-        h_attr,
-        diagram_type,
-        aria_describedby
-            .as_deref()
-            .map(|id| format!(r#" aria-describedby="{}""#, escape_attr(id)))
-            .unwrap_or_default(),
-        aria_labelledby
-            .as_deref()
-            .map(|id| format!(r#" aria-labelledby="{}""#, escape_attr(id)))
-            .unwrap_or_default(),
-    );
+    let svg_open = if use_max_width {
+        format!(
+            r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" style="max-width: {}px; background-color: white;" viewBox="0 0 {} {}" role="graphics-document document" aria-roledescription="{}"{}{}>"#,
+            escape_xml(diagram_id),
+            w_attr,
+            w_attr,
+            h_attr,
+            diagram_type,
+            aria_describedby
+                .as_deref()
+                .map(|id| format!(r#" aria-describedby="{}""#, escape_attr(id)))
+                .unwrap_or_default(),
+            aria_labelledby
+                .as_deref()
+                .map(|id| format!(r#" aria-labelledby="{}""#, escape_attr(id)))
+                .unwrap_or_default(),
+        )
+    } else {
+        format!(
+            r#"<svg id="{}" width="{}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" height="{}" viewBox="0 0 {} {}" role="graphics-document document" aria-roledescription="{}"{}{}>"#,
+            escape_xml(diagram_id),
+            w_attr,
+            h_attr,
+            w_attr,
+            h_attr,
+            diagram_type,
+            aria_describedby
+                .as_deref()
+                .map(|id| format!(r#" aria-describedby="{}""#, escape_attr(id)))
+                .unwrap_or_default(),
+            aria_labelledby
+                .as_deref()
+                .map(|id| format!(r#" aria-labelledby="{}""#, escape_attr(id)))
+                .unwrap_or_default(),
+        )
+    };
+    out.push_str(&svg_open);
     if let (Some(id), Some(title)) = (aria_labelledby.as_deref(), acc_title) {
         let _ = write!(
             &mut out,
@@ -6446,6 +6471,7 @@ pub fn render_flowchart_v2_svg(
         ty,
         diagram_type: diagram_type.to_string(),
         measurer,
+        config: merman_core::MermaidConfig::from_value(effective_config.clone()),
         html_labels,
         class_defs: model.class_defs.clone(),
         node_border_color,
@@ -10944,6 +10970,7 @@ struct FlowchartRenderCtx<'a> {
     tx: f64,
     ty: f64,
     measurer: &'a dyn TextMeasurer,
+    config: merman_core::MermaidConfig,
     html_labels: bool,
     class_defs: std::collections::HashMap<String, Vec<String>>,
     node_border_color: String,
@@ -11501,7 +11528,7 @@ fn render_flowchart_cluster(
         return;
     }
 
-    let title_html = flowchart_label_html(&cluster.title, label_type);
+    let title_html = flowchart_label_html(&cluster.title, label_type, &ctx.config);
 
     let _ = write!(
         out,
@@ -11546,22 +11573,17 @@ fn flowchart_edge_marker_start(
 }
 
 fn flowchart_edge_class_attr(edge: &crate::flowchart::FlowEdge) -> String {
-    let thickness_1 = match edge.stroke.as_deref() {
-        Some("thick") => "edge-thickness-thick",
-        Some("invisible") => "edge-thickness-invisible",
-        _ => "edge-thickness-normal",
-    };
-    let pattern_1 = match edge.stroke.as_deref() {
-        Some("dotted") => "edge-pattern-dotted",
-        _ => "edge-pattern-solid",
-    };
-
-    let (thickness_2, pattern_2) = match edge.edge_type.as_deref() {
-        Some("double_arrow_point") => ("edge-thickness-normal", "edge-pattern-solid"),
-        _ => (thickness_1, pattern_1),
+    // Mermaid includes a 2-part class tuple (thickness/pattern) for flowchart edge paths. The
+    // second tuple is `edge-thickness-normal edge-pattern-solid` in Mermaid@11.12.2 baselines,
+    // even for dotted/thick strokes.
+    let (thickness_1, pattern_1) = match edge.stroke.as_deref() {
+        Some("thick") => ("edge-thickness-thick", "edge-pattern-solid"),
+        Some("invisible") => ("edge-thickness-invisible", "edge-pattern-solid"),
+        Some("dotted") => ("edge-thickness-normal", "edge-pattern-dotted"),
+        _ => ("edge-thickness-normal", "edge-pattern-solid"),
     };
 
-    format!("{thickness_1} {pattern_1} {thickness_2} {pattern_2} flowchart-link")
+    format!("{thickness_1} {pattern_1} edge-thickness-normal edge-pattern-solid flowchart-link")
 }
 
 fn render_flowchart_edge_path(
@@ -11695,15 +11717,6 @@ fn render_flowchart_edge_path(
         if input.is_empty() {
             return Vec::new();
         }
-        // Mermaid's `cutPathAtIntersect` assumes the first point is outside the boundary rect and
-        // the last point(s) are inside. If the first point is already inside, upstream will
-        // generate a degenerate path (often a single `M`) because the intersection is computed
-        // against the same point. Our current layout can occasionally violate this assumption for
-        // cluster-adjacent self-loop helper edges. In that case, avoid clipping to preserve a
-        // usable route.
-        if !outside_node(boundary, &input[0]) {
-            return input.to_vec();
-        }
         let mut out: Vec<crate::model::LayoutPoint> = Vec::new();
         let mut last_point_outside = input[0].clone();
         let mut is_inside = false;
@@ -11722,7 +11735,7 @@ fn render_flowchart_edge_path(
                 }
             }
         }
-        if out.len() < 2 { input.to_vec() } else { out }
+        out
     }
 
     fn dedup_consecutive_points(
@@ -11840,14 +11853,18 @@ fn render_flowchart_edge_path(
         let p1 = &points_for_render[1];
         let p2 = &points_for_render[2];
         let p3 = &points_for_render[3];
-        if collinear(p0, p1, p2) {
-            points_for_render.remove(1);
-        } else if collinear(p1, p2, p3) {
+        let c012 = collinear(p0, p1, p2);
+        let c123 = collinear(p1, p2, p3);
+        // Mermaid keeps a 4-point straight route (3 `C` segments) for some cluster-adjacent edges,
+        // so only collapse the variant where exactly one end contains a redundant collinear point.
+        if c123 && !c012 {
             points_for_render.remove(2);
+        } else if c012 && !c123 {
+            points_for_render.remove(1);
         }
     }
 
-    if is_basis && is_cluster_edge && points_for_render.len() > 3 {
+    if is_basis && is_cluster_edge && points_for_render.len() > 4 {
         let n = points_for_render.len();
         let collinear = all_triples_collinear(&points_for_render)
             || (n > 4
@@ -11860,21 +11877,6 @@ fn render_flowchart_edge_path(
                 points_for_render[points_for_render.len() - 1].clone(),
             ];
         }
-    }
-
-    // Mermaid can emit a 3-point basis route even when Dagre provides a straight 4-point polyline.
-    // When all points are collinear (no bends), collapse to 3 points so the SVG `d` command
-    // sequence matches upstream (`C` count = 2 instead of 3).
-    if is_basis
-        && !is_cluster_edge
-        && points_for_render.len() == 4
-        && all_triples_collinear(&points_for_render)
-    {
-        points_for_render = vec![
-            points_for_render[0].clone(),
-            points_for_render[points_for_render.len() / 2].clone(),
-            points_for_render[points_for_render.len() - 1].clone(),
-        ];
     }
 
     if is_basis && is_cluster_edge && points_for_render.len() == 8 {
@@ -12157,7 +12159,7 @@ fn render_flowchart_edge_label(
     let label_html = if label_text.trim().is_empty() {
         String::new()
     } else {
-        flowchart_label_html(label_text, label_type)
+        flowchart_label_html(label_text, label_type, &ctx.config)
     };
 
     if let Some(le) = ctx.layout_edges_by_id.get(&edge.id) {
@@ -12833,7 +12835,7 @@ fn render_flowchart_node(
         write_flowchart_svg_text(out, &label_text_plain, true);
         out.push_str("</g></g></g>");
     } else {
-        let label_html = flowchart_label_html(label_text, label_type);
+        let label_html = flowchart_label_html(label_text, label_type, &ctx.config);
         let _ = write!(
             out,
             r#"<g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g>"#,
@@ -12849,28 +12851,85 @@ fn render_flowchart_node(
     }
 }
 
-fn flowchart_escape_preserving_br(input: &str) -> String {
-    if input.is_empty() {
-        return String::new();
-    }
-    let placeholder = "#br#";
-    let mut t = input.to_string();
-    t = t.replace("<br />", placeholder);
-    t = t.replace("<br/>", placeholder);
-    t = t.replace("<br>", placeholder);
-    let mut out = String::with_capacity(t.len());
-    for ch in t.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            _ => out.push(ch),
-        }
-    }
-    out.replace(placeholder, "<br />")
-}
+fn flowchart_label_html(
+    label: &str,
+    label_type: &str,
+    config: &merman_core::MermaidConfig,
+) -> String {
+    fn xhtml_fix_fragment(input: &str) -> String {
+        // `foreignObject` content lives in an XML document, so:
+        // - void tags must be self-closed (`<br />`, not `<br>`)
+        // - stray `<` / `>` in text must be entity-escaped (`&lt;`, `&gt;`)
+        //
+        // Mermaid's SVG baselines follow these rules.
+        let input = input
+            .replace("<br>", "<br />")
+            .replace("<br/>", "<br />")
+            .replace("<br >", "<br />");
 
-fn flowchart_label_html(label: &str, label_type: &str) -> String {
+        let mut out = String::with_capacity(input.len());
+        let mut chars = input.chars().peekable();
+        let mut in_tag = false;
+
+        while let Some(ch) = chars.next() {
+            if in_tag {
+                out.push(ch);
+                if ch == '>' {
+                    in_tag = false;
+                }
+                continue;
+            }
+
+            match ch {
+                '<' => {
+                    let next = chars.peek().copied();
+                    if matches!(
+                        next,
+                        Some(n) if n.is_ascii_alphabetic() || matches!(n, '/' | '!' | '?')
+                    ) {
+                        in_tag = true;
+                        out.push('<');
+                    } else {
+                        out.push_str("&lt;");
+                    }
+                }
+                '>' => out.push_str("&gt;"),
+                '&' => {
+                    // Preserve entities already encoded by the sanitizer.
+                    let mut tail = String::new();
+                    let mut ok = false;
+                    for _ in 0..32 {
+                        match chars.peek().copied() {
+                            Some(';') => {
+                                chars.next();
+                                tail.push(';');
+                                ok = true;
+                                break;
+                            }
+                            Some(c)
+                                if c.is_ascii_alphanumeric() || matches!(c, '#' | 'x' | 'X') =>
+                            {
+                                chars.next();
+                                tail.push(c);
+                            }
+                            _ => break,
+                        }
+                    }
+                    if ok {
+                        out.push('&');
+                        out.push_str(&tail);
+                    } else {
+                        out.push_str("&amp;");
+                        out.push_str(&tail);
+                    }
+                }
+                _ => out.push(ch),
+            }
+        }
+
+        out
+    }
+
     match label_type {
         "markdown" => {
             let mut html_out = String::new();
@@ -12886,12 +12945,13 @@ fn flowchart_label_html(label: &str, label_type: &str) -> String {
             });
             pulldown_cmark::html::push_html(&mut html_out, parser);
             let html_out = html_out.trim().to_string();
-            merman_core::sanitize::remove_script(&html_out)
+            xhtml_fix_fragment(&merman_core::sanitize::sanitize_text(&html_out, config))
         }
         _ => {
             let label = label.replace("\r\n", "\n");
             let label = label.trim_end_matches('\n').replace('\n', "<br />");
-            format!("<p>{}</p>", flowchart_escape_preserving_br(&label))
+            let wrapped = format!("<p>{}</p>", label);
+            xhtml_fix_fragment(&merman_core::sanitize::sanitize_text(&wrapped, config))
         }
     }
 }
@@ -12943,6 +13003,37 @@ fn write_flowchart_svg_text(out: &mut String, text: &str, include_style: bool) {
         return;
     }
 
+    fn split_mermaid_escaped_tag_runs(line: &str) -> Option<Vec<String>> {
+        // Mermaid’s SVG text renderer tokenizes a simple HTML-tag wrapper even when htmlLabels are
+        // disabled, resulting in 3 inner <tspan> runs like:
+        //   `<strong>Haiya</strong>` -> `<strong>` + ` Haiya` + ` </strong>`
+        // (all still rendered as escaped text).
+        let line = line.trim_end();
+        if !line.starts_with('<') || !line.ends_with('>') {
+            return None;
+        }
+        let open_end = line.find('>')?;
+        let open_tag = &line[..=open_end];
+        if open_tag.starts_with("</") {
+            return None;
+        }
+        let open_inner = open_tag.trim_start_matches('<').trim_end_matches('>');
+        let tag_name = open_inner
+            .split_whitespace()
+            .next()
+            .filter(|s| !s.is_empty())?;
+        let close_tag = format!("</{tag_name}>");
+        if !line.ends_with(&close_tag) {
+            return None;
+        }
+        let inner = &line[open_end + 1..line.len() - close_tag.len()];
+        Some(vec![
+            open_tag.to_string(),
+            format!(" {inner}"),
+            format!(" {close_tag}"),
+        ])
+    }
+
     for (idx, line) in lines.iter().enumerate() {
         if idx == 0 {
             out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em">"#);
@@ -12961,11 +13052,15 @@ fn write_flowchart_svg_text(out: &mut String, text: &str, include_style: bool) {
                 y_em
             );
         }
-        out.push_str(
-            r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal">"#,
-        );
-        out.push_str(&escape_xml(line));
-        out.push_str("</tspan></tspan>");
+        let runs = split_mermaid_escaped_tag_runs(line).unwrap_or_else(|| vec![line.to_string()]);
+        for run in &runs {
+            out.push_str(
+                r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal">"#,
+            );
+            out.push_str(&escape_xml(run));
+            out.push_str("</tspan>");
+        }
+        out.push_str("</tspan>");
     }
 
     out.push_str("</text>");

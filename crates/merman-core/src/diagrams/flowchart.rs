@@ -683,6 +683,21 @@ impl<'input> Lexer<'input> {
                 if self.pos + 1 < bytes.len() && bytes[self.pos + 1] == b'-' {
                     break;
                 }
+                // Dotted edges start with `-.` (e.g. `A-.->B`). Avoid consuming the link start as
+                // part of the id while still allowing ids like `subcontainer-child`.
+                if self.pos + 1 < bytes.len() && bytes[self.pos + 1] == b'.' {
+                    break;
+                }
+                self.pos += 1;
+                continue;
+            }
+            if b == b'.' {
+                // Allow dots inside ids (Mermaid supports nodes like `P1.5`), but avoid consuming
+                // the `.` that starts a dotted link token like `.->` when it is directly adjacent
+                // to an id (e.g. `A.->B`).
+                if self.pos + 1 < bytes.len() && bytes[self.pos + 1] == b'-' {
+                    break;
+                }
                 self.pos += 1;
                 continue;
             }
