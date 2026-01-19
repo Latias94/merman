@@ -5678,11 +5678,16 @@ pub fn render_c4_diagram_svg(
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str("<g/>");
 
+    const C4_DATABASE_SYMBOL_D_11_12_2: &str = include_str!("../assets/c4_database_d_11_12_2.txt");
+
     out.push_str(
         r#"<defs><symbol id="computer" width="24" height="24"><path transform="scale(.5)" d="M2 2v13h20v-13h-20zm18 11h-16v-9h16v9zm-10.228 6l.466-1h3.524l.467 1h-4.457zm14.228 3h-24l2-6h2.104l-1.33 4h18.45l-1.297-4h2.073l2 6zm-5-10h-14v-7h14v7z"/></symbol></defs>"#,
     );
     out.push_str(
-        r#"<defs><symbol id="database" fill-rule="evenodd" clip-rule="evenodd"><path transform="scale(.5)" d="M0 0"/></symbol></defs>"#,
+        &format!(
+            r#"<defs><symbol id="database" fill-rule="evenodd" clip-rule="evenodd"><path transform="scale(.5)" d="{}"/></symbol></defs>"#,
+            escape_attr(C4_DATABASE_SYMBOL_D_11_12_2.trim())
+        ),
     );
     out.push_str(
         r#"<defs><symbol id="clock" width="24" height="24"><path transform="scale(.5)" d="M12 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0-2c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm5.848 12.459c.202.038.202.333.001.372-1.907.361-6.045 1.111-6.547 1.111-.719 0-1.301-.582-1.301-1.301 0-.512.77-5.447 1.125-7.445.034-.192.312-.181.343.014l.985 6.238 5.394 1.011z"/></symbol></defs>"#,

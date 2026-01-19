@@ -159,9 +159,9 @@ Generate a report comparing upstream C4 SVGs and the current Rust Stage-B C4 out
 
 Notes:
 
-- C4 currently defaults `compare-c4-svgs` to `--dom-mode structure` while the renderer is still
-  iterating on SVG defs parity; switch to `--dom-mode parity` once the C4 icon defs are fully
-  vendor-matched.
+- C4 currently defaults `compare-c4-svgs` to `--dom-mode structure`. `--dom-mode parity` still
+  fails because Mermaid emits `textLength` values derived from browser font metrics
+  (`calculateTextWidth`), while `merman` uses a headless approximator.
 
 ## Generate (All supported diagrams)
 
