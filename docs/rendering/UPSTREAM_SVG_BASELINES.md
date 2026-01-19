@@ -161,8 +161,10 @@ Notes:
 
 - Mermaid derives C4 type-line `textLength` values from browser font metrics
   (`calculateTextWidth` + `getBBox`). To make DOM parity reproducible in a headless Rust context,
-  `merman-render` currently vendors the observed `textLength` values for built-in C4 shape types
-  at Mermaid `11.12.2` (see `c4_type_text_length_px_11_12_2` in `crates/merman-render/src/svg.rs`).
+  `merman-render` vendors the observed `textLength` values for built-in C4 shape types
+  at Mermaid `11.12.2` (generated file: `crates/merman-render/src/generated/c4_type_textlength_11_12_2.rs`).
+- Regenerate the table from upstream baselines:
+  - `cargo run -p xtask -- gen-c4-textlength`
 
 ## Generate (All supported diagrams)
 
