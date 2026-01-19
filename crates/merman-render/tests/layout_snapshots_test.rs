@@ -1,5 +1,6 @@
 use merman_core::{Engine, ParseOptions};
 use merman_render::{LayoutOptions, layout_parsed};
+use regex::Regex;
 use serde_json::Value as JsonValue;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -38,6 +39,39 @@ fn round_json_numbers(v: &mut JsonValue, decimals: u32) {
         }
         _ => {}
     }
+}
+
+fn normalize_dynamic_fields(diagram_type: &str, v: &mut JsonValue) {
+    // Mermaid gitGraph auto-generates commit ids using random hex suffixes.
+    // Normalize these ids so snapshots are stable across runs.
+    if diagram_type != "gitGraph" {
+        return;
+    }
+
+    let re = Regex::new(r"\b(\d+)-[0-9a-f]{7}\b").expect("gitGraph id regex must compile");
+
+    fn walk(re: &Regex, v: &mut JsonValue) {
+        match v {
+            JsonValue::String(s) => {
+                if re.is_match(s) {
+                    *s = re.replace_all(s, "$1-<dynamic>").to_string();
+                }
+            }
+            JsonValue::Array(arr) => {
+                for item in arr {
+                    walk(re, item);
+                }
+            }
+            JsonValue::Object(map) => {
+                for (_k, val) in map.iter_mut() {
+                    walk(re, val);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    walk(&re, v);
 }
 
 fn collect_mmd_files(root: &Path) -> Vec<PathBuf> {
@@ -119,10 +153,11 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
             serde_json::to_value(&layouted.layout).expect("serialize layout to JSON");
         round_json_numbers(&mut layout_json, 3);
 
-        let actual = serde_json::json!({
+        let mut actual = serde_json::json!({
             "diagramType": parsed.meta.diagram_type,
             "layout": layout_json,
         });
+        normalize_dynamic_fields(&parsed.meta.diagram_type, &mut actual);
 
         let expected_text = match fs::read_to_string(&golden_path) {
             Ok(v) => v,
@@ -135,7 +170,7 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
             }
         };
 
-        let expected: JsonValue = match serde_json::from_str(&expected_text) {
+        let mut expected: JsonValue = match serde_json::from_str(&expected_text) {
             Ok(v) => v,
             Err(err) => {
                 failures.push(format!(
@@ -145,6 +180,7 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
                 continue;
             }
         };
+        normalize_dynamic_fields(&parsed.meta.diagram_type, &mut expected);
 
         if actual != expected {
             failures.push(format!(

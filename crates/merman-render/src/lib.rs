@@ -3,6 +3,7 @@
 pub mod class;
 pub mod er;
 pub mod flowchart;
+pub mod gitgraph;
 pub mod info;
 pub mod journey;
 pub mod kanban;
@@ -92,6 +93,11 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
             options.text_measurer.as_ref(),
         )?),
         "journey" => LayoutDiagram::JourneyDiagram(journey::layout_journey_diagram(
+            &parsed.model,
+            &meta.effective_config,
+            options.text_measurer.as_ref(),
+        )?),
+        "gitGraph" => LayoutDiagram::GitGraphDiagram(gitgraph::layout_gitgraph_diagram(
             &parsed.model,
             &meta.effective_config,
             options.text_measurer.as_ref(),

@@ -1,0 +1,276 @@
+{
+  "diagramType": "gitGraph",
+  "layout": {
+    "GitGraphDiagram": {
+      "bounds": {
+        "min_x": -109.16,
+        "min_y": -18.0,
+        "max_x": 458.0,
+        "max_y": 198.0
+      },
+      "direction": "LR",
+      "rotate_commit_label": true,
+      "show_branches": true,
+      "show_commit_label": true,
+      "parallel_commits": false,
+      "diagram_padding": 8.0,
+      "max_pos": 450.0,
+      "branches": [
+        {
+          "name": "main",
+          "index": 0.0,
+          "pos": 0.0,
+          "bbox_width": 30.72,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "feature",
+          "index": 1.0,
+          "pos": 90.0,
+          "bbox_width": 48.16,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "release",
+          "index": 2.0,
+          "pos": 180.0,
+          "bbox_width": 45.76,
+          "bbox_height": 17.6
+        }
+      ],
+      "commits": [
+        {
+          "id": "ZERO",
+          "message": "",
+          "seq": 0.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [],
+          "branch": "main",
+          "pos": 0.0,
+          "pos_with_offset": 10.0,
+          "x": 10.0,
+          "y": 0.0
+        },
+        {
+          "id": "A",
+          "message": "",
+          "seq": 1.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "ZERO"
+          ],
+          "branch": "feature",
+          "pos": 50.0,
+          "pos_with_offset": 60.0,
+          "x": 60.0,
+          "y": 90.0
+        },
+        {
+          "id": "B",
+          "message": "",
+          "seq": 2.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "A"
+          ],
+          "branch": "feature",
+          "pos": 100.0,
+          "pos_with_offset": 110.0,
+          "x": 110.0,
+          "y": 90.0
+        },
+        {
+          "id": "M",
+          "message": "merged branch feature into main",
+          "seq": 3.0,
+          "commit_type": 3.0,
+          "custom_type": null,
+          "custom_id": true,
+          "tags": [],
+          "parents": [
+            "ZERO",
+            "B"
+          ],
+          "branch": "main",
+          "pos": 150.0,
+          "pos_with_offset": 160.0,
+          "x": 160.0,
+          "y": 0.0
+        },
+        {
+          "id": "C",
+          "message": "",
+          "seq": 4.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "ZERO"
+          ],
+          "branch": "release",
+          "pos": 200.0,
+          "pos_with_offset": 210.0,
+          "x": 210.0,
+          "y": 180.0
+        },
+        {
+          "id": "5-<dynamic>",
+          "message": "cherry-picked merged branch feature into main into release",
+          "seq": 5.0,
+          "commit_type": 4.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [
+            "v2.1:ZERO"
+          ],
+          "parents": [
+            "C",
+            "M"
+          ],
+          "branch": "release",
+          "pos": 250.0,
+          "pos_with_offset": 260.0,
+          "x": 260.0,
+          "y": 180.0
+        },
+        {
+          "id": "D",
+          "message": "",
+          "seq": 6.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "5-<dynamic>"
+          ],
+          "branch": "release",
+          "pos": 300.0,
+          "pos_with_offset": 310.0,
+          "x": 310.0,
+          "y": 180.0
+        },
+        {
+          "id": "7-<dynamic>",
+          "message": "cherry-picked merged branch feature into main into release",
+          "seq": 7.0,
+          "commit_type": 4.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "D",
+            "M"
+          ],
+          "branch": "release",
+          "pos": 350.0,
+          "pos_with_offset": 360.0,
+          "x": 360.0,
+          "y": 180.0
+        },
+        {
+          "id": "8-<dynamic>",
+          "message": "cherry-picked merged branch feature into main into release",
+          "seq": 8.0,
+          "commit_type": 4.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "7-<dynamic>",
+            "M"
+          ],
+          "branch": "release",
+          "pos": 400.0,
+          "pos_with_offset": 410.0,
+          "x": 410.0,
+          "y": 180.0
+        }
+      ],
+      "arrows": [
+        {
+          "from": "ZERO",
+          "to": "A",
+          "class_index": 1.0,
+          "d": "M 10 0 L 10 70 A 20 20, 0, 0, 0, 30 90 L 60 90"
+        },
+        {
+          "from": "A",
+          "to": "B",
+          "class_index": 1.0,
+          "d": "M 60 90 L 110 90"
+        },
+        {
+          "from": "ZERO",
+          "to": "M",
+          "class_index": 0.0,
+          "d": "M 10 0 L 160 0"
+        },
+        {
+          "from": "B",
+          "to": "M",
+          "class_index": 1.0,
+          "d": "M 110 90 L 140 90 A 20 20, 0, 0, 0, 160 70 L 160 0"
+        },
+        {
+          "from": "ZERO",
+          "to": "C",
+          "class_index": 2.0,
+          "d": "M 10 0 L 10 160 A 20 20, 0, 0, 0, 30 180 L 210 180"
+        },
+        {
+          "from": "C",
+          "to": "5-<dynamic>",
+          "class_index": 2.0,
+          "d": "M 210 180 L 260 180"
+        },
+        {
+          "from": "M",
+          "to": "5-<dynamic>",
+          "class_index": 2.0,
+          "d": "M 160 0 L 160 62 A 10 10, 0, 0, 0, 170 72 L 250 72 A 10 10, 0, 0, 1, 260 82 L 260 180"
+        },
+        {
+          "from": "5-<dynamic>",
+          "to": "D",
+          "class_index": 2.0,
+          "d": "M 260 180 L 310 180"
+        },
+        {
+          "from": "D",
+          "to": "7-<dynamic>",
+          "class_index": 2.0,
+          "d": "M 310 180 L 360 180"
+        },
+        {
+          "from": "M",
+          "to": "7-<dynamic>",
+          "class_index": 2.0,
+          "d": "M 160 0 L 160 47.6 A 10 10, 0, 0, 0, 170 57.6 L 350 57.6 A 10 10, 0, 0, 1, 360 67.6 L 360 180"
+        },
+        {
+          "from": "7-<dynamic>",
+          "to": "8-<dynamic>",
+          "class_index": 2.0,
+          "d": "M 360 180 L 410 180"
+        },
+        {
+          "from": "M",
+          "to": "8-<dynamic>",
+          "class_index": 2.0,
+          "d": "M 160 0 L 160 36.08 A 10 10, 0, 0, 0, 170 46.08 L 400 46.08 A 10 10, 0, 0, 1, 410 56.08 L 410 180"
+        }
+      ]
+    }
+  }
+}

@@ -939,6 +939,7 @@ dependencies = [
  "futures",
  "merman-core",
  "pulldown-cmark",
+ "regex",
  "roughr",
  "serde",
  "serde_json",

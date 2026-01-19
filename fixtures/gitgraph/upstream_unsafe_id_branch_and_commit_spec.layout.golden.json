@@ -1,0 +1,108 @@
+{
+  "diagramType": "gitGraph",
+  "layout": {
+    "GitGraphDiagram": {
+      "bounds": {
+        "min_x": -116.52,
+        "min_y": -18.0,
+        "max_x": 158.0,
+        "max_y": 108.0
+      },
+      "direction": "LR",
+      "rotate_commit_label": true,
+      "show_branches": true,
+      "show_commit_label": true,
+      "parallel_commits": false,
+      "diagram_padding": 8.0,
+      "max_pos": 150.0,
+      "branches": [
+        {
+          "name": "main",
+          "index": 0.0,
+          "pos": 0.0,
+          "bbox_width": 30.72,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "__proto__",
+          "index": 1.0,
+          "pos": 90.0,
+          "bbox_width": 55.52,
+          "bbox_height": 17.6
+        }
+      ],
+      "commits": [
+        {
+          "id": "__proto__",
+          "message": "",
+          "seq": 0.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [],
+          "branch": "main",
+          "pos": 0.0,
+          "pos_with_offset": 10.0,
+          "x": 10.0,
+          "y": 0.0
+        },
+        {
+          "id": "1-<dynamic>",
+          "message": "",
+          "seq": 1.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "__proto__"
+          ],
+          "branch": "__proto__",
+          "pos": 50.0,
+          "pos_with_offset": 60.0,
+          "x": 60.0,
+          "y": 90.0
+        },
+        {
+          "id": "2-<dynamic>",
+          "message": "merged branch __proto__ into main",
+          "seq": 2.0,
+          "commit_type": 3.0,
+          "custom_type": null,
+          "custom_id": false,
+          "tags": [],
+          "parents": [
+            "__proto__",
+            "1-<dynamic>"
+          ],
+          "branch": "main",
+          "pos": 100.0,
+          "pos_with_offset": 110.0,
+          "x": 110.0,
+          "y": 0.0
+        }
+      ],
+      "arrows": [
+        {
+          "from": "__proto__",
+          "to": "1-<dynamic>",
+          "class_index": 1.0,
+          "d": "M 10 0 L 10 70 A 20 20, 0, 0, 0, 30 90 L 60 90"
+        },
+        {
+          "from": "__proto__",
+          "to": "2-<dynamic>",
+          "class_index": 0.0,
+          "d": "M 10 0 L 110 0"
+        },
+        {
+          "from": "1-<dynamic>",
+          "to": "2-<dynamic>",
+          "class_index": 1.0,
+          "d": "M 60 90 L 90 90 A 20 20, 0, 0, 0, 110 70 L 110 0"
+        }
+      ]
+    }
+  }
+}

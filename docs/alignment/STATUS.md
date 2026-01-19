@@ -42,6 +42,7 @@ Legend:
 | Timeline | yes | yes | Stage B | yes | yes (`xtask compare-timeline-svgs`) |
 | Journey | yes | yes | Stage B | yes | yes (`xtask compare-journey-svgs`) |
 | Kanban | yes | yes | Stage B | yes | yes (`xtask compare-kanban-svgs`) |
+| GitGraph | yes | yes | Stage B | yes | yes (`xtask compare-gitgraph-svgs`) |
 | Others (gantt, …) | yes | no | no | no | no |
 
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
@@ -70,6 +71,8 @@ Recent progress: `journey` Stage B parity renderer exists and is validated again
 baselines via `xtask compare-journey-svgs`.
 Recent progress: `kanban` Stage B parity renderer exists and is validated against upstream SVG
 baselines via `xtask compare-kanban-svgs`.
+Recent progress: `gitGraph` Stage B parity renderer exists and is validated against upstream SVG
+baselines via `xtask compare-gitgraph-svgs`.
 
 ## Alignment Sanity Checks
 

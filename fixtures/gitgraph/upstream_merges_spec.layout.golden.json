@@ -1,0 +1,310 @@
+{
+  "diagramType": "gitGraph",
+  "layout": {
+    "GitGraphDiagram": {
+      "bounds": {
+        "min_x": -141.48,
+        "min_y": -18.0,
+        "max_x": 508.0,
+        "max_y": 288.0
+      },
+      "direction": "LR",
+      "rotate_commit_label": true,
+      "show_branches": true,
+      "show_commit_label": true,
+      "parallel_commits": false,
+      "diagram_padding": 8.0,
+      "max_pos": 500.0,
+      "branches": [
+        {
+          "name": "main",
+          "index": 0.0,
+          "pos": 0.0,
+          "bbox_width": 30.72,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "newbranch",
+          "index": 1.0,
+          "pos": 90.0,
+          "bbox_width": 67.52,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "testBranch",
+          "index": 2.0,
+          "pos": 180.0,
+          "bbox_width": 71.52,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "testBranch2",
+          "index": 3.0,
+          "pos": 270.0,
+          "bbox_width": 80.48,
+          "bbox_height": 17.6
+        }
+      ],
+      "commits": [
+        {
+          "id": "0-<dynamic>",
+          "message": "",
+          "seq": 0.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [],
+          "branch": "main",
+          "pos": 0.0,
+          "pos_with_offset": 10.0,
+          "x": 10.0,
+          "y": 0.0
+        },
+        {
+          "id": "1-<dynamic>",
+          "message": "",
+          "seq": 1.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "0-<dynamic>"
+          ],
+          "branch": "newbranch",
+          "pos": 50.0,
+          "pos_with_offset": 60.0,
+          "x": 60.0,
+          "y": 90.0
+        },
+        {
+          "id": "2-<dynamic>",
+          "message": "",
+          "seq": 2.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "1-<dynamic>"
+          ],
+          "branch": "newbranch",
+          "pos": 100.0,
+          "pos_with_offset": 110.0,
+          "x": 110.0,
+          "y": 90.0
+        },
+        {
+          "id": "3-<dynamic>",
+          "message": "merged branch main into newbranch",
+          "seq": 3.0,
+          "commit_type": 3.0,
+          "custom_type": null,
+          "custom_id": false,
+          "tags": [],
+          "parents": [
+            "2-<dynamic>",
+            "0-<dynamic>"
+          ],
+          "branch": "newbranch",
+          "pos": 150.0,
+          "pos_with_offset": 160.0,
+          "x": 160.0,
+          "y": 90.0
+        },
+        {
+          "id": "4-<dynamic>",
+          "message": "",
+          "seq": 4.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "0-<dynamic>"
+          ],
+          "branch": "main",
+          "pos": 200.0,
+          "pos_with_offset": 210.0,
+          "x": 210.0,
+          "y": 0.0
+        },
+        {
+          "id": "5-<dynamic>",
+          "message": "merged branch newbranch into main",
+          "seq": 5.0,
+          "commit_type": 3.0,
+          "custom_type": null,
+          "custom_id": false,
+          "tags": [
+            "merge-tag"
+          ],
+          "parents": [
+            "4-<dynamic>",
+            "3-<dynamic>"
+          ],
+          "branch": "main",
+          "pos": 250.0,
+          "pos_with_offset": 260.0,
+          "x": 260.0,
+          "y": 0.0
+        },
+        {
+          "id": "A",
+          "message": "",
+          "seq": 6.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "5-<dynamic>"
+          ],
+          "branch": "testBranch",
+          "pos": 300.0,
+          "pos_with_offset": 310.0,
+          "x": 310.0,
+          "y": 180.0
+        },
+        {
+          "id": "2-222",
+          "message": "merged branch testBranch into main",
+          "seq": 7.0,
+          "commit_type": 3.0,
+          "custom_type": null,
+          "custom_id": true,
+          "tags": [
+            "merge-tag2"
+          ],
+          "parents": [
+            "5-<dynamic>",
+            "A"
+          ],
+          "branch": "main",
+          "pos": 350.0,
+          "pos_with_offset": 360.0,
+          "x": 360.0,
+          "y": 0.0
+        },
+        {
+          "id": "B",
+          "message": "",
+          "seq": 8.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "2-222"
+          ],
+          "branch": "testBranch2",
+          "pos": 400.0,
+          "pos_with_offset": 410.0,
+          "x": 410.0,
+          "y": 270.0
+        },
+        {
+          "id": "4-444",
+          "message": "merged branch testBranch2 into main",
+          "seq": 9.0,
+          "commit_type": 3.0,
+          "custom_type": 2.0,
+          "custom_id": true,
+          "tags": [
+            "merge-tag3"
+          ],
+          "parents": [
+            "2-222",
+            "B"
+          ],
+          "branch": "main",
+          "pos": 450.0,
+          "pos_with_offset": 460.0,
+          "x": 460.0,
+          "y": 0.0
+        }
+      ],
+      "arrows": [
+        {
+          "from": "0-<dynamic>",
+          "to": "1-<dynamic>",
+          "class_index": 1.0,
+          "d": "M 10 0 L 10 70 A 20 20, 0, 0, 0, 30 90 L 60 90"
+        },
+        {
+          "from": "1-<dynamic>",
+          "to": "2-<dynamic>",
+          "class_index": 1.0,
+          "d": "M 60 90 L 110 90"
+        },
+        {
+          "from": "2-<dynamic>",
+          "to": "3-<dynamic>",
+          "class_index": 1.0,
+          "d": "M 110 90 L 160 90"
+        },
+        {
+          "from": "0-<dynamic>",
+          "to": "3-<dynamic>",
+          "class_index": 0.0,
+          "d": "M 10 0 L 10 35 A 10 10, 0, 0, 0, 20 45 L 150 45 A 10 10, 0, 0, 1, 160 55 L 160 90"
+        },
+        {
+          "from": "0-<dynamic>",
+          "to": "4-<dynamic>",
+          "class_index": 0.0,
+          "d": "M 10 0 L 210 0"
+        },
+        {
+          "from": "4-<dynamic>",
+          "to": "5-<dynamic>",
+          "class_index": 0.0,
+          "d": "M 210 0 L 260 0"
+        },
+        {
+          "from": "3-<dynamic>",
+          "to": "5-<dynamic>",
+          "class_index": 1.0,
+          "d": "M 160 90 L 240 90 A 20 20, 0, 0, 0, 260 70 L 260 0"
+        },
+        {
+          "from": "5-<dynamic>",
+          "to": "A",
+          "class_index": 2.0,
+          "d": "M 260 0 L 260 160 A 20 20, 0, 0, 0, 280 180 L 310 180"
+        },
+        {
+          "from": "5-<dynamic>",
+          "to": "2-222",
+          "class_index": 0.0,
+          "d": "M 260 0 L 360 0"
+        },
+        {
+          "from": "A",
+          "to": "2-222",
+          "class_index": 2.0,
+          "d": "M 310 180 L 340 180 A 20 20, 0, 0, 0, 360 160 L 360 0"
+        },
+        {
+          "from": "2-222",
+          "to": "B",
+          "class_index": 3.0,
+          "d": "M 360 0 L 360 250 A 20 20, 0, 0, 0, 380 270 L 410 270"
+        },
+        {
+          "from": "2-222",
+          "to": "4-444",
+          "class_index": 0.0,
+          "d": "M 360 0 L 460 0"
+        },
+        {
+          "from": "B",
+          "to": "4-444",
+          "class_index": 3.0,
+          "d": "M 410 270 L 440 270 A 20 20, 0, 0, 0, 460 250 L 460 0"
+        }
+      ]
+    }
+  }
+}

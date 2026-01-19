@@ -91,6 +91,17 @@ fn re_mermaid_generate_id() -> &'static Regex {
     ONCE.get_or_init(|| Regex::new(r"id-[a-z0-9]+-\d+").unwrap())
 }
 
+fn re_gitgraph_dynamic_commit_id() -> &'static Regex {
+    static ONCE: OnceLock<Regex> = OnceLock::new();
+    ONCE.get_or_init(|| Regex::new(r"\b(\d+)-[0-9a-f]{7}\b").unwrap())
+}
+
+fn normalize_gitgraph_dynamic_commit_ids(s: &str) -> String {
+    re_gitgraph_dynamic_commit_id()
+        .replace_all(s, "$1-<dynamic>")
+        .to_string()
+}
+
 fn normalize_identifier_tokens(s: &str) -> String {
     let s = re_mermaid_generate_id()
         .replace_all(s, "id-<id>-<n>")
@@ -177,6 +188,7 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
 
             if key == "class" {
                 val = normalize_class_list(&val);
+                val = normalize_gitgraph_dynamic_commit_ids(&val);
             }
             if mode == DomMode::Structure && is_identifier_like_attr(&key) {
                 val = normalize_identifier_tokens(&val);

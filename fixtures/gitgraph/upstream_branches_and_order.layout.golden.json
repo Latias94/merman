@@ -1,0 +1,185 @@
+{
+  "diagramType": "gitGraph",
+  "layout": {
+    "GitGraphDiagram": {
+      "bounds": {
+        "min_x": -205.48,
+        "min_y": -18.0,
+        "max_x": 158.0,
+        "max_y": 1088.0
+      },
+      "direction": "LR",
+      "rotate_commit_label": true,
+      "show_branches": true,
+      "show_commit_label": true,
+      "parallel_commits": false,
+      "diagram_padding": 8.0,
+      "max_pos": 150.0,
+      "branches": [
+        {
+          "name": "main",
+          "index": 0.0,
+          "pos": 0.0,
+          "bbox_width": 30.72,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "branch",
+          "index": 1.0,
+          "pos": 90.0,
+          "bbox_width": 41.28,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "azAZ_-./test",
+          "index": 2.0,
+          "pos": 180.0,
+          "bbox_width": 80.8,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "1.0.1",
+          "index": 3.0,
+          "pos": 270.0,
+          "bbox_width": 35.84,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "branch01",
+          "index": 4.0,
+          "pos": 360.0,
+          "bbox_width": 59.2,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "checkout02",
+          "index": 5.0,
+          "pos": 450.0,
+          "bbox_width": 74.88,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "cherry-pick03",
+          "index": 6.0,
+          "pos": 540.0,
+          "bbox_width": 93.44,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "branch/example-branch",
+          "index": 7.0,
+          "pos": 630.0,
+          "bbox_width": 144.48,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "merge/test_merge",
+          "index": 8.0,
+          "pos": 720.0,
+          "bbox_width": 118.08,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "A",
+          "index": 9.0,
+          "pos": 810.0,
+          "bbox_width": 9.6,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "test3",
+          "index": 10.0,
+          "pos": 900.0,
+          "bbox_width": 36.48,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "test2",
+          "index": 11.0,
+          "pos": 990.0,
+          "bbox_width": 36.48,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "test1",
+          "index": 12.0,
+          "pos": 1080.0,
+          "bbox_width": 36.48,
+          "bbox_height": 17.6
+        }
+      ],
+      "commits": [
+        {
+          "id": "ZERO",
+          "message": "",
+          "seq": 0.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [],
+          "branch": "main",
+          "pos": 0.0,
+          "pos_with_offset": 10.0,
+          "x": 10.0,
+          "y": 0.0
+        },
+        {
+          "id": "B1",
+          "message": "",
+          "seq": 1.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "ZERO"
+          ],
+          "branch": "branch",
+          "pos": 50.0,
+          "pos_with_offset": 60.0,
+          "x": 60.0,
+          "y": 90.0
+        },
+        {
+          "id": "M_QUOTED",
+          "message": "merged branch branch into main",
+          "seq": 2.0,
+          "commit_type": 3.0,
+          "custom_type": null,
+          "custom_id": true,
+          "tags": [],
+          "parents": [
+            "ZERO",
+            "B1"
+          ],
+          "branch": "main",
+          "pos": 100.0,
+          "pos_with_offset": 110.0,
+          "x": 110.0,
+          "y": 0.0
+        }
+      ],
+      "arrows": [
+        {
+          "from": "ZERO",
+          "to": "B1",
+          "class_index": 1.0,
+          "d": "M 10 0 L 10 70 A 20 20, 0, 0, 0, 30 90 L 60 90"
+        },
+        {
+          "from": "ZERO",
+          "to": "M_QUOTED",
+          "class_index": 0.0,
+          "d": "M 10 0 L 110 0"
+        },
+        {
+          "from": "B1",
+          "to": "M_QUOTED",
+          "class_index": 1.0,
+          "d": "M 60 90 L 90 90 A 20 20, 0, 0, 0, 110 70 L 110 0"
+        }
+      ]
+    }
+  }
+}

@@ -85,6 +85,7 @@ fn main() -> Result<(), XtaskError> {
         "compare-timeline-svgs" => compare_timeline_svgs(args.collect()),
         "compare-journey-svgs" => compare_journey_svgs(args.collect()),
         "compare-kanban-svgs" => compare_kanban_svgs(args.collect()),
+        "compare-gitgraph-svgs" => compare_gitgraph_svgs(args.collect()),
         other => Err(XtaskError::UnknownCommand(other.to_string())),
     }
 }
@@ -146,6 +147,39 @@ fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
             }
             _ => {}
         }
+    }
+
+    fn normalize_layout_snapshot(diagram_type: &str, v: &mut JsonValue) {
+        // Mermaid gitGraph auto-generates commit ids using random hex suffixes.
+        // Normalize these ids so snapshots are stable across runs.
+        if diagram_type != "gitGraph" {
+            return;
+        }
+
+        let re = Regex::new(r"\b(\d+)-[0-9a-f]{7}\b").expect("gitGraph id regex must compile");
+
+        fn walk(re: &Regex, v: &mut JsonValue) {
+            match v {
+                JsonValue::String(s) => {
+                    if re.is_match(s) {
+                        *s = re.replace_all(s, "$1-<dynamic>").to_string();
+                    }
+                }
+                JsonValue::Array(arr) => {
+                    for item in arr {
+                        walk(re, item);
+                    }
+                }
+                JsonValue::Object(map) => {
+                    for (_k, val) in map.iter_mut() {
+                        walk(re, val);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        walk(&re, v);
     }
 
     let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -223,7 +257,8 @@ fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
                 || (diagram == "er" && matches!(dt, "er" | "erDiagram"))
                 || (diagram == "flowchart" && dt == "flowchart-v2")
                 || (diagram == "state" && dt == "stateDiagram")
-                || (diagram == "class" && matches!(dt, "class" | "classDiagram"));
+                || (diagram == "class" && matches!(dt, "class" | "classDiagram"))
+                || (diagram == "gitgraph" && dt == "gitGraph");
             if !matches {
                 continue;
             }
@@ -255,10 +290,11 @@ fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
         };
         round_json_numbers(&mut layout_json, decimals);
 
-        let out = serde_json::json!({
+        let mut out = serde_json::json!({
             "diagramType": parsed.meta.diagram_type,
             "layout": layout_json,
         });
+        normalize_layout_snapshot(&parsed.meta.diagram_type, &mut out);
 
         let pretty = match serde_json::to_string_pretty(&out) {
             Ok(v) => v,
@@ -851,6 +887,7 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 "timeline",
                 "journey",
                 "kanban",
+                "gitgraph",
             ] {
                 if let Err(err) = run_one(&workspace_root, &out_root, &mmdc, d, filter) {
                     failures.push(format!("{d}: {err}"));
@@ -863,11 +900,11 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         }
         "er" | "flowchart" | "state" | "class" | "sequence" | "info" | "pie" | "packet"
-        | "timeline" | "journey" | "kanban" => {
+        | "timeline" | "journey" | "kanban" | "gitgraph" => {
             run_one(&workspace_root, &out_root, &mmdc, &diagram, filter)
         }
         other => Err(XtaskError::UpstreamSvgFailed(format!(
-            "unsupported diagram for upstream svg export: {other} (supported: er, flowchart, state, class, sequence, info, pie, packet, timeline, journey, kanban, all)"
+            "unsupported diagram for upstream svg export: {other} (supported: er, flowchart, state, class, sequence, info, pie, packet, timeline, journey, kanban, gitgraph, all)"
         ))),
     }
 }
@@ -1031,7 +1068,7 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
             let (use_dom, mode) = if check_dom {
                 (true, dom_mode)
-            } else if diagram == "state" {
+            } else if diagram == "state" || diagram == "gitgraph" {
                 (true, svgdom::DomMode::Structure)
             } else {
                 (false, dom_mode)
@@ -1086,6 +1123,9 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 "pie",
                 "packet",
                 "timeline",
+                "journey",
+                "kanban",
+                "gitgraph",
             ] {
                 if let Err(err) = check_one(
                     &workspace_root,
@@ -1107,7 +1147,7 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         }
         "er" | "flowchart" | "state" | "class" | "sequence" | "info" | "pie" | "packet"
-        | "timeline" => check_one(
+        | "timeline" | "journey" | "kanban" | "gitgraph" => check_one(
             &workspace_root,
             &baseline_root,
             &out_root,
@@ -1118,7 +1158,7 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             dom_decimals,
         ),
         other => Err(XtaskError::UpstreamSvgFailed(format!(
-            "unsupported diagram for upstream svg check: {other} (supported: er, flowchart, state, class, sequence, info, pie, packet, timeline, all)"
+            "unsupported diagram for upstream svg check: {other} (supported: er, flowchart, state, class, sequence, info, pie, packet, timeline, journey, kanban, gitgraph, all)"
         ))),
     }
 }
@@ -1557,6 +1597,11 @@ fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                         ))
                     })
                 }
+                _ => Err(XtaskError::DebugSvgFailed(format!(
+                    "unsupported layout for debug svg export: {} ({})",
+                    mmd_path.display(),
+                    layouted.meta.diagram_type
+                ))),
             };
 
             let svg = match svg {
@@ -1994,7 +2039,8 @@ fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
                 || (diagram == "er" && matches!(dt, "er" | "erDiagram"))
                 || (diagram == "flowchart" && dt == "flowchart-v2")
                 || (diagram == "state" && dt == "stateDiagram")
-                || (diagram == "class" && matches!(dt, "class" | "classDiagram"));
+                || (diagram == "class" && matches!(dt, "class" | "classDiagram"))
+                || (diagram == "gitgraph" && dt == "gitGraph");
             if !matches {
                 continue;
             }
@@ -5058,6 +5104,251 @@ fn compare_kanban_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         };
 
         let local_svg = match merman_render::svg::render_kanban_diagram_svg(
+            layout,
+            &layouted.semantic,
+            &layouted.meta.effective_config,
+            &svg_opts,
+        ) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!("render failed for {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
+
+        let local_out_path = out_svg_dir.join(format!("{stem}.svg"));
+        let _ = fs::write(&local_out_path, &local_svg);
+
+        if check_dom {
+            let a = match svgdom::dom_signature(&upstream_svg, mode, dom_decimals) {
+                Ok(v) => v,
+                Err(err) => {
+                    failures.push(format!("upstream dom parse failed for {stem}: {err}"));
+                    continue;
+                }
+            };
+            let b = match svgdom::dom_signature(&local_svg, mode, dom_decimals) {
+                Ok(v) => v,
+                Err(err) => {
+                    failures.push(format!("local dom parse failed for {stem}: {err}"));
+                    continue;
+                }
+            };
+            if a != b {
+                let detail = svgdom::dom_diff(&a, &b)
+                    .map(|d| format!(" ({d})"))
+                    .unwrap_or_default();
+                failures.push(format!(
+                    "dom mismatch for {stem}: upstream={} local={}{}",
+                    upstream_path.display(),
+                    local_out_path.display(),
+                    detail
+                ));
+            }
+        }
+    }
+
+    if failures.is_empty() {
+        let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
+    } else {
+        let _ = writeln!(&mut report, "\n## Mismatches\n");
+        for f in &failures {
+            let _ = writeln!(&mut report, "- {f}");
+        }
+        let _ = writeln!(
+            &mut report,
+            "\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    }
+
+    if let Some(parent) = out_path.parent() {
+        fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
+            path: parent.display().to_string(),
+            source,
+        })?;
+    }
+    fs::write(&out_path, report).map_err(|source| XtaskError::WriteFile {
+        path: out_path.display().to_string(),
+        source,
+    })?;
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(XtaskError::SvgCompareFailed(failures.join("\n")))
+    }
+}
+
+fn compare_gitgraph_svgs(args: Vec<String>) -> Result<(), XtaskError> {
+    let mut out_path: Option<PathBuf> = None;
+    let mut filter: Option<String> = None;
+    let mut check_dom: bool = false;
+    let mut dom_decimals: u32 = 3;
+    let mut dom_mode: String = "parity".to_string();
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--out" => {
+                i += 1;
+                out_path = args.get(i).map(PathBuf::from);
+            }
+            "--filter" => {
+                i += 1;
+                filter = args.get(i).map(|s| s.to_string());
+            }
+            "--check-dom" => check_dom = true,
+            "--dom-decimals" => {
+                i += 1;
+                dom_decimals = args.get(i).and_then(|s| s.parse::<u32>().ok()).unwrap_or(3);
+            }
+            "--dom-mode" => {
+                i += 1;
+                dom_mode = args
+                    .get(i)
+                    .map(|s| s.trim().to_string())
+                    .unwrap_or_else(|| "structure".to_string());
+            }
+            "--help" | "-h" => return Err(XtaskError::Usage),
+            _ => return Err(XtaskError::Usage),
+        }
+        i += 1;
+    }
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+    let fixtures_dir = workspace_root.join("fixtures").join("gitgraph");
+    let upstream_dir = workspace_root
+        .join("fixtures")
+        .join("upstream-svgs")
+        .join("gitgraph");
+    let out_path = out_path.unwrap_or_else(|| {
+        workspace_root
+            .join("target")
+            .join("compare")
+            .join("gitgraph_report.md")
+    });
+    let out_svg_dir = out_path
+        .parent()
+        .unwrap_or(&workspace_root)
+        .join("gitgraph");
+
+    let mut mmd_files: Vec<PathBuf> = Vec::new();
+    let Ok(entries) = fs::read_dir(&fixtures_dir) else {
+        return Err(XtaskError::SvgCompareFailed(format!(
+            "failed to list fixtures directory {}",
+            fixtures_dir.display()
+        )));
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if !path.extension().is_some_and(|e| e == "mmd") {
+            continue;
+        }
+        if let Some(ref f) = filter {
+            if !path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.contains(f))
+            {
+                continue;
+            }
+        }
+        mmd_files.push(path);
+    }
+    mmd_files.sort();
+
+    if mmd_files.is_empty() {
+        return Err(XtaskError::SvgCompareFailed(format!(
+            "no .mmd fixtures matched under {}",
+            fixtures_dir.display()
+        )));
+    }
+
+    fs::create_dir_all(&out_svg_dir).map_err(|source| XtaskError::WriteFile {
+        path: out_svg_dir.display().to_string(),
+        source,
+    })?;
+
+    let mode = svgdom::DomMode::parse(&dom_mode);
+    let engine = merman::Engine::new();
+
+    let mut report = String::new();
+    let _ = writeln!(
+        &mut report,
+        "# GitGraph SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/gitgraph/*.svg` (Mermaid 11.12.2)\n- Local: `render_gitgraph_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
+        dom_mode, dom_decimals
+    );
+
+    let mut failures: Vec<String> = Vec::new();
+    for mmd_path in mmd_files {
+        let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
+            failures.push(format!("invalid fixture filename {}", mmd_path.display()));
+            continue;
+        };
+        let upstream_path = upstream_dir.join(format!("{stem}.svg"));
+        let upstream_svg = match fs::read_to_string(&upstream_path) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!(
+                    "missing upstream svg {}: {err}",
+                    upstream_path.display()
+                ));
+                continue;
+            }
+        };
+
+        let text = match fs::read_to_string(&mmd_path) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!("failed to read {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
+
+        let parsed = match futures::executor::block_on(
+            engine.parse_diagram(&text, merman::ParseOptions::default()),
+        ) {
+            Ok(Some(v)) => v,
+            Ok(None) => {
+                failures.push(format!("no diagram detected in {}", mmd_path.display()));
+                continue;
+            }
+            Err(err) => {
+                failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
+
+        let layout_opts = merman_render::LayoutOptions::default();
+        let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
+            Ok(v) => v,
+            Err(err) => {
+                failures.push(format!("layout failed for {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
+
+        let merman_render::model::LayoutDiagram::GitGraphDiagram(layout) = &layouted.layout else {
+            failures.push(format!(
+                "unexpected layout type for {}: {}",
+                mmd_path.display(),
+                layouted.meta.diagram_type
+            ));
+            continue;
+        };
+
+        let svg_opts = merman_render::svg::SvgRenderOptions {
+            diagram_id: Some(stem.to_string()),
+            ..Default::default()
+        };
+
+        let local_svg = match merman_render::svg::render_gitgraph_diagram_svg(
             layout,
             &layouted.semantic,
             &layouted.meta.effective_config,

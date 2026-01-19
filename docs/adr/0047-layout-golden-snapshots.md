@@ -33,6 +33,9 @@ localized earlier than SVG output, without needing to diff full SVG files.
       numeric refactors
     - deterministic ordering inherited from layout code (nodes/edges sorted by id where
       applicable)
+    - diagram-specific normalization for dynamic fields (e.g. Mermaid `gitGraph` auto-generated
+      commit ids) so snapshots remain stable across runs; dynamic ids are replaced with the
+      placeholder suffix `-<dynamic>`
 - Add an integration test in `merman-render` that:
   - parses every fixture with `Engine::parse_diagram`
   - runs `layout_parsed`

@@ -3040,6 +3040,17 @@ fn kanban_css(diagram_id: &str) -> String {
     out
 }
 
+fn gitgraph_css(diagram_id: &str) -> String {
+    let id = escape_xml(diagram_id);
+    let mut out = info_css(diagram_id);
+    let _ = write!(
+        &mut out,
+        r#"#{} .branch{{stroke-width:1;stroke:#333333;stroke-dasharray:2;}}#{} .arrow{{stroke-width:8;stroke-linecap:round;fill:none;}}#{} .commit-label{{font-size:10px;}}#{} .commit-label-bkg{{font-size:10px;opacity:0.5;}}"#,
+        id, id, id, id
+    );
+    out
+}
+
 fn pie_legend_rect_style(fill: &str) -> String {
     // Mermaid emits legend colors via inline `style` in rgb() form for default themes.
     // The compare tooling ignores `style`, but we keep this for human inspection parity.
@@ -4201,6 +4212,555 @@ pub fn render_kanban_diagram_svg(
     }
 
     out.push_str("</g>");
+    out.push_str("</svg>\n");
+    Ok(out)
+}
+
+pub fn render_gitgraph_diagram_svg(
+    layout: &crate::model::GitGraphDiagramLayout,
+    semantic: &serde_json::Value,
+    _effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    const THEME_COLOR_LIMIT: i64 = 8;
+    const PX: f64 = 4.0;
+    const PY: f64 = 2.0;
+
+    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
+    let diagram_id_esc = escape_xml(diagram_id);
+
+    let bounds = layout.bounds.clone().unwrap_or(Bounds {
+        min_x: 0.0,
+        min_y: 0.0,
+        max_x: 100.0,
+        max_y: 100.0,
+    });
+    let vb_min_x = bounds.min_x;
+    let vb_min_y = bounds.min_y;
+    let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
+    let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
+
+    let acc_title = semantic
+        .get("accTitle")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
+    let acc_descr = semantic
+        .get("accDescr")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim_end_matches('\n'))
+        .filter(|s| !s.is_empty());
+
+    let aria_title_id = format!("chart-title-{diagram_id}");
+    let aria_desc_id = format!("chart-desc-{diagram_id}");
+
+    let mut out = String::new();
+    let _ = write!(
+        &mut out,
+        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{min_x} {min_y} {w} {h}" role="graphics-document document" aria-roledescription="gitGraph""#,
+        diagram_id_esc = diagram_id_esc,
+        max_w = fmt(vb_w),
+        min_x = fmt(vb_min_x),
+        min_y = fmt(vb_min_y),
+        w = fmt(vb_w),
+        h = fmt(vb_h),
+    );
+
+    if acc_descr.is_some() {
+        let _ = write!(
+            &mut out,
+            r#" aria-describedby="{}""#,
+            escape_attr(&aria_desc_id)
+        );
+    }
+    if acc_title.is_some() {
+        let _ = write!(
+            &mut out,
+            r#" aria-labelledby="{}""#,
+            escape_attr(&aria_title_id)
+        );
+    }
+    out.push('>');
+
+    if let Some(t) = acc_title {
+        let _ = write!(
+            &mut out,
+            r#"<title id="{}">{}</title>"#,
+            escape_attr(&aria_title_id),
+            escape_xml(t)
+        );
+    }
+    if let Some(d) = acc_descr {
+        let _ = write!(
+            &mut out,
+            r#"<desc id="{}">{}</desc>"#,
+            escape_attr(&aria_desc_id),
+            escape_xml(d)
+        );
+    }
+
+    let css = gitgraph_css(diagram_id);
+    let _ = write!(&mut out, r#"<style>{}</style>"#, css);
+
+    out.push_str(r#"<g/>"#);
+    out.push_str(r#"<g class="commit-bullets"/>"#);
+    out.push_str(r#"<g class="commit-labels"/>"#);
+
+    let mut branch_idx: std::collections::HashMap<&str, i64> = std::collections::HashMap::new();
+    for b in &layout.branches {
+        branch_idx.insert(b.name.as_str(), b.index);
+    }
+
+    let direction = layout.direction.as_str();
+
+    if layout.show_branches {
+        out.push_str("<g>");
+        for b in &layout.branches {
+            let idx = b.index % THEME_COLOR_LIMIT;
+            let pos = b.pos;
+
+            if direction == "TB" {
+                let _ = write!(
+                    &mut out,
+                    r#"<line x1="{x1}" y1="30" x2="{x2}" y2="{y2}" class="branch branch{idx}"/>"#,
+                    x1 = fmt(pos),
+                    x2 = fmt(pos),
+                    y2 = fmt(layout.max_pos),
+                    idx = idx
+                );
+            } else if direction == "BT" {
+                let _ = write!(
+                    &mut out,
+                    r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="30" class="branch branch{idx}"/>"#,
+                    x1 = fmt(pos),
+                    y1 = fmt(layout.max_pos),
+                    x2 = fmt(pos),
+                    idx = idx
+                );
+            } else {
+                let _ = write!(
+                    &mut out,
+                    r#"<line x1="0" y1="{y1}" x2="{x2}" y2="{y2}" class="branch branch{idx}"/>"#,
+                    y1 = fmt(pos),
+                    x2 = fmt(layout.max_pos),
+                    y2 = fmt(pos),
+                    idx = idx
+                );
+            }
+
+            let name = escape_xml(&b.name);
+            let bbox_w = b.bbox_width.max(0.0);
+            let bbox_h = b.bbox_height.max(0.0);
+
+            let bkg_class = format!(r#"branchLabelBkg label{idx}"#);
+            let label_class = format!(r#"label branch-label{idx}"#);
+
+            if direction == "TB" {
+                let x = pos - bbox_w / 2.0 - 10.0;
+                let _ = write!(
+                    &mut out,
+                    r#"<rect class="{cls}" rx="4" ry="4" x="{x}" y="0" width="{w}" height="{h}"/>"#,
+                    cls = bkg_class,
+                    x = fmt(x),
+                    w = fmt(bbox_w + 18.0),
+                    h = fmt(bbox_h + 4.0),
+                );
+                let tx = pos - bbox_w / 2.0 - 5.0;
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="branchLabel"><g class="{cls}" transform="translate({x}, 0)"><text><tspan xml:space="preserve" dy="1em" x="0" class="row">{name}</tspan></text></g></g>"#,
+                    cls = label_class,
+                    x = fmt(tx),
+                    name = name
+                );
+            } else if direction == "BT" {
+                let x = pos - bbox_w / 2.0 - 10.0;
+                let _ = write!(
+                    &mut out,
+                    r#"<rect class="{cls}" rx="4" ry="4" x="{x}" y="{y}" width="{w}" height="{h}"/>"#,
+                    cls = bkg_class,
+                    x = fmt(x),
+                    y = fmt(layout.max_pos),
+                    w = fmt(bbox_w + 18.0),
+                    h = fmt(bbox_h + 4.0),
+                );
+                let tx = pos - bbox_w / 2.0 - 5.0;
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="branchLabel"><g class="{cls}" transform="translate({x}, {y})"><text><tspan xml:space="preserve" dy="1em" x="0" class="row">{name}</tspan></text></g></g>"#,
+                    cls = label_class,
+                    x = fmt(tx),
+                    y = fmt(layout.max_pos),
+                    name = name
+                );
+            } else {
+                let rotate_pad = if layout.rotate_commit_label {
+                    30.0
+                } else {
+                    0.0
+                };
+                let x = -bbox_w - 4.0 - rotate_pad;
+                let y = -bbox_h / 2.0 + 8.0;
+                let _ = write!(
+                    &mut out,
+                    r#"<rect class="{cls}" rx="4" ry="4" x="{x}" y="{y}" width="{w}" height="{h}" transform="translate(-19, {ty})"/>"#,
+                    cls = bkg_class,
+                    x = fmt(x),
+                    y = fmt(y),
+                    w = fmt(bbox_w + 18.0),
+                    h = fmt(bbox_h + 4.0),
+                    ty = fmt(pos - bbox_h / 2.0),
+                );
+                let tx = -bbox_w - 14.0 - rotate_pad;
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="branchLabel"><g class="{cls}" transform="translate({x}, {y})"><text><tspan xml:space="preserve" dy="1em" x="0" class="row">{name}</tspan></text></g></g>"#,
+                    cls = label_class,
+                    x = fmt(tx),
+                    y = fmt(pos - bbox_h / 2.0 - 1.0),
+                    name = name
+                );
+            }
+        }
+        out.push_str("</g>");
+    }
+
+    out.push_str(r#"<g class="commit-arrows">"#);
+    for a in &layout.arrows {
+        let _ = write!(
+            &mut out,
+            r#"<path d="{d}" class="arrow arrow{idx}"/>"#,
+            d = escape_attr(&a.d),
+            idx = a.class_index % THEME_COLOR_LIMIT
+        );
+    }
+    out.push_str("</g>");
+
+    fn commit_class_type(symbol_type: i64) -> &'static str {
+        match symbol_type {
+            0 => "commit-normal",
+            1 => "commit-reverse",
+            2 => "commit-highlight",
+            3 => "commit-merge",
+            4 => "commit-cherry-pick",
+            _ => "commit-normal",
+        }
+    }
+
+    fn commit_symbol_type(commit: &crate::model::GitGraphCommitLayout) -> i64 {
+        commit.custom_type.unwrap_or(commit.commit_type)
+    }
+
+    out.push_str(r#"<g class="commit-bullets">"#);
+    for c in &layout.commits {
+        let branch_i = branch_idx.get(c.branch.as_str()).copied().unwrap_or(0);
+        let symbol_type = commit_symbol_type(c);
+        let type_class = commit_class_type(symbol_type);
+        let idx = branch_i % THEME_COLOR_LIMIT;
+        let id = escape_attr(&c.id);
+
+        if symbol_type == 2 {
+            let _ = write!(
+                &mut out,
+                r#"<rect x="{x}" y="{y}" width="20" height="20" class="commit {id} commit-highlight{idx} {type_class}-outer"/>"#,
+                x = fmt(c.x - 10.0),
+                y = fmt(c.y - 10.0),
+                id = id,
+                idx = idx,
+                type_class = type_class
+            );
+            let _ = write!(
+                &mut out,
+                r#"<rect x="{x}" y="{y}" width="12" height="12" class="commit {id} commit{idx} {type_class}-inner"/>"#,
+                x = fmt(c.x - 6.0),
+                y = fmt(c.y - 6.0),
+                id = id,
+                idx = idx,
+                type_class = type_class
+            );
+        } else if symbol_type == 4 {
+            let _ = write!(
+                &mut out,
+                r#"<circle cx="{x}" cy="{y}" r="10" class="commit {id} {type_class}"/>"#,
+                x = fmt(c.x),
+                y = fmt(c.y),
+                id = id,
+                type_class = type_class
+            );
+            let _ = write!(
+                &mut out,
+                r##"<circle cx="{x}" cy="{y}" r="2.75" fill="#fff" class="commit {id} {type_class}"/>"##,
+                x = fmt(c.x - 3.0),
+                y = fmt(c.y + 2.0),
+                id = id,
+                type_class = type_class
+            );
+            let _ = write!(
+                &mut out,
+                r##"<circle cx="{x}" cy="{y}" r="2.75" fill="#fff" class="commit {id} {type_class}"/>"##,
+                x = fmt(c.x + 3.0),
+                y = fmt(c.y + 2.0),
+                id = id,
+                type_class = type_class
+            );
+            let _ = write!(
+                &mut out,
+                r##"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#fff" class="commit {id} {type_class}"/>"##,
+                x1 = fmt(c.x + 3.0),
+                y1 = fmt(c.y + 1.0),
+                x2 = fmt(c.x),
+                y2 = fmt(c.y - 5.0),
+                id = id,
+                type_class = type_class
+            );
+            let _ = write!(
+                &mut out,
+                r##"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#fff" class="commit {id} {type_class}"/>"##,
+                x1 = fmt(c.x - 3.0),
+                y1 = fmt(c.y + 1.0),
+                x2 = fmt(c.x),
+                y2 = fmt(c.y - 5.0),
+                id = id,
+                type_class = type_class
+            );
+        } else {
+            let r = if c.commit_type == 3 { 9.0 } else { 10.0 };
+            let _ = write!(
+                &mut out,
+                r#"<circle cx="{x}" cy="{y}" r="{r}" class="commit {id} commit{idx}"/>"#,
+                x = fmt(c.x),
+                y = fmt(c.y),
+                r = fmt(r),
+                id = id,
+                idx = idx
+            );
+            if symbol_type == 3 {
+                let _ = write!(
+                    &mut out,
+                    r#"<circle cx="{x}" cy="{y}" r="6" class="commit {type_class} {id} commit{idx}"/>"#,
+                    x = fmt(c.x),
+                    y = fmt(c.y),
+                    type_class = type_class,
+                    id = id,
+                    idx = idx
+                );
+            }
+            if symbol_type == 1 {
+                let d = format!(
+                    "M {},{}L{},{}M {},{}L{},{}",
+                    fmt(c.x - 5.0),
+                    fmt(c.y - 5.0),
+                    fmt(c.x + 5.0),
+                    fmt(c.y + 5.0),
+                    fmt(c.x - 5.0),
+                    fmt(c.y + 5.0),
+                    fmt(c.x + 5.0),
+                    fmt(c.y - 5.0)
+                );
+                let _ = write!(
+                    &mut out,
+                    r#"<path d="{d}" class="commit {type_class} {id} commit{idx}"/>"#,
+                    d = escape_attr(&d),
+                    type_class = type_class,
+                    id = id,
+                    idx = idx
+                );
+            }
+        }
+    }
+    out.push_str("</g>");
+
+    let measurer = crate::text::DeterministicTextMeasurer::default();
+    let commit_label_style = crate::text::TextStyle {
+        font_family: None,
+        font_size: 10.0,
+        font_weight: None,
+    };
+
+    out.push_str(r#"<g class="commit-labels">"#);
+    for c in &layout.commits {
+        let show = layout.show_commit_label
+            && c.commit_type != 4
+            && ((c.custom_id.unwrap_or(false) && c.commit_type == 3) || c.commit_type != 3);
+        if show {
+            let bbox = measurer.measure(&c.id, &commit_label_style);
+            let bbox_w = bbox.width.max(0.0);
+            let bbox_h = bbox.height.max(0.0);
+
+            let mut wrapper_transform: Option<String> = None;
+            let mut rect_transform: Option<String> = None;
+            let mut text_transform: Option<String> = None;
+
+            let mut rect_x = c.pos_with_offset - bbox_w / 2.0 - PY;
+            let mut rect_y = c.y + 13.5;
+            let rect_w = bbox_w + 2.0 * PY;
+            let rect_h = bbox_h + 2.0 * PY;
+            let mut text_x = c.pos_with_offset - bbox_w / 2.0;
+            let mut text_y = c.y + 25.0;
+
+            if direction == "TB" || direction == "BT" {
+                rect_x = c.x - (bbox_w + 4.0 * PX + 5.0);
+                rect_y = c.y - 12.0;
+                text_x = c.x - (bbox_w + 4.0 * PX);
+                text_y = c.y + bbox_h - 12.0;
+            }
+
+            if layout.rotate_commit_label {
+                if direction == "TB" || direction == "BT" {
+                    let t = format!("rotate(-45, {}, {})", fmt(c.x), fmt(c.y));
+                    rect_transform = Some(t.clone());
+                    text_transform = Some(t);
+                } else {
+                    let r_x = -7.5 - ((bbox_w + 10.0) / 25.0) * 9.5;
+                    let r_y = 10.0 + (bbox_w / 25.0) * 8.5;
+                    wrapper_transform = Some(format!(
+                        "translate({}, {}) rotate(-45, {}, {})",
+                        fmt(r_x),
+                        fmt(r_y),
+                        fmt(c.pos),
+                        fmt(c.y)
+                    ));
+                }
+            }
+
+            out.push_str("<g");
+            if let Some(t) = &wrapper_transform {
+                let _ = write!(&mut out, r#" transform="{}""#, escape_attr(t));
+            }
+            out.push('>');
+
+            out.push_str(r#"<rect class="commit-label-bkg""#);
+            let _ = write!(
+                &mut out,
+                r#" x="{}" y="{}" width="{}" height="{}""#,
+                fmt(rect_x),
+                fmt(rect_y),
+                fmt(rect_w),
+                fmt(rect_h)
+            );
+            if let Some(t) = &rect_transform {
+                let _ = write!(&mut out, r#" transform="{}""#, escape_attr(t));
+            }
+            out.push_str("/>");
+
+            out.push_str(r#"<text class="commit-label""#);
+            let _ = write!(&mut out, r#" x="{}" y="{}""#, fmt(text_x), fmt(text_y));
+            if let Some(t) = &text_transform {
+                let _ = write!(&mut out, r#" transform="{}""#, escape_attr(t));
+            }
+            let _ = write!(&mut out, ">{}</text>", escape_xml(&c.id));
+            out.push_str("</g>");
+        }
+
+        if !c.tags.is_empty() {
+            let mut y_offset = 0.0;
+            let mut max_w: f64 = 0.0;
+            let mut max_h: f64 = 0.0;
+            let mut tag_values = c.tags.clone();
+            tag_values.reverse();
+
+            struct TagGeom {
+                y_offset: f64,
+            }
+            let mut elems: Vec<TagGeom> = Vec::new();
+            for tag_value in &tag_values {
+                let bbox = measurer.measure(tag_value, &commit_label_style);
+                max_w = max_w.max(bbox.width.max(0.0));
+                max_h = max_h.max(bbox.height.max(0.0));
+                elems.push(TagGeom { y_offset });
+                y_offset += 20.0;
+            }
+
+            for (i, tag_value) in tag_values.iter().enumerate() {
+                let y_off = elems.get(i).map(|e| e.y_offset).unwrap_or(0.0);
+                let h2 = max_h / 2.0;
+                let ly = c.y - 19.2 - y_off;
+
+                if direction == "TB" || direction == "BT" {
+                    let y_origin = c.pos + y_off;
+                    let points = format!(
+                        "{} {} {} {} {} {} {} {} {} {} {} {}",
+                        fmt(c.x),
+                        fmt(y_origin + 2.0),
+                        fmt(c.x),
+                        fmt(y_origin - 2.0),
+                        fmt(c.x + 10.0),
+                        fmt(y_origin - h2 - 2.0),
+                        fmt(c.x + 10.0 + max_w + 4.0),
+                        fmt(y_origin - h2 - 2.0),
+                        fmt(c.x + 10.0 + max_w + 4.0),
+                        fmt(y_origin + h2 + 2.0),
+                        fmt(c.x + 10.0),
+                        fmt(y_origin + h2 + 2.0)
+                    );
+                    let poly_t =
+                        format!("translate(12,12) rotate(45, {},{})", fmt(c.x), fmt(c.pos));
+                    let hole_t =
+                        format!("translate(12,12) rotate(45, {},{})", fmt(c.x), fmt(c.pos));
+                    let text_t =
+                        format!("translate(14,14) rotate(45, {},{})", fmt(c.x), fmt(c.pos));
+
+                    let _ = write!(
+                        &mut out,
+                        r#"<polygon class="tag-label-bkg" points="{pts}" transform="{t}"/>"#,
+                        pts = escape_attr(&points),
+                        t = escape_attr(&poly_t)
+                    );
+                    let _ = write!(
+                        &mut out,
+                        r#"<circle cy="{cy}" cx="{cx}" r="1.5" class="tag-hole" transform="{t}"/>"#,
+                        cy = fmt(y_origin),
+                        cx = fmt(c.x + PX / 2.0),
+                        t = escape_attr(&hole_t)
+                    );
+                    let _ = write!(
+                        &mut out,
+                        r#"<text y="{y}" class="tag-label" x="{x}" transform="{t}">{txt}</text>"#,
+                        y = fmt(y_origin + 3.0),
+                        x = fmt(c.x + 5.0),
+                        t = escape_attr(&text_t),
+                        txt = escape_xml(tag_value)
+                    );
+                } else {
+                    let points = format!(
+                        "{} {} {} {} {} {} {} {} {} {} {} {}",
+                        fmt(c.pos - max_w / 2.0 - PX / 2.0),
+                        fmt(ly + PY),
+                        fmt(c.pos - max_w / 2.0 - PX / 2.0),
+                        fmt(ly - PY),
+                        fmt(c.pos_with_offset - max_w / 2.0 - PX),
+                        fmt(ly - h2 - PY),
+                        fmt(c.pos_with_offset + max_w / 2.0 + PX),
+                        fmt(ly - h2 - PY),
+                        fmt(c.pos_with_offset + max_w / 2.0 + PX),
+                        fmt(ly + h2 + PY),
+                        fmt(c.pos_with_offset - max_w / 2.0 - PX),
+                        fmt(ly + h2 + PY)
+                    );
+                    let _ = write!(
+                        &mut out,
+                        r#"<polygon class="tag-label-bkg" points="{pts}"/>"#,
+                        pts = escape_attr(&points)
+                    );
+                    let _ = write!(
+                        &mut out,
+                        r#"<circle cy="{cy}" cx="{cx}" r="1.5" class="tag-hole"/>"#,
+                        cy = fmt(ly),
+                        cx = fmt(c.pos - max_w / 2.0 + PX / 2.0)
+                    );
+                    let _ = write!(
+                        &mut out,
+                        r#"<text y="{y}" class="tag-label" x="{x}">{txt}</text>"#,
+                        y = fmt(c.y - 16.0 - y_off),
+                        x = fmt(c.pos_with_offset - max_w / 2.0),
+                        txt = escape_xml(tag_value)
+                    );
+                }
+            }
+        }
+    }
+    out.push_str("</g>");
+
     out.push_str("</svg>\n");
     Ok(out)
 }

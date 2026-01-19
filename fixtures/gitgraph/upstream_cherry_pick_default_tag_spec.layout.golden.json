@@ -1,0 +1,110 @@
+{
+  "diagramType": "gitGraph",
+  "layout": {
+    "GitGraphDiagram": {
+      "bounds": {
+        "min_x": -106.76,
+        "min_y": -18.0,
+        "max_x": 158.0,
+        "max_y": 108.0
+      },
+      "direction": "LR",
+      "rotate_commit_label": true,
+      "show_branches": true,
+      "show_commit_label": true,
+      "parallel_commits": false,
+      "diagram_padding": 8.0,
+      "max_pos": 150.0,
+      "branches": [
+        {
+          "name": "main",
+          "index": 0.0,
+          "pos": 0.0,
+          "bbox_width": 30.72,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "develop",
+          "index": 1.0,
+          "pos": 90.0,
+          "bbox_width": 45.76,
+          "bbox_height": 17.6
+        }
+      ],
+      "commits": [
+        {
+          "id": "ZERO",
+          "message": "",
+          "seq": 0.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [],
+          "branch": "main",
+          "pos": 0.0,
+          "pos_with_offset": 10.0,
+          "x": 10.0,
+          "y": 0.0
+        },
+        {
+          "id": "A",
+          "message": "",
+          "seq": 1.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "ZERO"
+          ],
+          "branch": "develop",
+          "pos": 50.0,
+          "pos_with_offset": 60.0,
+          "x": 60.0,
+          "y": 90.0
+        },
+        {
+          "id": "2-<dynamic>",
+          "message": "cherry-picked  into main",
+          "seq": 2.0,
+          "commit_type": 4.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [
+            "cherry-pick:A"
+          ],
+          "parents": [
+            "ZERO",
+            "A"
+          ],
+          "branch": "main",
+          "pos": 100.0,
+          "pos_with_offset": 110.0,
+          "x": 110.0,
+          "y": 0.0
+        }
+      ],
+      "arrows": [
+        {
+          "from": "ZERO",
+          "to": "A",
+          "class_index": 1.0,
+          "d": "M 10 0 L 10 70 A 20 20, 0, 0, 0, 30 90 L 60 90"
+        },
+        {
+          "from": "ZERO",
+          "to": "2-<dynamic>",
+          "class_index": 0.0,
+          "d": "M 10 0 L 110 0"
+        },
+        {
+          "from": "A",
+          "to": "2-<dynamic>",
+          "class_index": 0.0,
+          "d": "M 60 90 L 60 20 A 20 20, 0, 0, 1, 80 0 L 110 0"
+        }
+      ]
+    }
+  }
+}
