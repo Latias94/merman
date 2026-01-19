@@ -6,26 +6,20 @@
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
-    "classDefs": {
-      "hot": [
-        "fill:#f96",
-        "stroke:#333",
-        "stroke-width:2px"
-      ]
-    },
+    "classDefs": {},
     "tooltips": {},
     "edgeDefaults": {
       "style": [],
       "interpolate": null
     },
     "vertexCalls": [
-      "A",
-      "B"
+      "C",
+      "F"
     ],
     "nodes": [
       {
-        "id": "A",
-        "label": "A",
+        "id": "C",
+        "label": "C",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -37,18 +31,16 @@
         "assetWidth": null,
         "assetHeight": null,
         "styles": [],
-        "classes": [
-          "hot"
-        ],
+        "classes": [],
         "link": null,
         "linkTarget": null,
         "haveCallback": false
       },
       {
-        "id": "B",
-        "label": "B",
+        "id": "F",
+        "label": "fa:fa-car Car",
         "labelType": "text",
-        "shape": null,
+        "shape": "square",
         "layoutShape": "squareRect",
         "icon": null,
         "form": null,
@@ -66,15 +58,15 @@
     ],
     "edges": [
       {
-        "from": "A",
-        "to": "B",
-        "id": "L_A_B_0",
+        "from": "C",
+        "to": "F",
+        "id": "L_C_F_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
         "stroke": "normal",
         "length": 1,
-        "label": null,
+        "label": "fa:fa-car Car",
         "labelType": "text",
         "style": [],
         "classes": [],

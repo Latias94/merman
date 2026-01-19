@@ -3,29 +3,24 @@
   "model": {
     "type": "flowchart-v2",
     "keyword": "flowchart",
-    "direction": "TB",
+    "direction": "LR",
     "accTitle": null,
     "accDescr": null,
-    "classDefs": {
-      "hot": [
-        "fill:#f96",
-        "stroke:#333",
-        "stroke-width:2px"
-      ]
-    },
+    "classDefs": {},
     "tooltips": {},
     "edgeDefaults": {
       "style": [],
       "interpolate": null
     },
     "vertexCalls": [
-      "A",
-      "B"
+      "a",
+      "b",
+      "b"
     ],
     "nodes": [
       {
-        "id": "A",
-        "label": "A",
+        "id": "a",
+        "label": "a",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -37,16 +32,14 @@
         "assetWidth": null,
         "assetHeight": null,
         "styles": [],
-        "classes": [
-          "hot"
-        ],
+        "classes": [],
         "link": null,
         "linkTarget": null,
         "haveCallback": false
       },
       {
-        "id": "B",
-        "label": "B",
+        "id": "b",
+        "label": "b",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -66,9 +59,9 @@
     ],
     "edges": [
       {
-        "from": "A",
-        "to": "B",
-        "id": "L_A_B_0",
+        "from": "a",
+        "to": "b",
+        "id": "L_a_b_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
@@ -83,6 +76,26 @@
         "animation": null
       }
     ],
-    "subgraphs": []
+    "subgraphs": [
+      {
+        "id": "A",
+        "nodes": [
+          "b",
+          "a"
+        ],
+        "title": "A",
+        "classes": [],
+        "dir": null,
+        "labelType": "text"
+      },
+      {
+        "id": "B",
+        "nodes": [],
+        "title": "B",
+        "classes": [],
+        "dir": null,
+        "labelType": "text"
+      }
+    ]
   }
 }

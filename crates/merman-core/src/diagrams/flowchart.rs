@@ -2737,12 +2737,30 @@ fn split_first_word(s: &str) -> Option<(&str, &str)> {
 }
 
 fn parse_styles_list(s: &str) -> Vec<String> {
+    // Used by `classDef` / `style` statements. Mermaid normalizes these style tokens by trimming
+    // whitespace around each comma-separated entry.
     let placeholder = "\u{0000}";
     let replaced = s.replace("\\,", placeholder);
     replaced
         .split(',')
-        .map(|p| p.replace(placeholder, ",").trim().to_string())
+        .map(|p| p.replace(placeholder, ","))
+        .map(|p| p.trim().to_string())
         .filter(|p| !p.is_empty())
+        .collect()
+}
+
+fn parse_linkstyle_styles_list(s: &str) -> Vec<String> {
+    // Mermaid's Jison grammar preserves whitespace inside each style token (e.g. `, stroke: ...`
+    // becomes `" stroke: ..."`) and downstream FlowDB joins the style list verbatim via
+    // `styles.join(';')` (see `flow.jison` + `flowDb.updateLink(...)`).
+    //
+    // Keep the raw spacing (except for filtering out all-whitespace entries).
+    let placeholder = "\u{0000}";
+    let replaced = s.replace("\\,", placeholder);
+    replaced
+        .split(',')
+        .map(|p| p.replace(placeholder, ","))
+        .filter(|p| !p.trim().is_empty())
         .collect()
 }
 
@@ -3009,7 +3027,7 @@ fn parse_link_style_stmt(rest: &str) -> std::result::Result<LinkStyleStmt, LexEr
         interpolate = p.take_word();
     }
 
-    let styles = parse_styles_list(p.rest());
+    let styles = parse_linkstyle_styles_list(p.rest());
     Ok(LinkStyleStmt {
         positions,
         interpolate,

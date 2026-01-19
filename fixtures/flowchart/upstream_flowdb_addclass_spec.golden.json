@@ -1,8 +1,11 @@
 {
   "diagramType": "flowchart-v2",
   "model": {
-    "accDescr": null,
+    "type": "flowchart-v2",
+    "keyword": "graph",
+    "direction": "TB",
     "accTitle": null,
+    "accDescr": null,
     "classDefs": {
       "a": [
         "stroke-width: 8px"
@@ -11,81 +14,78 @@
         "stroke-width: 8px"
       ]
     },
-    "direction": "TB",
-    "edgeDefaults": {
-      "interpolate": null,
-      "style": []
-    },
-    "edges": [
-      {
-        "animate": null,
-        "animation": null,
-        "arrow": "-->",
-        "classes": [],
-        "from": "A",
-        "id": "L_A_B_0",
-        "interpolate": null,
-        "isUserDefinedId": false,
-        "label": null,
-        "labelType": "text",
-        "length": 1,
-        "stroke": "normal",
-        "style": [],
-        "to": "B",
-        "type": "arrow_point"
-      }
-    ],
-    "keyword": "graph",
-    "nodes": [
-      {
-        "assetHeight": null,
-        "assetWidth": null,
-        "classes": [
-          "a"
-        ],
-        "constraint": null,
-        "form": null,
-        "haveCallback": false,
-        "icon": null,
-        "id": "A",
-        "img": null,
-        "label": "A",
-        "labelType": "text",
-        "layoutShape": "squareRect",
-        "link": null,
-        "linkTarget": null,
-        "pos": null,
-        "shape": null,
-        "styles": []
-      },
-      {
-        "assetHeight": null,
-        "assetWidth": null,
-        "classes": [
-          "b"
-        ],
-        "constraint": null,
-        "form": null,
-        "haveCallback": false,
-        "icon": null,
-        "id": "B",
-        "img": null,
-        "label": "B",
-        "labelType": "text",
-        "layoutShape": "squareRect",
-        "link": null,
-        "linkTarget": null,
-        "pos": null,
-        "shape": null,
-        "styles": []
-      }
-    ],
-    "subgraphs": [],
     "tooltips": {},
-    "type": "flowchart-v2",
+    "edgeDefaults": {
+      "style": [],
+      "interpolate": null
+    },
     "vertexCalls": [
       "A",
       "B"
-    ]
+    ],
+    "nodes": [
+      {
+        "id": "A",
+        "label": "A",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [
+          "a"
+        ],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "B",
+        "label": "B",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [
+          "b"
+        ],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      }
+    ],
+    "edges": [
+      {
+        "from": "A",
+        "to": "B",
+        "id": "L_A_B_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      }
+    ],
+    "subgraphs": []
   }
 }

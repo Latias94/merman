@@ -13,19 +13,21 @@
       "interpolate": null
     },
     "vertexCalls": [
-      "A",
-      "B",
-      "B",
-      "C",
-      "B",
-      "D"
+      "process_C",
+      "Process_D",
+      "process_A",
+      "process_B",
+      "process_B",
+      "container_Beta",
+      "process_A",
+      "process_C"
     ],
     "nodes": [
       {
-        "id": "A",
-        "label": "Start",
+        "id": "process_C",
+        "label": "process_C",
         "labelType": "text",
-        "shape": "square",
+        "shape": null,
         "layoutShape": "squareRect",
         "icon": null,
         "form": null,
@@ -41,29 +43,10 @@
         "haveCallback": false
       },
       {
-        "id": "B",
-        "label": "Choice",
+        "id": "Process_D",
+        "label": "Process_D",
         "labelType": "text",
-        "shape": "diamond",
-        "layoutShape": "diamond",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "C",
-        "label": "OK",
-        "labelType": "text",
-        "shape": "square",
+        "shape": null,
         "layoutShape": "squareRect",
         "icon": null,
         "form": null,
@@ -79,10 +62,48 @@
         "haveCallback": false
       },
       {
-        "id": "D",
-        "label": "Fail",
+        "id": "process_A",
+        "label": "process_A",
         "labelType": "text",
-        "shape": "square",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "process_B",
+        "label": "process_B",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "container_Beta",
+        "label": "container_Beta",
+        "labelType": "text",
+        "shape": null,
         "layoutShape": "squareRect",
         "icon": null,
         "form": null,
@@ -100,9 +121,9 @@
     ],
     "edges": [
       {
-        "from": "A",
-        "to": "B",
-        "id": "L_A_B_0",
+        "from": "process_C",
+        "to": "Process_D",
+        "id": "L_process_C_Process_D_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
@@ -117,15 +138,15 @@
         "animation": null
       },
       {
-        "from": "B",
-        "to": "C",
-        "id": "L_B_C_0",
+        "from": "process_A",
+        "to": "process_B",
+        "id": "L_process_A_process_B_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
         "stroke": "normal",
         "length": 1,
-        "label": "Yes",
+        "label": null,
         "labelType": "text",
         "style": [],
         "classes": [],
@@ -134,15 +155,32 @@
         "animation": null
       },
       {
-        "from": "B",
-        "to": "D",
-        "id": "L_B_D_0",
+        "from": "process_B",
+        "to": "container_Beta",
+        "id": "L_process_B_container_Beta_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
         "stroke": "normal",
         "length": 1,
-        "label": "No",
+        "label": "via_AWSBatch",
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "process_A",
+        "to": "process_C",
+        "id": "L_process_A_process_C_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": "messages",
         "labelType": "text",
         "style": [],
         "classes": [],
@@ -151,6 +189,30 @@
         "animation": null
       }
     ],
-    "subgraphs": []
+    "subgraphs": [
+      {
+        "id": "container_Beta",
+        "nodes": [
+          "Process_D",
+          "process_C"
+        ],
+        "title": "container_Beta",
+        "classes": [],
+        "dir": null,
+        "labelType": "text"
+      },
+      {
+        "id": "container_Alpha",
+        "nodes": [
+          "process_B",
+          "process_A",
+          "container_Beta"
+        ],
+        "title": "container_Alpha",
+        "classes": [],
+        "dir": null,
+        "labelType": "text"
+      }
+    ]
   }
 }

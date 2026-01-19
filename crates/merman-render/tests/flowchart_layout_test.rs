@@ -1096,7 +1096,7 @@ fn flowchart_subgraph_title_uses_wrapping_placeholder_metrics() {
 fn flowchart_subgraph_title_wraps_long_word_in_svglike_mode() {
     let title = "Supercalifragilisticexpialidocious";
     let text = format!(
-        "%%{{init: {{\"flowchart\": {{\"htmlLabels\": false}}}}}}%%\nflowchart TB\nsubgraph A[{title}]\n  a\nend\n"
+        "%%{{init: {{\"htmlLabels\": false, \"flowchart\": {{\"htmlLabels\": false}}}}}}%%\nflowchart TB\nsubgraph A[{title}]\n  a\nend\n"
     );
 
     let engine = Engine::new();

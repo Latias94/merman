@@ -1,0 +1,24 @@
+---
+title: Flowchart v2 subgraph + linkStyle styling (flowchart-v2.spec.js 59)
+config:
+  htmlLabels: true
+  securityLevel: loose
+  flowchart:
+    htmlLabels: true
+---
+flowchart TD
+  A[Christmas] ==> D
+  A[Christmas] -->|Get money| B(Go shopping)
+  A[Christmas] ==> C
+  subgraph T ["Test"]
+    A
+    B
+    C
+  end
+
+  classDef Test fill:#F84E68,stroke:#333,color:white;
+  class A,T Test
+  classDef TestSub fill:green;
+  class T TestSub
+  linkStyle 0,1 color:orange, stroke: orange;
+

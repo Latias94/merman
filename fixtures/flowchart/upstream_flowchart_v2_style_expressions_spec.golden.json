@@ -3,32 +3,28 @@
   "model": {
     "type": "flowchart-v2",
     "keyword": "flowchart",
-    "direction": "TB",
+    "direction": "LR",
     "accTitle": null,
     "accDescr": null,
-    "classDefs": {
-      "hot": [
-        "fill:#f96",
-        "stroke:#333",
-        "stroke-width:2px"
-      ]
-    },
+    "classDefs": {},
     "tooltips": {},
     "edgeDefaults": {
       "style": [],
       "interpolate": null
     },
     "vertexCalls": [
-      "A",
-      "B"
+      "id1",
+      "id2",
+      "id1",
+      "id2"
     ],
     "nodes": [
       {
-        "id": "A",
-        "label": "A",
+        "id": "id1",
+        "label": "Start",
         "labelType": "text",
-        "shape": null,
-        "layoutShape": "squareRect",
+        "shape": "round",
+        "layoutShape": "roundedRect",
         "icon": null,
         "form": null,
         "pos": null,
@@ -36,20 +32,22 @@
         "constraint": null,
         "assetWidth": null,
         "assetHeight": null,
-        "styles": [],
-        "classes": [
-          "hot"
+        "styles": [
+          "fill:#f9f",
+          "stroke:#333",
+          "stroke-width:4px"
         ],
+        "classes": [],
         "link": null,
         "linkTarget": null,
         "haveCallback": false
       },
       {
-        "id": "B",
-        "label": "B",
+        "id": "id2",
+        "label": "Stop",
         "labelType": "text",
-        "shape": null,
-        "layoutShape": "squareRect",
+        "shape": "round",
+        "layoutShape": "roundedRect",
         "icon": null,
         "form": null,
         "pos": null,
@@ -57,7 +55,13 @@
         "constraint": null,
         "assetWidth": null,
         "assetHeight": null,
-        "styles": [],
+        "styles": [
+          "fill:#bbf",
+          "stroke:#f66",
+          "stroke-width:2px",
+          "color:#fff",
+          "stroke-dasharray: 5 5"
+        ],
         "classes": [],
         "link": null,
         "linkTarget": null,
@@ -66,9 +70,9 @@
     ],
     "edges": [
       {
-        "from": "A",
-        "to": "B",
-        "id": "L_A_B_0",
+        "from": "id1",
+        "to": "id2",
+        "id": "L_id1_id2_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",

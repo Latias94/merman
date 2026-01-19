@@ -725,12 +725,23 @@ pub fn layout_flowchart_v2(
     // Mermaid subgraph labels are rendered via `createText(...)` without an explicit `width`,
     // which defaults to 200.
     let cluster_title_wrapping_width = 200.0;
-    let html_labels = effective_config
+    // Mermaid flowchart-v2 uses the global `htmlLabels` toggle for node/subgraph labels, while
+    // edge labels follow `flowchart.htmlLabels` (falling back to the global toggle when unset).
+    let node_html_labels = effective_config
+        .get("htmlLabels")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    let edge_html_labels = effective_config
         .get("flowchart")
         .and_then(|v| v.get("htmlLabels"))
         .and_then(Value::as_bool)
-        .unwrap_or(true);
-    let wrap_mode = if html_labels {
+        .unwrap_or(node_html_labels);
+    let node_wrap_mode = if node_html_labels {
+        WrapMode::HtmlLike
+    } else {
+        WrapMode::SvgLike
+    };
+    let edge_wrap_mode = if edge_html_labels {
         WrapMode::HtmlLike
     } else {
         WrapMode::SvgLike
@@ -796,7 +807,7 @@ pub fn layout_flowchart_v2(
             &sg.title,
             &text_style,
             Some(cluster_title_wrapping_width),
-            wrap_mode,
+            node_wrap_mode,
         );
         let width = metrics.width + cluster_padding * 2.0;
         let height = metrics.height + cluster_padding * 2.0;
@@ -818,7 +829,8 @@ pub fn layout_flowchart_v2(
             continue;
         }
         let label = n.label.as_deref().unwrap_or(&n.id);
-        let metrics = measurer.measure_wrapped(label, &text_style, Some(wrapping_width), wrap_mode);
+        let metrics =
+            measurer.measure_wrapped(label, &text_style, Some(wrapping_width), node_wrap_mode);
         let (width, height) = node_dimensions(n.layout_shape.as_deref(), metrics, node_padding);
         g.set_node(
             n.id.clone(),
@@ -868,10 +880,22 @@ pub fn layout_flowchart_v2(
     for e in &render_edges {
         if edge_label_is_non_empty(e) {
             let label_text = e.label.as_deref().unwrap_or_default();
-            let metrics =
-                measurer.measure_wrapped(label_text, &text_style, Some(wrapping_width), wrap_mode);
-            let label_width = metrics.width.max(1.0);
-            let label_height = metrics.height.max(1.0);
+            let metrics = measurer.measure_wrapped(
+                label_text,
+                &text_style,
+                Some(wrapping_width),
+                edge_wrap_mode,
+            );
+            let (label_width, label_height) = if edge_html_labels {
+                (metrics.width.max(1.0), metrics.height.max(1.0))
+            } else {
+                // Mermaid's SVG edge-labels include a padded background rect (+2px left/right and
+                // +2px top/bottom).
+                (
+                    (metrics.width + 4.0).max(1.0),
+                    (metrics.height + 4.0).max(1.0),
+                )
+            };
 
             let minlen = e.length.max(1);
             let el = EdgeLabel {
@@ -1466,7 +1490,7 @@ pub fn layout_flowchart_v2(
                 measurer,
                 &text_style,
                 cluster_title_wrapping_width,
-                wrap_mode,
+                node_wrap_mode,
                 cluster_padding,
                 title_total_margin,
                 node_padding,
@@ -1741,7 +1765,7 @@ pub fn layout_flowchart_v2(
             measurer,
             &text_style,
             cluster_title_wrapping_width,
-            wrap_mode,
+            node_wrap_mode,
             cluster_padding,
             title_total_margin,
             node_padding,
@@ -1752,7 +1776,7 @@ pub fn layout_flowchart_v2(
             &sg.title,
             &text_style,
             Some(cluster_title_wrapping_width),
-            wrap_mode,
+            node_wrap_mode,
         );
         let title_label = LayoutLabel {
             x: cx,

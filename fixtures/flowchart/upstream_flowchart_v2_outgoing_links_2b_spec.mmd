@@ -1,0 +1,23 @@
+---
+title: Flowchart v2 outgoing links 2b (flowchart-v2.spec.js 57 duplicate)
+config:
+  htmlLabels: true
+  securityLevel: loose
+  flowchart:
+    htmlLabels: true
+---
+flowchart TB
+  c1-->a2
+  subgraph one
+    a1-->a2
+  end
+  subgraph two
+    b1-->b2
+  end
+  subgraph three
+    c1-->c2
+  end
+  one --> two
+  three --> two
+  two --> c2
+

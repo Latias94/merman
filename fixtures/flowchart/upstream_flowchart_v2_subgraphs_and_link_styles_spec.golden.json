@@ -6,7 +6,16 @@
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
-    "classDefs": {},
+    "classDefs": {
+      "TestSub": [
+        "fill:green"
+      ],
+      "Test": [
+        "fill:#F84E68",
+        "stroke:#333",
+        "color:white"
+      ]
+    },
     "tooltips": {},
     "edgeDefaults": {
       "style": [],
@@ -14,18 +23,42 @@
     },
     "vertexCalls": [
       "A",
+      "D",
+      "A",
       "B",
-      "B",
+      "A",
       "C",
+      "A",
       "B",
-      "D"
+      "C"
     ],
     "nodes": [
       {
         "id": "A",
-        "label": "Start",
+        "label": "Christmas",
         "labelType": "text",
         "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [
+          "Test"
+        ],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "D",
+        "label": "D",
+        "labelType": "text",
+        "shape": null,
         "layoutShape": "squareRect",
         "icon": null,
         "form": null,
@@ -42,10 +75,10 @@
       },
       {
         "id": "B",
-        "label": "Choice",
+        "label": "Go shopping",
         "labelType": "text",
-        "shape": "diamond",
-        "layoutShape": "diamond",
+        "shape": "round",
+        "layoutShape": "roundedRect",
         "icon": null,
         "form": null,
         "pos": null,
@@ -61,28 +94,9 @@
       },
       {
         "id": "C",
-        "label": "OK",
+        "label": "C",
         "labelType": "text",
-        "shape": "square",
-        "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "D",
-        "label": "Fail",
-        "labelType": "text",
-        "shape": "square",
+        "shape": null,
         "layoutShape": "squareRect",
         "icon": null,
         "form": null,
@@ -101,12 +115,54 @@
     "edges": [
       {
         "from": "A",
+        "to": "D",
+        "id": "L_A_D_0",
+        "isUserDefinedId": false,
+        "arrow": "==>",
+        "type": "arrow_point",
+        "stroke": "thick",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [
+          "color:orange",
+          " stroke: orange",
+          "fill:none"
+        ],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "A",
         "to": "B",
         "id": "L_A_B_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
         "stroke": "normal",
+        "length": 1,
+        "label": "Get money",
+        "labelType": "text",
+        "style": [
+          "color:orange",
+          " stroke: orange",
+          "fill:none"
+        ],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "A",
+        "to": "C",
+        "id": "L_A_C_0",
+        "isUserDefinedId": false,
+        "arrow": "==>",
+        "type": "arrow_point",
+        "stroke": "thick",
         "length": 1,
         "label": null,
         "labelType": "text",
@@ -115,42 +171,24 @@
         "interpolate": null,
         "animate": null,
         "animation": null
-      },
-      {
-        "from": "B",
-        "to": "C",
-        "id": "L_B_C_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": "Yes",
-        "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      },
-      {
-        "from": "B",
-        "to": "D",
-        "id": "L_B_D_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": "No",
-        "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
       }
     ],
-    "subgraphs": []
+    "subgraphs": [
+      {
+        "id": "T",
+        "nodes": [
+          "A",
+          "B",
+          "C"
+        ],
+        "title": "Test",
+        "classes": [
+          "Test",
+          "TestSub"
+        ],
+        "dir": null,
+        "labelType": "string"
+      }
+    ]
   }
 }

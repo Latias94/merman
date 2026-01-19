@@ -13,19 +13,20 @@
       "interpolate": null
     },
     "vertexCalls": [
-      "A",
-      "B",
-      "B",
-      "C",
-      "B",
-      "D"
+      "_sub_one",
+      "_sub_two",
+      "_one",
+      "sub_one",
+      "sub_two",
+      "_one",
+      "b"
     ],
     "nodes": [
       {
-        "id": "A",
-        "label": "Start",
+        "id": "_sub_one",
+        "label": "_sub_one",
         "labelType": "text",
-        "shape": "square",
+        "shape": null,
         "layoutShape": "squareRect",
         "icon": null,
         "form": null,
@@ -41,29 +42,10 @@
         "haveCallback": false
       },
       {
-        "id": "B",
-        "label": "Choice",
+        "id": "_sub_two",
+        "label": "_sub_two",
         "labelType": "text",
-        "shape": "diamond",
-        "layoutShape": "diamond",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "C",
-        "label": "OK",
-        "labelType": "text",
-        "shape": "square",
+        "shape": null,
         "layoutShape": "squareRect",
         "icon": null,
         "form": null,
@@ -79,10 +61,67 @@
         "haveCallback": false
       },
       {
-        "id": "D",
-        "label": "Fail",
+        "id": "_one",
+        "label": "_one",
         "labelType": "text",
-        "shape": "square",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "sub_one",
+        "label": "sub_one",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "sub_two",
+        "label": "sub_two",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "b",
+        "label": "b",
+        "labelType": "text",
+        "shape": null,
         "layoutShape": "squareRect",
         "icon": null,
         "form": null,
@@ -100,9 +139,9 @@
     ],
     "edges": [
       {
-        "from": "A",
-        "to": "B",
-        "id": "L_A_B_0",
+        "from": "sub_one",
+        "to": "sub_two",
+        "id": "L_sub_one_sub_two_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
@@ -117,32 +156,15 @@
         "animation": null
       },
       {
-        "from": "B",
-        "to": "C",
-        "id": "L_B_C_0",
+        "from": "_one",
+        "to": "b",
+        "id": "L__one_b_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
         "stroke": "normal",
         "length": 1,
-        "label": "Yes",
-        "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      },
-      {
-        "from": "B",
-        "to": "D",
-        "id": "L_B_D_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": "No",
+        "label": null,
         "labelType": "text",
         "style": [],
         "classes": [],
@@ -151,6 +173,39 @@
         "animation": null
       }
     ],
-    "subgraphs": []
+    "subgraphs": [
+      {
+        "id": "sub_one",
+        "nodes": [
+          "_sub_one"
+        ],
+        "title": "Sub One",
+        "classes": [],
+        "dir": null,
+        "labelType": "text"
+      },
+      {
+        "id": "sub_two",
+        "nodes": [
+          "_sub_two"
+        ],
+        "title": "Sub Two",
+        "classes": [],
+        "dir": null,
+        "labelType": "text"
+      },
+      {
+        "id": "one",
+        "nodes": [
+          "sub_one",
+          "sub_two",
+          "_one"
+        ],
+        "title": "One",
+        "classes": [],
+        "dir": null,
+        "labelType": "text"
+      }
+    ]
   }
 }

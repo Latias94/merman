@@ -2,10 +2,10 @@
   "diagramType": "flowchart-v2",
   "model": {
     "type": "flowchart-v2",
-    "keyword": "graph",
-    "direction": "LR",
-    "accTitle": "Big decisions",
-    "accDescr": "Flow chart of the decision making process\nwith a second line",
+    "keyword": "flowchart",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
     "classDefs": {},
     "tooltips": {},
     "edgeDefaults": {
@@ -13,25 +13,25 @@
       "interpolate": null
     },
     "vertexCalls": [
-      "endpoint",
-      "sender",
-      "blend",
-      "monograph",
-      "default",
-      "monograph2",
-      "S1",
-      "T1",
-      "S2",
-      "T2",
-      "X",
-      "Y",
-      "Y",
-      "Z"
+      "c1",
+      "a2",
+      "a1",
+      "a2",
+      "b1",
+      "b2",
+      "c1",
+      "c2",
+      "one",
+      "two",
+      "three",
+      "two",
+      "two",
+      "c2"
     ],
     "nodes": [
       {
-        "id": "endpoint",
-        "label": "endpoint",
+        "id": "c1",
+        "label": "c1",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -49,8 +49,8 @@
         "haveCallback": false
       },
       {
-        "id": "sender",
-        "label": "sender",
+        "id": "a2",
+        "label": "a2",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -68,8 +68,8 @@
         "haveCallback": false
       },
       {
-        "id": "blend",
-        "label": "blend",
+        "id": "a1",
+        "label": "a1",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -87,8 +87,8 @@
         "haveCallback": false
       },
       {
-        "id": "monograph",
-        "label": "monograph",
+        "id": "b1",
+        "label": "b1",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -106,8 +106,8 @@
         "haveCallback": false
       },
       {
-        "id": "default",
-        "label": "default",
+        "id": "b2",
+        "label": "b2",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -125,8 +125,8 @@
         "haveCallback": false
       },
       {
-        "id": "monograph2",
-        "label": "monograph2",
+        "id": "c2",
+        "label": "c2",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -144,27 +144,8 @@
         "haveCallback": false
       },
       {
-        "id": "S1",
-        "label": "<",
-        "labelType": "text",
-        "shape": "round",
-        "layoutShape": "roundedRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "T1",
-        "label": "T1",
+        "id": "one",
+        "label": "one",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -182,27 +163,8 @@
         "haveCallback": false
       },
       {
-        "id": "S2",
-        "label": "&",
-        "labelType": "text",
-        "shape": "round",
-        "layoutShape": "roundedRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "T2",
-        "label": "T2",
+        "id": "two",
+        "label": "two",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -220,46 +182,8 @@
         "haveCallback": false
       },
       {
-        "id": "X",
-        "label": "X",
-        "labelType": "text",
-        "shape": null,
-        "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "Y",
-        "label": "Y",
-        "labelType": "text",
-        "shape": null,
-        "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "Z",
-        "label": "Z",
+        "id": "three",
+        "label": "three",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -279,9 +203,9 @@
     ],
     "edges": [
       {
-        "from": "endpoint",
-        "to": "sender",
-        "id": "L_endpoint_sender_0",
+        "from": "c1",
+        "to": "a2",
+        "id": "L_c1_a2_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
@@ -296,9 +220,9 @@
         "animation": null
       },
       {
-        "from": "blend",
-        "to": "monograph",
-        "id": "L_blend_monograph_0",
+        "from": "a1",
+        "to": "a2",
+        "id": "L_a1_a2_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
@@ -313,9 +237,9 @@
         "animation": null
       },
       {
-        "from": "default",
-        "to": "monograph2",
-        "id": "L_default_monograph2_0",
+        "from": "b1",
+        "to": "b2",
+        "id": "L_b1_b2_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
@@ -330,9 +254,9 @@
         "animation": null
       },
       {
-        "from": "S1",
-        "to": "T1",
-        "id": "L_S1_T1_0",
+        "from": "c1",
+        "to": "c2",
+        "id": "L_c1_c2_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
@@ -347,9 +271,9 @@
         "animation": null
       },
       {
-        "from": "S2",
-        "to": "T2",
-        "id": "L_S2_T2_0",
+        "from": "one",
+        "to": "two",
+        "id": "L_one_two_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
@@ -364,9 +288,9 @@
         "animation": null
       },
       {
-        "from": "X",
-        "to": "Y",
-        "id": "L_X_Y_0",
+        "from": "three",
+        "to": "two",
+        "id": "L_three_two_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
@@ -381,9 +305,9 @@
         "animation": null
       },
       {
-        "from": "Y",
-        "to": "Z",
-        "id": "L_Y_Z_0",
+        "from": "two",
+        "to": "c2",
+        "id": "L_two_c2_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
@@ -398,6 +322,40 @@
         "animation": null
       }
     ],
-    "subgraphs": []
+    "subgraphs": [
+      {
+        "id": "one",
+        "nodes": [
+          "a2",
+          "a1"
+        ],
+        "title": "one",
+        "classes": [],
+        "dir": null,
+        "labelType": "text"
+      },
+      {
+        "id": "two",
+        "nodes": [
+          "b2",
+          "b1"
+        ],
+        "title": "two",
+        "classes": [],
+        "dir": null,
+        "labelType": "text"
+      },
+      {
+        "id": "three",
+        "nodes": [
+          "c2",
+          "c1"
+        ],
+        "title": "three",
+        "classes": [],
+        "dir": null,
+        "labelType": "text"
+      }
+    ]
   }
 }

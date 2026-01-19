@@ -6234,12 +6234,23 @@ pub fn render_flowchart_v2_svg(
     let wrapping_width = config_f64(effective_config, &["flowchart", "wrappingWidth"])
         .unwrap_or(200.0)
         .max(1.0);
-    let html_labels = effective_config
+    // Mermaid flowchart-v2 uses the global `htmlLabels` toggle for node/subgraph labels, while
+    // edge labels follow `flowchart.htmlLabels` (falling back to the global toggle when unset).
+    let node_html_labels = effective_config
+        .get("htmlLabels")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true);
+    let edge_html_labels = effective_config
         .get("flowchart")
         .and_then(|v| v.get("htmlLabels"))
         .and_then(serde_json::Value::as_bool)
-        .unwrap_or(true);
-    let wrap_mode = if html_labels {
+        .unwrap_or(node_html_labels);
+    let node_wrap_mode = if node_html_labels {
+        crate::text::WrapMode::HtmlLike
+    } else {
+        crate::text::WrapMode::SvgLike
+    };
+    let edge_wrap_mode = if edge_html_labels {
         crate::text::WrapMode::HtmlLike
     } else {
         crate::text::WrapMode::SvgLike
@@ -6464,6 +6475,11 @@ pub fn render_flowchart_v2_svg(
         .and_then(|d| d.interpolate.as_deref())
         .unwrap_or("basis")
         .to_string();
+    let default_edge_style = model
+        .edge_defaults
+        .as_ref()
+        .map(|d| d.style.clone())
+        .unwrap_or_default();
 
     let ctx = FlowchartRenderCtx {
         diagram_id: diagram_id.to_string(),
@@ -6472,11 +6488,13 @@ pub fn render_flowchart_v2_svg(
         diagram_type: diagram_type.to_string(),
         measurer,
         config: merman_core::MermaidConfig::from_value(effective_config.clone()),
-        html_labels,
+        node_html_labels,
+        edge_html_labels,
         class_defs: model.class_defs.clone(),
         node_border_color,
         node_fill_color,
         default_edge_interpolate,
+        default_edge_style,
         node_order,
         subgraph_order,
         nodes_by_id,
@@ -6491,13 +6509,16 @@ pub fn render_flowchart_v2_svg(
         node_dom_index,
         node_padding,
         wrapping_width,
-        wrap_mode,
+        node_wrap_mode,
+        edge_wrap_mode,
         text_style,
         diagram_title: diagram_title.map(|s| s.to_string()),
     };
 
+    let extra_marker_colors = flowchart_collect_edge_marker_colors(&ctx);
     render_flowchart_root(&mut out, &ctx, None, 0.0, 0.0);
 
+    flowchart_extra_markers(&mut out, diagram_id, &extra_marker_colors);
     out.push_str("</g>");
     if let Some(title) = diagram_title.map(str::trim).filter(|t| !t.is_empty()) {
         let title_x = vb_w / 2.0;
@@ -10971,11 +10992,13 @@ struct FlowchartRenderCtx<'a> {
     ty: f64,
     measurer: &'a dyn TextMeasurer,
     config: merman_core::MermaidConfig,
-    html_labels: bool,
+    node_html_labels: bool,
+    edge_html_labels: bool,
     class_defs: std::collections::HashMap<String, Vec<String>>,
     node_border_color: String,
     node_fill_color: String,
     default_edge_interpolate: String,
+    default_edge_style: Vec<String>,
     node_order: Vec<String>,
     subgraph_order: Vec<String>,
     nodes_by_id: std::collections::HashMap<String, crate::flowchart::FlowNode>,
@@ -10990,7 +11013,8 @@ struct FlowchartRenderCtx<'a> {
     node_dom_index: std::collections::HashMap<String, usize>,
     node_padding: f64,
     wrapping_width: f64,
-    wrap_mode: crate::text::WrapMode,
+    node_wrap_mode: crate::text::WrapMode,
+    edge_wrap_mode: crate::text::WrapMode,
     text_style: crate::text::TextStyle,
     diagram_title: Option<String>,
 }
@@ -11242,6 +11266,91 @@ fn flowchart_markers(out: &mut String, diagram_id: &str) {
     );
 }
 
+fn flowchart_marker_color_id(color: &str) -> String {
+    // Mermaid appends `__{color}` to marker ids for linkStyle-driven marker coloring.
+    // Keep this close to upstream behavior (named colors are passed through).
+    let raw = color.trim().trim_end_matches(';').trim();
+    if raw.is_empty() {
+        return String::new();
+    }
+    let raw = raw.strip_prefix('#').unwrap_or(raw);
+    let mut out = String::with_capacity(raw.len());
+    for ch in raw.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+            out.push(ch);
+        } else {
+            out.push('_');
+        }
+    }
+    out
+}
+
+fn flowchart_marker_id(diagram_id: &str, base: &str, color: Option<&str>) -> String {
+    if let Some(c) = color {
+        let cid = flowchart_marker_color_id(c);
+        if !cid.is_empty() {
+            return format!("{diagram_id}_{base}__{cid}");
+        }
+    }
+    format!("{diagram_id}_{base}")
+}
+
+fn flowchart_extra_markers(out: &mut String, diagram_id: &str, colors: &[String]) {
+    for c in colors {
+        let cid = flowchart_marker_color_id(c);
+        if cid.is_empty() {
+            continue;
+        }
+
+        let _ = write!(
+            out,
+            r#"<marker id="{}_flowchart-v2-pointEnd__{}" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;" stroke="{}" fill="{}"/></marker>"#,
+            escape_xml(diagram_id),
+            escape_xml(&cid),
+            escape_attr(c.trim()),
+            escape_attr(c.trim())
+        );
+    }
+}
+
+fn flowchart_collect_edge_marker_colors(ctx: &FlowchartRenderCtx<'_>) -> Vec<String> {
+    fn marker_color_from_styles(styles: &[String]) -> Option<String> {
+        for raw in styles {
+            let Some((k, v)) = parse_style_decl(raw) else {
+                continue;
+            };
+            match k {
+                "stroke" => return Some(v.to_string()),
+                _ => {}
+            }
+        }
+        None
+    }
+
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut out: Vec<String> = Vec::new();
+
+    for e in ctx.edges_by_id.values() {
+        let mut styles: Vec<String> = Vec::new();
+        styles.extend(ctx.default_edge_style.iter().cloned());
+        styles.extend(e.style.iter().cloned());
+
+        let Some(color) = marker_color_from_styles(&styles) else {
+            continue;
+        };
+        let cid = flowchart_marker_color_id(&color);
+        if cid.is_empty() {
+            continue;
+        }
+        if seen.insert(cid) {
+            out.push(color);
+        }
+    }
+
+    out.sort();
+    out
+}
+
 fn flowchart_is_in_cluster(
     parent: &std::collections::HashMap<String, String>,
     _cluster_ids: &std::collections::HashSet<String>,
@@ -11325,8 +11434,12 @@ fn flowchart_root_children_nodes(
     ctx: &FlowchartRenderCtx<'_>,
     parent_cluster: Option<&str>,
 ) -> Vec<String> {
-    let cluster_ids: std::collections::HashSet<&str> =
-        ctx.subgraphs_by_id.keys().map(|k| k.as_str()).collect();
+    let cluster_ids: std::collections::HashSet<&str> = ctx
+        .subgraphs_by_id
+        .iter()
+        .filter(|(_, sg)| !sg.nodes.is_empty())
+        .map(|(k, _)| k.as_str())
+        .collect();
     let mut out = Vec::new();
     for (id, n) in &ctx.nodes_by_id {
         if cluster_ids.contains(id.as_str()) {
@@ -11335,6 +11448,15 @@ fn flowchart_root_children_nodes(
         let parent = flowchart_effective_parent(ctx, id.as_str());
         if parent == parent_cluster {
             out.push(n.id.clone());
+        }
+    }
+    for (id, sg) in &ctx.subgraphs_by_id {
+        if !sg.nodes.is_empty() {
+            continue;
+        }
+        let parent = flowchart_effective_parent(ctx, id.as_str());
+        if parent == parent_cluster {
+            out.push(id.clone());
         }
     }
     out.sort_by(|a, b| {
@@ -11410,12 +11532,26 @@ fn render_flowchart_root(
 
     let mut clusters_to_draw: Vec<&LayoutCluster> = Vec::new();
     if let Some(cid) = cluster_id {
-        if let Some(cluster) = ctx.layout_clusters_by_id.get(cid) {
+        if ctx
+            .subgraphs_by_id
+            .get(cid)
+            .is_some_and(|sg| sg.nodes.is_empty())
+        {
+            // Empty subgraphs are rendered as plain nodes in Mermaid (see flowchart-v2.spec.js
+            // outgoing-links-4 baseline), so they should not emit cluster boxes.
+        } else if let Some(cluster) = ctx.layout_clusters_by_id.get(cid) {
             clusters_to_draw.push(cluster);
         }
     }
     for id in ctx.subgraphs_by_id.keys() {
         if cluster_id.is_some_and(|cid| cid == id.as_str()) {
+            continue;
+        }
+        if ctx
+            .subgraphs_by_id
+            .get(id)
+            .is_some_and(|sg| sg.nodes.is_empty())
+        {
             continue;
         }
         if ctx.recursive_clusters.contains(id) {
@@ -11452,9 +11588,18 @@ fn render_flowchart_root(
         out.push_str(r#"<g class="edgeLabels"/>"#);
     } else {
         out.push_str(r#"<g class="edgeLabels">"#);
-        if !ctx.html_labels {
-            for _ in &edges {
-                out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
+        if !ctx.edge_html_labels {
+            // Mermaid's `createText(..., useHtmlLabels=false)` always creates a background `<rect>`,
+            // but for empty labels it returns the `<text>` element instead of the wrapper `<g>`.
+            // The unused wrapper `<g>` (with the `background` rect) remains as a direct child
+            // under `.edgeLabels`. Mirror this by emitting one rect-group per empty label.
+            for e in &edges {
+                let label_text = e.label.as_deref().unwrap_or_default();
+                let label_type = e.label_type.as_deref().unwrap_or("text");
+                let label_plain = flowchart_label_plain_text(label_text, label_type);
+                if label_plain.trim().is_empty() {
+                    out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
+                }
             }
         }
         for e in &edges {
@@ -11485,6 +11630,13 @@ fn render_flowchart_cluster(
     origin_x: f64,
     origin_y: f64,
 ) {
+    let Some(sg) = ctx.subgraphs_by_id.get(&cluster.id) else {
+        return;
+    };
+    if sg.nodes.is_empty() {
+        return;
+    }
+
     let left = (cluster.x - cluster.width / 2.0) + ctx.tx - origin_x;
     let top = (cluster.y - cluster.height / 2.0) + ctx.ty - origin_y;
     let pad = cluster.padding.max(0.0);
@@ -11495,13 +11647,25 @@ fn render_flowchart_cluster(
     let label_x = pad + rect_w / 2.0 - label_w / 2.0;
     let label_y = pad;
 
-    let label_type = ctx
-        .subgraphs_by_id
-        .get(&cluster.id)
-        .and_then(|s| s.label_type.as_deref())
-        .unwrap_or("text");
+    let label_type = sg.label_type.as_deref().unwrap_or("text");
 
-    if !ctx.html_labels {
+    let mut class_attr = String::new();
+    for c in &sg.classes {
+        let c = c.trim();
+        if c.is_empty() {
+            continue;
+        }
+        if !class_attr.is_empty() {
+            class_attr.push(' ');
+        }
+        class_attr.push_str(c);
+    }
+    if !class_attr.is_empty() {
+        class_attr.push(' ');
+    }
+    class_attr.push_str("cluster");
+
+    if !ctx.node_html_labels {
         let title_text = flowchart_label_plain_text(&cluster.title, label_type);
         let title_lines = crate::text::wrap_text_lines_px(
             &title_text,
@@ -11514,7 +11678,8 @@ fn render_flowchart_cluster(
         let label_top = top + pad + cluster.title_margin_top.max(0.0);
         let _ = write!(
             out,
-            r#"<g class="cluster" id="{}" data-look="classic"><rect style="" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><g><rect class="background" style="stroke: none"/>"#,
+            r#"<g class="{}" id="{}" data-look="classic"><rect style="" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><g><rect class="background" style="stroke: none"/>"#,
+            escape_attr(&class_attr),
             escape_attr(&cluster.id),
             fmt(left + pad),
             fmt(top + pad),
@@ -11532,7 +11697,8 @@ fn render_flowchart_cluster(
 
     let _ = write!(
         out,
-        r#"<g class="cluster" id="{}" data-look="classic"><rect style="" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g>"#,
+        r#"<g class="{}" id="{}" data-look="classic"><rect style="" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g>"#,
+        escape_attr(&class_attr),
         escape_attr(&cluster.id),
         fmt(left + pad),
         fmt(top + pad),
@@ -11546,28 +11712,20 @@ fn render_flowchart_cluster(
     );
 }
 
-fn flowchart_edge_marker_end(
-    diagram_id: &str,
-    edge: &crate::flowchart::FlowEdge,
-) -> Option<String> {
+fn flowchart_edge_marker_end_base(edge: &crate::flowchart::FlowEdge) -> Option<&'static str> {
     match edge.edge_type.as_deref() {
-        Some("double_arrow_point") => Some(format!(r#"url(#{diagram_id}_flowchart-v2-pointEnd)"#)),
-        Some("arrow_point") => Some(format!(r#"url(#{diagram_id}_flowchart-v2-pointEnd)"#)),
-        Some("arrow_cross") => Some(format!(r#"url(#{diagram_id}_flowchart-v2-crossEnd)"#)),
-        Some("arrow_circle") => Some(format!(r#"url(#{diagram_id}_flowchart-v2-circleEnd)"#)),
+        Some("double_arrow_point") => Some("flowchart-v2-pointEnd"),
+        Some("arrow_point") => Some("flowchart-v2-pointEnd"),
+        Some("arrow_cross") => Some("flowchart-v2-crossEnd"),
+        Some("arrow_circle") => Some("flowchart-v2-circleEnd"),
         Some("arrow_open") => None,
-        _ => Some(format!(r#"url(#{diagram_id}_flowchart-v2-pointEnd)"#)),
+        _ => Some("flowchart-v2-pointEnd"),
     }
 }
 
-fn flowchart_edge_marker_start(
-    diagram_id: &str,
-    edge: &crate::flowchart::FlowEdge,
-) -> Option<String> {
+fn flowchart_edge_marker_start_base(edge: &crate::flowchart::FlowEdge) -> Option<&'static str> {
     match edge.edge_type.as_deref() {
-        Some("double_arrow_point") => {
-            Some(format!(r#"url(#{diagram_id}_flowchart-v2-pointStart)"#))
-        }
+        Some("double_arrow_point") => Some("flowchart-v2-pointStart"),
         _ => None,
     }
 }
@@ -11818,20 +11976,6 @@ fn render_flowchart_edge_path(
         true
     }
 
-    // Mermaid sometimes routes non-cluster edges with a 3-point basis polyline even when our
-    // layout produces a 4-point path where the first run is perfectly horizontal. Collapse the
-    // redundant middle point so the `curveBasis` command sequence matches (2 `C` segments instead
-    // of 3).
-    if is_basis && !is_cluster_edge && !is_cyclic_special && points_for_render.len() == 4 {
-        const EPS: f64 = 1e-9;
-        let p0 = &points_for_render[0];
-        let p1 = &points_for_render[1];
-        let p2 = &points_for_render[2];
-        if (p0.y - p1.y).abs() <= EPS && (p1.y - p2.y).abs() <= EPS {
-            points_for_render.remove(1);
-        }
-    }
-
     // Mermaid's cluster-edge clipping can reduce the routed polyline to 3 points (and therefore
     // `curveBasis` emits 2 `C` segments). When our route retains an extra collinear point, the SVG
     // command sequence diverges (extra `C`).
@@ -11864,7 +12008,10 @@ fn render_flowchart_edge_path(
         }
     }
 
-    if is_basis && is_cluster_edge && points_for_render.len() > 4 {
+    // After layout/clipping we may end up with long collinear polylines (typically vertical or
+    // horizontal runs). Mermaid's renderer commonly collapses these to a 3-point polyline before
+    // applying `curveBasis`, so the SVG `d` command sequence has the expected 2 `C` segments.
+    if is_basis && !is_cyclic_special && points_for_render.len() > 4 {
         let n = points_for_render.len();
         let collinear = all_triples_collinear(&points_for_render)
             || (n > 4
@@ -12063,25 +12210,50 @@ fn render_flowchart_edge_path(
     let points_json = serde_json::to_string(&local_points).unwrap_or_else(|_| "[]".to_string());
     let points_b64 = base64::engine::general_purpose::STANDARD.encode(points_json);
 
+    let mut merged_styles: Vec<String> = Vec::new();
+    merged_styles.extend(ctx.default_edge_style.iter().cloned());
+    merged_styles.extend(edge.style.iter().cloned());
+
+    let style_attr_value = if merged_styles.is_empty() {
+        ";".to_string()
+    } else {
+        let joined = merged_styles.join(";");
+        format!("{joined};;;{joined}")
+    };
+
+    let mut marker_color: Option<&str> = None;
+    for raw in &merged_styles {
+        let Some((k, v)) = parse_style_decl(raw) else {
+            continue;
+        };
+        if k == "stroke" {
+            marker_color = Some(v);
+            break;
+        }
+    }
+
     let class_attr = flowchart_edge_class_attr(edge);
-    let marker_start = flowchart_edge_marker_start(&ctx.diagram_id, edge);
-    let marker_end = flowchart_edge_marker_end(&ctx.diagram_id, edge);
+    let marker_start = flowchart_edge_marker_start_base(edge)
+        .map(|base| flowchart_marker_id(&ctx.diagram_id, base, marker_color));
+    let marker_end = flowchart_edge_marker_end_base(edge)
+        .map(|base| flowchart_marker_id(&ctx.diagram_id, base, marker_color));
 
     let marker_start_attr = marker_start
         .as_deref()
-        .map(|m| format!(r#" marker-start="{}""#, escape_attr(m)))
+        .map(|m| format!(r#" marker-start="url(#{})""#, escape_attr(m)))
         .unwrap_or_default();
     let marker_end_attr = marker_end
         .as_deref()
-        .map(|m| format!(r#" marker-end="{}""#, escape_attr(m)))
+        .map(|m| format!(r#" marker-end="url(#{})""#, escape_attr(m)))
         .unwrap_or_default();
 
     let _ = write!(
         out,
-        r#"<path d="{}" id="{}" class="{}" style=";" data-edge="true" data-et="edge" data-id="{}" data-points="{}"{}{} />"#,
+        r#"<path d="{}" id="{}" class="{}" style="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}"{}{} />"#,
         d,
         escape_attr(&edge.id),
         escape_attr(&class_attr),
+        escape_attr(&style_attr_value),
         escape_attr(&edge.id),
         escape_attr(&points_b64),
         marker_start_attr,
@@ -12112,36 +12284,59 @@ fn render_flowchart_edge_label(
         (p.x + ctx.tx - origin_x, p.y + ctx.ty - origin_y)
     }
 
-    if !ctx.html_labels {
+    if !ctx.edge_html_labels {
         if let Some(le) = ctx.layout_edges_by_id.get(&edge.id) {
             if let Some(lbl) = le.label.as_ref() {
                 if !label_text_plain.trim().is_empty() {
                     let x = lbl.x + ctx.tx - origin_x;
                     let y = lbl.y + ctx.ty - origin_y;
+                    let w = lbl.width.max(0.0);
+                    let h = lbl.height.max(0.0);
+                    let (dx, dy) = if w > 0.0 && h > 0.0 {
+                        (-w / 2.0, -h / 2.0)
+                    } else {
+                        (0.0, 0.0)
+                    };
                     let _ = write!(
                         out,
-                        r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate(0, 0)">"#,
+                        r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="" x="-2" y="1" width="{}" height="{}"/>"#,
                         fmt(x),
                         fmt(y),
-                        escape_attr(&edge.id)
+                        escape_attr(&edge.id),
+                        fmt(dx),
+                        fmt(dy),
+                        fmt(w),
+                        fmt(h)
                     );
-                    write_flowchart_svg_text(out, &label_text_plain, false);
-                    out.push_str("</g></g>");
+                    write_flowchart_svg_text(out, &label_text_plain, true);
+                    out.push_str("</g></g></g>");
                     return;
                 }
             }
 
             if !label_text_plain.trim().is_empty() {
                 let (x, y) = fallback_midpoint(le, ctx, origin_x, origin_y);
+                let metrics = ctx.measurer.measure_wrapped(
+                    &label_text_plain,
+                    &ctx.text_style,
+                    Some(ctx.wrapping_width),
+                    crate::text::WrapMode::SvgLike,
+                );
+                let w = (metrics.width + 4.0).max(1.0);
+                let h = (metrics.height + 4.0).max(1.0);
                 let _ = write!(
                     out,
-                    r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate(0, 0)">"#,
+                    r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="" x="-2" y="1" width="{}" height="{}"/>"#,
                     fmt(x),
                     fmt(y),
-                    escape_attr(&edge.id)
+                    escape_attr(&edge.id),
+                    fmt(-w / 2.0),
+                    fmt(-h / 2.0),
+                    fmt(w),
+                    fmt(h)
                 );
-                write_flowchart_svg_text(out, &label_text_plain, false);
-                out.push_str("</g></g>");
+                write_flowchart_svg_text(out, &label_text_plain, true);
+                out.push_str("</g></g></g>");
                 return;
             }
         }
@@ -12189,7 +12384,7 @@ fn render_flowchart_edge_label(
                 &label_text_plain,
                 &ctx.text_style,
                 Some(ctx.wrapping_width),
-                ctx.wrap_mode,
+                ctx.edge_wrap_mode,
             );
             let w = metrics.width.max(1.0);
             let h = metrics.height.max(1.0);
@@ -12235,6 +12430,94 @@ fn flowchart_inline_style_for_classes(
     out.trim_end_matches(';').to_string()
 }
 
+#[derive(Debug, Clone)]
+struct FlowchartCompiledStyles {
+    node_style: String,
+    label_style: String,
+    fill: Option<String>,
+    stroke: Option<String>,
+    stroke_width: Option<String>,
+    stroke_dasharray: Option<String>,
+}
+
+fn flowchart_compile_styles(
+    class_defs: &std::collections::HashMap<String, Vec<String>>,
+    classes: &[String],
+    inline_styles: &[String],
+) -> FlowchartCompiledStyles {
+    // Ported from Mermaid `handDrawnShapeStyles.compileStyles()` / `styles2String()`:
+    // - preserve insertion order of the first occurrence of a key
+    // - later occurrences override values, without changing order
+    #[derive(Default)]
+    struct OrderedMap {
+        order: Vec<(String, String)>,
+        idx: std::collections::HashMap<String, usize>,
+    }
+    impl OrderedMap {
+        fn set(&mut self, k: &str, v: &str) {
+            if let Some(&i) = self.idx.get(k) {
+                self.order[i].1 = v.to_string();
+                return;
+            }
+            self.idx.insert(k.to_string(), self.order.len());
+            self.order.push((k.to_string(), v.to_string()));
+        }
+    }
+
+    let mut m = OrderedMap::default();
+
+    for c in classes {
+        let Some(decls) = class_defs.get(c) else {
+            continue;
+        };
+        for d in decls {
+            let Some((k, v)) = parse_style_decl(d) else {
+                continue;
+            };
+            m.set(k, v);
+        }
+    }
+
+    for d in inline_styles {
+        let Some((k, v)) = parse_style_decl(d) else {
+            continue;
+        };
+        m.set(k, v);
+    }
+
+    let mut node_style_parts: Vec<String> = Vec::new();
+    let mut label_style_parts: Vec<String> = Vec::new();
+
+    let mut fill: Option<String> = None;
+    let mut stroke: Option<String> = None;
+    let mut stroke_width: Option<String> = None;
+    let mut stroke_dasharray: Option<String> = None;
+
+    for (k, v) in &m.order {
+        if is_text_style_key(k) {
+            label_style_parts.push(format!("{k}:{v} !important"));
+        } else {
+            node_style_parts.push(format!("{k}:{v} !important"));
+        }
+        match k.as_str() {
+            "fill" => fill = Some(v.clone()),
+            "stroke" => stroke = Some(v.clone()),
+            "stroke-width" => stroke_width = Some(v.clone()),
+            "stroke-dasharray" => stroke_dasharray = Some(v.clone()),
+            _ => {}
+        }
+    }
+
+    FlowchartCompiledStyles {
+        node_style: node_style_parts.join(";"),
+        label_style: label_style_parts.join(";"),
+        fill,
+        stroke,
+        stroke_width,
+        stroke_dasharray,
+    }
+}
+
 fn render_flowchart_node(
     out: &mut String,
     ctx: &FlowchartRenderCtx<'_>,
@@ -12274,19 +12557,22 @@ fn render_flowchart_node(
         return;
     }
 
-    let Some(node) = ctx.nodes_by_id.get(node_id) else {
+    enum RenderNodeKind<'a> {
+        Normal(&'a crate::flowchart::FlowNode),
+        EmptySubgraph(&'a crate::flowchart::FlowSubgraph),
+    }
+
+    let node_kind = if let Some(node) = ctx.nodes_by_id.get(node_id) {
+        RenderNodeKind::Normal(node)
+    } else if let Some(sg) = ctx.subgraphs_by_id.get(node_id) {
+        if sg.nodes.is_empty() {
+            RenderNodeKind::EmptySubgraph(sg)
+        } else {
+            return;
+        }
+    } else {
         return;
     };
-
-    let dom_idx = ctx.node_dom_index.get(node_id).copied().unwrap_or(0);
-
-    let mut class_attr = "node default".to_string();
-    for c in &node.classes {
-        if !c.trim().is_empty() {
-            class_attr.push(' ');
-            class_attr.push_str(c.trim());
-        }
-    }
 
     let tooltip = ctx.tooltips.get(node_id).map(|s| s.as_str()).unwrap_or("");
     let tooltip_attr = if tooltip.trim().is_empty() {
@@ -12295,19 +12581,83 @@ fn render_flowchart_node(
         format!(r#" title="{}""#, escape_attr(tooltip))
     };
 
-    let is_clickable = node
-        .classes
-        .iter()
-        .any(|c| c.trim().eq_ignore_ascii_case("clickable"));
-    let href = node.link.as_deref().and_then(|u| {
-        let u = u.trim();
-        if u.starts_with("http://") || u.starts_with("https://") {
-            Some(u)
-        } else {
-            None
+    let (
+        dom_idx,
+        class_attr,
+        wrapped_in_a,
+        href,
+        label_text,
+        label_type,
+        shape,
+        node_styles,
+        node_classes,
+    ) = match node_kind {
+        RenderNodeKind::Normal(node) => {
+            let dom_idx = ctx.node_dom_index.get(node_id).copied().unwrap_or(0);
+            let mut class_attr = "node default".to_string();
+            for c in &node.classes {
+                if !c.trim().is_empty() {
+                    class_attr.push(' ');
+                    class_attr.push_str(c.trim());
+                }
+            }
+            let link = node
+                .link
+                .as_deref()
+                .map(|u| u.trim())
+                .filter(|u| !u.is_empty());
+            let link_present = link.is_some();
+            // Mermaid sanitizes unsafe URLs (e.g. `javascript:` in strict mode) into
+            // `about:blank`, but the resulting SVG `<a>` carries no `xlink:href` attribute.
+            let href = link.filter(|u| *u != "about:blank");
+            // Mermaid wraps nodes in `<a>` only when a link is present. Callback-based
+            // interactions (`click A someFn`) still mark the node as clickable, but do not
+            // emit an anchor element in the SVG.
+            let wrapped_in_a = link_present;
+            (
+                Some(dom_idx),
+                class_attr,
+                wrapped_in_a,
+                href,
+                node.label.as_deref().unwrap_or(node_id).to_string(),
+                node.label_type.as_deref().unwrap_or("text").to_string(),
+                node.layout_shape
+                    .as_deref()
+                    .unwrap_or("squareRect")
+                    .to_string(),
+                node.styles.clone(),
+                node.classes.clone(),
+            )
         }
-    });
-    let wrapped_in_a = is_clickable || node.have_callback || node.link.is_some();
+        RenderNodeKind::EmptySubgraph(sg) => {
+            let mut class_attr = "node".to_string();
+            for c in &sg.classes {
+                let c = c.trim();
+                if c.is_empty() {
+                    continue;
+                }
+                class_attr.push(' ');
+                class_attr.push_str(c);
+            }
+            (
+                None,
+                class_attr,
+                false,
+                None,
+                sg.title.clone(),
+                sg.label_type.as_deref().unwrap_or("text").to_string(),
+                "squareRect".to_string(),
+                Vec::new(),
+                sg.classes.clone(),
+            )
+        }
+    };
+
+    let group_id = if let Some(dom_idx) = dom_idx {
+        format!("flowchart-{node_id}-{dom_idx}")
+    } else {
+        node_id.to_string()
+    };
 
     if wrapped_in_a {
         if let Some(href) = href {
@@ -12323,28 +12673,44 @@ fn render_flowchart_node(
         }
         let _ = write!(
             out,
-            r#"<g class="{}" id="flowchart-{}-{}"{}>"#,
+            r#"<g class="{}" id="{}"{}>"#,
             escape_attr(&class_attr),
-            escape_attr(node_id),
-            dom_idx,
+            escape_attr(&group_id),
             tooltip_attr
         );
     } else {
         let _ = write!(
             out,
-            r#"<g class="{}" id="flowchart-{}-{}" transform="translate({}, {})"{}>"#,
+            r#"<g class="{}" id="{}" transform="translate({}, {})"{}>"#,
             escape_attr(&class_attr),
-            escape_attr(node_id),
-            dom_idx,
+            escape_attr(&group_id),
             fmt(x),
             fmt(y),
             tooltip_attr
         );
     }
 
-    let shape = node.layout_shape.as_deref().unwrap_or("squareRect");
-    let style = flowchart_inline_style_for_classes(&ctx.class_defs, &node.classes);
+    let compiled_styles = flowchart_compile_styles(&ctx.class_defs, &node_classes, &node_styles);
+    let style = compiled_styles.node_style.clone();
     let mut label_dx: f64 = 0.0;
+    let fill_color = compiled_styles
+        .fill
+        .as_deref()
+        .unwrap_or(ctx.node_fill_color.as_str());
+    let stroke_color = compiled_styles
+        .stroke
+        .as_deref()
+        .unwrap_or(ctx.node_border_color.as_str());
+    let stroke_width: f32 = compiled_styles
+        .stroke_width
+        .as_deref()
+        .and_then(|v| v.trim_end_matches("px").trim().parse::<f32>().ok())
+        .unwrap_or(1.3);
+    let stroke_dasharray = compiled_styles
+        .stroke_dasharray
+        .as_deref()
+        .unwrap_or("0 0")
+        .trim();
 
     fn parse_hex_color_to_srgba(s: &str) -> Option<roughr::Srgba> {
         let s = s.trim();
@@ -12439,9 +12805,21 @@ fn render_flowchart_node(
         svg_path_data: &str,
         fill: &str,
         stroke: &str,
-    ) -> Option<(String, String, f32)> {
+        stroke_width: f32,
+        stroke_dasharray: &str,
+    ) -> Option<(String, String)> {
         let fill = parse_hex_color_to_srgba(fill)?;
         let stroke = parse_hex_color_to_srgba(stroke)?;
+        let dash = stroke_dasharray.trim().replace(',', " ");
+        let nums: Vec<f32> = dash
+            .split_whitespace()
+            .filter_map(|t| t.parse::<f32>().ok())
+            .collect();
+        let (dash0, dash1) = match nums.as_slice() {
+            [a] => (*a, *a),
+            [a, b, ..] => (*a, *b),
+            _ => (0.0, 0.0),
+        };
         let base_options = roughr::core::OptionsBuilder::default()
             .seed(0_u64)
             .roughness(0.0)
@@ -12449,8 +12827,8 @@ fn render_flowchart_node(
             .fill(fill)
             .fill_style(roughr::core::FillStyle::Solid)
             .stroke(stroke)
-            .stroke_width(1.3)
-            .stroke_line_dash(vec![0.0, 0.0])
+            .stroke_width(stroke_width)
+            .stroke_line_dash(vec![dash0 as f64, dash1 as f64])
             .stroke_line_dash_offset(0.0)
             .fill_line_dash(vec![0.0, 0.0])
             .fill_line_dash_offset(0.0)
@@ -12540,11 +12918,76 @@ fn render_flowchart_node(
         Some((
             ops_to_svg_path_d(&fill_opset),
             ops_to_svg_path_d(&stroke_opset),
-            1.3,
         ))
     }
 
-    match shape {
+    match shape.as_str() {
+        "subroutine" | "fr-rect" => {
+            // Mermaid `subroutine.ts` (non-handDrawn): polygon via `insertPolygonShape(...)`.
+            let total_w = layout_node.width.max(1.0);
+            let h = layout_node.height.max(1.0);
+            let w = (total_w - 16.0).max(1.0);
+
+            let pts: Vec<(f64, f64)> = vec![
+                (0.0, 0.0),
+                (w, 0.0),
+                (w, -h),
+                (0.0, -h),
+                (0.0, 0.0),
+                (-8.0, 0.0),
+                (w + 8.0, 0.0),
+                (w + 8.0, -h),
+                (-8.0, -h),
+                (-8.0, 0.0),
+            ];
+            let mut points_attr = String::new();
+            for (idx, (px, py)) in pts.iter().copied().enumerate() {
+                if idx > 0 {
+                    points_attr.push(' ');
+                }
+                let _ = write!(&mut points_attr, "{},{}", fmt(px), fmt(py));
+            }
+            let _ = write!(
+                out,
+                r#"<polygon points="{}" class="label-container" transform="translate({},{})"{} />"#,
+                points_attr,
+                fmt(-w / 2.0),
+                fmt(h / 2.0),
+                if style.is_empty() {
+                    String::new()
+                } else {
+                    format!(r#" style="{}""#, escape_attr(&style))
+                }
+            );
+        }
+        "cylinder" | "cyl" => {
+            // Mermaid `cylinder.ts` (non-handDrawn): a single `<path>` with arc commands and a
+            // `label-offset-y` attribute.
+            let w = layout_node.width.max(1.0);
+            let rx = w / 2.0;
+            let ry = rx / (2.5 + w / 50.0);
+            let total_h = layout_node.height.max(1.0);
+            let h = (total_h - 2.0 * ry).max(1.0);
+
+            let path_data = format!(
+                "M0,{ry} a{rx},{ry} 0,0,0 {w},0 a{rx},{ry} 0,0,0 {mw},0 l0,{h} a{rx},{ry} 0,0,0 {w},0 l0,{mh}",
+                ry = fmt(ry),
+                rx = fmt(rx),
+                w = fmt(w),
+                mw = fmt(-w),
+                h = fmt(h),
+                mh = fmt(-h),
+            );
+
+            let _ = write!(
+                out,
+                r#"<path d="{}" class="basic label-container" style="{}" transform="translate({}, {})"/>"#,
+                escape_attr(&path_data),
+                escape_attr(&style),
+                fmt(-w / 2.0),
+                fmt(-(h / 2.0 + ry))
+            );
+        }
         "diamond" => {
             let w = layout_node.width.max(1.0);
             let h = layout_node.height.max(1.0);
@@ -12643,22 +13086,29 @@ fn render_flowchart_node(
             ));
             let path_data = path_from_points(&pts);
 
-            if let Some((fill_d, stroke_d, stroke_w)) =
-                roughjs_paths_for_svg_path(&path_data, &ctx.node_fill_color, &ctx.node_border_color)
-            {
+            if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+                &path_data,
+                fill_color,
+                stroke_color,
+                stroke_width,
+                stroke_dasharray,
+            ) {
                 out.push_str(r#"<g class="basic label-container outer-path">"#);
                 let _ = write!(
                     out,
-                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/>"#,
+                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
                     escape_attr(&fill_d),
-                    escape_attr(&ctx.node_fill_color)
+                    escape_attr(fill_color),
+                    escape_attr(&style)
                 );
                 let _ = write!(
                     out,
-                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
+                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
                     escape_attr(&stroke_d),
-                    escape_attr(&ctx.node_border_color),
-                    stroke_w
+                    escape_attr(stroke_color),
+                    fmt(stroke_width as f64),
+                    escape_attr(stroke_dasharray),
+                    escape_attr(&style)
                 );
                 out.push_str("</g>");
             } else {
@@ -12670,6 +13120,96 @@ fn render_flowchart_node(
                     fmt(-h / 2.0),
                     fmt(w),
                     fmt(h)
+                );
+            }
+        }
+        "stadium" => {
+            // Port of Mermaid `@11.12.2` `stadium.ts` points + `createPathFromPoints`.
+            // Note that Mermaid's `generateCirclePoints()` pushes negated coordinates.
+            fn generate_circle_points(
+                center_x: f64,
+                center_y: f64,
+                radius: f64,
+                num_points: usize,
+                start_angle_deg: f64,
+                end_angle_deg: f64,
+            ) -> Vec<(f64, f64)> {
+                let start = start_angle_deg.to_radians();
+                let end = end_angle_deg.to_radians();
+                let angle_range = end - start;
+                let step = angle_range / (num_points.saturating_sub(1).max(1) as f64);
+                let mut pts: Vec<(f64, f64)> = Vec::with_capacity(num_points);
+                for i in 0..num_points {
+                    let angle = start + (i as f64) * step;
+                    let x = center_x + radius * angle.cos();
+                    let y = center_y + radius * angle.sin();
+                    pts.push((-x, -y));
+                }
+                pts
+            }
+
+            let w = layout_node.width.max(1.0);
+            let h = layout_node.height.max(1.0);
+            let radius = h / 2.0;
+
+            let mut pts: Vec<(f64, f64)> = Vec::new();
+            pts.push((-w / 2.0 + radius, -h / 2.0));
+            pts.push((w / 2.0 - radius, -h / 2.0));
+            pts.extend(generate_circle_points(
+                -w / 2.0 + radius,
+                0.0,
+                radius,
+                50,
+                90.0,
+                270.0,
+            ));
+            pts.push((w / 2.0 - radius, h / 2.0));
+            pts.extend(generate_circle_points(
+                w / 2.0 - radius,
+                0.0,
+                radius,
+                50,
+                270.0,
+                450.0,
+            ));
+            let path_data = path_from_points(&pts);
+
+            if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+                &path_data,
+                fill_color,
+                stroke_color,
+                stroke_width,
+                stroke_dasharray,
+            ) {
+                out.push_str(r#"<g class="basic label-container outer-path">"#);
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
+                    escape_attr(&fill_d),
+                    escape_attr(fill_color),
+                    escape_attr(&style)
+                );
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
+                    escape_attr(&stroke_d),
+                    escape_attr(stroke_color),
+                    fmt(stroke_width as f64),
+                    escape_attr(stroke_dasharray),
+                    escape_attr(&style)
+                );
+                out.push_str("</g>");
+            } else {
+                let _ = write!(
+                    out,
+                    r#"<rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}" rx="{}" ry="{}"/>"#,
+                    escape_attr(&style),
+                    fmt(-w / 2.0),
+                    fmt(-h / 2.0),
+                    fmt(w),
+                    fmt(h),
+                    fmt(radius),
+                    fmt(radius)
                 );
             }
         }
@@ -12693,22 +13233,29 @@ fn render_flowchart_node(
             ];
             let path_data = path_from_points(&pts);
 
-            if let Some((fill_d, stroke_d, stroke_w)) =
-                roughjs_paths_for_svg_path(&path_data, &ctx.node_fill_color, &ctx.node_border_color)
-            {
+            if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+                &path_data,
+                fill_color,
+                stroke_color,
+                stroke_width,
+                stroke_dasharray,
+            ) {
                 out.push_str(r#"<g class="basic label-container">"#);
                 let _ = write!(
                     out,
-                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/>"#,
+                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
                     escape_attr(&fill_d),
-                    escape_attr(&ctx.node_fill_color)
+                    escape_attr(fill_color),
+                    escape_attr(&style)
                 );
                 let _ = write!(
                     out,
-                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
+                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
                     escape_attr(&stroke_d),
-                    escape_attr(&ctx.node_border_color),
-                    stroke_w
+                    escape_attr(stroke_color),
+                    fmt(stroke_width as f64),
+                    escape_attr(stroke_dasharray),
+                    escape_attr(&style)
                 );
                 out.push_str("</g>");
             } else {
@@ -12741,6 +13288,114 @@ fn render_flowchart_node(
                 );
             }
         }
+        "lean_right" | "lean-r" | "lean-right" => {
+            // Mermaid `leanRight.ts` (non-handDrawn): polygon via `insertPolygonShape(...)`.
+            let total_w = layout_node.width.max(1.0);
+            let h = layout_node.height.max(1.0);
+            let w = (total_w - h).max(1.0);
+            let dx = (3.0 * h) / 6.0;
+            let pts: Vec<(f64, f64)> = vec![(-dx, 0.0), (w, 0.0), (w + dx, -h), (0.0, -h)];
+            let mut points_attr = String::new();
+            for (idx, (px, py)) in pts.iter().copied().enumerate() {
+                if idx > 0 {
+                    points_attr.push(' ');
+                }
+                let _ = write!(&mut points_attr, "{},{}", fmt(px), fmt(py));
+            }
+            let _ = write!(
+                out,
+                r#"<polygon points="{}" class="label-container" transform="translate({},{})"{} />"#,
+                points_attr,
+                fmt(-w / 2.0),
+                fmt(h / 2.0),
+                if style.is_empty() {
+                    String::new()
+                } else {
+                    format!(r#" style="{}""#, escape_attr(&style))
+                }
+            );
+        }
+        "lean_left" | "lean-l" | "lean-left" => {
+            // Mermaid `leanLeft.ts` (non-handDrawn): polygon via `insertPolygonShape(...)`.
+            let total_w = layout_node.width.max(1.0);
+            let h = layout_node.height.max(1.0);
+            let w = (total_w - h).max(1.0);
+            let dx = (3.0 * h) / 6.0;
+            let pts: Vec<(f64, f64)> = vec![(0.0, 0.0), (w + dx, 0.0), (w, -h), (-dx, -h)];
+            let mut points_attr = String::new();
+            for (idx, (px, py)) in pts.iter().copied().enumerate() {
+                if idx > 0 {
+                    points_attr.push(' ');
+                }
+                let _ = write!(&mut points_attr, "{},{}", fmt(px), fmt(py));
+            }
+            let _ = write!(
+                out,
+                r#"<polygon points="{}" class="label-container" transform="translate({},{})"{} />"#,
+                points_attr,
+                fmt(-w / 2.0),
+                fmt(h / 2.0),
+                if style.is_empty() {
+                    String::new()
+                } else {
+                    format!(r#" style="{}""#, escape_attr(&style))
+                }
+            );
+        }
+        "trapezoid" => {
+            // Mermaid `trapezoid.ts` (non-handDrawn): polygon via `insertPolygonShape(...)`.
+            let total_w = layout_node.width.max(1.0);
+            let h = layout_node.height.max(1.0);
+            let w = (total_w - h).max(1.0);
+            let dx = (3.0 * h) / 6.0;
+            let pts: Vec<(f64, f64)> = vec![(-dx, 0.0), (w + dx, 0.0), (w, -h), (0.0, -h)];
+            let mut points_attr = String::new();
+            for (idx, (px, py)) in pts.iter().copied().enumerate() {
+                if idx > 0 {
+                    points_attr.push(' ');
+                }
+                let _ = write!(&mut points_attr, "{},{}", fmt(px), fmt(py));
+            }
+            let _ = write!(
+                out,
+                r#"<polygon points="{}" class="label-container" transform="translate({},{})"{} />"#,
+                points_attr,
+                fmt(-w / 2.0),
+                fmt(h / 2.0),
+                if style.is_empty() {
+                    String::new()
+                } else {
+                    format!(r#" style="{}""#, escape_attr(&style))
+                }
+            );
+        }
+        "inv_trapezoid" | "inv-trapezoid" => {
+            // Mermaid `invertedTrapezoid.ts` (non-handDrawn): polygon via `insertPolygonShape(...)`.
+            let total_w = layout_node.width.max(1.0);
+            let h = layout_node.height.max(1.0);
+            let w = (total_w - h).max(1.0);
+            let dx = (3.0 * h) / 6.0;
+            let pts: Vec<(f64, f64)> = vec![(0.0, 0.0), (w, 0.0), (w + dx, -h), (-dx, -h)];
+            let mut points_attr = String::new();
+            for (idx, (px, py)) in pts.iter().copied().enumerate() {
+                if idx > 0 {
+                    points_attr.push(' ');
+                }
+                let _ = write!(&mut points_attr, "{},{}", fmt(px), fmt(py));
+            }
+            let _ = write!(
+                out,
+                r#"<polygon points="{}" class="label-container" transform="translate({},{})"{} />"#,
+                points_attr,
+                fmt(-w / 2.0),
+                fmt(h / 2.0),
+                if style.is_empty() {
+                    String::new()
+                } else {
+                    format!(r#" style="{}""#, escape_attr(&style))
+                }
+            );
+        }
         "odd" => {
             let total_w = layout_node.width.max(1.0);
             let h = layout_node.height.max(1.0);
@@ -12755,9 +13410,13 @@ fn render_flowchart_node(
                 vec![(x + notch, y), (x, 0.0), (x + notch, -y), (-x, -y), (-x, y)];
             let path_data = path_from_points(&pts);
 
-            if let Some((fill_d, stroke_d, stroke_w)) =
-                roughjs_paths_for_svg_path(&path_data, &ctx.node_fill_color, &ctx.node_border_color)
-            {
+            if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+                &path_data,
+                fill_color,
+                stroke_color,
+                stroke_width,
+                stroke_dasharray,
+            ) {
                 let _ = write!(
                     out,
                     r#"<g class="basic label-container" transform="translate({},0)">"#,
@@ -12765,16 +13424,19 @@ fn render_flowchart_node(
                 );
                 let _ = write!(
                     out,
-                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/>"#,
+                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
                     escape_attr(&fill_d),
-                    escape_attr(&ctx.node_fill_color)
+                    escape_attr(fill_color),
+                    escape_attr(&style)
                 );
                 let _ = write!(
                     out,
-                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
+                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
                     escape_attr(&stroke_d),
-                    escape_attr(&ctx.node_border_color),
-                    stroke_w
+                    escape_attr(stroke_color),
+                    fmt(stroke_width as f64),
+                    escape_attr(stroke_dasharray),
+                    escape_attr(&style)
                 );
                 out.push_str("</g>");
             } else {
@@ -12816,33 +13478,80 @@ fn render_flowchart_node(
         }
     }
 
-    let label_text = node.label.as_deref().unwrap_or(node_id);
+    fn label_color_rgb_string(style: &str) -> Option<String> {
+        for decl in style.split(';') {
+            let decl = decl.trim();
+            if decl.is_empty() {
+                continue;
+            }
+            let Some((k, v)) = decl.split_once(':') else {
+                continue;
+            };
+            if k.trim() != "color" {
+                continue;
+            }
+            let v = v.trim().trim_end_matches("!important").trim();
+            let hex = v.strip_prefix('#')?;
+            let (r, g, b) = match hex.len() {
+                6 => (
+                    u8::from_str_radix(&hex[0..2], 16).ok()?,
+                    u8::from_str_radix(&hex[2..4], 16).ok()?,
+                    u8::from_str_radix(&hex[4..6], 16).ok()?,
+                ),
+                3 => (
+                    u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?,
+                    u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?,
+                    u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?,
+                ),
+                _ => return None,
+            };
+            return Some(format!("rgb({r}, {g}, {b})"));
+        }
+        None
+    }
+
     let metrics = ctx.measurer.measure_wrapped(
-        label_text,
+        &label_text,
         &ctx.text_style,
         Some(ctx.wrapping_width),
-        ctx.wrap_mode,
+        ctx.node_wrap_mode,
     );
-    let label_type = node.label_type.as_deref().unwrap_or("text");
-    if !ctx.html_labels {
-        let label_text_plain = flowchart_label_plain_text(label_text, label_type);
+    if !ctx.node_html_labels {
+        let label_text_plain = flowchart_label_plain_text(&label_text, &label_type);
         let _ = write!(
             out,
-            r#"<g class="label" style="" transform="translate({}, {})"><rect/><g><rect class="background" style="stroke: none"/>"#,
+            r#"<g class="label" style="{}" transform="translate({}, {})"><rect/><g><rect class="background" style="stroke: none"/>"#,
+            escape_attr(&compiled_styles.label_style),
             fmt(label_dx),
             fmt(-metrics.height / 2.0)
         );
         write_flowchart_svg_text(out, &label_text_plain, true);
         out.push_str("</g></g></g>");
     } else {
-        let label_html = flowchart_label_html(label_text, label_type, &ctx.config);
+        let label_html = flowchart_label_html(&label_text, &label_type, &ctx.config);
+        let mut span_style_attr = String::new();
+        if !compiled_styles.label_style.trim().is_empty() {
+            span_style_attr = format!(r#" style="{}""#, escape_attr(&compiled_styles.label_style));
+        }
+        let div_style = if let Some(rgb) = label_color_rgb_string(&compiled_styles.label_style) {
+            format!(
+                r#"color: {} !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"#,
+                rgb
+            )
+        } else {
+            r#"display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"#
+                .to_string()
+        };
         let _ = write!(
             out,
-            r#"<g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g>"#,
+            r#"<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
+            escape_attr(&compiled_styles.label_style),
             fmt(-metrics.width / 2.0 + label_dx),
             fmt(-metrics.height / 2.0),
             fmt(metrics.width),
             fmt(metrics.height),
+            escape_attr(&div_style),
+            span_style_attr,
             label_html
         );
     }
@@ -13003,7 +13712,7 @@ fn write_flowchart_svg_text(out: &mut String, text: &str, include_style: bool) {
         return;
     }
 
-    fn split_mermaid_escaped_tag_runs(line: &str) -> Option<Vec<String>> {
+    fn split_mermaid_escaped_tag_tokens(line: &str) -> Option<Vec<String>> {
         // Mermaid’s SVG text renderer tokenizes a simple HTML-tag wrapper even when htmlLabels are
         // disabled, resulting in 3 inner <tspan> runs like:
         //   `<strong>Haiya</strong>` -> `<strong>` + ` Haiya` + ` </strong>`
@@ -13027,11 +13736,7 @@ fn write_flowchart_svg_text(out: &mut String, text: &str, include_style: bool) {
             return None;
         }
         let inner = &line[open_end + 1..line.len() - close_tag.len()];
-        Some(vec![
-            open_tag.to_string(),
-            format!(" {inner}"),
-            format!(" {close_tag}"),
-        ])
+        Some(vec![open_tag.to_string(), inner.to_string(), close_tag])
     }
 
     for (idx, line) in lines.iter().enumerate() {
@@ -13052,12 +13757,22 @@ fn write_flowchart_svg_text(out: &mut String, text: &str, include_style: bool) {
                 y_em
             );
         }
-        let runs = split_mermaid_escaped_tag_runs(line).unwrap_or_else(|| vec![line.to_string()]);
-        for run in &runs {
+        let words: Vec<String> = split_mermaid_escaped_tag_tokens(line).unwrap_or_else(|| {
+            line.split_whitespace()
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect()
+        });
+        for (word_idx, word) in words.iter().enumerate() {
             out.push_str(
                 r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal">"#,
             );
-            out.push_str(&escape_xml(run));
+            if word_idx == 0 {
+                out.push_str(&escape_xml(word));
+            } else {
+                out.push(' ');
+                out.push_str(&escape_xml(word));
+            }
             out.push_str("</tspan>");
         }
         out.push_str("</tspan>");

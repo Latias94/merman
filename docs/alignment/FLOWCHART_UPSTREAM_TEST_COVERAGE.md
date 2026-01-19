@@ -164,13 +164,60 @@ Source: `repo-ref/mermaid/cypress/integration/rendering/flowchart-v2.spec.js`
 - `useMaxWidth: false`: `fixtures/flowchart/upstream_flowchart_v2_useMaxWidth_false_spec.mmd`
 - escaped HTML in labels when `htmlLabels: false`: `fixtures/flowchart/upstream_flowchart_v2_escaped_without_html_labels_spec.mmd`
 - unescaped HTML in labels when `htmlLabels: true` + `securityLevel: loose`: `fixtures/flowchart/upstream_flowchart_v2_unescaped_with_html_labels_spec.mmd`
+- stadium shape (V2-16): `fixtures/flowchart/upstream_flowchart_v2_stadium_shape_spec.mmd`
 - edge to subgraph/cluster arrowhead clipping: `fixtures/flowchart/upstream_flowchart_v2_link_to_subgraph_arrowhead_spec.mmd`
 - edge length matrix rendering: `fixtures/flowchart/upstream_flowchart_v2_edge_lengths_spec.mmd`
 - nested subgraphs (reverse order): `fixtures/flowchart/upstream_flowchart_v2_nested_subgraphs_reverse_order_spec.mmd`
 - nested subgraphs (several levels): `fixtures/flowchart/upstream_flowchart_v2_nested_subgraphs_several_levels_spec.mmd`
 - nested subgraphs (edges in/out): `fixtures/flowchart/upstream_flowchart_v2_edges_in_and_out_subgraphs_spec.mmd`
 - nested subgraphs (mixed directions): `fixtures/flowchart/upstream_flowchart_v2_subgraphs_different_directions_spec.mmd`
+- nested subgraphs (outgoing links): `fixtures/flowchart/upstream_flowchart_v2_outgoing_links_spec.mmd`
+- nested subgraphs (outgoing links 2): `fixtures/flowchart/upstream_flowchart_v2_outgoing_links_2_spec.mmd`
+- nested subgraphs (outgoing links 2b): `fixtures/flowchart/upstream_flowchart_v2_outgoing_links_2b_spec.mmd`
+- nested subgraphs (outgoing links 3): `fixtures/flowchart/upstream_flowchart_v2_outgoing_links_3_spec.mmd`
+- nested subgraphs (outgoing links 4): `fixtures/flowchart/upstream_flowchart_v2_outgoing_links_4_spec.mmd`
+- nested subgraphs (outgoing links 5): `fixtures/flowchart/upstream_flowchart_v2_outgoing_links_5_spec.mmd`
+- styling with style expressions: `fixtures/flowchart/upstream_flowchart_v2_style_expressions_spec.mmd`
+- styling of subgraphs and links: `fixtures/flowchart/upstream_flowchart_v2_subgraphs_and_link_styles_spec.mmd`
+- styling matrix for all shapes: `fixtures/flowchart/upstream_flowchart_v2_shape_styling_matrix_spec.mmd`
+- icons in edge labels: `fixtures/flowchart/upstream_flowchart_v2_icons_in_edge_labels_spec.mmd`
 - YAML config for spacing in subgraphs: `fixtures/flowchart/upstream_flowchart_v2_subgraph_nodeSpacing_rankSpacing_yaml_spec.mmd`
+- subgraph title margins (LR, `htmlLabels: false`): `fixtures/flowchart/upstream_flowchart_v2_subgraph_title_margins_lr_htmlLabels_false_spec.mmd`
+- subgraph title margins (edge labels): `fixtures/flowchart/upstream_flowchart_v2_subgraph_title_margins_with_edge_labels_spec.mmd`
+- self loops (including nested subgraphs): `fixtures/flowchart/upstream_flowchart_v2_self_loops_spec.mmd`
+
+## Additional parity fixtures (non-upstream)
+
+These fixtures do not correspond 1:1 to a specific upstream `*.spec.*` test, but they capture
+observed upstream SVG behaviors that are easy to regress when refactoring layout/rendering:
+
+- cross-subgraph labeled edges: `fixtures/flowchart/upstream_flowchart_v2_stage2_cross_subgraph_labeled_edge_label_belongs_to_outer_cluster_spec.mmd`
+- HTML multiline edge labels: `fixtures/flowchart/upstream_flowchart_v2_stage2_html_multiline_edge_label_spec.mmd`
+- isolated cluster with multiple labeled edges: `fixtures/flowchart/upstream_flowchart_v2_stage2_isolated_cluster_with_multiple_labeled_edges_contains_all_labels_spec.mmd`
+- subgraph `direction` ignored when external edges exist: `fixtures/flowchart/upstream_flowchart_v2_stage2_subgraph_dir_ignored_when_has_external_edges_spec.mmd`
+- long-word title wrapping in SVG-like mode: `fixtures/flowchart/upstream_flowchart_v2_stage2_subgraph_title_wraps_long_word_svglike_spec.mmd`
+
+## SVG DOM parity notes (Flowchart v2)
+
+These are upstream Mermaid `@11.12.2` behaviors worth calling out explicitly because they are
+counter-intuitive and easy to break while refactoring:
+
+- `htmlLabels` toggles:
+  - node/subgraph labels follow the global `htmlLabels` toggle
+  - edge labels follow `flowchart.htmlLabels` (falling back to the global toggle when unset)
+- SVG-like labels (`htmlLabels: false`) render via `createText(..., useHtmlLabels=false)`:
+  - text is split into word-level inner `<tspan class="text-inner-tspan">` runs, where non-first
+    runs include a leading space (e.g. `"Get money"` becomes `"Get"` + `" money"`)
+  - escaped HTML tag wrappers are tokenized into 3 runs even though they are still escaped (e.g.
+    `"<strong>Haiya</strong>"` becomes `"<strong>"` + `" Haiya"` + `" </strong>"`)
+  - edge labels with empty text still leave behind a bare `<g><rect class="background" style="stroke: none"/></g>`
+    under `.edgeLabels` (one per empty label), due to the upstream `createText` return value
+    being the `<text>` element while the wrapper `<g>` remains in the DOM
+    - see: `fixtures/flowchart/upstream_flowchart_v2_subgraph_title_margins_lr_htmlLabels_false_spec.mmd`
+    - see: `fixtures/flowchart/upstream_flowchart_v2_stadium_shape_spec.mmd` (one unlabeled edge)
+- Sanitized `javascript:` click links in strict mode become `about:blank`, but the upstream SVG
+  `<a>` wrapper carries no `xlink:href` attribute:
+  - see: `fixtures/flowchart/upstream_linkstyle_and_click.mmd`
 
 ## Deferred / intentionally not snapshotted
 

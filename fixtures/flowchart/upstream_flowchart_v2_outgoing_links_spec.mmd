@@ -1,0 +1,16 @@
+---
+title: Flowchart v2 outgoing links (flowchart-v2.spec.js 54)
+config:
+  htmlLabels: true
+  securityLevel: loose
+  flowchart:
+    htmlLabels: true
+---
+flowchart TD
+  subgraph main
+    subgraph subcontainer
+      subcontainer-child
+    end
+    subcontainer-child-->subcontainer-sibling
+  end
+
