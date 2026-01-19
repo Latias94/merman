@@ -11476,8 +11476,15 @@ fn render_flowchart_cluster(
 
     if !ctx.html_labels {
         let title_text = flowchart_label_plain_text(&cluster.title, label_type);
-        let cx = left + pad + rect_w / 2.0;
-        let cy = top + pad + label_h / 2.0;
+        let title_lines = crate::text::wrap_text_lines_px(
+            &title_text,
+            &ctx.text_style,
+            Some(200.0),
+            crate::text::WrapMode::SvgLike,
+        );
+        let wrapped_title_text = title_lines.join("\n");
+        let label_left = left + label_x;
+        let label_top = top + pad + cluster.title_margin_top.max(0.0);
         let _ = write!(
             out,
             r#"<g class="cluster" id="{}" data-look="classic"><rect style="" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><g><rect class="background" style="stroke: none"/>"#,
@@ -11486,10 +11493,10 @@ fn render_flowchart_cluster(
             fmt(top + pad),
             fmt(rect_w),
             fmt(rect_h),
-            fmt(cx),
-            fmt(cy)
+            fmt(label_left),
+            fmt(label_top)
         );
-        write_flowchart_svg_text(out, &title_text, true);
+        write_flowchart_svg_text(out, &wrapped_title_text, true);
         out.push_str("</g></g></g>");
         return;
     }
@@ -12940,7 +12947,19 @@ fn write_flowchart_svg_text(out: &mut String, text: &str, include_style: bool) {
         if idx == 0 {
             out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em">"#);
         } else {
-            out.push_str(r#"<tspan class="text-outer-tspan" x="0" dy="1.1em">"#);
+            // Mermaid sets an absolute `y` for each subsequent line, then uses `dy="1.1em"` as
+            // the line-height increment. This yields `y="1em"` for the 2nd line and `y="2.1em"`
+            // for the 3rd line, etc.
+            let y_em = if idx == 1 {
+                "1em".to_string()
+            } else {
+                format!("{:.1}em", 1.0 + (idx as f64 - 1.0) * 1.1)
+            };
+            let _ = write!(
+                out,
+                r#"<tspan class="text-outer-tspan" x="0" y="{}" dy="1.1em">"#,
+                y_em
+            );
         }
         out.push_str(
             r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal">"#,

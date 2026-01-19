@@ -1,0 +1,14 @@
+flowchart TB
+
+subgraph OUTER["Outer"]
+  subgraph LEFT["Left"]
+    A["A"] --> B["B"]
+  end
+
+  subgraph RIGHT["Right"]
+    C["C"] --> D["D"]
+  end
+
+  B -->|cross label| C
+end
+

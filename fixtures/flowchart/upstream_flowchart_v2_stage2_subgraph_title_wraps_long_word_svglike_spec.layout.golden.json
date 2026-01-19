@@ -1,0 +1,93 @@
+{
+  "diagramType": "flowchart-v2",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "A",
+          "x": -0.2,
+          "y": 43.2,
+          "width": 97.12,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "B",
+          "x": 146.92,
+          "y": 43.2,
+          "width": 97.12,
+          "height": 47.6,
+          "is_cluster": false
+        },
+        {
+          "id": "wrap",
+          "x": 73.36,
+          "y": 43.2,
+          "width": 260.24,
+          "height": 86.4,
+          "is_cluster": true
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_A_B_0",
+          "from": "A",
+          "to": "B",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 48.36,
+              "y": 43.2
+            },
+            {
+              "x": 73.36,
+              "y": 43.2
+            },
+            {
+              "x": 98.36,
+              "y": 43.2
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "wrap",
+          "x": 73.36,
+          "y": 43.2,
+          "width": 260.24,
+          "height": 86.4,
+          "diff": -15.0,
+          "offset_y": 62.9,
+          "title": "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
+          "title_label": {
+            "x": 73.36,
+            "y": 35.2,
+            "width": 130.72,
+            "height": 70.4
+          },
+          "requested_dir": null,
+          "effective_dir": "LR",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": -56.76,
+        "min_y": 0.0,
+        "max_x": 203.48,
+        "max_y": 86.4
+      }
+    }
+  }
+}
