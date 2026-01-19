@@ -5,6 +5,7 @@ pub mod class;
 pub mod er;
 pub mod flowchart;
 pub mod gantt;
+mod generated;
 pub mod gitgraph;
 pub mod info;
 pub mod journey;

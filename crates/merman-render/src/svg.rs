@@ -5546,27 +5546,6 @@ fn c4_write_text_by_tspan(
     out.push_str("</text>");
 }
 
-fn c4_type_text_length_px_11_12_2(type_c4_shape: &str) -> Option<f64> {
-    // Mermaid C4 renders the type line as:
-    // - text: `<<${typeC4Shape}>>`
-    // - font-family: `"Open Sans", sans-serif`
-    // - font-size: `${<shape>FontSize - 2}` (default: 12)
-    // - font-style: italic
-    //
-    // The `textLength` attribute is computed using Mermaid's DOM-backed
-    // `calculateTextWidth`, which depends on browser font metrics. For reproducible
-    // SVG DOM parity with the pinned Mermaid CLI baselines (11.12.2), we vendor the
-    // observed `textLength` values for the built-in C4 shape types.
-    match type_c4_shape {
-        "person" => Some(50.0),
-        "system" => Some(52.0),
-        "container" => Some(63.0),
-        "component" => Some(73.0),
-        "component_db" => Some(93.0),
-        _ => None,
-    }
-}
-
 pub fn render_c4_diagram_svg(
     layout: &crate::model::C4DiagramLayout,
     semantic: &serde_json::Value,
@@ -5865,7 +5844,10 @@ pub fn render_c4_diagram_svg(
 
         let type_family = c4_config_font_family(effective_config, &s.type_c4_shape);
         let type_size = c4_config_font_size(effective_config, &s.type_c4_shape, 14.0) - 2.0;
-        let type_text_length = c4_type_text_length_px_11_12_2(&s.type_c4_shape)
+        let type_text_length =
+            crate::generated::c4_type_textlength_11_12_2::c4_type_text_length_px_11_12_2(
+                &s.type_c4_shape,
+            )
             .unwrap_or_else(|| s.type_block.width.round().max(0.0));
         let _ = write!(
             &mut out,
