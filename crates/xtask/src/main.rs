@@ -772,6 +772,22 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         let fixtures_dir = workspace_root.join("fixtures").join(diagram);
         let out_dir = out_root.join(diagram);
 
+        fn sanitize_svg_id(raw: &str) -> String {
+            let mut out = String::with_capacity(raw.len());
+            for ch in raw.chars() {
+                if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                    out.push(ch);
+                } else {
+                    out.push('_');
+                }
+            }
+            if out.is_empty() {
+                "diagram".to_string()
+            } else {
+                out
+            }
+        }
+
         let mut mmd_files: Vec<PathBuf> = Vec::new();
         let Ok(entries) = fs::read_dir(&fixtures_dir) else {
             return Err(XtaskError::UpstreamSvgFailed(format!(
@@ -786,6 +802,20 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
             if !path.extension().is_some_and(|e| e == "mmd") {
                 continue;
+            }
+            if diagram == "gantt" {
+                if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+                    matches!(
+                        n,
+                        "click_loose.mmd"
+                            | "click_strict.mmd"
+                            | "dateformat_hash_comment_truncates.mmd"
+                            | "excludes_hash_comment_truncates.mmd"
+                            | "today_marker_and_axis.mmd"
+                    )
+                }) {
+                    continue;
+                }
             }
             if diagram == "state" {
                 if path
@@ -838,17 +868,27 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 continue;
             };
             let out_path = out_dir.join(format!("{stem}.svg"));
+            let svg_id = sanitize_svg_id(stem);
 
-            let status = Command::new(mmdc)
-                .arg("-i")
+            let mut cmd = Command::new(mmdc);
+            cmd.arg("-i")
                 .arg(&mmd_path)
                 .arg("-o")
                 .arg(&out_path)
                 .arg("-t")
-                .arg("default")
-                .arg("--svgId")
-                .arg(stem)
-                .status();
+                .arg("default");
+
+            // Gantt rendering depends on the page width (`parentElement.offsetWidth`). In a
+            // headless Rust context we default to the Mermaid fallback width (1200) when no DOM
+            // width is available. Use the same page width for upstream baselines so parity diffs
+            // remain meaningful.
+            if diagram == "gantt" {
+                cmd.arg("-w").arg("1200");
+            }
+
+            cmd.arg("--svgId").arg(svg_id);
+
+            let status = cmd.status();
 
             match status {
                 Ok(s) if s.success() => {}
@@ -878,6 +918,7 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             for d in [
                 "er",
                 "flowchart",
+                "gantt",
                 "state",
                 "class",
                 "sequence",
@@ -900,11 +941,11 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         }
         "er" | "flowchart" | "state" | "class" | "sequence" | "info" | "pie" | "packet"
-        | "timeline" | "journey" | "kanban" | "gitgraph" => {
+        | "timeline" | "journey" | "kanban" | "gitgraph" | "gantt" => {
             run_one(&workspace_root, &out_root, &mmdc, &diagram, filter)
         }
         other => Err(XtaskError::UpstreamSvgFailed(format!(
-            "unsupported diagram for upstream svg export: {other} (supported: er, flowchart, state, class, sequence, info, pie, packet, timeline, journey, kanban, gitgraph, all)"
+            "unsupported diagram for upstream svg export: {other} (supported: er, flowchart, gantt, state, class, sequence, info, pie, packet, timeline, journey, kanban, gitgraph, all)"
         ))),
     }
 }
@@ -997,6 +1038,20 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             if !path.extension().is_some_and(|e| e == "mmd") {
                 continue;
             }
+            if diagram == "gantt" {
+                if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+                    matches!(
+                        n,
+                        "click_loose.mmd"
+                            | "click_strict.mmd"
+                            | "dateformat_hash_comment_truncates.mmd"
+                            | "excludes_hash_comment_truncates.mmd"
+                            | "today_marker_and_axis.mmd"
+                    )
+                }) {
+                    continue;
+                }
+            }
             if diagram == "state" {
                 if path
                     .file_name()
@@ -1068,7 +1123,7 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
             let (use_dom, mode) = if check_dom {
                 (true, dom_mode)
-            } else if diagram == "state" || diagram == "gitgraph" {
+            } else if diagram == "state" || diagram == "gitgraph" || diagram == "gantt" {
                 (true, svgdom::DomMode::Structure)
             } else {
                 (false, dom_mode)
@@ -1116,6 +1171,7 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             for d in [
                 "er",
                 "flowchart",
+                "gantt",
                 "state",
                 "class",
                 "sequence",
@@ -1147,7 +1203,7 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         }
         "er" | "flowchart" | "state" | "class" | "sequence" | "info" | "pie" | "packet"
-        | "timeline" | "journey" | "kanban" | "gitgraph" => check_one(
+        | "timeline" | "journey" | "kanban" | "gitgraph" | "gantt" => check_one(
             &workspace_root,
             &baseline_root,
             &out_root,
@@ -1158,7 +1214,7 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             dom_decimals,
         ),
         other => Err(XtaskError::UpstreamSvgFailed(format!(
-            "unsupported diagram for upstream svg check: {other} (supported: er, flowchart, state, class, sequence, info, pie, packet, timeline, journey, kanban, gitgraph, all)"
+            "unsupported diagram for upstream svg check: {other} (supported: er, flowchart, gantt, state, class, sequence, info, pie, packet, timeline, journey, kanban, gitgraph, all)"
         ))),
     }
 }

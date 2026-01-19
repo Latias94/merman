@@ -110,6 +110,14 @@ Outputs to:
 
 - `fixtures/upstream-svgs/kanban/*.svg`
 
+## Generate (Gantt)
+
+- `cargo run -p xtask -- gen-upstream-svgs --diagram gantt`
+
+Outputs to:
+
+- `fixtures/upstream-svgs/gantt/*.svg`
+
 ## Generate (GitGraph)
 
 - `cargo run -p xtask -- gen-upstream-svgs --diagram gitgraph`
@@ -137,6 +145,9 @@ Notes:
   ignores `<path d>` / `data-points` payloads and normalizes generated ids.
 - `gitGraph` diagrams are compared using a **structure-level DOM signature** by default because the
   upstream Mermaid parser auto-generates commit ids with random suffixes (not byte-stable).
+- `gantt` diagrams are compared using a **structure-level DOM signature** by default because output
+  can depend on the rendering environment (page width via `parentElement.offsetWidth`) and may
+  include a `today` marker whose x-position depends on the current date.
 - To force DOM comparison for all diagrams (useful when iterating on tooling):
   - `cargo run -p xtask -- check-upstream-svgs --diagram all --check-dom --dom-mode structure --dom-decimals 3`
 
@@ -295,5 +306,8 @@ Generate a report comparing upstream gitGraph SVGs and the current Rust Stage-B 
 - `fixtures/state/upstream_state_parser_spec.mmd`: includes `__proto__`/`constructor` states; Mermaid CLI currently crashes (excluded from `gen-upstream-svgs` / `check-upstream-svgs`).
 - `fixtures/class/upstream_text_label_variants_spec.mmd`: includes a whitespace-only label (`" "`); Mermaid CLI currently fails (NaN transforms / missing SVG in render tree; excluded from `gen-upstream-svgs` / `check-upstream-svgs`).
 - `fixtures/class/upstream_parser_class_spec.mmd`: includes `__proto__`/`constructor` classes; Mermaid CLI renders but produces invalid transforms (NaN) and duplicated root groups (excluded from `compare-class-svgs`).
+- `fixtures/gantt/today_marker_and_axis.mmd`: Mermaid CLI crashes while parsing `topAxis` (`yy.TopAxis is not a function`) (excluded from `gen-upstream-svgs` / `check-upstream-svgs`).
+- `fixtures/gantt/click_loose.mmd` / `fixtures/gantt/click_strict.mmd`: contain non-canonical `click ... href "<url>" "<extra>"` syntax that Mermaid CLI rejects (excluded from `gen-upstream-svgs` / `check-upstream-svgs`).
+- `fixtures/gantt/dateformat_hash_comment_truncates.mmd` / `fixtures/gantt/excludes_hash_comment_truncates.mmd`: rely on `#` inline comment truncation that Mermaid CLI rejects (excluded from `gen-upstream-svgs` / `check-upstream-svgs`).
 
 These exclusions keep baseline verification and compare reports actionable for the rest of the suite.
