@@ -836,6 +836,28 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                     continue;
                 }
             }
+            if diagram == "c4" {
+                // Mermaid C4 has known render-time type assumptions that make some valid parser
+                // fixtures non-renderable (e.g. kv-objects stored in `label.text` or
+                // `UpdateElementStyle(..., techn="Rust")` storing `techn` as a raw string).
+                //
+                // Keep these fixtures for parser parity, but skip them for upstream SVG baselines.
+                if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+                    matches!(
+                        n,
+                        "nesting_updates.mmd"
+                            | "upstream_boundary_spec.mmd"
+                            | "upstream_c4container_header_and_direction_spec.mmd"
+                            | "upstream_container_spec.mmd"
+                            | "upstream_person_ext_spec.mmd"
+                            | "upstream_person_spec.mmd"
+                            | "upstream_system_spec.mmd"
+                            | "upstream_update_element_style_all_fields_spec.mmd"
+                    )
+                }) {
+                    continue;
+                }
+            }
             if let Some(f) = filter {
                 if !path
                     .file_name()
@@ -930,6 +952,7 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 "journey",
                 "kanban",
                 "gitgraph",
+                "c4",
             ] {
                 if let Err(err) = run_one(&workspace_root, &out_root, &mmdc, d, filter) {
                     failures.push(format!("{d}: {err}"));
@@ -942,11 +965,11 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         }
         "er" | "flowchart" | "state" | "class" | "sequence" | "info" | "pie" | "packet"
-        | "timeline" | "journey" | "kanban" | "gitgraph" | "gantt" => {
+        | "timeline" | "journey" | "kanban" | "gitgraph" | "gantt" | "c4" => {
             run_one(&workspace_root, &out_root, &mmdc, &diagram, filter)
         }
         other => Err(XtaskError::UpstreamSvgFailed(format!(
-            "unsupported diagram for upstream svg export: {other} (supported: er, flowchart, gantt, state, class, sequence, info, pie, packet, timeline, journey, kanban, gitgraph, all)"
+            "unsupported diagram for upstream svg export: {other} (supported: er, flowchart, gantt, state, class, sequence, info, pie, packet, timeline, journey, kanban, gitgraph, c4, all)"
         ))),
     }
 }
@@ -1071,6 +1094,23 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                     continue;
                 }
             }
+            if diagram == "c4" {
+                if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+                    matches!(
+                        n,
+                        "nesting_updates.mmd"
+                            | "upstream_boundary_spec.mmd"
+                            | "upstream_c4container_header_and_direction_spec.mmd"
+                            | "upstream_container_spec.mmd"
+                            | "upstream_person_ext_spec.mmd"
+                            | "upstream_person_spec.mmd"
+                            | "upstream_system_spec.mmd"
+                            | "upstream_update_element_style_all_fields_spec.mmd"
+                    )
+                }) {
+                    continue;
+                }
+            }
             if let Some(f) = filter {
                 if !path
                     .file_name()
@@ -1183,6 +1223,7 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 "journey",
                 "kanban",
                 "gitgraph",
+                "c4",
             ] {
                 if let Err(err) = check_one(
                     &workspace_root,
@@ -1204,7 +1245,7 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         }
         "er" | "flowchart" | "state" | "class" | "sequence" | "info" | "pie" | "packet"
-        | "timeline" | "journey" | "kanban" | "gitgraph" | "gantt" => check_one(
+        | "timeline" | "journey" | "kanban" | "gitgraph" | "gantt" | "c4" => check_one(
             &workspace_root,
             &baseline_root,
             &out_root,
@@ -1215,7 +1256,7 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             dom_decimals,
         ),
         other => Err(XtaskError::UpstreamSvgFailed(format!(
-            "unsupported diagram for upstream svg check: {other} (supported: er, flowchart, gantt, state, class, sequence, info, pie, packet, timeline, journey, kanban, gitgraph, all)"
+            "unsupported diagram for upstream svg check: {other} (supported: er, flowchart, gantt, state, class, sequence, info, pie, packet, timeline, journey, kanban, gitgraph, c4, all)"
         ))),
     }
 }

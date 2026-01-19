@@ -126,6 +126,21 @@ Outputs to:
 
 - `fixtures/upstream-svgs/gitgraph/*.svg`
 
+## Generate (C4)
+
+- `cargo run -p xtask -- gen-upstream-svgs --diagram c4`
+
+Outputs to:
+
+- `fixtures/upstream-svgs/c4/*.svg`
+
+Notes:
+
+- Mermaid C4 has known render-time type assumptions that make some valid parser fixtures
+  non-renderable (e.g. kv-objects stored in `label.text`, or `UpdateElementStyle(..., techn="Rust")`
+  storing `techn` as a raw string).
+- `xtask gen-upstream-svgs --diagram c4` skips such fixtures when generating baselines.
+
 ## Generate (All supported diagrams)
 
 - `cargo run -p xtask -- gen-upstream-svgs --diagram all`
