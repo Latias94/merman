@@ -141,6 +141,28 @@ Notes:
   storing `techn` as a raw string).
 - `xtask gen-upstream-svgs --diagram c4` skips such fixtures when generating baselines.
 
+## Generate (C4 Stage B)
+
+Generate local Stage-B C4 SVG outputs (not upstream baselines):
+
+- `cargo run -p xtask -- gen-c4-svgs`
+
+Outputs to:
+
+- `target/svgs/c4/*.svg`
+
+## Compare (C4)
+
+Generate a report comparing upstream C4 SVGs and the current Rust Stage-B C4 output:
+
+- `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode structure --dom-decimals 3`
+
+Notes:
+
+- C4 currently defaults `compare-c4-svgs` to `--dom-mode structure` while the renderer is still
+  iterating on SVG defs parity; switch to `--dom-mode parity` once the C4 icon defs are fully
+  vendor-matched.
+
 ## Generate (All supported diagrams)
 
 - `cargo run -p xtask -- gen-upstream-svgs --diagram all`
