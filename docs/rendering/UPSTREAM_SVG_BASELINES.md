@@ -155,13 +155,14 @@ Outputs to:
 
 Generate a report comparing upstream C4 SVGs and the current Rust Stage-B C4 output:
 
-- `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode structure --dom-decimals 3`
+- `cargo run -p xtask -- compare-c4-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 Notes:
 
-- C4 currently defaults `compare-c4-svgs` to `--dom-mode structure`. `--dom-mode parity` still
-  fails because Mermaid emits `textLength` values derived from browser font metrics
-  (`calculateTextWidth`), while `merman` uses a headless approximator.
+- Mermaid derives C4 type-line `textLength` values from browser font metrics
+  (`calculateTextWidth` + `getBBox`). To make DOM parity reproducible in a headless Rust context,
+  `merman-render` currently vendors the observed `textLength` values for built-in C4 shape types
+  at Mermaid `11.12.2` (see `c4_type_text_length_px_11_12_2` in `crates/merman-render/src/svg.rs`).
 
 ## Generate (All supported diagrams)
 
