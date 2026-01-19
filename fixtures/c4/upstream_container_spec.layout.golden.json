@@ -1,0 +1,412 @@
+{
+  "diagramType": "c4",
+  "layout": {
+    "C4Diagram": {
+      "bounds": {
+        "min_x": 50.0,
+        "min_y": 10.0,
+        "max_x": 782.0,
+        "max_y": 1151.6
+      },
+      "width": 832.0,
+      "height": 1161.6,
+      "viewport_width": 800.0,
+      "viewport_height": 600.0,
+      "c4_type": "C4Context",
+      "title": "Container diagram for Internet Banking Container",
+      "boundaries": [
+        {
+          "alias": "global",
+          "parent_boundary": "",
+          "x": 100.0,
+          "y": 66.0,
+          "width": 632.0,
+          "height": 1035.6,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "text": "global",
+            "y": 8.0,
+            "width": 36.48,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": {
+            "text": "[global]",
+            "y": 30.6,
+            "width": 41.16,
+            "height": 15.4,
+            "line_count": 1.0
+          },
+          "descr": null
+        }
+      ],
+      "shapes": [
+        {
+          "alias": "ContainerAA",
+          "parent_boundary": "global",
+          "type_c4_shape": "container",
+          "x": 150.0,
+          "y": 166.0,
+          "width": 518.26,
+          "height": 106.4,
+          "margin": 50.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "type_block": {
+            "text": "«container»",
+            "y": 20.0,
+            "width": 59.04,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "Internet Banking Container",
+            "y": 38.0,
+            "width": 176.16,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": {
+            "text": "[Technology]",
+            "y": 60.6,
+            "width": 71.4,
+            "height": 15.4,
+            "line_count": 1.0
+          },
+          "descr": {
+            "text": "Allows customers to view information about their bank accounts, and make payments.",
+            "y": 96.0,
+            "width": 498.26,
+            "height": 15.4,
+            "line_count": 1.0
+          }
+        },
+        {
+          "alias": "ContainerDbA",
+          "parent_boundary": "global",
+          "type_c4_shape": "container_db",
+          "x": 150.0,
+          "y": 372.4,
+          "width": 216.0,
+          "height": 106.4,
+          "margin": 50.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "type_block": {
+            "text": "«container_db»",
+            "y": 20.0,
+            "width": 73.32,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "Container DB",
+            "y": 38.0,
+            "width": 86.72,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": {
+            "text": "[Postgres]",
+            "y": 60.6,
+            "width": 59.78,
+            "height": 15.4,
+            "line_count": 1.0
+          },
+          "descr": {
+            "text": "Database container",
+            "y": 96.0,
+            "width": 107.24,
+            "height": 15.4,
+            "line_count": 1.0
+          }
+        },
+        {
+          "alias": "ContainerQueueA",
+          "parent_boundary": "global",
+          "type_c4_shape": "container_queue",
+          "x": 466.0,
+          "y": 372.4,
+          "width": 216.0,
+          "height": 106.4,
+          "margin": 50.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "type_block": {
+            "text": "«container_queue»",
+            "y": 20.0,
+            "width": 88.8,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "Container Queue",
+            "y": 38.0,
+            "width": 104.64,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": {
+            "text": "[RabbitMQ]",
+            "y": 60.6,
+            "width": 62.44,
+            "height": 15.4,
+            "line_count": 1.0
+          },
+          "descr": {
+            "text": "Queue container",
+            "y": 96.0,
+            "width": 89.18,
+            "height": 15.4,
+            "line_count": 1.0
+          }
+        },
+        {
+          "alias": "ContainerExtA",
+          "parent_boundary": "global",
+          "type_c4_shape": "external_container",
+          "x": 150.0,
+          "y": 578.8,
+          "width": 216.0,
+          "height": 106.4,
+          "margin": 50.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "type_block": {
+            "text": "«external_container»",
+            "y": 20.0,
+            "width": 102.48,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "External Container",
+            "y": 38.0,
+            "width": 122.88,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": {
+            "text": "[Tech]",
+            "y": 60.6,
+            "width": 35.7,
+            "height": 15.4,
+            "line_count": 1.0
+          },
+          "descr": {
+            "text": "External container",
+            "y": 96.0,
+            "width": 105.14,
+            "height": 15.4,
+            "line_count": 1.0
+          }
+        },
+        {
+          "alias": "ContainerDbExtA",
+          "parent_boundary": "global",
+          "type_c4_shape": "external_container_db",
+          "x": 466.0,
+          "y": 578.8,
+          "width": 216.0,
+          "height": 106.4,
+          "margin": 50.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "type_block": {
+            "text": "«external_container_db»",
+            "y": 20.0,
+            "width": 116.76,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "External Container DB",
+            "y": 38.0,
+            "width": 147.36,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": {
+            "text": "[Tech]",
+            "y": 60.6,
+            "width": 35.7,
+            "height": 15.4,
+            "line_count": 1.0
+          },
+          "descr": {
+            "text": "External database container",
+            "y": 96.0,
+            "width": 157.92,
+            "height": 15.4,
+            "line_count": 1.0
+          }
+        },
+        {
+          "alias": "ContainerQueueExtA",
+          "parent_boundary": "global",
+          "type_c4_shape": "external_container_queue",
+          "x": 150.0,
+          "y": 785.2,
+          "width": 216.0,
+          "height": 106.4,
+          "margin": 50.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "type_block": {
+            "text": "«external_container_queue»",
+            "y": 20.0,
+            "width": 132.24,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "External Container Queue",
+            "y": 38.0,
+            "width": 165.28,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": {
+            "text": "[Tech]",
+            "y": 60.6,
+            "width": 35.7,
+            "height": 15.4,
+            "line_count": 1.0
+          },
+          "descr": {
+            "text": "External queue container",
+            "y": 96.0,
+            "width": 139.86,
+            "height": 15.4,
+            "line_count": 1.0
+          }
+        },
+        {
+          "alias": "ContainerSprite",
+          "parent_boundary": "global",
+          "type_c4_shape": "container",
+          "x": 466.0,
+          "y": 785.2,
+          "width": 216.0,
+          "height": 60.0,
+          "margin": 50.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "type_block": {
+            "text": "«container»",
+            "y": 20.0,
+            "width": 59.04,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "",
+            "y": 38.0,
+            "width": 0.0,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": null
+        },
+        {
+          "alias": "ContainerLink",
+          "parent_boundary": "global",
+          "type_c4_shape": "container",
+          "x": 150.0,
+          "y": 991.6,
+          "width": 216.0,
+          "height": 60.0,
+          "margin": 50.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "type_block": {
+            "text": "«container»",
+            "y": 20.0,
+            "width": 59.04,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "",
+            "y": 38.0,
+            "width": 0.0,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": null
+        },
+        {
+          "alias": "ContainerTags",
+          "parent_boundary": "global",
+          "type_c4_shape": "container",
+          "x": 466.0,
+          "y": 991.6,
+          "width": 216.0,
+          "height": 60.0,
+          "margin": 50.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "type_block": {
+            "text": "«container»",
+            "y": 20.0,
+            "width": 59.04,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "",
+            "y": 38.0,
+            "width": 0.0,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": null
+        }
+      ],
+      "rels": []
+    }
+  }
+}

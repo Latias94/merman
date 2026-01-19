@@ -44,7 +44,8 @@ Legend:
 | Kanban | yes | yes | Stage B | yes | yes (`xtask compare-kanban-svgs`) |
 | GitGraph | yes | yes | Stage B | yes | yes (`xtask compare-gitgraph-svgs`) |
 | Gantt | yes | yes | Stage B | yes | yes (`xtask compare-gantt-svgs`) |
-| Others (c4, …) | yes | no | no | no | no |
+| C4 | yes | yes | no | no | no |
+| Others (… ) | yes | no | no | no | no |
 
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
 the dashed separators now use the exact same x-coordinates as the frame edges to match upstream SVG and

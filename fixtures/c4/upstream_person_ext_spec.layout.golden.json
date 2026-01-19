@@ -1,0 +1,186 @@
+{
+  "diagramType": "c4",
+  "layout": {
+    "C4Diagram": {
+      "bounds": {
+        "min_x": 50.0,
+        "min_y": 10.0,
+        "max_x": 894.98,
+        "max_y": 603.6
+      },
+      "width": 944.98,
+      "height": 613.6,
+      "viewport_width": 800.0,
+      "viewport_height": 600.0,
+      "c4_type": "C4Context",
+      "title": null,
+      "boundaries": [
+        {
+          "alias": "global",
+          "parent_boundary": "",
+          "x": 100.0,
+          "y": 66.0,
+          "width": 744.98,
+          "height": 487.6,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "text": "global",
+            "y": 8.0,
+            "width": 36.48,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": {
+            "text": "[global]",
+            "y": 30.6,
+            "width": 41.16,
+            "height": 15.4,
+            "line_count": 1.0
+          },
+          "descr": null
+        }
+      ],
+      "shapes": [
+        {
+          "alias": "customerA",
+          "parent_boundary": "global",
+          "type_c4_shape": "external_person",
+          "x": 150.0,
+          "y": 166.0,
+          "width": 328.98,
+          "height": 134.0,
+          "margin": 50.0,
+          "image": {
+            "width": 48.0,
+            "height": 48.0,
+            "y": 30.0
+          },
+          "type_block": {
+            "text": "«external_person»",
+            "y": 20.0,
+            "width": 88.8,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "Banking Customer A",
+            "y": 86.0,
+            "width": 133.92,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": {
+            "text": "A customer of the bank, with personal bank accounts.",
+            "y": 123.6,
+            "width": 308.98,
+            "height": 15.4,
+            "line_count": 1.0
+          }
+        },
+        {
+          "alias": "customerSprite",
+          "parent_boundary": "global",
+          "type_c4_shape": "external_person",
+          "x": 578.98,
+          "y": 166.0,
+          "width": 216.0,
+          "height": 103.6,
+          "margin": 50.0,
+          "image": {
+            "width": 48.0,
+            "height": 48.0,
+            "y": 30.0
+          },
+          "type_block": {
+            "text": "«external_person»",
+            "y": 20.0,
+            "width": 88.8,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "",
+            "y": 86.0,
+            "width": 0.0,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": null
+        },
+        {
+          "alias": "customerLink",
+          "parent_boundary": "global",
+          "type_c4_shape": "external_person",
+          "x": 150.0,
+          "y": 400.0,
+          "width": 216.0,
+          "height": 103.6,
+          "margin": 50.0,
+          "image": {
+            "width": 48.0,
+            "height": 48.0,
+            "y": 30.0
+          },
+          "type_block": {
+            "text": "«external_person»",
+            "y": 20.0,
+            "width": 88.8,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "",
+            "y": 86.0,
+            "width": 0.0,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": null
+        },
+        {
+          "alias": "customerTags",
+          "parent_boundary": "global",
+          "type_c4_shape": "external_person",
+          "x": 466.0,
+          "y": 400.0,
+          "width": 216.0,
+          "height": 103.6,
+          "margin": 50.0,
+          "image": {
+            "width": 48.0,
+            "height": 48.0,
+            "y": 30.0
+          },
+          "type_block": {
+            "text": "«external_person»",
+            "y": 20.0,
+            "width": 88.8,
+            "height": 14.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "",
+            "y": 86.0,
+            "width": 0.0,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": null
+        }
+      ],
+      "rels": []
+    }
+  }
+}

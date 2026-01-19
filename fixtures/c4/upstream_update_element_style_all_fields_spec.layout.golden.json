@@ -1,0 +1,150 @@
+{
+  "diagramType": "c4",
+  "layout": {
+    "C4Diagram": {
+      "bounds": {
+        "min_x": 50.0,
+        "min_y": 10.0,
+        "max_x": 566.0,
+        "max_y": 806.2
+      },
+      "width": 616.0,
+      "height": 816.2,
+      "viewport_width": 800.0,
+      "viewport_height": 600.0,
+      "c4_type": "C4Context",
+      "title": "Element style updates",
+      "boundaries": [
+        {
+          "alias": "global",
+          "parent_boundary": "",
+          "x": 100.0,
+          "y": 66.0,
+          "width": 416.0,
+          "height": 690.2,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "text": "global",
+            "y": 8.0,
+            "width": 36.48,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": {
+            "text": "[global]",
+            "y": 30.6,
+            "width": 41.16,
+            "height": 15.4,
+            "line_count": 1.0
+          },
+          "descr": null
+        },
+        {
+          "alias": "b1",
+          "parent_boundary": "global",
+          "x": 150.0,
+          "y": 496.2,
+          "width": 316.0,
+          "height": 210.0,
+          "image": {
+            "width": 48.0,
+            "height": 48.0,
+            "y": 0.0
+          },
+          "label": {
+            "text": "B1",
+            "y": 56.0,
+            "width": 18.56,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": {
+            "text": "[system]",
+            "y": 78.6,
+            "width": 51.94,
+            "height": 15.4,
+            "line_count": 1.0
+          },
+          "descr": null
+        }
+      ],
+      "shapes": [
+        {
+          "alias": "p1",
+          "parent_boundary": "global",
+          "type_c4_shape": "person",
+          "x": 150.0,
+          "y": 166.0,
+          "width": 216.0,
+          "height": 176.2,
+          "margin": 50.0,
+          "image": {
+            "width": 48.0,
+            "height": 48.0,
+            "y": 80.0
+          },
+          "type_block": {
+            "text": "«person»",
+            "y": 20.0,
+            "width": 52.92,
+            "height": 16.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "P1",
+            "y": 136.0,
+            "width": 20.88,
+            "height": 19.8,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": {
+            "text": "[Rust]",
+            "y": 160.8,
+            "width": 35.7,
+            "height": 15.4,
+            "line_count": 1.0
+          },
+          "descr": null
+        },
+        {
+          "alias": "s1",
+          "parent_boundary": "b1",
+          "type_c4_shape": "system",
+          "x": 200.0,
+          "y": 596.2,
+          "width": 216.0,
+          "height": 60.0,
+          "margin": 50.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "type_block": {
+            "text": "«system»",
+            "y": 20.0,
+            "width": 59.5,
+            "height": 16.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "S1",
+            "y": 40.0,
+            "width": 20.88,
+            "height": 19.8,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": null
+        }
+      ],
+      "rels": []
+    }
+  }
+}

@@ -1,0 +1,292 @@
+{
+  "diagramType": "c4",
+  "layout": {
+    "C4Diagram": {
+      "bounds": {
+        "min_x": 50.0,
+        "min_y": 10.0,
+        "max_x": 932.0,
+        "max_y": 748.0
+      },
+      "width": 982.0,
+      "height": 758.0,
+      "viewport_width": 800.0,
+      "viewport_height": 600.0,
+      "c4_type": "C4Context",
+      "title": "System Context diagram for Internet Banking System",
+      "boundaries": [
+        {
+          "alias": "global",
+          "parent_boundary": "",
+          "x": 100.0,
+          "y": 66.0,
+          "width": 782.0,
+          "height": 632.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "text": "global",
+            "y": 8.0,
+            "width": 36.48,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": {
+            "text": "[global]",
+            "y": 30.6,
+            "width": 41.16,
+            "height": 15.4,
+            "line_count": 1.0
+          },
+          "descr": null
+        },
+        {
+          "alias": "b1",
+          "parent_boundary": "global",
+          "x": 150.0,
+          "y": 122.0,
+          "width": 316.0,
+          "height": 210.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "text": "BankBoundary",
+            "y": 8.0,
+            "width": 91.84,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": {
+            "text": "[system]",
+            "y": 30.6,
+            "width": 51.94,
+            "height": 15.4,
+            "line_count": 1.0
+          },
+          "descr": null
+        },
+        {
+          "alias": "bType",
+          "parent_boundary": "global",
+          "x": 516.0,
+          "y": 122.0,
+          "width": 316.0,
+          "height": 210.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "text": "",
+            "y": 8.0,
+            "width": 0.0,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": {
+            "text": "[company]",
+            "y": 30.6,
+            "width": 57.96,
+            "height": 15.4,
+            "line_count": 1.0
+          },
+          "descr": null
+        },
+        {
+          "alias": "bLink",
+          "parent_boundary": "global",
+          "x": 150.0,
+          "y": 438.0,
+          "width": 316.0,
+          "height": 210.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "text": "",
+            "y": 8.0,
+            "width": 0.0,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": {
+            "text": "[system]",
+            "y": 30.6,
+            "width": 51.94,
+            "height": 15.4,
+            "line_count": 1.0
+          },
+          "descr": null
+        },
+        {
+          "alias": "bTags",
+          "parent_boundary": "global",
+          "x": 516.0,
+          "y": 438.0,
+          "width": 316.0,
+          "height": 210.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "text": "",
+            "y": 8.0,
+            "width": 0.0,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": {
+            "text": "[system]",
+            "y": 30.6,
+            "width": 51.94,
+            "height": 15.4,
+            "line_count": 1.0
+          },
+          "descr": null
+        }
+      ],
+      "shapes": [
+        {
+          "alias": "SystemAA",
+          "parent_boundary": "b1",
+          "type_c4_shape": "system",
+          "x": 200.0,
+          "y": 222.0,
+          "width": 216.0,
+          "height": 60.0,
+          "margin": 50.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "type_block": {
+            "text": "«system»",
+            "y": 20.0,
+            "width": 59.5,
+            "height": 16.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "Internet Banking System",
+            "y": 40.0,
+            "width": 186.12,
+            "height": 19.8,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": null
+        },
+        {
+          "alias": "s1",
+          "parent_boundary": "bType",
+          "type_c4_shape": "system",
+          "x": 566.0,
+          "y": 222.0,
+          "width": 216.0,
+          "height": 60.0,
+          "margin": 50.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "type_block": {
+            "text": "«system»",
+            "y": 20.0,
+            "width": 59.5,
+            "height": 16.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "S1",
+            "y": 40.0,
+            "width": 20.88,
+            "height": 19.8,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": null
+        },
+        {
+          "alias": "s2",
+          "parent_boundary": "bLink",
+          "type_c4_shape": "system",
+          "x": 200.0,
+          "y": 538.0,
+          "width": 216.0,
+          "height": 60.0,
+          "margin": 50.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "type_block": {
+            "text": "«system»",
+            "y": 20.0,
+            "width": 59.5,
+            "height": 16.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "S2",
+            "y": 40.0,
+            "width": 20.88,
+            "height": 19.8,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": null
+        },
+        {
+          "alias": "s3",
+          "parent_boundary": "bTags",
+          "type_c4_shape": "system",
+          "x": 566.0,
+          "y": 538.0,
+          "width": 216.0,
+          "height": 60.0,
+          "margin": 50.0,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "type_block": {
+            "text": "«system»",
+            "y": 20.0,
+            "width": 59.5,
+            "height": 16.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "S3",
+            "y": 40.0,
+            "width": 20.88,
+            "height": 19.8,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": null
+        }
+      ],
+      "rels": []
+    }
+  }
+}

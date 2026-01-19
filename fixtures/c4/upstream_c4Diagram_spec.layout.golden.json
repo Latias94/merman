@@ -1,0 +1,128 @@
+{
+  "diagramType": "c4",
+  "layout": {
+    "C4Diagram": {
+      "bounds": {
+        "min_x": 50.0,
+        "min_y": 10.0,
+        "max_x": 782.0,
+        "max_y": 406.4
+      },
+      "width": 832.0,
+      "height": 416.4,
+      "viewport_width": 800.0,
+      "viewport_height": 600.0,
+      "c4_type": "C4Context",
+      "title": "title",
+      "boundaries": [
+        {
+          "alias": "global",
+          "parent_boundary": "",
+          "x": 100.0,
+          "y": 66.0,
+          "width": 632.0,
+          "height": 290.4,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "text": "global",
+            "y": 8.0,
+            "width": 36.48,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": {
+            "text": "[global]",
+            "y": 30.6,
+            "width": 41.16,
+            "height": 15.4,
+            "line_count": 1.0
+          },
+          "descr": null
+        }
+      ],
+      "shapes": [
+        {
+          "alias": "Person",
+          "parent_boundary": "global",
+          "type_c4_shape": "person",
+          "x": 150.0,
+          "y": 166.0,
+          "width": 216.0,
+          "height": 140.4,
+          "margin": 50.0,
+          "image": {
+            "width": 48.0,
+            "height": 48.0,
+            "y": 32.0
+          },
+          "type_block": {
+            "text": "«person»",
+            "y": 20.0,
+            "width": 52.92,
+            "height": 16.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "Person",
+            "y": 88.0,
+            "width": 49.5,
+            "height": 19.8,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": {
+            "text": "Person",
+            "y": 127.8,
+            "width": 44.0,
+            "height": 17.6,
+            "line_count": 1.0
+          }
+        },
+        {
+          "alias": "default",
+          "parent_boundary": "global",
+          "type_c4_shape": "person",
+          "x": 466.0,
+          "y": 166.0,
+          "width": 216.0,
+          "height": 140.4,
+          "margin": 50.0,
+          "image": {
+            "width": 48.0,
+            "height": 48.0,
+            "y": 32.0
+          },
+          "type_block": {
+            "text": "«person»",
+            "y": 20.0,
+            "width": 52.92,
+            "height": 16.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "default",
+            "y": 88.0,
+            "width": 51.48,
+            "height": 19.8,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": {
+            "text": "default",
+            "y": 127.8,
+            "width": 45.76,
+            "height": 17.6,
+            "line_count": 1.0
+          }
+        }
+      ],
+      "rels": []
+    }
+  }
+}

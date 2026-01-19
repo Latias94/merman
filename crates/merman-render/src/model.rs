@@ -604,6 +604,91 @@ pub struct GanttDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct C4TextBlockLayout {
+    pub text: String,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub line_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct C4ImageLayout {
+    pub width: f64,
+    pub height: f64,
+    pub y: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct C4ShapeLayout {
+    pub alias: String,
+    pub parent_boundary: String,
+    pub type_c4_shape: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub margin: f64,
+    pub image: C4ImageLayout,
+    pub type_block: C4TextBlockLayout,
+    pub label: C4TextBlockLayout,
+    #[serde(default)]
+    pub ty: Option<C4TextBlockLayout>,
+    #[serde(default)]
+    pub techn: Option<C4TextBlockLayout>,
+    #[serde(default)]
+    pub descr: Option<C4TextBlockLayout>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct C4BoundaryLayout {
+    pub alias: String,
+    pub parent_boundary: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub image: C4ImageLayout,
+    pub label: C4TextBlockLayout,
+    #[serde(default)]
+    pub ty: Option<C4TextBlockLayout>,
+    #[serde(default)]
+    pub descr: Option<C4TextBlockLayout>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct C4RelLayout {
+    pub from: String,
+    pub to: String,
+    pub rel_type: String,
+    pub start_point: LayoutPoint,
+    pub end_point: LayoutPoint,
+    #[serde(default)]
+    pub offset_x: Option<i64>,
+    #[serde(default)]
+    pub offset_y: Option<i64>,
+    pub label: C4TextBlockLayout,
+    #[serde(default)]
+    pub techn: Option<C4TextBlockLayout>,
+    #[serde(default)]
+    pub descr: Option<C4TextBlockLayout>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct C4DiagramLayout {
+    pub bounds: Option<Bounds>,
+    pub width: f64,
+    pub height: f64,
+    pub viewport_width: f64,
+    pub viewport_height: f64,
+    pub c4_type: String,
+    pub title: Option<String>,
+    pub boundaries: Vec<C4BoundaryLayout>,
+    pub shapes: Vec<C4ShapeLayout>,
+    pub rels: Vec<C4RelLayout>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LayoutDiagram {
     FlowchartV2(FlowchartV2Layout),
     StateDiagramV2(StateDiagramV2Layout),
@@ -618,6 +703,7 @@ pub enum LayoutDiagram {
     KanbanDiagram(KanbanDiagramLayout),
     GitGraphDiagram(GitGraphDiagramLayout),
     GanttDiagram(GanttDiagramLayout),
+    C4Diagram(C4DiagramLayout),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

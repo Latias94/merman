@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod c4;
 pub mod class;
 pub mod er;
 pub mod flowchart;
@@ -38,12 +39,16 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Clone)]
 pub struct LayoutOptions {
     pub text_measurer: Arc<dyn TextMeasurer + Send + Sync>,
+    pub viewport_width: f64,
+    pub viewport_height: f64,
 }
 
 impl Default for LayoutOptions {
     fn default() -> Self {
         Self {
             text_measurer: Arc::new(DeterministicTextMeasurer::default()),
+            viewport_width: 800.0,
+            viewport_height: 600.0,
         }
     }
 }
@@ -97,6 +102,13 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
             &parsed.model,
             &meta.effective_config,
             options.text_measurer.as_ref(),
+        )?),
+        "c4" => LayoutDiagram::C4Diagram(c4::layout_c4_diagram(
+            &parsed.model,
+            &meta.effective_config,
+            options.text_measurer.as_ref(),
+            options.viewport_width,
+            options.viewport_height,
         )?),
         "journey" => LayoutDiagram::JourneyDiagram(journey::layout_journey_diagram(
             &parsed.model,

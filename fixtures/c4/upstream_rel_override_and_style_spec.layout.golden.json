@@ -1,0 +1,153 @@
+{
+  "diagramType": "c4",
+  "layout": {
+    "C4Diagram": {
+      "bounds": {
+        "min_x": 50.0,
+        "min_y": 10.0,
+        "max_x": 782.0,
+        "max_y": 373.8
+      },
+      "width": 832.0,
+      "height": 383.8,
+      "viewport_width": 800.0,
+      "viewport_height": 600.0,
+      "c4_type": "C4Context",
+      "title": "Relationship override and style",
+      "boundaries": [
+        {
+          "alias": "global",
+          "parent_boundary": "",
+          "x": 100.0,
+          "y": 66.0,
+          "width": 632.0,
+          "height": 257.8,
+          "image": {
+            "width": 0.0,
+            "height": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "text": "global",
+            "y": 8.0,
+            "width": 36.48,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "ty": {
+            "text": "[global]",
+            "y": 30.6,
+            "width": 41.16,
+            "height": 15.4,
+            "line_count": 1.0
+          },
+          "descr": null
+        }
+      ],
+      "shapes": [
+        {
+          "alias": "a",
+          "parent_boundary": "global",
+          "type_c4_shape": "person",
+          "x": 150.0,
+          "y": 166.0,
+          "width": 216.0,
+          "height": 107.8,
+          "margin": 50.0,
+          "image": {
+            "width": 48.0,
+            "height": 48.0,
+            "y": 32.0
+          },
+          "type_block": {
+            "text": "«person»",
+            "y": 20.0,
+            "width": 52.92,
+            "height": 16.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "A",
+            "y": 88.0,
+            "width": 10.8,
+            "height": 19.8,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": null
+        },
+        {
+          "alias": "b",
+          "parent_boundary": "global",
+          "type_c4_shape": "person",
+          "x": 466.0,
+          "y": 166.0,
+          "width": 216.0,
+          "height": 107.8,
+          "margin": 50.0,
+          "image": {
+            "width": 48.0,
+            "height": 48.0,
+            "y": 32.0
+          },
+          "type_block": {
+            "text": "«person»",
+            "y": 20.0,
+            "width": 52.92,
+            "height": 16.0,
+            "line_count": 1.0
+          },
+          "label": {
+            "text": "B",
+            "y": 88.0,
+            "width": 10.8,
+            "height": 19.8,
+            "line_count": 1.0
+          },
+          "ty": null,
+          "techn": null,
+          "descr": null
+        }
+      ],
+      "rels": [
+        {
+          "from": "a",
+          "to": "b",
+          "rel_type": "rel_b",
+          "start_point": {
+            "x": 366.0,
+            "y": 233.629
+          },
+          "end_point": {
+            "x": 466.0,
+            "y": 247.887
+          },
+          "offset_x": 10.0,
+          "offset_y": 20.0,
+          "label": {
+            "text": "override",
+            "y": 0.0,
+            "width": 52.64,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "techn": {
+            "text": "tech2",
+            "y": 0.0,
+            "width": 36.48,
+            "height": 17.6,
+            "line_count": 1.0
+          },
+          "descr": {
+            "text": "d2",
+            "y": 0.0,
+            "width": 15.84,
+            "height": 17.6,
+            "line_count": 1.0
+          }
+        }
+      ]
+    }
+  }
+}
