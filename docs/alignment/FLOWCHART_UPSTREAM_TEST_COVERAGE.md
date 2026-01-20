@@ -107,6 +107,8 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/flow-li
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/flow-text.spec.js`
 
 - edge label parsing variants (pipe notation, new notation, quoted labels): `fixtures/flowchart/upstream_text_edge_labels_spec.mmd`
+- multi-line edge label parsing across line breaks (circle/point arrows): `fixtures/flowchart/upstream_flow_text_multiline_edge_labels_spec.mmd`
+- special characters in vertex text and ids (slashes/backslashes, unicode, trailing `-` ids): `fixtures/flowchart/upstream_flow_text_special_chars_spec.mmd`
 
 ### `parser/flow-singlenode.spec.js`
 
