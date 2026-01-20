@@ -13991,12 +13991,16 @@ fn render_flowchart_node(
         None
     }
 
-    let metrics = ctx.measurer.measure_wrapped(
+    let mut metrics = ctx.measurer.measure_wrapped(
         &label_text,
         &ctx.text_style,
         Some(ctx.wrapping_width),
         ctx.node_wrap_mode,
     );
+    if label_text.trim().is_empty() {
+        metrics.width = 0.0;
+        metrics.height = 0.0;
+    }
     if !ctx.node_html_labels {
         let label_text_plain = flowchart_label_plain_text(&label_text, &label_type);
         let _ = write!(
@@ -14046,6 +14050,10 @@ fn flowchart_label_html(
     label_type: &str,
     config: &merman_core::MermaidConfig,
 ) -> String {
+    if label.trim().is_empty() {
+        return String::new();
+    }
+
     fn xhtml_fix_fragment(input: &str) -> String {
         // `foreignObject` content lives in an XML document, so:
         // - void tags must be self-closed (`<br />`, not `<br>`)
