@@ -125,7 +125,15 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/flow-si
 
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/flow-vertice-chaining.spec.js`
 
-- chained vertices and multi-vertex statements (`A-->B-->C`, `A & B --> C`, etc): `fixtures/flowchart/upstream_vertice_chaining_spec.mmd`
+- chained vertices and multi-vertex statements (`A-->B-->C`, `A & B --> C`, etc):
+  - combined fixture: `fixtures/flowchart/upstream_vertice_chaining_spec.mmd`
+  - split fixtures:
+    - `fixtures/flowchart/upstream_flow_vertice_chaining_simple_spec.mmd`
+    - `fixtures/flowchart/upstream_flow_vertice_chaining_amp_to_single_spec.mmd`
+    - `fixtures/flowchart/upstream_flow_vertice_chaining_single_to_amp_spec.mmd`
+    - `fixtures/flowchart/upstream_flow_vertice_chaining_both_ends_amp_spec.mmd`
+    - `fixtures/flowchart/upstream_flow_vertice_chaining_fvc_spec.mmd`
+    - `fixtures/flowchart/upstream_flow_vertice_chaining_with_extras_spec.mmd`
 - group edge-id behavior for multi-vertex statements: unit tests:
   - `parse_diagram_flowchart_node_data_unique_edge_ids_with_groups`
   - `parse_diagram_flowchart_node_data_redefined_edge_id_becomes_auto_id`
