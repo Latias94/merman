@@ -1,0 +1,130 @@
+{
+  "diagramType": "flowchart-v2",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "A",
+          "x": 72.36,
+          "y": 62.0,
+          "width": 94.72,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "B",
+          "x": 264.84,
+          "y": 62.0,
+          "width": 90.24,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "title-with-dashes",
+          "x": 72.36,
+          "y": 62.0,
+          "width": 144.72,
+          "height": 104.0,
+          "is_cluster": true
+        },
+        {
+          "id": "subGraph1",
+          "x": 264.84,
+          "y": 62.0,
+          "width": 140.24,
+          "height": 104.0,
+          "is_cluster": true
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_A_B_0",
+          "from": "A",
+          "to": "B",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 119.72,
+              "y": 62.0
+            },
+            {
+              "x": 144.72,
+              "y": 62.0
+            },
+            {
+              "x": 169.72,
+              "y": 62.0
+            },
+            {
+              "x": 194.72,
+              "y": 62.0
+            },
+            {
+              "x": 219.72,
+              "y": 62.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "subGraph1",
+          "x": 264.84,
+          "y": 62.0,
+          "width": 140.24,
+          "height": 104.0,
+          "diff": -15.0,
+          "offset_y": 16.5,
+          "title": "title with spaces",
+          "title_label": {
+            "x": 264.84,
+            "y": 22.0,
+            "width": 112.16,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 25.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "title-with-dashes",
+          "x": 72.36,
+          "y": 62.0,
+          "width": 144.72,
+          "height": 104.0,
+          "diff": -15.0,
+          "offset_y": 16.5,
+          "title": "title-with-dashes",
+          "title_label": {
+            "x": 72.36,
+            "y": 22.0,
+            "width": 112.16,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 25.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 10.0,
+        "max_x": 334.96,
+        "max_y": 114.0
+      }
+    }
+  }
+}
