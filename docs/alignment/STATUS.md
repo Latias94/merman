@@ -50,6 +50,8 @@ Legend:
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
 the dashed separators now use the exact same x-coordinates as the frame edges to match upstream SVG and
 avoid sub-pixel gaps at the frame border.
+Recent progress: flowchart Stage B now matches upstream SVG DOM for the current fixture set in parity mode
+(`cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`).
 Recent progress: sequence headless layout now models notes and `rect` blocks as layout nodes (`note-*`, `rect-*`),
 so SVG viewBox/bounds can expand to match upstream baselines (e.g. left-of notes and nested rect blocks).
 Recent progress: sequence headless layout now models self-messages with `startx == stopx` and adds the extra

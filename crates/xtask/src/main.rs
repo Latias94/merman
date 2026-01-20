@@ -78,6 +78,7 @@ fn main() -> Result<(), XtaskError> {
         "check-upstream-svgs" => check_upstream_svgs(args.collect()),
         "compare-er-svgs" => compare_er_svgs(args.collect()),
         "compare-flowchart-svgs" => compare_flowchart_svgs(args.collect()),
+        "debug-flowchart-layout" => debug_flowchart_layout(args.collect()),
         "compare-sequence-svgs" => compare_sequence_svgs(args.collect()),
         "compare-class-svgs" => compare_class_svgs(args.collect()),
         "compare-state-svgs" => compare_state_svgs(args.collect()),
@@ -92,6 +93,108 @@ fn main() -> Result<(), XtaskError> {
         "compare-c4-svgs" => compare_c4_svgs(args.collect()),
         other => Err(XtaskError::UnknownCommand(other.to_string())),
     }
+}
+
+fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError> {
+    let mut fixture: Option<PathBuf> = None;
+    let mut edge_id: Option<String> = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--fixture" => {
+                i += 1;
+                fixture = args.get(i).map(PathBuf::from);
+            }
+            "--edge" => {
+                i += 1;
+                edge_id = args.get(i).map(|s| s.to_string());
+            }
+            "--help" | "-h" => return Err(XtaskError::Usage),
+            _ => return Err(XtaskError::Usage),
+        }
+        i += 1;
+    }
+
+    let Some(fixture_path) = fixture else {
+        return Err(XtaskError::Usage);
+    };
+    let text = std::fs::read_to_string(&fixture_path).map_err(|source| XtaskError::ReadFile {
+        path: fixture_path.display().to_string(),
+        source,
+    })?;
+
+    let engine = merman::Engine::new();
+    let parsed =
+        futures::executor::block_on(engine.parse_diagram(&text, merman::ParseOptions::default()))
+            .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
+            .ok_or_else(|| {
+                XtaskError::DebugSvgFailed(format!(
+                    "no diagram detected in {}",
+                    fixture_path.display()
+                ))
+            })?;
+
+    let layout_opts = merman_render::LayoutOptions::default();
+    let layouted = merman_render::layout_parsed(&parsed, &layout_opts)
+        .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
+
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = &layouted.layout else {
+        return Err(XtaskError::DebugSvgFailed(format!(
+            "unexpected layout type: {}",
+            layouted.meta.diagram_type
+        )));
+    };
+
+    println!("fixture: {}", fixture_path.display());
+    if let Some(title) = layouted.meta.title.as_deref() {
+        println!("title: {}", title);
+    }
+    println!("diagram_type: {}", layouted.meta.diagram_type);
+    println!();
+
+    println!("clusters: {}", layout.clusters.len());
+    for c in &layout.clusters {
+        println!(
+            "- {} x={} y={} w={} h={} dir={}",
+            c.id, c.x, c.y, c.width, c.height, c.effective_dir
+        );
+    }
+    println!();
+
+    println!("nodes: {}", layout.nodes.len());
+    for n in &layout.nodes {
+        println!(
+            "- {} x={} y={} w={} h={}",
+            n.id, n.x, n.y, n.width, n.height
+        );
+    }
+    println!();
+
+    println!("edges: {}", layout.edges.len());
+    for e in &layout.edges {
+        if edge_id.as_ref().is_some_and(|id| id != &e.id) {
+            continue;
+        }
+        println!(
+            "- {} {} -> {} from_cluster={:?} to_cluster={:?} points={}",
+            e.id,
+            e.from,
+            e.to,
+            e.from_cluster,
+            e.to_cluster,
+            e.points.len()
+        );
+        for (idx, p) in e.points.iter().enumerate() {
+            if idx >= 16 {
+                println!("  ...");
+                break;
+            }
+            println!("  - p{idx}: x={} y={}", p.x, p.y);
+        }
+    }
+
+    Ok(())
 }
 
 fn gen_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {

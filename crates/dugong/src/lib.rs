@@ -4307,7 +4307,36 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
         let _ = g.remove_node(&v);
     }
 
+    // Dagre uses `assignRankMinMax` to annotate compound nodes with their rank span, derived from
+    // the `nestingGraph` border top/bottom nodes. This rank span is later used by subgraph
+    // ordering and border segment generation.
+    if g.options().compound {
+        let node_ids = g.node_ids();
+        for v in node_ids {
+            let Some(node) = g.node(&v).cloned() else {
+                continue;
+            };
+            let (Some(bt), Some(bb)) = (node.border_top.clone(), node.border_bottom.clone()) else {
+                continue;
+            };
+            let (Some(min_rank), Some(max_rank)) = (
+                g.node(&bt).and_then(|n| n.rank),
+                g.node(&bb).and_then(|n| n.rank),
+            ) else {
+                continue;
+            };
+            if let Some(n) = g.node_mut(&v) {
+                n.min_rank = Some(min_rank);
+                n.max_rank = Some(max_rank);
+            }
+        }
+    }
+
     normalize::run(g);
+    if g.options().compound {
+        parent_dummy_chains::parent_dummy_chains(g);
+        add_border_segments::add_border_segments(g);
+    }
     order::order(
         g,
         order::OrderOptions {

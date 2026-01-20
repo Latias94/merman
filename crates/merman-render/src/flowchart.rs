@@ -297,7 +297,6 @@ fn edge_in_cluster(
 struct FlowchartClusterDbEntry {
     anchor_id: String,
     external_connections: bool,
-    has_cluster_edges: bool,
 }
 
 fn flowchart_find_common_edges(
@@ -346,7 +345,6 @@ fn flowchart_find_non_cluster_child(
     if children.is_empty() {
         return Some(id.to_string());
     }
-
     let mut reserve: Option<String> = None;
     for child in children {
         let Some(child_id) = flowchart_find_non_cluster_child(child, graph, cluster_id) else {
@@ -392,25 +390,8 @@ fn adjust_flowchart_clusters_and_edges(graph: &mut Graph<NodeLabel, EdgeLabel, G
             FlowchartClusterDbEntry {
                 anchor_id,
                 external_connections: false,
-                has_cluster_edges: false,
             },
         );
-    }
-
-    // Mermaid edges can reference subgraph ids directly (e.g. `router --> subnet1`). Those edges
-    // must be "faked" by redirecting the endpoint to a real leaf node in the cluster, while
-    // recording `fromCluster`/`toCluster` so renderers can clip the route to the cluster boundary.
-    //
-    // Without this, Dagre-style ranking/normalization cannot assign proper ranks to the endpoint
-    // (cluster nodes do not participate in `asNonCompoundGraph`), causing short/degenerate edge
-    // point lists and SVG parity mismatches.
-    for e in graph.edges() {
-        if let Some(entry) = cluster_db.get_mut(&e.v) {
-            entry.has_cluster_edges = true;
-        }
-        if let Some(entry) = cluster_db.get_mut(&e.w) {
-            entry.has_cluster_edges = true;
-        }
     }
 
     for id in cluster_db.keys().cloned().collect::<Vec<_>>() {
@@ -419,6 +400,11 @@ fn adjust_flowchart_clusters_and_edges(graph: &mut Graph<NodeLabel, EdgeLabel, G
         }
         let mut has_external = false;
         for e in graph.edges() {
+            // Match Mermaid `adjustClustersAndEdges`: edges that connect directly to the cluster
+            // node itself (i.e. the edge is "from the box") do not count as external connections.
+            if e.v == id || e.w == id {
+                continue;
+            }
             let d1 = is_descendant(e.v.as_str(), id.as_str(), &descendants);
             let d2 = is_descendant(e.w.as_str(), id.as_str(), &descendants);
             if d1 ^ d2 {
@@ -455,7 +441,7 @@ fn adjust_flowchart_clusters_and_edges(graph: &mut Graph<NodeLabel, EdgeLabel, G
         let Some(entry) = cluster_db.get(id) else {
             return id.to_string();
         };
-        if !entry.external_connections && !entry.has_cluster_edges {
+        if !entry.external_connections {
             return id.to_string();
         }
         entry.anchor_id.clone()
@@ -746,7 +732,10 @@ pub fn layout_flowchart_v2(
     } else {
         WrapMode::SvgLike
     };
-    let cluster_padding = 8.0;
+    // Mermaid subgraph bounds behave like they have ~half `nodeSpacing` padding around content.
+    // This affects cluster clipping (`fromCluster`/`toCluster`) and therefore edge path command
+    // sequences.
+    let cluster_padding = (nodesep / 2.0).max(0.0);
     let title_margin_top = config_f64(
         effective_config,
         &["flowchart", "subGraphTitleMargin", "top"],
@@ -800,8 +789,14 @@ pub fn layout_flowchart_v2(
         ..Default::default()
     });
 
-    // Mermaid's flowchart Dagre adapter inserts subgraph ("group") nodes before laying out the
-    // leaf nodes they contain.
+    // Mermaid's dagre wrapper relies on Graphlib insertion order for deterministic acyclic cycle
+    // breaking. FlowDB exposes that order via `vertexCalls` (each `addVertex` call, including
+    // repeats), so we prefer inserting nodes in first-touch order derived from `vertexCalls`.
+    //
+    // Subgraph ids might not appear in `vertexCalls` (e.g. when never referenced in edges), so we
+    // always insert any remaining subgraph nodes afterwards in a deterministic order.
+    let mut cluster_node_labels: std::collections::HashMap<String, NodeLabel> =
+        std::collections::HashMap::new();
     for sg in &model.subgraphs {
         let metrics = measurer.measure_wrapped(
             &sg.title,
@@ -811,7 +806,7 @@ pub fn layout_flowchart_v2(
         );
         let width = metrics.width + cluster_padding * 2.0;
         let height = metrics.height + cluster_padding * 2.0;
-        g.set_node(
+        cluster_node_labels.insert(
             sg.id.clone(),
             NodeLabel {
                 width,
@@ -821,6 +816,8 @@ pub fn layout_flowchart_v2(
         );
     }
 
+    let mut leaf_node_labels: std::collections::HashMap<String, NodeLabel> =
+        std::collections::HashMap::new();
     for n in &model.nodes {
         // Mermaid treats the subgraph id as the "group node" id (a cluster can be referenced in
         // edges). Avoid introducing a separate leaf node that would collide with the cluster node
@@ -832,7 +829,7 @@ pub fn layout_flowchart_v2(
         let metrics =
             measurer.measure_wrapped(label, &text_style, Some(wrapping_width), node_wrap_mode);
         let (width, height) = node_dimensions(n.layout_shape.as_deref(), metrics, node_padding);
-        g.set_node(
+        leaf_node_labels.insert(
             n.id.clone(),
             NodeLabel {
                 width,
@@ -842,10 +839,77 @@ pub fn layout_flowchart_v2(
         );
     }
 
+    let mut inserted: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let insert_one = |id: &str,
+                      g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+                      inserted: &mut std::collections::HashSet<String>| {
+        if inserted.contains(id) {
+            return;
+        }
+        if let Some(lbl) = cluster_node_labels.get(id).cloned() {
+            g.set_node(id.to_string(), lbl);
+            inserted.insert(id.to_string());
+            return;
+        }
+        if let Some(lbl) = leaf_node_labels.get(id).cloned() {
+            g.set_node(id.to_string(), lbl);
+            inserted.insert(id.to_string());
+        }
+    };
+
+    if !model.vertex_calls.is_empty() {
+        for id in &model.vertex_calls {
+            insert_one(id.as_str(), &mut g, &mut inserted);
+        }
+    }
+    for sg in &model.subgraphs {
+        insert_one(sg.id.as_str(), &mut g, &mut inserted);
+    }
+    for n in &model.nodes {
+        insert_one(n.id.as_str(), &mut g, &mut inserted);
+    }
+
     if has_subgraphs {
+        // Mermaid's compound graph construction relies on a stable child insertion order when
+        // selecting cluster anchors (see `findNonClusterChild` in `mermaid-graphlib.js`).
+        //
+        // Mermaid assigns those parents as vertices are first encountered (i.e. `addVertex` call
+        // order), not by iterating the final `subgraphs[].nodes` arrays (which may be in a
+        // different order).
+        //
+        // To better match Mermaid's anchor selection (and resulting edge normalization / acyclic
+        // behavior), we apply parent links in `vertexCalls` order, then fill in any remaining
+        // members deterministically.
+        let mut final_parent: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
         for sg in &model.subgraphs {
             for child in &sg.nodes {
-                g.set_parent(child.clone(), sg.id.clone());
+                final_parent.insert(child.clone(), sg.id.clone());
+            }
+        }
+
+        let mut assigned: std::collections::HashSet<String> = std::collections::HashSet::new();
+        if !model.vertex_calls.is_empty() {
+            for id in &model.vertex_calls {
+                let Some(p) = final_parent.get(id) else {
+                    continue;
+                };
+                if assigned.insert(id.clone()) {
+                    g.set_parent(id.clone(), p.clone());
+                }
+            }
+        }
+
+        // Any remaining members are assigned in a deterministic order that keeps the last parent
+        // (as encoded in `final_parent`) but avoids depending on HashMap iteration.
+        for sg in &model.subgraphs {
+            for child in &sg.nodes {
+                if !final_parent.get(child).is_some_and(|p| p == sg.id.as_str()) {
+                    continue;
+                }
+                if assigned.insert(child.clone()) {
+                    g.set_parent(child.clone(), sg.id.clone());
+                }
             }
         }
     }

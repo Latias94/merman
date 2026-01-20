@@ -384,8 +384,8 @@ fn flowchart_cluster_exposes_mermaid_diff_and_offset_y() {
         .expect("cluster A");
     let node_a = layout.nodes.iter().find(|n| n.id == "a").expect("node a");
 
-    // The layout currently uses a fixed "cluster padding" of 8 for bounds.
-    let cluster_padding = 8.0;
+    // Cluster bounds are padded by `nodeSpacing / 2` (Mermaid-like behavior).
+    let cluster_padding = 25.0;
     let node_padding = 15.0;
     let base_width = node_a.width + cluster_padding * 2.0;
 

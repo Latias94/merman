@@ -9,7 +9,7 @@ Reproduce:
 
 ## Known mismatches
 
-None (last checked 2026-01-19).
+None (last checked 2026-01-20).
 
 ## Next steps
 

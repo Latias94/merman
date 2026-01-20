@@ -2,6 +2,7 @@ use merman_core::{Engine, ParseOptions};
 use merman_render::model::LayoutDiagram;
 use merman_render::svg::{SvgRenderOptions, render_er_diagram_debug_svg, render_er_diagram_svg};
 use merman_render::{LayoutOptions, layout_parsed};
+use regex::Regex;
 use std::path::PathBuf;
 
 fn workspace_root() -> PathBuf {
@@ -71,7 +72,11 @@ fn er_svg_renders_entities_and_relationships() {
         "expected Mermaid-like marker ids"
     );
     assert!(
-        svg.contains(" C "),
+        {
+            let path_re = Regex::new(r#"<path[^>]*relationshipLine[^>]*>"#).expect("regex");
+            let d_re = Regex::new(r#"\bd="[^"]*C"#).expect("regex");
+            path_re.find_iter(&svg).any(|m| d_re.is_match(m.as_str()))
+        },
         "expected curveBasis cubic bezier commands in relationship paths"
     );
     assert!(

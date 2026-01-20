@@ -6300,6 +6300,7 @@ pub fn render_flowchart_v2_svg(
 
     let mut edges_by_id: std::collections::HashMap<String, crate::flowchart::FlowEdge> =
         std::collections::HashMap::new();
+    let edge_order: Vec<String> = render_edges.iter().map(|e| e.id.clone()).collect();
     for e in render_edges.iter().cloned() {
         edges_by_id.insert(e.id.clone(), e);
     }
@@ -6497,6 +6498,7 @@ pub fn render_flowchart_v2_svg(
         default_edge_style,
         node_order,
         subgraph_order,
+        edge_order,
         nodes_by_id,
         edges_by_id,
         subgraphs_by_id,
@@ -8720,7 +8722,19 @@ pub fn render_class_diagram_v2_svg(
         }
 
         let dom_id = class_edge_dom_id(e, &relation_index_by_id);
-        let d = curve_basis_path_d(&e.points);
+        let mut curve_points = e.points.clone();
+        if curve_points.len() == 2 {
+            let a = &curve_points[0];
+            let b = &curve_points[1];
+            curve_points.insert(
+                1,
+                crate::model::LayoutPoint {
+                    x: (a.x + b.x) / 2.0,
+                    y: (a.y + b.y) / 2.0,
+                },
+            );
+        }
+        let d = curve_basis_path_d(&curve_points);
         let points_b64 = base64::engine::general_purpose::STANDARD
             .encode(serde_json::to_vec(&e.points).unwrap_or_default());
 
@@ -9941,7 +9955,19 @@ pub fn render_er_diagram_svg(
                 .collect();
             let data_points = base64::engine::general_purpose::STANDARD
                 .encode(serde_json::to_vec(&shifted).unwrap_or_default());
-            let d = curve_basis_path_d(&shifted);
+            let mut curve_points = shifted.clone();
+            if curve_points.len() == 2 {
+                let a = &curve_points[0];
+                let b = &curve_points[1];
+                curve_points.insert(
+                    1,
+                    crate::model::LayoutPoint {
+                        x: (a.x + b.x) / 2.0,
+                        y: (a.y + b.y) / 2.0,
+                    },
+                );
+            }
+            let d = curve_basis_path_d(&curve_points);
 
             let _ = write!(
                 &mut out,
@@ -10579,9 +10605,9 @@ fn curve_linear_path_d(points: &[crate::model::LayoutPoint]) -> String {
     let Some(first) = points.first() else {
         return out;
     };
-    let _ = write!(&mut out, "M {},{}", fmt(first.x), fmt(first.y));
+    let _ = write!(&mut out, "M{},{}", fmt(first.x), fmt(first.y));
     for p in points.iter().skip(1) {
-        let _ = write!(&mut out, " L {},{}", fmt(p.x), fmt(p.y));
+        let _ = write!(&mut out, "L{},{}", fmt(p.x), fmt(p.y));
     }
     out
 }
@@ -10593,10 +10619,10 @@ fn curve_step_after_path_d(points: &[crate::model::LayoutPoint]) -> String {
         return out;
     };
     let mut prev_y = first.y;
-    let _ = write!(&mut out, "M {},{}", fmt(first.x), fmt(first.y));
+    let _ = write!(&mut out, "M{},{}", fmt(first.x), fmt(first.y));
     for p in points.iter().skip(1) {
-        let _ = write!(&mut out, " L {},{}", fmt(p.x), fmt(prev_y));
-        let _ = write!(&mut out, " L {},{}", fmt(p.x), fmt(p.y));
+        let _ = write!(&mut out, "L{},{}", fmt(p.x), fmt(prev_y));
+        let _ = write!(&mut out, "L{},{}", fmt(p.x), fmt(p.y));
         prev_y = p.y;
     }
     out
@@ -10637,7 +10663,7 @@ fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tension: f64) -> 
         let c2y = y2 + k * (y1 - y);
         let _ = write!(
             out,
-            " C {},{} {},{} {},{}",
+            "C{},{} {},{} {},{}",
             fmt(c1x),
             fmt(c1y),
             fmt(c2x),
@@ -10653,7 +10679,7 @@ fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tension: f64) -> 
         match p {
             0 => {
                 p = 1;
-                let _ = write!(&mut out, "M {},{}", fmt(x), fmt(y));
+                let _ = write!(&mut out, "M{},{}", fmt(x), fmt(y));
             }
             1 => {
                 p = 2;
@@ -10679,7 +10705,7 @@ fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tension: f64) -> 
 
     match p {
         2 => {
-            let _ = write!(&mut out, " L {},{}", fmt(x2), fmt(y2));
+            let _ = write!(&mut out, "L{},{}", fmt(x2), fmt(y2));
         }
         3 => {
             cardinal_point(&mut out, k, x0, y0, x1, y1, x2, y2, x1, y1);
@@ -10712,7 +10738,7 @@ fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {
         let ey = (y0 + 4.0 * y1 + y) / 6.0;
         let _ = write!(
             out,
-            " C {},{} {},{} {},{}",
+            "C{},{} {},{} {},{}",
             fmt(c1x),
             fmt(c1y),
             fmt(c2x),
@@ -10728,7 +10754,7 @@ fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {
         match p {
             0 => {
                 p = 1;
-                let _ = write!(&mut out, "M {},{}", fmt(x), fmt(y));
+                let _ = write!(&mut out, "M{},{}", fmt(x), fmt(y));
             }
             1 => {
                 p = 2;
@@ -10737,7 +10763,7 @@ fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {
                 p = 3;
                 let lx = (5.0 * x0 + x1) / 6.0;
                 let ly = (5.0 * y0 + y1) / 6.0;
-                let _ = write!(&mut out, " L {},{}", fmt(lx), fmt(ly));
+                let _ = write!(&mut out, "L{},{}", fmt(lx), fmt(ly));
                 basis_point(&mut out, x0, y0, x1, y1, x, y);
             }
             _ => {
@@ -10753,10 +10779,10 @@ fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {
     match p {
         3 => {
             basis_point(&mut out, x0, y0, x1, y1, x1, y1);
-            let _ = write!(&mut out, " L {},{}", fmt(x1), fmt(y1));
+            let _ = write!(&mut out, "L{},{}", fmt(x1), fmt(y1));
         }
         2 => {
-            let _ = write!(&mut out, " L {},{}", fmt(x1), fmt(y1));
+            let _ = write!(&mut out, "L{},{}", fmt(x1), fmt(y1));
         }
         _ => {}
     }
@@ -11001,6 +11027,7 @@ struct FlowchartRenderCtx<'a> {
     default_edge_style: Vec<String>,
     node_order: Vec<String>,
     subgraph_order: Vec<String>,
+    edge_order: Vec<String>,
     nodes_by_id: std::collections::HashMap<String, crate::flowchart::FlowNode>,
     edges_by_id: std::collections::HashMap<String, crate::flowchart::FlowEdge>,
     subgraphs_by_id: std::collections::HashMap<String, crate::flowchart::FlowSubgraph>,
@@ -11494,13 +11521,15 @@ fn flowchart_edges_for_root(
     cluster_id: Option<&str>,
 ) -> Vec<crate::flowchart::FlowEdge> {
     let mut out = Vec::new();
-    for e in ctx.edges_by_id.values() {
+    for edge_id in &ctx.edge_order {
+        let Some(e) = ctx.edges_by_id.get(edge_id) else {
+            continue;
+        };
         let lca = flowchart_lca(ctx, &e.from, &e.to);
         if lca.as_deref() == cluster_id {
             out.push(e.clone());
         }
     }
-    out.sort_by(|a, b| a.id.cmp(&b.id));
     out
 }
 
@@ -11820,7 +11849,7 @@ fn render_flowchart_edge_path(
                 },
             };
 
-            if r == 0.0 {
+            if r.abs() <= 1e-9 {
                 res.x = outside_point.x;
                 res.y = outside_point.y;
             }
@@ -11854,7 +11883,7 @@ fn render_flowchart_edge_path(
             inside_point.y - q
         };
 
-        if r == 0.0 {
+        if r.abs() <= 1e-9 {
             ix = outside_point.x;
             iy = outside_point.y;
         }
@@ -11878,11 +11907,15 @@ fn render_flowchart_edge_path(
         let mut out: Vec<crate::model::LayoutPoint> = Vec::new();
         let mut last_point_outside = input[0].clone();
         let mut is_inside = false;
+        const EPS: f64 = 1e-9;
 
         for point in input {
             if !outside_node(boundary, point) && !is_inside {
                 let inter = rect_intersection(boundary, &last_point_outside, point);
-                if !out.iter().any(|p| p.x == inter.x && p.y == inter.y) {
+                if !out
+                    .iter()
+                    .any(|p| (p.x - inter.x).abs() <= EPS && (p.y - inter.y).abs() <= EPS)
+                {
                     out.push(inter);
                 }
                 is_inside = true;
@@ -11954,6 +11987,11 @@ fn render_flowchart_edge_path(
         .as_deref()
         .unwrap_or(ctx.default_edge_interpolate.as_str());
     let is_basis = !matches!(interpolate, "linear" | "stepAfter" | "cardinal");
+
+    let label_text = edge.label.as_deref().unwrap_or_default();
+    let label_type = edge.label_type.as_deref().unwrap_or("text");
+    let label_text_plain = flowchart_label_plain_text(label_text, label_type);
+    let has_label_text = !label_text_plain.trim().is_empty();
     let is_cluster_edge = le.to_cluster.is_some() || le.from_cluster.is_some();
 
     fn all_triples_collinear(input: &[crate::model::LayoutPoint]) -> bool {
@@ -11976,48 +12014,41 @@ fn render_flowchart_edge_path(
         true
     }
 
-    // Mermaid's cluster-edge clipping can reduce the routed polyline to 3 points (and therefore
-    // `curveBasis` emits 2 `C` segments). When our route retains an extra collinear point, the SVG
-    // command sequence diverges (extra `C`).
-    if is_basis && is_cluster_edge && points_for_render.len() == 4 {
-        const EPS: f64 = 1e-9;
-        fn collinear(
-            a: &crate::model::LayoutPoint,
-            b: &crate::model::LayoutPoint,
-            c: &crate::model::LayoutPoint,
-        ) -> bool {
-            let abx = b.x - a.x;
-            let aby = b.y - a.y;
-            let bcx = c.x - b.x;
-            let bcy = c.y - b.y;
-            (abx * bcy - aby * bcx).abs() <= EPS
+    // Mermaid (Dagre + D3 `curveBasis`) can produce a polyline that is effectively straight except
+    // for one clipped endpoint. When our route retains many points on the straight run, the SVG
+    // `d` command sequence diverges (extra `C` segments). Collapse the "straight except one
+    // endpoint" case, but preserve fully-collinear polylines (some Mermaid fixtures intentionally
+    // retain those points).
+    if is_basis
+        && !has_label_text
+        && !is_cyclic_special
+        && edge.length <= 1
+        && points_for_render.len() > 4
+    {
+        let fully_collinear = all_triples_collinear(&points_for_render);
+
+        fn count_non_collinear_triples(input: &[crate::model::LayoutPoint]) -> usize {
+            if input.len() < 3 {
+                return 0;
+            }
+            const EPS: f64 = 1e-9;
+            let mut count = 0usize;
+            for i in 1..input.len().saturating_sub(1) {
+                let a = &input[i - 1];
+                let b = &input[i];
+                let c = &input[i + 1];
+                let abx = b.x - a.x;
+                let aby = b.y - a.y;
+                let bcx = c.x - b.x;
+                let bcy = c.y - b.y;
+                if (abx * bcy - aby * bcx).abs() > EPS {
+                    count += 1;
+                }
+            }
+            count
         }
 
-        let p0 = &points_for_render[0];
-        let p1 = &points_for_render[1];
-        let p2 = &points_for_render[2];
-        let p3 = &points_for_render[3];
-        let c012 = collinear(p0, p1, p2);
-        let c123 = collinear(p1, p2, p3);
-        // Mermaid keeps a 4-point straight route (3 `C` segments) for some cluster-adjacent edges,
-        // so only collapse the variant where exactly one end contains a redundant collinear point.
-        if c123 && !c012 {
-            points_for_render.remove(2);
-        } else if c012 && !c123 {
-            points_for_render.remove(1);
-        }
-    }
-
-    // After layout/clipping we may end up with long collinear polylines (typically vertical or
-    // horizontal runs). Mermaid's renderer commonly collapses these to a 3-point polyline before
-    // applying `curveBasis`, so the SVG `d` command sequence has the expected 2 `C` segments.
-    if is_basis && !is_cyclic_special && points_for_render.len() > 4 {
-        let n = points_for_render.len();
-        let collinear = all_triples_collinear(&points_for_render)
-            || (n > 4
-                && (all_triples_collinear(&points_for_render[1..])
-                    || all_triples_collinear(&points_for_render[..n.saturating_sub(1)])));
-        if collinear {
+        if !fully_collinear && count_non_collinear_triples(&points_for_render) <= 1 {
             points_for_render = vec![
                 points_for_render[0].clone(),
                 points_for_render[points_for_render.len() / 2].clone(),
@@ -12094,20 +12125,21 @@ fn render_flowchart_edge_path(
             points_for_render[points_for_render.len() - 1].clone(),
         ];
     }
-
-    // D3's `curveBasis` emits only a straight `M ... L ...` when there are exactly two points.
-    // Mermaid's Dagre pipeline typically provides at least one intermediate point even for
-    // straight-looking edges, resulting in `C` segments in the SVG `d`. To keep our output closer
-    // to Mermaid's command sequence, re-insert a midpoint when our route collapses to two points
-    // after normalization.
     if points_for_render.len() == 1 {
         // Avoid emitting a degenerate `M x,y` path for clipped cluster-adjacent edges.
         points_for_render = local_points.clone();
     }
 
-    if points_for_render.len() == 2
+    // D3's `curveBasis` emits only a straight `M ... L ...` when there are exactly two points.
+    // Mermaid's Dagre pipeline typically provides at least one intermediate point even for
+    // straight-looking edges, resulting in `C` segments in the SVG `d`. To keep our output closer
+    // to Mermaid's command sequence, re-insert a midpoint when our route collapses to two points
+    // after normalization (but keep cluster-adjacent edges as-is: Mermaid uses straight segments
+    // there).
+    if is_basis
+        && points_for_render.len() == 2
         && interpolate != "linear"
-        && (!is_cyclic_special || le.to_cluster.is_some() || le.from_cluster.is_some())
+        && (!is_cluster_edge || is_cyclic_special)
     {
         let a = &points_for_render[0];
         let b = &points_for_render[1];
@@ -12194,11 +12226,232 @@ fn render_flowchart_edge_path(
         }
     }
 
-    let line_data: Vec<crate::model::LayoutPoint> = points_for_render
+    let mut line_data: Vec<crate::model::LayoutPoint> = points_for_render
         .iter()
         .filter(|p| !p.y.is_nan())
         .cloned()
         .collect();
+
+    // Match Mermaid `fixCorners` in `rendering-elements/edges.js`: insert small offset points to
+    // round orthogonal corners before feeding into D3's line generator.
+    if !line_data.is_empty() {
+        const CORNER_DIST: f64 = 5.0;
+        let mut corner_positions: Vec<usize> = Vec::new();
+        for i in 1..line_data.len().saturating_sub(1) {
+            let prev = &line_data[i - 1];
+            let curr = &line_data[i];
+            let next = &line_data[i + 1];
+
+            let is_corner_xy = prev.x == curr.x
+                && curr.y == next.y
+                && (curr.x - next.x).abs() > CORNER_DIST
+                && (curr.y - prev.y).abs() > CORNER_DIST;
+            let is_corner_yx = prev.y == curr.y
+                && curr.x == next.x
+                && (curr.x - prev.x).abs() > CORNER_DIST
+                && (curr.y - next.y).abs() > CORNER_DIST;
+
+            if is_corner_xy || is_corner_yx {
+                corner_positions.push(i);
+            }
+        }
+
+        if !corner_positions.is_empty() {
+            fn find_adjacent_point(
+                point_a: &crate::model::LayoutPoint,
+                point_b: &crate::model::LayoutPoint,
+                distance: f64,
+            ) -> crate::model::LayoutPoint {
+                let x_diff = point_b.x - point_a.x;
+                let y_diff = point_b.y - point_a.y;
+                let len = (x_diff * x_diff + y_diff * y_diff).sqrt();
+                if len == 0.0 {
+                    return point_b.clone();
+                }
+                let ratio = distance / len;
+                crate::model::LayoutPoint {
+                    x: point_b.x - ratio * x_diff,
+                    y: point_b.y - ratio * y_diff,
+                }
+            }
+
+            let a = (2.0_f64).sqrt() * 2.0;
+            let mut new_line_data: Vec<crate::model::LayoutPoint> = Vec::new();
+            for i in 0..line_data.len() {
+                if !corner_positions.contains(&i) {
+                    new_line_data.push(line_data[i].clone());
+                    continue;
+                }
+
+                let prev = &line_data[i - 1];
+                let next = &line_data[i + 1];
+                let corner = &line_data[i];
+                let new_prev = find_adjacent_point(prev, corner, CORNER_DIST);
+                let new_next = find_adjacent_point(next, corner, CORNER_DIST);
+                let x_diff = new_next.x - new_prev.x;
+                let y_diff = new_next.y - new_prev.y;
+
+                new_line_data.push(new_prev.clone());
+
+                let mut new_corner = corner.clone();
+                if (next.x - prev.x).abs() > 10.0 && (next.y - prev.y).abs() >= 10.0 {
+                    let r = CORNER_DIST;
+                    if corner.x == new_prev.x {
+                        new_corner = crate::model::LayoutPoint {
+                            x: if x_diff < 0.0 {
+                                new_prev.x - r + a
+                            } else {
+                                new_prev.x + r - a
+                            },
+                            y: if y_diff < 0.0 {
+                                new_prev.y - a
+                            } else {
+                                new_prev.y + a
+                            },
+                        };
+                    } else {
+                        new_corner = crate::model::LayoutPoint {
+                            x: if x_diff < 0.0 {
+                                new_prev.x - a
+                            } else {
+                                new_prev.x + a
+                            },
+                            y: if y_diff < 0.0 {
+                                new_prev.y - r + a
+                            } else {
+                                new_prev.y + r - a
+                            },
+                        };
+                    }
+                }
+
+                new_line_data.push(new_corner);
+                new_line_data.push(new_next);
+            }
+            line_data = new_line_data;
+        }
+    }
+
+    // Mermaid shortens edge paths so markers don't render on top of the line (see
+    // `packages/mermaid/src/utils/lineWithOffset.ts`).
+    fn marker_offset_for(arrow_type: Option<&str>) -> Option<f64> {
+        match arrow_type {
+            Some("arrow_point") => Some(4.0),
+            Some("dependency") => Some(6.0),
+            Some("lollipop") => Some(13.5),
+            Some("aggregation" | "extension" | "composition") => Some(17.25),
+            _ => None,
+        }
+    }
+
+    fn calculate_delta_and_angle(
+        a: &crate::model::LayoutPoint,
+        b: &crate::model::LayoutPoint,
+    ) -> (f64, f64, f64) {
+        let delta_x = b.x - a.x;
+        let delta_y = b.y - a.y;
+        let angle = (delta_y / delta_x).atan();
+        (angle, delta_x, delta_y)
+    }
+
+    fn line_with_offset_points(
+        input: &[crate::model::LayoutPoint],
+        arrow_type_start: Option<&str>,
+        arrow_type_end: Option<&str>,
+    ) -> Vec<crate::model::LayoutPoint> {
+        if input.len() < 2 {
+            return input.to_vec();
+        }
+
+        let start = &input[0];
+        let end = &input[input.len() - 1];
+
+        let x_direction_is_left = start.x < end.x;
+        let y_direction_is_down = start.y < end.y;
+        let extra_room = 1.0;
+
+        let start_marker_height = marker_offset_for(arrow_type_start);
+        let end_marker_height = marker_offset_for(arrow_type_end);
+
+        let mut out = Vec::with_capacity(input.len());
+        for (i, p) in input.iter().enumerate() {
+            let mut ox = 0.0;
+            let mut oy = 0.0;
+
+            if i == 0 {
+                if let Some(h) = start_marker_height {
+                    let (angle, delta_x, delta_y) = calculate_delta_and_angle(&input[0], &input[1]);
+                    ox = h * angle.cos() * if delta_x >= 0.0 { 1.0 } else { -1.0 };
+                    oy = h * angle.sin().abs() * if delta_y >= 0.0 { 1.0 } else { -1.0 };
+                }
+            } else if i == input.len() - 1 {
+                if let Some(h) = end_marker_height {
+                    let (angle, delta_x, delta_y) =
+                        calculate_delta_and_angle(&input[input.len() - 1], &input[input.len() - 2]);
+                    ox = h * angle.cos() * if delta_x >= 0.0 { 1.0 } else { -1.0 };
+                    oy = h * angle.sin().abs() * if delta_y >= 0.0 { 1.0 } else { -1.0 };
+                }
+            }
+
+            if let Some(h) = end_marker_height {
+                let diff_x = (p.x - end.x).abs();
+                let diff_y = (p.y - end.y).abs();
+                if diff_x < h && diff_x > 0.0 && diff_y < h {
+                    let mut adjustment = h + extra_room - diff_x;
+                    adjustment *= if !x_direction_is_left { -1.0 } else { 1.0 };
+                    ox -= adjustment;
+                }
+            }
+            if let Some(h) = start_marker_height {
+                let diff_x = (p.x - start.x).abs();
+                let diff_y = (p.y - start.y).abs();
+                if diff_x < h && diff_x > 0.0 && diff_y < h {
+                    let mut adjustment = h + extra_room - diff_x;
+                    adjustment *= if !x_direction_is_left { -1.0 } else { 1.0 };
+                    ox += adjustment;
+                }
+            }
+
+            if let Some(h) = end_marker_height {
+                let diff_y = (p.y - end.y).abs();
+                let diff_x = (p.x - end.x).abs();
+                if diff_y < h && diff_y > 0.0 && diff_x < h {
+                    let mut adjustment = h + extra_room - diff_y;
+                    adjustment *= if !y_direction_is_down { -1.0 } else { 1.0 };
+                    oy -= adjustment;
+                }
+            }
+            if let Some(h) = start_marker_height {
+                let diff_y = (p.y - start.y).abs();
+                let diff_x = (p.x - start.x).abs();
+                if diff_y < h && diff_y > 0.0 && diff_x < h {
+                    let mut adjustment = h + extra_room - diff_y;
+                    adjustment *= if !y_direction_is_down { -1.0 } else { 1.0 };
+                    oy += adjustment;
+                }
+            }
+
+            out.push(crate::model::LayoutPoint {
+                x: p.x + ox,
+                y: p.y + oy,
+            });
+        }
+        out
+    }
+
+    let arrow_type_start = match edge.edge_type.as_deref() {
+        Some("double_arrow_point") => Some("arrow_point"),
+        _ => None,
+    };
+    let arrow_type_end = match edge.edge_type.as_deref() {
+        Some("arrow_open") => None,
+        Some("arrow_cross") => Some("arrow_cross"),
+        Some("arrow_circle") => Some("arrow_circle"),
+        Some("double_arrow_point" | "arrow_point") => Some("arrow_point"),
+        _ => Some("arrow_point"),
+    };
+    let line_data = line_with_offset_points(&line_data, arrow_type_start, arrow_type_end);
+
     let d = match interpolate {
         "linear" => curve_linear_path_d(&line_data),
         "stepAfter" => curve_step_after_path_d(&line_data),
@@ -13639,6 +13892,26 @@ fn flowchart_label_html(
         out
     }
 
+    fn replace_fontawesome_icons(input: &str) -> String {
+        // Mermaid `rendering-util/createText.ts::replaceIconSubstring()` converts icon notations like
+        // `fa:fa-user` into an HTML element inside the label DOM:
+        //   `<i class="fa fa-user"></i>`
+        //
+        // In Mermaid@11.12.2 the upstream SVG baselines use double quotes for the attributes.
+        fn icon_regex() -> &'static regex::Regex {
+            static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+            RE.get_or_init(|| regex::Regex::new(r"(fa[bklrs]?):fa-([\w-]+)").expect("valid regex"))
+        }
+
+        icon_regex()
+            .replace_all(input, |caps: &regex::Captures<'_>| {
+                let prefix = caps.get(1).map(|m| m.as_str()).unwrap_or("fa");
+                let icon = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+                format!(r#"<i class="{prefix} fa-{icon}"></i>"#)
+            })
+            .to_string()
+    }
+
     match label_type {
         "markdown" => {
             let mut html_out = String::new();
@@ -13654,12 +13927,14 @@ fn flowchart_label_html(
             });
             pulldown_cmark::html::push_html(&mut html_out, parser);
             let html_out = html_out.trim().to_string();
+            let html_out = replace_fontawesome_icons(&html_out);
             xhtml_fix_fragment(&merman_core::sanitize::sanitize_text(&html_out, config))
         }
         _ => {
             let label = label.replace("\r\n", "\n");
             let label = label.trim_end_matches('\n').replace('\n', "<br />");
             let wrapped = format!("<p>{}</p>", label);
+            let wrapped = replace_fontawesome_icons(&wrapped);
             xhtml_fix_fragment(&merman_core::sanitize::sanitize_text(&wrapped, config))
         }
     }
