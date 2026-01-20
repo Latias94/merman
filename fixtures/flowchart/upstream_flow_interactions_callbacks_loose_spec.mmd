@@ -1,0 +1,14 @@
+---
+title: Flowchart interactions callbacks under securityLevel loose (flow-interactions.spec.js)
+config:
+  securityLevel: loose
+---
+graph TD
+  L0-->M0
+  L1-->M1
+  L2-->M2
+
+  click L0 callback
+  click L1 call callback()
+  click L2 call callback("test0", test1, test2)
+

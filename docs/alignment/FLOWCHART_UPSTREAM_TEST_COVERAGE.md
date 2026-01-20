@@ -65,7 +65,11 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/flow-no
 
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/flow-style.spec.js`
 
-- `style` / `classDef` / `class` + inline `:::Class` basics: `fixtures/flowchart/class_style.mmd`
+- `style` statements (single/multiple/mixed with edges): `fixtures/flowchart/upstream_flow_style_style_stmt_spec.mmd`
+- node label preservation when applying `style` to existing and new nodes: `fixtures/flowchart/upstream_flow_style_style_preserves_labels_spec.mmd`
+- `style` expressions (SVG output / multiple style keys): `fixtures/flowchart/upstream_flowchart_v2_style_expressions_spec.mmd`
+- `classDef` edge cases (dots, spaces, percentages) + `class` assignment lists/underscores: `fixtures/flowchart/upstream_flow_style_classdef_edgecases_spec.mmd`
+- inline `:::Class` variants (standalone, edge statements, punctuation): `fixtures/flowchart/upstream_flow_style_inline_class_variants_spec.mmd`
 - group behavior for `:::Class` + multiple classes/styles: unit tests:
   - `parse_diagram_flowchart_classdef_and_class_assign_work`
   - `parse_diagram_flowchart_inline_vertex_class_via_style_separator`
@@ -78,7 +82,10 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/flow-st
 
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/flow-interactions.spec.js`
 
-- click href + tooltip + linkTarget: `fixtures/flowchart/subgraph_click.mmd`
+- click link syntax matrix (`"url"` vs `href`, tooltip, target): `fixtures/flowchart/upstream_flow_interactions_links_spec.mmd`
+- click callback syntax matrix (`callback` vs `call callback()`, tooltip, args) under `securityLevel: strict`: `fixtures/flowchart/upstream_flow_interactions_callbacks_strict_spec.mmd`
+- callback gating under `securityLevel: loose` (`haveCallback`): `fixtures/flowchart/upstream_flow_interactions_callbacks_loose_spec.mmd`
+- click href + tooltip + linkTarget (with subgraphs): `fixtures/flowchart/subgraph_click.mmd`
 - `javascript:` URL sanitization when `securityLevel != loose`: `fixtures/flowchart/upstream_linkstyle_and_click.mmd`
 - callback parsing + `securityLevel` gating: unit tests:
   - `parse_diagram_flowchart_click_link_sets_link_and_tooltip_and_clickable_class`

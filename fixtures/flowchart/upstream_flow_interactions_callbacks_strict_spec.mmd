@@ -1,0 +1,13 @@
+graph TD
+  C0-->D0
+  C1-->D1
+  C2-->D2
+  C3-->D3
+  C4-->D4
+
+  click C0 callback
+  click C1 call callback()
+  click C2 callback "tooltip"
+  click C3 call callback() "tooltip"
+  click C4 call callback("test0", test1, test2)
+

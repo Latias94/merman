@@ -3040,6 +3040,81 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parse_click_stmt_parses_callback() {
+        let stmt = parse_click_stmt("A callback").unwrap();
+        assert_eq!(stmt.ids, vec!["A"]);
+        assert!(stmt.tooltip.is_none());
+        match stmt.action {
+            ClickAction::Callback {
+                function_name,
+                function_args,
+            } => {
+                assert_eq!(function_name, "callback");
+                assert!(function_args.is_none());
+            }
+            _ => panic!("expected callback action"),
+        }
+    }
+
+    #[test]
+    fn parse_click_stmt_parses_call_callback_empty_args() {
+        let stmt = parse_click_stmt("A call callback()").unwrap();
+        assert_eq!(stmt.ids, vec!["A"]);
+        assert!(stmt.tooltip.is_none());
+        match stmt.action {
+            ClickAction::Callback {
+                function_name,
+                function_args,
+            } => {
+                assert_eq!(function_name, "callback");
+                assert!(function_args.is_none());
+            }
+            _ => panic!("expected callback action"),
+        }
+    }
+
+    #[test]
+    fn parse_click_stmt_parses_call_callback_with_args() {
+        let stmt = parse_click_stmt("A call callback(\"test0\", test1, test2)").unwrap();
+        match stmt.action {
+            ClickAction::Callback {
+                function_name,
+                function_args,
+            } => {
+                assert_eq!(function_name, "callback");
+                assert_eq!(function_args.as_deref(), Some("\"test0\", test1, test2"));
+            }
+            _ => panic!("expected callback action"),
+        }
+    }
+
+    #[test]
+    fn parse_click_stmt_parses_link_and_tooltip_and_target() {
+        let stmt = parse_click_stmt("A \"click.html\" \"tooltip\" _blank").unwrap();
+        assert_eq!(stmt.tooltip.as_deref(), Some("tooltip"));
+        match stmt.action {
+            ClickAction::Link { href, target } => {
+                assert_eq!(href, "click.html");
+                assert_eq!(target.as_deref(), Some("_blank"));
+            }
+            _ => panic!("expected link action"),
+        }
+    }
+
+    #[test]
+    fn parse_click_stmt_parses_href_link_and_tooltip_and_target() {
+        let stmt = parse_click_stmt("A href \"click.html\" \"tooltip\" _blank").unwrap();
+        assert_eq!(stmt.tooltip.as_deref(), Some("tooltip"));
+        match stmt.action {
+            ClickAction::Link { href, target } => {
+                assert_eq!(href, "click.html");
+                assert_eq!(target.as_deref(), Some("_blank"));
+            }
+            _ => panic!("expected link action"),
+        }
+    }
+
+    #[test]
     fn flowchart_subgraphs_exist_matches_mermaid_flowdb_spec() {
         let subgraphs = vec![
             FlowSubGraph {

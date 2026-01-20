@@ -52,6 +52,8 @@ the dashed separators now use the exact same x-coordinates as the frame edges to
 avoid sub-pixel gaps at the frame border.
 Recent progress: flowchart Stage B now matches upstream SVG DOM for the current fixture set in parity mode
 (`cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`).
+Recent progress: flowchart fixtures now cover `flow-style.spec.js` and `flow-interactions.spec.js` more
+thoroughly (style/class edge cases, click syntax matrix, and `securityLevel: loose` callback gating).
 Recent progress: flowchart edge curves now cover `monotoneX`/`monotoneY` and `step`/`stepBefore` in addition to
 `linear`/`stepAfter`/`basis`/`cardinal`, and the fixture set covers `linkStyle ... stroke-width:1px;` variants.
 Recent progress: sequence headless layout now models notes and `rect` blocks as layout nodes (`note-*`, `rect-*`),
