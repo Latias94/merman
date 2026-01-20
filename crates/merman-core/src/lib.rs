@@ -1273,6 +1273,28 @@ end"#;
     }
 
     #[test]
+    fn parse_diagram_flowchart_v_in_node_ids_variants_from_flow_text_spec() {
+        let engine = Engine::new();
+        let text = "graph TD;A--xv(my text);A--xcsv(my text);A--xava(my text);A--xva(my text);";
+        let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(res.model["edges"].as_array().unwrap().len(), 4);
+        for edge in res.model["edges"].as_array().unwrap() {
+            assert_eq!(edge["type"], json!("arrow_cross"));
+        }
+
+        let nodes = res.model["nodes"].as_array().unwrap();
+        let find = |id: &str| nodes.iter().find(|n| n["id"] == json!(id)).unwrap();
+
+        assert_eq!(find("v")["label"], json!("my text"));
+        assert_eq!(find("csv")["label"], json!("my text"));
+        assert_eq!(find("ava")["label"], json!("my text"));
+        assert_eq!(find("va")["label"], json!("my text"));
+    }
+
+    #[test]
     fn parse_diagram_flowchart_edge_label_supports_quoted_strings() {
         let engine = Engine::new();
         let res = block_on(engine.parse_diagram(
@@ -1412,6 +1434,71 @@ A_node-->P[\Inv trapezoid/];
         assert_eq!(a["shape"], json!("square"));
         assert_eq!(a["label"], json!("chimpansen hoppar ()[]"));
         assert_eq!(a["labelType"], json!("string"));
+    }
+
+    #[test]
+    fn parse_diagram_flowchart_flow_text_error_cases_from_upstream_spec() {
+        let engine = Engine::new();
+
+        let err = block_on(engine.parse_diagram(
+            "graph TD; A[This is a () in text];",
+            ParseOptions::default(),
+        ))
+        .unwrap_err();
+        assert!(
+            err.to_string().contains(
+                "Invalid text label: contains structural characters; quote it to use them"
+            )
+        );
+
+        let err = block_on(engine.parse_diagram(
+            "graph TD;A(this node has \"string\" and text)-->|this link has \"string\" and text|C;",
+            ParseOptions::default(),
+        ))
+        .unwrap_err();
+        assert!(
+            err.to_string().contains(
+                "Invalid text label: contains structural characters; quote it to use them"
+            )
+        );
+
+        let err = block_on(engine.parse_diagram(
+            "graph TD; A[This is a \\\"()\\\" in text];",
+            ParseOptions::default(),
+        ))
+        .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Unterminated node label (missing `]`)")
+        );
+
+        let err = block_on(engine.parse_diagram(
+            "graph TD; A[\"This is a \"()\" in text\"];",
+            ParseOptions::default(),
+        ))
+        .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Invalid string label: contains nested quotes")
+        );
+
+        let err = block_on(engine.parse_diagram(
+            "graph TD; node[hello ) world] --> works",
+            ParseOptions::default(),
+        ))
+        .unwrap_err();
+        assert!(
+            err.to_string().contains(
+                "Invalid text label: contains structural characters; quote it to use them"
+            )
+        );
+
+        let err = block_on(engine.parse_diagram("graph\nX(- My Text (", ParseOptions::default()))
+            .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Unterminated node label (missing `-)`)")
+        );
     }
 
     #[test]
