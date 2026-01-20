@@ -10628,6 +10628,40 @@ fn curve_step_after_path_d(points: &[crate::model::LayoutPoint]) -> String {
     out
 }
 
+// Ported from D3 `curveStepBefore` (d3-shape v3.x).
+fn curve_step_before_path_d(points: &[crate::model::LayoutPoint]) -> String {
+    let mut out = String::new();
+    let Some(first) = points.first() else {
+        return out;
+    };
+    let mut prev_x = first.x;
+    let _ = write!(&mut out, "M{},{}", fmt(first.x), fmt(first.y));
+    for p in points.iter().skip(1) {
+        let _ = write!(&mut out, "L{},{}", fmt(prev_x), fmt(p.y));
+        let _ = write!(&mut out, "L{},{}", fmt(p.x), fmt(p.y));
+        prev_x = p.x;
+    }
+    out
+}
+
+// Ported from D3 `curveStep` (d3-shape v3.x).
+fn curve_step_path_d(points: &[crate::model::LayoutPoint]) -> String {
+    let mut out = String::new();
+    let Some(first) = points.first() else {
+        return out;
+    };
+    let _ = write!(&mut out, "M{},{}", fmt(first.x), fmt(first.y));
+    let mut prev = first;
+    for p in points.iter().skip(1) {
+        let mid_x = (prev.x + p.x) / 2.0;
+        let _ = write!(&mut out, "L{},{}", fmt(mid_x), fmt(prev.y));
+        let _ = write!(&mut out, "L{},{}", fmt(mid_x), fmt(p.y));
+        let _ = write!(&mut out, "L{},{}", fmt(p.x), fmt(p.y));
+        prev = p;
+    }
+    out
+}
+
 // Ported from D3 `curveCardinal` (d3-shape v3.x).
 fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tension: f64) -> String {
     let mut out = String::new();
@@ -10714,6 +10748,193 @@ fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tension: f64) -> 
     }
 
     out
+}
+
+// Ported from D3 `curveMonotoneX` / `curveMonotoneY` (d3-shape v3.x).
+fn curve_monotone_path_d(points: &[crate::model::LayoutPoint], swap_xy: bool) -> String {
+    fn sign(v: f64) -> f64 {
+        if v < 0.0 { -1.0 } else { 1.0 }
+    }
+
+    fn get_x(p: &crate::model::LayoutPoint, swap_xy: bool) -> f64 {
+        if swap_xy { p.y } else { p.x }
+    }
+    fn get_y(p: &crate::model::LayoutPoint, swap_xy: bool) -> f64 {
+        if swap_xy { p.x } else { p.y }
+    }
+
+    fn emit_move_to(out: &mut String, x: f64, y: f64, swap_xy: bool) {
+        if swap_xy {
+            let _ = write!(out, "M{},{}", fmt(y), fmt(x));
+        } else {
+            let _ = write!(out, "M{},{}", fmt(x), fmt(y));
+        }
+    }
+    fn emit_line_to(out: &mut String, x: f64, y: f64, swap_xy: bool) {
+        if swap_xy {
+            let _ = write!(out, "L{},{}", fmt(y), fmt(x));
+        } else {
+            let _ = write!(out, "L{},{}", fmt(x), fmt(y));
+        }
+    }
+    fn emit_cubic_to(
+        out: &mut String,
+        x1: f64,
+        y1: f64,
+        x2: f64,
+        y2: f64,
+        x: f64,
+        y: f64,
+        swap_xy: bool,
+    ) {
+        if swap_xy {
+            let _ = write!(
+                out,
+                "C{},{} {},{} {},{}",
+                fmt(y1),
+                fmt(x1),
+                fmt(y2),
+                fmt(x2),
+                fmt(y),
+                fmt(x)
+            );
+        } else {
+            let _ = write!(
+                out,
+                "C{},{} {},{} {},{}",
+                fmt(x1),
+                fmt(y1),
+                fmt(x2),
+                fmt(y2),
+                fmt(x),
+                fmt(y)
+            );
+        }
+    }
+
+    fn slope3(x0: f64, y0: f64, x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
+        let h0 = x1 - x0;
+        let h1 = x2 - x1;
+        let denom0 = if h0 != 0.0 {
+            h0
+        } else if h1 < 0.0 {
+            -0.0
+        } else {
+            0.0
+        };
+        let denom1 = if h1 != 0.0 {
+            h1
+        } else if h0 < 0.0 {
+            -0.0
+        } else {
+            0.0
+        };
+        let s0 = (y1 - y0) / denom0;
+        let s1 = (y2 - y1) / denom1;
+        let p = (s0 * h1 + s1 * h0) / (h0 + h1);
+        let v = (sign(s0) + sign(s1)) * s0.abs().min(s1.abs()).min(0.5 * p.abs());
+        if v.is_finite() { v } else { 0.0 }
+    }
+
+    fn slope2(x0: f64, y0: f64, x1: f64, y1: f64, t: f64) -> f64 {
+        let h = x1 - x0;
+        if h != 0.0 {
+            (3.0 * (y1 - y0) / h - t) / 2.0
+        } else {
+            t
+        }
+    }
+
+    fn hermite_segment(
+        out: &mut String,
+        x0: f64,
+        y0: f64,
+        x1: f64,
+        y1: f64,
+        t0: f64,
+        t1: f64,
+        swap_xy: bool,
+    ) {
+        // dx is in the monotone coordinate system; we swap at emit-time if needed.
+        let dx = (x1 - x0) / 3.0;
+        emit_cubic_to(
+            out,
+            x0 + dx,
+            y0 + dx * t0,
+            x1 - dx,
+            y1 - dx * t1,
+            x1,
+            y1,
+            swap_xy,
+        );
+    }
+
+    let mut out = String::new();
+    if points.is_empty() {
+        return out;
+    }
+
+    let mut point_state: u8 = 0;
+    let mut x0 = f64::NAN;
+    let mut y0 = f64::NAN;
+    let mut x1 = f64::NAN;
+    let mut y1 = f64::NAN;
+    let mut t0 = f64::NAN;
+
+    for p in points {
+        let x = get_x(p, swap_xy);
+        let y = get_y(p, swap_xy);
+
+        if x == x1 && y == y1 {
+            continue;
+        }
+
+        let mut t1 = f64::NAN;
+        match point_state {
+            0 => {
+                point_state = 1;
+                emit_move_to(&mut out, x, y, swap_xy);
+            }
+            1 => {
+                point_state = 2;
+            }
+            2 => {
+                point_state = 3;
+                t1 = slope3(x0, y0, x1, y1, x, y);
+                let t0_local = slope2(x0, y0, x1, y1, t1);
+                hermite_segment(&mut out, x0, y0, x1, y1, t0_local, t1, swap_xy);
+            }
+            _ => {
+                t1 = slope3(x0, y0, x1, y1, x, y);
+                hermite_segment(&mut out, x0, y0, x1, y1, t0, t1, swap_xy);
+            }
+        }
+
+        x0 = x1;
+        y0 = y1;
+        x1 = x;
+        y1 = y;
+        t0 = t1;
+    }
+
+    match point_state {
+        2 => emit_line_to(&mut out, x1, y1, swap_xy),
+        3 => {
+            let t1 = slope2(x0, y0, x1, y1, t0);
+            hermite_segment(&mut out, x0, y0, x1, y1, t0, t1, swap_xy);
+        }
+        _ => {}
+    }
+
+    out
+}
+
+fn curve_monotone_x_path_d(points: &[crate::model::LayoutPoint]) -> String {
+    curve_monotone_path_d(points, false)
+}
+
+fn curve_monotone_y_path_d(points: &[crate::model::LayoutPoint]) -> String {
+    curve_monotone_path_d(points, true)
 }
 
 // Ported from D3 `curveBasis` (d3-shape v3.x), used by Mermaid ER renderer `@11.12.2`.
@@ -11986,7 +12207,10 @@ fn render_flowchart_edge_path(
         .interpolate
         .as_deref()
         .unwrap_or(ctx.default_edge_interpolate.as_str());
-    let is_basis = !matches!(interpolate, "linear" | "stepAfter" | "cardinal");
+    let is_basis = !matches!(
+        interpolate,
+        "linear" | "step" | "stepAfter" | "stepBefore" | "cardinal" | "monotoneX" | "monotoneY"
+    );
 
     let label_text = edge.label.as_deref().unwrap_or_default();
     let label_type = edge.label_type.as_deref().unwrap_or("text");
@@ -12454,8 +12678,12 @@ fn render_flowchart_edge_path(
 
     let d = match interpolate {
         "linear" => curve_linear_path_d(&line_data),
+        "step" => curve_step_path_d(&line_data),
         "stepAfter" => curve_step_after_path_d(&line_data),
+        "stepBefore" => curve_step_before_path_d(&line_data),
         "cardinal" => curve_cardinal_path_d(&line_data, 0.0),
+        "monotoneX" => curve_monotone_x_path_d(&line_data),
+        "monotoneY" => curve_monotone_y_path_d(&line_data),
         // Mermaid defaults to `basis` for flowchart edges.
         _ => curve_basis_path_d(&line_data),
     };
