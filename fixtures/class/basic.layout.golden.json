@@ -2,22 +2,31 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "bounds": {
-        "max_x": 135.2,
-        "max_y": 314.0,
-        "min_x": 0.0,
-        "min_y": 0.0
-      },
-      "clusters": [],
+      "nodes": [
+        {
+          "id": "Animal",
+          "x": 67.6,
+          "y": 72.0,
+          "width": 135.2,
+          "height": 144.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Dog",
+          "x": 67.6,
+          "y": 254.0,
+          "width": 95.2,
+          "height": 120.0,
+          "is_cluster": false
+        }
+      ],
       "edges": [
         {
-          "end_label_left": null,
-          "end_label_right": null,
-          "end_marker": null,
-          "from": "Animal",
-          "from_cluster": null,
           "id": "0",
-          "label": null,
+          "from": "Animal",
+          "to": "Dog",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 67.6,
@@ -32,32 +41,23 @@
               "y": 194.0
             }
           ],
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
           "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "Dog",
-          "to_cluster": null
+          "end_marker": null,
+          "stroke_dasharray": null
         }
       ],
-      "nodes": [
-        {
-          "height": 144.0,
-          "id": "Animal",
-          "is_cluster": false,
-          "width": 135.2,
-          "x": 67.6,
-          "y": 72.0
-        },
-        {
-          "height": 120.0,
-          "id": "Dog",
-          "is_cluster": false,
-          "width": 95.2,
-          "x": 67.6,
-          "y": 254.0
-        }
-      ]
+      "clusters": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 135.2,
+        "max_y": 314.0
+      }
     }
   }
 }

@@ -2,26 +2,55 @@
   "diagramType": "er",
   "layout": {
     "ErDiagram": {
-      "bounds": {
-        "max_x": 620.96,
-        "max_y": 454.0,
-        "min_x": 0.0,
-        "min_y": 0.0
-      },
+      "nodes": [
+        {
+          "id": "entity-CUSTOMER-0",
+          "x": 70.48,
+          "y": 42.0,
+          "width": 140.96,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-LINE_ITEM-3",
+          "x": 70.48,
+          "y": 412.0,
+          "width": 112.48,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-ORDER-1",
+          "x": 70.48,
+          "y": 227.0,
+          "width": 114.72,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-buzz-2",
+          "x": 330.96,
+          "y": 42.0,
+          "width": 100.0,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-fizz-4",
+          "x": 570.96,
+          "y": 42.0,
+          "width": 100.0,
+          "height": 84.0,
+          "is_cluster": false
+        }
+      ],
       "edges": [
         {
-          "end_label_left": null,
-          "end_label_right": null,
-          "end_marker": "ZERO_OR_MORE_END",
-          "from": "entity-CUSTOMER-0",
-          "from_cluster": null,
           "id": "er-rel-0",
-          "label": {
-            "height": 21.0,
-            "width": 34.02,
-            "x": 70.48,
-            "y": 134.5
-          },
+          "from": "entity-CUSTOMER-0",
+          "to": "entity-ORDER-1",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 70.48,
@@ -36,26 +65,26 @@
               "y": 185.0
             }
           ],
+          "label": {
+            "x": 70.48,
+            "y": 134.5,
+            "width": 34.02,
+            "height": 21.0
+          },
           "start_label_left": null,
           "start_label_right": null,
-          "start_marker": "ONLY_ONE_START",
-          "stroke_dasharray": null,
-          "to": "entity-ORDER-1",
-          "to_cluster": null
-        },
-        {
           "end_label_left": null,
           "end_label_right": null,
-          "end_marker": "ONE_OR_MORE_END",
-          "from": "entity-ORDER-1",
-          "from_cluster": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ZERO_OR_MORE_END",
+          "stroke_dasharray": null
+        },
+        {
           "id": "er-rel-1",
-          "label": {
-            "height": 21.0,
-            "width": 46.06,
-            "x": 70.48,
-            "y": 319.5
-          },
+          "from": "entity-ORDER-1",
+          "to": "entity-LINE_ITEM-3",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 70.48,
@@ -70,56 +99,27 @@
               "y": 370.0
             }
           ],
+          "label": {
+            "x": 70.48,
+            "y": 319.5,
+            "width": 46.06,
+            "height": 21.0
+          },
           "start_label_left": null,
           "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "stroke_dasharray": null,
-          "to": "entity-LINE_ITEM-3",
-          "to_cluster": null
+          "end_marker": "ONE_OR_MORE_END",
+          "stroke_dasharray": null
         }
       ],
-      "nodes": [
-        {
-          "height": 84.0,
-          "id": "entity-CUSTOMER-0",
-          "is_cluster": false,
-          "width": 140.96,
-          "x": 70.48,
-          "y": 42.0
-        },
-        {
-          "height": 84.0,
-          "id": "entity-LINE_ITEM-3",
-          "is_cluster": false,
-          "width": 112.48,
-          "x": 70.48,
-          "y": 412.0
-        },
-        {
-          "height": 84.0,
-          "id": "entity-ORDER-1",
-          "is_cluster": false,
-          "width": 114.72,
-          "x": 70.48,
-          "y": 227.0
-        },
-        {
-          "height": 84.0,
-          "id": "entity-buzz-2",
-          "is_cluster": false,
-          "width": 100.0,
-          "x": 330.96,
-          "y": 42.0
-        },
-        {
-          "height": 84.0,
-          "id": "entity-fizz-4",
-          "is_cluster": false,
-          "width": 100.0,
-          "x": 570.96,
-          "y": 42.0
-        }
-      ]
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 620.96,
+        "max_y": 454.0
+      }
     }
   }
 }

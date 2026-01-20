@@ -2,27 +2,31 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "bounds": {
-        "max_x": 65.6,
-        "max_y": 242.0,
-        "min_x": 0.0,
-        "min_y": 0.0
-      },
-      "clusters": [],
+      "nodes": [
+        {
+          "id": "Car",
+          "x": 32.8,
+          "y": 42.0,
+          "width": 47.36,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Engine",
+          "x": 32.8,
+          "y": 200.0,
+          "width": 65.6,
+          "height": 84.0,
+          "is_cluster": false
+        }
+      ],
       "edges": [
         {
-          "end_label_left": null,
-          "end_label_right": null,
-          "end_marker": null,
-          "from": "Car",
-          "from_cluster": null,
           "id": "0",
-          "label": {
-            "height": 24.0,
-            "width": 20.64,
-            "x": 32.8,
-            "y": 121.0
-          },
+          "from": "Car",
+          "to": "Engine",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 32.8,
@@ -37,32 +41,28 @@
               "y": 158.0
             }
           ],
+          "label": {
+            "x": 32.8,
+            "y": 121.0,
+            "width": 20.64,
+            "height": 24.0
+          },
           "start_label_left": null,
           "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
           "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "Engine",
-          "to_cluster": null
+          "end_marker": null,
+          "stroke_dasharray": null
         }
       ],
-      "nodes": [
-        {
-          "height": 84.0,
-          "id": "Car",
-          "is_cluster": false,
-          "width": 47.36,
-          "x": 32.8,
-          "y": 42.0
-        },
-        {
-          "height": 84.0,
-          "id": "Engine",
-          "is_cluster": false,
-          "width": 65.6,
-          "x": 32.8,
-          "y": 200.0
-        }
-      ]
+      "clusters": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 65.6,
+        "max_y": 242.0
+      }
     }
   }
 }

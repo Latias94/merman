@@ -2,65 +2,71 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "bounds": {
-        "max_x": 174.2,
-        "max_y": 400.0,
-        "min_x": 0.0,
-        "min_y": 0.0
-      },
-      "clusters": [
+      "nodes": [
         {
-          "diff": -8.0,
-          "effective_dir": "TB",
-          "height": 278.0,
-          "id": "NotShooting",
-          "offset_y": 11.0,
-          "padding": 8.0,
-          "requested_dir": "TB",
-          "title": "Not Shooting State",
-          "title_label": {
-            "height": 15.0,
-            "width": 79.0,
-            "x": 87.1,
-            "y": 43.5
-          },
-          "title_margin_bottom": 0.0,
-          "title_margin_top": 0.0,
-          "width": 102.0,
+          "id": "Configuring",
           "x": 87.1,
-          "y": 174.0
+          "y": 289.5,
+          "width": 86.0,
+          "height": 31.0,
+          "is_cluster": false
         },
         {
-          "diff": 0.0,
-          "effective_dir": "TB",
-          "height": 45.0,
-          "id": "NotShooting----parent",
-          "offset_y": 0.0,
-          "padding": 16.0,
-          "requested_dir": null,
-          "title": "This is a note on a composite state",
-          "title_label": {
-            "height": 15.0,
-            "width": 144.2,
-            "x": 87.1,
-            "y": 363.5
-          },
-          "title_margin_bottom": 0.0,
-          "title_margin_top": 0.0,
-          "width": 174.2,
+          "id": "Idle",
           "x": 87.1,
-          "y": 377.5
+          "y": 168.5,
+          "width": 54.4,
+          "height": 31.0,
+          "is_cluster": false
+        },
+        {
+          "id": "NotShooting",
+          "x": 87.1,
+          "y": 174.0,
+          "width": 102.0,
+          "height": 278.0,
+          "is_cluster": true
+        },
+        {
+          "id": "NotShooting----note-4",
+          "x": 87.1,
+          "y": 377.5,
+          "width": 174.2,
+          "height": 45.0,
+          "is_cluster": false
+        },
+        {
+          "id": "NotShooting----parent",
+          "x": 87.1,
+          "y": 377.5,
+          "width": 174.2,
+          "height": 45.0,
+          "is_cluster": true
+        },
+        {
+          "id": "NotShooting_start",
+          "x": 87.1,
+          "y": 71.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "root_start",
+          "x": 87.1,
+          "y": 7.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
         }
       ],
       "edges": [
         {
-          "end_label_left": null,
-          "end_label_right": null,
-          "end_marker": null,
-          "from": "NotShooting",
-          "from_cluster": null,
           "id": "NotShooting-NotShooting----note-4",
-          "label": null,
+          "from": "NotShooting",
+          "to": "NotShooting----note-4",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 87.1,
@@ -75,21 +81,21 @@
               "y": 355.0
             }
           ],
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "NotShooting----note-4",
-          "to_cluster": null
-        },
-        {
           "end_label_left": null,
           "end_label_right": null,
+          "start_marker": null,
           "end_marker": null,
-          "from": "root_start",
-          "from_cluster": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "edge0",
-          "label": null,
+          "from": "root_start",
+          "to": "NotShooting",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 87.1,
@@ -104,21 +110,21 @@
               "y": 64.0
             }
           ],
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "NotShooting",
-          "to_cluster": null
-        },
-        {
           "end_label_left": null,
           "end_label_right": null,
+          "start_marker": null,
           "end_marker": null,
-          "from": "NotShooting_start",
-          "from_cluster": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "edge1",
-          "label": null,
+          "from": "NotShooting_start",
+          "to": "Idle",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 87.1,
@@ -133,26 +139,21 @@
               "y": 153.0
             }
           ],
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "Idle",
-          "to_cluster": null
-        },
-        {
           "end_label_left": null,
           "end_label_right": null,
+          "start_marker": null,
           "end_marker": null,
-          "from": "Idle",
-          "from_cluster": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "edge2",
-          "label": {
-            "height": 15.0,
-            "width": 36.3,
-            "x": 87.1,
-            "y": 229.0
-          },
+          "from": "Idle",
+          "to": "Configuring",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 87.1,
@@ -167,26 +168,26 @@
               "y": 274.0
             }
           ],
+          "label": {
+            "x": 87.1,
+            "y": 229.0,
+            "width": 36.3,
+            "height": 15.0
+          },
           "start_label_left": null,
           "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "Configuring",
-          "to_cluster": null
-        },
-        {
           "end_label_left": null,
           "end_label_right": null,
+          "start_marker": null,
           "end_marker": null,
-          "from": "Configuring",
-          "from_cluster": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "edge3",
-          "label": {
-            "height": 15.0,
-            "width": 36.3,
-            "x": 87.1,
-            "y": 229.0
-          },
+          "from": "Configuring",
+          "to": "Idle",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 87.1,
@@ -201,72 +202,71 @@
               "y": 184.0
             }
           ],
+          "label": {
+            "x": 87.1,
+            "y": 229.0,
+            "width": 36.3,
+            "height": 15.0
+          },
           "start_label_left": null,
           "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
           "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "Idle",
-          "to_cluster": null
+          "end_marker": null,
+          "stroke_dasharray": null
         }
       ],
-      "nodes": [
+      "clusters": [
         {
-          "height": 31.0,
-          "id": "Configuring",
-          "is_cluster": false,
-          "width": 86.0,
-          "x": 87.1,
-          "y": 289.5
-        },
-        {
-          "height": 31.0,
-          "id": "Idle",
-          "is_cluster": false,
-          "width": 54.4,
-          "x": 87.1,
-          "y": 168.5
-        },
-        {
-          "height": 278.0,
           "id": "NotShooting",
-          "is_cluster": true,
+          "x": 87.1,
+          "y": 174.0,
           "width": 102.0,
-          "x": 87.1,
-          "y": 174.0
+          "height": 278.0,
+          "diff": -8.0,
+          "offset_y": 11.0,
+          "title": "Not Shooting State",
+          "title_label": {
+            "x": 87.1,
+            "y": 43.5,
+            "width": 79.0,
+            "height": 15.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
         },
         {
-          "height": 45.0,
-          "id": "NotShooting----note-4",
-          "is_cluster": false,
-          "width": 174.2,
-          "x": 87.1,
-          "y": 377.5
-        },
-        {
-          "height": 45.0,
           "id": "NotShooting----parent",
-          "is_cluster": true,
+          "x": 87.1,
+          "y": 377.5,
           "width": 174.2,
-          "x": 87.1,
-          "y": 377.5
-        },
-        {
-          "height": 14.0,
-          "id": "NotShooting_start",
-          "is_cluster": false,
-          "width": 14.0,
-          "x": 87.1,
-          "y": 71.0
-        },
-        {
-          "height": 14.0,
-          "id": "root_start",
-          "is_cluster": false,
-          "width": 14.0,
-          "x": 87.1,
-          "y": 7.0
+          "height": 45.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
+          "title": "This is a note on a composite state",
+          "title_label": {
+            "x": 87.1,
+            "y": 363.5,
+            "width": 144.2,
+            "height": 15.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 16.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
         }
-      ]
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 174.2,
+        "max_y": 400.0
+      }
     }
   }
 }

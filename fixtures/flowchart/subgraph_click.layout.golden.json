@@ -2,92 +2,92 @@
   "diagramType": "flowchart-v2",
   "layout": {
     "FlowchartV2": {
-      "bounds": {
-        "max_x": 115.4,
-        "max_y": 55.0,
-        "min_x": -89.8,
-        "min_y": -15.0
-      },
-      "clusters": [
+      "nodes": [
         {
-          "diff": -15.0,
-          "effective_dir": "LR",
-          "height": 70.0,
+          "id": "A",
+          "x": -30.0,
+          "y": 37.0,
+          "width": 69.6,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "B",
+          "x": 89.6,
+          "y": 37.0,
+          "width": 69.6,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
           "id": "S",
-          "offset_y": 16.5,
-          "padding": 8.0,
-          "requested_dir": null,
-          "title": "S",
-          "title_label": {
-            "height": 24.0,
-            "width": 9.6,
-            "x": 12.8,
-            "y": -3.0
-          },
-          "title_margin_bottom": 0.0,
-          "title_margin_top": 0.0,
-          "width": 205.2,
-          "x": 12.8,
-          "y": 20.0
+          "x": 29.8,
+          "y": 37.0,
+          "width": 239.2,
+          "height": 104.0,
+          "is_cluster": true
         }
       ],
       "edges": [
         {
-          "end_label_left": null,
-          "end_label_right": null,
-          "end_marker": null,
-          "from": "A",
-          "from_cluster": null,
           "id": "L_A_B_0",
-          "label": null,
+          "from": "A",
+          "to": "B",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
-              "x": -12.2,
-              "y": 20.0
+              "x": 4.8,
+              "y": 37.0
             },
             {
-              "x": 12.8,
-              "y": 20.0
+              "x": 29.8,
+              "y": 37.0
             },
             {
-              "x": 37.8,
-              "y": 20.0
+              "x": 54.8,
+              "y": 37.0
             }
           ],
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
           "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "B",
-          "to_cluster": null
+          "end_marker": null,
+          "stroke_dasharray": null
         }
       ],
-      "nodes": [
+      "clusters": [
         {
-          "height": 54.0,
-          "id": "A",
-          "is_cluster": false,
-          "width": 69.6,
-          "x": -47.0,
-          "y": 20.0
-        },
-        {
-          "height": 54.0,
-          "id": "B",
-          "is_cluster": false,
-          "width": 69.6,
-          "x": 72.6,
-          "y": 20.0
-        },
-        {
-          "height": 70.0,
           "id": "S",
-          "is_cluster": true,
-          "width": 205.2,
-          "x": 12.8,
-          "y": 20.0
+          "x": 29.8,
+          "y": 37.0,
+          "width": 239.2,
+          "height": 104.0,
+          "diff": -15.0,
+          "offset_y": 16.5,
+          "title": "S",
+          "title_label": {
+            "x": 29.8,
+            "y": -3.0,
+            "width": 9.6,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "LR",
+          "padding": 25.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
         }
-      ]
+      ],
+      "bounds": {
+        "min_x": -89.8,
+        "min_y": -15.0,
+        "max_x": 149.4,
+        "max_y": 89.0
+      }
     }
   }
 }

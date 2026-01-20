@@ -2,22 +2,39 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "bounds": {
-        "max_x": 203.28,
-        "max_y": 218.0,
-        "min_x": 0.0,
-        "min_y": 0.0
-      },
-      "clusters": [],
+      "nodes": [
+        {
+          "id": "Class01",
+          "x": 38.32,
+          "y": 42.0,
+          "width": 76.64,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Class02",
+          "x": 101.64,
+          "y": 176.0,
+          "width": 76.64,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Class03",
+          "x": 164.96,
+          "y": 42.0,
+          "width": 76.64,
+          "height": 84.0,
+          "is_cluster": false
+        }
+      ],
       "edges": [
         {
-          "end_label_left": null,
-          "end_label_right": null,
-          "end_marker": null,
-          "from": "Class01",
-          "from_cluster": null,
           "id": "0",
-          "label": null,
+          "from": "Class01",
+          "to": "Class02",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 38.32,
@@ -32,40 +49,23 @@
               "y": 134.0
             }
           ],
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
           "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "Class02",
-          "to_cluster": null
+          "end_marker": null,
+          "stroke_dasharray": null
         }
       ],
-      "nodes": [
-        {
-          "height": 84.0,
-          "id": "Class01",
-          "is_cluster": false,
-          "width": 76.64,
-          "x": 38.32,
-          "y": 42.0
-        },
-        {
-          "height": 84.0,
-          "id": "Class02",
-          "is_cluster": false,
-          "width": 76.64,
-          "x": 101.64,
-          "y": 176.0
-        },
-        {
-          "height": 84.0,
-          "id": "Class03",
-          "is_cluster": false,
-          "width": 76.64,
-          "x": 164.96,
-          "y": 42.0
-        }
-      ]
+      "clusters": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 203.28,
+        "max_y": 218.0
+      }
     }
   }
 }

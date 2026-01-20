@@ -5,50 +5,50 @@
       "nodes": [
         {
           "id": "b",
-          "x": -45.64,
-          "y": -57.0,
+          "x": -53.64,
+          "y": -10.0,
           "width": 66.88,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "a",
-          "x": 71.24,
-          "y": -57.0,
+          "x": -53.64,
+          "y": 94.0,
           "width": 66.88,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "c",
-          "x": 12.8,
-          "y": 72.0,
+          "x": 88.24,
+          "y": 42.0,
           "width": 66.88,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "O",
-          "x": 12.8,
-          "y": 11.5,
-          "width": 215.76,
-          "height": 223.0,
+          "x": 29.8,
+          "y": 42.0,
+          "width": 333.76,
+          "height": 258.0,
           "is_cluster": true
         },
         {
           "id": "B",
-          "x": 12.8,
-          "y": 72.0,
-          "width": 82.88,
-          "height": 70.0,
+          "x": 88.24,
+          "y": 42.0,
+          "width": 116.88,
+          "height": 104.0,
           "is_cluster": true
         },
         {
           "id": "A",
-          "x": 12.8,
-          "y": 11.5,
-          "width": 199.76,
-          "height": 207.0,
+          "x": 29.8,
+          "y": 42.0,
+          "width": 283.76,
+          "height": 208.0,
           "is_cluster": true
         }
       ],
@@ -61,20 +61,20 @@
           "to_cluster": "B",
           "points": [
             {
-              "x": -45.64,
-              "y": -30.0
+              "x": -20.2,
+              "y": -10.0
             },
             {
-              "x": -45.64,
-              "y": -5.0
+              "x": 4.8,
+              "y": -10.0
             },
             {
-              "x": -45.64,
-              "y": 20.0
+              "x": 29.8,
+              "y": -10.0
             },
             {
-              "x": -17.544,
-              "y": 45.0
+              "x": 57.896,
+              "y": 15.0
             }
           ],
           "label": null,
@@ -94,20 +94,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 71.24,
-              "y": -30.0
+              "x": -20.2,
+              "y": 94.0
             },
             {
-              "x": 71.24,
-              "y": -5.0
+              "x": 4.8,
+              "y": 94.0
             },
             {
-              "x": 71.24,
-              "y": 20.0
+              "x": 29.8,
+              "y": 94.0
             },
             {
-              "x": 43.144,
-              "y": 45.0
+              "x": 57.896,
+              "y": 69.0
             }
           ],
           "label": null,
@@ -123,73 +123,73 @@
       "clusters": [
         {
           "id": "A",
-          "x": 12.8,
-          "y": 11.5,
-          "width": 199.76,
-          "height": 207.0,
+          "x": 29.8,
+          "y": 42.0,
+          "width": 283.76,
+          "height": 208.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "A",
           "title_label": {
-            "x": 12.8,
-            "y": -80.0,
+            "x": 29.8,
+            "y": -50.0,
             "width": 9.6,
             "height": 24.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 8.0,
+          "padding": 25.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
         {
           "id": "B",
-          "x": 12.8,
-          "y": 72.0,
-          "width": 82.88,
-          "height": 70.0,
+          "x": 88.24,
+          "y": 42.0,
+          "width": 116.88,
+          "height": 104.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "B",
           "title_label": {
-            "x": 12.8,
-            "y": 49.0,
+            "x": 88.24,
+            "y": 2.0,
             "width": 9.6,
             "height": 24.0
           },
           "requested_dir": null,
           "effective_dir": "LR",
-          "padding": 8.0,
+          "padding": 25.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
         {
           "id": "O",
-          "x": 12.8,
-          "y": 11.5,
-          "width": 215.76,
-          "height": 223.0,
+          "x": 29.8,
+          "y": 42.0,
+          "width": 333.76,
+          "height": 258.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "O",
           "title_label": {
-            "x": 12.8,
-            "y": -88.0,
+            "x": 29.8,
+            "y": -75.0,
             "width": 9.6,
             "height": 24.0
           },
           "requested_dir": null,
           "effective_dir": "LR",
-          "padding": 8.0,
+          "padding": 25.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }
       ],
       "bounds": {
-        "min_x": -95.08,
-        "min_y": -100.0,
-        "max_x": 120.68,
-        "max_y": 123.0
+        "min_x": -137.08,
+        "min_y": -87.0,
+        "max_x": 196.68,
+        "max_y": 171.0
       }
     }
   }

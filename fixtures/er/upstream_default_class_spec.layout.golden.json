@@ -2,31 +2,31 @@
   "diagramType": "er",
   "layout": {
     "ErDiagram": {
-      "bounds": {
-        "max_x": 343.52,
-        "max_y": 84.0,
-        "min_x": 0.0,
-        "min_y": 0.0
-      },
-      "edges": [],
       "nodes": [
         {
-          "height": 84.0,
           "id": "entity-ENTITY1-0",
-          "is_cluster": false,
-          "width": 101.76,
           "x": 50.88,
-          "y": 42.0
+          "y": 42.0,
+          "width": 101.76,
+          "height": 84.0,
+          "is_cluster": false
         },
         {
-          "height": 84.0,
           "id": "entity-ENTITY2-1",
-          "is_cluster": false,
-          "width": 101.76,
           "x": 292.64,
-          "y": 42.0
+          "y": 42.0,
+          "width": 101.76,
+          "height": 84.0,
+          "is_cluster": false
         }
-      ]
+      ],
+      "edges": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 343.52,
+        "max_y": 84.0
+      }
     }
   }
 }

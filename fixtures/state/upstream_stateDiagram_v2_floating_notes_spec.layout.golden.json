@@ -2,65 +2,71 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "bounds": {
-        "max_x": 291.2,
-        "max_y": 126.0,
-        "min_x": 0.0,
-        "min_y": 0.0
-      },
-      "clusters": [
+      "nodes": [
         {
-          "diff": 0.0,
-          "effective_dir": "TB",
-          "height": 45.0,
-          "id": "N1----parent",
-          "offset_y": 0.0,
-          "padding": 16.0,
-          "requested_dir": null,
-          "title": "This is a floating note",
-          "title_label": {
-            "height": 15.0,
-            "width": 90.6,
-            "x": 60.3,
-            "y": 89.5
-          },
-          "title_margin_bottom": 0.0,
-          "title_margin_top": 0.0,
-          "width": 120.6,
-          "x": 60.3,
-          "y": 103.5
+          "id": "N1",
+          "x": 146.25,
+          "y": 15.5,
+          "width": 27.6,
+          "height": 31.0,
+          "is_cluster": false
         },
         {
-          "diff": 0.0,
-          "effective_dir": "TB",
-          "height": 45.0,
-          "id": "N2----parent",
-          "offset_y": 0.0,
-          "padding": 16.0,
-          "requested_dir": null,
-          "title": "This is a floating note",
-          "title_label": {
-            "height": 15.0,
-            "width": 90.6,
-            "x": 230.9,
-            "y": 89.5
-          },
-          "title_margin_bottom": 0.0,
-          "title_margin_top": 0.0,
+          "id": "N1----note-0",
+          "x": 60.3,
+          "y": 103.5,
           "width": 120.6,
+          "height": 45.0,
+          "is_cluster": false
+        },
+        {
+          "id": "N1----parent",
+          "x": 60.3,
+          "y": 103.5,
+          "width": 120.6,
+          "height": 45.0,
+          "is_cluster": true
+        },
+        {
+          "id": "N2",
+          "x": 223.85,
+          "y": 15.5,
+          "width": 27.6,
+          "height": 31.0,
+          "is_cluster": false
+        },
+        {
+          "id": "N2----note-1",
           "x": 230.9,
-          "y": 103.5
+          "y": 103.5,
+          "width": 120.6,
+          "height": 45.0,
+          "is_cluster": false
+        },
+        {
+          "id": "N2----parent",
+          "x": 230.9,
+          "y": 103.5,
+          "width": 120.6,
+          "height": 45.0,
+          "is_cluster": true
+        },
+        {
+          "id": "foo",
+          "x": 68.0,
+          "y": 15.5,
+          "width": 28.9,
+          "height": 31.0,
+          "is_cluster": false
         }
       ],
       "edges": [
         {
-          "end_label_left": null,
-          "end_label_right": null,
-          "end_marker": null,
-          "from": "N1",
-          "from_cluster": null,
           "id": "N1-N1----note-0",
-          "label": null,
+          "from": "N1",
+          "to": "N1----note-0",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 146.25,
@@ -75,21 +81,21 @@
               "y": 81.0
             }
           ],
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "N1----note-0",
-          "to_cluster": null
-        },
-        {
           "end_label_left": null,
           "end_label_right": null,
+          "start_marker": null,
           "end_marker": null,
-          "from": "N2",
-          "from_cluster": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "N2-N2----note-1",
-          "label": null,
+          "from": "N2",
+          "to": "N2----note-1",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 223.85,
@@ -104,72 +110,66 @@
               "y": 81.0
             }
           ],
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
           "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "N2----note-1",
-          "to_cluster": null
+          "end_marker": null,
+          "stroke_dasharray": null
         }
       ],
-      "nodes": [
+      "clusters": [
         {
-          "height": 31.0,
-          "id": "N1",
-          "is_cluster": false,
-          "width": 27.6,
-          "x": 146.25,
-          "y": 15.5
-        },
-        {
-          "height": 45.0,
-          "id": "N1----note-0",
-          "is_cluster": false,
-          "width": 120.6,
-          "x": 60.3,
-          "y": 103.5
-        },
-        {
-          "height": 45.0,
           "id": "N1----parent",
-          "is_cluster": true,
-          "width": 120.6,
           "x": 60.3,
-          "y": 103.5
-        },
-        {
-          "height": 31.0,
-          "id": "N2",
-          "is_cluster": false,
-          "width": 27.6,
-          "x": 223.85,
-          "y": 15.5
-        },
-        {
-          "height": 45.0,
-          "id": "N2----note-1",
-          "is_cluster": false,
+          "y": 103.5,
           "width": 120.6,
-          "x": 230.9,
-          "y": 103.5
+          "height": 45.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
+          "title": "This is a floating note",
+          "title_label": {
+            "x": 60.3,
+            "y": 89.5,
+            "width": 90.6,
+            "height": 15.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 16.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
         },
         {
-          "height": 45.0,
           "id": "N2----parent",
-          "is_cluster": true,
-          "width": 120.6,
           "x": 230.9,
-          "y": 103.5
-        },
-        {
-          "height": 31.0,
-          "id": "foo",
-          "is_cluster": false,
-          "width": 28.9,
-          "x": 68.0,
-          "y": 15.5
+          "y": 103.5,
+          "width": 120.6,
+          "height": 45.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
+          "title": "This is a floating note",
+          "title_label": {
+            "x": 230.9,
+            "y": 89.5,
+            "width": 90.6,
+            "height": 15.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 16.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
         }
-      ]
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 291.2,
+        "max_y": 126.0
+      }
     }
   }
 }

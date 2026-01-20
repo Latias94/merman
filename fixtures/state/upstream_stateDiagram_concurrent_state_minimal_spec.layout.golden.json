@@ -2,107 +2,103 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "bounds": {
-        "max_x": 329.6,
-        "max_y": 225.0,
-        "min_x": -16.0,
-        "min_y": 0.0
-      },
-      "clusters": [
+      "nodes": [
         {
-          "diff": -8.0,
-          "effective_dir": "TB",
-          "height": 198.0,
           "id": "Active",
-          "offset_y": 11.0,
-          "padding": 8.0,
-          "requested_dir": "TB",
-          "title": "Active",
-          "title_label": {
-            "height": 15.0,
-            "width": 26.0,
-            "x": 156.8,
-            "y": 35.5
-          },
-          "title_margin_bottom": 0.0,
-          "title_margin_top": 0.0,
-          "width": 345.6,
           "x": 156.8,
-          "y": 126.0
+          "y": 126.0,
+          "width": 345.6,
+          "height": 198.0,
+          "is_cluster": true
         },
         {
-          "diff": -8.0,
-          "effective_dir": "TB",
-          "height": 161.0,
-          "id": "divider-id-1",
-          "offset_y": 0.0,
-          "padding": 8.0,
-          "requested_dir": "TB",
-          "title": "",
-          "title_label": {
-            "height": 0.0,
-            "width": 0.0,
-            "x": 34.4,
-            "y": 57.0
-          },
-          "title_margin_bottom": 0.0,
-          "title_margin_top": 0.0,
-          "width": 84.8,
-          "x": 34.4,
-          "y": 136.5
-        },
-        {
-          "diff": -8.0,
-          "effective_dir": "TB",
-          "height": 161.0,
-          "id": "divider-id-2",
-          "offset_y": 0.0,
-          "padding": 8.0,
-          "requested_dir": "TB",
-          "title": "",
-          "title_label": {
-            "height": 0.0,
-            "width": 0.0,
-            "x": 153.6,
-            "y": 57.0
-          },
-          "title_margin_bottom": 0.0,
-          "title_margin_top": 0.0,
-          "width": 85.6,
+          "id": "CapsLockOff",
           "x": 153.6,
-          "y": 136.5
+          "y": 193.5,
+          "width": 69.6,
+          "height": 31.0,
+          "is_cluster": false
         },
         {
-          "diff": -8.0,
-          "effective_dir": "TB",
-          "height": 161.0,
-          "id": "id-38dvt516gkfs-1",
-          "offset_y": 0.0,
-          "padding": 8.0,
-          "requested_dir": "TB",
-          "title": "",
-          "title_label": {
-            "height": 0.0,
-            "width": 0.0,
-            "x": 276.0,
-            "y": 57.0
-          },
-          "title_margin_bottom": 0.0,
-          "title_margin_top": 0.0,
-          "width": 91.2,
+          "id": "NumLockOff",
+          "x": 34.4,
+          "y": 193.5,
+          "width": 68.8,
+          "height": 31.0,
+          "is_cluster": false
+        },
+        {
+          "id": "ScrollLockOff",
           "x": 276.0,
-          "y": 136.5
+          "y": 193.5,
+          "width": 75.2,
+          "height": 31.0,
+          "is_cluster": false
+        },
+        {
+          "id": "divider-id-1",
+          "x": 34.4,
+          "y": 136.5,
+          "width": 84.8,
+          "height": 161.0,
+          "is_cluster": true
+        },
+        {
+          "id": "divider-id-1_start",
+          "x": 34.4,
+          "y": 71.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "divider-id-2",
+          "x": 153.6,
+          "y": 136.5,
+          "width": 85.6,
+          "height": 161.0,
+          "is_cluster": true
+        },
+        {
+          "id": "divider-id-2_start",
+          "x": 153.6,
+          "y": 71.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "id-38dvt516gkfs-1",
+          "x": 276.0,
+          "y": 136.5,
+          "width": 91.2,
+          "height": 161.0,
+          "is_cluster": true
+        },
+        {
+          "id": "id-38dvt516gkfs-1_start",
+          "x": 276.0,
+          "y": 71.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "root_start",
+          "x": 156.8,
+          "y": 7.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
         }
       ],
       "edges": [
         {
-          "end_label_left": null,
-          "end_label_right": null,
-          "end_marker": null,
-          "from": "root_start",
-          "from_cluster": null,
           "id": "edge0",
-          "label": null,
+          "from": "root_start",
+          "to": "Active",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 156.8,
@@ -117,50 +113,50 @@
               "y": 64.0
             }
           ],
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "Active",
-          "to_cluster": null
-        },
-        {
           "end_label_left": null,
           "end_label_right": null,
+          "start_marker": null,
           "end_marker": null,
-          "from": "divider-id-1_start",
-          "from_cluster": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "edge1",
-          "label": null,
-          "points": [
-            {
-              "x": 34.4,
-              "y": 78.0
-            },
-            {
-              "x": 34.4,
-              "y": 128.0
-            },
-            {
-              "x": 34.4,
-              "y": 178.0
-            }
-          ],
-          "start_label_left": null,
-          "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
+          "from": "divider-id-1_start",
           "to": "NumLockOff",
-          "to_cluster": null
-        },
-        {
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 34.4,
+              "y": 78.0
+            },
+            {
+              "x": 34.4,
+              "y": 128.0
+            },
+            {
+              "x": 34.4,
+              "y": 178.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
           "end_label_left": null,
           "end_label_right": null,
+          "start_marker": null,
           "end_marker": null,
-          "from": "divider-id-2_start",
-          "from_cluster": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "edge2",
-          "label": null,
+          "from": "divider-id-2_start",
+          "to": "CapsLockOff",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 153.6,
@@ -175,21 +171,21 @@
               "y": 178.0
             }
           ],
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "CapsLockOff",
-          "to_cluster": null
-        },
-        {
           "end_label_left": null,
           "end_label_right": null,
+          "start_marker": null,
           "end_marker": null,
-          "from": "id-38dvt516gkfs-1_start",
-          "from_cluster": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "edge3",
-          "label": null,
+          "from": "id-38dvt516gkfs-1_start",
+          "to": "ScrollLockOff",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 276.0,
@@ -204,104 +200,108 @@
               "y": 178.0
             }
           ],
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
           "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "ScrollLockOff",
-          "to_cluster": null
+          "end_marker": null,
+          "stroke_dasharray": null
         }
       ],
-      "nodes": [
+      "clusters": [
         {
-          "height": 198.0,
           "id": "Active",
-          "is_cluster": true,
+          "x": 156.8,
+          "y": 126.0,
           "width": 345.6,
-          "x": 156.8,
-          "y": 126.0
+          "height": 198.0,
+          "diff": -8.0,
+          "offset_y": 11.0,
+          "title": "Active",
+          "title_label": {
+            "x": 156.8,
+            "y": 35.5,
+            "width": 26.0,
+            "height": 15.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
         },
         {
-          "height": 31.0,
-          "id": "CapsLockOff",
-          "is_cluster": false,
-          "width": 69.6,
-          "x": 153.6,
-          "y": 193.5
-        },
-        {
-          "height": 31.0,
-          "id": "NumLockOff",
-          "is_cluster": false,
-          "width": 68.8,
-          "x": 34.4,
-          "y": 193.5
-        },
-        {
-          "height": 31.0,
-          "id": "ScrollLockOff",
-          "is_cluster": false,
-          "width": 75.2,
-          "x": 276.0,
-          "y": 193.5
-        },
-        {
-          "height": 161.0,
           "id": "divider-id-1",
-          "is_cluster": true,
+          "x": 34.4,
+          "y": 136.5,
           "width": 84.8,
-          "x": 34.4,
-          "y": 136.5
-        },
-        {
-          "height": 14.0,
-          "id": "divider-id-1_start",
-          "is_cluster": false,
-          "width": 14.0,
-          "x": 34.4,
-          "y": 71.0
-        },
-        {
           "height": 161.0,
+          "diff": -8.0,
+          "offset_y": 0.0,
+          "title": "",
+          "title_label": {
+            "x": 34.4,
+            "y": 57.0,
+            "width": 0.0,
+            "height": 0.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
           "id": "divider-id-2",
-          "is_cluster": true,
+          "x": 153.6,
+          "y": 136.5,
           "width": 85.6,
-          "x": 153.6,
-          "y": 136.5
-        },
-        {
-          "height": 14.0,
-          "id": "divider-id-2_start",
-          "is_cluster": false,
-          "width": 14.0,
-          "x": 153.6,
-          "y": 71.0
-        },
-        {
           "height": 161.0,
+          "diff": -8.0,
+          "offset_y": 0.0,
+          "title": "",
+          "title_label": {
+            "x": 153.6,
+            "y": 57.0,
+            "width": 0.0,
+            "height": 0.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
           "id": "id-38dvt516gkfs-1",
-          "is_cluster": true,
+          "x": 276.0,
+          "y": 136.5,
           "width": 91.2,
-          "x": 276.0,
-          "y": 136.5
-        },
-        {
-          "height": 14.0,
-          "id": "id-38dvt516gkfs-1_start",
-          "is_cluster": false,
-          "width": 14.0,
-          "x": 276.0,
-          "y": 71.0
-        },
-        {
-          "height": 14.0,
-          "id": "root_start",
-          "is_cluster": false,
-          "width": 14.0,
-          "x": 156.8,
-          "y": 7.0
+          "height": 161.0,
+          "diff": -8.0,
+          "offset_y": 0.0,
+          "title": "",
+          "title_label": {
+            "x": 276.0,
+            "y": 57.0,
+            "width": 0.0,
+            "height": 0.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
         }
-      ]
+      ],
+      "bounds": {
+        "min_x": -16.0,
+        "min_y": 0.0,
+        "max_x": 329.6,
+        "max_y": 225.0
+      }
     }
   }
 }

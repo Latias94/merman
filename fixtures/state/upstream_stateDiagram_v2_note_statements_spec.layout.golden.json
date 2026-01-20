@@ -2,65 +2,71 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "bounds": {
-        "max_x": 152.5,
-        "max_y": 347.0,
-        "min_x": 0.0,
-        "min_y": 0.0
-      },
-      "clusters": [
+      "nodes": [
         {
-          "diff": 0.0,
-          "effective_dir": "TB",
-          "height": 60.0,
-          "id": "Active----parent",
-          "offset_y": 0.0,
-          "padding": 16.0,
-          "requested_dir": null,
-          "title": "this is a short<br/>note",
-          "title_label": {
-            "height": 30.0,
-            "width": 58.5,
-            "x": 108.25,
-            "y": 16.0
-          },
-          "title_margin_bottom": 0.0,
-          "title_margin_top": 0.0,
-          "width": 88.5,
-          "x": 108.25,
-          "y": 30.0
+          "id": "Active",
+          "x": 76.25,
+          "y": 125.5,
+          "width": 42.0,
+          "height": 31.0,
+          "is_cluster": false
         },
         {
-          "diff": 0.0,
-          "effective_dir": "TB",
-          "height": 75.0,
-          "id": "Inactive----parent",
-          "offset_y": 0.0,
-          "padding": 16.0,
-          "requested_dir": null,
-          "title": "A note can also\nbe defined on\nseveral lines",
-          "title_label": {
-            "height": 45.0,
-            "width": 61.7,
-            "x": 76.25,
-            "y": 295.5
-          },
-          "title_margin_bottom": 0.0,
-          "title_margin_top": 0.0,
-          "width": 91.7,
+          "id": "Active----note-2",
+          "x": 108.25,
+          "y": 30.0,
+          "width": 88.5,
+          "height": 60.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Active----parent",
+          "x": 108.25,
+          "y": 30.0,
+          "width": 88.5,
+          "height": 60.0,
+          "is_cluster": true
+        },
+        {
+          "id": "Inactive",
           "x": 76.25,
-          "y": 309.5
+          "y": 206.5,
+          "width": 47.6,
+          "height": 31.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Inactive----note-3",
+          "x": 76.25,
+          "y": 309.5,
+          "width": 91.7,
+          "height": 75.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Inactive----parent",
+          "x": 76.25,
+          "y": 309.5,
+          "width": 91.7,
+          "height": 75.0,
+          "is_cluster": true
+        },
+        {
+          "id": "root_start",
+          "x": 7.0,
+          "y": 30.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
         }
       ],
       "edges": [
         {
-          "end_label_left": null,
-          "end_label_right": null,
-          "end_marker": null,
-          "from": "Active----note-2",
-          "from_cluster": null,
           "id": "Active----note-2-Active",
-          "label": null,
+          "from": "Active----note-2",
+          "to": "Active",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 108.25,
@@ -75,21 +81,21 @@
               "y": 110.0
             }
           ],
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "Active",
-          "to_cluster": null
-        },
-        {
           "end_label_left": null,
           "end_label_right": null,
+          "start_marker": null,
           "end_marker": null,
-          "from": "Inactive",
-          "from_cluster": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "Inactive-Inactive----note-3",
-          "label": null,
+          "from": "Inactive",
+          "to": "Inactive----note-3",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 76.25,
@@ -104,21 +110,21 @@
               "y": 272.0
             }
           ],
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "Inactive----note-3",
-          "to_cluster": null
-        },
-        {
           "end_label_left": null,
           "end_label_right": null,
+          "start_marker": null,
           "end_marker": null,
-          "from": "root_start",
-          "from_cluster": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "edge0",
-          "label": null,
+          "from": "root_start",
+          "to": "Active",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 7.0,
@@ -133,21 +139,21 @@
               "y": 110.0
             }
           ],
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "Active",
-          "to_cluster": null
-        },
-        {
           "end_label_left": null,
           "end_label_right": null,
+          "start_marker": null,
           "end_marker": null,
-          "from": "Active",
-          "from_cluster": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "edge1",
-          "label": null,
+          "from": "Active",
+          "to": "Inactive",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 76.25,
@@ -162,72 +168,66 @@
               "y": 191.0
             }
           ],
+          "label": null,
           "start_label_left": null,
           "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
           "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "Inactive",
-          "to_cluster": null
+          "end_marker": null,
+          "stroke_dasharray": null
         }
       ],
-      "nodes": [
+      "clusters": [
         {
-          "height": 31.0,
-          "id": "Active",
-          "is_cluster": false,
-          "width": 42.0,
-          "x": 76.25,
-          "y": 125.5
-        },
-        {
-          "height": 60.0,
-          "id": "Active----note-2",
-          "is_cluster": false,
-          "width": 88.5,
-          "x": 108.25,
-          "y": 30.0
-        },
-        {
-          "height": 60.0,
           "id": "Active----parent",
-          "is_cluster": true,
-          "width": 88.5,
           "x": 108.25,
-          "y": 30.0
+          "y": 30.0,
+          "width": 88.5,
+          "height": 60.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
+          "title": "this is a short<br/>note",
+          "title_label": {
+            "x": 108.25,
+            "y": 16.0,
+            "width": 58.5,
+            "height": 30.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 16.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
         },
         {
-          "height": 31.0,
-          "id": "Inactive",
-          "is_cluster": false,
-          "width": 47.6,
-          "x": 76.25,
-          "y": 206.5
-        },
-        {
-          "height": 75.0,
-          "id": "Inactive----note-3",
-          "is_cluster": false,
-          "width": 91.7,
-          "x": 76.25,
-          "y": 309.5
-        },
-        {
-          "height": 75.0,
           "id": "Inactive----parent",
-          "is_cluster": true,
-          "width": 91.7,
           "x": 76.25,
-          "y": 309.5
-        },
-        {
-          "height": 14.0,
-          "id": "root_start",
-          "is_cluster": false,
-          "width": 14.0,
-          "x": 7.0,
-          "y": 30.0
+          "y": 309.5,
+          "width": 91.7,
+          "height": 75.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
+          "title": "A note can also\nbe defined on\nseveral lines",
+          "title_label": {
+            "x": 76.25,
+            "y": 295.5,
+            "width": 61.7,
+            "height": 45.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 16.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
         }
-      ]
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 152.5,
+        "max_y": 347.0
+      }
     }
   }
 }

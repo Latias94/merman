@@ -2,40 +2,40 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "bounds": {
-        "max_x": 262.24,
-        "max_y": 84.0,
-        "min_x": 0.0,
-        "min_y": 0.0
-      },
-      "clusters": [],
-      "edges": [],
       "nodes": [
         {
-          "height": 84.0,
           "id": "A_Car",
-          "is_cluster": false,
-          "width": 62.24,
           "x": 31.12,
-          "y": 42.0
+          "y": 42.0,
+          "width": 62.24,
+          "height": 84.0,
+          "is_cluster": false
         },
         {
-          "height": 84.0,
           "id": "Ca-r",
-          "is_cluster": false,
-          "width": 52.64,
           "x": 138.56,
-          "y": 42.0
+          "y": 42.0,
+          "width": 52.64,
+          "height": 84.0,
+          "is_cluster": false
         },
         {
-          "height": 84.0,
           "id": "Car",
-          "is_cluster": false,
-          "width": 47.36,
           "x": 238.56,
-          "y": 42.0
+          "y": 42.0,
+          "width": 47.36,
+          "height": 84.0,
+          "is_cluster": false
         }
-      ]
+      ],
+      "edges": [],
+      "clusters": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 262.24,
+        "max_y": 84.0
+      }
     }
   }
 }

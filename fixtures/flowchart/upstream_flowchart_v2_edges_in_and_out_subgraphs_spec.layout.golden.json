@@ -5,82 +5,82 @@
       "nodes": [
         {
           "id": "internet",
-          "x": 80.26,
-          "y": 310.0,
+          "x": 362.82,
+          "y": 280.0,
           "width": 112.64,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "nat",
-          "x": 125.92,
-          "y": 206.0,
+          "x": 127.88,
+          "y": 176.0,
           "width": 80.64,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "router",
-          "x": 80.26,
-          "y": 414.0,
+          "x": 185.86,
+          "y": 384.0,
           "width": 101.28,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "lb1",
-          "x": 277.44,
-          "y": 543.0,
+          "x": 143.04,
+          "y": 446.0,
           "width": 80.32,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "lb2",
-          "x": 40.16,
-          "y": 77.0,
+          "x": 90.22,
+          "y": 10.0,
           "width": 80.32,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "compute1",
-          "x": 125.92,
-          "y": 543.0,
+          "x": 143.04,
+          "y": 550.0,
           "width": 122.72,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "compute2",
-          "x": 191.68,
-          "y": 77.0,
+          "x": 90.22,
+          "y": 114.0,
           "width": 122.72,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "subnet1",
-          "x": 191.08,
-          "y": 543.0,
-          "width": 269.04,
-          "height": 70.0,
+          "x": 143.04,
+          "y": 498.0,
+          "width": 172.72,
+          "height": 208.0,
           "is_cluster": true
         },
         {
           "id": "subnet2",
-          "x": 126.52,
-          "y": 77.0,
-          "width": 269.04,
-          "height": 70.0,
+          "x": 90.22,
+          "y": 62.0,
+          "width": 172.72,
+          "height": 208.0,
           "is_cluster": true
         },
         {
           "id": "project",
-          "x": 158.8,
-          "y": 310.0,
-          "width": 349.6,
-          "height": 552.0,
+          "x": 120.18,
+          "y": 280.0,
+          "width": 282.64,
+          "height": 694.0,
           "is_cluster": true
         }
       ],
@@ -93,16 +93,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 80.26,
-              "y": 337.0
+              "x": 306.5,
+              "y": 296.55
             },
             {
-              "x": 80.26,
-              "y": 362.0
+              "x": 185.86,
+              "y": 332.0
             },
             {
-              "x": 80.26,
-              "y": 387.0
+              "x": 185.86,
+              "y": 357.0
             }
           ],
           "label": null,
@@ -119,23 +119,19 @@
           "from": "router",
           "to": "subnet1",
           "from_cluster": null,
-          "to_cluster": "subnet1",
+          "to_cluster": null,
           "points": [
             {
-              "x": 80.26,
-              "y": 441.0
+              "x": 185.86,
+              "y": 411.0
             },
             {
-              "x": 80.26,
-              "y": 466.0
+              "x": 185.86,
+              "y": 436.0
             },
             {
-              "x": 80.26,
-              "y": 491.0
-            },
-            {
-              "x": 102.212,
-              "y": 516.0
+              "x": 168.594,
+              "y": 461.0
             }
           ],
           "label": null,
@@ -152,39 +148,35 @@
           "from": "router",
           "to": "subnet2",
           "from_cluster": null,
-          "to_cluster": "subnet2",
+          "to_cluster": null,
           "points": [
             {
-              "x": 130.9,
-              "y": 398.239
+              "x": 135.22,
+              "y": 364.245
             },
             {
-              "x": 247.34,
-              "y": 362.0
+              "x": 52.56,
+              "y": 332.0
             },
             {
-              "x": 247.34,
-              "y": 310.0
+              "x": 52.56,
+              "y": 280.0
             },
             {
-              "x": 247.34,
-              "y": 258.0
+              "x": 52.56,
+              "y": 228.0
             },
             {
-              "x": 247.34,
-              "y": 206.0
+              "x": 52.56,
+              "y": 176.0
             },
             {
-              "x": 247.34,
-              "y": 154.0
+              "x": 52.56,
+              "y": 124.0
             },
             {
-              "x": 247.34,
-              "y": 129.0
-            },
-            {
-              "x": 220.58,
-              "y": 104.0
+              "x": 67.745,
+              "y": 99.0
             }
           ],
           "label": null,
@@ -200,40 +192,36 @@
           "id": "L_subnet1_nat_0",
           "from": "subnet1",
           "to": "nat",
-          "from_cluster": "subnet1",
+          "from_cluster": null,
           "to_cluster": null,
           "points": [
             {
-              "x": 149.628,
-              "y": 516.0
+              "x": 117.486,
+              "y": 461.0
             },
             {
-              "x": 171.58,
-              "y": 491.0
+              "x": 100.22,
+              "y": 436.0
             },
             {
-              "x": 171.58,
-              "y": 466.0
+              "x": 100.22,
+              "y": 384.0
             },
             {
-              "x": 171.58,
-              "y": 414.0
+              "x": 100.22,
+              "y": 332.0
             },
             {
-              "x": 171.58,
-              "y": 362.0
+              "x": 100.22,
+              "y": 280.0
             },
             {
-              "x": 171.58,
-              "y": 310.0
+              "x": 100.22,
+              "y": 228.0
             },
             {
-              "x": 171.58,
-              "y": 258.0
-            },
-            {
-              "x": 149.628,
-              "y": 233.0
+              "x": 113.518,
+              "y": 203.0
             }
           ],
           "label": null,
@@ -249,24 +237,20 @@
           "id": "L_subnet2_nat_0",
           "from": "subnet2",
           "to": "nat",
-          "from_cluster": "subnet2",
+          "from_cluster": null,
           "to_cluster": null,
           "points": [
             {
-              "x": 157.535,
-              "y": 104.0
+              "x": 112.695,
+              "y": 99.0
             },
             {
-              "x": 125.92,
-              "y": 129.0
+              "x": 127.88,
+              "y": 124.0
             },
             {
-              "x": 125.92,
-              "y": 154.0
-            },
-            {
-              "x": 125.92,
-              "y": 179.0
+              "x": 127.88,
+              "y": 149.0
             }
           ],
           "label": null,
@@ -286,16 +270,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 102.212,
-              "y": 233.0
+              "x": 167.155,
+              "y": 203.0
             },
             {
-              "x": 80.26,
-              "y": 258.0
+              "x": 203.52,
+              "y": 228.0
             },
             {
-              "x": 80.26,
-              "y": 283.0
+              "x": 306.5,
+              "y": 261.616
             }
           ],
           "label": null,
@@ -311,73 +295,73 @@
       "clusters": [
         {
           "id": "project",
-          "x": 158.8,
-          "y": 310.0,
-          "width": 349.6,
-          "height": 552.0,
+          "x": 120.18,
+          "y": 280.0,
+          "width": 282.64,
+          "height": 694.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "project",
           "title_label": {
-            "x": 158.8,
-            "y": 46.0,
+            "x": 120.18,
+            "y": -55.0,
             "width": 48.16,
             "height": 24.0
           },
           "requested_dir": null,
           "effective_dir": "LR",
-          "padding": 8.0,
+          "padding": 25.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
         {
           "id": "subnet1",
-          "x": 191.08,
-          "y": 543.0,
-          "width": 269.04,
-          "height": 70.0,
+          "x": 143.04,
+          "y": 498.0,
+          "width": 172.72,
+          "height": 208.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "subnet1",
           "title_label": {
-            "x": 191.08,
-            "y": 520.0,
+            "x": 143.04,
+            "y": 406.0,
             "width": 50.24,
             "height": 24.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 8.0,
+          "padding": 25.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
         {
           "id": "subnet2",
-          "x": 126.52,
-          "y": 77.0,
-          "width": 269.04,
-          "height": 70.0,
+          "x": 90.22,
+          "y": 62.0,
+          "width": 172.72,
+          "height": 208.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "subnet2",
           "title_label": {
-            "x": 126.52,
-            "y": 54.0,
+            "x": 90.22,
+            "y": -30.0,
             "width": 50.24,
             "height": 24.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 8.0,
+          "padding": 25.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }
       ],
       "bounds": {
-        "min_x": -16.0,
-        "min_y": 34.0,
-        "max_x": 333.6,
-        "max_y": 586.0
+        "min_x": -21.14,
+        "min_y": -67.0,
+        "max_x": 419.14,
+        "max_y": 627.0
       }
     }
   }

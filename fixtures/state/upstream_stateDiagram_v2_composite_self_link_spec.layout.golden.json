@@ -2,49 +2,39 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "bounds": {
-        "max_x": 102.6,
-        "max_y": 177.0,
-        "min_x": 0.0,
-        "min_y": 0.0
-      },
-      "clusters": [
+      "nodes": [
         {
-          "diff": -8.0,
-          "effective_dir": "TB",
-          "height": 68.0,
           "id": "Active",
-          "offset_y": 11.0,
-          "padding": 8.0,
-          "requested_dir": "TB",
-          "title": "Active",
-          "title_label": {
-            "height": 15.0,
-            "width": 26.0,
-            "x": 53.8,
-            "y": 75.5
-          },
-          "title_margin_bottom": 0.0,
-          "title_margin_top": 0.0,
-          "width": 46.4,
           "x": 53.8,
-          "y": 101.0
+          "y": 101.0,
+          "width": 46.4,
+          "height": 68.0,
+          "is_cluster": true
+        },
+        {
+          "id": "Idle",
+          "x": 53.8,
+          "y": 111.5,
+          "width": 30.4,
+          "height": 31.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Inactive",
+          "x": 23.8,
+          "y": 15.5,
+          "width": 47.6,
+          "height": 31.0,
+          "is_cluster": false
         }
       ],
       "edges": [
         {
-          "end_label_left": null,
-          "end_label_right": null,
-          "end_marker": null,
-          "from": "Inactive",
-          "from_cluster": null,
           "id": "edge0",
-          "label": {
-            "height": 15.0,
-            "width": 18.0,
-            "x": 38.8,
-            "y": 63.5
-          },
+          "from": "Inactive",
+          "to": "Idle",
+          "from_cluster": null,
+          "to_cluster": null,
           "points": [
             {
               "x": 23.8,
@@ -59,26 +49,26 @@
               "y": 96.0
             }
           ],
+          "label": {
+            "x": 38.8,
+            "y": 63.5,
+            "width": 18.0,
+            "height": 15.0
+          },
           "start_label_left": null,
           "start_label_right": null,
-          "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "Idle",
-          "to_cluster": null
-        },
-        {
           "end_label_left": null,
           "end_label_right": null,
+          "start_marker": null,
           "end_marker": null,
-          "from": "Active",
-          "from_cluster": "Active",
+          "stroke_dasharray": null
+        },
+        {
           "id": "edge1",
-          "label": {
-            "height": 15.0,
-            "width": 18.0,
-            "x": 78.2,
-            "y": 98.75
-          },
+          "from": "Active",
+          "to": "Active",
+          "from_cluster": "Active",
+          "to_cluster": "Active",
           "points": [
             {
               "x": 53.8,
@@ -109,40 +99,50 @@
               "y": 96.0
             }
           ],
+          "label": {
+            "x": 78.2,
+            "y": 98.75,
+            "width": 18.0,
+            "height": 15.0
+          },
           "start_label_left": null,
           "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
           "start_marker": null,
-          "stroke_dasharray": null,
-          "to": "Active",
-          "to_cluster": "Active"
+          "end_marker": null,
+          "stroke_dasharray": null
         }
       ],
-      "nodes": [
+      "clusters": [
         {
-          "height": 68.0,
           "id": "Active",
-          "is_cluster": true,
+          "x": 53.8,
+          "y": 101.0,
           "width": 46.4,
-          "x": 53.8,
-          "y": 101.0
-        },
-        {
-          "height": 31.0,
-          "id": "Idle",
-          "is_cluster": false,
-          "width": 30.4,
-          "x": 53.8,
-          "y": 111.5
-        },
-        {
-          "height": 31.0,
-          "id": "Inactive",
-          "is_cluster": false,
-          "width": 47.6,
-          "x": 23.8,
-          "y": 15.5
+          "height": 68.0,
+          "diff": -8.0,
+          "offset_y": 11.0,
+          "title": "Active",
+          "title_label": {
+            "x": 53.8,
+            "y": 75.5,
+            "width": 26.0,
+            "height": 15.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
         }
-      ]
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 102.6,
+        "max_y": 177.0
+      }
     }
   }
 }

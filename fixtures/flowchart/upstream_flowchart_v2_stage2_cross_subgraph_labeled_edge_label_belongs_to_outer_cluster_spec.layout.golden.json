@@ -5,58 +5,58 @@
       "nodes": [
         {
           "id": "A",
-          "x": -212.48,
-          "y": 20.0,
+          "x": -195.48,
+          "y": 37.0,
           "width": 69.6,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "B",
-          "x": -92.88,
-          "y": 20.0,
+          "x": -75.88,
+          "y": 37.0,
           "width": 69.6,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "C",
-          "x": 146.0,
-          "y": 20.0,
+          "x": 163.0,
+          "y": 37.0,
           "width": 69.6,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "D",
-          "x": 265.6,
-          "y": 20.0,
+          "x": 282.6,
+          "y": 37.0,
           "width": 69.6,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "LEFT",
-          "x": -152.68,
-          "y": 20.0,
-          "width": 205.2,
-          "height": 70.0,
+          "x": -135.68,
+          "y": 37.0,
+          "width": 239.2,
+          "height": 104.0,
           "is_cluster": true
         },
         {
           "id": "RIGHT",
-          "x": 205.8,
-          "y": 20.0,
-          "width": 205.2,
-          "height": 70.0,
+          "x": 222.8,
+          "y": 37.0,
+          "width": 239.2,
+          "height": 104.0,
           "is_cluster": true
         },
         {
           "id": "OUTER",
-          "x": 26.56,
-          "y": 20.0,
-          "width": 579.68,
-          "height": 86.0,
+          "x": 43.56,
+          "y": 37.0,
+          "width": 647.68,
+          "height": 154.0,
           "is_cluster": true
         }
       ],
@@ -69,16 +69,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": -177.68,
-              "y": 20.0
+              "x": -160.68,
+              "y": 37.0
             },
             {
-              "x": -152.68,
-              "y": 20.0
+              "x": -135.68,
+              "y": 37.0
             },
             {
-              "x": -127.68,
-              "y": 20.0
+              "x": -110.68,
+              "y": 37.0
             }
           ],
           "label": null,
@@ -98,16 +98,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 180.8,
-              "y": 20.0
+              "x": 197.8,
+              "y": 37.0
             },
             {
-              "x": 205.8,
-              "y": 20.0
+              "x": 222.8,
+              "y": 37.0
             },
             {
-              "x": 230.8,
-              "y": 20.0
+              "x": 247.8,
+              "y": 37.0
             }
           ],
           "label": null,
@@ -127,29 +127,29 @@
           "to_cluster": null,
           "points": [
             {
-              "x": -58.08,
-              "y": 20.0
+              "x": -41.08,
+              "y": 37.0
             },
             {
-              "x": -33.08,
-              "y": 20.0
+              "x": -16.08,
+              "y": 37.0
             },
             {
-              "x": 26.56,
-              "y": 20.0
+              "x": 43.56,
+              "y": 37.0
             },
             {
-              "x": 86.2,
-              "y": 20.0
+              "x": 103.2,
+              "y": 37.0
             },
             {
-              "x": 111.2,
-              "y": 20.0
+              "x": 128.2,
+              "y": 37.0
             }
           ],
           "label": {
-            "x": 26.56,
-            "y": 20.0,
+            "x": 43.56,
+            "y": 37.0,
             "width": 69.28,
             "height": 24.0
           },
@@ -165,73 +165,73 @@
       "clusters": [
         {
           "id": "LEFT",
-          "x": -152.68,
-          "y": 20.0,
-          "width": 205.2,
-          "height": 70.0,
+          "x": -135.68,
+          "y": 37.0,
+          "width": 239.2,
+          "height": 104.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "Left",
           "title_label": {
-            "x": -152.68,
+            "x": -135.68,
             "y": -3.0,
             "width": 30.24,
             "height": 24.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 8.0,
+          "padding": 25.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
         {
           "id": "OUTER",
-          "x": 26.56,
-          "y": 20.0,
-          "width": 579.68,
-          "height": 86.0,
+          "x": 43.56,
+          "y": 37.0,
+          "width": 647.68,
+          "height": 154.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "Outer",
           "title_label": {
-            "x": 26.56,
-            "y": -11.0,
+            "x": 43.56,
+            "y": -28.0,
             "width": 37.12,
             "height": 24.0
           },
           "requested_dir": null,
           "effective_dir": "LR",
-          "padding": 8.0,
+          "padding": 25.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
         {
           "id": "RIGHT",
-          "x": 205.8,
-          "y": 20.0,
-          "width": 205.2,
-          "height": 70.0,
+          "x": 222.8,
+          "y": 37.0,
+          "width": 239.2,
+          "height": 104.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "Right",
           "title_label": {
-            "x": 205.8,
+            "x": 222.8,
             "y": -3.0,
             "width": 34.72,
             "height": 24.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
-          "padding": 8.0,
+          "padding": 25.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }
       ],
       "bounds": {
-        "min_x": -263.28,
-        "min_y": -23.0,
-        "max_x": 316.4,
-        "max_y": 63.0
+        "min_x": -280.28,
+        "min_y": -40.0,
+        "max_x": 367.4,
+        "max_y": 114.0
       }
     }
   }
