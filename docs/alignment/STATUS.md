@@ -48,6 +48,7 @@ Legend:
 | Block | yes | yes | Stage B | yes | yes (`xtask compare-block-svgs`) |
 | Radar | yes | yes | Stage B | yes | yes (`xtask compare-radar-svgs`) |
 | Treemap | yes | yes | Stage B | yes | yes (`xtask compare-treemap-svgs`) |
+| XYChart | yes | yes | Stage B | yes | yes (`xtask compare-xychart-svgs`) |
 | Others (… ) | yes | no | no | no | no |
 
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;

@@ -21,6 +21,7 @@ pub mod svg;
 pub mod text;
 pub mod timeline;
 pub mod treemap;
+pub mod xychart;
 
 use crate::model::{LayoutDiagram, LayoutMeta, LayoutedDiagram};
 use crate::text::{DeterministicTextMeasurer, TextMeasurer};
@@ -145,6 +146,11 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
             options.text_measurer.as_ref(),
         )?),
         "pie" => LayoutDiagram::PieDiagram(pie::layout_pie_diagram(
+            &parsed.model,
+            &meta.effective_config,
+            options.text_measurer.as_ref(),
+        )?),
+        "xychart" => LayoutDiagram::XyChartDiagram(xychart::layout_xychart_diagram(
             &parsed.model,
             &meta.effective_config,
             options.text_measurer.as_ref(),
