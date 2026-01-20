@@ -1,0 +1,22 @@
+---
+title: Flowchart v2 nodeData shape aliases (flow-node-data.spec.js)
+config:
+  htmlLabels: true
+  securityLevel: loose
+  flowchart:
+    htmlLabels: true
+---
+flowchart TB
+  A@{ shape: question, label: "question" }
+  B@{ shape: odd, label: "odd" }
+  C@{ shape: lean-right, label: "lean-right" }
+  D@{ shape: lean-left, label: "lean-left" }
+  E@{ shape: inv-trapezoid, label: "inv-trapezoid" }
+  F@{ shape: trapezoid, label: "trapezoid" }
+  G@{ shape: hexagon, label: "hexagon" }
+  H@{ shape: stadium, label: "stadium" }
+  I@{ shape: cylinder, label: "cylinder" }
+  J@{ shape: subroutine, label: "subroutine" }
+
+  A --> B --> C --> D --> E --> F --> G --> H --> I --> J
+

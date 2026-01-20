@@ -13469,7 +13469,7 @@ fn render_flowchart_node(
                 fmt(-(h / 2.0 + ry))
             );
         }
-        "diamond" => {
+        "diamond" | "question" => {
             let w = layout_node.width.max(1.0);
             let h = layout_node.height.max(1.0);
             let _ = write!(
