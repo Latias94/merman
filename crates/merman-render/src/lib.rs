@@ -14,6 +14,7 @@ pub mod kanban;
 pub mod model;
 pub mod packet;
 pub mod pie;
+pub mod radar;
 pub mod sequence;
 pub mod state;
 pub mod svg;
@@ -61,6 +62,11 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
 
     let layout = match diagram_type {
         "block" => LayoutDiagram::BlockDiagram(block::layout_block_diagram(
+            &parsed.model,
+            &meta.effective_config,
+            options.text_measurer.as_ref(),
+        )?),
+        "radar" => LayoutDiagram::RadarDiagram(radar::layout_radar_diagram(
             &parsed.model,
             &meta.effective_config,
             options.text_measurer.as_ref(),

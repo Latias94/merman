@@ -46,7 +46,7 @@ Legend:
 | Gantt | yes | yes | Stage B | yes | yes (`xtask compare-gantt-svgs`) |
 | C4 | yes | yes | Stage B | yes | yes (`xtask compare-c4-svgs`) |
 | Block | yes | yes | Stage B | yes | yes (`xtask compare-block-svgs`) |
-| Radar | yes | no | no | yes | no |
+| Radar | yes | yes | Stage B | yes | yes (`xtask compare-radar-svgs`) |
 | Others (… ) | yes | no | no | no | no |
 
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
@@ -87,6 +87,8 @@ Recent progress: `gantt` Stage B parity renderer exists and is validated against
 baselines via `xtask compare-gantt-svgs`.
 Recent progress: `block` headless layout and Stage B SVG renderer exist and are validated against
 upstream SVG baselines via `xtask compare-block-svgs` (DOM parity mode).
+Recent progress: `radar` headless layout and Stage B SVG renderer exist and are validated against
+upstream SVG baselines via `xtask compare-radar-svgs` (DOM parity mode).
 
 ## Alignment Sanity Checks
 

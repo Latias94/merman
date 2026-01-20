@@ -1,0 +1,102 @@
+{
+  "diagramType": "radar",
+  "layout": {
+    "RadarDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 700.0,
+        "max_y": 700.0
+      },
+      "svg_width": 700.0,
+      "svg_height": 700.0,
+      "center_x": 350.0,
+      "center_y": 350.0,
+      "radius": 300.0,
+      "axis_label_factor": 1.05,
+      "title_y": -350.0,
+      "axes": [
+        {
+          "label": "A",
+          "angle": -1.571,
+          "line_x2": 0.0,
+          "line_y2": -300.0,
+          "label_x": 0.0,
+          "label_y": -315.0
+        },
+        {
+          "label": "B",
+          "angle": 0.524,
+          "line_x2": 259.808,
+          "line_y2": 150.0,
+          "label_x": 272.798,
+          "label_y": 157.5
+        },
+        {
+          "label": "C",
+          "angle": 2.618,
+          "line_x2": -259.808,
+          "line_y2": 150.0,
+          "label_x": -272.798,
+          "label_y": 157.5
+        }
+      ],
+      "graticules": [
+        {
+          "kind": "circle",
+          "r": 60.0,
+          "points": []
+        },
+        {
+          "kind": "circle",
+          "r": 120.0,
+          "points": []
+        },
+        {
+          "kind": "circle",
+          "r": 180.0,
+          "points": []
+        },
+        {
+          "kind": "circle",
+          "r": 240.0,
+          "points": []
+        },
+        {
+          "kind": "circle",
+          "r": 300.0,
+          "points": []
+        }
+      ],
+      "curves": [
+        {
+          "label": "mycurve",
+          "class_index": 0.0,
+          "points": [
+            {
+              "x": 0.0,
+              "y": -100.0
+            },
+            {
+              "x": 173.205,
+              "y": 100.0
+            },
+            {
+              "x": -259.808,
+              "y": 150.0
+            }
+          ],
+          "path_d": "M0,-100 C59.9,-106.917 209.145,65.417 173.205,100 C137.265,134.583 -235.848,177.667 -259.808,150 C-283.768,122.333 -59.9,-93.083 0,-100 Z"
+        }
+      ],
+      "legend_items": [
+        {
+          "label": "mycurve",
+          "class_index": 0.0,
+          "x": 262.5,
+          "y": -262.5
+        }
+      ]
+    }
+  }
+}

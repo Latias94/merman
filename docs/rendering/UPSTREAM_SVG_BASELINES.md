@@ -261,6 +261,12 @@ Generate a report comparing upstream block SVGs and the current Rust Stage-B blo
 
 - `cargo run -p xtask -- compare-block-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
+## Compare (Radar)
+
+Generate a report comparing upstream radar SVGs and the current Rust Stage-B radar output:
+
+- `cargo run -p xtask -- compare-radar-svgs --check-dom --dom-mode parity --dom-decimals 3`
+
 Notes:
 
 - Flowchart `domId` suffixes depend on FlowDB `vertexCounter` (Jison `addVertex(...)` call order, including `@{...}` shapeData passes).
