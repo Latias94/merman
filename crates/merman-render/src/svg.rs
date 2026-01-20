@@ -3006,6 +3006,17 @@ fn packet_css(diagram_id: &str) -> String {
     out
 }
 
+fn treemap_css(diagram_id: &str) -> String {
+    let id = escape_xml(diagram_id);
+    let mut out = info_css(diagram_id);
+    let _ = write!(
+        &mut out,
+        r#"#{} .treemapNode.section{{stroke:black;stroke-width:1;fill:#efefef;}}#{} .treemapNode.leaf{{stroke:black;stroke-width:1;fill:#efefef;}}#{} .treemapLabel{{fill:black;font-size:12px;}}#{} .treemapValue{{fill:black;font-size:10px;}}#{} .treemapTitle{{fill:black;font-size:14px;}}"#,
+        id, id, id, id, id
+    );
+    out
+}
+
 fn timeline_css(diagram_id: &str) -> String {
     let id = escape_xml(diagram_id);
     let mut out = info_css(diagram_id);
@@ -4286,6 +4297,458 @@ pub fn render_radar_diagram_svg(
                 y = fmt(layout.title_y)
             );
         }
+    }
+
+    out.push_str("</g></svg>\n");
+    Ok(out)
+}
+
+pub fn render_treemap_diagram_svg(
+    layout: &crate::model::TreemapDiagramLayout,
+    _semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    #[derive(Default)]
+    struct OrdinalScale {
+        range: Vec<String>,
+        domain: std::collections::HashMap<String, usize>,
+    }
+
+    impl OrdinalScale {
+        fn get(&mut self, key: &str) -> String {
+            let idx = if let Some(idx) = self.domain.get(key).copied() {
+                idx
+            } else {
+                let idx = self.domain.len();
+                self.domain.insert(key.to_string(), idx);
+                idx
+            };
+            if self.range.is_empty() {
+                return String::new();
+            }
+            self.range[idx % self.range.len()].clone()
+        }
+    }
+
+    fn default_c_scale(i: usize) -> &'static str {
+        match i {
+            0 => "hsl(240, 100%, 76.2745098039%)",
+            1 => "hsl(60, 100%, 73.5294117647%)",
+            2 => "hsl(80, 100%, 76.2745098039%)",
+            3 => "hsl(270, 100%, 76.2745098039%)",
+            4 => "hsl(300, 100%, 76.2745098039%)",
+            5 => "hsl(330, 100%, 76.2745098039%)",
+            6 => "hsl(0, 100%, 76.2745098039%)",
+            7 => "hsl(30, 100%, 76.2745098039%)",
+            8 => "hsl(90, 100%, 76.2745098039%)",
+            9 => "hsl(150, 100%, 76.2745098039%)",
+            10 => "hsl(180, 100%, 76.2745098039%)",
+            _ => "hsl(210, 100%, 76.2745098039%)",
+        }
+    }
+
+    fn default_c_scale_peer(i: usize) -> &'static str {
+        match i {
+            0 => "hsl(240, 100%, 61.2745098039%)",
+            1 => "hsl(60, 100%, 48.5294117647%)",
+            2 => "hsl(80, 100%, 56.2745098039%)",
+            3 => "hsl(270, 100%, 61.2745098039%)",
+            4 => "hsl(300, 100%, 61.2745098039%)",
+            5 => "hsl(330, 100%, 61.2745098039%)",
+            6 => "hsl(0, 100%, 61.2745098039%)",
+            7 => "hsl(30, 100%, 61.2745098039%)",
+            8 => "hsl(90, 100%, 61.2745098039%)",
+            9 => "hsl(150, 100%, 61.2745098039%)",
+            10 => "hsl(180, 100%, 61.2745098039%)",
+            _ => "hsl(210, 100%, 61.2745098039%)",
+        }
+    }
+
+    fn format_int_with_commas(n: i64) -> String {
+        let mut s = n.abs().to_string();
+        let mut out = String::new();
+        while s.len() > 3 {
+            let split_at = s.len() - 3;
+            let tail = &s[split_at..];
+            if out.is_empty() {
+                out = tail.to_string();
+            } else {
+                out = format!("{tail},{out}");
+            }
+            s.truncate(split_at);
+        }
+        if out.is_empty() {
+            out = s;
+        } else {
+            out = format!("{s},{out}");
+        }
+        if n < 0 { format!("-{out}") } else { out }
+    }
+
+    fn format_value(value: f64, format_str: &str) -> String {
+        let format_str = format_str.trim();
+        let uses_commas = format_str.is_empty() || format_str == ",";
+        if uses_commas {
+            if (value - value.round()).abs() < 1e-9 {
+                return format_int_with_commas(value.round() as i64);
+            }
+            let raw = format!("{value}");
+            let Some((head, tail)) = raw.split_once('.') else {
+                return raw;
+            };
+            let int_part = head
+                .parse::<i64>()
+                .ok()
+                .map(format_int_with_commas)
+                .unwrap_or_else(|| head.to_string());
+            if tail.is_empty() {
+                return int_part;
+            }
+            format!("{int_part}.{tail}")
+        } else if format_str == "$0,0" {
+            let v = value.round() as i64;
+            format!("${}", format_int_with_commas(v))
+        } else if format_str.starts_with('$') {
+            let v = format_value(value, ",");
+            format!("${v}")
+        } else {
+            // Fallback: approximate D3 `format()` behavior.
+            format_value(value, ",")
+        }
+    }
+
+    let diagram_id = options.diagram_id.as_deref().unwrap_or("treemap");
+    let diagram_id_esc = escape_xml(diagram_id);
+
+    let mut color_scale = OrdinalScale::default();
+    color_scale.range.push("transparent".to_string());
+    for i in 0..12 {
+        let key = format!("cScale{i}");
+        let v = theme_color(effective_config, &key, default_c_scale(i));
+        color_scale.range.push(v);
+    }
+    let mut color_scale_peer = OrdinalScale::default();
+    color_scale_peer.range.push("transparent".to_string());
+    for i in 0..12 {
+        let key = format!("cScalePeer{i}");
+        let v = theme_color(effective_config, &key, default_c_scale_peer(i));
+        color_scale_peer.range.push(v);
+    }
+
+    let has_acc_title = layout
+        .acc_title
+        .as_deref()
+        .is_some_and(|s| !s.trim().is_empty());
+    let has_acc_descr = layout
+        .acc_descr
+        .as_deref()
+        .is_some_and(|s| !s.trim().is_empty());
+
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+
+    fn add_rect_bounds(
+        min_x: &mut f64,
+        min_y: &mut f64,
+        max_x: &mut f64,
+        max_y: &mut f64,
+        x0: f64,
+        y0: f64,
+        x1: f64,
+        y1: f64,
+    ) {
+        let w = x1 - x0;
+        let h = y1 - y0;
+        if !(w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0) {
+            return;
+        }
+        *min_x = (*min_x).min(x0);
+        *min_y = (*min_y).min(y0);
+        *max_x = (*max_x).max(x1);
+        *max_y = (*max_y).max(y1);
+    }
+
+    for s in &layout.sections {
+        if s.depth == 0 {
+            continue;
+        }
+        add_rect_bounds(
+            &mut min_x, &mut min_y, &mut max_x, &mut max_y, s.x0, s.y0, s.x1, s.y1,
+        );
+    }
+    for l in &layout.leaves {
+        add_rect_bounds(
+            &mut min_x, &mut min_y, &mut max_x, &mut max_y, l.x0, l.y0, l.x1, l.y1,
+        );
+    }
+
+    let vb_x;
+    let vb_y;
+    let vb_w;
+    let vb_h;
+    if min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite() {
+        vb_x = min_x - layout.diagram_padding;
+        vb_y = min_y - layout.diagram_padding;
+        vb_w = (max_x - min_x) + layout.diagram_padding * 2.0;
+        vb_h = (max_y - min_y) + layout.diagram_padding * 2.0;
+    } else {
+        vb_x = -layout.diagram_padding;
+        vb_y = -layout.diagram_padding;
+        vb_w = layout.diagram_padding * 2.0;
+        vb_h = layout.diagram_padding * 2.0;
+    }
+
+    let css = treemap_css(diagram_id);
+
+    let mut out = String::new();
+    let _ = write!(
+        &mut out,
+        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="{min_x} {min_y} {w} {h}" style="max-width: {max_w}px; background-color: white;" class="flowchart" role="graphics-document document" aria-roledescription="treemap""#,
+        min_x = fmt(vb_x),
+        min_y = fmt(vb_y),
+        w = fmt(vb_w.max(1.0)),
+        h = fmt(vb_h.max(1.0)),
+        max_w = fmt(vb_w.max(1.0)),
+    );
+
+    if has_acc_descr {
+        let _ = write!(
+            &mut out,
+            r#" aria-describedby="chart-desc-{diagram_id_esc}""#
+        );
+    }
+    if has_acc_title {
+        let _ = write!(
+            &mut out,
+            r#" aria-labelledby="chart-title-{diagram_id_esc}""#
+        );
+    }
+    out.push('>');
+
+    if let (Some(title), true) = (layout.acc_title.as_deref(), has_acc_title) {
+        let _ = write!(
+            &mut out,
+            r#"<title id="chart-title-{diagram_id_esc}">{}</title>"#,
+            escape_xml(title)
+        );
+    }
+    if let (Some(descr), true) = (layout.acc_descr.as_deref(), has_acc_descr) {
+        let _ = write!(
+            &mut out,
+            r#"<desc id="chart-desc-{diagram_id_esc}">{}</desc>"#,
+            escape_xml(descr.trim_end_matches('\n'))
+        );
+    }
+
+    let _ = write!(&mut out, "<style>{}</style>", css);
+    out.push_str("<g/>");
+
+    if let Some(title) = layout.title.as_deref().filter(|t| !t.trim().is_empty()) {
+        let _ = write!(
+            &mut out,
+            r#"<text x="{x}" y="{y}" class="treemapTitle" text-anchor="middle" dominant-baseline="middle">{text}</text>"#,
+            x = fmt(layout.width / 2.0),
+            y = fmt(layout.title_height / 2.0),
+            text = escape_xml(title)
+        );
+    }
+
+    let _ = write!(
+        &mut out,
+        r#"<g transform="translate(0, {ty})" class="treemapContainer">"#,
+        ty = fmt(layout.title_height)
+    );
+
+    for (i, section) in layout.sections.iter().enumerate() {
+        let w = section.x1 - section.x0;
+        let h = section.y1 - section.y0;
+        let _ = write!(
+            &mut out,
+            r#"<g class="treemapSection" transform="translate({x},{y})">"#,
+            x = fmt(section.x0),
+            y = fmt(section.y0)
+        );
+
+        let header_style = if section.depth == 0 {
+            "display: none;"
+        } else {
+            ""
+        };
+        let _ = write!(
+            &mut out,
+            r#"<rect width="{w}" height="{hh}" class="treemapSectionHeader" fill="none" fill-opacity="0.6" stroke-width="0.6" style="{style}"/>"#,
+            w = fmt(w),
+            hh = fmt(25.0),
+            style = header_style
+        );
+
+        let _ = write!(
+            &mut out,
+            r#"<clipPath id="clip-section-{id}-{i}"><rect width="{w}" height="{h}"/></clipPath>"#,
+            id = escape_attr(diagram_id),
+            i = i,
+            w = fmt((w - 12.0).max(0.0)),
+            h = fmt(25.0)
+        );
+
+        let fill = color_scale.get(&section.name);
+        let stroke = color_scale_peer.get(&section.name);
+        let section_style = if section.depth == 0 {
+            "display: none;"
+        } else {
+            ";"
+        };
+        let _ = write!(
+            &mut out,
+            r#"<rect width="{w}" height="{h}" class="treemapSection section{i}" fill="{fill}" fill-opacity="0.6" stroke="{stroke}" stroke-width="2" stroke-opacity="0.4" style="{style}"/>"#,
+            w = fmt(w),
+            h = fmt(h),
+            i = i,
+            fill = escape_attr(&fill),
+            stroke = escape_attr(&stroke),
+            style = section_style
+        );
+
+        let label_text = if section.depth == 0 {
+            ""
+        } else {
+            section.name.as_str()
+        };
+        if label_text.is_empty() {
+            let _ = write!(
+                &mut out,
+                r#"<text class="treemapSectionLabel" x="6" y="12.5" dominant-baseline="middle" font-weight="bold" style="display: none;"/>"#
+            );
+        } else {
+            let _ = write!(
+                &mut out,
+                r#"<text class="treemapSectionLabel" x="6" y="12.5" dominant-baseline="middle" font-weight="bold">{text}</text>"#,
+                text = escape_xml(label_text)
+            );
+        }
+
+        if layout.show_values {
+            let value_text = if section.value != 0.0 {
+                format_value(section.value, &layout.value_format)
+            } else {
+                String::new()
+            };
+            if value_text.is_empty() {
+                let _ = write!(
+                    &mut out,
+                    r#"<text class="treemapSectionValue" x="{x}" y="12.5" text-anchor="end" dominant-baseline="middle" font-style="italic" style="{style}"/>"#,
+                    x = fmt(w - 10.0),
+                    style = if section.depth == 0 {
+                        "display: none;"
+                    } else {
+                        ""
+                    }
+                );
+            } else {
+                let _ = write!(
+                    &mut out,
+                    r#"<text class="treemapSectionValue" x="{x}" y="12.5" text-anchor="end" dominant-baseline="middle" font-style="italic" style="{style}">{text}</text>"#,
+                    x = fmt(w - 10.0),
+                    style = if section.depth == 0 {
+                        "display: none;"
+                    } else {
+                        ""
+                    },
+                    text = escape_xml(&value_text)
+                );
+            }
+        }
+
+        out.push_str("</g>");
+    }
+
+    for (i, leaf) in layout.leaves.iter().enumerate() {
+        let w = leaf.x1 - leaf.x0;
+        let h = leaf.y1 - leaf.y0;
+
+        let group_class = if let Some(cls) = leaf
+            .class_selector
+            .as_deref()
+            .filter(|s| !s.trim().is_empty())
+        {
+            format!("treemapNode treemapLeafGroup leaf{i} {cls}x")
+        } else {
+            format!("treemapNode treemapLeafGroup leaf{i}x")
+        };
+
+        let fill_key = leaf
+            .parent_name
+            .as_deref()
+            .unwrap_or_else(|| leaf.name.as_str());
+        let fill = color_scale.get(fill_key);
+
+        let _ = write!(
+            &mut out,
+            r#"<g class="{class}" transform="translate({x},{y})">"#,
+            class = escape_attr(&group_class),
+            x = fmt(leaf.x0),
+            y = fmt(leaf.y0)
+        );
+
+        let _ = write!(
+            &mut out,
+            r#"<rect width="{w}" height="{h}" class="treemapLeaf" fill="{fill}" style="" fill-opacity="0.3" stroke="{fill}" stroke-width="3"/>"#,
+            w = fmt(w),
+            h = fmt(h),
+            fill = escape_attr(&fill)
+        );
+
+        let _ = write!(
+            &mut out,
+            r#"<clipPath id="clip-{id}-{i}"><rect width="{w}" height="{h}"/></clipPath>"#,
+            id = escape_attr(diagram_id),
+            i = i,
+            w = fmt((w - 4.0).max(0.0)),
+            h = fmt((h - 4.0).max(0.0))
+        );
+
+        let _ = write!(
+            &mut out,
+            r#"<text class="treemapLabel" x="{x}" y="{y}" style="text-anchor: middle; dominant-baseline: middle; font-size: 38px;fill:black;" clip-path="url(#clip-{id}-{i})">{text}</text>"#,
+            x = fmt(w / 2.0),
+            y = fmt(h / 2.0),
+            id = escape_attr(diagram_id),
+            i = i,
+            text = escape_xml(&leaf.name)
+        );
+
+        if layout.show_values {
+            let value_text = if leaf.value != 0.0 {
+                format_value(leaf.value, &layout.value_format)
+            } else {
+                String::new()
+            };
+            if value_text.is_empty() {
+                let _ = write!(
+                    &mut out,
+                    r#"<text class="treemapValue" x="{x}" y="{y}" style="text-anchor: middle; dominant-baseline: hanging; font-size: 28px; fill: black;" clip-path="url(#clip-{id}-{i})"/>"#,
+                    x = fmt(w / 2.0),
+                    y = fmt(h / 2.0),
+                    id = escape_attr(diagram_id),
+                    i = i,
+                );
+            } else {
+                let _ = write!(
+                    &mut out,
+                    r#"<text class="treemapValue" x="{x}" y="{y}" style="text-anchor: middle; dominant-baseline: hanging; font-size: 28px; fill: black;" clip-path="url(#clip-{id}-{i})">{text}</text>"#,
+                    x = fmt(w / 2.0),
+                    y = fmt(h / 2.0),
+                    id = escape_attr(diagram_id),
+                    i = i,
+                    text = escape_xml(&value_text)
+                );
+            }
+        }
+
+        out.push_str("</g>");
     }
 
     out.push_str("</g></svg>\n");

@@ -1,0 +1,54 @@
+{
+  "diagramType": "treemap",
+  "layout": {
+    "TreemapDiagram": {
+      "title_height": 0.0,
+      "width": 1000.0,
+      "height": 400.0,
+      "use_max_width": true,
+      "diagram_padding": 8.0,
+      "show_values": true,
+      "value_format": ",",
+      "accTitle": null,
+      "accDescr": null,
+      "title": null,
+      "sections": [
+        {
+          "name": "",
+          "depth": 0.0,
+          "value": 0.0,
+          "x0": 0.0,
+          "y0": 0.0,
+          "x1": 1000.0,
+          "y1": 400.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        }
+      ],
+      "leaves": [
+        {
+          "name": "Root 1",
+          "value": 0.0,
+          "parent_name": "",
+          "x0": 10.0,
+          "y0": 30.0,
+          "x1": 990.0,
+          "y1": 30.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Root 2",
+          "value": 0.0,
+          "parent_name": "",
+          "x0": 10.0,
+          "y0": 30.0,
+          "x1": 990.0,
+          "y1": 30.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        }
+      ]
+    }
+  }
+}

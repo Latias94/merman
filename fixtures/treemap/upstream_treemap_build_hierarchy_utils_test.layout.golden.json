@@ -1,0 +1,120 @@
+{
+  "diagramType": "treemap",
+  "layout": {
+    "TreemapDiagram": {
+      "title_height": 0.0,
+      "width": 1000.0,
+      "height": 400.0,
+      "use_max_width": true,
+      "diagram_padding": 8.0,
+      "show_values": true,
+      "value_format": ",",
+      "accTitle": null,
+      "accDescr": null,
+      "title": null,
+      "sections": [
+        {
+          "name": "",
+          "depth": 0.0,
+          "value": 100.0,
+          "x0": 0.0,
+          "y0": 0.0,
+          "x1": 1000.0,
+          "y1": 400.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Root",
+          "depth": 1.0,
+          "value": 100.0,
+          "x0": 10.0,
+          "y0": 35.0,
+          "x1": 990.0,
+          "y1": 390.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Branch 2",
+          "depth": 2.0,
+          "value": 75.0,
+          "x0": 20.0,
+          "y0": 70.0,
+          "x1": 738.0,
+          "y1": 380.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Branch 1",
+          "depth": 2.0,
+          "value": 25.0,
+          "x0": 748.0,
+          "y0": 70.0,
+          "x1": 980.0,
+          "y1": 380.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        }
+      ],
+      "leaves": [
+        {
+          "name": "Leaf 2.3",
+          "value": 30.0,
+          "parent_name": "Branch 2",
+          "x0": 30.0,
+          "y0": 105.0,
+          "x1": 303.0,
+          "y1": 370.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Leaf 2.2",
+          "value": 25.0,
+          "parent_name": "Branch 2",
+          "x0": 313.0,
+          "y0": 105.0,
+          "x1": 539.0,
+          "y1": 370.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Leaf 2.1",
+          "value": 20.0,
+          "parent_name": "Branch 2",
+          "x0": 549.0,
+          "y0": 105.0,
+          "x1": 728.0,
+          "y1": 370.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Leaf 1.2",
+          "value": 15.0,
+          "parent_name": "Branch 1",
+          "x0": 758.0,
+          "y0": 105.0,
+          "x1": 881.0,
+          "y1": 370.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Leaf 1.1",
+          "value": 10.0,
+          "parent_name": "Branch 1",
+          "x0": 891.0,
+          "y0": 105.0,
+          "x1": 970.0,
+          "y1": 370.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        }
+      ]
+    }
+  }
+}

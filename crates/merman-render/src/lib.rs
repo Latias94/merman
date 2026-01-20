@@ -20,6 +20,7 @@ pub mod state;
 pub mod svg;
 pub mod text;
 pub mod timeline;
+pub mod treemap;
 
 use crate::model::{LayoutDiagram, LayoutMeta, LayoutedDiagram};
 use crate::text::{DeterministicTextMeasurer, TextMeasurer};
@@ -67,6 +68,11 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
             options.text_measurer.as_ref(),
         )?),
         "radar" => LayoutDiagram::RadarDiagram(radar::layout_radar_diagram(
+            &parsed.model,
+            &meta.effective_config,
+            options.text_measurer.as_ref(),
+        )?),
+        "treemap" => LayoutDiagram::TreemapDiagram(treemap::layout_treemap_diagram(
             &parsed.model,
             &meta.effective_config,
             options.text_measurer.as_ref(),

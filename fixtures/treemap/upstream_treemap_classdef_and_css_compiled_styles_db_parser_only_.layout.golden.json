@@ -1,0 +1,71 @@
+{
+  "diagramType": "treemap",
+  "layout": {
+    "TreemapDiagram": {
+      "title_height": 0.0,
+      "width": 1000.0,
+      "height": 400.0,
+      "use_max_width": true,
+      "diagram_padding": 8.0,
+      "show_values": true,
+      "value_format": ",",
+      "accTitle": null,
+      "accDescr": null,
+      "title": null,
+      "sections": [
+        {
+          "name": "",
+          "depth": 0.0,
+          "value": 1012.5,
+          "x0": 0.0,
+          "y0": 0.0,
+          "x1": 1000.0,
+          "y1": 400.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Root",
+          "depth": 1.0,
+          "value": 1012.5,
+          "x0": 10.0,
+          "y0": 35.0,
+          "x1": 990.0,
+          "y1": 390.0,
+          "class_selector": "c",
+          "css_compiled_styles": [
+            "fill:#ff0000; stroke:rgb(1,2,3); color"
+          ]
+        }
+      ],
+      "leaves": [
+        {
+          "name": "Leaf",
+          "value": 1000.0,
+          "parent_name": "Root",
+          "x0": 20.0,
+          "y0": 70.0,
+          "x1": 968.0,
+          "y1": 380.0,
+          "class_selector": "c",
+          "css_compiled_styles": [
+            "fill:#ff0000; stroke:rgb(1,2,3); color"
+          ]
+        },
+        {
+          "name": "Leaf 2",
+          "value": 12.5,
+          "parent_name": "Root",
+          "x0": 978.0,
+          "y0": 70.0,
+          "x1": 980.0,
+          "y1": 380.0,
+          "class_selector": "c",
+          "css_compiled_styles": [
+            "fill:#ff0000; stroke:rgb(1,2,3); color"
+          ]
+        }
+      ]
+    }
+  }
+}
