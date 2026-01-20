@@ -1,0 +1,25 @@
+---
+title: Flowchart text vertex label variants
+---
+graph TD;
+
+%% Vertex text with spaces / underscores / quoted strings
+A[chimpansen hoppar]-->C;
+D[chimpansen hoppar] --> E;
+F[chimpansen_hoppar] --> G;
+H["chimpansen hoppar ()[]"] --> I;
+
+%% Circle vertex text with spaces
+J((chimpansen hoppar))-->K;
+
+%% Special characters in vertex and edge text
+N(?)-->|?|O;
+P(éèêàçô)-->|éèêàçô|Q;
+R(,.?!+-*)-->|,.?!+-*|S;
+
+%% Backslash in vertex text
+T(c:\windows)-->U;
+
+%% CAPS / URL-like text in vertex labels
+V(some CAPS)-->W;
+X(some URL)-->Y2;

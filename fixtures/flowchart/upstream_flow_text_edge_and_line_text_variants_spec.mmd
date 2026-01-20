@@ -1,0 +1,32 @@
+---
+title: Flowchart text edge and line label variants
+---
+graph TD;
+
+%% Edge labels with pipe notation
+A--x|textNoSpace|B;
+A--x|text including space|C;
+A--x|text with / should work|D;
+A --x|textNoSpace| E;
+A--x|text including CAPS space|F;
+A--x|text including URL space|G;
+
+%% Edge labels using the "send" notation
+H--text including URL space and send-->I;
+J-- text including URL space and send -->K;
+
+%% Quoted edge label
+V-- "test string()" -->a[v];
+
+%% Edge labels using the "new notation" (text between segments)
+L-- textNoSpace --xM;
+N--    textNoSpace --xO;
+P -- text with / should work --x Q;
+R-- text including CAPS space --xS;
+T-- text including URL space --xU;
+W-- text including R TD space --xX;
+
+%% Text on lines (stroke + label tokenization)
+Y-- test text with == -->Z;
+AA-. test text with == .->BB;
+CC== test text with - ==>DD;
