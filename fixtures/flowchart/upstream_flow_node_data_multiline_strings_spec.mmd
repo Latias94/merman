@@ -1,0 +1,33 @@
+---
+title: Flowchart v2 nodeData multiline strings (flow-node-data.spec.js)
+config:
+  htmlLabels: true
+  flowchart:
+    htmlLabels: true
+---
+flowchart TB
+  A@{
+    label: |
+      This is a
+      multiline string
+    other: "clock"
+  }
+
+  B@{
+    label: "This is a
+      multiline string"
+    other: "clock"
+  }
+
+  C@{
+    label: "This is }"
+    other: "clock"
+  }
+
+  D@{
+    label: "This is a string with @"
+    other: "clock"
+  }
+
+  A --> B --> C --> D
+

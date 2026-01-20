@@ -58,6 +58,7 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/flow-no
 
 - shapeData statements (`@{...}`) basic + multiline label rewriting: `fixtures/flowchart/upstream_node_data_minimal.mmd`
 - shapeData shape alias acceptance (no underscores; includes hyphenated aliases like `lean-right`, `inv-trapezoid`): `fixtures/flowchart/upstream_flow_node_data_shape_aliases_spec.mmd`
+- shapeData multiline strings + special characters (`}` / `@`) in labels: `fixtures/flowchart/upstream_flow_node_data_multiline_strings_spec.mmd`
 - broader matrix + validation errors + edge-id metadata: unit tests:
   - `parse_diagram_flowchart_node_data_*`
   - `parse_diagram_flowchart_edge_curve_properties_using_edge_id`
