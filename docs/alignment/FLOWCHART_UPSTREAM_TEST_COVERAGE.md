@@ -111,6 +111,8 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/flow-te
 - special characters in vertex text and ids (slashes/backslashes, unicode, trailing `-` ids): `fixtures/flowchart/upstream_flow_text_special_chars_spec.mmd`
 - edge + line label matrix (pipe labels, "new notation", line strokes with labels): `fixtures/flowchart/upstream_flow_text_edge_and_line_text_variants_spec.mmd`
 - vertex text variants (spaces/underscores/quoted, circle, URL-like text, punctuation, backslashes): `fixtures/flowchart/upstream_flow_text_vertex_text_variants_spec.mmd`
+- `v` in node ids edge cases (`A--xv(my text)` etc): `fixtures/flowchart/upstream_flow_text_v_in_node_ids_variants_spec.mmd` and unit test `parse_diagram_flowchart_v_in_node_ids_variants_from_flow_text_spec` in `crates/merman-core/src/lib.rs`
+- parser error cases (invalid/nested quotes, unterminated labels, invalid structural chars): unit test `parse_diagram_flowchart_flow_text_error_cases_from_upstream_spec` in `crates/merman-core/src/lib.rs`
 - ellipse vertex is covered as parser-only due to upstream rendering bug (Mermaid issue `#5976`): `fixtures/flowchart/upstream_flow_text_ellipse_vertex_parser_only_spec.mmd`
 
 ### `parser/flow-singlenode.spec.js`
