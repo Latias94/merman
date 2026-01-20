@@ -88,8 +88,19 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/flow-in
 
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/flow-lines.spec.js`
 
-- `linkStyle` interpolate (`default` / numbered / mixed): `fixtures/flowchart/upstream_linkstyle_and_click.mmd`
-- edge curve properties via edge id (`e1@{curve: ...}`): `fixtures/flowchart/upstream_lines_edge_curve_properties_spec.mmd`
+- `linkStyle` interpolate (default): `fixtures/flowchart/upstream_flowchart_v2_lines_linkstyle_default_interpolate_basis_spec.mmd`
+- `linkStyle` interpolate (numbered): `fixtures/flowchart/upstream_flowchart_v2_lines_linkstyle_numbered_interpolate_spec.mmd`
+- `linkStyle` interpolate (multi-numbered): `fixtures/flowchart/upstream_flowchart_v2_lines_linkstyle_multi_numbered_interpolate_spec.mmd`
+- `linkStyle` interpolate with style (`stroke-width:1px;`):
+  - `fixtures/flowchart/upstream_flowchart_v2_lines_linkstyle_default_interpolate_basis_with_style_spec.mmd`
+  - `fixtures/flowchart/upstream_flowchart_v2_lines_linkstyle_numbered_interpolate_with_style_spec.mmd`
+  - `fixtures/flowchart/upstream_flowchart_v2_lines_linkstyle_multi_numbered_interpolate_basis_with_style_spec.mmd`
+- edge curve properties via edge id (`e1@{curve: ...}`): `fixtures/flowchart/upstream_flowchart_v2_lines_edge_id_curve_properties_spec.mmd`
+- edge curve properties via edge id without overriding default: `fixtures/flowchart/upstream_flowchart_v2_lines_edge_id_curve_without_overriding_default_spec.mmd`
+- edge curve properties via edge id mixed with `linkStyle`: `fixtures/flowchart/upstream_flowchart_v2_lines_edge_id_curve_mixed_with_linkstyle_spec.mmd`
+- line stroke notation (`-.->`, `==>`): `fixtures/flowchart/upstream_flowchart_v2_lines_stroke_dotted_spec.mmd` and `fixtures/flowchart/upstream_flowchart_v2_lines_stroke_thick_spec.mmd`
+- combined legacy fixture (also covers click parsing and sanitization): `fixtures/flowchart/upstream_linkstyle_and_click.mmd`
+- legacy edge-curve fixture (pre v2 naming): `fixtures/flowchart/upstream_lines_edge_curve_properties_spec.mmd`
 
 ### `parser/flow-text.spec.js`
 
