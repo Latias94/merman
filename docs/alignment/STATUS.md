@@ -49,11 +49,17 @@ Legend:
 | Radar | yes | yes | Stage B | yes | yes (`xtask compare-radar-svgs`) |
 | Treemap | yes | yes | Stage B | yes | yes (`xtask compare-treemap-svgs`) |
 | XYChart | yes | yes | Stage B | yes | yes (`xtask compare-xychart-svgs`) |
-| Others (… ) | yes | no | no | no | no |
+| Mindmap | yes | no | no | no | no |
+| Architecture | yes | no | no | no | no |
+| Requirement | yes | no | no | no | no |
+| QuadrantChart | yes | yes | Stage B | yes | yes (`xtask compare-quadrantchart-svgs`) |
+| Sankey | yes | no | no | no | no |
 
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
 the dashed separators now use the exact same x-coordinates as the frame edges to match upstream SVG and
 avoid sub-pixel gaps at the frame border.
+Recent progress: `xychart` headless layout and Stage B parity renderer exist and are validated against
+upstream SVG baselines via `xtask compare-xychart-svgs` (DOM parity mode).
 Recent progress: flowchart Stage B now matches upstream SVG DOM for the current fixture set in parity mode
 (`cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`).
 Recent progress: flowchart fixtures now cover `flow-style.spec.js` and `flow-interactions.spec.js` more

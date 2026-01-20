@@ -1,0 +1,255 @@
+{
+  "diagramType": "quadrantChart",
+  "layout": {
+    "QuadrantChartDiagram": {
+      "width": 500.0,
+      "height": 500.0,
+      "title": {
+        "text": "Analytics and Business Intelligence Platforms",
+        "x": 250.0,
+        "y": 10.0,
+        "fill": "#131300",
+        "fontSize": 20.0,
+        "rotation": 0.0,
+        "verticalPos": "center",
+        "horizontalPos": "top"
+      },
+      "quadrants": [
+        {
+          "x": 263.0,
+          "y": 45.0,
+          "width": 232.0,
+          "height": 212.0,
+          "fill": "#ECECFF",
+          "text": {
+            "text": "Leaders",
+            "x": 379.0,
+            "y": 50.0,
+            "fill": "#131300",
+            "fontSize": 16.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "top"
+          }
+        },
+        {
+          "x": 31.0,
+          "y": 45.0,
+          "width": 232.0,
+          "height": 212.0,
+          "fill": "#f1f1ff",
+          "text": {
+            "text": "Challengers",
+            "x": 147.0,
+            "y": 50.0,
+            "fill": "#0e0e00",
+            "fontSize": 16.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "top"
+          }
+        },
+        {
+          "x": 31.0,
+          "y": 257.0,
+          "width": 232.0,
+          "height": 212.0,
+          "fill": "#f6f6ff",
+          "text": {
+            "text": "Niche",
+            "x": 147.0,
+            "y": 262.0,
+            "fill": "#090900",
+            "fontSize": 16.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "top"
+          }
+        },
+        {
+          "x": 263.0,
+          "y": 257.0,
+          "width": 232.0,
+          "height": 212.0,
+          "fill": "#fbfbff",
+          "text": {
+            "text": "Visionaries",
+            "x": 379.0,
+            "y": 262.0,
+            "fill": "#040400",
+            "fontSize": 16.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "top"
+          }
+        }
+      ],
+      "borderLines": [
+        {
+          "strokeWidth": 2.0,
+          "strokeFill": "rgb(199, 199, 241)",
+          "x1": 30.0,
+          "y1": 45.0,
+          "x2": 496.0,
+          "y2": 45.0
+        },
+        {
+          "strokeWidth": 2.0,
+          "strokeFill": "rgb(199, 199, 241)",
+          "x1": 495.0,
+          "y1": 46.0,
+          "x2": 495.0,
+          "y2": 468.0
+        },
+        {
+          "strokeWidth": 2.0,
+          "strokeFill": "rgb(199, 199, 241)",
+          "x1": 30.0,
+          "y1": 469.0,
+          "x2": 496.0,
+          "y2": 469.0
+        },
+        {
+          "strokeWidth": 2.0,
+          "strokeFill": "rgb(199, 199, 241)",
+          "x1": 31.0,
+          "y1": 46.0,
+          "x2": 31.0,
+          "y2": 468.0
+        },
+        {
+          "strokeWidth": 1.0,
+          "strokeFill": "rgb(199, 199, 241)",
+          "x1": 263.0,
+          "y1": 46.0,
+          "x2": 263.0,
+          "y2": 468.0
+        },
+        {
+          "strokeWidth": 1.0,
+          "strokeFill": "rgb(199, 199, 241)",
+          "x1": 32.0,
+          "y1": 257.0,
+          "x2": 494.0,
+          "y2": 257.0
+        }
+      ],
+      "points": [
+        {
+          "x": 123.8,
+          "y": 341.8,
+          "fill": "hsl(240, 100%, NaN%)",
+          "radius": 5.0,
+          "strokeColor": "hsl(240, 100%, NaN%)",
+          "strokeWidth": "0px",
+          "text": {
+            "text": "Incorta",
+            "x": 123.8,
+            "y": 346.8,
+            "fill": "#131300",
+            "fontSize": 12.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "top"
+          }
+        },
+        {
+          "x": 267.64,
+          "y": 299.4,
+          "fill": "hsl(240, 100%, NaN%)",
+          "radius": 5.0,
+          "strokeColor": "hsl(240, 100%, NaN%)",
+          "strokeWidth": "0px",
+          "text": {
+            "text": "IBM",
+            "x": 267.64,
+            "y": 304.4,
+            "fill": "#131300",
+            "fontSize": 12.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "top"
+          }
+        },
+        {
+          "x": 286.2,
+          "y": 214.6,
+          "fill": "hsl(240, 100%, NaN%)",
+          "radius": 5.0,
+          "strokeColor": "hsl(240, 100%, NaN%)",
+          "strokeWidth": "0px",
+          "text": {
+            "text": "Salesforce",
+            "x": 286.2,
+            "y": 219.6,
+            "fill": "#131300",
+            "fontSize": 12.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "top"
+          }
+        },
+        {
+          "x": 379.0,
+          "y": 151.0,
+          "fill": "hsl(240, 100%, NaN%)",
+          "radius": 5.0,
+          "strokeColor": "hsl(240, 100%, NaN%)",
+          "strokeWidth": "0px",
+          "text": {
+            "text": "Microsoft",
+            "x": 379.0,
+            "y": 156.0,
+            "fill": "#131300",
+            "fontSize": 12.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "top"
+          }
+        }
+      ],
+      "axisLabels": [
+        {
+          "text": "Completeness of Vision ?",
+          "x": 147.0,
+          "y": 479.0,
+          "fill": "#131300",
+          "fontSize": 16.0,
+          "rotation": 0.0,
+          "verticalPos": "center",
+          "horizontalPos": "top"
+        },
+        {
+          "text": "x-axis-2",
+          "x": 379.0,
+          "y": 479.0,
+          "fill": "#131300",
+          "fontSize": 16.0,
+          "rotation": 0.0,
+          "verticalPos": "center",
+          "horizontalPos": "top"
+        },
+        {
+          "text": "Ability to Execute",
+          "x": 5.0,
+          "y": 363.0,
+          "fill": "#131300",
+          "fontSize": 16.0,
+          "rotation": -90.0,
+          "verticalPos": "center",
+          "horizontalPos": "top"
+        },
+        {
+          "text": "y-axis-2",
+          "x": 5.0,
+          "y": 151.0,
+          "fill": "#131300",
+          "fontSize": 16.0,
+          "rotation": -90.0,
+          "verticalPos": "center",
+          "horizontalPos": "top"
+        }
+      ]
+    }
+  }
+}
