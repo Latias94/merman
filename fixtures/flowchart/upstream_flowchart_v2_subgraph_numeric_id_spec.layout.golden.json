@@ -1,0 +1,102 @@
+{
+  "diagramType": "flowchart-v2",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "A",
+          "x": 98.92,
+          "y": 52.0,
+          "width": 127.84,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "B",
+          "x": 98.92,
+          "y": 205.0,
+          "width": 104.4,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "1test",
+          "x": 98.92,
+          "y": 52.0,
+          "width": 177.84,
+          "height": 104.0,
+          "is_cluster": true
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_A_B_0",
+          "from": "A",
+          "to": "B",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 98.92,
+              "y": 79.0
+            },
+            {
+              "x": 98.92,
+              "y": 104.0
+            },
+            {
+              "x": 98.92,
+              "y": 141.0
+            },
+            {
+              "x": 98.92,
+              "y": 178.0
+            }
+          ],
+          "label": {
+            "x": 98.92,
+            "y": 141.0,
+            "width": 70.56,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "1test",
+          "x": 98.92,
+          "y": 52.0,
+          "width": 177.84,
+          "height": 104.0,
+          "diff": -15.0,
+          "offset_y": 16.5,
+          "title": "1test",
+          "title_label": {
+            "x": 98.92,
+            "y": 12.0,
+            "width": 36.48,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "LR",
+          "padding": 25.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 10.0,
+        "min_y": 0.0,
+        "max_x": 187.84,
+        "max_y": 232.0
+      }
+    }
+  }
+}

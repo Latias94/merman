@@ -1,0 +1,13 @@
+---
+title: Flowchart v2 subgraph with multi-node statement
+---
+flowchart TD
+
+A[Start] --> B[Before]
+
+subgraph myTitle
+  a & b --> c & e
+end
+
+c --> Z[End]
+e --> Z
