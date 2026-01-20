@@ -1222,6 +1222,13 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             if !path.extension().is_some_and(|e| e == "mmd") {
                 continue;
             }
+            if path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.contains("_parser_only_") || n.contains("_parser_only_spec"))
+            {
+                continue;
+            }
             if diagram == "gantt" {
                 if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
                     matches!(
@@ -1478,6 +1485,13 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 continue;
             }
             if !path.extension().is_some_and(|e| e == "mmd") {
+                continue;
+            }
+            if path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.contains("_parser_only_") || n.contains("_parser_only_spec"))
+            {
                 continue;
             }
             if diagram == "gantt" {
@@ -3590,6 +3604,13 @@ fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             continue;
         }
         if !path.extension().is_some_and(|e| e == "mmd") {
+            continue;
+        }
+        if path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.contains("_parser_only_") || n.contains("_parser_only_spec"))
+        {
             continue;
         }
         if let Some(ref f) = filter {

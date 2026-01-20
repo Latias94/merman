@@ -141,6 +141,18 @@ Notes:
   storing `techn` as a raw string).
 - `xtask gen-upstream-svgs --diagram c4` skips such fixtures when generating baselines.
 
+## Parser-Only Fixtures
+
+Some fixtures are intentionally **parser-only** (they validate semantic parsing but are not
+renderable in upstream Mermaid at the pinned version).
+
+Convention:
+
+- Any fixture whose filename contains `_parser_only_` (or `_parser_only_spec`) is skipped by:
+  - `xtask gen-upstream-svgs`
+  - `xtask check-upstream-svgs`
+  - diagram compare tasks like `xtask compare-flowchart-svgs`
+
 ## Generate (C4 Stage B)
 
 Generate local Stage-B C4 SVG outputs (not upstream baselines):
