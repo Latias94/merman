@@ -1,0 +1,10 @@
+---
+title: Flowchart v2 edge id curve mixed with linkStyle
+---
+graph TD
+A e1@-->B-->D
+A-->C e4@-->D-->E
+linkStyle default interpolate linear
+linkStyle 1 interpolate basis
+e1@{curve: monotoneX}
+e4@{curve: stepBefore}
