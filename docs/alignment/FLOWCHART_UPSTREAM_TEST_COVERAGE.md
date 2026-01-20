@@ -186,7 +186,10 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/flowDb.spec.ts
 
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/flowChartShapes.spec.js`
 
-- rendering-only (SVG shape geometry) and out of scope for headless parsing parity.
+- upstream unit tests validate low-level SVG shape geometry and translation.
+- in `merman`, we validate the same shapes end-to-end via SVG DOM parity fixtures instead of porting the JS unit test harness:
+  - shape aliases via `@{ shape: ... }`: `fixtures/flowchart/upstream_flow_node_data_shape_aliases_spec.mmd`
+  - flowchart syntax shape matrix: `fixtures/flowchart/upstream_flowchart_v2_shape_styling_matrix_spec.mmd`
 
 ### `cypress/integration/rendering/flowchart-v2.spec.js` (rendering)
 
