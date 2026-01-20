@@ -124,6 +124,13 @@ pub struct LayoutEdge {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockDiagramLayout {
+    pub nodes: Vec<LayoutNode>,
+    pub edges: Vec<LayoutEdge>,
+    pub bounds: Option<Bounds>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowchartV2Layout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
@@ -690,6 +697,7 @@ pub struct C4DiagramLayout {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LayoutDiagram {
+    BlockDiagram(BlockDiagramLayout),
     FlowchartV2(FlowchartV2Layout),
     StateDiagramV2(StateDiagramV2Layout),
     ClassDiagramV2(ClassDiagramV2Layout),

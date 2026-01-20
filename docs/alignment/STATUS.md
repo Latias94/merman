@@ -45,6 +45,7 @@ Legend:
 | GitGraph | yes | yes | Stage B | yes | yes (`xtask compare-gitgraph-svgs`) |
 | Gantt | yes | yes | Stage B | yes | yes (`xtask compare-gantt-svgs`) |
 | C4 | yes | yes | Stage B | yes | yes (`xtask compare-c4-svgs`) |
+| Block | yes | yes | Stage B | yes | yes (`xtask compare-block-svgs`) |
 | Others (… ) | yes | no | no | no | no |
 
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
@@ -83,6 +84,8 @@ Recent progress: `gitGraph` Stage B parity renderer exists and is validated agai
 baselines via `xtask compare-gitgraph-svgs`.
 Recent progress: `gantt` Stage B parity renderer exists and is validated against upstream SVG
 baselines via `xtask compare-gantt-svgs`.
+Recent progress: `block` headless layout and Stage B SVG renderer exist and are validated against
+upstream SVG baselines via `xtask compare-block-svgs` (DOM parity mode).
 
 ## Alignment Sanity Checks
 

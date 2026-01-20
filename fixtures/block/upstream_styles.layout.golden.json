@@ -1,0 +1,24 @@
+{
+  "diagramType": "block",
+  "layout": {
+    "BlockDiagram": {
+      "nodes": [
+        {
+          "id": "mc",
+          "x": 35.68,
+          "y": 0.0,
+          "width": 71.36,
+          "height": 32.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": -16.0,
+        "max_x": 71.36,
+        "max_y": 16.0
+      }
+    }
+  }
+}

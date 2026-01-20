@@ -121,6 +121,35 @@ fn normalize_model(diagram_type: &str, model: &mut Value) {
 
         walk(&re, model);
     }
+
+    // Mermaid block diagram auto-generates internal block ids using random base36 suffixes.
+    // Normalize these ids so snapshots are stable across runs.
+    if diagram_type == "block" {
+        let re = Regex::new(r"id-[a-z0-9]+-(\d+)").expect("block id regex must compile");
+
+        fn walk(re: &Regex, v: &mut Value) {
+            match v {
+                Value::String(s) => {
+                    if re.is_match(s) {
+                        *s = re.replace_all(s, "id-<id>-$1").to_string();
+                    }
+                }
+                Value::Array(arr) => {
+                    for item in arr {
+                        walk(re, item);
+                    }
+                }
+                Value::Object(map) => {
+                    for (_k, val) in map.iter_mut() {
+                        walk(re, val);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        walk(&re, model);
+    }
 }
 
 fn snapshot_value(diagram_type: &str, mut model: Value) -> Value {

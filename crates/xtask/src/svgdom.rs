@@ -91,6 +91,11 @@ fn re_mermaid_generate_id() -> &'static Regex {
     ONCE.get_or_init(|| Regex::new(r"id-[a-z0-9]+-\d+").unwrap())
 }
 
+fn re_mermaid_generate_id_capture() -> &'static Regex {
+    static ONCE: OnceLock<Regex> = OnceLock::new();
+    ONCE.get_or_init(|| Regex::new(r"id-[a-z0-9]+-(\d+)").unwrap())
+}
+
 fn re_gitgraph_dynamic_commit_id() -> &'static Regex {
     static ONCE: OnceLock<Regex> = OnceLock::new();
     ONCE.get_or_init(|| Regex::new(r"\b(\d+)-[0-9a-f]{7}\b").unwrap())
@@ -107,6 +112,12 @@ fn normalize_identifier_tokens(s: &str) -> String {
         .replace_all(s, "id-<id>-<n>")
         .to_string();
     re_trailing_counter().replace(&s, "$1<n>").to_string()
+}
+
+fn normalize_mermaid_generated_id_only(s: &str) -> String {
+    re_mermaid_generate_id_capture()
+        .replace_all(s, "id-<id>-$1")
+        .to_string()
 }
 
 fn normalize_class_list(s: &str, mode: DomMode) -> String {
@@ -203,6 +214,8 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             }
             if mode == DomMode::Structure && is_identifier_like_attr(&key) {
                 val = normalize_identifier_tokens(&val);
+            } else if mode == DomMode::Parity && is_identifier_like_attr(&key) {
+                val = normalize_mermaid_generated_id_only(&val);
             } else if !normalized_geom && mode == DomMode::Parity && is_geometry_attr(&key) {
                 val = normalize_numeric_tokens_mode(&val, decimals, DomMode::Structure);
             } else {

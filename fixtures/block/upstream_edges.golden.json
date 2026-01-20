@@ -1,84 +1,84 @@
 {
   "diagramType": "block",
   "model": {
+    "type": "block",
     "blocks": [
       {
-        "children": [],
         "id": "id1",
-        "label": "first",
         "type": "square",
+        "label": "first",
+        "children": [],
         "widthInColumns": 1
       },
       {
-        "children": [],
         "id": "id2",
-        "label": "second",
         "type": "square",
+        "label": "second",
+        "children": [],
         "widthInColumns": 1
+      }
+    ],
+    "edges": [
+      {
+        "id": "1-id1-id2",
+        "type": "edge",
+        "label": "",
+        "children": [],
+        "start": "id1",
+        "end": "id2",
+        "arrowTypeEnd": "arrow_point",
+        "arrowTypeStart": "arrow_open"
+      },
+      {
+        "id": "2-id1-id2",
+        "type": "edge",
+        "label": "a label",
+        "children": [],
+        "start": "id1",
+        "end": "id2",
+        "arrowTypeEnd": "arrow_point",
+        "arrowTypeStart": "arrow_open"
       }
     ],
     "blocksFlat": [
       {
+        "id": "root",
+        "type": "composite",
+        "label": "",
         "children": [
           {
-            "children": [],
             "id": "id1",
-            "label": "first",
             "type": "square",
+            "label": "first",
+            "children": [],
             "widthInColumns": 1
           },
           {
-            "children": [],
             "id": "id2",
-            "label": "second",
             "type": "square",
+            "label": "second",
+            "children": [],
             "widthInColumns": 1
           }
         ],
-        "columns": -1,
-        "id": "root",
-        "label": "",
-        "type": "composite"
+        "columns": -1
       },
       {
-        "children": [],
         "id": "id1",
-        "label": "first",
         "type": "square",
+        "label": "first",
+        "children": [],
         "widthInColumns": 1
       },
       {
-        "children": [],
         "id": "id2",
-        "label": "second",
         "type": "square",
+        "label": "second",
+        "children": [],
         "widthInColumns": 1
       }
     ],
     "classes": {},
-    "edges": [
-      {
-        "arrowTypeEnd": "arrow_point",
-        "arrowTypeStart": "arrow_open",
-        "children": [],
-        "end": "id2",
-        "id": "1-id1-id2",
-        "label": "",
-        "start": "id1",
-        "type": "edge"
-      },
-      {
-        "arrowTypeEnd": "arrow_point",
-        "arrowTypeStart": "arrow_open",
-        "children": [],
-        "end": "id2",
-        "id": "2-id1-id2",
-        "label": "a label",
-        "start": "id1",
-        "type": "edge"
-      }
-    ],
-    "type": "block",
     "warnings": []
   }
 }

@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod block;
 pub mod c4;
 pub mod class;
 pub mod er;
@@ -59,6 +60,11 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
     let diagram_type = parsed.meta.diagram_type.as_str();
 
     let layout = match diagram_type {
+        "block" => LayoutDiagram::BlockDiagram(block::layout_block_diagram(
+            &parsed.model,
+            &meta.effective_config,
+            options.text_measurer.as_ref(),
+        )?),
         "flowchart-v2" => LayoutDiagram::FlowchartV2(flowchart::layout_flowchart_v2(
             &parsed.model,
             &meta.effective_config,

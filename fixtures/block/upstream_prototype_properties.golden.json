@@ -1,99 +1,101 @@
 {
   "diagramType": "block",
   "model": {
+    "type": "block",
     "blocks": [
       {
-        "children": [],
         "id": "__proto__",
+        "type": "na",
         "label": "__proto__",
-        "type": "na",
+        "children": [],
         "widthInColumns": 1
       },
       {
-        "children": [],
         "id": "constructor",
+        "type": "na",
         "label": "constructor",
-        "type": "na",
+        "children": [],
         "widthInColumns": 1
       },
       {
-        "children": [],
         "id": "A;",
-        "label": "A;",
         "type": "na",
+        "label": "A;",
+        "children": [],
         "widthInColumns": 1
       },
       {
-        "children": [],
         "id": "B;",
-        "label": "B;",
         "type": "na",
+        "label": "B;",
+        "children": [],
         "widthInColumns": 1
       }
     ],
+    "edges": [],
     "blocksFlat": [
       {
+        "id": "root",
+        "type": "composite",
+        "label": "",
         "children": [
           {
-            "children": [],
             "id": "__proto__",
+            "type": "na",
             "label": "__proto__",
-            "type": "na",
+            "children": [],
             "widthInColumns": 1
           },
           {
-            "children": [],
             "id": "constructor",
+            "type": "na",
             "label": "constructor",
-            "type": "na",
+            "children": [],
             "widthInColumns": 1
           },
           {
-            "children": [],
             "id": "A;",
-            "label": "A;",
             "type": "na",
+            "label": "A;",
+            "children": [],
             "widthInColumns": 1
           },
           {
-            "children": [],
             "id": "B;",
-            "label": "B;",
             "type": "na",
+            "label": "B;",
+            "children": [],
             "widthInColumns": 1
           }
         ],
-        "columns": -1,
-        "id": "root",
-        "label": "",
-        "type": "composite"
+        "columns": -1
       },
       {
-        "children": [],
         "id": "__proto__",
+        "type": "na",
         "label": "__proto__",
-        "type": "na",
+        "children": [],
         "widthInColumns": 1
       },
       {
-        "children": [],
         "id": "constructor",
+        "type": "na",
         "label": "constructor",
-        "type": "na",
+        "children": [],
         "widthInColumns": 1
       },
       {
-        "children": [],
         "id": "A;",
-        "label": "A;",
         "type": "na",
+        "label": "A;",
+        "children": [],
         "widthInColumns": 1
       },
       {
-        "children": [],
         "id": "B;",
-        "label": "B;",
         "type": "na",
+        "label": "B;",
+        "children": [],
         "widthInColumns": 1
       }
     ],
@@ -119,8 +121,6 @@
         ]
       }
     },
-    "edges": [],
-    "type": "block",
     "warnings": []
   }
 }

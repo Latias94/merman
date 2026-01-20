@@ -44,34 +44,61 @@ fn round_json_numbers(v: &mut JsonValue, decimals: u32) {
 fn normalize_dynamic_fields(diagram_type: &str, v: &mut JsonValue) {
     // Mermaid gitGraph auto-generates commit ids using random hex suffixes.
     // Normalize these ids so snapshots are stable across runs.
-    if diagram_type != "gitGraph" {
+    if diagram_type == "gitGraph" {
+        let re = Regex::new(r"\b(\d+)-[0-9a-f]{7}\b").expect("gitGraph id regex must compile");
+
+        fn walk(re: &Regex, v: &mut JsonValue) {
+            match v {
+                JsonValue::String(s) => {
+                    if re.is_match(s) {
+                        *s = re.replace_all(s, "$1-<dynamic>").to_string();
+                    }
+                }
+                JsonValue::Array(arr) => {
+                    for item in arr {
+                        walk(re, item);
+                    }
+                }
+                JsonValue::Object(map) => {
+                    for (_k, val) in map.iter_mut() {
+                        walk(re, val);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        walk(&re, v);
         return;
     }
 
-    let re = Regex::new(r"\b(\d+)-[0-9a-f]{7}\b").expect("gitGraph id regex must compile");
+    // Mermaid block diagram auto-generates internal ids using random base36 suffixes.
+    if diagram_type == "block" {
+        let re = Regex::new(r"id-[a-z0-9]+-(\d+)").expect("block id regex must compile");
 
-    fn walk(re: &Regex, v: &mut JsonValue) {
-        match v {
-            JsonValue::String(s) => {
-                if re.is_match(s) {
-                    *s = re.replace_all(s, "$1-<dynamic>").to_string();
+        fn walk(re: &Regex, v: &mut JsonValue) {
+            match v {
+                JsonValue::String(s) => {
+                    if re.is_match(s) {
+                        *s = re.replace_all(s, "id-<id>-$1").to_string();
+                    }
                 }
-            }
-            JsonValue::Array(arr) => {
-                for item in arr {
-                    walk(re, item);
+                JsonValue::Array(arr) => {
+                    for item in arr {
+                        walk(re, item);
+                    }
                 }
-            }
-            JsonValue::Object(map) => {
-                for (_k, val) in map.iter_mut() {
-                    walk(re, val);
+                JsonValue::Object(map) => {
+                    for (_k, val) in map.iter_mut() {
+                        walk(re, val);
+                    }
                 }
+                _ => {}
             }
-            _ => {}
         }
-    }
 
-    walk(&re, v);
+        walk(&re, v);
+    }
 }
 
 fn collect_mmd_files(root: &Path) -> Vec<PathBuf> {

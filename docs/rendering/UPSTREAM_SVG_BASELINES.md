@@ -134,6 +134,14 @@ Outputs to:
 
 - `fixtures/upstream-svgs/c4/*.svg`
 
+## Generate (Block)
+
+- `cargo run -p xtask -- gen-upstream-svgs --diagram block`
+
+Outputs to:
+
+- `fixtures/upstream-svgs/block/*.svg`
+
 Notes:
 
 - Mermaid C4 has known render-time type assumptions that make some valid parser fixtures
@@ -238,6 +246,12 @@ Generate a report comparing upstream flowchart SVGs and the current Rust Stage-B
 - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`
 - Use the looser, structure-only mode while iterating on large layout/routing refactors:
   - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode structure --dom-decimals 3`
+
+## Compare (Block)
+
+Generate a report comparing upstream block SVGs and the current Rust Stage-B block output:
+
+- `cargo run -p xtask -- compare-block-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 Notes:
 

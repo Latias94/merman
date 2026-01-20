@@ -1,76 +1,76 @@
 {
   "diagramType": "block",
   "model": {
+    "type": "block",
     "blocks": [
       {
+        "id": "compoundBlock",
+        "type": "composite",
+        "label": "Compound block",
         "children": [
           {
-            "children": [],
             "id": "block2",
-            "label": "Block 2",
             "type": "square",
+            "label": "Block 2",
+            "children": [],
             "widthInColumns": 1
           }
         ],
         "columns": 1,
-        "id": "compoundBlock",
-        "label": "Compound block",
-        "type": "composite",
         "widthInColumns": 1
       }
     ],
+    "edges": [],
     "blocksFlat": [
       {
+        "id": "root",
+        "type": "composite",
+        "label": "",
         "children": [
           {
+            "id": "compoundBlock",
+            "type": "composite",
+            "label": "Compound block",
             "children": [
               {
-                "children": [],
                 "id": "block2",
-                "label": "Block 2",
                 "type": "square",
+                "label": "Block 2",
+                "children": [],
                 "widthInColumns": 1
               }
             ],
             "columns": 1,
-            "id": "compoundBlock",
-            "label": "Compound block",
-            "type": "composite",
             "widthInColumns": 1
           }
         ],
-        "columns": -1,
-        "id": "root",
-        "label": "",
-        "type": "composite"
+        "columns": -1
       },
       {
+        "id": "compoundBlock",
+        "type": "composite",
+        "label": "Compound block",
         "children": [
           {
-            "children": [],
             "id": "block2",
-            "label": "Block 2",
             "type": "square",
+            "label": "Block 2",
+            "children": [],
             "widthInColumns": 1
           }
         ],
         "columns": 1,
-        "id": "compoundBlock",
-        "label": "Compound block",
-        "type": "composite",
         "widthInColumns": 1
       },
       {
-        "children": [],
         "id": "block2",
-        "label": "Block 2",
         "type": "square",
+        "label": "Block 2",
+        "children": [],
         "widthInColumns": 1
       }
     ],
     "classes": {},
-    "edges": [],
-    "type": "block",
     "warnings": []
   }
 }

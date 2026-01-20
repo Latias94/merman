@@ -101,7 +101,9 @@ impl BlockDb {
     #[allow(dead_code)]
     fn generate_id(&mut self) -> String {
         self.gen_counter += 1;
-        format!("id-{}", self.gen_counter)
+        let rand = uuid::Uuid::new_v4().simple().to_string();
+        let rand = &rand[..12.min(rand.len())];
+        format!("id-{rand}-{}", self.gen_counter)
     }
 
     fn add_style_class(&mut self, id: &str, style_attributes: &str) {
@@ -613,7 +615,9 @@ impl<'a> Parser<'a> {
 
     fn generate_id(&mut self) -> String {
         self.gen_counter += 1;
-        format!("id-{}", self.gen_counter)
+        let rand = uuid::Uuid::new_v4().simple().to_string();
+        let rand = &rand[..12.min(rand.len())];
+        format!("id-{rand}-{}", self.gen_counter)
     }
 
     fn skip_ws_and_comments(&mut self) {
@@ -780,7 +784,10 @@ impl<'a> Parser<'a> {
             self.parse_int()?
         };
 
-        let mut b = Block::new(self.generate_id());
+        // Mermaid does not require a unique id for column-setting statements (they are not part of
+        // the rendered block list); avoid consuming a generated id so generated composite ids
+        // match upstream counters.
+        let mut b = Block::new("columns".to_string());
         b.block_type = "column-setting".to_string();
         b.columns = Some(value);
         Ok(b)

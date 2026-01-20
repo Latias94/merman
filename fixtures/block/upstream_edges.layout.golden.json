@@ -1,0 +1,96 @@
+{
+  "diagramType": "block",
+  "layout": {
+    "BlockDiagram": {
+      "nodes": [
+        {
+          "id": "id1",
+          "x": 24.64,
+          "y": 0.0,
+          "width": 49.28,
+          "height": 32.0,
+          "is_cluster": false
+        },
+        {
+          "id": "id2",
+          "x": 81.92,
+          "y": 0.0,
+          "width": 49.28,
+          "height": 32.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "1-id1-id2",
+          "from": "id1",
+          "to": "id2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 24.64,
+              "y": 0.0
+            },
+            {
+              "x": 53.28,
+              "y": 0.0
+            },
+            {
+              "x": 81.92,
+              "y": 0.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "arrow_open",
+          "end_marker": "arrow_point",
+          "stroke_dasharray": null
+        },
+        {
+          "id": "2-id1-id2",
+          "from": "id1",
+          "to": "id2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 24.64,
+              "y": 0.0
+            },
+            {
+              "x": 53.28,
+              "y": 0.0
+            },
+            {
+              "x": 81.92,
+              "y": 0.0
+            }
+          ],
+          "label": {
+            "x": 53.28,
+            "y": 0.0,
+            "width": 41.76,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "arrow_open",
+          "end_marker": "arrow_point",
+          "stroke_dasharray": null
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": -16.0,
+        "max_x": 106.56,
+        "max_y": 16.0
+      }
+    }
+  }
+}
