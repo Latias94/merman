@@ -46,6 +46,7 @@ Legend:
 | Gantt | yes | yes | Stage B | yes | yes (`xtask compare-gantt-svgs`) |
 | C4 | yes | yes | Stage B | yes | yes (`xtask compare-c4-svgs`) |
 | Block | yes | yes | Stage B | yes | yes (`xtask compare-block-svgs`) |
+| Radar | yes | no | no | yes | no |
 | Others (… ) | yes | no | no | no | no |
 
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;

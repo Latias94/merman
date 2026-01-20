@@ -1407,6 +1407,7 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 "gitgraph",
                 "c4",
                 "block",
+                "radar",
             ] {
                 if let Err(err) = run_one(&workspace_root, &out_root, &mmdc, d, filter) {
                     failures.push(format!("{d}: {err}"));
@@ -1419,11 +1420,11 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         }
         "er" | "flowchart" | "state" | "class" | "sequence" | "info" | "pie" | "packet"
-        | "timeline" | "journey" | "kanban" | "gitgraph" | "gantt" | "c4" | "block" => {
+        | "timeline" | "journey" | "kanban" | "gitgraph" | "gantt" | "c4" | "block" | "radar" => {
             run_one(&workspace_root, &out_root, &mmdc, &diagram, filter)
         }
         other => Err(XtaskError::UpstreamSvgFailed(format!(
-            "unsupported diagram for upstream svg export: {other} (supported: er, flowchart, gantt, state, class, sequence, info, pie, packet, timeline, journey, kanban, gitgraph, c4, block, all)"
+            "unsupported diagram for upstream svg export: {other} (supported: er, flowchart, gantt, state, class, sequence, info, pie, packet, timeline, journey, kanban, gitgraph, c4, block, radar, all)"
         ))),
     }
 }
@@ -1625,7 +1626,11 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
             let (use_dom, mode) = if check_dom {
                 (true, dom_mode)
-            } else if diagram == "state" || diagram == "gitgraph" || diagram == "gantt" {
+            } else if diagram == "state"
+                || diagram == "gitgraph"
+                || diagram == "gantt"
+                || diagram == "block"
+            {
                 (true, svgdom::DomMode::Structure)
             } else {
                 (false, dom_mode)
@@ -1685,6 +1690,8 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 "kanban",
                 "gitgraph",
                 "c4",
+                "block",
+                "radar",
             ] {
                 if let Err(err) = check_one(
                     &workspace_root,
@@ -1706,18 +1713,20 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         }
         "er" | "flowchart" | "state" | "class" | "sequence" | "info" | "pie" | "packet"
-        | "timeline" | "journey" | "kanban" | "gitgraph" | "gantt" | "c4" => check_one(
-            &workspace_root,
-            &baseline_root,
-            &out_root,
-            diagram.as_str(),
-            filter,
-            check_dom,
-            parsed_dom_mode,
-            dom_decimals,
-        ),
+        | "timeline" | "journey" | "kanban" | "gitgraph" | "gantt" | "c4" | "block" | "radar" => {
+            check_one(
+                &workspace_root,
+                &baseline_root,
+                &out_root,
+                diagram.as_str(),
+                filter,
+                check_dom,
+                parsed_dom_mode,
+                dom_decimals,
+            )
+        }
         other => Err(XtaskError::UpstreamSvgFailed(format!(
-            "unsupported diagram for upstream svg check: {other} (supported: er, flowchart, gantt, state, class, sequence, info, pie, packet, timeline, journey, kanban, gitgraph, c4, all)"
+            "unsupported diagram for upstream svg check: {other} (supported: er, flowchart, gantt, state, class, sequence, info, pie, packet, timeline, journey, kanban, gitgraph, c4, block, radar, all)"
         ))),
     }
 }

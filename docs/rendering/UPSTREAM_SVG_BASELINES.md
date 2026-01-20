@@ -134,6 +134,13 @@ Outputs to:
 
 - `fixtures/upstream-svgs/c4/*.svg`
 
+Notes:
+
+- Mermaid C4 has known render-time type assumptions that make some valid parser fixtures
+  non-renderable (e.g. kv-objects stored in `label.text`, or `UpdateElementStyle(..., techn="Rust")`
+  storing `techn` as a raw string).
+- `xtask gen-upstream-svgs --diagram c4` skips such fixtures when generating baselines.
+
 ## Generate (Block)
 
 - `cargo run -p xtask -- gen-upstream-svgs --diagram block`
@@ -142,12 +149,13 @@ Outputs to:
 
 - `fixtures/upstream-svgs/block/*.svg`
 
-Notes:
+## Generate (Radar)
 
-- Mermaid C4 has known render-time type assumptions that make some valid parser fixtures
-  non-renderable (e.g. kv-objects stored in `label.text`, or `UpdateElementStyle(..., techn="Rust")`
-  storing `techn` as a raw string).
-- `xtask gen-upstream-svgs --diagram c4` skips such fixtures when generating baselines.
+- `cargo run -p xtask -- gen-upstream-svgs --diagram radar`
+
+Outputs to:
+
+- `fixtures/upstream-svgs/radar/*.svg`
 
 ## Parser-Only Fixtures
 
