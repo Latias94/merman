@@ -157,6 +157,14 @@ Outputs to:
 
 - `fixtures/upstream-svgs/radar/*.svg`
 
+## Generate (Treemap)
+
+- `cargo run -p xtask -- gen-upstream-svgs --diagram treemap`
+
+Outputs to:
+
+- `fixtures/upstream-svgs/treemap/*.svg`
+
 ## Parser-Only Fixtures
 
 Some fixtures are intentionally **parser-only** (they validate semantic parsing but are not
