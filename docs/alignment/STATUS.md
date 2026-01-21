@@ -49,7 +49,7 @@ Legend:
 | Radar | yes | yes | Stage B | yes | yes (`xtask compare-radar-svgs`) |
 | Treemap | yes | yes | Stage B | yes | yes (`xtask compare-treemap-svgs`) |
 | XYChart | yes | yes | Stage B | yes | yes (`xtask compare-xychart-svgs`) |
-| Mindmap | yes | no | no | no | no |
+| Mindmap | yes | yes | Stage B | yes | yes (`xtask compare-mindmap-svgs`) |
 | Architecture | yes | no | no | no | no |
 | Requirement | yes | yes | Stage B | yes | yes (`xtask compare-requirement-svgs`) |
 | QuadrantChart | yes | yes | Stage B | yes | yes (`xtask compare-quadrantchart-svgs`) |

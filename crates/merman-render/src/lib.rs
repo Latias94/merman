@@ -11,6 +11,7 @@ pub mod gitgraph;
 pub mod info;
 pub mod journey;
 pub mod kanban;
+pub mod mindmap;
 pub mod model;
 pub mod packet;
 pub mod pie;
@@ -171,6 +172,11 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
                 options.text_measurer.as_ref(),
             )?)
         }
+        "mindmap" => LayoutDiagram::MindmapDiagram(mindmap::layout_mindmap_diagram(
+            &parsed.model,
+            &meta.effective_config,
+            options.text_measurer.as_ref(),
+        )?),
         other => {
             return Err(Error::UnsupportedDiagram {
                 diagram_type: other.to_string(),

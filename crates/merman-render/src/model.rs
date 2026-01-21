@@ -138,6 +138,13 @@ pub struct RequirementDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MindmapDiagramLayout {
+    pub nodes: Vec<LayoutNode>,
+    pub edges: Vec<LayoutEdge>,
+    pub bounds: Option<Bounds>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RadarAxisLayout {
     pub label: String,
     pub angle: f64,
@@ -959,6 +966,7 @@ pub struct C4DiagramLayout {
 pub enum LayoutDiagram {
     BlockDiagram(BlockDiagramLayout),
     RequirementDiagram(RequirementDiagramLayout),
+    MindmapDiagram(MindmapDiagramLayout),
     RadarDiagram(RadarDiagramLayout),
     TreemapDiagram(TreemapDiagramLayout),
     XyChartDiagram(XyChartDiagramLayout),

@@ -1,7 +1,7 @@
 use crate::model::{
     BlockDiagramLayout, Bounds, ClassDiagramV2Layout, ErDiagramLayout, FlowchartV2Layout,
-    InfoDiagramLayout, LayoutCluster, LayoutNode, PacketDiagramLayout, PieDiagramLayout,
-    QuadrantChartDiagramLayout, RadarDiagramLayout, RequirementDiagramLayout,
+    InfoDiagramLayout, LayoutCluster, LayoutNode, MindmapDiagramLayout, PacketDiagramLayout,
+    PieDiagramLayout, QuadrantChartDiagramLayout, RadarDiagramLayout, RequirementDiagramLayout,
     SequenceDiagramLayout, StateDiagramV2Layout, TimelineDiagramLayout, XyChartDiagramLayout,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
@@ -7950,6 +7950,253 @@ fn c4_write_text_by_tspan(
         );
     }
     out.push_str("</text>");
+}
+
+pub fn render_mindmap_diagram_svg(
+    layout: &MindmapDiagramLayout,
+    semantic: &serde_json::Value,
+    _effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct MindmapSemanticNode {
+        id: String,
+        #[serde(rename = "domId")]
+        dom_id: String,
+        #[serde(rename = "cssClasses")]
+        css_classes: String,
+        label: String,
+        shape: String,
+        #[serde(default)]
+        icon: Option<String>,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct MindmapSemanticEdge {
+        id: String,
+        start: String,
+        end: String,
+        classes: String,
+        thickness: String,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct MindmapSemanticModel {
+        #[serde(default)]
+        nodes: Vec<MindmapSemanticNode>,
+        #[serde(default)]
+        edges: Vec<MindmapSemanticEdge>,
+    }
+
+    #[derive(Debug, Clone, serde::Serialize)]
+    struct Pt {
+        x: f64,
+        y: f64,
+    }
+
+    fn mk_label(out: &mut String, text: &str, label_bkg: bool, width: f64, height: f64) {
+        let div_class = if label_bkg {
+            r#" class="labelBkg""#
+        } else {
+            ""
+        };
+        let _ = write!(
+            out,
+            r#"<g class="label" transform="translate(0, 0)"><rect/><foreignObject width="{w}" height="{h}"><div xmlns="http://www.w3.org/1999/xhtml"{div_class} style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>{text}</p></span></div></foreignObject></g>"#,
+            w = fmt(width.max(1.0)),
+            h = fmt(height.max(1.0)),
+            div_class = div_class,
+            text = escape_xml(text)
+        );
+    }
+
+    fn mk_edge_label(out: &mut String, edge_id: &str) {
+        let _ = write!(
+            out,
+            r#"<g class="edgeLabel"><g class="label" data-id="{id}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+            id = escape_xml(edge_id),
+        );
+    }
+
+    let model: MindmapSemanticModel = serde_json::from_value(semantic.clone())?;
+
+    let diagram_id = options.diagram_id.as_deref().unwrap_or("mindmap");
+    let diagram_id_esc = escape_xml(diagram_id);
+
+    let mut node_by_id: std::collections::BTreeMap<String, &crate::model::LayoutNode> =
+        std::collections::BTreeMap::new();
+    for n in &layout.nodes {
+        node_by_id.insert(n.id.clone(), n);
+    }
+
+    let mut out = String::new();
+    let _ = write!(
+        &mut out,
+        r#"<svg id="{id}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="mindmapDiagram" style="max-width: 100px; background-color: white;" viewBox="0 0 100 100" role="graphics-document document" aria-roledescription="mindmap">"#,
+        id = diagram_id_esc
+    );
+    out.push_str("<style></style>");
+    out.push_str("<g>");
+
+    let _ = write!(
+        &mut out,
+        r#"<marker id="{id}_mindmap-pointEnd" class="marker mindmap" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
+        id = diagram_id_esc
+    );
+    let _ = write!(
+        &mut out,
+        r#"<marker id="{id}_mindmap-pointStart" class="marker mindmap" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"/></marker>"#,
+        id = diagram_id_esc
+    );
+
+    out.push_str(r#"<g class="subgraphs"/>"#);
+
+    out.push_str(r#"<g class="edgePaths">"#);
+    for e in &model.edges {
+        let (sx, sy, tx, ty) = match (node_by_id.get(&e.start), node_by_id.get(&e.end)) {
+            (Some(a), Some(b)) => (a.x, a.y, b.x, b.y),
+            _ => (0.0, 0.0, 0.0, 0.0),
+        };
+        let points = vec![
+            Pt { x: sx, y: sy },
+            Pt {
+                x: (sx + tx) / 2.0,
+                y: (sy + ty) / 2.0,
+            },
+            Pt { x: tx, y: ty },
+        ];
+        let data_points = serde_json::to_string(&points)
+            .ok()
+            .map(|s| base64::engine::general_purpose::STANDARD.encode(s))
+            .unwrap_or_else(|| "W10=".to_string());
+        let class = format!(
+            "edge-thickness-{} edge-pattern-solid {}",
+            e.thickness.trim(),
+            e.classes.trim()
+        );
+        let _ = write!(
+            &mut out,
+            r#"<path d="M0 0" id="{id}" class="{class}" data-edge="true" data-et="edge" data-id="{id}" data-points="{pts}"/>"#,
+            id = escape_xml(&e.id),
+            class = escape_xml(&class),
+            pts = escape_xml(&data_points),
+        );
+    }
+    out.push_str("</g>");
+
+    out.push_str(r#"<g class="edgeLabels">"#);
+    for e in &model.edges {
+        mk_edge_label(&mut out, &e.id);
+    }
+    out.push_str("</g>");
+
+    out.push_str(r#"<g class="nodes">"#);
+    for n in &model.nodes {
+        let (x, y, w, h) = node_by_id
+            .get(&n.id)
+            .map(|ln| (ln.x, ln.y, ln.width, ln.height))
+            .unwrap_or((0.0, 0.0, 80.0, 44.0));
+        let class = format!("node {}", n.css_classes.trim());
+        let _ = write!(
+            &mut out,
+            r#"<g class="{class}" id="{dom_id}" transform="translate({x}, {y})">"#,
+            class = escape_xml(&class),
+            dom_id = escape_xml(&n.dom_id),
+            x = fmt(x),
+            y = fmt(y),
+        );
+
+        match n.shape.as_str() {
+            "defaultMindmapNode" => {
+                let _ = write!(
+                    &mut out,
+                    r#"<path id="node-{id}" class="node-bkg node-0" d="M0 0" style=""/>"#,
+                    id = escape_xml(&n.id)
+                );
+                out.push_str(r#"<line class="node-line-" x1="0" y1="17" x2="0" y2="17"/>"#);
+                mk_label(&mut out, &n.label, n.icon.is_some(), w.max(1.0), 24.0);
+            }
+            "rect" => {
+                let _ = write!(
+                    &mut out,
+                    r#"<rect class="basic label-container" style="" x="{x}" y="-22" width="{w}" height="44"/>"#,
+                    x = fmt(-(w / 2.0)),
+                    w = fmt(w.max(1.0)),
+                );
+                mk_label(
+                    &mut out,
+                    &n.label,
+                    n.icon.is_some(),
+                    (w - 40.0).max(1.0),
+                    24.0,
+                );
+            }
+            "rounded" => {
+                out.push_str(r#"<g class="basic label-container outer-path">"#);
+                out.push_str(
+                    r##"<path d="M0 0" stroke="none" stroke-width="0" fill="#ECECFF" style=""/>"##,
+                );
+                out.push_str("</g>");
+                mk_label(&mut out, &n.label, n.icon.is_some(), w.max(1.0), 24.0);
+            }
+            "mindmapCircle" => {
+                let r = (w.max(h) / 2.0).max(1.0);
+                let _ = write!(
+                    &mut out,
+                    r#"<circle class="basic label-container" style="" r="{r}" cx="0" cy="0"/>"#,
+                    r = fmt(r),
+                );
+                mk_label(&mut out, &n.label, n.icon.is_some(), w.max(1.0), 24.0);
+            }
+            "cloud" => {
+                out.push_str(
+                    r#"<path class="basic label-container" style="" d="M0 0" transform="translate(0, 0)"/>"#,
+                );
+                mk_label(&mut out, &n.label, n.icon.is_some(), w.max(1.0), 24.0);
+            }
+            "hexagon" => {
+                out.push_str(r#"<g class="basic label-container">"#);
+                out.push_str(
+                    r##"<path d="M0 0" stroke="none" stroke-width="0" fill="#ECECFF" style=""/>"##,
+                );
+                out.push_str(
+                    r##"<path d="M0 0" stroke="#9370DB" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"##,
+                );
+                out.push_str("</g>");
+                mk_label(&mut out, &n.label, n.icon.is_some(), w.max(1.0), 24.0);
+            }
+            "bang" => {
+                out.push_str(
+                    r#"<path class="basic label-container" style="" d="M0 0" transform="translate(0, 0)"/>"#,
+                );
+                mk_label(&mut out, &n.label, n.icon.is_some(), w.max(1.0), 24.0);
+            }
+            _ => {
+                let _ = write!(
+                    &mut out,
+                    r#"<rect class="basic label-container" style="" x="{x}" y="-22" width="{w}" height="44"/>"#,
+                    x = fmt(-(w / 2.0)),
+                    w = fmt(w.max(1.0)),
+                );
+                mk_label(
+                    &mut out,
+                    &n.label,
+                    n.icon.is_some(),
+                    (w - 40.0).max(1.0),
+                    24.0,
+                );
+            }
+        }
+
+        out.push_str("</g>");
+    }
+    out.push_str("</g>");
+
+    out.push_str("</g></svg>\n");
+    Ok(out)
 }
 
 pub fn render_c4_diagram_svg(

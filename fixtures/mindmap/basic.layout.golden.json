@@ -1,0 +1,91 @@
+{
+  "diagramType": "mindmap",
+  "layout": {
+    "MindmapDiagram": {
+      "nodes": [
+        {
+          "id": "0",
+          "x": 0.0,
+          "y": 0.0,
+          "width": 47.52,
+          "height": 27.6,
+          "is_cluster": false
+        },
+        {
+          "id": "1",
+          "x": 240.0,
+          "y": 80.0,
+          "width": 26.88,
+          "height": 27.6,
+          "is_cluster": false
+        },
+        {
+          "id": "2",
+          "x": 240.0,
+          "y": 160.0,
+          "width": 26.88,
+          "height": 27.6,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge_0_1",
+          "from": "0",
+          "to": "1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 0.0,
+              "y": 0.0
+            },
+            {
+              "x": 240.0,
+              "y": 80.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge_0_2",
+          "from": "0",
+          "to": "2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 0.0,
+              "y": 0.0
+            },
+            {
+              "x": 240.0,
+              "y": 160.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "bounds": {
+        "min_x": -23.76,
+        "min_y": -13.8,
+        "max_x": 253.44,
+        "max_y": 173.8
+      }
+    }
+  }
+}

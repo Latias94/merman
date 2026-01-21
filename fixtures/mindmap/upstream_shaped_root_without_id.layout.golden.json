@@ -1,0 +1,24 @@
+{
+  "diagramType": "mindmap",
+  "layout": {
+    "MindmapDiagram": {
+      "nodes": [
+        {
+          "id": "0",
+          "x": 0.0,
+          "y": 0.0,
+          "width": 67.52,
+          "height": 37.6,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "bounds": {
+        "min_x": -33.76,
+        "min_y": -18.8,
+        "max_x": 33.76,
+        "max_y": 18.8
+      }
+    }
+  }
+}
