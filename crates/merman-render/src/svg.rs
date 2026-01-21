@@ -1,8 +1,8 @@
 use crate::model::{
     BlockDiagramLayout, Bounds, ClassDiagramV2Layout, ErDiagramLayout, FlowchartV2Layout,
     InfoDiagramLayout, LayoutCluster, LayoutNode, PacketDiagramLayout, PieDiagramLayout,
-    QuadrantChartDiagramLayout, RadarDiagramLayout, SequenceDiagramLayout, StateDiagramV2Layout,
-    TimelineDiagramLayout, XyChartDiagramLayout,
+    QuadrantChartDiagramLayout, RadarDiagramLayout, RequirementDiagramLayout,
+    SequenceDiagramLayout, StateDiagramV2Layout, TimelineDiagramLayout, XyChartDiagramLayout,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
@@ -3426,6 +3426,516 @@ pub fn render_pie_diagram_svg(
     }
 
     out.push_str("</g></svg>\n");
+    Ok(out)
+}
+
+pub fn render_requirement_diagram_svg(
+    layout: &RequirementDiagramLayout,
+    semantic: &serde_json::Value,
+    _effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct RequirementSemanticNode {
+        name: String,
+        #[serde(rename = "type")]
+        node_type: String,
+        #[serde(default)]
+        classes: Vec<String>,
+        #[serde(default)]
+        css_styles: Vec<String>,
+        #[serde(default, rename = "requirementId")]
+        requirement_id: String,
+        #[serde(default)]
+        text: String,
+        #[serde(default)]
+        risk: String,
+        #[serde(default, rename = "verifyMethod")]
+        verify_method: String,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct RequirementSemanticElement {
+        name: String,
+        #[serde(rename = "type")]
+        element_type: String,
+        #[serde(default)]
+        classes: Vec<String>,
+        #[serde(default)]
+        css_styles: Vec<String>,
+        #[serde(default, rename = "docRef")]
+        doc_ref: String,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    struct RequirementSemanticRelationship {
+        #[serde(rename = "type")]
+        rel_type: String,
+        src: String,
+        dst: String,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct RequirementSemanticModel {
+        #[serde(default)]
+        acc_title: Option<String>,
+        #[serde(default)]
+        acc_descr: Option<String>,
+        #[serde(default)]
+        requirements: Vec<RequirementSemanticNode>,
+        #[serde(default)]
+        elements: Vec<RequirementSemanticElement>,
+        #[serde(default)]
+        relationships: Vec<RequirementSemanticRelationship>,
+    }
+
+    fn requirement_marker_id(diagram_id: &str, suffix: &str) -> String {
+        format!("{diagram_id}_requirement-{suffix}")
+    }
+
+    fn mk_label_foreign_object(
+        out: &mut String,
+        text: &str,
+        width: f64,
+        height: f64,
+        span_class: &str,
+        div_class: Option<&str>,
+    ) {
+        let div_class_attr = div_class
+            .map(|c| format!(r#" class="{c}""#))
+            .unwrap_or_default();
+        let _ = write!(
+            out,
+            r#"<foreignObject width="{w}" height="{h}"><div xmlns="http://www.w3.org/1999/xhtml"{div_class_attr} style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="{span_class}"><p>{text}</p></span></div></foreignObject>"#,
+            w = fmt(width),
+            h = fmt(height),
+            div_class_attr = div_class_attr,
+            span_class = escape_xml(span_class),
+            text = escape_xml(text),
+        );
+    }
+
+    fn rough_double_line_path_d(x1: f64, y1: f64, x2: f64, y2: f64) -> String {
+        let cx1 = (x1 + x2) / 2.0;
+        let cy1 = (y1 + y2) / 2.0;
+        let mut out = String::new();
+        let _ = write!(
+            &mut out,
+            "M{x1} {y1} C{cx0} {cy0} {cx1} {cy1} {x2} {y2} M{x1b} {y1b} C{cx0b} {cy0b} {cx1b} {cy1b} {x2b} {y2b}",
+            x1 = fmt(x1),
+            y1 = fmt(y1),
+            cx0 = fmt((x1 * 2.0 + x2) / 3.0),
+            cy0 = fmt((y1 * 2.0 + y2) / 3.0),
+            cx1 = fmt((x1 + x2 * 2.0) / 3.0),
+            cy1 = fmt((y1 + y2 * 2.0) / 3.0),
+            x2 = fmt(x2),
+            y2 = fmt(y2),
+            x1b = fmt(x1),
+            y1b = fmt(y1),
+            cx0b = fmt(cx1),
+            cy0b = fmt(cy1),
+            cx1b = fmt(cx1 + (x2 - x1) * 0.1),
+            cy1b = fmt(cy1 + (y2 - y1) * 0.1),
+            x2b = fmt(x2),
+            y2b = fmt(y2),
+        );
+        out
+    }
+
+    fn rough_rect_stroke_path_d(x: f64, y: f64, w: f64, h: f64) -> String {
+        let x2 = x + w;
+        let y2 = y + h;
+        let mut out = String::new();
+        out.push_str(&rough_double_line_path_d(x, y, x2, y));
+        out.push(' ');
+        out.push_str(&rough_double_line_path_d(x2, y, x2, y2));
+        out.push(' ');
+        out.push_str(&rough_double_line_path_d(x2, y2, x, y2));
+        out.push(' ');
+        out.push_str(&rough_double_line_path_d(x, y2, x, y));
+        out
+    }
+
+    fn is_prototype_pollution_id(id: &str) -> bool {
+        matches!(id, "__proto__" | "constructor" | "prototype")
+    }
+
+    fn parse_node_style_overrides(
+        css_styles: &[String],
+    ) -> (Option<String>, Option<String>, Option<f64>) {
+        let mut fill: Option<String> = None;
+        let mut stroke: Option<String> = None;
+        let mut stroke_width: Option<f64> = None;
+        for raw in css_styles {
+            let s = raw.trim();
+            let Some((k, v)) = s.split_once(':') else {
+                continue;
+            };
+            let key = k.trim().to_ascii_lowercase();
+            let val = v.trim();
+            match key.as_str() {
+                "fill" => fill = Some(val.to_string()),
+                "stroke" => stroke = Some(val.to_string()),
+                "stroke-width" => {
+                    let num = val.trim_end_matches("px").trim().parse::<f64>().ok();
+                    if let Some(n) = num {
+                        stroke_width = Some(n);
+                    }
+                }
+                _ => {}
+            }
+        }
+        (fill, stroke, stroke_width)
+    }
+
+    let diagram_id = options.diagram_id.as_deref().unwrap_or("requirement");
+    let diagram_id_esc = escape_xml(diagram_id);
+
+    let model: RequirementSemanticModel = serde_json::from_value(semantic.clone())?;
+    let relationships = model.relationships.clone();
+    let req_by_id: std::collections::BTreeMap<String, RequirementSemanticNode> = model
+        .requirements
+        .into_iter()
+        .map(|n| (n.name.clone(), n))
+        .collect();
+    let el_by_id: std::collections::BTreeMap<String, RequirementSemanticElement> = model
+        .elements
+        .into_iter()
+        .map(|n| (n.name.clone(), n))
+        .collect();
+
+    let bounds = layout.bounds.clone().unwrap_or_else(|| {
+        compute_layout_bounds(&[], &layout.nodes, &layout.edges).unwrap_or(Bounds {
+            min_x: 0.0,
+            min_y: 0.0,
+            max_x: 100.0,
+            max_y: 100.0,
+        })
+    });
+    let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
+    let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
+
+    let mut out = String::new();
+
+    let mut aria_attrs = String::new();
+    let mut a11y_nodes = String::new();
+    if let Some(t) = model
+        .acc_title
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+    {
+        let title_id = format!("chart-title-{diagram_id}");
+        let _ = write!(
+            &mut aria_attrs,
+            r#" aria-labelledby="{}""#,
+            escape_xml(&title_id)
+        );
+        let _ = write!(
+            &mut a11y_nodes,
+            r#"<title id="{}">{}</title>"#,
+            escape_xml(&title_id),
+            escape_xml(t)
+        );
+    }
+    if let Some(d) = model
+        .acc_descr
+        .as_deref()
+        .map(str::trim)
+        .filter(|d| !d.is_empty())
+    {
+        let desc_id = format!("chart-desc-{diagram_id}");
+        let _ = write!(
+            &mut aria_attrs,
+            r#" aria-describedby="{}""#,
+            escape_xml(&desc_id)
+        );
+        let _ = write!(
+            &mut a11y_nodes,
+            r#"<desc id="{}">{}</desc>"#,
+            escape_xml(&desc_id),
+            escape_xml(d)
+        );
+    }
+
+    let _ = write!(
+        &mut out,
+        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="requirementDiagram" style="max-width: {w}px; background-color: white;" viewBox="0 0 {w} {h}" role="graphics-document document" aria-roledescription="requirement"{aria_attrs}>"#,
+        w = fmt(vb_w),
+        h = fmt(vb_h),
+        aria_attrs = aria_attrs,
+    );
+
+    out.push_str(&a11y_nodes);
+
+    let _ = write!(&mut out, r#"<style>{}</style>"#, info_css(diagram_id));
+
+    out.push_str("<g>");
+
+    // Markers.
+    let contains_marker_id = requirement_marker_id(diagram_id, "requirement_containsStart");
+    let arrow_marker_id = requirement_marker_id(diagram_id, "requirement_arrowEnd");
+    let _ = write!(
+        &mut out,
+        r#"<defs><marker id="{id}" refX="0" refY="10" markerWidth="20" markerHeight="20" orient="auto"><g><circle cx="10" cy="10" r="9" fill="none"/><line x1="1" x2="19" y1="10" y2="10"/><line y1="1" y2="19" x1="10" x2="10"/></g></marker></defs>"#,
+        id = escape_xml(&contains_marker_id)
+    );
+    let _ = write!(
+        &mut out,
+        r#"<defs><marker id="{id}" refX="20" refY="10" markerWidth="20" markerHeight="20" orient="auto"><path d="M0,0&#10;      L20,10&#10;      M20,10&#10;      L0,20"/></marker></defs>"#,
+        id = escape_xml(&arrow_marker_id)
+    );
+
+    out.push_str(r#"<g class="root">"#);
+    out.push_str(r#"<g class="clusters"/>"#);
+
+    let mut last_edge_index_by_id: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    for (idx, e) in layout.edges.iter().enumerate() {
+        last_edge_index_by_id.insert(e.id.clone(), idx);
+    }
+    let edge_indices: Vec<usize> = last_edge_index_by_id.values().copied().collect();
+
+    out.push_str(r#"<g class="edgePaths">"#);
+    for idx in &edge_indices {
+        let e = &layout.edges[*idx];
+        let rel_type = relationships
+            .get(*idx)
+            .filter(|r| r.src == e.from && r.dst == e.to)
+            .map(|r| r.rel_type.as_str())
+            .or_else(|| {
+                relationships
+                    .iter()
+                    .find(|r| r.src == e.from && r.dst == e.to)
+                    .map(|r| r.rel_type.as_str())
+            })
+            .unwrap_or("");
+        let is_contains = rel_type == "contains";
+        let pattern = if is_contains { "solid" } else { "dashed" };
+        let class = format!("edge-thickness-normal edge-pattern-{pattern} relationshipLine");
+
+        let d = curve_basis_path_d(&e.points);
+        let data_points = serde_json::to_string(&e.points).unwrap_or_else(|_| "[]".to_string());
+        let data_points_b64 = base64::engine::general_purpose::STANDARD.encode(data_points);
+
+        let marker_attr = if is_contains {
+            format!(
+                r#" marker-start="url(#{})""#,
+                escape_xml(&contains_marker_id)
+            )
+        } else {
+            format!(r#" marker-end="url(#{})""#, escape_xml(&arrow_marker_id))
+        };
+
+        let _ = write!(
+            &mut out,
+            r#"<path d="{d}" id="{id}" class="{class}" style="fill:none" data-edge="true" data-et="edge" data-id="{id}" data-points="{data_points}"{marker_attr}/>"#,
+            d = escape_xml(&d),
+            id = escape_xml(&e.id),
+            class = escape_xml(&class),
+            data_points = escape_xml(&data_points_b64),
+            marker_attr = marker_attr,
+        );
+    }
+    out.push_str("</g>");
+
+    out.push_str(r#"<g class="edgeLabels">"#);
+    for idx in &edge_indices {
+        let e = &layout.edges[*idx];
+        let rel_type = relationships
+            .get(*idx)
+            .filter(|r| r.src == e.from && r.dst == e.to)
+            .map(|r| r.rel_type.as_str())
+            .or_else(|| {
+                relationships
+                    .iter()
+                    .find(|r| r.src == e.from && r.dst == e.to)
+                    .map(|r| r.rel_type.as_str())
+            })
+            .unwrap_or("");
+        let label_text = format!("<<{rel_type}>>");
+
+        let mid = e
+            .points
+            .get(1)
+            .cloned()
+            .unwrap_or(crate::model::LayoutPoint { x: 0.0, y: 0.0 });
+        let _ = write!(
+            &mut out,
+            r#"<g class="edgeLabel" transform="translate({x}, {y})"><g class="label" data-id="{id}" transform="translate({lx}, {ly})">"#,
+            x = fmt(mid.x),
+            y = fmt(mid.y),
+            id = escape_xml(&e.id),
+            lx = fmt(-45.0),
+            ly = fmt(-12.0),
+        );
+        mk_label_foreign_object(
+            &mut out,
+            &label_text,
+            90.0,
+            24.0,
+            "edgeLabel",
+            Some("labelBkg"),
+        );
+        out.push_str("</g></g>");
+    }
+    out.push_str("</g>");
+
+    out.push_str(r#"<g class="nodes">"#);
+    for n in &layout.nodes {
+        if n.id == "__proto__" {
+            continue;
+        }
+        let cx = n.x + n.width / 2.0;
+        let cy = n.y + n.height / 2.0;
+
+        let mut node_classes: Vec<String> = Vec::new();
+        let mut css_styles: Vec<String> = Vec::new();
+        let mut lines: Vec<(String, bool)> = Vec::new();
+        if let Some(req) = req_by_id.get(&n.id) {
+            node_classes = req.classes.clone();
+            css_styles = req.css_styles.clone();
+            lines.push((format!("<<{}>>", req.node_type), false));
+            lines.push((req.name.clone(), true));
+            if !req.requirement_id.trim().is_empty() {
+                lines.push((format!("ID: {}", req.requirement_id), false));
+            }
+            if !req.text.trim().is_empty() {
+                lines.push((format!("Text: {}", req.text), false));
+            }
+            if !req.risk.trim().is_empty() {
+                lines.push((format!("Risk: {}", req.risk), false));
+            }
+            if !req.verify_method.trim().is_empty() {
+                lines.push((format!("Verification: {}", req.verify_method), false));
+            }
+        } else if let Some(el) = el_by_id.get(&n.id) {
+            node_classes = el.classes.clone();
+            css_styles = el.css_styles.clone();
+            lines.push(("<<Element>>".to_string(), false));
+            lines.push((el.name.clone(), true));
+            if !el.element_type.trim().is_empty() {
+                lines.push((format!("Type: {}", el.element_type), false));
+            }
+            if !el.doc_ref.trim().is_empty() {
+                lines.push((format!("Doc Ref: {}", el.doc_ref), false));
+            }
+        }
+
+        let has_body = lines.len() > 2;
+
+        if !node_classes.iter().any(|c| c == "default") {
+            node_classes.insert(0, "default".to_string());
+        }
+        let classes_str = if node_classes.is_empty() {
+            "default node".to_string()
+        } else {
+            format!("{} node", node_classes.join(" "))
+        };
+        let id_attr = if is_prototype_pollution_id(&n.id) {
+            String::new()
+        } else {
+            format!(r#" id="{}""#, escape_xml(&n.id))
+        };
+
+        let _ = write!(
+            &mut out,
+            r#"<g class="{class}"{id_attr} transform="translate({cx}, {cy})">"#,
+            class = escape_xml(&classes_str),
+            id_attr = id_attr,
+            cx = fmt(cx),
+            cy = fmt(cy),
+        );
+
+        let (fill_override, stroke_override, stroke_width_override) =
+            parse_node_style_overrides(&css_styles);
+        let fill_color = fill_override.as_deref().unwrap_or("#ECECFF");
+        let stroke_color = stroke_override.as_deref().unwrap_or("#9370DB");
+        let stroke_width = stroke_width_override.unwrap_or(1.3);
+
+        let x = -n.width / 2.0;
+        let y = -n.height / 2.0;
+        let fill_path = format!(
+            "M{} {} L{} {} L{} {} L{} {}",
+            fmt(x),
+            fmt(y),
+            fmt(x + n.width),
+            fmt(y),
+            fmt(x + n.width),
+            fmt(y + n.height),
+            fmt(x),
+            fmt(y + n.height)
+        );
+        let stroke_path = rough_rect_stroke_path_d(x, y, n.width, n.height);
+
+        out.push_str(r#"<g class="basic label-container" style="">"#);
+        let _ = write!(
+            &mut out,
+            r##"<path d="{d}" stroke="none" stroke-width="0" fill="{fill}"/>"##,
+            d = escape_xml(&fill_path),
+            fill = escape_xml(fill_color),
+        );
+        let _ = write!(
+            &mut out,
+            r##"<path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"/>"##,
+            d = escape_xml(&stroke_path),
+            stroke = escape_xml(stroke_color),
+            stroke_width = fmt(stroke_width),
+        );
+        out.push_str("</g>");
+
+        // Labels.
+        let padding = 20.0;
+        let gap = 20.0;
+        let line_h = 24.0;
+        for (idx, (text, bold)) in lines.iter().enumerate() {
+            let label_x = if idx < 2 { -60.0 } else { x + padding / 2.0 };
+            let label_y = if idx < 2 {
+                y + padding + idx as f64 * line_h
+            } else {
+                let body_idx = idx - 2;
+                let extra = if has_body { gap } else { 0.0 };
+                y + padding + 2.0 * line_h + extra + body_idx as f64 * line_h
+            };
+            let style = if *bold { "; font-weight: bold;" } else { "" };
+            let _ = write!(
+                &mut out,
+                r#"<g class="label" style="{style}" transform="translate({x}, {y})">"#,
+                style = escape_xml(style),
+                x = fmt(label_x),
+                y = fmt(label_y),
+            );
+            mk_label_foreign_object(
+                &mut out,
+                text,
+                if idx == 0 { 125.0 } else { 150.0 },
+                24.0,
+                "nodeLabel markdown-node-label",
+                None,
+            );
+            out.push_str("</g>");
+        }
+
+        if has_body {
+            let divider_y = y + 2.0 * line_h + gap;
+            let divider_d = rough_double_line_path_d(x, divider_y, x + n.width, divider_y);
+            let _ = write!(
+                &mut out,
+                r##"<g style=""><path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"/></g>"##,
+                d = escape_xml(&divider_d),
+                stroke = escape_xml(stroke_color),
+                stroke_width = fmt(stroke_width),
+            );
+        }
+
+        out.push_str("</g>");
+    }
+    out.push_str("</g>");
+
+    out.push_str("</g></g></svg>\n");
     Ok(out)
 }
 

@@ -1,0 +1,64 @@
+{
+  "diagramType": "requirement",
+  "layout": {
+    "RequirementDiagram": {
+      "nodes": [
+        {
+          "id": "req_requirement",
+          "x": 0.0,
+          "y": 0.0,
+          "width": 221.68,
+          "height": 184.0,
+          "is_cluster": false
+        },
+        {
+          "id": "req_functional",
+          "x": 0.0,
+          "y": 234.0,
+          "width": 262.0,
+          "height": 184.0,
+          "is_cluster": false
+        },
+        {
+          "id": "req_interface",
+          "x": 0.0,
+          "y": 468.0,
+          "width": 255.12,
+          "height": 184.0,
+          "is_cluster": false
+        },
+        {
+          "id": "req_performance",
+          "x": 0.0,
+          "y": 702.0,
+          "width": 279.28,
+          "height": 184.0,
+          "is_cluster": false
+        },
+        {
+          "id": "req_physical",
+          "x": 0.0,
+          "y": 936.0,
+          "width": 250.16,
+          "height": 184.0,
+          "is_cluster": false
+        },
+        {
+          "id": "req_design",
+          "x": 0.0,
+          "y": 1170.0,
+          "width": 224.4,
+          "height": 184.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 279.28,
+        "max_y": 1354.0
+      }
+    }
+  }
+}

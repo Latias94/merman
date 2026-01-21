@@ -1,0 +1,62 @@
+{
+  "diagramType": "requirement",
+  "layout": {
+    "RequirementDiagram": {
+      "nodes": [
+        {
+          "id": "req2",
+          "x": 0.0,
+          "y": 0.0,
+          "width": 190.0,
+          "height": 184.0,
+          "is_cluster": false
+        },
+        {
+          "id": "e1",
+          "x": 0.0,
+          "y": 234.0,
+          "width": 263.28,
+          "height": 136.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "req2-e1-0",
+          "from": "req2",
+          "to": "e1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 95.0,
+              "y": 184.0
+            },
+            {
+              "x": 95.0,
+              "y": 209.0
+            },
+            {
+              "x": 131.64,
+              "y": 234.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 263.28,
+        "max_y": 370.0
+      }
+    }
+  }
+}

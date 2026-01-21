@@ -10,13 +10,13 @@ element elB {
   docref: test_ref
 }
 
-a - contains -> b
-a - copies -> b
-a - derives -> b
-a - satisfies -> b
-a - verifies -> b
-a - refines -> b
-a - traces -> b
+elA - contains -> elB
+elA - copies -> elB
+elA - derives -> elB
+elA - satisfies -> elB
+elA - verifies -> elB
+elA - refines -> elB
+elA - traces -> elB
 
 %% reverse arrow variant
-a <- contains - b
+elA <- contains - elB

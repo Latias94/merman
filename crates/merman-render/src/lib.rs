@@ -16,6 +16,7 @@ pub mod packet;
 pub mod pie;
 pub mod quadrantchart;
 pub mod radar;
+pub mod requirement;
 pub mod sequence;
 pub mod state;
 pub mod svg;
@@ -69,6 +70,13 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
             &meta.effective_config,
             options.text_measurer.as_ref(),
         )?),
+        "requirement" => {
+            LayoutDiagram::RequirementDiagram(requirement::layout_requirement_diagram(
+                &parsed.model,
+                &meta.effective_config,
+                options.text_measurer.as_ref(),
+            )?)
+        }
         "radar" => LayoutDiagram::RadarDiagram(radar::layout_radar_diagram(
             &parsed.model,
             &meta.effective_config,

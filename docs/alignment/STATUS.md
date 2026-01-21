@@ -51,7 +51,7 @@ Legend:
 | XYChart | yes | yes | Stage B | yes | yes (`xtask compare-xychart-svgs`) |
 | Mindmap | yes | no | no | no | no |
 | Architecture | yes | no | no | no | no |
-| Requirement | yes | no | no | no | no |
+| Requirement | yes | yes | Stage B | yes | yes (`xtask compare-requirement-svgs`) |
 | QuadrantChart | yes | yes | Stage B | yes | yes (`xtask compare-quadrantchart-svgs`) |
 | Sankey | yes | no | no | no | no |
 

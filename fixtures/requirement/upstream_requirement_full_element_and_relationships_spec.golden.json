@@ -27,43 +27,43 @@
     ],
     "relationships": [
       {
-        "dst": "b",
-        "src": "a",
+        "dst": "elB",
+        "src": "elA",
         "type": "contains"
       },
       {
-        "dst": "b",
-        "src": "a",
+        "dst": "elB",
+        "src": "elA",
         "type": "copies"
       },
       {
-        "dst": "b",
-        "src": "a",
+        "dst": "elB",
+        "src": "elA",
         "type": "derives"
       },
       {
-        "dst": "b",
-        "src": "a",
+        "dst": "elB",
+        "src": "elA",
         "type": "satisfies"
       },
       {
-        "dst": "b",
-        "src": "a",
+        "dst": "elB",
+        "src": "elA",
         "type": "verifies"
       },
       {
-        "dst": "b",
-        "src": "a",
+        "dst": "elB",
+        "src": "elA",
         "type": "refines"
       },
       {
-        "dst": "b",
-        "src": "a",
+        "dst": "elB",
+        "src": "elA",
         "type": "traces"
       },
       {
-        "dst": "a",
-        "src": "b",
+        "dst": "elA",
+        "src": "elB",
         "type": "contains"
       }
     ],
