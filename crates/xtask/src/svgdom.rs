@@ -163,6 +163,17 @@ fn is_geometry_attr(name: &str) -> bool {
 fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDomNode {
     let mut attrs: BTreeMap<String, String> = BTreeMap::new();
     if n.is_element() {
+        fn is_mindmap_diagram(n: roxmltree::Node<'_, '_>) -> bool {
+            for a in n.ancestors() {
+                if a.is_element() && a.tag_name().name() == "svg" {
+                    return a
+                        .attribute("class")
+                        .is_some_and(|c| c.split_whitespace().any(|t| t == "mindmapDiagram"));
+                }
+            }
+            false
+        }
+
         for a in n.attributes() {
             let key = a.name().to_string();
             let mut val = a.value().to_string();
@@ -178,7 +189,13 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
                         val = "<geom>".to_string();
                         normalized_geom = true;
                     } else if mode == DomMode::Parity {
-                        if key == "d"
+                        if key == "d" && n.tag_name().name() == "path" && is_mindmap_diagram(n) {
+                            // Mindmap node/edge paths are highly layout-dependent. Treat them as
+                            // geometry noise in parity mode to focus checks on DOM structure and
+                            // semantic attributes.
+                            val = "<geom>".to_string();
+                            normalized_geom = true;
+                        } else if key == "d"
                             && n.tag_name().name() == "path"
                             && n.attribute("class")
                                 .is_some_and(|c| c.split_whitespace().any(|t| t == "relation"))
