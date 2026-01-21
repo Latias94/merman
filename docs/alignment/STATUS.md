@@ -50,7 +50,7 @@ Legend:
 | Treemap | yes | yes | Stage B | yes | yes (`xtask compare-treemap-svgs`) |
 | XYChart | yes | yes | Stage B | yes | yes (`xtask compare-xychart-svgs`) |
 | Mindmap | yes | yes | Stage B | yes | yes (`xtask compare-mindmap-svgs`) |
-| Architecture | yes | no | no | no | no |
+| Architecture | yes | yes | Stage B | yes | yes (`xtask compare-architecture-svgs`) |
 | Requirement | yes | yes | Stage B | yes | yes (`xtask compare-requirement-svgs`) |
 | QuadrantChart | yes | yes | Stage B | yes | yes (`xtask compare-quadrantchart-svgs`) |
 | Sankey | yes | no | no | no | no |

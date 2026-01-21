@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod architecture;
 pub mod block;
 pub mod c4;
 pub mod class;
@@ -71,6 +72,13 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
             &meta.effective_config,
             options.text_measurer.as_ref(),
         )?),
+        "architecture" => {
+            LayoutDiagram::ArchitectureDiagram(architecture::layout_architecture_diagram(
+                &parsed.model,
+                &meta.effective_config,
+                options.text_measurer.as_ref(),
+            )?)
+        }
         "requirement" => {
             LayoutDiagram::RequirementDiagram(requirement::layout_requirement_diagram(
                 &parsed.model,

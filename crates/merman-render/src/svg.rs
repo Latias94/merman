@@ -1,8 +1,9 @@
 use crate::model::{
-    BlockDiagramLayout, Bounds, ClassDiagramV2Layout, ErDiagramLayout, FlowchartV2Layout,
-    InfoDiagramLayout, LayoutCluster, LayoutNode, MindmapDiagramLayout, PacketDiagramLayout,
-    PieDiagramLayout, QuadrantChartDiagramLayout, RadarDiagramLayout, RequirementDiagramLayout,
-    SequenceDiagramLayout, StateDiagramV2Layout, TimelineDiagramLayout, XyChartDiagramLayout,
+    ArchitectureDiagramLayout, BlockDiagramLayout, Bounds, ClassDiagramV2Layout, ErDiagramLayout,
+    FlowchartV2Layout, InfoDiagramLayout, LayoutCluster, LayoutNode, MindmapDiagramLayout,
+    PacketDiagramLayout, PieDiagramLayout, QuadrantChartDiagramLayout, RadarDiagramLayout,
+    RequirementDiagramLayout, SequenceDiagramLayout, StateDiagramV2Layout, TimelineDiagramLayout,
+    XyChartDiagramLayout,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
@@ -8196,6 +8197,114 @@ pub fn render_mindmap_diagram_svg(
     out.push_str("</g>");
 
     out.push_str("</g></svg>\n");
+    Ok(out)
+}
+
+pub fn render_architecture_diagram_svg(
+    layout: &ArchitectureDiagramLayout,
+    semantic: &serde_json::Value,
+    _effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ArchitectureService {
+        id: String,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ArchitectureModel {
+        #[serde(default, rename = "accTitle")]
+        acc_title: Option<String>,
+        #[serde(default, rename = "accDescr")]
+        acc_descr: Option<String>,
+        #[serde(default)]
+        services: Vec<ArchitectureService>,
+    }
+
+    let model: ArchitectureModel = serde_json::from_value(semantic.clone())?;
+
+    let diagram_id = options.diagram_id.as_deref().unwrap_or("architecture");
+    let diagram_id_esc = escape_xml(diagram_id);
+
+    let mut node_xy: std::collections::BTreeMap<String, (f64, f64)> =
+        std::collections::BTreeMap::new();
+    for n in &layout.nodes {
+        node_xy.insert(n.id.clone(), (n.x, n.y));
+    }
+
+    let mut aria_attrs = String::new();
+    let mut a11y_nodes = String::new();
+    if let Some(t) = model
+        .acc_title
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+    {
+        let title_id = format!("chart-title-{diagram_id}");
+        let _ = write!(
+            &mut aria_attrs,
+            r#" aria-labelledby="{}""#,
+            escape_xml(&title_id)
+        );
+        let _ = write!(
+            &mut a11y_nodes,
+            r#"<title id="{}">{}</title>"#,
+            escape_xml(&title_id),
+            escape_xml(t)
+        );
+    }
+    if let Some(d) = model
+        .acc_descr
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+    {
+        let desc_id = format!("chart-desc-{diagram_id}");
+        let _ = write!(
+            &mut aria_attrs,
+            r#" aria-describedby="{}""#,
+            escape_xml(&desc_id)
+        );
+        let _ = write!(
+            &mut a11y_nodes,
+            r#"<desc id="{}">{}</desc>"#,
+            escape_xml(&desc_id),
+            escape_xml(d)
+        );
+    }
+
+    let mut out = String::new();
+    let _ = write!(
+        &mut out,
+        r#"<svg id="{id}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: 80px; background-color: white;" viewBox="-40 -40 80 80" role="graphics-document document" aria-roledescription="architecture"{aria}>{a11y}<style></style><g/><g class="architecture-edges"/>"#,
+        id = diagram_id_esc,
+        aria = aria_attrs,
+        a11y = a11y_nodes
+    );
+
+    if model.services.is_empty() {
+        out.push_str(r#"<g class="architecture-services"/>"#);
+    } else {
+        out.push_str(r#"<g class="architecture-services">"#);
+        for svc in &model.services {
+            let (x, y) = node_xy.get(&svc.id).copied().unwrap_or((0.0, 0.0));
+            let _ = write!(
+                &mut out,
+                r#"<g id="service-{id}" class="architecture-service" transform="translate({x},{y})"><g><path class="node-bkg" id="node-{id}" d="M0 80 v-80 q0,-5 5,-5 h80 q5,0 5,5 v80 H0 Z"/></g></g>"#,
+                id = escape_xml(&svc.id),
+                x = fmt(x),
+                y = fmt(y)
+            );
+        }
+        out.push_str("</g>");
+    }
+
+    out.push_str(
+        r#"<g class="architecture-groups"/></svg>
+"#,
+    );
     Ok(out)
 }
 

@@ -1,0 +1,24 @@
+{
+  "diagramType": "architecture",
+  "layout": {
+    "ArchitectureDiagram": {
+      "nodes": [
+        {
+          "id": "db",
+          "x": 0.0,
+          "y": 0.0,
+          "width": 85.0,
+          "height": 80.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "bounds": {
+        "min_x": -42.5,
+        "min_y": -40.0,
+        "max_x": 42.5,
+        "max_y": 40.0
+      }
+    }
+  }
+}
