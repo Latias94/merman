@@ -27,8 +27,17 @@ The report is written to:
 
 At the time of writing:
 
-- `--dom-mode parity-root` is expected to fail for many Flowchart fixtures, primarily due to numeric
-  layout drift that is driven by headless text measurement differences.
+- `merman-render` now computes Flowchart root `viewBox`/`max-width` using a headless approximation of
+  Mermaid's `setupViewPortForSVG` behavior (including the diagram title bounding box).
+- `--dom-mode parity-root` is still expected to fail for many Flowchart fixtures, primarily because
+  Flowchart root viewport values are font-metric-derived in Mermaid (DOM `getBBox()`), and our
+  headless text measurement currently does not reproduce browser font fallback and sub-pixel
+  rounding.
 - The `--report-root` output helps quantify which fixtures have the largest viewport deltas so we
   can iteratively close the gap.
 
+## Next Steps (Expected)
+
+- Improve `TextMeasurer` fidelity for Flowchart title and label text (font-family aware metrics), or
+  introduce additional pinned, upstream-derived font metric vendoring where it blocks `parity-root`
+  checks.

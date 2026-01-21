@@ -53,3 +53,5 @@ without being noticed if they are always excluded from parity checks.
   `viewBox` comparisons against upstream baselines.
 - This is an incremental step toward full SVG XML parity while keeping the headless design goals.
 
+For Mermaid `@11.12.2`, Flowchart root SVG viewport calculation now also follows this approach by
+including the diagram title in the headless bounding box before emitting the root `viewBox`.

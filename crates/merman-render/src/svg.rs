@@ -9138,11 +9138,51 @@ pub fn render_flowchart_v2_svg(
             max_y: 100.0,
         });
     let content_w = (bounds.max_x - bounds.min_x).max(1.0);
-    let content_h = (bounds.max_y - bounds.min_y).max(1.0);
-    let vb_w = content_w + diagram_padding * 2.0;
-    let vb_h = content_h + diagram_padding * 2.0;
     let tx = diagram_padding - bounds.min_x;
     let ty = diagram_padding - bounds.min_y;
+
+    // Mermaid computes the final viewport using `svg.getBBox()` after inserting the title, then
+    // applies `setupViewPortForSVG(svg, diagramPadding)` which sets:
+    //   viewBox = `${bbox.x - padding} ${bbox.y - padding} ${bbox.width + 2*padding} ${bbox.height + 2*padding}`
+    //   max-width = `${bbox.width + 2*padding}px` when `useMaxWidth=true`
+    //
+    // In headless mode we approximate that by unioning:
+    // - the layout bounds (shifted by `tx/ty`), and
+    // - the flowchart title text bounding box (if present).
+    const TITLE_FONT_SIZE_PX: f64 = 18.0;
+    const DEFAULT_ASCENT_EM: f64 = 0.9285714286;
+    const DEFAULT_DESCENT_EM: f64 = 0.262;
+
+    let diagram_title = diagram_title.map(str::trim).filter(|t| !t.is_empty());
+
+    let mut bbox_min_x = bounds.min_x + tx;
+    let mut bbox_min_y = bounds.min_y + ty;
+    let mut bbox_max_x = bounds.max_x + tx;
+    let mut bbox_max_y = bounds.max_y + ty;
+
+    let content_center_x = diagram_padding + content_w / 2.0;
+    if let Some(title) = diagram_title {
+        let title_style = TextStyle {
+            font_family: Some(font_family.clone()),
+            font_size: TITLE_FONT_SIZE_PX,
+            font_weight: None,
+        };
+        let title_metrics = measurer.measure(title, &title_style);
+        let title_w = title_metrics.width.max(0.0);
+        let baseline_y = -title_top_margin;
+        let ascent = TITLE_FONT_SIZE_PX * DEFAULT_ASCENT_EM;
+        let descent = TITLE_FONT_SIZE_PX * DEFAULT_DESCENT_EM;
+
+        bbox_min_x = bbox_min_x.min(content_center_x - title_w / 2.0);
+        bbox_max_x = bbox_max_x.max(content_center_x + title_w / 2.0);
+        bbox_min_y = bbox_min_y.min(baseline_y - ascent);
+        bbox_max_y = bbox_max_y.max(baseline_y + descent);
+    }
+
+    let vb_min_x = bbox_min_x - diagram_padding;
+    let vb_min_y = bbox_min_y - diagram_padding;
+    let vb_w = (bbox_max_x - bbox_min_x + diagram_padding * 2.0).max(1.0);
+    let vb_h = (bbox_max_y - bbox_min_y + diagram_padding * 2.0).max(1.0);
 
     let node_dom_index = flowchart_node_dom_indices(&model);
 
@@ -9176,9 +9216,11 @@ pub fn render_flowchart_v2_svg(
 
     let svg_open = if use_max_width {
         format!(
-            r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" style="max-width: {}px; background-color: white;" viewBox="0 0 {} {}" role="graphics-document document" aria-roledescription="{}"{}{}>"#,
+            r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" style="max-width: {}px; background-color: white;" viewBox="{} {} {} {}" role="graphics-document document" aria-roledescription="{}"{}{}>"#,
             escape_xml(diagram_id),
             w_attr,
+            fmt(vb_min_x),
+            fmt(vb_min_y),
             w_attr,
             h_attr,
             diagram_type,
@@ -9193,10 +9235,12 @@ pub fn render_flowchart_v2_svg(
         )
     } else {
         format!(
-            r#"<svg id="{}" width="{}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" height="{}" viewBox="0 0 {} {}" role="graphics-document document" aria-roledescription="{}"{}{}>"#,
+            r#"<svg id="{}" width="{}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" height="{}" viewBox="{} {} {} {}" role="graphics-document document" aria-roledescription="{}"{}{}>"#,
             escape_xml(diagram_id),
             w_attr,
             h_attr,
+            fmt(vb_min_x),
+            fmt(vb_min_y),
             w_attr,
             h_attr,
             diagram_type,
@@ -9284,8 +9328,8 @@ pub fn render_flowchart_v2_svg(
 
     flowchart_extra_markers(&mut out, diagram_id, &extra_marker_colors);
     out.push_str("</g>");
-    if let Some(title) = diagram_title.map(str::trim).filter(|t| !t.is_empty()) {
-        let title_x = vb_w / 2.0;
+    if let Some(title) = diagram_title {
+        let title_x = content_center_x;
         let title_y = -title_top_margin;
         let _ = write!(
             &mut out,
