@@ -53,7 +53,7 @@ Legend:
 | Architecture | yes | yes | Stage B | yes | yes (`xtask compare-architecture-svgs`) |
 | Requirement | yes | yes | Stage B | yes | yes (`xtask compare-requirement-svgs`) |
 | QuadrantChart | yes | yes | Stage B | yes | yes (`xtask compare-quadrantchart-svgs`) |
-| Sankey | yes | no | no | no | no |
+| Sankey | yes | yes | Stage B | yes | yes (`xtask compare-sankey-svgs`, DOM structure mode) |
 
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
 the dashed separators now use the exact same x-coordinates as the frame edges to match upstream SVG and
@@ -97,6 +97,8 @@ Recent progress: `block` headless layout and Stage B SVG renderer exist and are 
 upstream SVG baselines via `xtask compare-block-svgs` (DOM parity mode).
 Recent progress: `radar` headless layout and Stage B SVG renderer exist and are validated against
 upstream SVG baselines via `xtask compare-radar-svgs` (DOM parity mode).
+Recent progress: `sankey` headless layout and Stage B SVG renderer exist and are validated against
+upstream SVG baselines via `xtask compare-sankey-svgs` (DOM structure mode).
 
 ## Alignment Sanity Checks
 

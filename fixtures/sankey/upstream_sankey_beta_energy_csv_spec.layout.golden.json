@@ -1,0 +1,339 @@
+{
+  "diagramType": "sankey",
+  "layout": {
+    "SankeyDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 600.0,
+        "max_y": 400.0
+      },
+      "width": 600.0,
+      "height": 400.0,
+      "node_width": 10.0,
+      "node_padding": 25.0,
+      "nodes": [
+        {
+          "id": "Agricultural 'waste'",
+          "index": 0.0,
+          "depth": 0.0,
+          "height": 2.0,
+          "layer": 0.0,
+          "value": 124.729,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 72.075,
+          "y1": 122.138
+        },
+        {
+          "id": "Bio-conversion",
+          "index": 1.0,
+          "depth": 1.0,
+          "height": 1.0,
+          "layer": 1.0,
+          "value": 388.603,
+          "x0": 295.0,
+          "x1": 305.0,
+          "y0": 71.869,
+          "y1": 227.843
+        },
+        {
+          "id": "Liquid",
+          "index": 2.0,
+          "depth": 2.0,
+          "height": 0.0,
+          "layer": 2.0,
+          "value": 35.597,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 0.0,
+          "y1": 14.288
+        },
+        {
+          "id": "sankey",
+          "index": 3.0,
+          "depth": 0.0,
+          "height": 1.0,
+          "layer": 0.0,
+          "value": 20.0,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 39.048,
+          "y1": 47.075
+        },
+        {
+          "id": "target",
+          "index": 4.0,
+          "depth": 1.0,
+          "height": 0.0,
+          "layer": 2.0,
+          "value": 20.0,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 39.288,
+          "y1": 47.315
+        },
+        {
+          "id": "Losses",
+          "index": 5.0,
+          "depth": 2.0,
+          "height": 0.0,
+          "layer": 2.0,
+          "value": 26.862,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 72.315,
+          "y1": 83.097
+        },
+        {
+          "id": "Solid",
+          "index": 6.0,
+          "depth": 2.0,
+          "height": 0.0,
+          "layer": 2.0,
+          "value": 390.571,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 108.097,
+          "y1": 264.861
+        },
+        {
+          "id": "Gas",
+          "index": 7.0,
+          "depth": 2.0,
+          "height": 0.0,
+          "layer": 2.0,
+          "value": 81.144,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 289.861,
+          "y1": 322.43
+        },
+        {
+          "id": "Biofuel imports",
+          "index": 8.0,
+          "depth": 0.0,
+          "height": 1.0,
+          "layer": 0.0,
+          "value": 35.0,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 0.0,
+          "y1": 14.048
+        },
+        {
+          "id": "\"Biomass imports\"",
+          "index": 9.0,
+          "depth": 0.0,
+          "height": 1.0,
+          "layer": 0.0,
+          "value": 35.0,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 208.79,
+          "y1": 222.838
+        },
+        {
+          "id": "District heating",
+          "index": 10.0,
+          "depth": 0.0,
+          "height": 1.0,
+          "layer": 0.0,
+          "value": 68.689,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 367.245,
+          "y1": 394.815
+        },
+        {
+          "id": "Heating and cooling, commercial",
+          "index": 11.0,
+          "depth": 1.0,
+          "height": 0.0,
+          "layer": 2.0,
+          "value": 22.505,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 347.43,
+          "y1": 356.463
+        },
+        {
+          "id": "Heating and cooling, homes",
+          "index": 12.0,
+          "depth": 1.0,
+          "height": 0.0,
+          "layer": 2.0,
+          "value": 46.184,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 381.463,
+          "y1": 400.0
+        },
+        {
+          "id": "Coal imports",
+          "index": 13.0,
+          "depth": 0.0,
+          "height": 2.0,
+          "layer": 0.0,
+          "value": 11.606,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 247.838,
+          "y1": 252.496
+        },
+        {
+          "id": "Coal",
+          "index": 14.0,
+          "depth": 1.0,
+          "height": 1.0,
+          "layer": 1.0,
+          "value": 75.571,
+          "x0": 295.0,
+          "x1": 305.0,
+          "y0": 268.01,
+          "y1": 298.342
+        },
+        {
+          "id": "Coal reserves",
+          "index": 15.0,
+          "depth": 0.0,
+          "height": 2.0,
+          "layer": 0.0,
+          "value": 63.965,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 277.496,
+          "y1": 303.17
+        }
+      ],
+      "links": [
+        {
+          "index": 0.0,
+          "source": "Agricultural 'waste'",
+          "target": "Bio-conversion",
+          "value": 124.729,
+          "width": 50.063,
+          "y0": 97.107,
+          "y1": 96.9
+        },
+        {
+          "index": 1.0,
+          "source": "Bio-conversion",
+          "target": "Liquid",
+          "value": 0.597,
+          "width": 0.24,
+          "y0": 71.989,
+          "y1": 14.168
+        },
+        {
+          "index": 2.0,
+          "source": "sankey",
+          "target": "target",
+          "value": 10.0,
+          "width": 4.014,
+          "y0": 41.055,
+          "y1": 41.295
+        },
+        {
+          "index": 3.0,
+          "source": "sankey",
+          "target": "target",
+          "value": 10.0,
+          "width": 4.014,
+          "y0": 45.069,
+          "y1": 45.308
+        },
+        {
+          "index": 4.0,
+          "source": "Bio-conversion",
+          "target": "Losses",
+          "value": 26.862,
+          "width": 10.782,
+          "y0": 77.499,
+          "y1": 77.706
+        },
+        {
+          "index": 5.0,
+          "source": "Bio-conversion",
+          "target": "Solid",
+          "value": 280.0,
+          "width": 112.384,
+          "y0": 139.082,
+          "y1": 164.289
+        },
+        {
+          "index": 6.0,
+          "source": "Bio-conversion",
+          "target": "Gas",
+          "value": 81.144,
+          "width": 32.569,
+          "y0": 211.559,
+          "y1": 306.146
+        },
+        {
+          "index": 7.0,
+          "source": "Biofuel imports",
+          "target": "Liquid",
+          "value": 35.0,
+          "width": 14.048,
+          "y0": 7.024,
+          "y1": 7.024
+        },
+        {
+          "index": 8.0,
+          "source": "\"Biomass imports\"",
+          "target": "Solid",
+          "value": 35.0,
+          "width": 14.048,
+          "y0": 215.814,
+          "y1": 227.505
+        },
+        {
+          "index": 9.0,
+          "source": "District heating",
+          "target": "Heating and cooling, commercial",
+          "value": 22.505,
+          "width": 9.033,
+          "y0": 371.761,
+          "y1": 351.947
+        },
+        {
+          "index": 10.0,
+          "source": "District heating",
+          "target": "Heating and cooling, homes",
+          "value": 46.184,
+          "width": 18.537,
+          "y0": 385.546,
+          "y1": 390.732
+        },
+        {
+          "index": 11.0,
+          "source": "Coal imports",
+          "target": "Coal",
+          "value": 11.606,
+          "width": 4.658,
+          "y0": 250.167,
+          "y1": 270.339
+        },
+        {
+          "index": 12.0,
+          "source": "Coal reserves",
+          "target": "Coal",
+          "value": 63.965,
+          "width": 25.674,
+          "y0": 290.333,
+          "y1": 285.505
+        },
+        {
+          "index": 13.0,
+          "source": "Coal",
+          "target": "Solid",
+          "value": 75.571,
+          "width": 30.332,
+          "y0": 283.176,
+          "y1": 249.695
+        }
+      ]
+    }
+  }
+}

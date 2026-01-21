@@ -19,6 +19,7 @@ pub mod pie;
 pub mod quadrantchart;
 pub mod radar;
 pub mod requirement;
+pub mod sankey;
 pub mod sequence;
 pub mod state;
 pub mod svg;
@@ -181,6 +182,11 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
             )?)
         }
         "mindmap" => LayoutDiagram::MindmapDiagram(mindmap::layout_mindmap_diagram(
+            &parsed.model,
+            &meta.effective_config,
+            options.text_measurer.as_ref(),
+        )?),
+        "sankey" => LayoutDiagram::SankeyDiagram(sankey::layout_sankey_diagram(
             &parsed.model,
             &meta.effective_config,
             options.text_measurer.as_ref(),

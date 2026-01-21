@@ -48,3 +48,8 @@ Upstream references:
 
 This is an incremental slice. The ultimate goal is full Mermaid `sankey` grammar and DB behavior
 compatibility at the pinned baseline tag.
+
+## Notes (rendering)
+
+- Mermaid’s Sankey renderer (d3-sankey) errors on circular links (`Error: circular link`).
+  `merman-render` mirrors this by rejecting cyclic Sankey graphs at the layout stage.

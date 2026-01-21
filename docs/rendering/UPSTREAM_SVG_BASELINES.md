@@ -78,6 +78,14 @@ Outputs to:
 
 - `fixtures/upstream-svgs/pie/*.svg`
 
+## Generate (Sankey)
+
+- `cargo run -p xtask -- gen-upstream-svgs --diagram sankey`
+
+Outputs to:
+
+- `fixtures/upstream-svgs/sankey/*.svg`
+
 ## Generate (Packet)
 
 - `cargo run -p xtask -- gen-upstream-svgs --diagram packet`

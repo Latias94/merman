@@ -1,0 +1,75 @@
+{
+  "diagramType": "sankey",
+  "layout": {
+    "SankeyDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 600.0,
+        "max_y": 400.0
+      },
+      "width": 600.0,
+      "height": 400.0,
+      "node_width": 10.0,
+      "node_padding": 25.0,
+      "nodes": [
+        {
+          "id": "Agricultural 'waste'",
+          "index": 0.0,
+          "depth": 0.0,
+          "height": 2.0,
+          "layer": 0.0,
+          "value": 124.729,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 0.0,
+          "y1": 400.0
+        },
+        {
+          "id": "Bio-conversion",
+          "index": 1.0,
+          "depth": 1.0,
+          "height": 1.0,
+          "layer": 1.0,
+          "value": 124.729,
+          "x0": 295.0,
+          "x1": 305.0,
+          "y0": 0.0,
+          "y1": 400.0
+        },
+        {
+          "id": "Liquid",
+          "index": 2.0,
+          "depth": 2.0,
+          "height": 0.0,
+          "layer": 2.0,
+          "value": 0.597,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 0.001,
+          "y1": 1.915
+        }
+      ],
+      "links": [
+        {
+          "index": 0.0,
+          "source": "Agricultural 'waste'",
+          "target": "Bio-conversion",
+          "value": 124.729,
+          "width": 400.0,
+          "y0": 200.0,
+          "y1": 200.0
+        },
+        {
+          "index": 1.0,
+          "source": "Bio-conversion",
+          "target": "Liquid",
+          "value": 0.597,
+          "width": 1.915,
+          "y0": 0.957,
+          "y1": 0.958
+        }
+      ]
+    }
+  }
+}
