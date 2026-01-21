@@ -252,6 +252,9 @@ Generate a small report comparing upstream SVGs and the current Rust Stage-B ER 
     with `<n>`, ignores `data-points` and `<style>` text, and ignores `max-width` heuristics inside
     HTML label `<div>` style attributes):
     - `cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode parity --dom-decimals 3`
+  - For size/viewBox parity work, use `parity-root` which is identical to `parity` but also compares
+    the root `<svg>` `viewBox` and `style` attributes:
+    - `cargo run -p xtask -- compare-er-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 
 ## Generate (Flowchart Stage B)
 

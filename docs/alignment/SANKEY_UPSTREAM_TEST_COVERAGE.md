@@ -20,4 +20,4 @@ Upstream SVG baselines:
 
 Compare report:
 
-- `cargo run -p xtask -- compare-sankey-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask -- compare-sankey-svgs --check-dom --dom-mode parity-root --dom-decimals 3`

@@ -13996,19 +13996,56 @@ pub fn render_sankey_diagram_svg(
             .unwrap_or_else(|| "gradient".to_string())
     };
 
-    let width = layout.width.max(1.0);
-    let height = layout.height.max(1.0);
+    let layout_width = layout.width.max(1.0);
+    let layout_height = layout.height.max(1.0);
     let diagram_id = options.diagram_id.as_deref().unwrap_or("sankey");
     let diagram_id_esc = escape_xml(diagram_id);
+
+    const LABEL_FONT_SIZE_PX: f64 = 14.0;
+    const DEFAULT_ASCENT_EM: f64 = 0.9285714286;
+    const DEFAULT_DESCENT_EM: f64 = 0.262;
+
+    let mut min_x: f64 = 0.0;
+    let mut min_y: f64 = 0.0;
+    let mut max_x = layout_width;
+    let mut max_y = layout_height;
+
+    for n in &layout.nodes {
+        min_x = min_x.min(n.x0);
+        min_y = min_y.min(n.y0);
+        max_x = max_x.max(n.x1);
+        max_y = max_y.max(n.y1);
+
+        let dy_em = if show_values { 0.0 } else { 0.35 };
+        let baseline_y = (n.y0 + n.y1) / 2.0 + dy_em * LABEL_FONT_SIZE_PX;
+        let ascent = LABEL_FONT_SIZE_PX * DEFAULT_ASCENT_EM;
+        let descent = LABEL_FONT_SIZE_PX * DEFAULT_DESCENT_EM;
+        min_y = min_y.min(baseline_y - ascent);
+        max_y = max_y.max(baseline_y + descent);
+    }
+
+    for l in &layout.links {
+        let sw = l.width.max(1.0);
+        let half = sw / 2.0;
+        let y0 = l.y0.min(l.y1);
+        let y1 = l.y0.max(l.y1);
+        min_y = min_y.min(y0 - half);
+        max_y = max_y.max(y1 + half);
+    }
+
+    let vb_w = (max_x - min_x).max(1.0);
+    let vb_h = (max_y - min_y).max(1.0);
 
     let mut out = String::new();
     let _ = write!(
         &mut out,
-        r#"<svg id="{id}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {w}px; background-color: white;" viewBox="0 0 {w2} {h2}" role="graphics-document document" aria-roledescription="sankey">"#,
+        r#"<svg id="{id}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {w}px; background-color: white;" viewBox="{min_x} {min_y} {vb_w} {vb_h}" role="graphics-document document" aria-roledescription="sankey">"#,
         id = diagram_id_esc,
-        w = fmt(width),
-        w2 = fmt(width),
-        h2 = fmt(height),
+        w = fmt(vb_w),
+        min_x = fmt(min_x),
+        min_y = fmt(min_y),
+        vb_w = fmt(vb_w),
+        vb_h = fmt(vb_h),
     );
     out.push_str("<style></style>");
     out.push_str("<g/>");
@@ -14069,7 +14106,7 @@ pub fn render_sankey_diagram_svg(
     out.push_str(r#"<g class="node-labels" font-size="14">"#);
     for n in &layout.nodes {
         let y = (n.y0 + n.y1) / 2.0;
-        let (x, anchor) = if n.x0 < width / 2.0 {
+        let (x, anchor) = if n.x0 < layout_width / 2.0 {
             (n.x1 + 6.0, "start")
         } else {
             (n.x0 - 6.0, "end")

@@ -8488,7 +8488,7 @@ fn compare_sankey_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut filter: Option<String> = None;
     let mut check_dom: bool = false;
     let mut dom_decimals: u32 = 3;
-    let mut dom_mode: String = "parity".to_string();
+    let mut dom_mode: String = "parity-root".to_string();
 
     let mut i = 0;
     while i < args.len() {

@@ -15,6 +15,7 @@ pub(crate) enum DomMode {
     Strict,
     Structure,
     Parity,
+    ParityRoot,
 }
 
 impl DomMode {
@@ -22,6 +23,7 @@ impl DomMode {
         match s {
             "strict" => Self::Strict,
             "parity" => Self::Parity,
+            "parity-root" | "parity_root" => Self::ParityRoot,
             _ => Self::Structure,
         }
     }
@@ -62,7 +64,9 @@ fn normalize_numeric_tokens(s: &str, decimals: u32) -> String {
 
 fn normalize_numeric_tokens_mode(s: &str, decimals: u32, mode: DomMode) -> String {
     match mode {
-        DomMode::Strict | DomMode::Parity => normalize_numeric_tokens(s, decimals),
+        DomMode::Strict | DomMode::Parity | DomMode::ParityRoot => {
+            normalize_numeric_tokens(s, decimals)
+        }
         DomMode::Structure => re_num().replace_all(s, "<n>").to_string(),
     }
 }
@@ -216,11 +220,14 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
                     }
                 }
                 if key == "style" || key == "viewBox" {
-                    if n.tag_name().name() == "svg" {
+                    if n.tag_name().name() == "svg" && mode != DomMode::ParityRoot {
                         continue;
                     }
                     if key == "style" {
-                        continue;
+                        if n.tag_name().name() == "svg" && mode == DomMode::ParityRoot {
+                        } else {
+                            continue;
+                        }
                     }
                 }
             }
@@ -444,6 +451,21 @@ mod tests {
         assert_eq!(
             dom.children[0].attrs.get("d").map(|s| s.as_str()),
             Some("M<n><n>L<n><n>")
+        );
+    }
+
+    #[test]
+    fn parity_root_keeps_svg_root_viewbox_and_style() {
+        let svg = r#"<svg width="100%" viewBox="0 -5.9759 600 405.9759" style="max-width: 600px; background-color: white;"><path d="M 10 20 L 30 40"/></svg>"#;
+        let dom = dom_signature(svg, DomMode::ParityRoot, 3).unwrap();
+        assert_eq!(dom.attrs.get("width").map(|s| s.as_str()), Some("100%"));
+        assert_eq!(
+            dom.attrs.get("viewBox").map(|s| s.as_str()),
+            Some("0 -5.976 600 405.976")
+        );
+        assert_eq!(
+            dom.attrs.get("style").map(|s| s.as_str()),
+            Some("max-width: 600px; background-color: white;")
         );
     }
 

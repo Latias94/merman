@@ -322,11 +322,7 @@ pub fn layout_sankey_diagram(
         ky = 0.0;
     }
 
-    fn sort_source_links_by_target_y0(
-        node_y0: &[f64],
-        links: &[Link],
-        link_indices: &mut [usize],
-    ) {
+    fn sort_source_links_by_target_y0(node_y0: &[f64], links: &[Link], link_indices: &mut [usize]) {
         link_indices.sort_by(|&a, &b| {
             let ta = node_y0[links[a].target];
             let tb = node_y0[links[b].target];
@@ -334,11 +330,7 @@ pub fn layout_sankey_diagram(
         });
     }
 
-    fn sort_target_links_by_source_y0(
-        node_y0: &[f64],
-        links: &[Link],
-        link_indices: &mut [usize],
-    ) {
+    fn sort_target_links_by_source_y0(node_y0: &[f64], links: &[Link], link_indices: &mut [usize]) {
         link_indices.sort_by(|&a, &b| {
             let sa = node_y0[links[a].source];
             let sb = node_y0[links[b].source];
