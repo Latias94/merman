@@ -167,6 +167,7 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/subgrap
   - `parse_diagram_flowchart_subgraph_id_and_title_notation`
   - `parse_diagram_flowchart_subgraph_tab_indentation_matches_mermaid_membership_order`
 - snapshot coverage of representative variants + nesting: `fixtures/flowchart/upstream_subgraphs.mmd`
+- snapshot coverage of additional subgraph syntax variants (old-style titles, dashed ids, bracket title forms, per-subgraph direction): `fixtures/flowchart/upstream_subgraph_syntax_matrix_spec.mmd`
 
 ## DB / renderer specs
 

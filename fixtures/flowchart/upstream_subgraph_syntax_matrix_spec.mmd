@@ -1,0 +1,32 @@
+flowchart TB
+
+subgraph old style that is broken
+  c --> d
+end
+
+subgraph "title in quotes"
+  e --> f
+end
+
+subgraph a-b-c
+  direction RL
+  g --> h
+end
+
+subgraph uid1[text of doom]
+  i --> j
+end
+
+subgraph uid2["text of doom"]
+  k --> l
+end
+
+subgraph 1test
+  m
+end
+
+d --> e
+f --> g
+h --> i
+j --> k
+l --> m
