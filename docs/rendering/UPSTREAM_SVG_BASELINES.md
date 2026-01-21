@@ -273,6 +273,9 @@ Generate a report comparing upstream flowchart SVGs and the current Rust Stage-B
 - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`
 - Use the looser, structure-only mode while iterating on large layout/routing refactors:
   - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode structure --dom-decimals 3`
+- For root `<svg>` viewport parity (`viewBox` / `style="max-width: ..."`), use `parity-root` and the root-delta report:
+  - `cargo run -p xtask -- compare-flowchart-svgs --dom-mode parity-root --dom-decimals 3 --report-root`
+  - See `docs/alignment/FLOWCHART_ROOT_VIEWBOX_PARITY_GAPS.md` for current status.
 
 ## Compare (Block)
 

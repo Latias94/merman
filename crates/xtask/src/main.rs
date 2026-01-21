@@ -3641,6 +3641,7 @@ fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut out_path: Option<PathBuf> = None;
     let mut filter: Option<String> = None;
     let mut check_dom: bool = false;
+    let mut report_root: bool = false;
     let mut dom_decimals: u32 = 3;
     let mut dom_mode: String = "parity".to_string();
 
@@ -3656,6 +3657,7 @@ fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 filter = args.get(i).map(|s| s.to_string());
             }
             "--check-dom" => check_dom = true,
+            "--report-root" => report_root = true,
             "--dom-decimals" => {
                 i += 1;
                 dom_decimals = args.get(i).and_then(|s| s.parse::<u32>().ok()).unwrap_or(3);
@@ -3740,6 +3742,7 @@ fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     })?;
 
     let mode = svgdom::DomMode::parse(&dom_mode);
+    let should_report_root = report_root || mode == svgdom::DomMode::ParityRoot;
 
     let engine = merman::Engine::new();
     let mut report = String::new();
@@ -3748,6 +3751,68 @@ fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         "# Flowchart SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/flowchart/*.svg` (Mermaid 11.12.2)\n- Local: `render_flowchart_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
         dom_mode, dom_decimals
     );
+
+    #[derive(Debug, Clone)]
+    struct RootAttrs {
+        viewbox: Option<(f64, f64, f64, f64)>,
+        max_width_px: Option<f64>,
+    }
+
+    fn parse_viewbox(v: &str) -> Option<(f64, f64, f64, f64)> {
+        let parts = v
+            .split_whitespace()
+            .filter_map(|t| t.parse::<f64>().ok())
+            .collect::<Vec<_>>();
+        if parts.len() == 4 {
+            Some((parts[0], parts[1], parts[2], parts[3]))
+        } else {
+            None
+        }
+    }
+
+    fn parse_style_max_width_px(style: &str) -> Option<f64> {
+        let style = style.to_ascii_lowercase();
+        let key = "max-width:";
+        let i = style.find(key)?;
+        let rest = &style[i + key.len()..];
+        let rest = rest.trim_start();
+        let mut num = String::new();
+        for ch in rest.chars() {
+            if ch.is_ascii_digit() || matches!(ch, '.' | '-' | '+' | 'e' | 'E') {
+                num.push(ch);
+            } else {
+                break;
+            }
+        }
+        num.trim().parse::<f64>().ok()
+    }
+
+    fn parse_root_attrs(svg: &str) -> Result<RootAttrs, String> {
+        let doc = roxmltree::Document::parse(svg).map_err(|e| e.to_string())?;
+        let root = doc
+            .descendants()
+            .find(|n| n.has_tag_name("svg"))
+            .ok_or_else(|| "missing <svg> root".to_string())?;
+        let viewbox = root.attribute("viewBox").and_then(parse_viewbox);
+        let max_width_px = root
+            .attribute("style")
+            .and_then(parse_style_max_width_px)
+            .filter(|v| v.is_finite() && *v > 0.0);
+        Ok(RootAttrs {
+            viewbox,
+            max_width_px,
+        })
+    }
+
+    #[derive(Debug, Clone)]
+    struct RootDelta {
+        stem: String,
+        upstream: RootAttrs,
+        local: RootAttrs,
+        max_width_delta: Option<f64>,
+    }
+
+    let mut root_deltas: Vec<RootDelta> = Vec::new();
 
     let mut failures: Vec<String> = Vec::new();
     for mmd_path in mmd_files {
@@ -3841,6 +3906,28 @@ fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         let local_out_path = out_svg_dir.join(format!("{stem}.svg"));
         let _ = fs::write(&local_out_path, &local_svg);
 
+        if should_report_root {
+            match (
+                parse_root_attrs(&upstream_svg),
+                parse_root_attrs(&local_svg),
+            ) {
+                (Ok(up), Ok(lo)) => {
+                    let max_width_delta = match (up.max_width_px, lo.max_width_px) {
+                        (Some(a), Some(b)) => Some(b - a),
+                        _ => None,
+                    };
+                    root_deltas.push(RootDelta {
+                        stem: stem.to_string(),
+                        upstream: up,
+                        local: lo,
+                        max_width_delta,
+                    });
+                }
+                (Err(e), _) => failures.push(format!("root parse failed for upstream {stem}: {e}")),
+                (_, Err(e)) => failures.push(format!("root parse failed for local {stem}: {e}")),
+            }
+        }
+
         if check_dom {
             let a = match svgdom::dom_signature(&upstream_svg, mode, dom_decimals) {
                 Ok(v) => v,
@@ -3881,6 +3968,55 @@ fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             &mut report,
             "\nLocal SVG outputs: `{}`\n",
             out_svg_dir.display()
+        );
+    }
+
+    if should_report_root && !root_deltas.is_empty() {
+        let _ = writeln!(
+            &mut report,
+            "\n## Root Viewport Deltas (max-width/viewBox)\n\nThis section is mainly useful when `--dom-mode parity-root` is enabled.\n"
+        );
+
+        root_deltas.sort_by(|a, b| {
+            a.max_width_delta
+                .unwrap_or(0.0)
+                .abs()
+                .partial_cmp(&b.max_width_delta.unwrap_or(0.0).abs())
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .reverse()
+        });
+
+        let take = root_deltas.len().min(25);
+        let _ = writeln!(
+            &mut report,
+            "| Fixture | upstream max-width(px) | local max-width(px) | Δ | upstream viewBox(w×h) | local viewBox(w×h) |\n|---|---:|---:|---:|---:|---:|"
+        );
+        for d in root_deltas.iter().take(take) {
+            let (up_mw, lo_mw, mw_delta) = match (d.upstream.max_width_px, d.local.max_width_px) {
+                (Some(a), Some(b)) => (
+                    format!("{a:.3}"),
+                    format!("{b:.3}"),
+                    format!("{:+.3}", b - a),
+                ),
+                _ => ("".to_string(), "".to_string(), "".to_string()),
+            };
+            let (up_vb, lo_vb) = match (d.upstream.viewbox, d.local.viewbox) {
+                (Some((_, _, w, h)), Some((_, _, w2, h2))) => {
+                    (format!("{w:.3}×{h:.3}"), format!("{w2:.3}×{h2:.3}"))
+                }
+                (Some((_, _, w, h)), None) => (format!("{w:.3}×{h:.3}"), "".to_string()),
+                (None, Some((_, _, w, h))) => ("".to_string(), format!("{w:.3}×{h:.3}")),
+                _ => ("".to_string(), "".to_string()),
+            };
+            let _ = writeln!(
+                &mut report,
+                "| `{}` | {} | {} | {} | {} | {} |",
+                d.stem, up_mw, lo_mw, mw_delta, up_vb, lo_vb
+            );
+        }
+        let _ = writeln!(
+            &mut report,
+            "\nNote: These deltas are a symptom of numeric layout/text-metrics drift; matching them requires moving closer to upstream measurement behavior.\n"
         );
     }
 
