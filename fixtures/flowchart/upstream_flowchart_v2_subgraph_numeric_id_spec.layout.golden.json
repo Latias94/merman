@@ -23,7 +23,7 @@
           "id": "1test",
           "x": 98.92,
           "y": 52.0,
-          "width": 177.84,
+          "width": 197.84,
           "height": 104.0,
           "is_cluster": true
         }
@@ -73,10 +73,10 @@
           "id": "1test",
           "x": 98.92,
           "y": 52.0,
-          "width": 177.84,
+          "width": 197.84,
           "height": 104.0,
-          "diff": -15.0,
-          "offset_y": 16.5,
+          "diff": -4.0,
+          "offset_y": 20.0,
           "title": "1test",
           "title_label": {
             "x": 98.92,
@@ -86,15 +86,15 @@
           },
           "requested_dir": null,
           "effective_dir": "LR",
-          "padding": 25.0,
+          "padding": 8.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }
       ],
       "bounds": {
-        "min_x": 10.0,
+        "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 187.84,
+        "max_x": 197.84,
         "max_y": 232.0
       }
     }

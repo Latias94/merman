@@ -23,6 +23,22 @@ The report is written to:
 
 - `target/compare/flowchart_report.md`
 
+## Debugging Root `.root` Transforms (Recursive Clusters)
+
+When `parity-root` fails, it can be useful to inspect Mermaid's nested `<g class="root" transform="translate(...)">`
+placements for extracted clusters (recursive flowchart subgraphs). These transforms strongly influence cluster and node
+positions, and mismatches can manifest as large `max-width`/`viewBox` deltas.
+
+After generating a local SVG under `target/compare/flowchart/<fixture>.svg`, run:
+
+- `cargo run -p xtask -- debug-flowchart-svg-roots --fixture upstream_flowchart_v2_self_loops_spec`
+
+This prints:
+
+- Root `<svg>` `viewBox` and `max-width` (from `style`)
+- All `<g class="root" transform="translate(...)">` payloads
+- Per-cluster rect geometry (`x/y/width/height`) and which `.root` group contains it
+
 ## Current Status
 
 At the time of writing:

@@ -5,26 +5,26 @@
       "nodes": [
         {
           "id": "A",
-          "x": -30.0,
-          "y": 37.0,
+          "x": 72.3,
+          "y": 62.0,
           "width": 69.6,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "B",
-          "x": 89.6,
-          "y": 37.0,
+          "x": 216.9,
+          "y": 62.0,
           "width": 69.6,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "S",
-          "x": 29.8,
-          "y": 37.0,
-          "width": 239.2,
-          "height": 104.0,
+          "x": 144.6,
+          "y": 62.0,
+          "width": 289.2,
+          "height": 124.0,
           "is_cluster": true
         }
       ],
@@ -37,16 +37,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 4.8,
-              "y": 37.0
+              "x": 107.1,
+              "y": 62.0
             },
             {
-              "x": 29.8,
-              "y": 37.0
+              "x": 144.6,
+              "y": 62.0
             },
             {
-              "x": 54.8,
-              "y": 37.0
+              "x": 182.1,
+              "y": 62.0
             }
           ],
           "label": null,
@@ -62,31 +62,31 @@
       "clusters": [
         {
           "id": "S",
-          "x": 29.8,
-          "y": 37.0,
-          "width": 239.2,
-          "height": 104.0,
-          "diff": -15.0,
-          "offset_y": 16.5,
+          "x": 144.6,
+          "y": 62.0,
+          "width": 289.2,
+          "height": 124.0,
+          "diff": -4.0,
+          "offset_y": 20.0,
           "title": "S",
           "title_label": {
-            "x": 29.8,
-            "y": -3.0,
+            "x": 144.6,
+            "y": 12.0,
             "width": 9.6,
             "height": 24.0
           },
           "requested_dir": null,
           "effective_dir": "LR",
-          "padding": 25.0,
+          "padding": 8.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }
       ],
       "bounds": {
-        "min_x": -89.8,
-        "min_y": -15.0,
-        "max_x": 149.4,
-        "max_y": 89.0
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 289.2,
+        "max_y": 124.0
       }
     }
   }

@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 chrono.workspace = true
+base64.workspace = true
 futures.workspace = true
 merman = { path = "../merman" }
 merman-render = { path = "../merman-render" }

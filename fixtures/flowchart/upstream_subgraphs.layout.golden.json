@@ -5,106 +5,106 @@
       "nodes": [
         {
           "id": "a",
-          "x": -28.64,
-          "y": 37.0,
+          "x": 1000.34,
+          "y": 189.0,
           "width": 66.88,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "b",
-          "x": 88.24,
-          "y": 37.0,
+          "x": 1142.22,
+          "y": 189.0,
           "width": 66.88,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "c",
-          "x": 255.12,
-          "y": 37.0,
+          "x": 666.58,
+          "y": 189.0,
           "width": 66.88,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "d",
-          "x": 372.0,
-          "y": 37.0,
+          "x": 808.46,
+          "y": 189.0,
           "width": 66.88,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "e",
-          "x": 655.76,
-          "y": 37.0,
+          "x": 474.7,
+          "y": 189.0,
           "width": 66.88,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "f",
-          "x": 538.88,
-          "y": 37.0,
+          "x": 332.82,
+          "y": 189.0,
           "width": 66.88,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "g",
-          "x": 847.64,
-          "y": 89.0,
+          "x": 105.94,
+          "y": 266.0,
           "width": 66.88,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "h",
-          "x": 847.64,
-          "y": -15.0,
+          "x": 105.94,
+          "y": 112.0,
           "width": 66.88,
           "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "A",
-          "x": 29.8,
-          "y": 37.0,
-          "width": 233.76,
-          "height": 104.0,
+          "x": 1071.28,
+          "y": 189.0,
+          "width": 283.76,
+          "height": 124.0,
           "is_cluster": true
         },
         {
           "id": "id1",
-          "x": 313.56,
-          "y": 37.0,
-          "width": 233.76,
-          "height": 104.0,
+          "x": 737.52,
+          "y": 189.0,
+          "width": 283.76,
+          "height": 124.0,
           "is_cluster": true
         },
         {
           "id": "subGraph2",
-          "x": 597.32,
-          "y": 37.0,
-          "width": 233.76,
-          "height": 104.0,
+          "x": 403.76,
+          "y": 189.0,
+          "width": 283.76,
+          "height": 124.0,
           "is_cluster": true
         },
         {
           "id": "child",
-          "x": 847.64,
-          "y": 37.0,
-          "width": 116.88,
-          "height": 208.0,
+          "x": 105.94,
+          "y": 189.0,
+          "width": 136.88,
+          "height": 308.0,
           "is_cluster": true
         },
         {
           "id": "parent",
-          "x": 847.64,
-          "y": 37.0,
-          "width": 166.88,
-          "height": 258.0,
+          "x": 105.94,
+          "y": 189.0,
+          "width": 211.88,
+          "height": 378.0,
           "is_cluster": true
         }
       ],
@@ -117,16 +117,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 4.8,
-              "y": 37.0
+              "x": 1033.78,
+              "y": 189.0
             },
             {
-              "x": 29.8,
-              "y": 37.0
+              "x": 1071.28,
+              "y": 189.0
             },
             {
-              "x": 54.8,
-              "y": 37.0
+              "x": 1108.78,
+              "y": 189.0
             }
           ],
           "label": null,
@@ -146,16 +146,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 288.56,
-              "y": 37.0
+              "x": 700.02,
+              "y": 189.0
             },
             {
-              "x": 313.56,
-              "y": 37.0
+              "x": 737.52,
+              "y": 189.0
             },
             {
-              "x": 338.56,
-              "y": 37.0
+              "x": 775.02,
+              "y": 189.0
             }
           ],
           "label": null,
@@ -175,16 +175,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 622.32,
-              "y": 37.0
+              "x": 441.26,
+              "y": 189.0
             },
             {
-              "x": 597.32,
-              "y": 37.0
+              "x": 403.76,
+              "y": 189.0
             },
             {
-              "x": 572.32,
-              "y": 37.0
+              "x": 366.26,
+              "y": 189.0
             }
           ],
           "label": null,
@@ -204,16 +204,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 847.64,
-              "y": 62.0
+              "x": 105.94,
+              "y": 239.0
             },
             {
-              "x": 847.64,
-              "y": 37.0
+              "x": 105.94,
+              "y": 189.0
             },
             {
-              "x": 847.64,
-              "y": 12.0
+              "x": 105.94,
+              "y": 139.0
             }
           ],
           "label": null,
@@ -229,115 +229,115 @@
       "clusters": [
         {
           "id": "A",
-          "x": 29.8,
-          "y": 37.0,
-          "width": 233.76,
-          "height": 104.0,
-          "diff": -15.0,
-          "offset_y": 16.5,
+          "x": 1071.28,
+          "y": 189.0,
+          "width": 283.76,
+          "height": 124.0,
+          "diff": -4.0,
+          "offset_y": 20.0,
           "title": "A",
           "title_label": {
-            "x": 29.8,
-            "y": -3.0,
+            "x": 1071.28,
+            "y": 139.0,
             "width": 9.6,
             "height": 24.0
           },
           "requested_dir": null,
           "effective_dir": "LR",
-          "padding": 25.0,
+          "padding": 8.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
         {
           "id": "child",
-          "x": 847.64,
-          "y": 37.0,
-          "width": 116.88,
-          "height": 208.0,
-          "diff": -15.0,
-          "offset_y": 16.5,
+          "x": 105.94,
+          "y": 189.0,
+          "width": 136.88,
+          "height": 308.0,
+          "diff": -4.0,
+          "offset_y": 20.0,
           "title": "Child",
           "title_label": {
-            "x": 847.64,
-            "y": -55.0,
+            "x": 105.94,
+            "y": 47.0,
             "width": 32.32,
             "height": 24.0
           },
           "requested_dir": "BT",
           "effective_dir": "BT",
-          "padding": 25.0,
+          "padding": 8.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
         {
           "id": "id1",
-          "x": 313.56,
-          "y": 37.0,
-          "width": 233.76,
-          "height": 104.0,
-          "diff": -15.0,
-          "offset_y": 16.5,
+          "x": 737.52,
+          "y": 189.0,
+          "width": 283.76,
+          "height": 124.0,
+          "diff": -4.0,
+          "offset_y": 20.0,
           "title": "Title with dashes - ok",
           "title_label": {
-            "x": 313.56,
-            "y": -3.0,
+            "x": 737.52,
+            "y": 139.0,
             "width": 146.4,
             "height": 24.0
           },
           "requested_dir": null,
           "effective_dir": "LR",
-          "padding": 25.0,
+          "padding": 8.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
         {
           "id": "parent",
-          "x": 847.64,
-          "y": 37.0,
-          "width": 166.88,
-          "height": 258.0,
-          "diff": -15.0,
-          "offset_y": 16.5,
+          "x": 105.94,
+          "y": 189.0,
+          "width": 211.88,
+          "height": 378.0,
+          "diff": -4.0,
+          "offset_y": 20.0,
           "title": "Parent",
           "title_label": {
-            "x": 847.64,
-            "y": -80.0,
+            "x": 105.94,
+            "y": 12.0,
             "width": 44.0,
             "height": 24.0
           },
           "requested_dir": null,
           "effective_dir": "LR",
-          "padding": 25.0,
+          "padding": 8.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
         {
           "id": "subGraph2",
-          "x": 597.32,
-          "y": 37.0,
-          "width": 233.76,
-          "height": 104.0,
-          "diff": -15.0,
-          "offset_y": 16.5,
+          "x": 403.76,
+          "y": 189.0,
+          "width": 283.76,
+          "height": 124.0,
+          "diff": -4.0,
+          "offset_y": 20.0,
           "title": "Title With Spaces",
           "title_label": {
-            "x": 597.32,
-            "y": -3.0,
+            "x": 403.76,
+            "y": 139.0,
             "width": 118.72,
             "height": 24.0
           },
           "requested_dir": "RL",
           "effective_dir": "RL",
-          "padding": 25.0,
+          "padding": 8.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }
       ],
       "bounds": {
-        "min_x": -87.08,
-        "min_y": -92.0,
-        "max_x": 931.08,
-        "max_y": 166.0
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1213.16,
+        "max_y": 378.0
       }
     }
   }

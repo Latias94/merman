@@ -169,6 +169,8 @@ pub struct GraphLabel {
     pub nodesep: f64,
     pub ranksep: f64,
     pub edgesep: f64,
+    pub marginx: f64,
+    pub marginy: f64,
     pub align: Option<String>,
     pub ranker: Option<String>,
     pub acyclicer: Option<String>,
@@ -184,6 +186,8 @@ impl Default for GraphLabel {
             nodesep: 50.0,
             ranksep: 50.0,
             edgesep: 10.0,
+            marginx: 0.0,
+            marginy: 0.0,
             align: None,
             ranker: None,
             acyclicer: None,
@@ -687,10 +691,6 @@ pub mod acyclic {
 
     fn dfs_fas(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<EdgeKey> {
         // Ported from Dagre `lib/acyclic.js` (dfsFAS) as used by Mermaid `@11.12.2`.
-        //
-        // NOTE: Mermaid's graph construction (notably cluster extraction / edge normalization)
-        // impacts insertion order of the underlying graphlib nodes. Iterating nodes in reverse
-        // insertion order matches Mermaid's observed behavior more closely across fixtures.
         let mut fas: Vec<EdgeKey> = Vec::new();
         let mut stack: BTreeSet<String> = BTreeSet::new();
         let mut visited: BTreeSet<String> = BTreeSet::new();
@@ -720,7 +720,8 @@ pub mod acyclic {
         }
 
         let node_ids = g.node_ids();
-        for v in node_ids.into_iter().rev() {
+        // Dagre's `dfsFAS` iterates nodes in `g.nodes()` order (insertion order).
+        for v in node_ids {
             dfs(g, &v, &mut visited, &mut stack, &mut fas);
         }
         fas
@@ -2651,8 +2652,21 @@ pub mod order {
             }
         }
 
-        let mut ordered_vs = simple_nodes;
-        ordered_vs.sort_by_key(|v| g.node(v).and_then(|n| n.rank()).unwrap_or(i32::MAX));
+        let mut ordered_vs = simple_nodes.clone();
+        let mut insertion_idx: HashMap<String, usize> = HashMap::new();
+        for (idx, v) in simple_nodes.iter().enumerate() {
+            insertion_idx.insert(v.to_string(), idx);
+        }
+
+        // Dagre's `initOrder` is effectively stable for nodes within the same rank (Graphlib/JS
+        // preserves insertion order in `g.nodes()`). Rust's `sort_by_key` is unstable, so we must
+        // include insertion order as a tie-breaker to avoid mirrored / drifted layouts on graphs
+        // with symmetric constraints.
+        ordered_vs.sort_by_key(|v| {
+            let rank = g.node(v).and_then(|n| n.rank()).unwrap_or(i32::MAX);
+            let idx = insertion_idx.get(v).copied().unwrap_or(usize::MAX);
+            (rank, idx)
+        });
         for v in ordered_vs {
             dfs(g, &v, &mut visited, &mut layers);
         }
@@ -2808,8 +2822,6 @@ pub mod order {
             if cc < best_cc {
                 last_best = 0;
                 best_cc = cc;
-                best_layering = Some(layering_now);
-            } else if cc == best_cc {
                 best_layering = Some(layering_now);
             }
 
@@ -4375,6 +4387,13 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
         }
     }
 
+    // Match upstream Dagre: `removeBorderNodes` runs after positioning and before `normalize.undo`.
+    // It sets compound-node geometry (x/y/width/height) from border nodes, then removes all
+    // border dummy nodes.
+    if g.options().compound {
+        remove_border_nodes(g);
+    }
+
     normalize::undo(g);
     coordinate_system::undo(g);
 
@@ -4395,10 +4414,11 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
         let Some(lbl) = g.edge_by_key(&ek) else {
             continue;
         };
-        for p in &lbl.points {
-            min_x = min_x.min(p.x);
-            min_y = min_y.min(p.y);
-        }
+        // Match Dagre's `translateGraph(...)`: it computes min/max based on nodes and edge-label
+        // boxes, but does not include intermediate edge points. This can leave some internal spline
+        // control points with negative coordinates (which Mermaid preserves in `data-points`), while
+        // the rendered path remains within the viewBox because `curveBasis` does not pass through
+        // those interior points.
         if let (Some(x), Some(y)) = (lbl.x, lbl.y) {
             min_x = min_x.min(x - lbl.width / 2.0);
             min_y = min_y.min(y - lbl.height / 2.0);
@@ -4511,4 +4531,69 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     }
 
     acyclic::undo(g);
+}
+
+fn remove_border_nodes(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+    // First pass: update compound-node geometry from its border nodes.
+    let node_ids = g.node_ids();
+    for v in &node_ids {
+        if g.children(v).is_empty() {
+            continue;
+        }
+        let Some(node) = g.node(v).cloned() else {
+            continue;
+        };
+        let (Some(bt), Some(bb)) = (node.border_top.clone(), node.border_bottom.clone()) else {
+            continue;
+        };
+
+        let bl = node.border_left.last().and_then(|v| v.as_ref()).cloned();
+        let br = node.border_right.last().and_then(|v| v.as_ref()).cloned();
+        let (Some(bl), Some(br)) = (bl, br) else {
+            continue;
+        };
+
+        let Some(t) = g.node(&bt) else {
+            continue;
+        };
+        let Some(b) = g.node(&bb) else {
+            continue;
+        };
+        let Some(l) = g.node(&bl) else {
+            continue;
+        };
+        let Some(r) = g.node(&br) else {
+            continue;
+        };
+
+        let (Some(ty), Some(by)) = (t.y, b.y) else {
+            continue;
+        };
+        let (Some(lx), Some(rx)) = (l.x, r.x) else {
+            continue;
+        };
+
+        let width = (rx - lx).abs();
+        let height = (by - ty).abs();
+        if let Some(n) = g.node_mut(v) {
+            n.width = width;
+            n.height = height;
+            n.x = Some(lx + width / 2.0);
+            n.y = Some(ty + height / 2.0);
+        }
+    }
+
+    // Second pass: remove all border dummy nodes.
+    let mut to_remove: Vec<String> = Vec::new();
+    for v in g.node_ids() {
+        let Some(node) = g.node(&v) else {
+            continue;
+        };
+        if node.dummy.as_deref() == Some("border") {
+            to_remove.push(v);
+        }
+    }
+    for v in to_remove {
+        let _ = g.remove_node(&v);
+    }
 }

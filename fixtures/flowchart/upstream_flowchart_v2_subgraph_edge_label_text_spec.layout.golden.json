@@ -47,7 +47,7 @@
           "id": "myTitle",
           "x": 68.44,
           "y": 376.0,
-          "width": 116.88,
+          "width": 136.88,
           "height": 336.0,
           "is_cluster": true
         }
@@ -184,10 +184,10 @@
           "id": "myTitle",
           "x": 68.44,
           "y": 376.0,
-          "width": 116.88,
+          "width": 136.88,
           "height": 336.0,
-          "diff": -15.0,
-          "offset_y": 16.5,
+          "diff": -4.0,
+          "offset_y": 20.0,
           "title": "myTitle",
           "title_label": {
             "x": 68.44,
@@ -197,15 +197,15 @@
           },
           "requested_dir": null,
           "effective_dir": "LR",
-          "padding": 25.0,
+          "padding": 8.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }
       ],
       "bounds": {
-        "min_x": 10.0,
+        "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 126.88,
+        "max_x": 136.88,
         "max_y": 544.0
       }
     }

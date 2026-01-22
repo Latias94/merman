@@ -13,7 +13,7 @@
         },
         {
           "id": "v",
-          "x": 444.28,
+          "x": 42.04,
           "y": 131.0,
           "width": 84.08,
           "height": 54.0,
@@ -21,14 +21,6 @@
         },
         {
           "id": "csv",
-          "x": 310.2,
-          "y": 131.0,
-          "width": 84.08,
-          "height": 54.0,
-          "is_cluster": false
-        },
-        {
-          "id": "ava",
           "x": 176.12,
           "y": 131.0,
           "width": 84.08,
@@ -36,8 +28,16 @@
           "is_cluster": false
         },
         {
+          "id": "ava",
+          "x": 310.2,
+          "y": 131.0,
+          "width": 84.08,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
           "id": "va",
-          "x": 42.04,
+          "x": 444.28,
           "y": 131.0,
           "width": 84.08,
           "height": 54.0,
@@ -53,15 +53,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 277.96,
+              "x": 208.36,
               "y": 35.998
             },
             {
-              "x": 444.28,
+              "x": 42.04,
               "y": 79.0
             },
             {
-              "x": 444.28,
+              "x": 42.04,
               "y": 104.0
             }
           ],
@@ -82,6 +82,35 @@
           "to_cluster": null,
           "points": [
             {
+              "x": 208.36,
+              "y": 53.993
+            },
+            {
+              "x": 176.12,
+              "y": 79.0
+            },
+            {
+              "x": 176.12,
+              "y": 104.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_A_ava_0",
+          "from": "A",
+          "to": "ava",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
               "x": 277.96,
               "y": 53.993
             },
@@ -104,35 +133,6 @@
           "stroke_dasharray": null
         },
         {
-          "id": "L_A_ava_0",
-          "from": "A",
-          "to": "ava",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 208.36,
-              "y": 53.993
-            },
-            {
-              "x": 176.12,
-              "y": 79.0
-            },
-            {
-              "x": 176.12,
-              "y": 104.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
           "id": "L_A_va_0",
           "from": "A",
           "to": "va",
@@ -140,15 +140,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 208.36,
+              "x": 277.96,
               "y": 35.998
             },
             {
-              "x": 42.04,
+              "x": 444.28,
               "y": 79.0
             },
             {
-              "x": 42.04,
+              "x": 444.28,
               "y": 104.0
             }
           ],

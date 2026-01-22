@@ -365,7 +365,7 @@ fn flowchart_layout_includes_clusters_with_title_placeholders() {
 
 #[test]
 fn flowchart_cluster_exposes_mermaid_diff_and_offset_y() {
-    let text = "flowchart TB\nsubgraph A[\"This is a very very very very very very very long title that should wrap\"]\n  a\nend\n";
+    let text = "flowchart TB\nsubgraph A[\"`This is a very very very very very very very long title that should wrap`\"]\n  a\nend\n";
 
     let engine = Engine::new();
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
@@ -382,34 +382,24 @@ fn flowchart_cluster_exposes_mermaid_diff_and_offset_y() {
         .iter()
         .find(|c| c.id == "A")
         .expect("cluster A");
-    let node_a = layout.nodes.iter().find(|n| n.id == "a").expect("node a");
 
-    // Cluster bounds are padded by `nodeSpacing / 2` (Mermaid-like behavior).
-    let cluster_padding = 25.0;
-    let node_padding = 15.0;
-    let base_width = node_a.width + cluster_padding * 2.0;
+    // Mermaid FlowDB encodes subgraph nodes with `padding: 8`.
+    let cluster_padding = cluster.padding;
+    assert!((cluster_padding - 8.0).abs() < 1e-6);
 
-    let measurer = merman_render::text::DeterministicTextMeasurer::default();
-    let title_metrics = measurer.measure_wrapped(
-        &cluster.title,
-        &merman_render::text::TextStyle::default(),
-        Some(200.0),
-        WrapMode::HtmlLike,
-    );
-    let padded_label_width = title_metrics.width + node_padding;
+    // `node.diff` is computed from the (layout) cluster node width and the measured title bbox.
+    let base_width = cluster.width;
+    let title_w = cluster.title_label.width.max(1.0);
 
-    let expected_diff = if base_width <= padded_label_width {
-        (padded_label_width - base_width) / 2.0 - node_padding
+    let expected_diff = if base_width <= title_w {
+        (title_w - base_width) / 2.0 - cluster_padding / 2.0
     } else {
-        -node_padding
+        -cluster_padding / 2.0
     };
-    let expected_offset_y = title_metrics.height - node_padding / 2.0;
+    let expected_offset_y = cluster.title_label.height - cluster_padding / 2.0;
 
     assert!((cluster.diff - expected_diff).abs() < 1e-6);
     assert!((cluster.offset_y - expected_offset_y).abs() < 1e-6);
-
-    let expected_width = base_width.max(padded_label_width);
-    assert!((cluster.width - expected_width).abs() < 1e-6);
 }
 
 #[test]
@@ -1062,7 +1052,9 @@ fn flowchart_svglike_long_word_is_wrapped_into_multiple_lines() {
 #[test]
 fn flowchart_subgraph_title_uses_wrapping_placeholder_metrics() {
     let title = "This is a very long subgraph title that should wrap across multiple lines for layout parity";
-    let text = format!("flowchart TB\nsubgraph A[{title}]\n  a\nend\n");
+    // Subgraph titles only wrap when the label type is `markdown` (Mermaid uses `createText(...)`
+    // with the default width=200).
+    let text = format!("flowchart TB\nsubgraph A[\"`{title}`\"]\n  a\nend\n");
 
     let engine = Engine::new();
     let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
@@ -1081,8 +1073,18 @@ fn flowchart_subgraph_title_uses_wrapping_placeholder_metrics() {
         .expect("cluster A");
 
     let measurer = merman_render::text::DeterministicTextMeasurer::default();
-    let style = merman_render::text::TextStyle::default();
-    let expected = measurer.measure_wrapped(title, &style, Some(200.0), WrapMode::HtmlLike);
+    let style = merman_render::text::TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
+    let expected = merman_render::text::measure_markdown_with_flowchart_bold_deltas(
+        &measurer,
+        title,
+        &style,
+        Some(200.0),
+        WrapMode::HtmlLike,
+    );
 
     assert!((cluster.title_label.width - expected.width).abs() < 1e-6);
     assert!((cluster.title_label.height - expected.height).abs() < 1e-6);
@@ -1096,7 +1098,7 @@ fn flowchart_subgraph_title_uses_wrapping_placeholder_metrics() {
 fn flowchart_subgraph_title_wraps_long_word_in_svglike_mode() {
     let title = "Supercalifragilisticexpialidocious";
     let text = format!(
-        "%%{{init: {{\"htmlLabels\": false, \"flowchart\": {{\"htmlLabels\": false}}}}}}%%\nflowchart TB\nsubgraph A[{title}]\n  a\nend\n"
+        "%%{{init: {{\"htmlLabels\": false, \"flowchart\": {{\"htmlLabels\": false}}}}}}%%\nflowchart TB\nsubgraph A[\"`{title}`\"]\n  a\nend\n"
     );
 
     let engine = Engine::new();
@@ -1116,7 +1118,11 @@ fn flowchart_subgraph_title_wraps_long_word_in_svglike_mode() {
         .expect("cluster A");
 
     let measurer = merman_render::text::DeterministicTextMeasurer::default();
-    let style = merman_render::text::TextStyle::default();
+    let style = merman_render::text::TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
     let single = measurer.measure_wrapped(title, &style, None, WrapMode::SvgLike);
     let wrapped = measurer.measure_wrapped(title, &style, Some(200.0), WrapMode::SvgLike);
 

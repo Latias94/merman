@@ -37,17 +37,17 @@
         },
         {
           "id": "container_Beta",
-          "x": 136.84,
+          "x": 131.84,
           "y": 386.0,
-          "width": 175.76,
+          "width": 254.72,
           "height": 208.0,
           "is_cluster": true
         },
         {
           "id": "container_Alpha",
-          "x": 168.55,
+          "x": 148.39,
           "y": 104.0,
-          "width": 236.46,
+          "width": 296.78,
           "height": 208.0,
           "is_cluster": true
         }
@@ -207,51 +207,51 @@
       "clusters": [
         {
           "id": "container_Alpha",
-          "x": 168.55,
+          "x": 148.39,
           "y": 104.0,
-          "width": 236.46,
+          "width": 296.78,
           "height": 208.0,
-          "diff": -15.0,
-          "offset_y": 16.5,
+          "diff": -4.0,
+          "offset_y": 20.0,
           "title": "container_Alpha",
           "title_label": {
-            "x": 168.55,
+            "x": 148.39,
             "y": 12.0,
             "width": 99.52,
             "height": 24.0
           },
           "requested_dir": null,
           "effective_dir": "LR",
-          "padding": 25.0,
+          "padding": 8.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         },
         {
           "id": "container_Beta",
-          "x": 136.84,
+          "x": 131.84,
           "y": 386.0,
-          "width": 175.76,
+          "width": 254.72,
           "height": 208.0,
-          "diff": -15.0,
-          "offset_y": 16.5,
+          "diff": -4.0,
+          "offset_y": 20.0,
           "title": "container_Beta",
           "title_label": {
-            "x": 136.84,
+            "x": 131.84,
             "y": 294.0,
             "width": 95.04,
             "height": 24.0
           },
           "requested_dir": null,
           "effective_dir": "LR",
-          "padding": 25.0,
+          "padding": 8.0,
           "title_margin_top": 0.0,
           "title_margin_bottom": 0.0
         }
       ],
       "bounds": {
-        "min_x": 43.1,
+        "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 286.78,
+        "max_x": 296.78,
         "max_y": 490.0
       }
     }
