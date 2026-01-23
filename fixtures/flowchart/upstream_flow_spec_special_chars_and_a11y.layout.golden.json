@@ -55,7 +55,7 @@
           "id": "S1",
           "x": 56.32,
           "y": 339.0,
-          "width": 39.6,
+          "width": 31.0,
           "height": 54.0,
           "is_cluster": false
         },
@@ -204,7 +204,7 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 76.12,
+              "x": 71.82,
               "y": 339.0
             },
             {

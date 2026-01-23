@@ -66,14 +66,14 @@
           "y": 58.8,
           "width": 344.24,
           "height": 117.6,
-          "diff": 36.52,
-          "offset_y": 13.6,
+          "diff": -4.0,
+          "offset_y": 66.4,
           "title": "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
           "title_label": {
             "x": 172.12,
-            "y": 8.8,
-            "width": 425.28,
-            "height": 17.6
+            "y": 35.2,
+            "width": 130.72,
+            "height": 70.4
           },
           "requested_dir": null,
           "effective_dir": "LR",
