@@ -136,13 +136,19 @@ impl Engine {
             }
         };
 
+        let title = pre
+            .title
+            .as_ref()
+            .map(|t| crate::sanitize::sanitize_text(t, &effective_config))
+            .filter(|t| !t.is_empty());
+
         Ok(Some((
             pre.code,
             ParseMetadata {
                 diagram_type,
                 config: pre.config,
                 effective_config,
-                title: pre.title,
+                title,
             },
         )))
     }
@@ -187,6 +193,26 @@ graph TD;A-->B;"#;
                     "htmlLabels": true
                 }
             })
+        );
+    }
+
+    #[test]
+    fn parse_sanitizes_frontmatter_title_like_mermaid_common_db() {
+        let engine = Engine::new();
+        let text = r#"---
+title: "Flowchart v2 arrows: graph direction \"<\""
+---
+graph <
+A-->B
+"#;
+
+        let meta = block_on(engine.parse_metadata(text, ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            meta.title,
+            Some(r#"Flowchart v2 arrows: graph direction "&lt;""#.to_string())
         );
     }
 

@@ -145,7 +145,7 @@
       },
       {
         "id": "S1",
-        "label": "<",
+        "label": "&lt;",
         "labelType": "text",
         "shape": "round",
         "layoutShape": "roundedRect",

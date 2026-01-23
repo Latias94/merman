@@ -78,9 +78,9 @@ From `target/compare/flowchart_report.md` (generated via `--report-root --dom-mo
 | Fixture | upstream max-width(px) | local max-width(px) | Δ |
 |---|---:|---:|---:|
 | `upstream_flowchart_v2_self_loops_spec` | 1059.460 | 1102.010 | +42.550 |
-| `upstream_flowchart_v2_arrows_graph_direction_lt_spec` | 363.525 | 341.070 | -22.455 |
+| `upstream_singlenode_shapes_spec` | 1557.230 | 1567.690 | +10.460 |
 
-These two drive most of the remaining `--check-dom --dom-mode parity-root` failures.
+These drive most of the remaining `--check-dom --dom-mode parity-root` failures.
 
 ## Investigation Notes
 
@@ -88,3 +88,8 @@ These two drive most of the remaining `--check-dom --dom-mode parity-root` failu
   stage (cycle-related ordering). We briefly experimented with changing node insertion order to
   influence this, but it produced a layout snapshot mismatch without improving the root viewport
   deltas, so the change was dropped.
+- The previously large delta for `upstream_flowchart_v2_arrows_graph_direction_lt_spec` was caused
+  by Mermaid's DOMPurify-style sanitization turning a stray `<` in the title into the literal text
+  `&lt;` (which then affects title width and therefore `viewBox/max-width`). `merman-core` now
+  matches this behavior more closely by escaping "stray" `<` tokens before running the
+  DOMPurify-like HTML rewrite.

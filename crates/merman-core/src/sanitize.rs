@@ -333,6 +333,53 @@ fn dompurify_like_sanitize_html(text: &str, cfg: &DompurifyEffectiveConfig) -> S
         return text.to_string();
     }
 
+    // `lol_html::rewrite_str` is less permissive than browser parsing (and therefore DOMPurify).
+    // In particular, fragments containing a "stray" `<` that does not start a valid tag (e.g.
+    // `"foo < bar"` or `"<\""` in a quoted string) can fail to parse. In browsers those `<`
+    // tokens are treated as text and serialized as `&lt;`.
+    //
+    // To stay closer to Mermaid's `sanitizeText` behavior, pre-escape such `<` tokens before
+    // running the DOMPurify-like rewrite.
+    fn escape_stray_lt(input: &str) -> std::borrow::Cow<'_, str> {
+        let bytes = input.as_bytes();
+        let mut pos = 0usize;
+        while pos < bytes.len() {
+            if bytes[pos] == b'<' {
+                let next = bytes.get(pos + 1).copied().unwrap_or(b' ');
+                let tag_start = next.is_ascii_alphabetic() || matches!(next, b'/' | b'!' | b'?');
+                if !tag_start {
+                    break;
+                }
+            }
+            pos += 1;
+        }
+        if pos >= bytes.len() {
+            return std::borrow::Cow::Borrowed(input);
+        }
+
+        let mut out = String::with_capacity(input.len() + 8);
+        let mut last = 0usize;
+        let mut i = 0usize;
+        while i < bytes.len() {
+            if bytes[i] == b'<' {
+                let next = bytes.get(i + 1).copied().unwrap_or(b' ');
+                let tag_start = next.is_ascii_alphabetic() || matches!(next, b'/' | b'!' | b'?');
+                if !tag_start {
+                    out.push_str(&input[last..i]);
+                    out.push_str("&lt;");
+                    i += 1;
+                    last = i;
+                    continue;
+                }
+            }
+            i += 1;
+        }
+        out.push_str(&input[last..]);
+        std::borrow::Cow::Owned(out)
+    }
+
+    let text = escape_stray_lt(text);
+
     let mut handlers = vec![
         element!("script", |el| {
             el.remove();
@@ -408,13 +455,13 @@ fn dompurify_like_sanitize_html(text: &str, cfg: &DompurifyEffectiveConfig) -> S
     }));
 
     rewrite_str(
-        text,
+        text.as_ref(),
         RewriteStrSettings {
             element_content_handlers: handlers,
             ..RewriteStrSettings::new()
         },
     )
-    .unwrap_or_else(|_| text.to_string())
+    .unwrap_or_else(|_| text.into_owned())
 }
 
 pub fn remove_script(text: &str) -> String {
