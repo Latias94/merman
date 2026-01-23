@@ -128,17 +128,325 @@ fn flowchart_default_bold_delta_em(ch: char) -> f64 {
     // Derived from browser `canvas.measureText()` using `font: bold 16px trebuchet ms, verdana, arial, sans-serif`.
     // Values are `bold_em(ch) - regular_em(ch)`.
     match ch {
+        '"' => 0.0419921875,
+        '#' => 0.0615234375,
+        '$' => 0.0615234375,
+        '%' => 0.083984375,
+        '\'' => 0.06982421875,
+        '*' => 0.06494140625,
+        '+' => 0.0615234375,
+        '/' => -0.13427734375,
+        '0' => 0.0615234375,
+        '1' => 0.0615234375,
+        '2' => 0.0615234375,
+        '3' => 0.0615234375,
+        '4' => 0.0615234375,
+        '5' => 0.0615234375,
+        '6' => 0.0615234375,
+        '7' => 0.0615234375,
+        '8' => 0.0615234375,
+        '9' => 0.0615234375,
+        '<' => 0.0615234375,
+        '=' => 0.0615234375,
+        '>' => 0.0615234375,
+        '?' => 0.07080078125,
+        'A' => 0.04345703125,
+        'B' => 0.029296875,
+        'C' => 0.013671875,
+        'D' => 0.029296875,
+        'E' => 0.033203125,
+        'F' => 0.05859375,
+        'G' => -0.0048828125,
+        'H' => 0.029296875,
+        'J' => 0.05615234375,
+        'K' => 0.04150390625,
+        'L' => 0.04638671875,
+        'M' => 0.03564453125,
+        'N' => 0.029296875,
+        'O' => 0.029296875,
+        'P' => 0.029296875,
+        'Q' => 0.033203125,
+        'R' => 0.02880859375,
+        'S' => 0.0302734375,
+        'T' => 0.03125,
+        'U' => 0.029296875,
+        'V' => 0.0341796875,
+        'W' => 0.03173828125,
+        'X' => 0.0439453125,
+        'Y' => 0.04296875,
+        'Z' => 0.009765625,
+        '[' => 0.03466796875,
+        ']' => 0.03466796875,
+        '^' => 0.0615234375,
+        '_' => 0.0615234375,
+        '`' => 0.0615234375,
         'a' => 0.00732421875,
+        'b' => 0.0244140625,
         'c' => 0.0166015625,
         'd' => 0.0234375,
         'e' => 0.029296875,
         'h' => 0.04638671875,
         'i' => 0.01318359375,
+        'k' => 0.04345703125,
+        'm' => 0.029296875,
+        'n' => 0.0439453125,
         'o' => 0.029296875,
         'p' => 0.025390625,
-        'T' => 0.03125,
+        'q' => 0.02685546875,
+        'r' => 0.03857421875,
+        's' => 0.02587890625,
+        'u' => 0.04443359375,
+        'v' => 0.03759765625,
         'w' => 0.03955078125,
+        'x' => 0.05126953125,
+        'y' => 0.04052734375,
+        'z' => 0.0537109375,
+        '{' => 0.06640625,
+        '|' => 0.0615234375,
+        '}' => 0.06640625,
+        '~' => 0.0615234375,
         _ => 0.0,
+    }
+}
+
+fn flowchart_default_bold_kern_delta_em(prev: char, next: char) -> f64 {
+    // Approximates the kerning delta between `font-weight: bold` and regular text runs for the
+    // default Mermaid flowchart font stack.
+    //
+    // Our base font metrics table includes kerning pairs for regular weight. Bold kerning differs
+    // for some pairs (notably `Tw`), which affects HTML label widths measured via
+    // `getBoundingClientRect()` in upstream Mermaid fixtures.
+    match (prev, next) {
+        // Derived from Mermaid@11.12.2 upstream SVG baselines:
+        // - regular `Two` (with regular kerning) + per-char bold deltas undershoots `<strong>Two</strong>`
+        // - the residual matches the bold-vs-regular kerning delta for `Tw`.
+        ('T', 'w') => 0.0576171875,
+        _ => 0.0,
+    }
+}
+
+fn flowchart_default_italic_delta_em(ch: char) -> f64 {
+    // Mermaid markdown labels render `<em>/<i>` as italic inside a `<foreignObject>`.
+    // Empirically (Trebuchet MS @16px) the width delta is small but measurable; we model it as a
+    // per-character additive delta in `em` space.
+    //
+    // This constant matches the observed delta for common ASCII letters in upstream fixtures:
+    // e.g. `<em>bat</em>` widens by `25/64px` at 16px, i.e. `25/3072em`.
+    const DELTA_EM: f64 = 25.0 / 3072.0;
+    match ch {
+        'A'..='Z' | 'a'..='z' | '0'..='9' => DELTA_EM,
+        _ => 0.0,
+    }
+}
+
+pub fn measure_html_with_flowchart_bold_deltas(
+    measurer: &dyn TextMeasurer,
+    html: &str,
+    style: &TextStyle,
+    max_width: Option<f64>,
+    wrap_mode: WrapMode,
+) -> TextMetrics {
+    fn decode_html_entity(entity: &str) -> Option<char> {
+        match entity {
+            "nbsp" => Some(' '),
+            "lt" => Some('<'),
+            "gt" => Some('>'),
+            "amp" => Some('&'),
+            "quot" => Some('"'),
+            "apos" => Some('\''),
+            "#39" => Some('\''),
+            _ => {
+                if let Some(hex) = entity
+                    .strip_prefix("#x")
+                    .or_else(|| entity.strip_prefix("#X"))
+                {
+                    u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
+                } else if let Some(dec) = entity.strip_prefix('#') {
+                    dec.parse::<u32>().ok().and_then(char::from_u32)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    let mut plain = String::new();
+    let mut deltas_px_by_line: Vec<f64> = vec![0.0];
+    let mut strong_depth: usize = 0;
+    let mut em_depth: usize = 0;
+    let mut prev_char: Option<char> = None;
+    let mut prev_is_strong = false;
+
+    let html = html.replace("\r\n", "\n");
+    let mut it = html.chars().peekable();
+    while let Some(ch) = it.next() {
+        if ch == '<' {
+            let mut tag = String::new();
+            while let Some(c) = it.next() {
+                if c == '>' {
+                    break;
+                }
+                tag.push(c);
+            }
+            let tag = tag.trim();
+            let tag_lower = tag.to_ascii_lowercase();
+            let tag_trim = tag_lower.trim();
+            if tag_trim.starts_with('!') || tag_trim.starts_with('?') {
+                continue;
+            }
+            let is_closing = tag_trim.starts_with('/');
+            let name = tag_trim
+                .trim_start_matches('/')
+                .trim_end_matches('/')
+                .split_whitespace()
+                .next()
+                .unwrap_or("");
+
+            match name {
+                "strong" | "b" => {
+                    if is_closing {
+                        strong_depth = strong_depth.saturating_sub(1);
+                    } else {
+                        strong_depth += 1;
+                    }
+                }
+                "em" | "i" => {
+                    if is_closing {
+                        em_depth = em_depth.saturating_sub(1);
+                    } else {
+                        em_depth += 1;
+                    }
+                }
+                "br" => {
+                    plain.push('\n');
+                    deltas_px_by_line.push(0.0);
+                    prev_char = None;
+                    prev_is_strong = false;
+                }
+                "p" | "div" | "li" | "tr" | "ul" | "ol" if is_closing => {
+                    plain.push('\n');
+                    deltas_px_by_line.push(0.0);
+                    prev_char = None;
+                    prev_is_strong = false;
+                }
+                _ => {}
+            }
+            continue;
+        }
+
+        let push_char = |decoded: char,
+                         plain: &mut String,
+                         deltas_px_by_line: &mut Vec<f64>,
+                         prev_char: &mut Option<char>,
+                         prev_is_strong: &mut bool| {
+            plain.push(decoded);
+            if decoded == '\n' {
+                deltas_px_by_line.push(0.0);
+                *prev_char = None;
+                *prev_is_strong = false;
+                return;
+            }
+            if is_flowchart_default_font(style) {
+                let line_idx = deltas_px_by_line.len().saturating_sub(1);
+                let font_size = style.font_size.max(1.0);
+                let is_strong = strong_depth > 0;
+                if let Some(prev) = *prev_char {
+                    if *prev_is_strong && is_strong {
+                        deltas_px_by_line[line_idx] +=
+                            flowchart_default_bold_kern_delta_em(prev, decoded) * font_size;
+                    }
+                }
+                if is_strong {
+                    deltas_px_by_line[line_idx] +=
+                        flowchart_default_bold_delta_em(decoded) * font_size;
+                }
+                if em_depth > 0 {
+                    deltas_px_by_line[line_idx] +=
+                        flowchart_default_italic_delta_em(decoded) * font_size;
+                }
+                *prev_char = Some(decoded);
+                *prev_is_strong = is_strong;
+            } else {
+                *prev_char = Some(decoded);
+                *prev_is_strong = strong_depth > 0;
+            }
+        };
+
+        if ch == '&' {
+            let mut entity = String::new();
+            let mut saw_semicolon = false;
+            while let Some(&c) = it.peek() {
+                if c == ';' {
+                    it.next();
+                    saw_semicolon = true;
+                    break;
+                }
+                if c == '<' || c == '&' || c.is_whitespace() || entity.len() > 32 {
+                    break;
+                }
+                entity.push(c);
+                it.next();
+            }
+            if saw_semicolon {
+                if let Some(decoded) = decode_html_entity(entity.as_str()) {
+                    push_char(
+                        decoded,
+                        &mut plain,
+                        &mut deltas_px_by_line,
+                        &mut prev_char,
+                        &mut prev_is_strong,
+                    );
+                } else {
+                    plain.push('&');
+                    plain.push_str(&entity);
+                    plain.push(';');
+                }
+            } else {
+                plain.push('&');
+                plain.push_str(&entity);
+            }
+            continue;
+        }
+
+        push_char(
+            ch,
+            &mut plain,
+            &mut deltas_px_by_line,
+            &mut prev_char,
+            &mut prev_is_strong,
+        );
+    }
+
+    let plain = plain.trim().to_string();
+    let base = measurer.measure_wrapped(&plain, style, max_width, wrap_mode);
+
+    let mut lines = DeterministicTextMeasurer::normalized_text_lines(&plain);
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    deltas_px_by_line.resize(lines.len(), 0.0);
+
+    let mut max_line_width: f64 = 0.0;
+    for (idx, line) in lines.iter().enumerate() {
+        let w = measurer.measure_wrapped(line, style, None, wrap_mode).width;
+        max_line_width = max_line_width.max(w + deltas_px_by_line[idx]);
+    }
+
+    let mut width = ceil_to_1_64_px(max_line_width);
+    if wrap_mode == WrapMode::HtmlLike {
+        if let Some(w) = max_width.filter(|w| w.is_finite() && *w > 0.0) {
+            if max_line_width > w {
+                width = w;
+            } else {
+                width = width.min(w);
+            }
+        }
+    }
+
+    TextMetrics {
+        width,
+        height: base.height,
+        line_count: base.line_count,
     }
 }
 
@@ -152,6 +460,9 @@ pub fn measure_markdown_with_flowchart_bold_deltas(
     let mut plain = String::new();
     let mut deltas_px_by_line: Vec<f64> = vec![0.0];
     let mut strong_depth: usize = 0;
+    let mut em_depth: usize = 0;
+    let mut prev_char: Option<char> = None;
+    let mut prev_is_strong = false;
 
     let parser = pulldown_cmark::Parser::new_ext(
         markdown,
@@ -162,25 +473,58 @@ pub fn measure_markdown_with_flowchart_bold_deltas(
 
     for ev in parser {
         match ev {
+            pulldown_cmark::Event::Start(pulldown_cmark::Tag::Emphasis) => {
+                em_depth += 1;
+            }
             pulldown_cmark::Event::Start(pulldown_cmark::Tag::Strong) => {
                 strong_depth += 1;
+            }
+            pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Emphasis) => {
+                em_depth = em_depth.saturating_sub(1);
             }
             pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Strong) => {
                 strong_depth = strong_depth.saturating_sub(1);
             }
             pulldown_cmark::Event::Text(t) | pulldown_cmark::Event::Code(t) => {
-                plain.push_str(&t);
-                if strong_depth > 0 && is_flowchart_default_font(style) {
-                    let line_idx = deltas_px_by_line.len().saturating_sub(1);
-                    for ch in t.chars() {
-                        deltas_px_by_line[line_idx] +=
-                            flowchart_default_bold_delta_em(ch) * style.font_size.max(1.0);
+                for ch in t.chars() {
+                    plain.push(ch);
+                    if ch == '\n' {
+                        deltas_px_by_line.push(0.0);
+                        prev_char = None;
+                        prev_is_strong = false;
+                        continue;
+                    }
+                    if is_flowchart_default_font(style) {
+                        let line_idx = deltas_px_by_line.len().saturating_sub(1);
+                        let font_size = style.font_size.max(1.0);
+                        let is_strong = strong_depth > 0;
+                        if let Some(prev) = prev_char {
+                            if prev_is_strong && is_strong {
+                                deltas_px_by_line[line_idx] +=
+                                    flowchart_default_bold_kern_delta_em(prev, ch) * font_size;
+                            }
+                        }
+                        if is_strong {
+                            deltas_px_by_line[line_idx] +=
+                                flowchart_default_bold_delta_em(ch) * font_size;
+                        }
+                        if em_depth > 0 {
+                            deltas_px_by_line[line_idx] +=
+                                flowchart_default_italic_delta_em(ch) * font_size;
+                        }
+                        prev_char = Some(ch);
+                        prev_is_strong = is_strong;
+                    } else {
+                        prev_char = Some(ch);
+                        prev_is_strong = strong_depth > 0;
                     }
                 }
             }
             pulldown_cmark::Event::SoftBreak | pulldown_cmark::Event::HardBreak => {
                 plain.push('\n');
                 deltas_px_by_line.push(0.0);
+                prev_char = None;
+                prev_is_strong = false;
             }
             _ => {}
         }
@@ -244,6 +588,33 @@ pub trait TextMeasurer {
         let _ = max_width;
         let _ = wrap_mode;
         self.measure(text, style)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn markdown_strong_width_matches_flowchart_table() {
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let style = TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+        };
+
+        let regular = measurer.measure_wrapped("Two", &style, Some(200.0), WrapMode::HtmlLike);
+        assert_eq!(regular.width, 27.578125);
+
+        let strong = measure_markdown_with_flowchart_bold_deltas(
+            &measurer,
+            "**Two**",
+            &style,
+            Some(200.0),
+            WrapMode::HtmlLike,
+        );
+        assert_eq!(strong.width, 30.109375);
     }
 }
 
@@ -378,6 +749,59 @@ pub struct VendoredFontMetricsTextMeasurer {
 }
 
 impl VendoredFontMetricsTextMeasurer {
+    fn quantize_svg_px_nearest(v: f64) -> f64 {
+        if !(v.is_finite() && v >= 0.0) {
+            return 0.0;
+        }
+        // Browser-derived SVG text metrics in upstream Mermaid fixtures frequently land on binary
+        // fractions (e.g. `...484375` = 31/64). Quantize to a power-of-two grid so our headless
+        // layout math stays on the same lattice and we don't accumulate tiny FP drift that shows
+        // up in `viewBox`/`max-width` diffs.
+        let x = v * 256.0;
+        let f = x.floor();
+        let frac = x - f;
+        let i = if frac < 0.5 {
+            f
+        } else if frac > 0.5 {
+            f + 1.0
+        } else {
+            let fi = f as i64;
+            if fi % 2 == 0 { f } else { f + 1.0 }
+        };
+        i / 256.0
+    }
+
+    fn quantize_svg_bbox_px_nearest(v: f64) -> f64 {
+        if !(v.is_finite() && v >= 0.0) {
+            return 0.0;
+        }
+        // Title/label `getBBox()` extents in upstream fixtures frequently land on 1/1024px
+        // increments. Quantize after applying svg-overrides so (em * font_size) does not leak FP
+        // noise into viewBox/max-width comparisons.
+        let x = v * 1024.0;
+        let f = x.floor();
+        let frac = x - f;
+        let i = if frac < 0.5 {
+            f
+        } else if frac > 0.5 {
+            f + 1.0
+        } else {
+            let fi = f as i64;
+            if fi % 2 == 0 { f } else { f + 1.0 }
+        };
+        i / 1024.0
+    }
+
+    fn quantize_svg_half_px_nearest(half_px: f64) -> f64 {
+        if !(half_px.is_finite() && half_px >= 0.0) {
+            return 0.0;
+        }
+        // SVG `getBBox()` metrics in upstream Mermaid baselines tend to behave like a truncation
+        // on a power-of-two grid for the anchored half-advance. Using `floor` here avoids a
+        // systematic +1/256px drift in wide titles that can bubble up into `viewBox`/`max-width`.
+        (half_px * 256.0).floor() / 256.0
+    }
+
     fn normalize_font_key(s: &str) -> String {
         s.chars()
             .filter_map(|ch| {
@@ -440,6 +864,85 @@ impl VendoredFontMetricsTextMeasurer {
         0.0
     }
 
+    fn lookup_space_trigram_em(space_trigrams: &[(u32, u32, f64)], a: char, b: char) -> f64 {
+        let key_a = a as u32;
+        let key_b = b as u32;
+        let mut lo = 0usize;
+        let mut hi = space_trigrams.len();
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            let (ma, mb, v) = space_trigrams[mid];
+            match (ma.cmp(&key_a), mb.cmp(&key_b)) {
+                (std::cmp::Ordering::Equal, std::cmp::Ordering::Equal) => return v,
+                (std::cmp::Ordering::Less, _) => lo = mid + 1,
+                (std::cmp::Ordering::Equal, std::cmp::Ordering::Less) => lo = mid + 1,
+                _ => hi = mid,
+            }
+        }
+        0.0
+    }
+
+    fn lookup_trigram_em(trigrams: &[(u32, u32, u32, f64)], a: char, b: char, c: char) -> f64 {
+        let key_a = a as u32;
+        let key_b = b as u32;
+        let key_c = c as u32;
+        let mut lo = 0usize;
+        let mut hi = trigrams.len();
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            let (ma, mb, mc, v) = trigrams[mid];
+            match (ma.cmp(&key_a), mb.cmp(&key_b), mc.cmp(&key_c)) {
+                (
+                    std::cmp::Ordering::Equal,
+                    std::cmp::Ordering::Equal,
+                    std::cmp::Ordering::Equal,
+                ) => return v,
+                (std::cmp::Ordering::Less, _, _) => lo = mid + 1,
+                (std::cmp::Ordering::Equal, std::cmp::Ordering::Less, _) => lo = mid + 1,
+                (
+                    std::cmp::Ordering::Equal,
+                    std::cmp::Ordering::Equal,
+                    std::cmp::Ordering::Less,
+                ) => lo = mid + 1,
+                _ => hi = mid,
+            }
+        }
+        0.0
+    }
+
+    fn lookup_html_override_em(overrides: &[(&'static str, f64)], text: &str) -> Option<f64> {
+        let mut lo = 0usize;
+        let mut hi = overrides.len();
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            let (k, v) = overrides[mid];
+            match k.cmp(text) {
+                std::cmp::Ordering::Equal => return Some(v),
+                std::cmp::Ordering::Less => lo = mid + 1,
+                std::cmp::Ordering::Greater => hi = mid,
+            }
+        }
+        None
+    }
+
+    fn lookup_svg_override_em(
+        overrides: &[(&'static str, f64, f64)],
+        text: &str,
+    ) -> Option<(f64, f64)> {
+        let mut lo = 0usize;
+        let mut hi = overrides.len();
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            let (k, l, r) = overrides[mid];
+            match k.cmp(text) {
+                std::cmp::Ordering::Equal => return Some((l, r)),
+                std::cmp::Ordering::Less => lo = mid + 1,
+                std::cmp::Ordering::Greater => hi = mid,
+            }
+        }
+        None
+    }
+
     fn lookup_overhang_em(entries: &[(char, f64)], default_em: f64, ch: char) -> f64 {
         let mut lo = 0usize;
         let mut hi = entries.len();
@@ -454,20 +957,235 @@ impl VendoredFontMetricsTextMeasurer {
         default_em
     }
 
+    fn line_svg_bbox_extents_px(
+        table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
+        text: &str,
+        font_size: f64,
+    ) -> (f64, f64) {
+        let t = text.trim_end();
+        if t.is_empty() {
+            return (0.0, 0.0);
+        }
+
+        if let Some((left_em, right_em)) = Self::lookup_svg_override_em(table.svg_overrides, t) {
+            let left = Self::quantize_svg_bbox_px_nearest((left_em * font_size).max(0.0));
+            let right = Self::quantize_svg_bbox_px_nearest((right_em * font_size).max(0.0));
+            return (left, right);
+        }
+
+        let first = t.chars().next().unwrap_or(' ');
+        let last = t.chars().last().unwrap_or(' ');
+
+        let advance_px = Self::line_width_px(
+            table.entries,
+            table.default_em.max(0.1),
+            table.kern_pairs,
+            table.space_trigrams,
+            table.trigrams,
+            t,
+            font_size,
+        ) * table.svg_scale;
+        let half = Self::quantize_svg_half_px_nearest((advance_px / 2.0).max(0.0));
+        // In upstream Mermaid fixtures, SVG `getBBox()` overhang at the ends of ASCII labels tends
+        // to behave like `0` after quantization/hinting, even for glyphs with a non-zero outline
+        // overhang (e.g. `s`). To avoid systematic `viewBox`/`max-width` drift, treat ASCII
+        // overhang as zero and only apply per-glyph overhang for non-ASCII.
+        let left_oh_em = if first.is_ascii() {
+            0.0
+        } else {
+            Self::lookup_overhang_em(
+                table.svg_bbox_overhang_left,
+                table.svg_bbox_overhang_left_default_em,
+                first,
+            )
+        };
+        let right_oh_em = if last.is_ascii() {
+            0.0
+        } else {
+            Self::lookup_overhang_em(
+                table.svg_bbox_overhang_right,
+                table.svg_bbox_overhang_right_default_em,
+                last,
+            )
+        };
+
+        let left = (half + left_oh_em * font_size).max(0.0);
+        let right = (half + right_oh_em * font_size).max(0.0);
+        (left, right)
+    }
+
+    fn line_svg_bbox_width_px(
+        table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
+        text: &str,
+        font_size: f64,
+    ) -> f64 {
+        let (l, r) = Self::line_svg_bbox_extents_px(table, text, font_size);
+        (l + r).max(0.0)
+    }
+
+    fn split_token_to_svg_bbox_width_px(
+        table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
+        tok: &str,
+        max_width_px: f64,
+        font_size: f64,
+    ) -> (String, String) {
+        if max_width_px <= 0.0 {
+            return (tok.to_string(), String::new());
+        }
+        let chars = tok.chars().collect::<Vec<_>>();
+        if chars.is_empty() {
+            return (String::new(), String::new());
+        }
+
+        let first = chars[0];
+        let left_oh_em = if first.is_ascii() {
+            0.0
+        } else {
+            Self::lookup_overhang_em(
+                table.svg_bbox_overhang_left,
+                table.svg_bbox_overhang_left_default_em,
+                first,
+            )
+        };
+
+        let mut em = 0.0;
+        let mut prev: Option<char> = None;
+        let mut split_at = 1usize;
+        for (idx, ch) in chars.iter().enumerate() {
+            em += Self::lookup_char_em(table.entries, table.default_em.max(0.1), *ch);
+            if let Some(p) = prev {
+                em += Self::lookup_kern_em(table.kern_pairs, p, *ch);
+            }
+            prev = Some(*ch);
+
+            let right_oh_em = if ch.is_ascii() {
+                0.0
+            } else {
+                Self::lookup_overhang_em(
+                    table.svg_bbox_overhang_right,
+                    table.svg_bbox_overhang_right_default_em,
+                    *ch,
+                )
+            };
+            let half_px = Self::quantize_svg_half_px_nearest(
+                (em * font_size * table.svg_scale / 2.0).max(0.0),
+            );
+            let w_px = 2.0 * half_px + (left_oh_em + right_oh_em) * font_size;
+            if w_px.is_finite() && w_px <= max_width_px {
+                split_at = idx + 1;
+            } else if idx > 0 {
+                break;
+            }
+        }
+        let head = chars[..split_at].iter().collect::<String>();
+        let tail = chars[split_at..].iter().collect::<String>();
+        (head, tail)
+    }
+
+    fn wrap_text_lines_svg_bbox_px(
+        table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
+        text: &str,
+        max_width_px: Option<f64>,
+        font_size: f64,
+    ) -> Vec<String> {
+        const EPS_PX: f64 = 0.125;
+        let max_width_px = max_width_px.filter(|w| w.is_finite() && *w > 0.0);
+
+        let mut lines = Vec::new();
+        for line in DeterministicTextMeasurer::normalized_text_lines(text) {
+            let Some(w) = max_width_px else {
+                lines.push(line);
+                continue;
+            };
+
+            let mut tokens = std::collections::VecDeque::from(
+                DeterministicTextMeasurer::split_line_to_words(&line),
+            );
+            let mut out: Vec<String> = Vec::new();
+            let mut cur = String::new();
+
+            while let Some(tok) = tokens.pop_front() {
+                if cur.is_empty() && tok == " " {
+                    continue;
+                }
+
+                let candidate = format!("{cur}{tok}");
+                let candidate_trimmed = candidate.trim_end();
+                if Self::line_svg_bbox_width_px(table, candidate_trimmed, font_size) <= w + EPS_PX {
+                    cur = candidate;
+                    continue;
+                }
+
+                if !cur.trim().is_empty() {
+                    out.push(cur.trim_end().to_string());
+                    cur.clear();
+                    tokens.push_front(tok);
+                    continue;
+                }
+
+                if tok == " " {
+                    continue;
+                }
+
+                if Self::line_svg_bbox_width_px(table, tok.as_str(), font_size) <= w + EPS_PX {
+                    cur = tok;
+                    continue;
+                }
+
+                // Mermaid's SVG wrapping breaks long words.
+                let (head, tail) =
+                    Self::split_token_to_svg_bbox_width_px(table, &tok, w + EPS_PX, font_size);
+                out.push(head);
+                if !tail.is_empty() {
+                    tokens.push_front(tail);
+                }
+            }
+
+            if !cur.trim().is_empty() {
+                out.push(cur.trim_end().to_string());
+            }
+
+            if out.is_empty() {
+                lines.push("".to_string());
+            } else {
+                lines.extend(out);
+            }
+        }
+
+        if lines.is_empty() {
+            vec!["".to_string()]
+        } else {
+            lines
+        }
+    }
+
     fn line_width_px(
         entries: &[(char, f64)],
         default_em: f64,
         kern_pairs: &[(u32, u32, f64)],
+        space_trigrams: &[(u32, u32, f64)],
+        trigrams: &[(u32, u32, u32, f64)],
         text: &str,
         font_size: f64,
     ) -> f64 {
         let mut em = 0.0;
+        let mut prevprev: Option<char> = None;
         let mut prev: Option<char> = None;
         for ch in text.chars() {
             em += Self::lookup_char_em(entries, default_em, ch);
             if let Some(p) = prev {
                 em += Self::lookup_kern_em(kern_pairs, p, ch);
             }
+            if let (Some(a), Some(b)) = (prevprev, prev) {
+                if b == ' ' {
+                    if !(a.is_whitespace() || ch.is_whitespace()) {
+                        em += Self::lookup_space_trigram_em(space_trigrams, a, ch);
+                    }
+                } else if !(a.is_whitespace() || b.is_whitespace() || ch.is_whitespace()) {
+                    em += Self::lookup_trigram_em(trigrams, a, b, ch);
+                }
+            }
+            prevprev = prev;
             prev = Some(ch);
         }
         em * font_size
@@ -484,6 +1202,7 @@ impl VendoredFontMetricsTextMeasurer {
         entries: &[(char, f64)],
         default_em: f64,
         kern_pairs: &[(u32, u32, f64)],
+        trigrams: &[(u32, u32, u32, f64)],
         tok: &str,
         max_width_px: f64,
         font_size: f64,
@@ -493,6 +1212,7 @@ impl VendoredFontMetricsTextMeasurer {
         }
         let max_em = max_width_px / font_size.max(1.0);
         let mut em = 0.0;
+        let mut prevprev: Option<char> = None;
         let mut prev: Option<char> = None;
         let chars = tok.chars().collect::<Vec<_>>();
         let mut split_at = 0usize;
@@ -501,6 +1221,12 @@ impl VendoredFontMetricsTextMeasurer {
             if let Some(p) = prev {
                 em += Self::lookup_kern_em(kern_pairs, p, *ch);
             }
+            if let (Some(a), Some(b)) = (prevprev, prev) {
+                if !(a.is_whitespace() || b.is_whitespace() || ch.is_whitespace()) {
+                    em += Self::lookup_trigram_em(trigrams, a, b, *ch);
+                }
+            }
+            prevprev = prev;
             prev = Some(*ch);
             if em > max_em && idx > 0 {
                 break;
@@ -522,6 +1248,8 @@ impl VendoredFontMetricsTextMeasurer {
         entries: &[(char, f64)],
         default_em: f64,
         kern_pairs: &[(u32, u32, f64)],
+        space_trigrams: &[(u32, u32, f64)],
+        trigrams: &[(u32, u32, u32, f64)],
         line: &str,
         max_width_px: f64,
         font_size: f64,
@@ -543,6 +1271,8 @@ impl VendoredFontMetricsTextMeasurer {
                 entries,
                 default_em,
                 kern_pairs,
+                space_trigrams,
+                trigrams,
                 candidate_trimmed,
                 font_size,
             ) <= max_width_px
@@ -560,8 +1290,15 @@ impl VendoredFontMetricsTextMeasurer {
                 continue;
             }
 
-            if Self::line_width_px(entries, default_em, kern_pairs, tok.as_str(), font_size)
-                <= max_width_px
+            if Self::line_width_px(
+                entries,
+                default_em,
+                kern_pairs,
+                space_trigrams,
+                trigrams,
+                tok.as_str(),
+                font_size,
+            ) <= max_width_px
             {
                 cur = tok;
                 continue;
@@ -576,6 +1313,7 @@ impl VendoredFontMetricsTextMeasurer {
                 entries,
                 default_em,
                 kern_pairs,
+                trigrams,
                 &tok,
                 max_width_px,
                 font_size,
@@ -601,6 +1339,8 @@ impl VendoredFontMetricsTextMeasurer {
         entries: &[(char, f64)],
         default_em: f64,
         kern_pairs: &[(u32, u32, f64)],
+        space_trigrams: &[(u32, u32, f64)],
+        trigrams: &[(u32, u32, u32, f64)],
         text: &str,
         style: &TextStyle,
         max_width_px: Option<f64>,
@@ -617,6 +1357,8 @@ impl VendoredFontMetricsTextMeasurer {
                     entries,
                     default_em,
                     kern_pairs,
+                    space_trigrams,
+                    trigrams,
                     &line,
                     w,
                     font_size,
@@ -641,15 +1383,19 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
     }
 
     fn measure_svg_text_bbox_x(&self, text: &str, style: &TextStyle) -> (f64, f64) {
-        // NOTE: Mermaid's `<text>.getBBox()` can be asymmetric due to glyph overhangs, but a
-        // headless approximation derived from upstream `viewBox` deltas proved unstable across
-        // fixtures. Keep vendored font metrics deterministic by assuming a symmetric bbox.
-        //
-        // If we later add a reliable browser-backed measurement backend, we can re-enable an
-        // asymmetric model behind a feature flag without changing call sites.
-        let advance = self.measure(text, style).width.max(0.0);
-        let half = advance / 2.0;
-        (half, half)
+        let Some(table) = self.lookup_table(style) else {
+            return self.fallback.measure_svg_text_bbox_x(text, style);
+        };
+
+        let font_size = style.font_size.max(1.0);
+        let mut left: f64 = 0.0;
+        let mut right: f64 = 0.0;
+        for line in DeterministicTextMeasurer::normalized_text_lines(text) {
+            let (l, r) = Self::line_svg_bbox_extents_px(table, &line, font_size);
+            left = left.max(l);
+            right = right.max(r);
+        }
+        (left, right)
     }
 
     fn measure_wrapped(
@@ -672,12 +1418,6 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
             WrapMode::HtmlLike => 1.5,
         };
 
-        let scale = match wrap_mode {
-            WrapMode::HtmlLike => 1.0,
-            WrapMode::SvgLike => table.svg_scale.max(0.1),
-        };
-        let max_width_unscaled = max_width.map(|w| w / scale);
-
         // Mermaid HTML labels behave differently depending on whether the content "needs" wrapping:
         // - if the unwrapped line width exceeds the configured wrapping width, Mermaid constrains
         //   the element to `width=max_width` and lets HTML wrapping determine line breaks
@@ -689,38 +1429,67 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
         let raw_width_unscaled = if wrap_mode == WrapMode::HtmlLike {
             let mut raw_w: f64 = 0.0;
             for line in DeterministicTextMeasurer::normalized_text_lines(text) {
-                raw_w = raw_w.max(Self::line_width_px(
-                    table.entries,
-                    table.default_em.max(0.1),
-                    table.kern_pairs,
-                    &line,
-                    font_size,
-                ));
+                if let Some(em) = Self::lookup_html_override_em(table.html_overrides, line.as_str())
+                {
+                    raw_w = raw_w.max(em * font_size);
+                } else {
+                    raw_w = raw_w.max(Self::line_width_px(
+                        table.entries,
+                        table.default_em.max(0.1),
+                        table.kern_pairs,
+                        table.space_trigrams,
+                        table.trigrams,
+                        &line,
+                        font_size,
+                    ));
+                }
             }
             Some(raw_w)
         } else {
             None
         };
 
-        let lines = Self::wrap_text_lines_px(
-            table.entries,
-            table.default_em.max(0.1),
-            table.kern_pairs,
-            text,
-            style,
-            max_width_unscaled,
-            wrap_mode,
-        );
-
-        let mut width: f64 = 0.0;
-        for line in &lines {
-            width = width.max(Self::line_width_px(
+        let lines = match wrap_mode {
+            WrapMode::HtmlLike => Self::wrap_text_lines_px(
                 table.entries,
                 table.default_em.max(0.1),
                 table.kern_pairs,
-                line,
-                font_size,
-            ));
+                table.space_trigrams,
+                table.trigrams,
+                text,
+                style,
+                max_width,
+                wrap_mode,
+            ),
+            WrapMode::SvgLike => {
+                Self::wrap_text_lines_svg_bbox_px(table, text, max_width, font_size)
+            }
+        };
+
+        let mut width: f64 = 0.0;
+        match wrap_mode {
+            WrapMode::HtmlLike => {
+                for line in &lines {
+                    if let Some(em) = Self::lookup_html_override_em(table.html_overrides, line) {
+                        width = width.max(em * font_size);
+                    } else {
+                        width = width.max(Self::line_width_px(
+                            table.entries,
+                            table.default_em.max(0.1),
+                            table.kern_pairs,
+                            table.space_trigrams,
+                            table.trigrams,
+                            line,
+                            font_size,
+                        ));
+                    }
+                }
+            }
+            WrapMode::SvgLike => {
+                for line in &lines {
+                    width = width.max(Self::line_svg_bbox_width_px(table, line, font_size));
+                }
+            }
         }
 
         // Mermaid HTML labels use `max-width` and can visually overflow for long words, but their
@@ -741,10 +1510,23 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
                 width = width.min(w);
             }
         } else {
-            width *= scale;
         }
 
-        let height = lines.len() as f64 * font_size * line_height_factor;
+        let height = match wrap_mode {
+            WrapMode::HtmlLike => lines.len() as f64 * font_size * line_height_factor,
+            WrapMode::SvgLike => {
+                if lines.is_empty() {
+                    0.0
+                } else {
+                    // Mermaid's SVG `<text>.getBBox().height` behaves as "one taller first line"
+                    // plus 1.1em per additional wrapped line (observed in upstream fixtures at
+                    // Mermaid@11.12.2).
+                    let first_line_h = font_size * 1.1875;
+                    let additional = (lines.len().saturating_sub(1)) as f64 * font_size * 1.1;
+                    first_line_h + additional
+                }
+            }
+        };
         TextMetrics {
             width,
             height,

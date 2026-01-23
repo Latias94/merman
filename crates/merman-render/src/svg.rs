@@ -3526,22 +3526,22 @@ pub fn render_requirement_diagram_svg(
         let _ = write!(
             &mut out,
             "M{x1} {y1} C{cx0} {cy0} {cx1} {cy1} {x2} {y2} M{x1b} {y1b} C{cx0b} {cy0b} {cx1b} {cy1b} {x2b} {y2b}",
-            x1 = fmt(x1),
-            y1 = fmt(y1),
-            cx0 = fmt((x1 * 2.0 + x2) / 3.0),
-            cy0 = fmt((y1 * 2.0 + y2) / 3.0),
-            cx1 = fmt((x1 + x2 * 2.0) / 3.0),
-            cy1 = fmt((y1 + y2 * 2.0) / 3.0),
-            x2 = fmt(x2),
-            y2 = fmt(y2),
-            x1b = fmt(x1),
-            y1b = fmt(y1),
-            cx0b = fmt(cx1),
-            cy0b = fmt(cy1),
-            cx1b = fmt(cx1 + (x2 - x1) * 0.1),
-            cy1b = fmt(cy1 + (y2 - y1) * 0.1),
-            x2b = fmt(x2),
-            y2b = fmt(y2),
+            x1 = fmt_path(x1),
+            y1 = fmt_path(y1),
+            cx0 = fmt_path((x1 * 2.0 + x2) / 3.0),
+            cy0 = fmt_path((y1 * 2.0 + y2) / 3.0),
+            cx1 = fmt_path((x1 + x2 * 2.0) / 3.0),
+            cy1 = fmt_path((y1 + y2 * 2.0) / 3.0),
+            x2 = fmt_path(x2),
+            y2 = fmt_path(y2),
+            x1b = fmt_path(x1),
+            y1b = fmt_path(y1),
+            cx0b = fmt_path(cx1),
+            cy0b = fmt_path(cy1),
+            cx1b = fmt_path(cx1 + (x2 - x1) * 0.1),
+            cy1b = fmt_path(cy1 + (y2 - y1) * 0.1),
+            x2b = fmt_path(x2),
+            y2b = fmt_path(y2),
         );
         out
     }
@@ -3719,8 +3719,8 @@ pub fn render_requirement_diagram_svg(
         let class = format!("edge-thickness-normal edge-pattern-{pattern} relationshipLine");
 
         let d = curve_basis_path_d(&e.points);
-        let data_points = serde_json::to_string(&e.points).unwrap_or_else(|_| "[]".to_string());
-        let data_points_b64 = base64::engine::general_purpose::STANDARD.encode(data_points);
+        let data_points_b64 =
+            base64::engine::general_purpose::STANDARD.encode(json_stringify_points(&e.points));
 
         let marker_attr = if is_contains {
             format!(
@@ -8069,10 +8069,12 @@ pub fn render_mindmap_diagram_svg(
             },
             Pt { x: tx, y: ty },
         ];
-        let data_points = serde_json::to_string(&points)
-            .ok()
-            .map(|s| base64::engine::general_purpose::STANDARD.encode(s))
-            .unwrap_or_else(|| "W10=".to_string());
+        let points_for_data_points = points
+            .iter()
+            .map(|p| crate::model::LayoutPoint { x: p.x, y: p.y })
+            .collect::<Vec<_>>();
+        let data_points = base64::engine::general_purpose::STANDARD
+            .encode(json_stringify_points(&points_for_data_points));
         let class = format!(
             "edge-thickness-{} edge-pattern-solid {}",
             e.thickness.trim(),
@@ -9198,6 +9200,7 @@ pub fn render_flowchart_v2_svg(
             tx,
             ty,
             default_edge_interpolate_for_bbox,
+            edge_html_labels,
             e,
         ) else {
             continue;
@@ -9342,6 +9345,7 @@ pub fn render_flowchart_v2_svg(
         diagram_id: diagram_id.to_string(),
         tx,
         ty,
+        subgraph_title_half_margin: subgraph_title_y_shift,
         diagram_type: diagram_type.to_string(),
         measurer,
         config: merman_core::MermaidConfig::from_value(effective_config.clone()),
@@ -13020,14 +13024,14 @@ pub fn render_er_diagram_svg(
         fn rect_fill_path_d(x0: f64, y0: f64, x1: f64, y1: f64) -> String {
             format!(
                 "M{} {} L{} {} L{} {} L{} {}",
-                fmt(x0),
-                fmt(y0),
-                fmt(x1),
-                fmt(y0),
-                fmt(x1),
-                fmt(y1),
-                fmt(x0),
-                fmt(y1)
+                fmt_path(x0),
+                fmt_path(y0),
+                fmt_path(x1),
+                fmt_path(y0),
+                fmt_path(x1),
+                fmt_path(y1),
+                fmt_path(x0),
+                fmt_path(y1)
             )
         }
 
@@ -13038,14 +13042,14 @@ pub fn render_er_diagram_svg(
             let c2y = y0 + (y1 - y0) * 0.75;
             let d1 = format!(
                 "M{} {} C{} {}, {} {}, {} {}",
-                fmt(x0),
-                fmt(y0),
-                fmt(c1x),
-                fmt(c1y),
-                fmt(c2x),
-                fmt(c2y),
-                fmt(x1),
-                fmt(y1)
+                fmt_path(x0),
+                fmt_path(y0),
+                fmt_path(c1x),
+                fmt_path(c1y),
+                fmt_path(c2x),
+                fmt_path(c2y),
+                fmt_path(x1),
+                fmt_path(y1)
             );
             let c1x2 = x0 + (x1 - x0) * 0.35;
             let c1y2 = y0 + (y1 - y0) * 0.15;
@@ -13053,14 +13057,14 @@ pub fn render_er_diagram_svg(
             let c2y2 = y0 + (y1 - y0) * 0.85;
             let d2 = format!(
                 "M{} {} C{} {}, {} {}, {} {}",
-                fmt(x0),
-                fmt(y0),
-                fmt(c1x2),
-                fmt(c1y2),
-                fmt(c2x2),
-                fmt(c2y2),
-                fmt(x1),
-                fmt(y1)
+                fmt_path(x0),
+                fmt_path(y0),
+                fmt_path(c1x2),
+                fmt_path(c1y2),
+                fmt_path(c2x2),
+                fmt_path(c2y2),
+                fmt_path(x1),
+                fmt_path(y1)
             );
             format!("{d1} {d2}")
         }
@@ -13461,9 +13465,9 @@ fn curve_linear_path_d(points: &[crate::model::LayoutPoint]) -> String {
     let Some(first) = points.first() else {
         return out;
     };
-    let _ = write!(&mut out, "M{},{}", fmt(first.x), fmt(first.y));
+    let _ = write!(&mut out, "M{},{}", fmt_path(first.x), fmt_path(first.y));
     for p in points.iter().skip(1) {
-        let _ = write!(&mut out, "L{},{}", fmt(p.x), fmt(p.y));
+        let _ = write!(&mut out, "L{},{}", fmt_path(p.x), fmt_path(p.y));
     }
     out
 }
@@ -13475,10 +13479,10 @@ fn curve_step_after_path_d(points: &[crate::model::LayoutPoint]) -> String {
         return out;
     };
     let mut prev_y = first.y;
-    let _ = write!(&mut out, "M{},{}", fmt(first.x), fmt(first.y));
+    let _ = write!(&mut out, "M{},{}", fmt_path(first.x), fmt_path(first.y));
     for p in points.iter().skip(1) {
-        let _ = write!(&mut out, "L{},{}", fmt(p.x), fmt(prev_y));
-        let _ = write!(&mut out, "L{},{}", fmt(p.x), fmt(p.y));
+        let _ = write!(&mut out, "L{},{}", fmt_path(p.x), fmt_path(prev_y));
+        let _ = write!(&mut out, "L{},{}", fmt_path(p.x), fmt_path(p.y));
         prev_y = p.y;
     }
     out
@@ -13491,10 +13495,10 @@ fn curve_step_before_path_d(points: &[crate::model::LayoutPoint]) -> String {
         return out;
     };
     let mut prev_x = first.x;
-    let _ = write!(&mut out, "M{},{}", fmt(first.x), fmt(first.y));
+    let _ = write!(&mut out, "M{},{}", fmt_path(first.x), fmt_path(first.y));
     for p in points.iter().skip(1) {
-        let _ = write!(&mut out, "L{},{}", fmt(prev_x), fmt(p.y));
-        let _ = write!(&mut out, "L{},{}", fmt(p.x), fmt(p.y));
+        let _ = write!(&mut out, "L{},{}", fmt_path(prev_x), fmt_path(p.y));
+        let _ = write!(&mut out, "L{},{}", fmt_path(p.x), fmt_path(p.y));
         prev_x = p.x;
     }
     out
@@ -13506,13 +13510,13 @@ fn curve_step_path_d(points: &[crate::model::LayoutPoint]) -> String {
     let Some(first) = points.first() else {
         return out;
     };
-    let _ = write!(&mut out, "M{},{}", fmt(first.x), fmt(first.y));
+    let _ = write!(&mut out, "M{},{}", fmt_path(first.x), fmt_path(first.y));
     let mut prev = first;
     for p in points.iter().skip(1) {
         let mid_x = (prev.x + p.x) / 2.0;
-        let _ = write!(&mut out, "L{},{}", fmt(mid_x), fmt(prev.y));
-        let _ = write!(&mut out, "L{},{}", fmt(mid_x), fmt(p.y));
-        let _ = write!(&mut out, "L{},{}", fmt(p.x), fmt(p.y));
+        let _ = write!(&mut out, "L{},{}", fmt_path(mid_x), fmt_path(prev.y));
+        let _ = write!(&mut out, "L{},{}", fmt_path(mid_x), fmt_path(p.y));
+        let _ = write!(&mut out, "L{},{}", fmt_path(p.x), fmt_path(p.y));
         prev = p;
     }
     out
@@ -13554,12 +13558,12 @@ fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tension: f64) -> 
         let _ = write!(
             out,
             "C{},{},{},{},{},{}",
-            fmt(c1x),
-            fmt(c1y),
-            fmt(c2x),
-            fmt(c2y),
-            fmt(x2),
-            fmt(y2)
+            fmt_path(c1x),
+            fmt_path(c1y),
+            fmt_path(c2x),
+            fmt_path(c2y),
+            fmt_path(x2),
+            fmt_path(y2)
         );
     }
 
@@ -13569,7 +13573,7 @@ fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tension: f64) -> 
         match p {
             0 => {
                 p = 1;
-                let _ = write!(&mut out, "M{},{}", fmt(x), fmt(y));
+                let _ = write!(&mut out, "M{},{}", fmt_path(x), fmt_path(y));
             }
             1 => {
                 p = 2;
@@ -13595,7 +13599,7 @@ fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tension: f64) -> 
 
     match p {
         2 => {
-            let _ = write!(&mut out, "L{},{}", fmt(x2), fmt(y2));
+            let _ = write!(&mut out, "L{},{}", fmt_path(x2), fmt_path(y2));
         }
         3 => {
             cardinal_point(&mut out, k, x0, y0, x1, y1, x2, y2, x1, y1);
@@ -13621,16 +13625,16 @@ fn curve_monotone_path_d(points: &[crate::model::LayoutPoint], swap_xy: bool) ->
 
     fn emit_move_to(out: &mut String, x: f64, y: f64, swap_xy: bool) {
         if swap_xy {
-            let _ = write!(out, "M{},{}", fmt(y), fmt(x));
+            let _ = write!(out, "M{},{}", fmt_path(y), fmt_path(x));
         } else {
-            let _ = write!(out, "M{},{}", fmt(x), fmt(y));
+            let _ = write!(out, "M{},{}", fmt_path(x), fmt_path(y));
         }
     }
     fn emit_line_to(out: &mut String, x: f64, y: f64, swap_xy: bool) {
         if swap_xy {
-            let _ = write!(out, "L{},{}", fmt(y), fmt(x));
+            let _ = write!(out, "L{},{}", fmt_path(y), fmt_path(x));
         } else {
-            let _ = write!(out, "L{},{}", fmt(x), fmt(y));
+            let _ = write!(out, "L{},{}", fmt_path(x), fmt_path(y));
         }
     }
     fn emit_cubic_to(
@@ -13647,23 +13651,23 @@ fn curve_monotone_path_d(points: &[crate::model::LayoutPoint], swap_xy: bool) ->
             let _ = write!(
                 out,
                 "C{},{},{},{},{},{}",
-                fmt(y1),
-                fmt(x1),
-                fmt(y2),
-                fmt(x2),
-                fmt(y),
-                fmt(x)
+                fmt_path(y1),
+                fmt_path(x1),
+                fmt_path(y2),
+                fmt_path(x2),
+                fmt_path(y),
+                fmt_path(x)
             );
         } else {
             let _ = write!(
                 out,
                 "C{},{},{},{},{},{}",
-                fmt(x1),
-                fmt(y1),
-                fmt(x2),
-                fmt(y2),
-                fmt(x),
-                fmt(y)
+                fmt_path(x1),
+                fmt_path(y1),
+                fmt_path(x2),
+                fmt_path(y2),
+                fmt_path(x),
+                fmt_path(y)
             );
         }
     }
@@ -13816,12 +13820,12 @@ fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {
         let _ = write!(
             out,
             "C{},{},{},{},{},{}",
-            fmt(c1x),
-            fmt(c1y),
-            fmt(c2x),
-            fmt(c2y),
-            fmt(ex),
-            fmt(ey)
+            fmt_path(c1x),
+            fmt_path(c1y),
+            fmt_path(c2x),
+            fmt_path(c2y),
+            fmt_path(ex),
+            fmt_path(ey)
         );
     }
 
@@ -13831,7 +13835,7 @@ fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {
         match p {
             0 => {
                 p = 1;
-                let _ = write!(&mut out, "M{},{}", fmt(x), fmt(y));
+                let _ = write!(&mut out, "M{},{}", fmt_path(x), fmt_path(y));
             }
             1 => {
                 p = 2;
@@ -13840,7 +13844,7 @@ fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {
                 p = 3;
                 let lx = (5.0 * x0 + x1) / 6.0;
                 let ly = (5.0 * y0 + y1) / 6.0;
-                let _ = write!(&mut out, "L{},{}", fmt(lx), fmt(ly));
+                let _ = write!(&mut out, "L{},{}", fmt_path(lx), fmt_path(ly));
                 basis_point(&mut out, x0, y0, x1, y1, x, y);
             }
             _ => {
@@ -13856,10 +13860,10 @@ fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {
     match p {
         3 => {
             basis_point(&mut out, x0, y0, x1, y1, x1, y1);
-            let _ = write!(&mut out, "L{},{}", fmt(x1), fmt(y1));
+            let _ = write!(&mut out, "L{},{}", fmt_path(x1), fmt_path(y1));
         }
         2 => {
-            let _ = write!(&mut out, "L{},{}", fmt(x1), fmt(y1));
+            let _ = write!(&mut out, "L{},{}", fmt_path(x1), fmt_path(y1));
         }
         _ => {}
     }
@@ -13885,6 +13889,29 @@ fn render_node(out: &mut String, n: &LayoutNode) {
         fmt(n.y),
         escape_xml(&n.id)
     );
+}
+
+fn fmt_debug_3dp(v: f64) -> String {
+    if !v.is_finite() {
+        return "0".to_string();
+    }
+    if v.abs() < 0.0005 {
+        return "0".to_string();
+    }
+    let mut r = (v * 1000.0).round() / 1000.0;
+    if r.abs() < 0.0005 {
+        r = 0.0;
+    }
+    let mut s = format!("{r:.3}");
+    if s.contains('.') {
+        while s.ends_with('0') {
+            s.pop();
+        }
+        if s.ends_with('.') {
+            s.pop();
+        }
+    }
+    if s == "-0" { "0".to_string() } else { s }
 }
 
 fn render_state_node(out: &mut String, n: &LayoutNode) {
@@ -13928,8 +13955,8 @@ fn render_cluster(out: &mut String, c: &LayoutCluster, include_markers: bool) {
         out,
         r#"<g id="cluster-{}" data-diff="{}" data-offset-y="{}">"#,
         escape_attr(&c.id),
-        fmt(c.diff),
-        fmt(c.offset_y)
+        fmt_debug_3dp(c.diff),
+        fmt_debug_3dp(c.offset_y)
     );
     let _ = write!(
         out,
@@ -14575,18 +14602,38 @@ pub fn render_sankey_diagram_svg(
 }
 
 fn fmt(v: f64) -> String {
+    // Match how Mermaid/D3 generally stringify numbers for SVG attributes:
+    // use a round-trippable decimal form (similar to JS `Number#toString()`),
+    // but avoid `-0` and tiny float noise from our own calculations.
+    if !v.is_finite() {
+        return "0".to_string();
+    }
+
+    let mut v = if v.abs() < 1e-9 { 0.0 } else { v };
+    let nearest = v.round();
+    if (v - nearest).abs() < 1e-6 {
+        v = nearest;
+    }
+    let s = v.to_string();
+    if s == "-0" { "0".to_string() } else { s }
+}
+
+fn fmt_path(v: f64) -> String {
+    // D3's `d3-path` defaults to 3 fractional digits when stringifying path commands.
+    // D3 uses `Math.round(x * 1000) / 1000` (ties half-up, including for negatives).
     if !v.is_finite() {
         return "0".to_string();
     }
     if v.abs() < 0.0005 {
         return "0".to_string();
     }
-    // Mermaid's upstream SVG tends to use integers when possible, and only includes decimals when
-    // needed (e.g. `32.5`). Match that style to make DOM/XML diffs smaller.
-    let mut r = (v * 1000.0).round() / 1000.0;
+
+    let scaled = v * 1000.0;
+    let mut r = (scaled + 0.5).floor() / 1000.0;
     if r.abs() < 0.0005 {
         r = 0.0;
     }
+
     let mut s = format!("{r:.3}");
     if s.contains('.') {
         while s.ends_with('0') {
@@ -14597,6 +14644,25 @@ fn fmt(v: f64) -> String {
         }
     }
     if s == "-0" { "0".to_string() } else { s }
+}
+
+fn json_stringify_points(points: &[crate::model::LayoutPoint]) -> String {
+    // Mermaid encodes `data-points` as Base64(JSON.stringify(points)).
+    // JS `JSON.stringify` prints whole numbers without a `.0` suffix.
+    let mut out = String::new();
+    out.push('[');
+    for (i, p) in points.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(r#"{"x":"#);
+        out.push_str(&fmt(p.x));
+        out.push_str(r#","y":"#);
+        out.push_str(&fmt(p.y));
+        out.push('}');
+    }
+    out.push(']');
+    out
 }
 
 fn fmt_max_width_px(v: f64) -> String {
@@ -14652,6 +14718,27 @@ fn fmt_max_width_px(v: f64) -> String {
     if s == "-0" { "0".to_string() } else { s }
 }
 
+fn quantize_px_1_256(v: f64) -> f64 {
+    if !v.is_finite() {
+        return 0.0;
+    }
+    let sign = if v.is_sign_negative() { -1.0 } else { 1.0 };
+    let ax = v.abs();
+    let x = ax * 256.0;
+    let f = x.floor();
+    let frac = x - f;
+    let i = if frac < 0.5 {
+        f
+    } else if frac > 0.5 {
+        f + 1.0
+    } else {
+        let fi = f as i64;
+        if fi % 2 == 0 { f } else { f + 1.0 }
+    };
+    let out = sign * (i / 256.0);
+    if out == -0.0 { 0.0 } else { out }
+}
+
 fn escape_xml(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for ch in text.chars() {
@@ -14677,6 +14764,7 @@ struct FlowchartRenderCtx<'a> {
     diagram_type: String,
     tx: f64,
     ty: f64,
+    subgraph_title_half_margin: f64,
     measurer: &'a dyn TextMeasurer,
     config: merman_core::MermaidConfig,
     node_html_labels: bool,
@@ -15207,19 +15295,34 @@ fn render_flowchart_root(
     const ROOT_MARGIN_PX: f64 = 8.0;
     let (origin_x, origin_y, transform_attr) = if let Some(cid) = cluster_id {
         if let Some(cluster) = ctx.layout_clusters_by_id.get(cid) {
-            // Mermaid's cluster-node positioning uses `node.y` (post-shift) as the reference for
-            // the `.root` group transform, while our `LayoutCluster.y` tracks the rendered box
-            // center. With `flowchart.subGraphTitleMargin`, Mermaid effectively offsets the cluster
-            // node center by `subGraphTitleTotalMargin/2` relative to the box center.
-            let cluster_y_shift = (cluster.title_margin_top + cluster.title_margin_bottom) / 2.0;
             let abs_left = (cluster.x - cluster.width / 2.0) + ctx.tx - ROOT_MARGIN_PX;
-            let abs_top =
-                (cluster.y + cluster_y_shift - cluster.height / 2.0) + ctx.ty - ROOT_MARGIN_PX;
+            let half_title_margin = (cluster.title_margin_top + cluster.title_margin_bottom) / 2.0;
+
+            // Mermaid's recursive flowchart renderer positions `<g class="root">` using the
+            // clusterNode placeholder geometry, but the child graph's internal coordinate system
+            // still uses the "content" origin (which includes the half-title-margin shift).
+            //
+            // For nested recursive roots, applying the half-title-margin shift to the outer
+            // transform double-counts it. Keep two distinct origins:
+            // - `abs_top_transform`: used for the `<g class="root" transform="...">`
+            // - `abs_top_content`: used as the origin for rendering children inside this root
+            let is_top_level_root = parent_origin_x.abs() < 1e-9 && parent_origin_y.abs() < 1e-9;
+            let abs_top_transform = (cluster.y
+                + if is_top_level_root {
+                    half_title_margin
+                } else {
+                    0.0
+                }
+                - cluster.height / 2.0)
+                + ctx.ty
+                - ROOT_MARGIN_PX;
+            let abs_top_content =
+                (cluster.y + half_title_margin - cluster.height / 2.0) + ctx.ty - ROOT_MARGIN_PX;
             let rel_x = abs_left - parent_origin_x;
-            let rel_y = abs_top - parent_origin_y;
+            let rel_y = abs_top_transform - parent_origin_y;
             (
                 abs_left,
-                abs_top,
+                abs_top_content,
                 format!(r#" transform="translate({}, {})""#, fmt(rel_x), fmt(rel_y)),
             )
         } else {
@@ -15235,6 +15338,12 @@ fn render_flowchart_root(
     };
 
     let _ = write!(out, r#"<g class="root"{}>"#, transform_attr);
+
+    let content_origin_y = if cluster_id.is_none() {
+        origin_y - ctx.subgraph_title_half_margin
+    } else {
+        origin_y
+    };
 
     let mut clusters_to_draw: Vec<&LayoutCluster> = Vec::new();
     if let Some(cid) = cluster_id {
@@ -15274,7 +15383,7 @@ fn render_flowchart_root(
     } else {
         out.push_str(r#"<g class="clusters">"#);
         for cluster in clusters_to_draw {
-            render_flowchart_cluster(out, ctx, cluster, origin_x, origin_y);
+            render_flowchart_cluster(out, ctx, cluster, origin_x, content_origin_y);
         }
         out.push_str("</g>");
     }
@@ -15285,7 +15394,7 @@ fn render_flowchart_root(
     } else {
         out.push_str(r#"<g class="edgePaths">"#);
         for e in &edges {
-            render_flowchart_edge_path(out, ctx, e, origin_x, origin_y);
+            render_flowchart_edge_path(out, ctx, e, origin_x, content_origin_y);
         }
         out.push_str("</g>");
     }
@@ -15302,14 +15411,14 @@ fn render_flowchart_root(
             for e in &edges {
                 let label_text = e.label.as_deref().unwrap_or_default();
                 let label_type = e.label_type.as_deref().unwrap_or("text");
-                let label_plain = flowchart_label_plain_text(label_text, label_type);
+                let label_plain = flowchart_label_plain_text(label_text, label_type, false);
                 if label_plain.trim().is_empty() {
                     out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
                 }
             }
         }
         for e in &edges {
-            render_flowchart_edge_label(out, ctx, e, origin_x, origin_y);
+            render_flowchart_edge_label(out, ctx, e, origin_x, content_origin_y);
         }
         out.push_str("</g>");
     }
@@ -15323,10 +15432,139 @@ fn render_flowchart_root(
 
     let child_nodes = flowchart_root_children_nodes(ctx, cluster_id);
     for node_id in &child_nodes {
-        render_flowchart_node(out, ctx, node_id, origin_x, origin_y);
+        render_flowchart_node(out, ctx, node_id, origin_x, content_origin_y);
     }
 
     out.push_str("</g></g>");
+}
+
+fn flowchart_wrap_svg_text_lines(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    style: &crate::text::TextStyle,
+    max_width_px: Option<f64>,
+    break_long_words: bool,
+) -> Vec<String> {
+    const EPS_PX: f64 = 0.125;
+    let max_width_px = max_width_px.filter(|w| w.is_finite() && *w > 0.0);
+
+    fn measure_w_px(measurer: &dyn TextMeasurer, style: &crate::text::TextStyle, s: &str) -> f64 {
+        measurer.measure(s, style).width
+    }
+
+    fn split_token_to_width_px(
+        measurer: &dyn TextMeasurer,
+        style: &crate::text::TextStyle,
+        tok: &str,
+        max_width_px: f64,
+    ) -> (String, String) {
+        if max_width_px <= 0.0 {
+            return (tok.to_string(), String::new());
+        }
+        let chars = tok.chars().collect::<Vec<_>>();
+        if chars.is_empty() {
+            return (String::new(), String::new());
+        }
+
+        let mut split_at = 1usize;
+        for i in 1..=chars.len() {
+            let head = chars[..i].iter().collect::<String>();
+            let w = measure_w_px(measurer, style, &head);
+            if w.is_finite() && w <= max_width_px + EPS_PX {
+                split_at = i;
+            } else {
+                break;
+            }
+        }
+        let head = chars[..split_at].iter().collect::<String>();
+        let tail = chars[split_at..].iter().collect::<String>();
+        (head, tail)
+    }
+
+    fn wrap_line_to_width_px(
+        measurer: &dyn TextMeasurer,
+        style: &crate::text::TextStyle,
+        line: &str,
+        max_width_px: f64,
+        break_long_words: bool,
+    ) -> Vec<String> {
+        let mut tokens = std::collections::VecDeque::from(
+            crate::text::DeterministicTextMeasurer::split_line_to_words(line),
+        );
+        let mut out: Vec<String> = Vec::new();
+        let mut cur = String::new();
+
+        while let Some(tok) = tokens.pop_front() {
+            if cur.is_empty() && tok == " " {
+                continue;
+            }
+
+            let candidate = format!("{cur}{tok}");
+            let candidate_trimmed = candidate.trim_end();
+            if measure_w_px(measurer, style, candidate_trimmed) <= max_width_px + EPS_PX {
+                cur = candidate;
+                continue;
+            }
+
+            if !cur.trim().is_empty() {
+                out.push(cur.trim_end().to_string());
+                cur.clear();
+                tokens.push_front(tok);
+                continue;
+            }
+
+            if tok == " " {
+                continue;
+            }
+
+            if measure_w_px(measurer, style, tok.as_str()) <= max_width_px + EPS_PX {
+                cur = tok;
+                continue;
+            }
+
+            if !break_long_words {
+                out.push(tok);
+                continue;
+            }
+
+            let (head, tail) = split_token_to_width_px(measurer, style, &tok, max_width_px);
+            out.push(head);
+            if !tail.is_empty() {
+                tokens.push_front(tail);
+            }
+        }
+
+        if !cur.trim().is_empty() {
+            out.push(cur.trim_end().to_string());
+        }
+
+        if out.is_empty() {
+            vec!["".to_string()]
+        } else {
+            out
+        }
+    }
+
+    let mut lines = Vec::new();
+    for line in crate::text::DeterministicTextMeasurer::normalized_text_lines(text) {
+        if let Some(w) = max_width_px {
+            lines.extend(wrap_line_to_width_px(
+                measurer,
+                style,
+                &line,
+                w,
+                break_long_words,
+            ));
+        } else {
+            lines.push(line);
+        }
+    }
+
+    if lines.is_empty() {
+        vec!["".to_string()]
+    } else {
+        lines
+    }
 }
 
 fn render_flowchart_cluster(
@@ -15349,8 +15587,8 @@ fn render_flowchart_cluster(
     let rect_h = cluster.height.max(1.0);
     let label_w = cluster.title_label.width.max(0.0);
     let label_h = cluster.title_label.height.max(0.0);
-    let label_left = left + rect_w / 2.0 - label_w / 2.0;
-    let label_top = top + cluster.title_margin_top.max(0.0);
+    let label_left = quantize_px_1_256(left + rect_w / 2.0 - label_w / 2.0);
+    let label_top = quantize_px_1_256(top + cluster.title_margin_top.max(0.0));
 
     let label_type = sg.label_type.as_deref().unwrap_or("text");
 
@@ -15371,14 +15609,15 @@ fn render_flowchart_cluster(
     class_attr.push_str("cluster");
 
     if !ctx.node_html_labels {
-        let title_text = flowchart_label_plain_text(&cluster.title, label_type);
-        let title_lines = crate::text::wrap_text_lines_px(
+        let title_text = flowchart_label_plain_text(&cluster.title, label_type, false);
+        let wrapped_title_text = flowchart_wrap_svg_text_lines(
+            ctx.measurer,
             &title_text,
             &ctx.text_style,
             Some(200.0),
-            crate::text::WrapMode::SvgLike,
-        );
-        let wrapped_title_text = title_lines.join("\n");
+            true,
+        )
+        .join("\n");
         let _ = write!(
             out,
             r#"<g class="{}" id="{}" data-look="classic"><rect style="" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><g><rect class="background" style="stroke: none"/>"#,
@@ -15453,6 +15692,7 @@ fn flowchart_edge_path_d_for_bbox(
     translate_x: f64,
     translate_y: f64,
     default_edge_interpolate: &str,
+    edge_html_labels: bool,
     edge: &crate::flowchart::FlowEdge,
 ) -> Option<String> {
     let le = layout_edges_by_id.get(&edge.id)?;
@@ -15670,7 +15910,7 @@ fn flowchart_edge_path_d_for_bbox(
 
     let label_text = edge.label.as_deref().unwrap_or_default();
     let label_type = edge.label_type.as_deref().unwrap_or("text");
-    let label_text_plain = flowchart_label_plain_text(label_text, label_type);
+    let label_text_plain = flowchart_label_plain_text(label_text, label_type, edge_html_labels);
     let has_label_text = !label_text_plain.trim().is_empty();
     let is_cluster_edge = le.to_cluster.is_some() || le.from_cluster.is_some();
 
@@ -16308,11 +16548,188 @@ fn render_flowchart_edge_path(
     }
 
     let is_cyclic_special = edge.id.contains("-cyclic-special-");
-    let local_points = dedup_consecutive_points(&local_points);
-    let mut points_for_render = local_points.clone();
+    let base_points = dedup_consecutive_points(&local_points);
+
+    fn is_rounded_intersect_shift_shape(layout_shape: Option<&str>) -> bool {
+        matches!(layout_shape, Some("roundedRect" | "rounded"))
+    }
+
+    fn intersect_rect(
+        node: &BoundaryNode,
+        point: &crate::model::LayoutPoint,
+    ) -> crate::model::LayoutPoint {
+        let x = node.x;
+        let y = node.y;
+        let dx = point.x - x;
+        let dy = point.y - y;
+        let mut w = node.width / 2.0;
+        let mut h = node.height / 2.0;
+
+        let (sx, sy) = if dy.abs() * w > dx.abs() * h {
+            if dy < 0.0 {
+                h = -h;
+            }
+            let sx = if dy == 0.0 { 0.0 } else { (h * dx) / dy };
+            (sx, h)
+        } else {
+            if dx < 0.0 {
+                w = -w;
+            }
+            let sy = if dx == 0.0 { 0.0 } else { (w * dy) / dx };
+            (w, sy)
+        };
+
+        crate::model::LayoutPoint {
+            x: x + sx,
+            y: y + sy,
+        }
+    }
+
+    fn intersect_circle(
+        node: &BoundaryNode,
+        point: &crate::model::LayoutPoint,
+    ) -> crate::model::LayoutPoint {
+        let dx = point.x - node.x;
+        let dy = point.y - node.y;
+        let dist = (dx * dx + dy * dy).sqrt();
+        if dist <= 1e-12 {
+            return crate::model::LayoutPoint {
+                x: node.x,
+                y: node.y,
+            };
+        }
+        let r = (node.width.min(node.height) / 2.0).max(0.0);
+        crate::model::LayoutPoint {
+            x: node.x + dx / dist * r,
+            y: node.y + dy / dist * r,
+        }
+    }
+
+    fn intersect_diamond(
+        node: &BoundaryNode,
+        point: &crate::model::LayoutPoint,
+    ) -> crate::model::LayoutPoint {
+        let vx = point.x - node.x;
+        let vy = point.y - node.y;
+        if !(vx.is_finite() && vy.is_finite()) {
+            return crate::model::LayoutPoint {
+                x: node.x,
+                y: node.y,
+            };
+        }
+        if vx.abs() <= 1e-12 && vy.abs() <= 1e-12 {
+            return crate::model::LayoutPoint {
+                x: node.x,
+                y: node.y,
+            };
+        }
+        let hw = (node.width / 2.0).max(1e-9);
+        let hh = (node.height / 2.0).max(1e-9);
+        let denom = vx.abs() / hw + vy.abs() / hh;
+        if !(denom.is_finite() && denom > 0.0) {
+            return crate::model::LayoutPoint {
+                x: node.x,
+                y: node.y,
+            };
+        }
+        let t = 1.0 / denom;
+        crate::model::LayoutPoint {
+            x: node.x + vx * t,
+            y: node.y + vy * t,
+        }
+    }
+
+    fn intersect_for_layout_shape(
+        node: &BoundaryNode,
+        layout_shape: Option<&str>,
+        point: &crate::model::LayoutPoint,
+    ) -> crate::model::LayoutPoint {
+        match layout_shape {
+            Some("circle") => intersect_circle(node, point),
+            Some("diamond") => intersect_diamond(node, point),
+            _ => intersect_rect(node, point),
+        }
+    }
+
+    fn boundary_for_node(
+        ctx: &FlowchartRenderCtx<'_>,
+        node_id: &str,
+        origin_x: f64,
+        origin_y: f64,
+    ) -> Option<BoundaryNode> {
+        let n = ctx.layout_nodes_by_id.get(node_id)?;
+        Some(BoundaryNode {
+            x: n.x + ctx.tx - origin_x,
+            y: n.y + ctx.ty - origin_y,
+            width: n.width,
+            height: n.height,
+        })
+    }
+
+    let mut points_after_intersect = base_points.clone();
+    if base_points.len() >= 3 {
+        let tail_shape = ctx
+            .nodes_by_id
+            .get(edge.from.as_str())
+            .and_then(|n| n.layout_shape.as_deref());
+        let head_shape = ctx
+            .nodes_by_id
+            .get(edge.to.as_str())
+            .and_then(|n| n.layout_shape.as_deref());
+        if let (Some(tail), Some(head)) = (
+            boundary_for_node(ctx, edge.from.as_str(), origin_x, origin_y),
+            boundary_for_node(ctx, edge.to.as_str(), origin_x, origin_y),
+        ) {
+            let mut interior: Vec<crate::model::LayoutPoint> =
+                base_points[1..base_points.len() - 1].to_vec();
+            if !interior.is_empty() {
+                fn force_intersect(layout_shape: Option<&str>) -> bool {
+                    matches!(
+                        layout_shape,
+                        Some("circle" | "diamond" | "roundedRect" | "rounded")
+                    )
+                }
+
+                let mut start = base_points[0].clone();
+                let mut end = base_points[base_points.len() - 1].clone();
+
+                let start_is_center =
+                    (start.x - tail.x).abs() < 1e-6 && (start.y - tail.y).abs() < 1e-6;
+                let end_is_center = (end.x - head.x).abs() < 1e-6 && (end.y - head.y).abs() < 1e-6;
+
+                if start_is_center || force_intersect(tail_shape) {
+                    start = intersect_for_layout_shape(&tail, tail_shape, &interior[0]);
+                    if is_rounded_intersect_shift_shape(tail_shape) {
+                        start.x += 0.5;
+                        start.y += 0.5;
+                    }
+                }
+                if end_is_center || force_intersect(head_shape) {
+                    end = intersect_for_layout_shape(
+                        &head,
+                        head_shape,
+                        &interior[interior.len() - 1],
+                    );
+                    if is_rounded_intersect_shift_shape(head_shape) {
+                        end.x += 0.5;
+                        end.y += 0.5;
+                    }
+                }
+
+                let mut out = Vec::with_capacity(interior.len() + 2);
+                out.push(start);
+                out.append(&mut interior);
+                out.push(end);
+                points_after_intersect = out;
+            }
+        }
+    }
+
+    let points_for_data_points = points_after_intersect.clone();
+    let mut points_for_render = points_after_intersect;
     if let Some(tc) = le.to_cluster.as_deref() {
         if let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y) {
-            points_for_render = cut_path_at_intersect(&points_for_render, &boundary);
+            points_for_render = cut_path_at_intersect(&base_points, &boundary);
         }
     }
     if let Some(fc) = le.from_cluster.as_deref() {
@@ -16336,7 +16753,7 @@ fn render_flowchart_edge_path(
 
     let label_text = edge.label.as_deref().unwrap_or_default();
     let label_type = edge.label_type.as_deref().unwrap_or("text");
-    let label_text_plain = flowchart_label_plain_text(label_text, label_type);
+    let label_text_plain = flowchart_label_plain_text(label_text, label_type, ctx.edge_html_labels);
     let has_label_text = !label_text_plain.trim().is_empty();
     let is_cluster_edge = le.to_cluster.is_some() || le.from_cluster.is_some();
 
@@ -16810,8 +17227,8 @@ fn render_flowchart_edge_path(
         _ => curve_basis_path_d(&line_data),
     };
 
-    let points_json = serde_json::to_string(&local_points).unwrap_or_else(|_| "[]".to_string());
-    let points_b64 = base64::engine::general_purpose::STANDARD.encode(points_json);
+    let points_b64 = base64::engine::general_purpose::STANDARD
+        .encode(json_stringify_points(&points_for_data_points));
 
     let mut merged_styles: Vec<String> = Vec::new();
     merged_styles.extend(ctx.default_edge_style.iter().cloned());
@@ -16873,7 +17290,7 @@ fn render_flowchart_edge_label(
 ) {
     let label_text = edge.label.as_deref().unwrap_or_default();
     let label_type = edge.label_type.as_deref().unwrap_or("text");
-    let label_text_plain = flowchart_label_plain_text(label_text, label_type);
+    let label_text_plain = flowchart_label_plain_text(label_text, label_type, ctx.edge_html_labels);
 
     fn fallback_midpoint(
         le: &crate::model::LayoutEdge,
@@ -16911,7 +17328,15 @@ fn render_flowchart_edge_label(
                         fmt(w),
                         fmt(h)
                     );
-                    write_flowchart_svg_text(out, &label_text_plain, true);
+                    let wrapped = flowchart_wrap_svg_text_lines(
+                        ctx.measurer,
+                        &label_text_plain,
+                        &ctx.text_style,
+                        Some(ctx.wrapping_width),
+                        true,
+                    )
+                    .join("\n");
+                    write_flowchart_svg_text(out, &wrapped, true);
                     out.push_str("</g></g></g>");
                     return;
                 }
@@ -16938,7 +17363,15 @@ fn render_flowchart_edge_label(
                     fmt(w),
                     fmt(h)
                 );
-                write_flowchart_svg_text(out, &label_text_plain, true);
+                let wrapped = flowchart_wrap_svg_text_lines(
+                    ctx.measurer,
+                    &label_text_plain,
+                    &ctx.text_style,
+                    Some(ctx.wrapping_width),
+                    true,
+                )
+                .join("\n");
+                write_flowchart_svg_text(out, &wrapped, true);
                 out.push_str("</g></g></g>");
                 return;
             }
@@ -16996,6 +17429,20 @@ fn render_flowchart_edge_label(
             let (x, y) = fallback_midpoint(le, ctx, origin_x, origin_y);
             let metrics = if label_type == "markdown" {
                 crate::text::measure_markdown_with_flowchart_bold_deltas(
+                    ctx.measurer,
+                    label_text,
+                    &ctx.text_style,
+                    Some(ctx.wrapping_width),
+                    ctx.edge_wrap_mode,
+                )
+            } else if {
+                let lower = label_text.to_ascii_lowercase();
+                lower.contains("<strong")
+                    || lower.contains("<b")
+                    || lower.contains("<em")
+                    || lower.contains("<i")
+            } {
+                crate::text::measure_html_with_flowchart_bold_deltas(
                     ctx.measurer,
                     label_text,
                     &ctx.text_style,
@@ -17442,6 +17889,7 @@ fn render_flowchart_node(
         stroke: &str,
         stroke_width: f32,
         stroke_dasharray: &str,
+        seed: u64,
     ) -> Option<(String, String)> {
         let fill = parse_hex_color_to_srgba(fill)?;
         let stroke = parse_hex_color_to_srgba(stroke)?;
@@ -17456,7 +17904,7 @@ fn render_flowchart_node(
             _ => (0.0, 0.0),
         };
         let base_options = roughr::core::OptionsBuilder::default()
-            .seed(0_u64)
+            .seed(seed)
             .roughness(0.0)
             .bowing(1.0)
             .fill(fill)
@@ -17472,89 +17920,110 @@ fn render_flowchart_node(
             .build()
             .ok()?;
 
+        // Rough.js' generator emits path data via `opsToPath(...)`, which uses `Number.toString()`
+        // precision (not Mermaid's usual 3-decimal `fmt(...)` formatting). Avoid quantization here.
         fn ops_to_svg_path_d(opset: &roughr::core::OpSet<f64>) -> String {
             let mut out = String::new();
             for op in &opset.ops {
                 match op.op {
                     roughr::core::OpType::Move => {
-                        let _ = write!(&mut out, "M{} {} ", fmt(op.data[0]), fmt(op.data[1]));
+                        let _ = write!(
+                            &mut out,
+                            "M{} {} ",
+                            op.data[0].to_string(),
+                            op.data[1].to_string()
+                        );
                     }
                     roughr::core::OpType::BCurveTo => {
                         let _ = write!(
                             &mut out,
                             "C{} {}, {} {}, {} {} ",
-                            fmt(op.data[0]),
-                            fmt(op.data[1]),
-                            fmt(op.data[2]),
-                            fmt(op.data[3]),
-                            fmt(op.data[4]),
-                            fmt(op.data[5])
+                            op.data[0].to_string(),
+                            op.data[1].to_string(),
+                            op.data[2].to_string(),
+                            op.data[3].to_string(),
+                            op.data[4].to_string(),
+                            op.data[5].to_string()
                         );
                     }
                     roughr::core::OpType::LineTo => {
-                        let _ = write!(&mut out, "L{} {} ", fmt(op.data[0]), fmt(op.data[1]));
+                        let _ = write!(
+                            &mut out,
+                            "L{} {} ",
+                            op.data[0].to_string(),
+                            op.data[1].to_string()
+                        );
                     }
                 }
             }
             out.trim_end().to_string()
         }
 
-        // Rough.js `generator.path(...)` has a special-case for solid fill:
-        // if `pointsOnPath` yields a single point-set, it builds the fill path from `svgPath`
-        // with `disableMultiStroke: true` and then removes subsequent `move` ops.
+        // Rough.js `generator.path(...)`:
+        // - `sets = pointsOnPath(d, 1, distance)`
+        // - for solid fill, if `sets.length === 1`: fill path from `svgPath(...)` with
+        //   `disableMultiStroke: true`, then drop subsequent `move` ops (`_mergedShape`).
+        // - otherwise for solid fill: `solidFillPolygon(sets, o)`
+        let distance = (1.0 + base_options.roughness.unwrap_or(1.0) as f64) / 2.0;
         let sets = roughr::points_on_path::points_on_path::<f64>(
             svg_path_data.to_string(),
             Some(1.0),
-            Some(0.5),
+            Some(distance),
         );
 
-        let mut fill_opts = base_options.clone();
-        fill_opts.disable_multi_stroke = Some(true);
+        // Rough.js `generator.path(...)` builds the stroke opset first (`shape = svgPath(d, o)`),
+        // which initializes and advances `o.randomizer`. For the solid-fill special-case
+        // (`sets.length === 1`), it then calls `svgPath(d, Object.assign({}, o, ...))`, which
+        // copies the *existing* `randomizer` by reference and therefore continues the PRNG stream.
+        //
+        // In headless Rust we model that by emitting the stroke opset first (advancing the
+        // in-options PRNG state), then cloning the mutated options for the fill pass.
+        let mut stroke_opts = base_options.clone();
+        let stroke_opset =
+            roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut stroke_opts);
 
         let fill_opset = if sets.len() == 1 {
+            let mut fill_opts = stroke_opts.clone();
+            fill_opts.disable_multi_stroke = Some(true);
+            let base_rough = fill_opts.roughness.unwrap_or(1.0);
+            fill_opts.roughness = Some(if base_rough != 0.0 {
+                base_rough + 0.8
+            } else {
+                0.0
+            });
+
             let mut opset =
                 roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut fill_opts);
-            let mut merged: Vec<roughr::core::Op<f64>> = Vec::new();
-            for (idx, op) in opset.ops.iter().cloned().enumerate() {
-                if idx != 0 && op.op == roughr::core::OpType::Move {
-                    continue;
-                }
-                merged.push(op);
-            }
-            opset.ops = merged;
+            opset.ops = opset
+                .ops
+                .iter()
+                .cloned()
+                .enumerate()
+                .filter_map(|(idx, op)| {
+                    if idx != 0 && op.op == roughr::core::OpType::Move {
+                        return None;
+                    }
+                    Some(op)
+                })
+                .collect();
             opset
         } else {
+            let mut fill_opts = stroke_opts.clone();
             roughr::renderer::solid_fill_polygon(&sets, &mut fill_opts)
         };
-
-        let mut stroke_opts = base_options.clone();
-        let mut stroke_opset =
-            roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut stroke_opts);
-        // Roughr emits a `Move` op for SVG `M` segments, while Rough.js treats `M` as cursor state
-        // and does not emit an output op. Drop those by removing `Move` ops that are immediately
-        // followed by another `Move` (the real stroke for a segment starts with its own `Move`).
-        stroke_opset.ops = stroke_opset
-            .ops
-            .iter()
-            .cloned()
-            .enumerate()
-            .filter_map(|(idx, op)| {
-                if op.op == roughr::core::OpType::Move {
-                    if let Some(next) = stroke_opset.ops.get(idx + 1) {
-                        if next.op == roughr::core::OpType::Move {
-                            return None;
-                        }
-                    }
-                }
-                Some(op)
-            })
-            .collect();
 
         Some((
             ops_to_svg_path_d(&fill_opset),
             ops_to_svg_path_d(&stroke_opset),
         ))
     }
+
+    let hand_drawn_seed = ctx
+        .config
+        .as_value()
+        .get("handDrawnSeed")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
 
     match shape.as_str() {
         "subroutine" | "fr-rect" => {
@@ -17727,6 +18196,7 @@ fn render_flowchart_node(
                 stroke_color,
                 stroke_width,
                 stroke_dasharray,
+                hand_drawn_seed,
             ) {
                 out.push_str(r#"<g class="basic label-container outer-path">"#);
                 let _ = write!(
@@ -17815,6 +18285,7 @@ fn render_flowchart_node(
                 stroke_color,
                 stroke_width,
                 stroke_dasharray,
+                hand_drawn_seed,
             ) {
                 out.push_str(r#"<g class="basic label-container outer-path">"#);
                 let _ = write!(
@@ -17874,6 +18345,7 @@ fn render_flowchart_node(
                 stroke_color,
                 stroke_width,
                 stroke_dasharray,
+                hand_drawn_seed,
             ) {
                 out.push_str(r#"<g class="basic label-container">"#);
                 let _ = write!(
@@ -18051,6 +18523,7 @@ fn render_flowchart_node(
                 stroke_color,
                 stroke_width,
                 stroke_dasharray,
+                hand_drawn_seed,
             ) {
                 let _ = write!(
                     out,
@@ -18145,9 +18618,24 @@ fn render_flowchart_node(
         None
     }
 
-    let label_text_plain = flowchart_label_plain_text(&label_text, &label_type);
+    let label_text_plain =
+        flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
     let mut metrics = if label_type == "markdown" {
         crate::text::measure_markdown_with_flowchart_bold_deltas(
+            ctx.measurer,
+            &label_text,
+            &ctx.text_style,
+            Some(ctx.wrapping_width),
+            ctx.node_wrap_mode,
+        )
+    } else if ctx.node_html_labels && {
+        let lower = label_text.to_ascii_lowercase();
+        lower.contains("<strong")
+            || lower.contains("<b")
+            || lower.contains("<em")
+            || lower.contains("<i")
+    } {
+        crate::text::measure_html_with_flowchart_bold_deltas(
             ctx.measurer,
             &label_text,
             &ctx.text_style,
@@ -18197,7 +18685,15 @@ fn render_flowchart_node(
             fmt(label_dx),
             fmt(-metrics.height / 2.0)
         );
-        write_flowchart_svg_text(out, &label_text_plain, true);
+        let wrapped = flowchart_wrap_svg_text_lines(
+            ctx.measurer,
+            &label_text_plain,
+            &ctx.text_style,
+            Some(ctx.wrapping_width),
+            true,
+        )
+        .join("\n");
+        write_flowchart_svg_text(out, &wrapped, true);
         out.push_str("</g></g></g>");
     } else {
         let label_html = flowchart_label_html(&label_text, &label_type, &ctx.config);
@@ -18366,36 +18862,8 @@ fn flowchart_label_html(
     }
 }
 
-fn flowchart_label_plain_text(label: &str, label_type: &str) -> String {
-    match label_type {
-        "markdown" => {
-            let mut out = String::new();
-            let parser = pulldown_cmark::Parser::new_ext(
-                label,
-                pulldown_cmark::Options::ENABLE_TABLES
-                    | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
-                    | pulldown_cmark::Options::ENABLE_TASKLISTS,
-            );
-            for ev in parser {
-                match ev {
-                    pulldown_cmark::Event::Text(t) => out.push_str(&t),
-                    pulldown_cmark::Event::Code(t) => out.push_str(&t),
-                    pulldown_cmark::Event::SoftBreak | pulldown_cmark::Event::HardBreak => {
-                        out.push('\n');
-                    }
-                    _ => {}
-                }
-            }
-            out.trim().to_string()
-        }
-        _ => {
-            let mut t = label.replace("\r\n", "\n");
-            t = t.replace("<br />", "\n");
-            t = t.replace("<br/>", "\n");
-            t = t.replace("<br>", "\n");
-            t.trim_end_matches('\n').to_string()
-        }
-    }
+fn flowchart_label_plain_text(label: &str, label_type: &str, html_labels: bool) -> String {
+    crate::flowchart::flowchart_label_plain_text_for_layout(label, label_type, html_labels)
 }
 
 fn write_flowchart_svg_text(out: &mut String, text: &str, include_style: bool) {

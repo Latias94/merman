@@ -154,8 +154,25 @@ fn flowchart_label_metrics_for_layout(
             wrap_mode,
         )
     } else {
-        let label_for_metrics = flowchart_label_plain_text_for_layout(raw_label, label_type);
-        measurer.measure_wrapped(&label_for_metrics, style, max_width_px, wrap_mode)
+        let html_labels = wrap_mode == WrapMode::HtmlLike;
+        let lower = raw_label.to_ascii_lowercase();
+        let has_inline_style = lower.contains("<strong")
+            || lower.contains("<b")
+            || lower.contains("<em")
+            || lower.contains("<i");
+        if html_labels && has_inline_style {
+            crate::text::measure_html_with_flowchart_bold_deltas(
+                measurer,
+                raw_label,
+                style,
+                max_width_px,
+                wrap_mode,
+            )
+        } else {
+            let label_for_metrics =
+                flowchart_label_plain_text_for_layout(raw_label, label_type, html_labels);
+            measurer.measure_wrapped(&label_for_metrics, style, max_width_px, wrap_mode)
+        }
     };
 
     if label_type == "string" {
@@ -758,9 +775,9 @@ pub fn layout_flowchart_v2(
     let node_padding = config_f64(effective_config, &["flowchart", "padding"]).unwrap_or(15.0);
     let wrapping_width =
         config_f64(effective_config, &["flowchart", "wrappingWidth"]).unwrap_or(200.0);
-    // Mermaid renders markdown subgraph titles via `createText(...)` without an explicit `width`,
-    // which defaults to 200. Plain `text` titles are rendered via `createLabel(...)` and do not
-    // wrap unless explicit line breaks are present.
+    // Mermaid@11.12.2 renders subgraph titles via the `createText(...)` path and applies a default
+    // wrapping width of 200px (even when `labelType=text` and `htmlLabels=false`), which results
+    // in `<tspan>`-wrapped titles for long words. Match that behavior in headless metrics.
     let cluster_title_wrapping_width = 200.0;
     // Mermaid flowchart-v2 uses the global `htmlLabels` toggle for node/subgraph labels, while
     // edge labels follow `flowchart.htmlLabels` (falling back to the global toggle when unset).
@@ -846,11 +863,7 @@ pub fn layout_flowchart_v2(
         std::collections::HashMap::new();
     for sg in &model.subgraphs {
         let label_type = sg.label_type.as_deref().unwrap_or("text");
-        let title_width_limit = if label_type == "markdown" {
-            Some(cluster_title_wrapping_width)
-        } else {
-            None
-        };
+        let title_width_limit = Some(cluster_title_wrapping_width);
         let metrics = flowchart_label_metrics_for_layout(
             measurer,
             &sg.title,
@@ -882,30 +895,14 @@ pub fn layout_flowchart_v2(
         }
         let raw_label = n.label.as_deref().unwrap_or(&n.id);
         let label_type = n.label_type.as_deref().unwrap_or("text");
-        let mut metrics = if label_type == "markdown" {
-            crate::text::measure_markdown_with_flowchart_bold_deltas(
-                measurer,
-                raw_label,
-                &text_style,
-                Some(wrapping_width),
-                node_wrap_mode,
-            )
-        } else {
-            let label_for_metrics = flowchart_label_plain_text_for_layout(raw_label, label_type);
-            measurer.measure_wrapped(
-                &label_for_metrics,
-                &text_style,
-                Some(wrapping_width),
-                node_wrap_mode,
-            )
-        };
-        if label_type == "string" {
-            crate::text::flowchart_apply_mermaid_string_whitespace_height_parity(
-                &mut metrics,
-                raw_label,
-                &text_style,
-            );
-        }
+        let mut metrics = flowchart_label_metrics_for_layout(
+            measurer,
+            raw_label,
+            label_type,
+            &text_style,
+            Some(wrapping_width),
+            node_wrap_mode,
+        );
         let span_css_height_parity = n.classes.iter().any(|c| {
             model.class_defs.get(c.as_str()).is_some_and(|styles| {
                 styles.iter().any(|s| {
@@ -1047,24 +1044,14 @@ pub fn layout_flowchart_v2(
         if edge_label_is_non_empty(e) {
             let label_text = e.label.as_deref().unwrap_or_default();
             let label_type = e.label_type.as_deref().unwrap_or("text");
-            let metrics = if label_type == "markdown" {
-                crate::text::measure_markdown_with_flowchart_bold_deltas(
-                    measurer,
-                    label_text,
-                    &text_style,
-                    Some(wrapping_width),
-                    edge_wrap_mode,
-                )
-            } else {
-                let label_for_metrics =
-                    flowchart_label_plain_text_for_layout(label_text, label_type);
-                measurer.measure_wrapped(
-                    &label_for_metrics,
-                    &text_style,
-                    Some(wrapping_width),
-                    edge_wrap_mode,
-                )
-            };
+            let metrics = flowchart_label_metrics_for_layout(
+                measurer,
+                label_text,
+                label_type,
+                &text_style,
+                Some(wrapping_width),
+                edge_wrap_mode,
+            );
             let (label_width, label_height) = if edge_html_labels {
                 (metrics.width.max(1.0), metrics.height.max(1.0))
             } else {
@@ -1958,11 +1945,7 @@ pub fn layout_flowchart_v2(
             }
 
             let label_type = sg.label_type.as_deref().unwrap_or("text");
-            let title_width_limit = if label_type == "markdown" {
-                Some(title_wrapping_width)
-            } else {
-                None
-            };
+            let title_width_limit = Some(title_wrapping_width);
             let title_metrics = flowchart_label_metrics_for_layout(
                 measurer,
                 &sg.title,
@@ -2306,11 +2289,7 @@ pub fn layout_flowchart_v2(
         }
 
         let label_type = sg.label_type.as_deref().unwrap_or("text");
-        let title_width_limit = if label_type == "markdown" {
-            Some(title_wrapping_width)
-        } else {
-            None
-        };
+        let title_width_limit = Some(title_wrapping_width);
         let title_metrics = flowchart_label_metrics_for_layout(
             measurer,
             &sg.title,
@@ -2380,11 +2359,7 @@ pub fn layout_flowchart_v2(
             title_total_margin: f64,
             cluster_padding: f64,
         ) -> Rect {
-            let title_width_limit = if label_type == "markdown" {
-                Some(title_wrapping_width)
-            } else {
-                None
-            };
+            let title_width_limit = Some(title_wrapping_width);
             let title_metrics = flowchart_label_metrics_for_layout(
                 measurer,
                 title,
@@ -2483,11 +2458,7 @@ pub fn layout_flowchart_v2(
         let (cx, cy) = rect.center();
 
         let label_type = sg.label_type.as_deref().unwrap_or("text");
-        let title_width_limit = if label_type == "markdown" {
-            Some(cluster_title_wrapping_width)
-        } else {
-            None
-        };
+        let title_width_limit = Some(cluster_title_wrapping_width);
         let title_metrics = flowchart_label_metrics_for_layout(
             measurer,
             &sg.title,
@@ -2847,7 +2818,140 @@ fn node_dimensions(
     }
 }
 
-fn flowchart_label_plain_text_for_layout(label: &str, label_type: &str) -> String {
+pub(crate) fn flowchart_label_plain_text_for_layout(
+    label: &str,
+    label_type: &str,
+    html_labels: bool,
+) -> String {
+    fn decode_html_entity(entity: &str) -> Option<char> {
+        match entity {
+            "nbsp" => Some(' '),
+            "lt" => Some('<'),
+            "gt" => Some('>'),
+            "amp" => Some('&'),
+            "quot" => Some('"'),
+            "apos" => Some('\''),
+            "#39" => Some('\''),
+            _ => {
+                if let Some(hex) = entity
+                    .strip_prefix("#x")
+                    .or_else(|| entity.strip_prefix("#X"))
+                {
+                    u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
+                } else if let Some(dec) = entity.strip_prefix('#') {
+                    dec.parse::<u32>().ok().and_then(char::from_u32)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    fn strip_html_for_layout(input: &str) -> String {
+        // A lightweight, deterministic HTML text extractor for Mermaid htmlLabels layout.
+        // We intentionally do not attempt full HTML parsing/sanitization here; we only need a
+        // best-effort approximation of the rendered textContent for sizing.
+        let mut out = String::with_capacity(input.len());
+        let mut it = input.chars().peekable();
+        while let Some(ch) = it.next() {
+            if ch == '<' {
+                let mut tag = String::new();
+                while let Some(c) = it.next() {
+                    if c == '>' {
+                        break;
+                    }
+                    tag.push(c);
+                }
+                let tag = tag.trim();
+                let tag_lower = tag.to_ascii_lowercase();
+                let tag_trim = tag_lower.trim();
+                if tag_trim.starts_with('!') || tag_trim.starts_with('?') {
+                    continue;
+                }
+                let is_closing = tag_trim.starts_with('/');
+                let name = tag_trim
+                    .trim_start_matches('/')
+                    .trim_end_matches('/')
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("");
+                if name == "br" {
+                    out.push('\n');
+                } else if is_closing && matches!(name, "p" | "div" | "li" | "tr" | "ul" | "ol") {
+                    out.push('\n');
+                }
+                continue;
+            }
+
+            if ch == '&' {
+                let mut entity = String::new();
+                let mut saw_semicolon = false;
+                while let Some(&c) = it.peek() {
+                    if c == ';' {
+                        it.next();
+                        saw_semicolon = true;
+                        break;
+                    }
+                    if c == '<' || c == '&' || c.is_whitespace() || entity.len() > 32 {
+                        break;
+                    }
+                    entity.push(c);
+                    it.next();
+                }
+                if saw_semicolon {
+                    if let Some(decoded) = decode_html_entity(entity.as_str()) {
+                        out.push(decoded);
+                    } else {
+                        out.push('&');
+                        out.push_str(&entity);
+                        out.push(';');
+                    }
+                } else {
+                    out.push('&');
+                    out.push_str(&entity);
+                }
+                continue;
+            }
+
+            out.push(ch);
+        }
+
+        // Collapse whitespace runs similar to HTML layout defaults, while preserving explicit
+        // line breaks introduced by tags like `<br>` and `</p>`.
+        let mut normalized = String::with_capacity(out.len());
+        let mut last_space = false;
+        let mut last_nl = false;
+        for ch in out.chars() {
+            if ch == '\u{00A0}' {
+                if !last_space && !last_nl {
+                    normalized.push(' ');
+                }
+                last_space = true;
+                continue;
+            }
+            if ch == '\n' {
+                if !last_nl {
+                    normalized.push('\n');
+                }
+                last_space = false;
+                last_nl = true;
+                continue;
+            }
+            if ch.is_whitespace() {
+                if !last_space && !last_nl {
+                    normalized.push(' ');
+                    last_space = true;
+                }
+                continue;
+            }
+            normalized.push(ch);
+            last_space = false;
+            last_nl = false;
+        }
+
+        normalized
+    }
+
     match label_type {
         "markdown" => {
             let mut out = String::new();
@@ -2871,10 +2975,14 @@ fn flowchart_label_plain_text_for_layout(label: &str, label_type: &str) -> Strin
         }
         _ => {
             let mut t = label.replace("\r\n", "\n");
-            t = t.replace("<br />", "\n");
-            t = t.replace("<br/>", "\n");
-            t = t.replace("<br>", "\n");
-            t.trim_end_matches('\n').to_string()
+            if html_labels || label_type == "html" {
+                t = strip_html_for_layout(&t);
+            } else {
+                t = t.replace("<br />", "\n");
+                t = t.replace("<br/>", "\n");
+                t = t.replace("<br>", "\n");
+            }
+            t.trim().trim_end_matches('\n').to_string()
         }
     }
 }

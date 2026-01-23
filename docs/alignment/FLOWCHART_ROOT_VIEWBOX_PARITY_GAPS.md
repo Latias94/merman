@@ -45,6 +45,10 @@ At the time of writing:
 
 - `merman-render` now computes Flowchart root `viewBox`/`max-width` using a headless approximation of
   Mermaid's `setupViewPortForSVG` behavior (including the diagram title bounding box).
+- Flowchart title X-extents are measured via `TextMeasurer::measure_svg_text_bbox_x`, allowing
+  `VendoredFontMetricsTextMeasurer` to use pinned `svg_overrides` where available.
+- `VendoredFontMetricsTextMeasurer` quantizes override-derived SVG bbox extents to a 1/1024px grid
+  to reduce FP drift in root viewport strings (especially for wide titles).
 - `--dom-mode parity-root` is still expected to fail for many Flowchart fixtures, primarily because
   Flowchart root viewport values are font-metric-derived in Mermaid (DOM `getBBox()`), and our
   headless text measurement currently does not reproduce browser font fallback and sub-pixel
@@ -57,3 +61,6 @@ At the time of writing:
 - Improve `TextMeasurer` fidelity for Flowchart title and label text (font-family aware metrics), or
   introduce additional pinned, upstream-derived font metric vendoring where it blocks `parity-root`
   checks.
+- Prefer deriving Flowchart title `svg_overrides` from upstream SVG fixtures (when the title is the
+  limiting bbox contributor) so the generated metric table does not depend on local font/rendering
+  differences.

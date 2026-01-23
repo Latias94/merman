@@ -241,6 +241,12 @@ observed upstream SVG behaviors that are easy to regress when refactoring layout
 These are upstream Mermaid `@11.12.2` behaviors worth calling out explicitly because they are
 counter-intuitive and easy to break while refactoring:
 
+- Rough.js PRNG stream continuity (even when `roughness: 0`):
+  - flowchart-v2 uses Rough.js for certain shapes even in `look: "classic"` (it sets `roughness: 0`)
+  - Rough.js still consumes randomness for `divergePoint` and other internal calls
+  - for `generator.path(...)` with `fillStyle: "solid"` and `sets.length === 1`, the fill pass
+    continues the same PRNG stream after the stroke pass (it reuses `o.randomizer`), so the fill
+    path `d` is not generated from a fresh seed
 - `htmlLabels` toggles:
   - node/subgraph labels follow the global `htmlLabels` toggle
   - edge labels follow `flowchart.htmlLabels` (falling back to the global toggle when unset)
