@@ -192,7 +192,7 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
                     if mode == DomMode::Structure {
                         val = "<geom>".to_string();
                         normalized_geom = true;
-                    } else if mode == DomMode::Parity {
+                    } else if matches!(mode, DomMode::Parity | DomMode::ParityRoot) {
                         if key == "d" && n.tag_name().name() == "path" && is_mindmap_diagram(n) {
                             // Mindmap node/edge paths are highly layout-dependent. Treat them as
                             // geometry noise in parity mode to focus checks on DOM structure and
@@ -238,9 +238,17 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             }
             if mode == DomMode::Structure && is_identifier_like_attr(&key) {
                 val = normalize_identifier_tokens(&val);
-            } else if mode == DomMode::Parity && is_identifier_like_attr(&key) {
+            } else if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
+                && is_identifier_like_attr(&key)
+            {
                 val = normalize_mermaid_generated_id_only(&val);
-            } else if !normalized_geom && mode == DomMode::Parity && is_geometry_attr(&key) {
+            } else if !normalized_geom
+                && matches!(mode, DomMode::Parity | DomMode::ParityRoot)
+                && is_geometry_attr(&key)
+                && !(mode == DomMode::ParityRoot
+                    && n.tag_name().name() == "svg"
+                    && (key == "width" || key == "height"))
+            {
                 val = normalize_numeric_tokens_mode(&val, decimals, DomMode::Structure);
             } else {
                 val = normalize_numeric_tokens_mode(&val, decimals, mode);

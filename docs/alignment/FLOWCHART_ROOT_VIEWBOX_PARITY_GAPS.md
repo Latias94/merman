@@ -10,6 +10,8 @@ intentionally ignore the root `<svg>` `viewBox` and `style` attributes while the
 measurement subsystems are still converging.
 
 For "full SVG DOM" parity work (closer to SVG XML parity), use `parity-root` mode.
+In `xtask` DOM comparison, `parity-root` behaves like `parity` for geometry/noise masking, but it
+also compares the root `<svg>` viewport attributes (`viewBox`, `style`).
 
 ## How To Run
 
@@ -18,6 +20,10 @@ For "full SVG DOM" parity work (closer to SVG XML parity), use `parity-root` mod
 
 - Generate a report **and** fail on full DOM parity-root mismatches:
   - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root`
+
+When iterating specifically on viewport deltas, prefer the vendored Flowchart font metrics:
+
+- `cargo run -p xtask -- compare-flowchart-svgs --dom-mode parity-root --dom-decimals 3 --report-root --text-measurer vendored`
 
 The report is written to:
 
