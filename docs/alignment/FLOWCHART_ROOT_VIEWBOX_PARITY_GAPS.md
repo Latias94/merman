@@ -70,3 +70,21 @@ At the time of writing:
 - Prefer deriving Flowchart title `svg_overrides` from upstream SVG fixtures (when the title is the
   limiting bbox contributor) so the generated metric table does not depend on local font/rendering
   differences.
+
+## Biggest Current Deltas
+
+From `target/compare/flowchart_report.md` (generated via `--report-root --dom-mode parity-root --dom-decimals 3`):
+
+| Fixture | upstream max-width(px) | local max-width(px) | Δ |
+|---|---:|---:|---:|
+| `upstream_flowchart_v2_self_loops_spec` | 1059.460 | 1102.010 | +42.550 |
+| `upstream_flowchart_v2_arrows_graph_direction_lt_spec` | 363.525 | 341.070 | -22.455 |
+
+These two drive most of the remaining `--check-dom --dom-mode parity-root` failures.
+
+## Investigation Notes
+
+- `upstream_flowchart_v2_self_loops_spec` appears sensitive to layout tie-breaking in the dagre
+  stage (cycle-related ordering). We briefly experimented with changing node insertion order to
+  influence this, but it produced a layout snapshot mismatch without improving the root viewport
+  deltas, so the change was dropped.
