@@ -371,7 +371,9 @@ fn flowchart_find_common_edges(
         .map(|(v, w)| {
             (
                 if v == id1 { id2.to_string() } else { v },
-                if w == id1 { id2.to_string() } else { w },
+                // Mermaid's `findCommonEdges(...)` has an asymmetry here: it maps the `w` side
+                // back to `id1` rather than `id2` (Mermaid@11.12.2).
+                if w == id1 { id1.to_string() } else { w },
             )
         })
         .collect();
@@ -690,6 +692,7 @@ fn extract_clusters_recursively(
             // - `packages/mermaid/src/rendering-util/layout-algorithms/dagre/index.js`
             nodesep: 50.0,
             ranksep: 50.0,
+            // Dagre-d3-es defaults `edgesep` to 20 when unspecified.
             edgesep: 20.0,
             acyclicer: None,
             ..Default::default()
@@ -853,7 +856,7 @@ pub fn layout_flowchart_v2(
         rankdir: rank_dir_from_flow(&diagram_direction),
         nodesep,
         ranksep,
-        // Dagre layout defaults `edgesep` to 20 when unspecified.
+        // Dagre-d3-es defaults `edgesep` to 20 when unspecified.
         edgesep: 20.0,
         acyclicer: None,
         ..Default::default()
@@ -1034,7 +1037,19 @@ pub fn layout_flowchart_v2(
     let mut edge_id_by_key: HashMap<String, String> = HashMap::new();
 
     for e in &render_edges {
-        let edge_key = e.id.clone();
+        // Mermaid uses distinct graphlib multigraph keys for self-loop helper edges.
+        // Reference: `packages/mermaid/src/rendering-util/layout-algorithms/dagre/index.js`
+        let edge_key = if let Some(prefix) = e.id.strip_suffix("-cyclic-special-1") {
+            format!("{prefix}-cyclic-special-0")
+        } else if let Some(prefix) = e.id.strip_suffix("-cyclic-special-mid") {
+            format!("{prefix}-cyclic-special-1")
+        } else if let Some(prefix) = e.id.strip_suffix("-cyclic-special-2") {
+            // Mermaid contains this typo in the edge key (note the `<`):
+            // `nodeId + '-cyc<lic-special-2'`
+            format!("{prefix}-cyc<lic-special-2")
+        } else {
+            e.id.clone()
+        };
         edge_key_by_id.insert(e.id.clone(), edge_key.clone());
         edge_id_by_key.insert(edge_key.clone(), e.id.clone());
 
