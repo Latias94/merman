@@ -77,11 +77,11 @@ From `target/compare/flowchart_report.md` (generated via `--report-root --dom-mo
 
 | Fixture | upstream max-width(px) | local max-width(px) | Δ |
 |---|---:|---:|---:|
-| `upstream_flow_text_edge_and_line_text_variants_spec` | 2961.960 | 2816.300 | -145.660 |
-| `upstream_edges` | 531.031 | 491.031 | -40.000 |
-| `upstream_text_edge_labels_spec` | 795.109 | 765.109 | -30.000 |
-| `upstream_flowchart_v2_self_loops_spec` | 1059.460 | 1080.020 | +20.560 |
-| `upstream_flowchart_v2_edges_in_and_out_subgraphs_spec` | 496.797 | 476.797 | -20.000 |
+| `upstream_flowchart_v2_self_loops_spec` | 1059.460 | 1105.020 | +45.560 |
+| `upstream_singlenode_shapes_spec` | 1557.230 | 1567.690 | +10.460 |
+| `upstream_flow_text_special_chars_spec` | 1394.730 | 1404.190 | +9.460 |
+| `upstream_flow_style_style_preserves_labels_spec` | 364.234 | 365.234 | +1.000 |
+| `upstream_flowchart_v2_escaped_without_html_labels_spec` | 353.422 | 354.010 | +0.588 |
 
 These drive most of the remaining `--check-dom --dom-mode parity-root` failures.
 
@@ -90,6 +90,9 @@ These drive most of the remaining `--check-dom --dom-mode parity-root` failures.
 - Mermaid flowchart-v2 initializes Dagre graphs with `marginx=8, marginy=8` (both in the top-level
   graph and in extracted cluster graphs). Ensuring `merman-render` uses those margins is a
   prerequisite for meaningful root viewport comparisons.
+- Mermaid uses dagrejs defaults for graph spacing (notably `edgesep=20`). Keeping `dugong`'s
+  `GraphLabel` defaults aligned with dagrejs is important for multiedge routing and therefore
+  root `viewBox/max-width` parity.
 - The previously large delta for `upstream_flowchart_v2_arrows_graph_direction_lt_spec` was caused
   by Mermaid's DOMPurify-style sanitization turning a stray `<` in the title into the literal text
   `&lt;` (which then affects title width and therefore `viewBox/max-width`). `merman-core` now

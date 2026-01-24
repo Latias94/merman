@@ -939,7 +939,6 @@ pub fn layout_class_diagram_v2(
         rankdir: diagram_dir,
         nodesep,
         ranksep,
-        edgesep: 10.0,
         ..Default::default()
     });
 

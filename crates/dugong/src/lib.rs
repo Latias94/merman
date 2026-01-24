@@ -185,7 +185,7 @@ impl Default for GraphLabel {
             rankdir: RankDir::TB,
             nodesep: 50.0,
             ranksep: 50.0,
-            edgesep: 10.0,
+            edgesep: 20.0,
             marginx: 0.0,
             marginy: 0.0,
             align: None,
