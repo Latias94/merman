@@ -83,6 +83,7 @@ fn main() -> Result<(), XtaskError> {
         "compare-flowchart-svgs" => compare_flowchart_svgs(args.collect()),
         "debug-flowchart-layout" => debug_flowchart_layout(args.collect()),
         "debug-flowchart-svg-roots" => debug_flowchart_svg_roots(args.collect()),
+        "debug-flowchart-svg-positions" => debug_flowchart_svg_positions(args.collect()),
         "compare-sequence-svgs" => compare_sequence_svgs(args.collect()),
         "compare-class-svgs" => compare_class_svgs(args.collect()),
         "compare-state-svgs" => compare_state_svgs(args.collect()),
@@ -2464,6 +2465,297 @@ fn debug_flowchart_svg_roots(args: Vec<String>) -> Result<(), XtaskError> {
     for c in &upstream_summary.clusters {
         if !local_summary.clusters.iter().any(|l| l.id == c.id) {
             println!("upstream-only: {}", fmt_cluster(c));
+        }
+    }
+
+    Ok(())
+}
+
+fn debug_flowchart_svg_positions(args: Vec<String>) -> Result<(), XtaskError> {
+    let mut fixture: Option<String> = None;
+    let mut upstream: Option<PathBuf> = None;
+    let mut local: Option<PathBuf> = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--fixture" => {
+                i += 1;
+                fixture = args.get(i).map(|s| s.to_string());
+            }
+            "--upstream" => {
+                i += 1;
+                upstream = args.get(i).map(PathBuf::from);
+            }
+            "--local" => {
+                i += 1;
+                local = args.get(i).map(PathBuf::from);
+            }
+            "--help" | "-h" => return Err(XtaskError::Usage),
+            _ => return Err(XtaskError::Usage),
+        }
+        i += 1;
+    }
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+
+    if let Some(f) = fixture.as_deref() {
+        let upstream_default = workspace_root
+            .join("fixtures")
+            .join("upstream-svgs")
+            .join("flowchart")
+            .join(format!("{f}.svg"));
+        let local_default = workspace_root
+            .join("target")
+            .join("compare")
+            .join("flowchart")
+            .join(format!("{f}.svg"));
+        upstream = upstream.or(Some(upstream_default));
+        local = local.or(Some(local_default));
+    }
+
+    let Some(upstream_path) = upstream else {
+        return Err(XtaskError::Usage);
+    };
+    let Some(local_path) = local else {
+        return Err(XtaskError::Usage);
+    };
+
+    let upstream_svg =
+        fs::read_to_string(&upstream_path).map_err(|source| XtaskError::ReadFile {
+            path: upstream_path.display().to_string(),
+            source,
+        })?;
+    let local_svg = fs::read_to_string(&local_path).map_err(|source| XtaskError::ReadFile {
+        path: local_path.display().to_string(),
+        source,
+    })?;
+
+    #[derive(Debug, Clone, Copy)]
+    struct Translate {
+        x: f64,
+        y: f64,
+    }
+
+    fn parse_translate(transform: &str) -> Option<Translate> {
+        let t = transform.trim();
+        let t = t.strip_prefix("translate(")?;
+        let t = t.strip_suffix(')')?;
+        let parts = t
+            .split(|ch: char| ch == ',' || ch.is_whitespace())
+            .filter(|s| !s.trim().is_empty())
+            .filter_map(|s| s.trim().parse::<f64>().ok())
+            .collect::<Vec<_>>();
+        match parts.as_slice() {
+            [x, y] => Some(Translate { x: *x, y: *y }),
+            [x] => Some(Translate { x: *x, y: 0.0 }),
+            _ => None,
+        }
+    }
+
+    fn accumulated_translate(node: roxmltree::Node<'_, '_>) -> Translate {
+        let mut x = 0.0;
+        let mut y = 0.0;
+        // `ancestors()` includes the node itself; we want the sum of parent transforms only.
+        for n in node.ancestors().filter(|n| n.is_element()).skip(1) {
+            if let Some(transform) = n.attribute("transform") {
+                if let Some(t) = parse_translate(transform) {
+                    x += t.x;
+                    y += t.y;
+                }
+            }
+        }
+        Translate { x, y }
+    }
+
+    #[derive(Debug, Clone)]
+    struct NodePos {
+        kind: &'static str,
+        x: f64,
+        y: f64,
+    }
+
+    #[derive(Debug, Clone)]
+    struct ClusterRect {
+        left: f64,
+        top: f64,
+        w: f64,
+        h: f64,
+    }
+
+    fn parse_positions(
+        svg: &str,
+    ) -> Result<(BTreeMap<String, NodePos>, BTreeMap<String, ClusterRect>), String> {
+        let doc = roxmltree::Document::parse(svg).map_err(|e| e.to_string())?;
+
+        let mut nodes: BTreeMap<String, NodePos> = BTreeMap::new();
+        let mut clusters: BTreeMap<String, ClusterRect> = BTreeMap::new();
+
+        for n in doc.descendants().filter(|n| n.is_element()) {
+            if n.tag_name().name() != "g" {
+                continue;
+            }
+            let Some(id) = n.attribute("id") else {
+                continue;
+            };
+            let class = n.attribute("class").unwrap_or_default();
+            let class_tokens = class.split_whitespace().collect::<Vec<_>>();
+
+            if class_tokens.iter().any(|t| *t == "node") {
+                let Some(transform) = n.attribute("transform") else {
+                    continue;
+                };
+                let Some(local) = parse_translate(transform) else {
+                    continue;
+                };
+                let abs = accumulated_translate(n);
+                nodes.insert(
+                    id.to_string(),
+                    NodePos {
+                        kind: "node",
+                        x: local.x + abs.x,
+                        y: local.y + abs.y,
+                    },
+                );
+                continue;
+            }
+
+            // Mermaid self-loop helper nodes use `<g class="label edgeLabel" id="X---X---1" transform="translate(...)">`.
+            if class_tokens.iter().any(|t| *t == "edgeLabel")
+                && class_tokens.iter().any(|t| *t == "label")
+            {
+                let Some(transform) = n.attribute("transform") else {
+                    continue;
+                };
+                let Some(local) = parse_translate(transform) else {
+                    continue;
+                };
+                let abs = accumulated_translate(n);
+                nodes.insert(
+                    id.to_string(),
+                    NodePos {
+                        kind: "labelRect",
+                        x: local.x + abs.x,
+                        y: local.y + abs.y,
+                    },
+                );
+                continue;
+            }
+
+            if class_tokens.iter().any(|t| *t == "cluster") {
+                let abs = accumulated_translate(n);
+                let rect = n
+                    .children()
+                    .find(|c| c.is_element() && c.tag_name().name() == "rect");
+                let Some(rect) = rect else {
+                    continue;
+                };
+                let x = rect
+                    .attribute("x")
+                    .and_then(|v| v.parse::<f64>().ok())
+                    .unwrap_or(0.0);
+                let y = rect
+                    .attribute("y")
+                    .and_then(|v| v.parse::<f64>().ok())
+                    .unwrap_or(0.0);
+                let w = rect
+                    .attribute("width")
+                    .and_then(|v| v.parse::<f64>().ok())
+                    .unwrap_or(0.0);
+                let h = rect
+                    .attribute("height")
+                    .and_then(|v| v.parse::<f64>().ok())
+                    .unwrap_or(0.0);
+                clusters.insert(
+                    id.to_string(),
+                    ClusterRect {
+                        left: abs.x + x,
+                        top: abs.y + y,
+                        w,
+                        h,
+                    },
+                );
+            }
+        }
+
+        Ok((nodes, clusters))
+    }
+
+    let (up_nodes, up_clusters) =
+        parse_positions(&upstream_svg).map_err(|e| XtaskError::DebugSvgFailed(e))?;
+    let (lo_nodes, lo_clusters) =
+        parse_positions(&local_svg).map_err(|e| XtaskError::DebugSvgFailed(e))?;
+
+    println!("upstream: {}", upstream_path.display());
+    println!("local:    {}", local_path.display());
+    println!();
+
+    println!("== Nodes / LabelRects (abs translate) ==");
+    let mut node_ids: Vec<&String> = up_nodes.keys().collect();
+    node_ids.sort();
+    for id in node_ids {
+        let Some(a) = up_nodes.get(id) else { continue };
+        let Some(b) = lo_nodes.get(id) else { continue };
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        if dx.abs() < 1e-6 && dy.abs() < 1e-6 {
+            continue;
+        }
+        println!(
+            "{id} kind={} upstream=({:.6},{:.6}) local=({:.6},{:.6}) Δ=({:.6},{:.6})",
+            a.kind, a.x, a.y, b.x, b.y, dx, dy
+        );
+    }
+    for (id, b) in &lo_nodes {
+        if !up_nodes.contains_key(id) {
+            println!("{id} local-only kind={} ({:.6},{:.6})", b.kind, b.x, b.y);
+        }
+    }
+    for (id, a) in &up_nodes {
+        if !lo_nodes.contains_key(id) {
+            println!("{id} upstream-only kind={} ({:.6},{:.6})", a.kind, a.x, a.y);
+        }
+    }
+    println!();
+
+    println!("== Clusters (abs rect) ==");
+    let mut cluster_ids: Vec<&String> = up_clusters.keys().collect();
+    cluster_ids.sort();
+    for id in cluster_ids {
+        let Some(a) = up_clusters.get(id) else {
+            continue;
+        };
+        let Some(b) = lo_clusters.get(id) else {
+            continue;
+        };
+        let dx = b.left - a.left;
+        let dy = b.top - a.top;
+        let dw = b.w - a.w;
+        let dh = b.h - a.h;
+        if dx.abs() < 1e-6 && dy.abs() < 1e-6 && dw.abs() < 1e-6 && dh.abs() < 1e-6 {
+            continue;
+        }
+        println!(
+            "{id} upstream=({:.6},{:.6},{:.6},{:.6}) local=({:.6},{:.6},{:.6},{:.6}) Δ=({:.6},{:.6},{:.6},{:.6})",
+            a.left, a.top, a.w, a.h, b.left, b.top, b.w, b.h, dx, dy, dw, dh
+        );
+    }
+    for (id, b) in &lo_clusters {
+        if !up_clusters.contains_key(id) {
+            println!(
+                "{id} local-only ({:.6},{:.6},{:.6},{:.6})",
+                b.left, b.top, b.w, b.h
+            );
+        }
+    }
+    for (id, a) in &up_clusters {
+        if !lo_clusters.contains_key(id) {
+            println!(
+                "{id} upstream-only ({:.6},{:.6},{:.6},{:.6})",
+                a.left, a.top, a.w, a.h
+            );
         }
     }
 
