@@ -41,6 +41,7 @@ positions, and mismatches can manifest as large `max-width`/`viewBox` deltas.
 After generating a local SVG under `target/compare/flowchart/<fixture>.svg`, run:
 
 - `cargo run -p xtask -- debug-flowchart-svg-roots --fixture upstream_flowchart_v2_self_loops_spec`
+- `cargo run -p xtask -- debug-flowchart-svg-diff --fixture upstream_flowchart_v2_self_loops_spec --min-abs-delta 0.5 --max 80`
 
 This prints:
 
@@ -54,6 +55,8 @@ At the time of writing:
 
 - `merman-render` now computes Flowchart root `viewBox`/`max-width` using a headless approximation of
   Mermaid's `setupViewPortForSVG` behavior (including the diagram title bounding box).
+- Flowchart-v2 self-loop helper nodes (`*-*-*-1/2`) are now sized at `0.1×0.1` for layout parity,
+  matching Mermaid's `insertNode(...)` + `updateNodeBounds(...)` behavior for empty `labelRect` nodes.
 - Flowchart title X-extents are measured via `TextMeasurer::measure_svg_text_bbox_x`, allowing
   `VendoredFontMetricsTextMeasurer` to use pinned `svg_overrides` where available.
 - `VendoredFontMetricsTextMeasurer` quantizes override-derived SVG bbox extents to a 1/1024px grid
@@ -80,7 +83,6 @@ From `target/compare/flowchart_report.md` (generated via `--report-root --dom-mo
 
 | Fixture | upstream max-width(px) | local max-width(px) | Δ |
 |---|---:|---:|---:|
-| `upstream_flowchart_v2_self_loops_spec` | 1059.460 | 1105.020 | +45.560 |
 | `upstream_singlenode_shapes_spec` | 1557.230 | 1567.690 | +10.460 |
 | `upstream_flow_text_special_chars_spec` | 1394.730 | 1404.190 | +9.460 |
 | `upstream_flow_style_style_preserves_labels_spec` | 364.234 | 365.234 | +1.000 |

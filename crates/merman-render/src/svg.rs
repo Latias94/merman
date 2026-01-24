@@ -9137,22 +9137,83 @@ pub fn render_flowchart_v2_svg(
         .and_then(|d| d.interpolate.as_deref())
         .unwrap_or("basis");
 
-    let bounds =
-        compute_layout_bounds_without_edge_points(&layout.clusters, &layout.nodes, &layout.edges)
-            .unwrap_or(Bounds {
-                min_x: 0.0,
-                min_y: 0.0,
-                max_x: 100.0,
-                max_y: 100.0,
-            });
-    let content_w = (bounds.max_x - bounds.min_x).max(1.0);
+    let node_dom_index = flowchart_node_dom_indices(&model);
+
+    // Mermaid's flowchart-v2 renderer draws the self-loop helper nodes (`labelRect`) as
+    // `<g class="label edgeLabel" transform="translate(x, y)">` with a `0.1 x 0.1` rect anchored
+    // at the translated origin (top-left). Dagre's `x/y` still represent a node center, but the
+    // rendered DOM bbox that drives `setupViewPortForSVG(svg, diagramPadding)` is top-left based.
+    // Account for that when approximating the final `svg.getBBox()`.
+    let bounds = {
+        let mut b: Option<Bounds> = None;
+        let mut include_rect = |min_x: f64, min_y: f64, max_x: f64, max_y: f64| {
+            if let Some(ref mut cur) = b {
+                cur.min_x = cur.min_x.min(min_x);
+                cur.min_y = cur.min_y.min(min_y);
+                cur.max_x = cur.max_x.max(max_x);
+                cur.max_y = cur.max_y.max(max_y);
+            } else {
+                b = Some(Bounds {
+                    min_x,
+                    min_y,
+                    max_x,
+                    max_y,
+                });
+            }
+        };
+
+        for c in &layout.clusters {
+            let hw = c.width / 2.0;
+            let hh = c.height / 2.0;
+            include_rect(c.x - hw, c.y - hh, c.x + hw, c.y + hh);
+
+            let lhw = c.title_label.width / 2.0;
+            let lhh = c.title_label.height / 2.0;
+            include_rect(
+                c.title_label.x - lhw,
+                c.title_label.y - lhh,
+                c.title_label.x + lhw,
+                c.title_label.y + lhh,
+            );
+        }
+
+        for n in &layout.nodes {
+            if n.is_cluster || node_dom_index.contains_key(&n.id) {
+                let hw = n.width / 2.0;
+                let hh = n.height / 2.0;
+                include_rect(n.x - hw, n.y - hh, n.x + hw, n.y + hh);
+            } else {
+                include_rect(n.x, n.y, n.x + n.width, n.y + n.height);
+            }
+        }
+
+        for e in &layout.edges {
+            for lbl in [
+                e.label.as_ref(),
+                e.start_label_left.as_ref(),
+                e.start_label_right.as_ref(),
+                e.end_label_left.as_ref(),
+                e.end_label_right.as_ref(),
+            ] {
+                if let Some(lbl) = lbl {
+                    let hw = lbl.width / 2.0;
+                    let hh = lbl.height / 2.0;
+                    include_rect(lbl.x - hw, lbl.y - hh, lbl.x + hw, lbl.y + hh);
+                }
+            }
+        }
+
+        b.unwrap_or(Bounds {
+            min_x: 0.0,
+            min_y: 0.0,
+            max_x: 100.0,
+            max_y: 100.0,
+        })
+    };
     // Mermaid flowchart-v2 relies on Dagre graph `marginx=8` rather than normalizing the graph
     // to `min_x=0`. Keep the coordinate space aligned by applying the fixed diagram padding as
     // the translation origin, so negative `getBBox().x` values remain visible in the `viewBox`.
     let tx = diagram_padding;
-    // Mermaid's recursive flowchart renderer offsets cluster-node positioning by
-    // `subGraphTitleTotalMargin/2` when `flowchart.subGraphTitleMargin` is set. This affects the
-    // final `svg.getBBox()` and therefore the `viewBox` configured by `setupViewPortForSVG(...)`.
     let subgraph_title_y_shift = {
         let top = config_f64(
             effective_config,
@@ -9168,7 +9229,7 @@ pub fn render_flowchart_v2_svg(
         .max(0.0);
         (top + bottom) / 2.0
     };
-    let ty = diagram_padding - bounds.min_y + subgraph_title_y_shift;
+    let ty = diagram_padding;
 
     // Mermaid computes the final viewport using `svg.getBBox()` after inserting the title, then
     // applies `setupViewPortForSVG(svg, diagramPadding)` which sets:
@@ -9235,8 +9296,6 @@ pub fn render_flowchart_v2_svg(
     let vb_min_y = bbox_min_y - diagram_padding;
     let vb_w = (bbox_max_x - bbox_min_x + diagram_padding * 2.0).max(1.0);
     let vb_h = (bbox_max_y - bbox_min_y + diagram_padding * 2.0).max(1.0);
-
-    let node_dom_index = flowchart_node_dom_indices(&model);
 
     let css = flowchart_css(
         diagram_id,
@@ -14052,68 +14111,6 @@ fn compute_layout_bounds(
         for p in &e.points {
             include_rect(p.x, p.y, p.x, p.y);
         }
-        for lbl in [
-            e.label.as_ref(),
-            e.start_label_left.as_ref(),
-            e.start_label_right.as_ref(),
-            e.end_label_left.as_ref(),
-            e.end_label_right.as_ref(),
-        ] {
-            if let Some(lbl) = lbl {
-                let hw = lbl.width / 2.0;
-                let hh = lbl.height / 2.0;
-                include_rect(lbl.x - hw, lbl.y - hh, lbl.x + hw, lbl.y + hh);
-            }
-        }
-    }
-
-    b
-}
-
-fn compute_layout_bounds_without_edge_points(
-    clusters: &[LayoutCluster],
-    nodes: &[LayoutNode],
-    edges: &[crate::model::LayoutEdge],
-) -> Option<Bounds> {
-    let mut b: Option<Bounds> = None;
-
-    let mut include_rect = |min_x: f64, min_y: f64, max_x: f64, max_y: f64| {
-        if let Some(ref mut cur) = b {
-            cur.min_x = cur.min_x.min(min_x);
-            cur.min_y = cur.min_y.min(min_y);
-            cur.max_x = cur.max_x.max(max_x);
-            cur.max_y = cur.max_y.max(max_y);
-        } else {
-            b = Some(Bounds {
-                min_x,
-                min_y,
-                max_x,
-                max_y,
-            });
-        }
-    };
-
-    for c in clusters {
-        let hw = c.width / 2.0;
-        let hh = c.height / 2.0;
-        include_rect(c.x - hw, c.y - hh, c.x + hw, c.y + hh);
-        let lhw = c.title_label.width / 2.0;
-        let lhh = c.title_label.height / 2.0;
-        include_rect(
-            c.title_label.x - lhw,
-            c.title_label.y - lhh,
-            c.title_label.x + lhw,
-            c.title_label.y + lhh,
-        );
-    }
-
-    for n in nodes {
-        let hw = n.width / 2.0;
-        let hh = n.height / 2.0;
-        include_rect(n.x - hw, n.y - hh, n.x + hw, n.y + hh);
-    }
-
-    for e in edges {
         for lbl in [
             e.label.as_ref(),
             e.start_label_left.as_ref(),

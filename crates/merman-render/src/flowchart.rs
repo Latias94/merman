@@ -288,6 +288,7 @@ fn edge_label_is_non_empty(edge: &FlowEdge) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(feature = "flowchart_root_pack")]
 fn edge_label_leaf_id(edge: &FlowEdge) -> String {
     format!("edge-label::{}", edge.id)
 }
@@ -866,26 +867,10 @@ pub fn layout_flowchart_v2(
     let mut cluster_node_labels: std::collections::HashMap<String, NodeLabel> =
         std::collections::HashMap::new();
     for sg in &model.subgraphs {
-        let label_type = sg.label_type.as_deref().unwrap_or("text");
-        let title_width_limit = Some(cluster_title_wrapping_width);
-        let metrics = flowchart_label_metrics_for_layout(
-            measurer,
-            &sg.title,
-            label_type,
-            &text_style,
-            title_width_limit,
-            node_wrap_mode,
-        );
-        let width = metrics.width + cluster_padding * 2.0;
-        let height = metrics.height + cluster_padding * 2.0;
-        cluster_node_labels.insert(
-            sg.id.clone(),
-            NodeLabel {
-                width,
-                height,
-                ..Default::default()
-            },
-        );
+        // Mermaid does not pre-size compound (subgraph) nodes based on title metrics for Dagre
+        // layout. Their dimensions are computed from children (border nodes) and then adjusted at
+        // render time for title width and configured margins.
+        cluster_node_labels.insert(sg.id.clone(), NodeLabel::default());
     }
 
     let mut leaf_node_labels: std::collections::HashMap<String, NodeLabel> =
@@ -971,7 +956,7 @@ pub fn layout_flowchart_v2(
             }
         }
 
-        let mut insert_with_parent =
+        let insert_with_parent =
             |id: &str,
              g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
              inserted: &mut std::collections::HashSet<String>,
@@ -1011,8 +996,12 @@ pub fn layout_flowchart_v2(
             g.set_node(
                 id.clone(),
                 NodeLabel {
-                    width: 10.0,
-                    height: 10.0,
+                    // Mermaid initializes these labelRect nodes at 10x10, but then immediately
+                    // runs `insertNode(...)` + `updateNodeBounds(...)` before Dagre layout. For an
+                    // empty `labelRect`, the measured bbox collapses to ~0.1x0.1 and that is what
+                    // Dagre actually sees for spacing. Match that here for layout parity.
+                    width: 0.1,
+                    height: 0.1,
                     ..Default::default()
                 },
             );
@@ -1422,7 +1411,11 @@ pub fn layout_flowchart_v2(
         std::collections::HashMap::new();
     let mut edge_override_to_cluster: std::collections::HashMap<String, Option<String>> =
         std::collections::HashMap::new();
+    #[cfg(feature = "flowchart_root_pack")]
     let mut edge_packed_shift: std::collections::HashMap<String, (f64, f64)> =
+        std::collections::HashMap::new();
+    #[cfg(not(feature = "flowchart_root_pack"))]
+    let edge_packed_shift: std::collections::HashMap<String, (f64, f64)> =
         std::collections::HashMap::new();
 
     let mut leaf_node_ids: std::collections::HashSet<String> = model
@@ -1433,40 +1426,6 @@ pub fn layout_flowchart_v2(
         .collect();
     for id in &self_loop_label_node_ids {
         leaf_node_ids.insert(id.clone());
-    }
-
-    fn graph_content_rect(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Option<Rect> {
-        let mut out: Option<Rect> = None;
-        for id in g.node_ids() {
-            let Some(n) = g.node(&id) else { continue };
-            let (Some(x), Some(y)) = (n.x, n.y) else {
-                continue;
-            };
-            let r = Rect::from_center(x, y, n.width, n.height);
-            if let Some(ref mut cur) = out {
-                cur.union(r);
-            } else {
-                out = Some(r);
-            }
-        }
-        for ek in g.edge_keys() {
-            let Some(e) = g.edge_by_key(&ek) else {
-                continue;
-            };
-            let (Some(x), Some(y)) = (e.x, e.y) else {
-                continue;
-            };
-            if e.width <= 0.0 && e.height <= 0.0 {
-                continue;
-            }
-            let r = Rect::from_center(x, y, e.width, e.height);
-            if let Some(ref mut cur) = out {
-                cur.union(r);
-            } else {
-                out = Some(r);
-            }
-        }
-        out
     }
 
     fn place_graph(
@@ -1772,15 +1731,9 @@ pub fn layout_flowchart_v2(
         }
     }
 
-    // The Mermaid-like recursive cluster behavior above can increase the effective size of a root
-    // cluster (e.g. toggling TB->LR). Mermaid accounts for that via clusterNodes and then lays out
-    // the top-level graph using those expanded dimensions.
-    //
-    // Our headless output keeps all members in one graph, so apply a deterministic packing step
-    // for root, isolated clusters to avoid overlaps after the recursive step.
-    //
-    // This is especially visible when multiple disconnected subgraphs exist: their member nodes
-    // do not overlap, but the post-layout cluster padding/title extents can.
+    // Mermaid does not apply an extra post-layout packing step for disconnected subgraphs.
+    // Keep the experimental packing logic behind a feature flag for debugging only.
+    #[cfg(feature = "flowchart_root_pack")]
     {
         let subgraph_ids: std::collections::HashSet<&str> =
             model.subgraphs.iter().map(|s| s.id.as_str()).collect();
