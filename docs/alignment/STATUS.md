@@ -62,6 +62,8 @@ Recent progress: `xychart` headless layout and Stage B parity renderer exist and
 upstream SVG baselines via `xtask compare-xychart-svgs` (DOM parity mode).
 Recent progress: flowchart Stage B now matches upstream SVG DOM for the current fixture set in parity mode
 (`cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`).
+Recent progress: flowchart Dagre config now uses Mermaid margins (`marginx/marginy=8`) for both the top-level
+graph and extracted cluster graphs, improving subgraph/cluster geometry parity.
 Recent progress: flowchart fixtures now cover `flow-style.spec.js` and `flow-interactions.spec.js` more
 thoroughly (style/class edge cases, click syntax matrix, and `securityLevel: loose` callback gating).
 Recent progress: flowchart edge curves now cover `monotoneX`/`monotoneY` and `step`/`stepBefore` in addition to

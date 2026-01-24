@@ -6,7 +6,7 @@
         {
           "id": "subcontainer-child",
           "x": 162.52,
-          "y": 82.0,
+          "y": 67.0,
           "width": 175.04,
           "height": 54.0,
           "is_cluster": false
@@ -14,7 +14,7 @@
         {
           "id": "subcontainer-sibling",
           "x": 455.74,
-          "y": 82.0,
+          "y": 67.0,
           "width": 186.4,
           "height": 54.0,
           "is_cluster": false
@@ -22,17 +22,17 @@
         {
           "id": "subcontainer",
           "x": 162.52,
-          "y": 82.0,
+          "y": 67.0,
           "width": 250.04,
-          "height": 124.0,
+          "height": 114.0,
           "is_cluster": true
         },
         {
           "id": "main",
           "x": 293.22,
-          "y": 82.0,
+          "y": 67.0,
           "width": 586.44,
-          "height": 164.0,
+          "height": 134.0,
           "is_cluster": true
         }
       ],
@@ -46,19 +46,19 @@
           "points": [
             {
               "x": 250.04,
-              "y": 82.0
+              "y": 67.0
             },
             {
               "x": 287.54,
-              "y": 82.0
+              "y": 67.0
             },
             {
               "x": 325.04,
-              "y": 82.0
+              "y": 67.0
             },
             {
               "x": 362.54,
-              "y": 82.0
+              "y": 67.0
             }
           ],
           "label": null,
@@ -75,9 +75,9 @@
         {
           "id": "main",
           "x": 293.22,
-          "y": 82.0,
+          "y": 67.0,
           "width": 586.44,
-          "height": 164.0,
+          "height": 134.0,
           "diff": -4.0,
           "offset_y": 20.0,
           "title": "main",
@@ -96,15 +96,15 @@
         {
           "id": "subcontainer",
           "x": 162.52,
-          "y": 82.0,
+          "y": 67.0,
           "width": 250.04,
-          "height": 124.0,
+          "height": 114.0,
           "diff": -4.0,
           "offset_y": 20.0,
           "title": "subcontainer",
           "title_label": {
             "x": 162.52,
-            "y": 32.0,
+            "y": 22.0,
             "width": 80.16,
             "height": 24.0
           },
@@ -119,7 +119,7 @@
         "min_x": 0.0,
         "min_y": 0.0,
         "max_x": 586.44,
-        "max_y": 164.0
+        "max_y": 134.0
       }
     }
   }

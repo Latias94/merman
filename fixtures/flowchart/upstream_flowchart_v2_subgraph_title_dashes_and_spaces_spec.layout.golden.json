@@ -6,7 +6,7 @@
         {
           "id": "A",
           "x": 72.36,
-          "y": 62.0,
+          "y": 57.0,
           "width": 94.72,
           "height": 54.0,
           "is_cluster": false
@@ -14,7 +14,7 @@
         {
           "id": "B",
           "x": 264.84,
-          "y": 62.0,
+          "y": 57.0,
           "width": 90.24,
           "height": 54.0,
           "is_cluster": false
@@ -22,17 +22,17 @@
         {
           "id": "title-with-dashes",
           "x": 72.36,
-          "y": 62.0,
+          "y": 57.0,
           "width": 144.72,
-          "height": 124.0,
+          "height": 114.0,
           "is_cluster": true
         },
         {
           "id": "subGraph1",
           "x": 264.84,
-          "y": 62.0,
+          "y": 57.0,
           "width": 140.24,
-          "height": 124.0,
+          "height": 114.0,
           "is_cluster": true
         }
       ],
@@ -46,23 +46,23 @@
           "points": [
             {
               "x": 119.72,
-              "y": 62.0
+              "y": 57.0
             },
             {
               "x": 144.72,
-              "y": 62.0
+              "y": 57.0
             },
             {
               "x": 169.72,
-              "y": 62.0
+              "y": 57.0
             },
             {
               "x": 194.72,
-              "y": 62.0
+              "y": 57.0
             },
             {
               "x": 219.72,
-              "y": 62.0
+              "y": 57.0
             }
           ],
           "label": null,
@@ -79,9 +79,9 @@
         {
           "id": "subGraph1",
           "x": 264.84,
-          "y": 62.0,
+          "y": 57.0,
           "width": 140.24,
-          "height": 124.0,
+          "height": 114.0,
           "diff": -4.0,
           "offset_y": 20.0,
           "title": "title with spaces",
@@ -100,9 +100,9 @@
         {
           "id": "title-with-dashes",
           "x": 72.36,
-          "y": 62.0,
+          "y": 57.0,
           "width": 144.72,
-          "height": 124.0,
+          "height": 114.0,
           "diff": -4.0,
           "offset_y": 20.0,
           "title": "title-with-dashes",
@@ -123,7 +123,7 @@
         "min_x": 0.0,
         "min_y": 0.0,
         "max_x": 334.96,
-        "max_y": 124.0
+        "max_y": 114.0
       }
     }
   }

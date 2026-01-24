@@ -96,7 +96,7 @@
           "x": 71.98,
           "y": 68.688,
           "width": 143.96,
-          "height": 124.0,
+          "height": 114.0,
           "is_cluster": true
         }
       ],
@@ -107,13 +107,13 @@
           "x": 71.98,
           "y": 68.688,
           "width": 143.96,
-          "height": 124.0,
+          "height": 114.0,
           "diff": -4.0,
           "offset_y": 20.0,
           "title": "hello",
           "title_label": {
             "x": 71.98,
-            "y": 18.688,
+            "y": 23.688,
             "width": 29.6,
             "height": 24.0
           },

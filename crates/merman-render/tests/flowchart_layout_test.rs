@@ -365,14 +365,33 @@ fn flowchart_layout_includes_clusters_with_title_placeholders() {
 
 #[test]
 fn flowchart_cluster_exposes_mermaid_diff_and_offset_y() {
-    let text = "flowchart TB\nsubgraph A[\"`This is a very very very very very very very long title that should wrap`\"]\n  a\nend\n";
+    // Base cluster width should come from the layout result (cluster bounds), not from any
+    // title-driven widening. Measure it from an otherwise-identical graph with a short title.
+    let short_text = "flowchart TB\nsubgraph A[\"`x`\"]\n  a\nend\n";
+    let long_text = "flowchart TB\nsubgraph A[\"`This is a very very very very very very very long title that should wrap`\"]\n  a\nend\n";
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed_short =
+        futures::executor::block_on(engine.parse_diagram(short_text, ParseOptions::default()))
+            .expect("parse ok")
+            .expect("diagram detected");
+    let out_short = layout_parsed(&parsed_short, &LayoutOptions::default()).expect("layout ok");
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout_short) = out_short.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+    let base_cluster = layout_short
+        .clusters
+        .iter()
+        .find(|c| c.id == "A")
+        .expect("cluster A");
+    let base_width = base_cluster.width;
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let parsed_long =
+        futures::executor::block_on(engine.parse_diagram(long_text, ParseOptions::default()))
+            .expect("parse ok")
+            .expect("diagram detected");
+
+    let out = layout_parsed(&parsed_long, &LayoutOptions::default()).expect("layout ok");
     let merman_render::model::LayoutDiagram::FlowchartV2(layout) = out.layout else {
         panic!("expected FlowchartV2 layout");
     };
@@ -388,7 +407,6 @@ fn flowchart_cluster_exposes_mermaid_diff_and_offset_y() {
     assert!((cluster_padding - 8.0).abs() < 1e-6);
 
     // `node.diff` is computed from the (layout) cluster node width and the measured title bbox.
-    let base_width = cluster.width;
     let title_w = cluster.title_label.width.max(1.0);
 
     let expected_diff = if base_width <= title_w {

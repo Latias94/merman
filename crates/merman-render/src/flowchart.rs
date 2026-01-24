@@ -693,8 +693,8 @@ fn extract_clusters_recursively(
             // - `packages/mermaid/src/rendering-util/layout-algorithms/dagre/index.js`
             nodesep: 50.0,
             ranksep: 50.0,
-            // Dagre-d3-es defaults `edgesep` to 20 when unspecified.
-            edgesep: 20.0,
+            marginx: 8.0,
+            marginy: 8.0,
             acyclicer: None,
             ..Default::default()
         });
@@ -857,8 +857,8 @@ pub fn layout_flowchart_v2(
         rankdir: rank_dir_from_flow(&diagram_direction),
         nodesep,
         ranksep,
-        // Dagre-d3-es defaults `edgesep` to 20 when unspecified.
-        edgesep: 20.0,
+        marginx: 8.0,
+        marginy: 8.0,
         acyclicer: None,
         ..Default::default()
     });
@@ -2374,6 +2374,7 @@ pub fn layout_flowchart_v2(
             wrap_mode: WrapMode,
             title_total_margin: f64,
             cluster_padding: f64,
+            add_title_total_margin: bool,
         ) -> Rect {
             let title_width_limit = Some(title_wrapping_width);
             let title_metrics = flowchart_label_metrics_for_layout(
@@ -2396,7 +2397,7 @@ pub fn layout_flowchart_v2(
             }
 
             // Mermaid adds `subGraphTitleTotalMargin` to cluster height after layout.
-            if title_total_margin > 0.0 {
+            if add_title_total_margin && title_total_margin > 0.0 {
                 let (cx, cy) = rect.center();
                 rect = Rect::from_center(cx, cy, rect.width(), rect.height() + title_total_margin);
             }
@@ -2438,7 +2439,20 @@ pub fn layout_flowchart_v2(
                     .map(|v| v.0)
                     .unwrap_or_else(|_| Rect::from_center(0.0, 0.0, 1.0, 1.0))
                 });
-            (rect, rect.width())
+            let base_width = rect.width();
+            let rect = adjust_cluster_rect_for_title(
+                rect,
+                &sg.title,
+                sg.label_type.as_deref().unwrap_or("text"),
+                measurer,
+                &text_style,
+                cluster_title_wrapping_width,
+                node_wrap_mode,
+                title_total_margin,
+                cluster_padding,
+                false,
+            );
+            (rect, base_width)
         } else if let Some(r) = cluster_rects_from_graph.get(&sg.id).copied() {
             let base_width = r.width();
             let rect = adjust_cluster_rect_for_title(
@@ -2451,6 +2465,7 @@ pub fn layout_flowchart_v2(
                 node_wrap_mode,
                 title_total_margin,
                 cluster_padding,
+                true,
             );
             (rect, base_width)
         } else {

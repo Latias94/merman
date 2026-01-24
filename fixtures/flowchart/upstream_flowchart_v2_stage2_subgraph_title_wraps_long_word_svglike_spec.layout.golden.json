@@ -6,7 +6,7 @@
         {
           "id": "A",
           "x": 86.06,
-          "y": 58.8,
+          "y": 53.8,
           "width": 97.12,
           "height": 47.6,
           "is_cluster": false
@@ -14,7 +14,7 @@
         {
           "id": "B",
           "x": 258.18,
-          "y": 58.8,
+          "y": 53.8,
           "width": 97.12,
           "height": 47.6,
           "is_cluster": false
@@ -22,9 +22,9 @@
         {
           "id": "wrap",
           "x": 172.12,
-          "y": 58.8,
+          "y": 53.8,
           "width": 344.24,
-          "height": 117.6,
+          "height": 107.6,
           "is_cluster": true
         }
       ],
@@ -38,15 +38,15 @@
           "points": [
             {
               "x": 134.62,
-              "y": 58.8
+              "y": 53.8
             },
             {
               "x": 172.12,
-              "y": 58.8
+              "y": 53.8
             },
             {
               "x": 209.62,
-              "y": 58.8
+              "y": 53.8
             }
           ],
           "label": null,
@@ -63,9 +63,9 @@
         {
           "id": "wrap",
           "x": 172.12,
-          "y": 58.8,
+          "y": 53.8,
           "width": 344.24,
-          "height": 117.6,
+          "height": 107.6,
           "diff": -4.0,
           "offset_y": 66.4,
           "title": "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
@@ -86,7 +86,7 @@
         "min_x": 0.0,
         "min_y": 0.0,
         "max_x": 344.24,
-        "max_y": 117.6
+        "max_y": 107.6
       }
     }
   }
