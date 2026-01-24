@@ -1190,15 +1190,37 @@ pub fn layout_flowchart_v2(
     fn extracted_graph_bbox_rect(
         g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
         title_total_margin: f64,
+        extracted: &std::collections::HashMap<String, Graph<NodeLabel, EdgeLabel, GraphLabel>>,
+        subgraph_id_set: &std::collections::HashSet<String>,
     ) -> Option<Rect> {
-        fn graph_content_rect(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Option<Rect> {
+        fn graph_content_rect(
+            g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+            extracted: &std::collections::HashMap<String, Graph<NodeLabel, EdgeLabel, GraphLabel>>,
+            subgraph_id_set: &std::collections::HashSet<String>,
+            title_total_margin: f64,
+        ) -> Option<Rect> {
             let mut out: Option<Rect> = None;
             for id in g.node_ids() {
                 let Some(n) = g.node(&id) else { continue };
                 let (Some(x), Some(y)) = (n.x, n.y) else {
                     continue;
                 };
-                let r = Rect::from_center(x, y, n.width, n.height);
+                let mut height = n.height;
+                let is_cluster_node = extracted.contains_key(&id) && g.children(&id).is_empty();
+                let is_non_recursive_cluster =
+                    subgraph_id_set.contains(&id) && !g.children(&id).is_empty();
+
+                // Mermaid increases cluster node height by `subGraphTitleTotalMargin` *after* Dagre
+                // layout (just before rendering), and `updateNodeBounds(...)` measures the DOM
+                // bbox after that expansion. Mirror that here for non-recursive clusters.
+                //
+                // For leaf clusterNodes (recursively rendered clusters), the node's width/height
+                // comes directly from `updateNodeBounds(...)`, so do not add margins again.
+                if !is_cluster_node && is_non_recursive_cluster && title_total_margin > 0.0 {
+                    height = (height + title_total_margin).max(1.0);
+                }
+
+                let r = Rect::from_center(x, y, n.width, height);
                 if let Some(ref mut cur) = out {
                     cur.union(r);
                 } else {
@@ -1225,33 +1247,7 @@ pub fn layout_flowchart_v2(
             out
         }
 
-        let mut r = graph_content_rect(g)?;
-        let gl = g.graph();
-        // Mirror the padding applied when deriving `updateNodeBounds(...)`-like cluster node sizes
-        // from the child graph bbox (see `place_graph`).
-        let edge_half = gl.edgesep / 2.0;
-        let flowchart_edge_stroke_half = 1.0;
-        let (pad_x, pad_y) = match gl.rankdir {
-            // Empirically, Mermaid's DOM `getBBox()` for flowchart-v2 recursive clusters behaves
-            // closer to `nodesep/2 + stroke/2` in the cross-axis, rather than `nodesep/2 + edgesep/2`.
-            RankDir::LR | RankDir::RL => {
-                (gl.ranksep, gl.nodesep / 2.0 + flowchart_edge_stroke_half)
-            }
-            _ => (gl.nodesep / 2.0 + edge_half, gl.ranksep),
-        };
-        r.min_x -= pad_x;
-        r.max_x += pad_x;
-        r.min_y -= pad_y;
-        r.max_y += pad_y;
-
-        // Mermaid reserves `subGraphTitleMargin.top + bottom` inside the cluster box. For
-        // recursively rendered clusters, this is already part of the DOM bbox that
-        // `updateNodeBounds(...)` measures, so include it here as well.
-        if title_total_margin > 0.0 {
-            let (cx, cy) = r.center();
-            r = Rect::from_center(cx, cy, r.width(), r.height() + title_total_margin);
-        }
-        Some(r)
+        graph_content_rect(g, extracted, subgraph_id_set, title_total_margin)
     }
 
     fn apply_mermaid_subgraph_title_shifts(
@@ -1363,12 +1359,17 @@ pub fn layout_flowchart_v2(
             // group. In that render path, the child graph contains a node matching the cluster id
             // (inserted via `graph.setNode(parentCluster.id, ...)`), whose computed compound bounds
             // correspond to the cluster box measured in the DOM.
-            if let Some(n_child) = child.node(&id) {
-                if let (Some(_x), Some(_y)) = (n_child.x, n_child.y) {
-                    if let Some(n) = graph.node_mut(&id) {
-                        n.width = n_child.width.max(1.0);
-                        n.height = (n_child.height + title_total_margin).max(1.0);
-                    }
+            if let Some(r) =
+                extracted_graph_bbox_rect(&child, title_total_margin, extracted, subgraph_id_set)
+            {
+                if let Some(n) = graph.node_mut(&id) {
+                    n.width = r.width().max(1.0);
+                    n.height = r.height().max(1.0);
+                }
+            } else if let Some(n_child) = child.node(&id) {
+                if let Some(n) = graph.node_mut(&id) {
+                    n.width = n_child.width.max(1.0);
+                    n.height = n_child.height.max(1.0);
                 }
             }
             extracted.insert(id, child);
