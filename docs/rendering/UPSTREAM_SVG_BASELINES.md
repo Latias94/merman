@@ -224,14 +224,17 @@ baselines under `fixtures/upstream-svgs/`:
 Notes:
 
 - Most diagrams are compared as **raw SVG bytes** (exact string match).
-- `state` diagrams are compared using a **structure-level DOM signature** by default because the
-  upstream Mermaid renderer uses rough/stochastic geometry output (not byte-stable). The DOM check
-  ignores `<path d>` / `data-points` payloads and normalizes generated ids.
-- `gitGraph` diagrams are compared using a **structure-level DOM signature** by default because the
-  upstream Mermaid parser auto-generates commit ids with random suffixes (not byte-stable).
-- `gantt` diagrams are compared using a **structure-level DOM signature** by default because output
-  can depend on the rendering environment (page width via `parentElement.offsetWidth`) and may
-  include a `today` marker whose x-position depends on the current date.
+- Some diagrams are compared using a **structure-level DOM signature** by default (instead of raw
+  bytes) because their upstream output is not reliably byte-stable across environments:
+  - `state`: rough/stochastic geometry output (the DOM check ignores `<path d>` / `data-points` and
+    normalizes generated ids).
+  - `gitGraph`: auto-generated commit ids with random suffixes (not byte-stable).
+  - `gantt`: output depends on the rendering environment (page width via
+    `parentElement.offsetWidth`) and may include a `today` marker whose x-position depends on the
+    current date.
+  - `er`, `class`, `requirement`, `block`, `mindmap`, `architecture`: upstream SVG often differs
+    only by numeric formatting / viewport rounding / minor browser-layout drift, which makes raw
+    byte comparisons too strict for CI.
 - To force DOM comparison for all diagrams (useful when iterating on tooling):
   - `cargo run -p xtask -- check-upstream-svgs --diagram all --check-dom --dom-mode structure --dom-decimals 3`
 
