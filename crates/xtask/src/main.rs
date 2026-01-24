@@ -84,6 +84,7 @@ fn main() -> Result<(), XtaskError> {
         "debug-flowchart-layout" => debug_flowchart_layout(args.collect()),
         "debug-flowchart-svg-roots" => debug_flowchart_svg_roots(args.collect()),
         "debug-flowchart-svg-positions" => debug_flowchart_svg_positions(args.collect()),
+        "debug-flowchart-svg-diff" => debug_flowchart_svg_diff(args.collect()),
         "compare-sequence-svgs" => compare_sequence_svgs(args.collect()),
         "compare-class-svgs" => compare_class_svgs(args.collect()),
         "compare-state-svgs" => compare_state_svgs(args.collect()),
@@ -2757,6 +2758,566 @@ fn debug_flowchart_svg_positions(args: Vec<String>) -> Result<(), XtaskError> {
                 a.left, a.top, a.w, a.h
             );
         }
+    }
+
+    Ok(())
+}
+
+fn debug_flowchart_svg_diff(args: Vec<String>) -> Result<(), XtaskError> {
+    let mut fixture: Option<String> = None;
+    let mut upstream: Option<PathBuf> = None;
+    let mut local: Option<PathBuf> = None;
+    let mut filter: Option<String> = None;
+    let mut min_abs_delta: f64 = 0.5;
+    let mut max_rows: usize = 50;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--fixture" => {
+                i += 1;
+                fixture = args.get(i).map(|s| s.to_string());
+            }
+            "--upstream" => {
+                i += 1;
+                upstream = args.get(i).map(PathBuf::from);
+            }
+            "--local" => {
+                i += 1;
+                local = args.get(i).map(PathBuf::from);
+            }
+            "--filter" => {
+                i += 1;
+                filter = args.get(i).map(|s| s.to_string());
+            }
+            "--min-abs-delta" => {
+                i += 1;
+                min_abs_delta = args
+                    .get(i)
+                    .and_then(|s| s.parse::<f64>().ok())
+                    .unwrap_or(0.5);
+            }
+            "--max" => {
+                i += 1;
+                max_rows = args
+                    .get(i)
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .unwrap_or(50);
+            }
+            "--help" | "-h" => return Err(XtaskError::Usage),
+            _ => return Err(XtaskError::Usage),
+        }
+        i += 1;
+    }
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+
+    if let Some(f) = fixture.as_deref() {
+        let upstream_default = workspace_root
+            .join("fixtures")
+            .join("upstream-svgs")
+            .join("flowchart")
+            .join(format!("{f}.svg"));
+        let local_default = workspace_root
+            .join("target")
+            .join("compare")
+            .join("flowchart")
+            .join(format!("{f}.svg"));
+        upstream = upstream.or(Some(upstream_default));
+        local = local.or(Some(local_default));
+    }
+
+    let Some(upstream_path) = upstream else {
+        return Err(XtaskError::Usage);
+    };
+    let Some(local_path) = local else {
+        return Err(XtaskError::Usage);
+    };
+
+    let upstream_svg =
+        fs::read_to_string(&upstream_path).map_err(|source| XtaskError::ReadFile {
+            path: upstream_path.display().to_string(),
+            source,
+        })?;
+    let local_svg = fs::read_to_string(&local_path).map_err(|source| XtaskError::ReadFile {
+        path: local_path.display().to_string(),
+        source,
+    })?;
+
+    #[derive(Debug, Clone, Copy)]
+    struct Translate {
+        x: f64,
+        y: f64,
+    }
+
+    fn parse_translate(transform: &str) -> Option<Translate> {
+        let t = transform.trim();
+        let t = t.strip_prefix("translate(")?;
+        let t = t.strip_suffix(')')?;
+        let parts = t
+            .split(|ch: char| ch == ',' || ch.is_whitespace())
+            .filter(|s| !s.trim().is_empty())
+            .filter_map(|s| s.trim().parse::<f64>().ok())
+            .collect::<Vec<_>>();
+        match parts.as_slice() {
+            [x, y] => Some(Translate { x: *x, y: *y }),
+            [x] => Some(Translate { x: *x, y: 0.0 }),
+            _ => None,
+        }
+    }
+
+    fn accumulated_translate_including_self(node: roxmltree::Node<'_, '_>) -> Translate {
+        let mut x = 0.0;
+        let mut y = 0.0;
+        for n in node.ancestors().filter(|n| n.is_element()) {
+            if let Some(transform) = n.attribute("transform") {
+                if let Some(t) = parse_translate(transform) {
+                    x += t.x;
+                    y += t.y;
+                }
+            }
+        }
+        Translate { x, y }
+    }
+
+    #[derive(Debug, Clone)]
+    struct NodePos {
+        kind: &'static str,
+        x: f64,
+        y: f64,
+    }
+
+    #[derive(Debug, Clone)]
+    struct ClusterRect {
+        left: f64,
+        top: f64,
+        w: f64,
+        h: f64,
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct BBox {
+        min_x: f64,
+        min_y: f64,
+        max_x: f64,
+        max_y: f64,
+    }
+
+    impl BBox {
+        fn width(&self) -> f64 {
+            self.max_x - self.min_x
+        }
+        fn height(&self) -> f64 {
+            self.max_y - self.min_y
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    struct EdgePoints {
+        tx: f64,
+        ty: f64,
+        points: Vec<(f64, f64)>,
+        bbox: Option<BBox>,
+        abs_bbox: Option<BBox>,
+    }
+
+    fn decode_data_points(dp: &str) -> Option<Vec<(f64, f64)>> {
+        use base64::Engine as _;
+        let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(dp.as_bytes()) else {
+            return None;
+        };
+        let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+            return None;
+        };
+        let Some(arr) = v.as_array() else {
+            return None;
+        };
+        let mut out: Vec<(f64, f64)> = Vec::with_capacity(arr.len());
+        for p in arr {
+            let (Some(x), Some(y)) = (
+                p.get("x").and_then(|v| v.as_f64()),
+                p.get("y").and_then(|v| v.as_f64()),
+            ) else {
+                continue;
+            };
+            if !(x.is_finite() && y.is_finite()) {
+                continue;
+            }
+            out.push((x, y));
+        }
+        Some(out)
+    }
+
+    fn bbox_of_points(points: &[(f64, f64)]) -> Option<BBox> {
+        if points.is_empty() {
+            return None;
+        }
+        let mut min_x = f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+        for (x, y) in points {
+            min_x = min_x.min(*x);
+            min_y = min_y.min(*y);
+            max_x = max_x.max(*x);
+            max_y = max_y.max(*y);
+        }
+        if min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite() {
+            Some(BBox {
+                min_x,
+                min_y,
+                max_x,
+                max_y,
+            })
+        } else {
+            None
+        }
+    }
+
+    fn parse_root_viewport(svg: &str) -> Result<(Option<String>, Option<String>), String> {
+        let doc = roxmltree::Document::parse(svg).map_err(|e| e.to_string())?;
+        let root = doc.root_element();
+        let view_box = root.attribute("viewBox").map(|s| s.to_string());
+        let max_width = root.attribute("style").and_then(|s| {
+            static RE: OnceLock<Regex> = OnceLock::new();
+            let re = RE.get_or_init(|| Regex::new(r#"max-width:\s*([0-9.]+)px"#).unwrap());
+            re.captures(s)
+                .and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
+        });
+        Ok((view_box, max_width))
+    }
+
+    fn parse_positions_and_edges(
+        svg: &str,
+    ) -> Result<
+        (
+            BTreeMap<String, NodePos>,
+            BTreeMap<String, ClusterRect>,
+            BTreeMap<String, EdgePoints>,
+            Vec<String>,
+        ),
+        String,
+    > {
+        let doc = roxmltree::Document::parse(svg).map_err(|e| e.to_string())?;
+
+        let mut nodes: BTreeMap<String, NodePos> = BTreeMap::new();
+        let mut clusters: BTreeMap<String, ClusterRect> = BTreeMap::new();
+        let mut edges: BTreeMap<String, EdgePoints> = BTreeMap::new();
+        let mut root_transforms: Vec<String> = Vec::new();
+
+        for n in doc.descendants().filter(|n| n.is_element()) {
+            if n.tag_name().name() == "g" {
+                if let Some(class) = n.attribute("class") {
+                    if class.split_whitespace().any(|t| t == "root") {
+                        if let Some(transform) = n.attribute("transform") {
+                            if let Some(t) = transform
+                                .trim()
+                                .strip_prefix("translate(")
+                                .and_then(|s| s.strip_suffix(')'))
+                            {
+                                root_transforms.push(t.trim().to_string());
+                            }
+                        }
+                    }
+                }
+            }
+
+            if n.tag_name().name() == "g" {
+                let Some(id) = n.attribute("id") else {
+                    continue;
+                };
+                let class = n.attribute("class").unwrap_or_default();
+                let class_tokens = class.split_whitespace().collect::<Vec<_>>();
+
+                if class_tokens.iter().any(|t| *t == "node") {
+                    let abs = accumulated_translate_including_self(n);
+                    nodes.insert(
+                        id.to_string(),
+                        NodePos {
+                            kind: "node",
+                            x: abs.x,
+                            y: abs.y,
+                        },
+                    );
+                    continue;
+                }
+
+                // Mermaid self-loop helper nodes use `<g class="label edgeLabel" id="X---X---1" transform="translate(...)">`.
+                if class_tokens.iter().any(|t| *t == "edgeLabel")
+                    && class_tokens.iter().any(|t| *t == "label")
+                {
+                    let abs = accumulated_translate_including_self(n);
+                    nodes.insert(
+                        id.to_string(),
+                        NodePos {
+                            kind: "labelRect",
+                            x: abs.x,
+                            y: abs.y,
+                        },
+                    );
+                    continue;
+                }
+
+                if class_tokens.iter().any(|t| *t == "cluster") {
+                    let abs = accumulated_translate_including_self(n);
+                    let rect = n
+                        .children()
+                        .find(|c| c.is_element() && c.tag_name().name() == "rect");
+                    let Some(rect) = rect else {
+                        continue;
+                    };
+                    let x = rect
+                        .attribute("x")
+                        .and_then(|v| v.parse::<f64>().ok())
+                        .unwrap_or(0.0);
+                    let y = rect
+                        .attribute("y")
+                        .and_then(|v| v.parse::<f64>().ok())
+                        .unwrap_or(0.0);
+                    let w = rect
+                        .attribute("width")
+                        .and_then(|v| v.parse::<f64>().ok())
+                        .unwrap_or(0.0);
+                    let h = rect
+                        .attribute("height")
+                        .and_then(|v| v.parse::<f64>().ok())
+                        .unwrap_or(0.0);
+                    clusters.insert(
+                        id.to_string(),
+                        ClusterRect {
+                            left: abs.x + x,
+                            top: abs.y + y,
+                            w,
+                            h,
+                        },
+                    );
+                }
+            }
+
+            if n.tag_name().name() == "path" {
+                if !n.attribute("data-edge").is_some_and(|v| v == "true") {
+                    continue;
+                }
+                let Some(edge_id) = n.attribute("data-id") else {
+                    continue;
+                };
+                let Some(dp) = n.attribute("data-points") else {
+                    continue;
+                };
+                let Some(points) = decode_data_points(dp) else {
+                    continue;
+                };
+                let abs = accumulated_translate_including_self(n);
+                let bbox = bbox_of_points(&points);
+                let abs_bbox = bbox.map(|b| BBox {
+                    min_x: b.min_x + abs.x,
+                    max_x: b.max_x + abs.x,
+                    min_y: b.min_y + abs.y,
+                    max_y: b.max_y + abs.y,
+                });
+                edges.insert(
+                    edge_id.to_string(),
+                    EdgePoints {
+                        tx: abs.x,
+                        ty: abs.y,
+                        points,
+                        bbox,
+                        abs_bbox,
+                    },
+                );
+            }
+        }
+
+        root_transforms.sort();
+        root_transforms.dedup();
+        Ok((nodes, clusters, edges, root_transforms))
+    }
+
+    let (up_viewbox, up_maxw) =
+        parse_root_viewport(&upstream_svg).map_err(XtaskError::DebugSvgFailed)?;
+    let (lo_viewbox, lo_maxw) =
+        parse_root_viewport(&local_svg).map_err(XtaskError::DebugSvgFailed)?;
+
+    let (up_nodes, up_clusters, up_edges, up_roots) =
+        parse_positions_and_edges(&upstream_svg).map_err(XtaskError::DebugSvgFailed)?;
+    let (lo_nodes, lo_clusters, lo_edges, lo_roots) =
+        parse_positions_and_edges(&local_svg).map_err(XtaskError::DebugSvgFailed)?;
+
+    println!("upstream: {}", upstream_path.display());
+    println!("local:    {}", local_path.display());
+    println!();
+
+    println!("== Root SVG ==");
+    println!(
+        "upstream viewBox: {:?}",
+        up_viewbox.as_deref().unwrap_or("<missing>")
+    );
+    println!(
+        "local    viewBox: {:?}",
+        lo_viewbox.as_deref().unwrap_or("<missing>")
+    );
+    println!(
+        "upstream max-width(px): {:?}",
+        up_maxw.as_deref().unwrap_or("<missing>")
+    );
+    println!(
+        "local    max-width(px): {:?}",
+        lo_maxw.as_deref().unwrap_or("<missing>")
+    );
+    println!(
+        "counts: nodes={} clusters={} edges={}",
+        up_nodes.len().min(lo_nodes.len()),
+        up_clusters.len().min(lo_clusters.len()),
+        up_edges.len().min(lo_edges.len())
+    );
+    println!();
+
+    println!("== Root group transforms ==");
+    println!("upstream:");
+    for t in &up_roots {
+        println!("- {t}");
+    }
+    println!("local:");
+    for t in &lo_roots {
+        println!("- {t}");
+    }
+    println!();
+
+    fn keep_id(id: &str, filter: &Option<String>) -> bool {
+        filter.as_deref().map(|f| id.contains(f)).unwrap_or(true)
+    }
+
+    println!("== Nodes / LabelRects (abs translate) ==");
+    let mut node_rows: Vec<(f64, String)> = Vec::new();
+    for (id, up) in &up_nodes {
+        if !keep_id(id, &filter) {
+            continue;
+        }
+        let Some(lo) = lo_nodes.get(id) else {
+            continue;
+        };
+        let dx = lo.x - up.x;
+        let dy = lo.y - up.y;
+        let score = (dx * dx + dy * dy).sqrt();
+        if score >= min_abs_delta {
+            node_rows.push((
+                score,
+                format!(
+                    "{id} kind={} upstream=({:.3},{:.3}) local=({:.3},{:.3}) Δ=({:.3},{:.3})",
+                    up.kind, up.x, up.y, lo.x, lo.y, dx, dy
+                ),
+            ));
+        }
+    }
+    node_rows.sort_by(|a, b| {
+        a.0.partial_cmp(&b.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .reverse()
+    });
+    for (_, line) in node_rows.into_iter().take(max_rows) {
+        println!("{line}");
+    }
+    println!();
+
+    println!("== Clusters (abs rect) ==");
+    let mut cluster_rows: Vec<(f64, String)> = Vec::new();
+    for (id, up) in &up_clusters {
+        if !keep_id(id, &filter) {
+            continue;
+        }
+        let Some(lo) = lo_clusters.get(id) else {
+            continue;
+        };
+        let dl = lo.left - up.left;
+        let dt = lo.top - up.top;
+        let dw = lo.w - up.w;
+        let dh = lo.h - up.h;
+        let score = dl.abs().max(dt.abs()).max(dw.abs()).max(dh.abs());
+        if score >= min_abs_delta {
+            cluster_rows.push((
+                score,
+                format!(
+                    "{id} upstream=({:.3},{:.3},{:.3},{:.3}) local=({:.3},{:.3},{:.3},{:.3}) Δ=({:.3},{:.3},{:.3},{:.3})",
+                    up.left, up.top, up.w, up.h,
+                    lo.left, lo.top, lo.w, lo.h,
+                    dl, dt, dw, dh
+                ),
+            ));
+        }
+    }
+    cluster_rows.sort_by(|a, b| {
+        a.0.partial_cmp(&b.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .reverse()
+    });
+    for (_, line) in cluster_rows.into_iter().take(max_rows) {
+        println!("{line}");
+    }
+    println!();
+
+    println!("== Edges (data-points bbox/translate) ==");
+    let mut edge_rows: Vec<(f64, String)> = Vec::new();
+    for (id, up) in &up_edges {
+        if !keep_id(id, &filter) {
+            continue;
+        }
+        let Some(lo) = lo_edges.get(id) else {
+            continue;
+        };
+        let dtx = lo.tx - up.tx;
+        let dty = lo.ty - up.ty;
+        let mut score = dtx.abs().max(dty.abs());
+
+        let mut detail = String::new();
+        if up.points.len() != lo.points.len() {
+            detail.push_str(&format!(
+                " points_len upstream={} local={}",
+                up.points.len(),
+                lo.points.len()
+            ));
+        }
+
+        match (up.bbox, lo.bbox, up.abs_bbox, lo.abs_bbox) {
+            (Some(ub), Some(lb), Some(uab), Some(lab)) => {
+                let dw = lb.width() - ub.width();
+                let dh = lb.height() - ub.height();
+                let dminx = lab.min_x - uab.min_x;
+                let dmaxx = lab.max_x - uab.max_x;
+                let dminy = lab.min_y - uab.min_y;
+                let dmaxy = lab.max_y - uab.max_y;
+                score = score
+                    .max(dw.abs())
+                    .max(dh.abs())
+                    .max(dminx.abs())
+                    .max(dmaxx.abs())
+                    .max(dminy.abs())
+                    .max(dmaxy.abs());
+                detail.push_str(&format!(
+                    " abs_bbox upstream=({:.3},{:.3},{:.3},{:.3}) local=({:.3},{:.3},{:.3},{:.3}) Δ=({:.3},{:.3},{:.3},{:.3}) sizeΔ=({:.3},{:.3})",
+                    uab.min_x, uab.min_y, uab.max_x, uab.max_y,
+                    lab.min_x, lab.min_y, lab.max_x, lab.max_y,
+                    dminx, dminy, dmaxx, dmaxy,
+                    dw, dh
+                ));
+            }
+            _ => {}
+        }
+
+        if score < min_abs_delta {
+            continue;
+        }
+
+        edge_rows.push((score, format!("{id} Δt=({:.3},{:.3}){detail}", dtx, dty)));
+    }
+    edge_rows.sort_by(|a, b| {
+        a.0.partial_cmp(&b.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .reverse()
+    });
+    for (_, line) in edge_rows.into_iter().take(max_rows) {
+        println!("{line}");
     }
 
     Ok(())
