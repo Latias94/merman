@@ -596,6 +596,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn html_br_trims_trailing_space_before_break_for_flowchart_labels() {
+        let plain = crate::flowchart::flowchart_label_plain_text_for_layout(
+            "Hexagon <br> end",
+            "text",
+            true,
+        );
+        assert_eq!(plain, "Hexagon\nend");
+
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let style = TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+        };
+
+        let m = measurer.measure_wrapped(&plain, &style, Some(200.0), WrapMode::HtmlLike);
+        assert_eq!(m.width, 60.984375);
+        assert_eq!(m.height, 48.0);
+    }
+
+    #[test]
     fn markdown_strong_width_matches_flowchart_table() {
         let measurer = VendoredFontMetricsTextMeasurer::default();
         let style = TextStyle {

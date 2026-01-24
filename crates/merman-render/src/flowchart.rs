@@ -2895,6 +2895,22 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
         // A lightweight, deterministic HTML text extractor for Mermaid htmlLabels layout.
         // We intentionally do not attempt full HTML parsing/sanitization here; we only need a
         // best-effort approximation of the rendered textContent for sizing.
+        fn trim_trailing_break_whitespace(out: &mut String) {
+            loop {
+                let Some(ch) = out.chars().last() else {
+                    return;
+                };
+                if ch == '\n' {
+                    return;
+                }
+                if ch.is_whitespace() {
+                    out.pop();
+                    continue;
+                }
+                return;
+            }
+        }
+
         let mut out = String::with_capacity(input.len());
         let mut it = input.chars().peekable();
         while let Some(ch) = it.next() {
@@ -2920,8 +2936,10 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
                     .next()
                     .unwrap_or("");
                 if name == "br" {
+                    trim_trailing_break_whitespace(&mut out);
                     out.push('\n');
                 } else if is_closing && matches!(name, "p" | "div" | "li" | "tr" | "ul" | "ol") {
+                    trim_trailing_break_whitespace(&mut out);
                     out.push('\n');
                 }
                 continue;
