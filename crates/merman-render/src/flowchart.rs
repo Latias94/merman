@@ -573,16 +573,17 @@ fn copy_cluster(
                 new_graph.set_parent(node.clone(), cluster_id.to_string());
             }
 
-            // Copy edges that are internal to this cluster.
+            // Copy edges for this extracted cluster.
             //
-            // Mermaid's `copy(...)` iterates the *incident* edges of each leaf node and copies
-            // them iff they belong to the extracted cluster. This matters for deterministic
-            // insertion order (and therefore acyclic tie-breaking) because the source graph is
-            // mutated as nodes are removed.
+            // Mermaid's implementation calls `graph.edges(node)` (note: on dagre-d3-es Graphlib,
+            // `edges()` ignores the argument and returns *all* edges). Because the source graph is
+            // mutated as nodes are removed, this makes edge insertion order sensitive to the leaf
+            // traversal order, which in turn can affect deterministic tie-breaking in Dagre's
+            // acyclic/ranking steps.
             //
             // Reference:
             // - `packages/mermaid/src/rendering-util/layout-algorithms/dagre/mermaid-graphlib.js`
-            for ek in graph.node_edges(&node) {
+            for ek in graph.edge_keys() {
                 if !edge_in_cluster(&ek, root_id, descendants) {
                     continue;
                 }

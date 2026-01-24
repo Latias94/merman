@@ -366,7 +366,7 @@ pub mod coordinate_system {
 
 pub mod greedy_fas {
     use crate::graphlib::{EdgeKey, Graph};
-    use std::collections::{BTreeMap, BTreeSet, VecDeque};
+    use std::collections::{HashMap, HashSet, VecDeque, hash_map::Entry};
 
     pub fn greedy_fas<N, E, G>(g: &Graph<N, E, G>) -> Vec<EdgeKey>
     where
@@ -391,21 +391,38 @@ pub mod greedy_fas {
         }
 
         // Aggregate multi-edges into a simple graph with summed weights.
+        //
+        // Note: Upstream Dagre (JS) preserves insertion order for `g.nodes()` / `g.edges()` and
+        // the derived `inEdges(v)` / `outEdges(v)` traversals. GreedyFAS is sensitive to that
+        // ordering because it uses stable queues (List.enqueue + List.dequeue).
+        //
+        // For parity, keep node initialization in `g.node_ids()` order and keep the aggregated
+        // adjacency order based on the *first occurrence* of each `(v, w)` in `g.edges()`.
         let node_ids = g.node_ids();
-        let mut in_w: BTreeMap<String, i64> = BTreeMap::new();
-        let mut out_w: BTreeMap<String, i64> = BTreeMap::new();
+        let mut in_w: HashMap<String, i64> = HashMap::new();
+        let mut out_w: HashMap<String, i64> = HashMap::new();
         for v in &node_ids {
             in_w.insert(v.clone(), 0);
             out_w.insert(v.clone(), 0);
         }
 
-        let mut edge_w: BTreeMap<(String, String), i64> = BTreeMap::new();
+        let mut edge_w: HashMap<(String, String), i64> = HashMap::new();
+        let mut edge_order: Vec<(String, String)> = Vec::new();
         let mut max_in: i64 = 0;
         let mut max_out: i64 = 0;
 
         for e in g.edges() {
             let w = g.edge_by_key(e).map(|lbl| weight_fn(lbl)).unwrap_or(1);
-            *edge_w.entry((e.v.clone(), e.w.clone())).or_insert(0) += w;
+            let key = (e.v.clone(), e.w.clone());
+            match edge_w.entry(key.clone()) {
+                Entry::Vacant(v) => {
+                    v.insert(w);
+                    edge_order.push(key);
+                }
+                Entry::Occupied(mut o) => {
+                    *o.get_mut() += w;
+                }
+            }
             let o = out_w.entry(e.v.clone()).or_insert(0);
             *o += w;
             max_out = max_out.max(*o);
@@ -417,27 +434,28 @@ pub mod greedy_fas {
         let bucket_len: usize = (max_out + max_in + 3).max(3) as usize;
         let zero_idx: i64 = max_in + 1;
         let mut buckets: Vec<VecDeque<String>> = (0..bucket_len).map(|_| VecDeque::new()).collect();
-        let mut bucket_of: BTreeMap<String, usize> = BTreeMap::new();
+        let mut bucket_of: HashMap<String, usize> = HashMap::new();
 
         for v in &node_ids {
             assign_bucket(v, &in_w, &out_w, &mut buckets, zero_idx, &mut bucket_of);
         }
 
         // Build adjacency for the aggregated graph (for efficient updates).
-        let mut in_edges: BTreeMap<String, Vec<(String, i64)>> = BTreeMap::new();
-        let mut out_edges: BTreeMap<String, Vec<(String, i64)>> = BTreeMap::new();
-        for ((v, w), wgt) in &edge_w {
+        let mut in_edges: HashMap<String, Vec<(String, i64)>> = HashMap::new();
+        let mut out_edges: HashMap<String, Vec<(String, i64)>> = HashMap::new();
+        for (v, w) in &edge_order {
+            let wgt = edge_w.get(&(v.clone(), w.clone())).copied().unwrap_or(0);
             out_edges
                 .entry(v.clone())
                 .or_default()
-                .push((w.clone(), *wgt));
+                .push((w.clone(), wgt));
             in_edges
                 .entry(w.clone())
                 .or_default()
-                .push((v.clone(), *wgt));
+                .push((v.clone(), wgt));
         }
 
-        let mut alive: BTreeSet<String> = node_ids.iter().cloned().collect();
+        let mut alive: HashSet<String> = node_ids.iter().cloned().collect();
         let mut results: Vec<(String, String)> = Vec::new();
 
         while !alive.is_empty() {
@@ -489,7 +507,11 @@ pub mod greedy_fas {
 
             let Some(v) = picked else {
                 // Should not happen, but avoid an infinite loop.
-                let v = alive.iter().next().cloned().unwrap();
+                let v = node_ids
+                    .iter()
+                    .find(|id| alive.contains(*id))
+                    .cloned()
+                    .unwrap_or_else(|| alive.iter().next().cloned().unwrap());
                 remove_node(
                     &v,
                     &mut alive,
@@ -529,7 +551,7 @@ pub mod greedy_fas {
         out
     }
 
-    fn pop_bucket(bucket: &mut VecDeque<String>, alive: &BTreeSet<String>) -> Option<String> {
+    fn pop_bucket(bucket: &mut VecDeque<String>, alive: &HashSet<String>) -> Option<String> {
         while let Some(v) = bucket.pop_back() {
             if alive.contains(&v) {
                 return Some(v);
@@ -540,11 +562,11 @@ pub mod greedy_fas {
 
     fn assign_bucket(
         v: &str,
-        in_w: &BTreeMap<String, i64>,
-        out_w: &BTreeMap<String, i64>,
+        in_w: &HashMap<String, i64>,
+        out_w: &HashMap<String, i64>,
         buckets: &mut [VecDeque<String>],
         zero_idx: i64,
-        bucket_of: &mut BTreeMap<String, usize>,
+        bucket_of: &mut HashMap<String, usize>,
     ) {
         if let Some(prev) = bucket_of.get(v).copied() {
             if let Some(pos) = buckets[prev].iter().position(|x| x == v) {
@@ -569,14 +591,14 @@ pub mod greedy_fas {
 
     fn remove_node(
         v: &str,
-        alive: &mut BTreeSet<String>,
+        alive: &mut HashSet<String>,
         buckets: &mut [VecDeque<String>],
         zero_idx: i64,
-        bucket_of: &mut BTreeMap<String, usize>,
-        in_w: &mut BTreeMap<String, i64>,
-        out_w: &mut BTreeMap<String, i64>,
-        in_edges: &BTreeMap<String, Vec<(String, i64)>>,
-        out_edges: &BTreeMap<String, Vec<(String, i64)>>,
+        bucket_of: &mut HashMap<String, usize>,
+        in_w: &mut HashMap<String, i64>,
+        out_w: &mut HashMap<String, i64>,
+        in_edges: &HashMap<String, Vec<(String, i64)>>,
+        out_edges: &HashMap<String, Vec<(String, i64)>>,
         collect_predecessors: Option<&mut Vec<(String, String)>>,
     ) {
         if !alive.remove(v) {
