@@ -18,6 +18,9 @@ also compares the root `<svg>` viewport attributes (`viewBox`, `style`).
 - Generate a report and include root viewport deltas (does not fail unless `--check-dom` is set):
   - `cargo run -p xtask -- compare-flowchart-svgs --dom-mode parity-root --dom-decimals 3 --report-root`
 
+- Note: if you omit `--check-dom`, `xtask` does **not** assert DOM parity; it only generates local
+  SVGs and (in `parity-root`) reports the root viewport deltas.
+
 - Generate a report **and** fail on full DOM parity-root mismatches:
   - `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --report-root`
 

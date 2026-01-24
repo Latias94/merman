@@ -6871,7 +6871,13 @@ fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    if failures.is_empty() {
+    if !check_dom {
+        let _ = writeln!(
+            &mut report,
+            "\n## Result\n\nDOM check disabled (`--check-dom` not set).\n\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    } else if failures.is_empty() {
         let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
     } else {
         let _ = writeln!(&mut report, "\n## Mismatches\n");
@@ -7178,7 +7184,13 @@ fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    if failures.is_empty() {
+    if !check_dom {
+        let _ = writeln!(
+            &mut report,
+            "\n## Result\n\nDOM check disabled (`--check-dom` not set).\n\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    } else if failures.is_empty() {
         let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
     } else {
         let _ = writeln!(&mut report, "\n## Mismatches\n");
@@ -7420,7 +7432,13 @@ fn compare_info_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    if failures.is_empty() {
+    if !check_dom {
+        let _ = writeln!(
+            &mut report,
+            "\n## Result\n\nDOM check disabled (`--check-dom` not set).\n\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    } else if failures.is_empty() {
         let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
     } else {
         let _ = writeln!(&mut report, "\n## Mismatches\n");
@@ -7662,7 +7680,13 @@ fn compare_pie_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    if failures.is_empty() {
+    if !check_dom {
+        let _ = writeln!(
+            &mut report,
+            "\n## Result\n\nDOM check disabled (`--check-dom` not set).\n\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    } else if failures.is_empty() {
         let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
     } else {
         let _ = writeln!(&mut report, "\n## Mismatches\n");
@@ -7904,7 +7928,13 @@ fn compare_packet_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    if failures.is_empty() {
+    if !check_dom {
+        let _ = writeln!(
+            &mut report,
+            "\n## Result\n\nDOM check disabled (`--check-dom` not set).\n\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    } else if failures.is_empty() {
         let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
     } else {
         let _ = writeln!(&mut report, "\n## Mismatches\n");
@@ -8151,7 +8181,13 @@ fn compare_timeline_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    if failures.is_empty() {
+    if !check_dom {
+        let _ = writeln!(
+            &mut report,
+            "\n## Result\n\nDOM check disabled (`--check-dom` not set).\n\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    } else if failures.is_empty() {
         let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
     } else {
         let _ = writeln!(&mut report, "\n## Mismatches\n");
@@ -8395,7 +8431,13 @@ fn compare_journey_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    if failures.is_empty() {
+    if !check_dom {
+        let _ = writeln!(
+            &mut report,
+            "\n## Result\n\nDOM check disabled (`--check-dom` not set).\n\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    } else if failures.is_empty() {
         let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
     } else {
         let _ = writeln!(&mut report, "\n## Mismatches\n");
@@ -8432,6 +8474,7 @@ fn compare_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut filter: Option<String> = None;
     let mut dom_decimals: u32 = 3;
     let mut dom_mode: String = "parity".to_string();
+    let check_dom: bool = true;
 
     let mut i = 0;
     while i < args.len() {
@@ -8647,7 +8690,13 @@ fn compare_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    if failures.is_empty() {
+    if !check_dom {
+        let _ = writeln!(
+            &mut report,
+            "\n## Result\n\nDOM check disabled (`--check-dom` not set).\n\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    } else if failures.is_empty() {
         let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
     } else {
         let _ = writeln!(&mut report, "\n## Mismatches\n");
@@ -8889,7 +8938,13 @@ fn compare_kanban_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    if failures.is_empty() {
+    if !check_dom {
+        let _ = writeln!(
+            &mut report,
+            "\n## Result\n\nDOM check disabled (`--check-dom` not set).\n\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    } else if failures.is_empty() {
         let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
     } else {
         let _ = writeln!(&mut report, "\n## Mismatches\n");
@@ -9134,7 +9189,13 @@ fn compare_gitgraph_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    if failures.is_empty() {
+    if !check_dom {
+        let _ = writeln!(
+            &mut report,
+            "\n## Result\n\nDOM check disabled (`--check-dom` not set).\n\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    } else if failures.is_empty() {
         let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
     } else {
         let _ = writeln!(&mut report, "\n## Mismatches\n");
@@ -9171,6 +9232,7 @@ fn compare_gantt_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut filter: Option<String> = None;
     let mut dom_decimals: u32 = 3;
     let mut dom_mode: String = "structure".to_string();
+    let check_dom: bool = true;
 
     let mut i = 0;
     while i < args.len() {
@@ -9394,7 +9456,13 @@ fn compare_gantt_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    if failures.is_empty() {
+    if !check_dom {
+        let _ = writeln!(
+            &mut report,
+            "\n## Result\n\nDOM check disabled (`--check-dom` not set).\n\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    } else if failures.is_empty() {
         let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
     } else {
         let _ = writeln!(&mut report, "\n## Mismatches\n");
@@ -9655,7 +9723,13 @@ fn compare_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    if failures.is_empty() {
+    if !check_dom {
+        let _ = writeln!(
+            &mut report,
+            "\n## Result\n\nDOM check disabled (`--check-dom` not set).\n\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    } else if failures.is_empty() {
         let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
     } else {
         let _ = writeln!(&mut report, "\n## Mismatches\n");
@@ -9916,7 +9990,13 @@ fn compare_block_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    if failures.is_empty() {
+    if !check_dom {
+        let _ = writeln!(
+            &mut report,
+            "\n## Result\n\nDOM check disabled (`--check-dom` not set).\n\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    } else if failures.is_empty() {
         let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
     } else {
         let _ = writeln!(&mut report, "\n## Mismatches\n");
@@ -10169,7 +10249,13 @@ fn compare_radar_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    if failures.is_empty() {
+    if !check_dom {
+        let _ = writeln!(
+            &mut report,
+            "\n## Result\n\nDOM check disabled (`--check-dom` not set).\n\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    } else if failures.is_empty() {
         let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
     } else {
         let _ = writeln!(&mut report, "\n## Mismatches\n");
@@ -10437,7 +10523,13 @@ fn compare_treemap_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    if failures.is_empty() {
+    if !check_dom {
+        let _ = writeln!(
+            &mut report,
+            "\n## Result\n\nDOM check disabled (`--check-dom` not set).\n\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    } else if failures.is_empty() {
         let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
     } else {
         let _ = writeln!(&mut report, "\n## Mismatches\n");
@@ -11233,7 +11325,13 @@ fn compare_xychart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    if failures.is_empty() {
+    if !check_dom {
+        let _ = writeln!(
+            &mut report,
+            "\n## Result\n\nDOM check disabled (`--check-dom` not set).\n\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    } else if failures.is_empty() {
         let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
     } else {
         let _ = writeln!(&mut report, "\n## Mismatches\n");
@@ -11501,7 +11599,13 @@ fn compare_mindmap_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    if failures.is_empty() {
+    if !check_dom {
+        let _ = writeln!(
+            &mut report,
+            "\n## Result\n\nDOM check disabled (`--check-dom` not set).\n\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    } else if failures.is_empty() {
         let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
     } else {
         let _ = writeln!(&mut report, "\n## Mismatches\n");
@@ -11769,7 +11873,13 @@ fn compare_sankey_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    if failures.is_empty() {
+    if !check_dom {
+        let _ = writeln!(
+            &mut report,
+            "\n## Result\n\nDOM check disabled (`--check-dom` not set).\n\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    } else if failures.is_empty() {
         let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
     } else {
         let _ = writeln!(&mut report, "\n## Mismatches\n");
@@ -12041,7 +12151,13 @@ fn compare_architecture_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    if failures.is_empty() {
+    if !check_dom {
+        let _ = writeln!(
+            &mut report,
+            "\n## Result\n\nDOM check disabled (`--check-dom` not set).\n\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    } else if failures.is_empty() {
         let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
     } else {
         let _ = writeln!(&mut report, "\n## Mismatches\n");
@@ -12078,6 +12194,7 @@ fn compare_state_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut filter: Option<String> = None;
     let mut dom_decimals: u32 = 3;
     let mut dom_mode: String = "structure".to_string();
+    let check_dom: bool = true;
 
     let mut i = 0;
     while i < args.len() {
@@ -12288,7 +12405,13 @@ fn compare_state_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    if failures.is_empty() {
+    if !check_dom {
+        let _ = writeln!(
+            &mut report,
+            "\n## Result\n\nDOM check disabled (`--check-dom` not set).\n\nLocal SVG outputs: `{}`\n",
+            out_svg_dir.display()
+        );
+    } else if failures.is_empty() {
         let _ = writeln!(&mut report, "\n## Result\n\nAll fixtures matched.\n");
     } else {
         let _ = writeln!(&mut report, "\n## Mismatches\n");
