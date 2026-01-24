@@ -9139,6 +9139,88 @@ pub fn render_flowchart_v2_svg(
 
     let node_dom_index = flowchart_node_dom_indices(&model);
 
+    let subgraph_title_y_shift = {
+        let top = config_f64(
+            effective_config,
+            &["flowchart", "subGraphTitleMargin", "top"],
+        )
+        .unwrap_or(0.0)
+        .max(0.0);
+        let bottom = config_f64(
+            effective_config,
+            &["flowchart", "subGraphTitleMargin", "bottom"],
+        )
+        .unwrap_or(0.0)
+        .max(0.0);
+        (top + bottom) / 2.0
+    };
+
+    fn self_loop_label_base_node_id(id: &str) -> Option<&str> {
+        let mut parts = id.split("---");
+        let Some(a) = parts.next() else {
+            return None;
+        };
+        let Some(b) = parts.next() else {
+            return None;
+        };
+        let Some(n) = parts.next() else {
+            return None;
+        };
+        if parts.next().is_some() {
+            return None;
+        }
+        if a != b {
+            return None;
+        }
+        if n != "1" && n != "2" {
+            return None;
+        }
+        Some(a)
+    }
+
+    let effective_parent_for_id = |id: &str| -> Option<&str> {
+        let mut cur = parent.get(id).map(|s| s.as_str());
+        if cur.is_none() {
+            if let Some(base) = self_loop_label_base_node_id(id) {
+                cur = parent.get(base).map(|s| s.as_str());
+            }
+        }
+        while let Some(p) = cur {
+            if subgraphs_by_id.contains_key(p) && !recursive_clusters.contains(p) {
+                cur = parent.get(p).map(|s| s.as_str());
+                continue;
+            }
+            return Some(p);
+        }
+        None
+    };
+
+    let lca_for_ids = |a: &str, b: &str| -> Option<String> {
+        let mut ancestors: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut cur = effective_parent_for_id(a).map(|s| s.to_string());
+        while let Some(p) = cur {
+            ancestors.insert(p.clone());
+            cur = effective_parent_for_id(&p).map(|s| s.to_string());
+        }
+
+        let mut cur = effective_parent_for_id(b).map(|s| s.to_string());
+        while let Some(p) = cur {
+            if ancestors.contains(&p) {
+                return Some(p);
+            }
+            cur = effective_parent_for_id(&p).map(|s| s.to_string());
+        }
+        None
+    };
+
+    let y_offset_for_root = |root: Option<&str>| -> f64 {
+        if root.is_some() && subgraph_title_y_shift.abs() >= 1e-9 {
+            -subgraph_title_y_shift
+        } else {
+            0.0
+        }
+    };
+
     // Mermaid's flowchart-v2 renderer draws the self-loop helper nodes (`labelRect`) as
     // `<g class="label edgeLabel" transform="translate(x, y)">` with a `0.1 x 0.1` rect anchored
     // at the translated origin (top-left). Dagre's `x/y` still represent a node center, but the
@@ -9163,31 +9245,45 @@ pub fn render_flowchart_v2_svg(
         };
 
         for c in &layout.clusters {
+            let root = if recursive_clusters.contains(&c.id) {
+                Some(c.id.as_str())
+            } else {
+                effective_parent_for_id(&c.id)
+            };
+            let y_off = y_offset_for_root(root);
             let hw = c.width / 2.0;
             let hh = c.height / 2.0;
-            include_rect(c.x - hw, c.y - hh, c.x + hw, c.y + hh);
+            include_rect(c.x - hw, c.y + y_off - hh, c.x + hw, c.y + y_off + hh);
 
             let lhw = c.title_label.width / 2.0;
             let lhh = c.title_label.height / 2.0;
             include_rect(
                 c.title_label.x - lhw,
-                c.title_label.y - lhh,
+                c.title_label.y + y_off - lhh,
                 c.title_label.x + lhw,
-                c.title_label.y + lhh,
+                c.title_label.y + y_off + lhh,
             );
         }
 
         for n in &layout.nodes {
+            let root = if n.is_cluster && recursive_clusters.contains(&n.id) {
+                Some(n.id.as_str())
+            } else {
+                effective_parent_for_id(&n.id)
+            };
+            let y_off = y_offset_for_root(root);
             if n.is_cluster || node_dom_index.contains_key(&n.id) {
                 let hw = n.width / 2.0;
                 let hh = n.height / 2.0;
-                include_rect(n.x - hw, n.y - hh, n.x + hw, n.y + hh);
+                include_rect(n.x - hw, n.y + y_off - hh, n.x + hw, n.y + y_off + hh);
             } else {
-                include_rect(n.x, n.y, n.x + n.width, n.y + n.height);
+                include_rect(n.x, n.y + y_off, n.x + n.width, n.y + y_off + n.height);
             }
         }
 
         for e in &layout.edges {
+            let root = lca_for_ids(&e.from, &e.to);
+            let y_off = y_offset_for_root(root.as_deref());
             for lbl in [
                 e.label.as_ref(),
                 e.start_label_left.as_ref(),
@@ -9198,7 +9294,12 @@ pub fn render_flowchart_v2_svg(
                 if let Some(lbl) = lbl {
                     let hw = lbl.width / 2.0;
                     let hh = lbl.height / 2.0;
-                    include_rect(lbl.x - hw, lbl.y - hh, lbl.x + hw, lbl.y + hh);
+                    include_rect(
+                        lbl.x - hw,
+                        lbl.y + y_off - hh,
+                        lbl.x + hw,
+                        lbl.y + y_off + hh,
+                    );
                 }
             }
         }
@@ -9210,25 +9311,11 @@ pub fn render_flowchart_v2_svg(
             max_y: 100.0,
         })
     };
-    // Mermaid flowchart-v2 relies on Dagre graph `marginx=8` rather than normalizing the graph
-    // to `min_x=0`. Keep the coordinate space aligned by applying the fixed diagram padding as
-    // the translation origin, so negative `getBBox().x` values remain visible in the `viewBox`.
-    let tx = diagram_padding;
-    let ty = diagram_padding;
-    let subgraph_title_total_margin = config_f64(
-        effective_config,
-        &["flowchart", "subGraphTitleMargin", "top"],
-    )
-    .unwrap_or(0.0)
-    .max(0.0)
-        + config_f64(
-            effective_config,
-            &["flowchart", "subGraphTitleMargin", "bottom"],
-        )
-        .unwrap_or(0.0)
-        .max(0.0);
-    let subgraph_title_y_shift = subgraph_title_total_margin / 2.0;
-    let bbox_ty = ty - subgraph_title_y_shift;
+    // Mermaid flowchart-v2 does not translate the root `.root` group; node/edge coordinates are
+    // already in the Dagre coordinate space (including Dagre's fixed `marginx/marginy=8`).
+    // `diagramPadding` is applied only when computing the final SVG viewBox.
+    let tx = 0.0;
+    let ty = 0.0;
 
     // Mermaid computes the final viewport using `svg.getBBox()` after inserting the title, then
     // applies `setupViewPortForSVG(svg, diagramPadding)` which sets:
@@ -9245,9 +9332,9 @@ pub fn render_flowchart_v2_svg(
     let diagram_title = diagram_title.map(str::trim).filter(|t| !t.is_empty());
 
     let mut bbox_min_x = bounds.min_x + tx;
-    let mut bbox_min_y = bounds.min_y + bbox_ty;
+    let mut bbox_min_y = bounds.min_y + ty;
     let mut bbox_max_x = bounds.max_x + tx;
-    let mut bbox_max_y = bounds.max_y + bbox_ty;
+    let mut bbox_max_y = bounds.max_y + ty;
 
     // Mermaid's recursive flowchart renderer introduces additional y-offsets for some extracted
     // cluster roots (notably when an empty sibling subgraph is present). Approximate that in the
@@ -9295,11 +9382,13 @@ pub fn render_flowchart_v2_svg(
     // polyline points). Headlessly, approximate that by unioning a tight bbox over each rendered
     // edge path `d` into our base bbox.
     for e in &render_edges {
+        let edge_root = lca_for_ids(&e.from, &e.to);
+        let edge_y_off = y_offset_for_root(edge_root.as_deref());
         let Some(d) = flowchart_edge_path_d_for_bbox(
             &layout_edges_by_id,
             &layout_clusters_by_id,
             tx,
-            bbox_ty,
+            ty + edge_y_off,
             default_edge_interpolate_for_bbox,
             edge_html_labels,
             e,
@@ -9315,8 +9404,15 @@ pub fn render_flowchart_v2_svg(
     }
 
     bbox_max_y += extra_recursive_root_y;
+    // Mermaid centers the title using the pre-title `getBBox()` of the rendered root group:
+    //
+    //   const bounds = parent.node()?.getBBox();
+    //   x = bounds.x + bounds.width / 2
+    //
+    // Use our current content bbox (after accounting for edge curve geometry) to match that
+    // behavior more closely in headless mode.
+    let title_anchor_x = (bbox_min_x + bbox_max_x) / 2.0;
 
-    let content_center_x = (bounds.min_x + bounds.max_x) / 2.0 + tx;
     if let Some(title) = diagram_title {
         let title_style = TextStyle {
             font_family: Some(font_family.clone()),
@@ -9325,11 +9421,20 @@ pub fn render_flowchart_v2_svg(
         };
         let (title_left, title_right) = measurer.measure_svg_text_bbox_x(title, &title_style);
         let baseline_y = -title_top_margin;
-        let ascent = TITLE_FONT_SIZE_PX * DEFAULT_ASCENT_EM;
-        let descent = TITLE_FONT_SIZE_PX * DEFAULT_DESCENT_EM;
+        // Mermaid title bbox uses SVG `getBBox()`, which varies slightly across fonts.
+        // Courier in Mermaid@11.12.2 has a visibly smaller ascender than the default
+        // `"trebuchet ms", verdana, arial, sans-serif` baseline; model that so viewBox parity
+        // matches upstream fixtures.
+        let (ascent_em, descent_em) = if font_family.to_ascii_lowercase().contains("courier") {
+            (0.8333333333333334, 0.25)
+        } else {
+            (DEFAULT_ASCENT_EM, DEFAULT_DESCENT_EM)
+        };
+        let ascent = TITLE_FONT_SIZE_PX * ascent_em;
+        let descent = TITLE_FONT_SIZE_PX * descent_em;
 
-        bbox_min_x = bbox_min_x.min(content_center_x - title_left);
-        bbox_max_x = bbox_max_x.max(content_center_x + title_right);
+        bbox_min_x = bbox_min_x.min(title_anchor_x - title_left);
+        bbox_max_x = bbox_max_x.max(title_anchor_x + title_right);
         bbox_min_y = bbox_min_y.min(baseline_y - ascent);
         bbox_max_y = bbox_max_y.max(baseline_y + descent);
     }
@@ -9483,7 +9588,7 @@ pub fn render_flowchart_v2_svg(
     flowchart_extra_markers(&mut out, diagram_id, &extra_marker_colors);
     out.push_str("</g>");
     if let Some(title) = diagram_title {
-        let title_x = content_center_x;
+        let title_x = title_anchor_x;
         let title_y = -title_top_margin;
         let _ = write!(
             &mut out,
@@ -17468,10 +17573,7 @@ fn render_flowchart_edge_label(
                 )
             } else if {
                 let lower = label_text.to_ascii_lowercase();
-                lower.contains("<strong")
-                    || lower.contains("<b")
-                    || lower.contains("<em")
-                    || lower.contains("<i")
+                crate::text::flowchart_html_has_inline_style_tags(&lower)
             } {
                 crate::text::measure_html_with_flowchart_bold_deltas(
                     ctx.measurer,
@@ -18284,8 +18386,42 @@ fn render_flowchart_node(
                 pts
             }
 
-            let w = layout_node.width.max(1.0);
-            let h = layout_node.height.max(1.0);
+            // Mermaid flowchart-v2 updates `node.width/height` from the rendered rough path bbox
+            // (`updateNodeBounds`) before running Dagre layout. That bbox is narrower than the
+            // theoretical `(text bbox + padding)` width used to generate the stadium points. The
+            // SVG path is still generated from the theoretical width, so we recompute it here.
+            let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+                ctx.measurer,
+                &label_text,
+                &label_type,
+                &ctx.text_style,
+                Some(ctx.wrapping_width),
+                ctx.node_wrap_mode,
+            );
+            let span_css_height_parity = node_classes.iter().any(|c| {
+                ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
+                    styles.iter().any(|s| {
+                        matches!(
+                            s.split_once(':').map(|p| p.0.trim()),
+                            Some("background" | "border")
+                        )
+                    })
+                })
+            });
+            if span_css_height_parity {
+                crate::text::flowchart_apply_mermaid_styled_node_height_parity(
+                    &mut metrics,
+                    &ctx.text_style,
+                );
+            }
+            let (render_w, render_h) = crate::flowchart::flowchart_node_render_dimensions(
+                Some("stadium"),
+                metrics,
+                ctx.node_padding,
+            );
+
+            let w = render_w.max(1.0);
+            let h = render_h.max(1.0);
             let radius = h / 2.0;
 
             let mut pts: Vec<(f64, f64)> = Vec::new();
@@ -18661,10 +18797,7 @@ fn render_flowchart_node(
         )
     } else if ctx.node_html_labels && {
         let lower = label_text.to_ascii_lowercase();
-        lower.contains("<strong")
-            || lower.contains("<b")
-            || lower.contains("<em")
-            || lower.contains("<i")
+        crate::text::flowchart_html_has_inline_style_tags(&lower)
     } {
         crate::text::measure_html_with_flowchart_bold_deltas(
             ctx.measurer,
@@ -18842,26 +18975,6 @@ fn flowchart_label_html(
         out
     }
 
-    fn replace_fontawesome_icons(input: &str) -> String {
-        // Mermaid `rendering-util/createText.ts::replaceIconSubstring()` converts icon notations like
-        // `fa:fa-user` into an HTML element inside the label DOM:
-        //   `<i class="fa fa-user"></i>`
-        //
-        // In Mermaid@11.12.2 the upstream SVG baselines use double quotes for the attributes.
-        fn icon_regex() -> &'static regex::Regex {
-            static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-            RE.get_or_init(|| regex::Regex::new(r"(fa[bklrs]?):fa-([\w-]+)").expect("valid regex"))
-        }
-
-        icon_regex()
-            .replace_all(input, |caps: &regex::Captures<'_>| {
-                let prefix = caps.get(1).map(|m| m.as_str()).unwrap_or("fa");
-                let icon = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-                format!(r#"<i class="{prefix} fa-{icon}"></i>"#)
-            })
-            .to_string()
-    }
-
     match label_type {
         "markdown" => {
             let mut html_out = String::new();
@@ -18877,7 +18990,7 @@ fn flowchart_label_html(
             });
             pulldown_cmark::html::push_html(&mut html_out, parser);
             let html_out = html_out.trim().to_string();
-            let html_out = replace_fontawesome_icons(&html_out);
+            let html_out = crate::text::replace_fontawesome_icons(&html_out);
             xhtml_fix_fragment(&merman_core::sanitize::sanitize_text(&html_out, config))
         }
         _ => {
@@ -18887,7 +19000,7 @@ fn flowchart_label_html(
             }
             let label = label.trim_end_matches('\n').replace('\n', "<br />");
             let wrapped = format!("<p>{}</p>", label);
-            let wrapped = replace_fontawesome_icons(&wrapped);
+            let wrapped = crate::text::replace_fontawesome_icons(&wrapped);
             xhtml_fix_fragment(&merman_core::sanitize::sanitize_text(&wrapped, config))
         }
     }

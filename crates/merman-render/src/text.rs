@@ -1,4 +1,24 @@
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
+
+use regex::Regex;
+
+pub fn replace_fontawesome_icons(input: &str) -> String {
+    // Mermaid `rendering-util/createText.ts::replaceIconSubstring()` converts icon notations like:
+    //   `fa:fa-user` -> `<i class="fa fa-user"></i>`
+    //
+    // Mermaid@11.12.2 upstream SVG baselines use double quotes for the class attribute.
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re =
+        RE.get_or_init(|| Regex::new(r"(fa[bklrs]?):fa-([A-Za-z0-9_-]+)").expect("valid regex"));
+
+    re.replace_all(input, |caps: &regex::Captures<'_>| {
+        let prefix = caps.get(1).map(|m| m.as_str()).unwrap_or("fa");
+        let icon = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+        format!(r#"<i class="{prefix} fa-{icon}"></i>"#)
+    })
+    .to_string()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WrapMode {
@@ -115,6 +135,44 @@ fn normalize_font_key(s: &str) -> String {
             }
         })
         .collect()
+}
+
+pub fn flowchart_html_has_inline_style_tags(lower_html: &str) -> bool {
+    // Detect Mermaid HTML inline styling tags in a way that avoids false positives like
+    // `<br>` matching `<b`.
+    //
+    // We keep this intentionally lightweight (no full HTML parser); for our purposes we only
+    // need to decide whether the label needs the special inline-style measurement path.
+    let bytes = lower_html.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] != b'<' {
+            i += 1;
+            continue;
+        }
+        i += 1;
+        if i >= bytes.len() {
+            break;
+        }
+        if bytes[i] == b'!' || bytes[i] == b'?' {
+            continue;
+        }
+        if bytes[i] == b'/' {
+            i += 1;
+        }
+        let start = i;
+        while i < bytes.len() && bytes[i].is_ascii_alphabetic() {
+            i += 1;
+        }
+        if start == i {
+            continue;
+        }
+        let name = &lower_html[start..i];
+        if matches!(name, "strong" | "b" | "em" | "i") {
+            return true;
+        }
+    }
+    false
 }
 
 fn is_flowchart_default_font(style: &TextStyle) -> bool {
@@ -246,6 +304,15 @@ pub fn measure_html_with_flowchart_bold_deltas(
     max_width: Option<f64>,
     wrap_mode: WrapMode,
 ) -> TextMetrics {
+    // Mermaid HTML labels are measured via DOM (`getBoundingClientRect`) and do not always match a
+    // pure `canvas.measureText` bold delta model. Empirically (Mermaid@11.12.2 baselines) the bold
+    // delta contribution is ~50% of the canvas-derived deltas for the default flowchart font for
+    // "raw HTML" labels (`labelType=text/html` that contain `<b>/<strong>` markup).
+    const BOLD_DELTA_SCALE: f64 = 0.5;
+
+    // Mermaid supports inline FontAwesome icons via `<i class="fa fa-..."></i>` inside HTML
+    // labels. Mermaid's exported SVG baselines do not include the icon glyph in `foreignObject`
+    // measurement (FontAwesome CSS is not embedded), so headless width contribution is `0`.
     fn decode_html_entity(entity: &str) -> Option<char> {
         match entity {
             "nbsp" => Some(' '),
@@ -274,6 +341,7 @@ pub fn measure_html_with_flowchart_bold_deltas(
     let mut deltas_px_by_line: Vec<f64> = vec![0.0];
     let mut strong_depth: usize = 0;
     let mut em_depth: usize = 0;
+    let mut fa_icon_depth: usize = 0;
     let mut prev_char: Option<char> = None;
     let mut prev_is_strong = false;
 
@@ -302,6 +370,19 @@ pub fn measure_html_with_flowchart_bold_deltas(
                 .next()
                 .unwrap_or("");
 
+            let is_fontawesome_icon_i = name == "i"
+                && !is_closing
+                && (tag_trim.contains("class=\"fa")
+                    || tag_trim.contains("class='fa")
+                    || tag_trim.contains("class=\"fab")
+                    || tag_trim.contains("class='fab")
+                    || tag_trim.contains("class=\"fal")
+                    || tag_trim.contains("class='fal")
+                    || tag_trim.contains("class=\"far")
+                    || tag_trim.contains("class='far")
+                    || tag_trim.contains("class=\"fas")
+                    || tag_trim.contains("class='fas"));
+
             match name {
                 "strong" | "b" => {
                     if is_closing {
@@ -312,7 +393,13 @@ pub fn measure_html_with_flowchart_bold_deltas(
                 }
                 "em" | "i" => {
                     if is_closing {
-                        em_depth = em_depth.saturating_sub(1);
+                        if name == "i" && fa_icon_depth > 0 {
+                            fa_icon_depth = fa_icon_depth.saturating_sub(1);
+                        } else {
+                            em_depth = em_depth.saturating_sub(1);
+                        }
+                    } else if is_fontawesome_icon_i {
+                        fa_icon_depth += 1;
                     } else {
                         em_depth += 1;
                     }
@@ -353,12 +440,14 @@ pub fn measure_html_with_flowchart_bold_deltas(
                 if let Some(prev) = *prev_char {
                     if *prev_is_strong && is_strong {
                         deltas_px_by_line[line_idx] +=
-                            flowchart_default_bold_kern_delta_em(prev, decoded) * font_size;
+                            flowchart_default_bold_kern_delta_em(prev, decoded)
+                                * font_size
+                                * BOLD_DELTA_SCALE;
                     }
                 }
                 if is_strong {
                     deltas_px_by_line[line_idx] +=
-                        flowchart_default_bold_delta_em(decoded) * font_size;
+                        flowchart_default_bold_delta_em(decoded) * font_size * BOLD_DELTA_SCALE;
                 }
                 if em_depth > 0 {
                     deltas_px_by_line[line_idx] +=
@@ -457,6 +546,8 @@ pub fn measure_markdown_with_flowchart_bold_deltas(
     max_width: Option<f64>,
     wrap_mode: WrapMode,
 ) -> TextMetrics {
+    const BOLD_DELTA_SCALE: f64 = 1.0;
+
     let mut plain = String::new();
     let mut deltas_px_by_line: Vec<f64> = vec![0.0];
     let mut strong_depth: usize = 0;
@@ -501,12 +592,14 @@ pub fn measure_markdown_with_flowchart_bold_deltas(
                         if let Some(prev) = prev_char {
                             if prev_is_strong && is_strong {
                                 deltas_px_by_line[line_idx] +=
-                                    flowchart_default_bold_kern_delta_em(prev, ch) * font_size;
+                                    flowchart_default_bold_kern_delta_em(prev, ch)
+                                        * font_size
+                                        * BOLD_DELTA_SCALE;
                             }
                         }
                         if is_strong {
                             deltas_px_by_line[line_idx] +=
-                                flowchart_default_bold_delta_em(ch) * font_size;
+                                flowchart_default_bold_delta_em(ch) * font_size * BOLD_DELTA_SCALE;
                         }
                         if em_depth > 0 {
                             deltas_px_by_line[line_idx] +=
@@ -997,15 +1090,55 @@ impl VendoredFontMetricsTextMeasurer {
         let first = t.chars().next().unwrap_or(' ');
         let last = t.chars().last().unwrap_or(' ');
 
-        let advance_px = Self::line_width_px(
-            table.entries,
-            table.default_em.max(0.1),
-            table.kern_pairs,
-            table.space_trigrams,
-            table.trigrams,
-            t,
-            font_size,
-        ) * table.svg_scale;
+        // Mermaid's SVG label renderer tokenizes whitespace into multiple inner `<tspan>` runs
+        // (one word per run, with a leading space on subsequent runs).
+        //
+        // These boundaries can affect shaping/kerning vs treating the text as one run, and those
+        // small differences bubble into Dagre layout and viewBox parity. Mirror the upstream
+        // behavior by summing per-run advances when whitespace tokenization would occur.
+        let advance_px_unscaled = {
+            let words: Vec<&str> = t.split_whitespace().filter(|s| !s.is_empty()).collect();
+            if words.len() >= 2 {
+                let mut sum_px = 0.0f64;
+                for (idx, w) in words.iter().enumerate() {
+                    if idx == 0 {
+                        sum_px += Self::line_width_px(
+                            table.entries,
+                            table.default_em.max(0.1),
+                            table.kern_pairs,
+                            table.space_trigrams,
+                            table.trigrams,
+                            w,
+                            font_size,
+                        );
+                    } else {
+                        let seg = format!(" {w}");
+                        sum_px += Self::line_width_px(
+                            table.entries,
+                            table.default_em.max(0.1),
+                            table.kern_pairs,
+                            table.space_trigrams,
+                            table.trigrams,
+                            &seg,
+                            font_size,
+                        );
+                    }
+                }
+                sum_px
+            } else {
+                Self::line_width_px(
+                    table.entries,
+                    table.default_em.max(0.1),
+                    table.kern_pairs,
+                    table.space_trigrams,
+                    table.trigrams,
+                    t,
+                    font_size,
+                )
+            }
+        };
+
+        let advance_px = advance_px_unscaled * table.svg_scale;
         let half = Self::quantize_svg_half_px_nearest((advance_px / 2.0).max(0.0));
         // In upstream Mermaid fixtures, SVG `getBBox()` overhang at the ends of ASCII labels tends
         // to behave like `0` after quantization/hinting, even for glyphs with a non-zero outline
@@ -1542,7 +1675,12 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
                     // Mermaid's SVG `<text>.getBBox().height` behaves as "one taller first line"
                     // plus 1.1em per additional wrapped line (observed in upstream fixtures at
                     // Mermaid@11.12.2).
-                    let first_line_h = font_size * 1.1875;
+                    let first_line_em = if table.font_key == "courier" {
+                        1.125
+                    } else {
+                        1.1875
+                    };
+                    let first_line_h = font_size * first_line_em;
                     let additional = (lines.len().saturating_sub(1)) as f64 * font_size * 1.1;
                     first_line_h + additional
                 }

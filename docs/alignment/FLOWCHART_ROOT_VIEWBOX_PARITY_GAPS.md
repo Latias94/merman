@@ -51,7 +51,7 @@ This prints:
 
 ## Current Status
 
-At the time of writing:
+As of the current implementation:
 
 - `merman-render` now computes Flowchart root `viewBox`/`max-width` using a headless approximation of
   Mermaid's `setupViewPortForSVG` behavior (including the diagram title bounding box).
@@ -61,34 +61,25 @@ At the time of writing:
   `VendoredFontMetricsTextMeasurer` to use pinned `svg_overrides` where available.
 - `VendoredFontMetricsTextMeasurer` quantizes override-derived SVG bbox extents to a 1/1024px grid
   to reduce FP drift in root viewport strings (especially for wide titles).
-- `--dom-mode parity-root` is still expected to fail for many Flowchart fixtures, primarily because
-  Flowchart root viewport values are font-metric-derived in Mermaid (DOM `getBBox()`), and our
-  headless text measurement currently does not reproduce browser font fallback and sub-pixel
-  rounding.
-- The `--report-root` output helps quantify which fixtures have the largest viewport deltas so we
-  can iteratively close the gap.
+- Flowchart-v2 stadium nodes (and other rough-path-based shapes) can have `node.width/height` used
+  for Dagre layout derived from the rendered rough path bbox (`updateNodeBounds(getBBox)`), which
+  can be narrower than the theoretical `(text bbox + padding)` sizing formula.
+- With `--text-measurer vendored`, `xtask compare-flowchart-svgs --check-dom --dom-mode parity-root`
+  is expected to pass for the current upstream fixture set (at `--dom-decimals 3`).
 
 ## Next Steps (Expected)
 
-- Improve `TextMeasurer` fidelity for Flowchart title and label text (font-family aware metrics), or
-  introduce additional pinned, upstream-derived font metric vendoring where it blocks `parity-root`
-  checks.
-- Prefer deriving Flowchart title `svg_overrides` from upstream SVG fixtures (when the title is the
-  limiting bbox contributor) so the generated metric table does not depend on local font/rendering
-  differences.
+- Keep `parity-root` in CI to prevent regressions in root viewport sizing (`viewBox` / `max-width`).
+- When moving toward stricter SVG parity, prefer adding fixture-driven tests for any remaining
+  non-determinism in layout and text measurement before tightening DOM masking.
 
 ## Biggest Current Deltas
 
-From `target/compare/flowchart_report.md` (generated via `--report-root --dom-mode parity-root --dom-decimals 3`):
+When `parity-root` is passing, this section should be empty. If it regresses, regenerate a report:
 
-| Fixture | upstream max-width(px) | local max-width(px) | Δ |
-|---|---:|---:|---:|
-| `upstream_singlenode_shapes_spec` | 1557.230 | 1567.690 | +10.460 |
-| `upstream_flow_text_special_chars_spec` | 1394.730 | 1404.190 | +9.460 |
-| `upstream_flow_style_style_preserves_labels_spec` | 364.234 | 365.234 | +1.000 |
-| `upstream_flowchart_v2_escaped_without_html_labels_spec` | 353.422 | 354.010 | +0.588 |
+- `cargo run -p xtask -- compare-flowchart-svgs --dom-mode parity-root --dom-decimals 3 --report-root --text-measurer vendored`
 
-These drive most of the remaining `--check-dom --dom-mode parity-root` failures.
+and use the largest deltas in `target/compare/flowchart_report.md` to prioritize investigation.
 
 ## Investigation Notes
 

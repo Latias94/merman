@@ -247,6 +247,12 @@ counter-intuitive and easy to break while refactoring:
   - for `generator.path(...)` with `fillStyle: "solid"` and `sets.length === 1`, the fill pass
     continues the same PRNG stream after the stroke pass (it reuses `o.randomizer`), so the fill
     path `d` is not generated from a fresh seed
+- Dagre node sizing can be derived from rendered shape bbox (`updateNodeBounds(getBBox)`):
+  - flowchart-v2 inserts node SVG first, then calls `updateNodeBounds(node, shapeElem)` and only
+    then runs Dagre layout
+  - for rough-path-based shapes (notably `stadium`), the rough path bbox can be narrower than the
+    theoretical sizing formula used to generate its points, and this bbox width is what Dagre uses
+    for spacing and x-positioning
 - `htmlLabels` toggles:
   - node/subgraph labels follow the global `htmlLabels` toggle
   - edge labels follow `flowchart.htmlLabels` (falling back to the global toggle when unset)

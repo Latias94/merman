@@ -888,7 +888,35 @@ O(-Label-)
         let n = nodes_by_id["H"];
         let h = th + p;
         let w = tw + h / 4.0 + p;
-        assert_close(n.width, w, "stadium width");
+
+        // Flowchart-v2 stadium nodes are rendered via a roughjs path built from sampled arc points.
+        // Mermaid runs `updateNodeBounds(getBBox)` on that path and feeds the resulting bbox width
+        // into Dagre layout. Because the arc sampling (50 points over 180deg) does not include the
+        // exact extrema, the bbox is slightly narrower than `w`.
+        let radius = h / 2.0;
+        let mut min_x = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut include_x = |x: f64| {
+            min_x = min_x.min(x);
+            max_x = max_x.max(x);
+        };
+        include_x(-w / 2.0 + radius);
+        include_x(w / 2.0 - radius);
+        // `generateCirclePoints(...)` returns negated coordinates.
+        let step = std::f64::consts::PI / (50_f64 - 1.0); // 180deg / (n-1)
+        for i in 0..50 {
+            let angle = (std::f64::consts::FRAC_PI_2) + (i as f64) * step; // 90deg..270deg
+            let x = (-w / 2.0 + radius) + radius * angle.cos();
+            include_x(-x);
+        }
+        for i in 0..50 {
+            let angle = (std::f64::consts::FRAC_PI_2 * 3.0) + (i as f64) * step; // 270deg..450deg
+            let x = (w / 2.0 - radius) + radius * angle.cos();
+            include_x(-x);
+        }
+        let expected_w = (max_x - min_x).max(0.0);
+
+        assert_close(n.width, expected_w, "stadium width");
         assert_close(n.height, h, "stadium height");
     }
 

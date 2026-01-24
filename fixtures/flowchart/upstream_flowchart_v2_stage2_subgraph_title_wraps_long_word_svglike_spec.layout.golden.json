@@ -5,24 +5,24 @@
       "nodes": [
         {
           "id": "A",
-          "x": 86.06,
-          "y": 58.8,
+          "x": 94.06,
+          "y": 66.8,
           "width": 97.12,
           "height": 47.6,
           "is_cluster": false
         },
         {
           "id": "B",
-          "x": 258.18,
-          "y": 58.8,
+          "x": 266.18,
+          "y": 66.8,
           "width": 97.12,
           "height": 47.6,
           "is_cluster": false
         },
         {
           "id": "wrap",
-          "x": 172.12,
-          "y": 58.8,
+          "x": 180.12,
+          "y": 66.8,
           "width": 344.24,
           "height": 117.6,
           "is_cluster": true
@@ -37,16 +37,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 134.62,
-              "y": 58.8
+              "x": 142.62,
+              "y": 66.8
             },
             {
-              "x": 172.12,
-              "y": 58.8
+              "x": 180.12,
+              "y": 66.8
             },
             {
-              "x": 209.62,
-              "y": 58.8
+              "x": 217.62,
+              "y": 66.8
             }
           ],
           "label": null,
@@ -62,16 +62,16 @@
       "clusters": [
         {
           "id": "wrap",
-          "x": 172.12,
-          "y": 58.8,
+          "x": 180.12,
+          "y": 66.8,
           "width": 344.24,
           "height": 117.6,
           "diff": -4.0,
           "offset_y": 66.4,
           "title": "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
           "title_label": {
-            "x": 172.12,
-            "y": 35.2,
+            "x": 180.12,
+            "y": 43.2,
             "width": 130.72,
             "height": 70.4
           },
@@ -83,10 +83,10 @@
         }
       ],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 344.24,
-        "max_y": 117.6
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 352.24,
+        "max_y": 125.6
       }
     }
   }

@@ -4579,7 +4579,8 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     normalize::undo(g);
     coordinate_system::undo(g);
 
-    // Translate so the minimum top-left is at (0, 0).
+    // Translate so the minimum top-left is at (marginx, marginy), matching Dagre's
+    // `translateGraph(...)` behavior.
     let mut min_x: f64 = f64::INFINITY;
     let mut min_y: f64 = f64::INFINITY;
     for id in g.node_ids() {
@@ -4608,6 +4609,11 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     }
 
     if min_x.is_finite() && min_y.is_finite() {
+        // Dagre shifts the graph by `-(min - margin)` so the smallest x/y becomes `margin`.
+        // This is observable in Mermaid flowchart-v2 SVG output where `diagramPadding: 0`
+        // still yields a `viewBox` starting at x=8 (the Dagre margin).
+        min_x -= g.graph().marginx;
+        min_y -= g.graph().marginy;
         let dx = -min_x;
         let dy = -min_y;
         for id in g.node_ids() {

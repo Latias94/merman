@@ -137,7 +137,7 @@ fn toggled_dir(parent: &str) -> String {
     }
 }
 
-fn flowchart_label_metrics_for_layout(
+pub(crate) fn flowchart_label_metrics_for_layout(
     measurer: &dyn TextMeasurer,
     raw_label: &str,
     label_type: &str,
@@ -155,19 +155,31 @@ fn flowchart_label_metrics_for_layout(
         )
     } else {
         let html_labels = wrap_mode == WrapMode::HtmlLike;
-        let lower = raw_label.to_ascii_lowercase();
-        let has_inline_style = lower.contains("<strong")
-            || lower.contains("<b")
-            || lower.contains("<em")
-            || lower.contains("<i");
-        if html_labels && has_inline_style {
-            crate::text::measure_html_with_flowchart_bold_deltas(
-                measurer,
-                raw_label,
-                style,
-                max_width_px,
-                wrap_mode,
-            )
+        if html_labels {
+            let mut label = raw_label.replace("\r\n", "\n");
+            if label_type == "string" {
+                label = label.trim().to_string();
+            }
+            let label = label.trim_end_matches('\n').replace('\n', "<br />");
+            let html = format!("<p>{}</p>", label);
+            let html = crate::text::replace_fontawesome_icons(&html);
+
+            let lower = html.to_ascii_lowercase();
+            let has_inline_style = crate::text::flowchart_html_has_inline_style_tags(&lower);
+
+            if has_inline_style {
+                crate::text::measure_html_with_flowchart_bold_deltas(
+                    measurer,
+                    &html,
+                    style,
+                    max_width_px,
+                    wrap_mode,
+                )
+            } else {
+                let label_for_metrics =
+                    flowchart_label_plain_text_for_layout(raw_label, label_type, html_labels);
+                measurer.measure_wrapped(&label_for_metrics, style, max_width_px, wrap_mode)
+            }
         } else {
             let label_for_metrics =
                 flowchart_label_plain_text_for_layout(raw_label, label_type, html_labels);
@@ -915,7 +927,8 @@ pub fn layout_flowchart_v2(
                 &text_style,
             );
         }
-        let (width, height) = node_dimensions(n.layout_shape.as_deref(), metrics, node_padding);
+        let (width, height) =
+            node_layout_dimensions(n.layout_shape.as_deref(), metrics, node_padding);
         leaf_node_labels.insert(
             n.id.clone(),
             NodeLabel {
@@ -938,7 +951,7 @@ pub fn layout_flowchart_v2(
             Some(cluster_title_wrapping_width),
             node_wrap_mode,
         );
-        let (width, height) = node_dimensions(Some("squareRect"), metrics, cluster_padding);
+        let (width, height) = node_layout_dimensions(Some("squareRect"), metrics, cluster_padding);
         leaf_node_labels.insert(
             sg.id.clone(),
             NodeLabel {
@@ -2750,7 +2763,7 @@ pub fn layout_flowchart_v2(
     })
 }
 
-fn node_dimensions(
+fn node_render_dimensions(
     layout_shape: Option<&str>,
     metrics: crate::text::TextMetrics,
     padding: f64,
@@ -2761,8 +2774,10 @@ fn node_dimensions(
     // References:
     // - `packages/mermaid/src/diagrams/flowchart/flowDb.ts` (shape assignment + padding)
     // - `packages/mermaid/src/rendering-util/rendering-elements/shapes/*.ts` (shape bounds)
-    let text_w = metrics.width.max(1.0);
-    let text_h = metrics.height.max(1.0);
+    // Mermaid's DOM `getBBox()` can legitimately return 0 for empty/whitespace-only labels.
+    // Do not clamp to 1px here, otherwise we skew layout widths (notably `max-width`) by 1px.
+    let text_w = metrics.width.max(0.0);
+    let text_h = metrics.height.max(0.0);
     let p = padding.max(0.0);
 
     let shape = layout_shape.unwrap_or("squareRect");
@@ -2860,6 +2875,85 @@ fn node_dimensions(
         // Fallback: treat unknown shapes as default rectangles.
         _ => (text_w + 4.0 * p, text_h + 2.0 * p),
     }
+}
+
+pub(crate) fn flowchart_node_render_dimensions(
+    layout_shape: Option<&str>,
+    metrics: crate::text::TextMetrics,
+    padding: f64,
+) -> (f64, f64) {
+    node_render_dimensions(layout_shape, metrics, padding)
+}
+
+fn node_layout_dimensions(
+    layout_shape: Option<&str>,
+    metrics: crate::text::TextMetrics,
+    padding: f64,
+) -> (f64, f64) {
+    let shape = layout_shape.unwrap_or("squareRect");
+    let (render_w, render_h) = node_render_dimensions(Some(shape), metrics, padding);
+
+    // Mermaid flowchart-v2 renders nodes using the "rendering-elements" layer:
+    // 1) it generates SVG paths (roughjs-based even for non-handDrawn look),
+    // 2) calls `updateNodeBounds(node, shapeElem)` which sets `node.width/height` from `getBBox()`,
+    // 3) then feeds those updated dimensions into Dagre for layout.
+    //
+    // For stadium shapes the rough path is built from sampled arc points (`generateCirclePoints`,
+    // 50 points over 180deg) and the resulting path bbox is slightly narrower than the theoretical
+    // `w = bbox.width + h/4 + padding` used to generate the points. That bbox width is what Dagre
+    // uses for spacing, which affects node x-positions and ultimately the root `viewBox`.
+    if shape == "stadium" {
+        fn generate_circle_points(
+            center_x: f64,
+            center_y: f64,
+            radius: f64,
+            num_points: usize,
+            start_angle_deg: f64,
+            end_angle_deg: f64,
+        ) -> impl Iterator<Item = (f64, f64)> {
+            let start = start_angle_deg.to_radians();
+            let end = end_angle_deg.to_radians();
+            let step = (end - start) / (num_points.saturating_sub(1).max(1) as f64);
+            (0..num_points).map(move |i| {
+                let angle = start + (i as f64) * step;
+                let x = center_x + radius * angle.cos();
+                let y = center_y + radius * angle.sin();
+                (-x, -y)
+            })
+        }
+
+        let w = render_w.max(0.0);
+        let h = render_h.max(0.0);
+        if w > 0.0 && h > 0.0 {
+            let radius = h / 2.0;
+            let mut min_x = f64::INFINITY;
+            let mut max_x = f64::NEG_INFINITY;
+            let mut min_y = f64::INFINITY;
+            let mut max_y = f64::NEG_INFINITY;
+            let mut include = |x: f64, y: f64| {
+                min_x = min_x.min(x);
+                max_x = max_x.max(x);
+                min_y = min_y.min(y);
+                max_y = max_y.max(y);
+            };
+
+            include(-w / 2.0 + radius, -h / 2.0);
+            include(w / 2.0 - radius, -h / 2.0);
+            for (x, y) in generate_circle_points(-w / 2.0 + radius, 0.0, radius, 50, 90.0, 270.0) {
+                include(x, y);
+            }
+            include(w / 2.0 - radius, h / 2.0);
+            for (x, y) in generate_circle_points(w / 2.0 - radius, 0.0, radius, 50, 270.0, 450.0) {
+                include(x, y);
+            }
+
+            if min_x.is_finite() && max_x.is_finite() && min_y.is_finite() && max_y.is_finite() {
+                return ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0));
+            }
+        }
+    }
+
+    (render_w, render_h)
 }
 
 pub(crate) fn flowchart_label_plain_text_for_layout(
@@ -3043,6 +3137,90 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
                 t = t.replace("<br />", "\n");
                 t = t.replace("<br/>", "\n");
                 t = t.replace("<br>", "\n");
+
+                // In SVG-label mode (htmlLabels=false), Mermaid renders `<tag>text</tag>` as
+                // escaped literal tag tokens with whitespace separation (see
+                // `upstream_flowchart_v2_escaped_without_html_labels_spec`).
+                //
+                // For layout measurement we approximate that by inserting spaces between
+                // adjacent tag/text tokens when the source omits them.
+                fn space_separate_html_like_tags_for_svg_labels(input: &str) -> String {
+                    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+                    enum TokKind {
+                        Text,
+                        Tag,
+                        Newline,
+                    }
+
+                    fn is_tag_start(s: &str) -> bool {
+                        let mut it = s.chars();
+                        if it.next() != Some('<') {
+                            return false;
+                        }
+                        let Some(next) = it.next() else {
+                            return false;
+                        };
+                        next.is_ascii_alphabetic() || matches!(next, '/' | '!' | '?')
+                    }
+
+                    let mut out = String::with_capacity(input.len());
+                    let mut prev_kind: Option<TokKind> = None;
+
+                    let mut i = 0usize;
+                    while i < input.len() {
+                        let rest = &input[i..];
+                        if rest.starts_with('\n') {
+                            out.push('\n');
+                            prev_kind = Some(TokKind::Newline);
+                            i += 1;
+                            continue;
+                        }
+
+                        if is_tag_start(rest) {
+                            let Some(rel_end) = rest.find('>') else {
+                                // Malformed tag; treat as text.
+                                let ch = rest.chars().next().unwrap();
+                                out.push(ch);
+                                prev_kind = Some(TokKind::Text);
+                                i += ch.len_utf8();
+                                continue;
+                            };
+
+                            let tag = &rest[..=rel_end];
+                            if matches!(prev_kind, Some(TokKind::Text))
+                                && !out.ends_with(|ch: char| ch.is_whitespace())
+                            {
+                                out.push(' ');
+                            }
+                            out.push_str(tag);
+                            prev_kind = Some(TokKind::Tag);
+                            i += rel_end + 1;
+                            continue;
+                        }
+
+                        // Text run until next newline or tag start.
+                        let mut run_end = input.len();
+                        if let Some(nl) = rest.find('\n') {
+                            run_end = run_end.min(i + nl);
+                        }
+                        if let Some(lt) = rest.find('<') {
+                            run_end = run_end.min(i + lt);
+                        }
+                        let run = &input[i..run_end];
+                        if matches!(prev_kind, Some(TokKind::Tag))
+                            && !run.starts_with(|ch: char| ch.is_whitespace())
+                        {
+                            out.push(' ');
+                        }
+                        out.push_str(run);
+                        prev_kind = Some(TokKind::Text);
+                        i = run_end;
+                    }
+
+                    out
+                }
+
+                t = space_separate_html_like_tags_for_svg_labels(&t);
             }
             t.trim().trim_end_matches('\n').to_string()
         }

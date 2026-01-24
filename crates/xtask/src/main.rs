@@ -504,6 +504,7 @@ fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     let mut html_samples: Vec<Sample> = Vec::new();
+    let mut html_seed_samples: Vec<Sample> = Vec::new();
     let mut svg_samples: Vec<Sample> = Vec::new();
     let mut font_family_by_key: BTreeMap<String, String> = BTreeMap::new();
     let Ok(entries) = fs::read_dir(&in_dir) else {
@@ -553,6 +554,22 @@ fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
             .descendants()
             .filter(|n| n.has_tag_name("foreignObject"))
         {
+            let lines = foreignobject_text_lines(fo);
+            for text in &lines {
+                if text.is_empty() {
+                    continue;
+                }
+                // Seed samples are used to build the per-font character set (including unicode
+                // characters from long labels). Width is intentionally zero so these do not affect
+                // `html_overrides` regression.
+                html_seed_samples.push(Sample {
+                    font_key: font_key.clone(),
+                    text: text.clone(),
+                    width_px: 0.0,
+                    font_size_px: diagram_font_size_px,
+                });
+            }
+
             let width_px = fo
                 .attribute("width")
                 .and_then(|v| v.parse::<f64>().ok())
@@ -566,7 +583,6 @@ fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
             if width_px >= 190.0 {
                 continue;
             }
-            let lines = foreignobject_text_lines(fo);
             if lines.len() != 1 {
                 continue;
             }
@@ -796,6 +812,13 @@ fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
     let mut html_samples_by_font: BTreeMap<String, Vec<Sample>> = BTreeMap::new();
     for s in html_samples {
         html_samples_by_font
+            .entry(s.font_key.clone())
+            .or_default()
+            .push(s);
+    }
+    let mut html_seed_samples_by_font: BTreeMap<String, Vec<Sample>> = BTreeMap::new();
+    for s in html_seed_samples {
+        html_seed_samples_by_font
             .entry(s.font_key.clone())
             .or_default()
             .push(s);
@@ -1820,6 +1843,9 @@ const strings = input.strings;
         // flowchart viewport width in many upstream fixtures, so missing title-specific kerning
         // pairs can skew `viewBox`/`max-width` parity.
         let mut canvas_samples_by_font = html_samples_by_font.clone();
+        for (k, mut ss) in html_seed_samples_by_font.clone() {
+            canvas_samples_by_font.entry(k).or_default().append(&mut ss);
+        }
         for (k, mut ss) in svg_samples_by_font.clone() {
             canvas_samples_by_font.entry(k).or_default().append(&mut ss);
         }
@@ -2043,36 +2069,70 @@ const strings = input.strings;
             let Some(font_family) = font_family_by_key.get(font_key) else {
                 continue;
             };
-            let mut strings = ss.iter().map(|s| s.text.clone()).collect::<Vec<_>>();
-            strings.sort();
-            strings.dedup();
-            if strings.is_empty() {
-                continue;
+
+            // Titles use a different font size (18px by default). SVG `getBBox()` can be
+            // non-linear due to hinting, so measure overrides at the actual observed font size
+            // and store them in `em` relative to that size.
+            let base_size_key = (base_font_size_px.max(1.0) * 1000.0).round() as i64;
+            let mut groups: BTreeMap<i64, Vec<String>> = BTreeMap::new();
+            for s in ss {
+                let size_key = (s.font_size_px.max(1.0) * 1000.0).round() as i64;
+                groups.entry(size_key).or_default().push(s.text.clone());
             }
-            let metrics = measure_svg_text_bbox_metrics_via_browser(
-                &node_cwd,
-                &browser_exe,
-                font_family,
-                base_font_size_px.max(1.0),
-                &strings,
-            )?;
-            let denom = base_font_size_px.max(1.0);
-            let mut overrides: Vec<(String, f64, f64)> = Vec::new();
-            for (text, m) in strings.into_iter().zip(metrics.into_iter()) {
-                let bbox_x = m.bbox_x;
-                let bbox_w = m.bbox_w;
-                if !(bbox_x.is_finite() && bbox_w.is_finite()) {
+
+            let mut best_by_text: BTreeMap<String, (i64, f64, f64)> = BTreeMap::new();
+            for (size_key, mut strings) in groups {
+                strings.sort();
+                strings.dedup();
+                if strings.is_empty() {
                     continue;
                 }
-                let left_px = (-bbox_x).max(0.0);
-                let right_px = (bbox_x + bbox_w).max(0.0);
-                let left_em = left_px / denom;
-                let right_em = right_px / denom;
-                if left_em.is_finite() && right_em.is_finite() && (left_em + right_em) > 0.0 {
-                    overrides.push((text, left_em, right_em));
+
+                let font_size_px = (size_key as f64) / 1000.0;
+                let metrics = measure_svg_text_bbox_metrics_via_browser(
+                    &node_cwd,
+                    &browser_exe,
+                    font_family,
+                    font_size_px,
+                    &strings,
+                )?;
+                let denom = font_size_px.max(1.0);
+
+                for (text, m) in strings.into_iter().zip(metrics.into_iter()) {
+                    let bbox_x = m.bbox_x;
+                    let bbox_w = m.bbox_w;
+                    if !(bbox_x.is_finite() && bbox_w.is_finite()) {
+                        continue;
+                    }
+                    let left_px = (-bbox_x).max(0.0);
+                    let right_px = (bbox_x + bbox_w).max(0.0);
+                    let left_em = left_px / denom;
+                    let right_em = right_px / denom;
+                    if !(left_em.is_finite() && right_em.is_finite() && (left_em + right_em) > 0.0)
+                    {
+                        continue;
+                    }
+
+                    // If the same string appears at multiple sizes, prefer base size (16px)
+                    // measurements since most SVG text in Mermaid flowcharts is at the diagram
+                    // font size.
+                    match best_by_text.get(&text) {
+                        None => {
+                            best_by_text.insert(text, (size_key, left_em, right_em));
+                        }
+                        Some((existing_size, _, _)) if *existing_size == base_size_key => {}
+                        Some((existing_size, _, _)) if size_key == base_size_key => {
+                            best_by_text.insert(text, (size_key, left_em, right_em));
+                        }
+                        Some(_) => {}
+                    }
                 }
             }
-            overrides.sort_by(|a, b| a.0.cmp(&b.0));
+
+            let overrides = best_by_text
+                .into_iter()
+                .map(|(text, (_size, left_em, right_em))| (text, left_em, right_em))
+                .collect::<Vec<_>>();
             svg_overrides_by_font.insert(font_key.clone(), overrides);
         }
     }
@@ -3332,6 +3392,7 @@ fn measure_text(args: Vec<String>) -> Result<(), XtaskError> {
     let mut wrap_mode: String = "svg".to_string();
     let mut max_width: Option<f64> = None;
     let mut measurer: String = "vendored".to_string();
+    let mut svg_bbox_x: bool = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -3369,6 +3430,7 @@ fn measure_text(args: Vec<String>) -> Result<(), XtaskError> {
                     .map(|s| s.trim().to_ascii_lowercase())
                     .unwrap_or_else(|| "vendored".to_string());
             }
+            "--svg-bbox-x" => svg_bbox_x = true,
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
         }
@@ -3409,6 +3471,21 @@ fn measure_text(args: Vec<String>) -> Result<(), XtaskError> {
     println!("width: {}", metrics.width);
     println!("height: {}", metrics.height);
     println!("line_count: {}", metrics.line_count);
+    if svg_bbox_x {
+        let (left, right) = if matches!(
+            measurer.as_str(),
+            "deterministic" | "deterministic-text" | "deterministic-text-measurer"
+        ) {
+            let m = merman_render::text::DeterministicTextMeasurer::default();
+            m.measure_svg_text_bbox_x(&text, &style)
+        } else {
+            let m = merman_render::text::VendoredFontMetricsTextMeasurer::default();
+            m.measure_svg_text_bbox_x(&text, &style)
+        };
+        println!("svg_bbox_x_left: {}", left);
+        println!("svg_bbox_x_right: {}", right);
+        println!("svg_bbox_x_width: {}", left + right);
+    }
 
     Ok(())
 }
