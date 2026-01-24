@@ -98,10 +98,10 @@ These drive most of the remaining `--check-dom --dom-mode parity-root` failures.
 - Mermaid uses dagrejs defaults for graph spacing (notably `edgesep=20`). Keeping `dugong`'s
   `GraphLabel` defaults aligned with dagrejs is important for multiedge routing and therefore
   root `viewBox/max-width` parity.
-- Mermaid's extracted cluster roots (`<g class="root" transform="translate(...)"`) can include an
-  additional deterministic y-offset when an empty sibling subgraph is present (e.g.
-  `outgoing_links_4` in `flowchart-v2.spec.js`). `merman-render` accounts for this by adjusting the
-  root translate-y and expanding the root viewport bbox accordingly.
+- Empty subgraphs (`subgraph B ... end` with no members in the semantic model) are rendered as
+  regular nodes in Mermaid. Treating them as clusters can distort recursive root transforms and
+  root viewport sizes; `merman-render` now sizes/layouts empty subgraphs as leaf nodes, which
+  restores the expected extracted root translate-y (e.g. `0, 90` in `outgoing_links_4`).
 - The previously large delta for `upstream_flowchart_v2_arrows_graph_direction_lt_spec` was caused
   by Mermaid's DOMPurify-style sanitization turning a stray `<` in the title into the literal text
   `&lt;` (which then affects title width and therefore `viewBox/max-width`). `merman-core` now

@@ -864,9 +864,16 @@ pub fn layout_flowchart_v2(
         ..Default::default()
     });
 
+    let mut empty_subgraph_ids: Vec<String> = Vec::new();
     let mut cluster_node_labels: std::collections::HashMap<String, NodeLabel> =
         std::collections::HashMap::new();
     for sg in &model.subgraphs {
+        if sg.nodes.is_empty() {
+            // Mermaid renders empty subgraphs as regular nodes. Keep the semantic `subgraph`
+            // definition around for styling/title, but size + lay it out as a leaf node.
+            empty_subgraph_ids.push(sg.id.clone());
+            continue;
+        }
         // Mermaid does not pre-size compound (subgraph) nodes based on title metrics for Dagre
         // layout. Their dimensions are computed from children (border nodes) and then adjusted at
         // render time for title width and configured margins.
@@ -911,6 +918,29 @@ pub fn layout_flowchart_v2(
         let (width, height) = node_dimensions(n.layout_shape.as_deref(), metrics, node_padding);
         leaf_node_labels.insert(
             n.id.clone(),
+            NodeLabel {
+                width,
+                height,
+                ..Default::default()
+            },
+        );
+    }
+    for sg in &model.subgraphs {
+        if !sg.nodes.is_empty() {
+            continue;
+        }
+        let label_type = sg.label_type.as_deref().unwrap_or("text");
+        let metrics = flowchart_label_metrics_for_layout(
+            measurer,
+            &sg.title,
+            label_type,
+            &text_style,
+            Some(cluster_title_wrapping_width),
+            node_wrap_mode,
+        );
+        let (width, height) = node_dimensions(Some("squareRect"), metrics, cluster_padding);
+        leaf_node_labels.insert(
+            sg.id.clone(),
             NodeLabel {
                 width,
                 height,
@@ -1260,7 +1290,7 @@ pub fn layout_flowchart_v2(
             let is_cluster_node = extracted.contains_key(&id) && graph.children(&id).is_empty();
             let delta_y = if is_cluster_node {
                 y_shift * 2.0
-            } else if subgraph_id_set.contains(&id) {
+            } else if subgraph_id_set.contains(&id) && !graph.children(&id).is_empty() {
                 0.0
             } else {
                 y_shift
@@ -1425,6 +1455,9 @@ pub fn layout_flowchart_v2(
         .map(|n| n.id.clone())
         .collect();
     for id in &self_loop_label_node_ids {
+        leaf_node_ids.insert(id.clone());
+    }
+    for id in &empty_subgraph_ids {
         leaf_node_ids.insert(id.clone());
     }
 
@@ -2143,6 +2176,28 @@ pub fn layout_flowchart_v2(
             is_cluster: false,
         });
     }
+    for id in &empty_subgraph_ids {
+        let (x, y) = base_pos
+            .get(id)
+            .copied()
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing positioned node {id}"),
+            })?;
+        let (width, height) = leaf_rects
+            .get(id)
+            .map(|r| (r.width(), r.height()))
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing sized node {id}"),
+            })?;
+        out_nodes.push(LayoutNode {
+            id: id.clone(),
+            x,
+            y,
+            width,
+            height,
+            is_cluster: false,
+        });
+    }
     for id in &self_loop_label_node_ids {
         let (x, y) = base_pos
             .get(id)
@@ -2364,6 +2419,10 @@ pub fn layout_flowchart_v2(
             }
 
             rect
+        }
+
+        if sg.nodes.is_empty() {
+            continue;
         }
 
         let (rect, base_width) = if extracted_graphs.contains_key(&sg.id) {

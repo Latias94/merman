@@ -9279,6 +9279,7 @@ pub fn render_flowchart_v2_svg(
             let has_empty_sibling = subgraphs_by_id.iter().any(|(id, sg)| {
                 id != cid
                     && sg.nodes.is_empty()
+                    && layout_clusters_by_id.contains_key(id)
                     && effective_parent(&parent, &subgraphs_by_id, &recursive_clusters, id.as_str())
                         == my_parent
             });
@@ -15340,6 +15341,7 @@ fn render_flowchart_root(
             let has_empty_sibling = ctx.subgraphs_by_id.iter().any(|(id, sg)| {
                 id.as_str() != cid
                     && sg.nodes.is_empty()
+                    && ctx.layout_clusters_by_id.contains_key(id.as_str())
                     && flowchart_effective_parent(ctx, id.as_str()) == my_parent
             });
 
@@ -17641,7 +17643,7 @@ fn render_flowchart_node(
     };
 
     let x = layout_node.x + ctx.tx - origin_x;
-    let mut y = layout_node.y + ctx.ty - origin_y;
+    let y = layout_node.y + ctx.ty - origin_y;
 
     fn is_self_loop_label_node_id(id: &str) -> bool {
         let mut parts = id.split("---");
@@ -17684,12 +17686,6 @@ fn render_flowchart_node(
     } else {
         return;
     };
-
-    if matches!(node_kind, RenderNodeKind::EmptySubgraph(_)) {
-        if let Some(cluster) = ctx.layout_clusters_by_id.get(node_id) {
-            y += cluster.offset_y.max(0.0);
-        }
-    }
 
     let tooltip = ctx.tooltips.get(node_id).map(|s| s.as_str()).unwrap_or("");
     let tooltip_attr = if tooltip.trim().is_empty() {

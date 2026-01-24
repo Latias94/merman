@@ -6,7 +6,7 @@
         {
           "id": "a",
           "x": 68.44,
-          "y": 114.5,
+          "y": 154.5,
           "width": 66.88,
           "height": 54.0,
           "is_cluster": false
@@ -14,25 +14,25 @@
         {
           "id": "b",
           "x": 68.44,
-          "y": 243.5,
+          "y": 283.5,
           "width": 66.88,
           "height": 54.0,
           "is_cluster": false
         },
         {
-          "id": "A",
+          "id": "B",
           "x": 68.44,
-          "y": 179.0,
-          "width": 136.88,
-          "height": 258.0,
-          "is_cluster": true
+          "y": 20.0,
+          "width": 41.6,
+          "height": 40.0,
+          "is_cluster": false
         },
         {
-          "id": "B",
-          "x": 0.0,
-          "y": 0.0,
-          "width": 25.6,
-          "height": 40.0,
+          "id": "A",
+          "x": 68.44,
+          "y": 219.0,
+          "width": 136.88,
+          "height": 258.0,
           "is_cluster": true
         }
       ],
@@ -46,15 +46,15 @@
           "points": [
             {
               "x": 68.44,
-              "y": 141.5
+              "y": 181.5
             },
             {
               "x": 68.44,
-              "y": 179.0
+              "y": 219.0
             },
             {
               "x": 68.44,
-              "y": 216.5
+              "y": 256.5
             }
           ],
           "label": null,
@@ -71,7 +71,7 @@
         {
           "id": "A",
           "x": 68.44,
-          "y": 179.0,
+          "y": 219.0,
           "width": 136.88,
           "height": 258.0,
           "diff": -4.0,
@@ -79,28 +79,7 @@
           "title": "A",
           "title_label": {
             "x": 68.44,
-            "y": 62.0,
-            "width": 9.6,
-            "height": 24.0
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 8.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
-        },
-        {
-          "id": "B",
-          "x": 0.0,
-          "y": 0.0,
-          "width": 25.6,
-          "height": 40.0,
-          "diff": -4.0,
-          "offset_y": 20.0,
-          "title": "B",
-          "title_label": {
-            "x": 0.0,
-            "y": -8.0,
+            "y": 102.0,
             "width": 9.6,
             "height": 24.0
           },
@@ -112,10 +91,10 @@
         }
       ],
       "bounds": {
-        "min_x": -12.8,
-        "min_y": -20.0,
+        "min_x": 0.0,
+        "min_y": 0.0,
         "max_x": 136.88,
-        "max_y": 308.0
+        "max_y": 348.0
       }
     }
   }
