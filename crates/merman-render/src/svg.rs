@@ -8197,10 +8197,150 @@ pub fn render_architecture_diagram_svg(
     _effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
+    fn arch_icon_body(name: &str) -> &'static str {
+        // Copied from Mermaid@11.12.2 `packages/mermaid/src/diagrams/architecture/architectureIcons.ts`.
+        //
+        // Note: SVG DOM parity checks ignore `style` attributes, but we keep the upstream bodies as-is
+        // to preserve element structure and any stable non-style attributes (e.g. `id`).
+        match name {
+            "database" => {
+                r#"<g><rect width="80" height="80" style="fill: #087ebf; stroke-width: 0px;"/><path id="b" data-name="4" d="m20,57.86c0,3.94,8.95,7.14,20,7.14s20-3.2,20-7.14" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/><path id="c" data-name="3" d="m20,45.95c0,3.94,8.95,7.14,20,7.14s20-3.2,20-7.14" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/><path id="d" data-name="2" d="m20,34.05c0,3.94,8.95,7.14,20,7.14s20-3.2,20-7.14" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/><ellipse id="e" data-name="1" cx="40" cy="22.14" rx="20" ry="7.14" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/><line x1="20" y1="57.86" x2="20" y2="22.14" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/><line x1="60" y1="57.86" x2="60" y2="22.14" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/></g>"#
+            }
+            "server" => {
+                r#"<g><rect width="80" height="80" style="fill: #087ebf; stroke-width: 0px;"/><rect x="17.5" y="17.5" width="45" height="45" rx="2" ry="2" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/><line x1="17.5" y1="32.5" x2="62.5" y2="32.5" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/><line x1="17.5" y1="47.5" x2="62.5" y2="47.5" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/><g><path d="m56.25,25c0,.27-.45.5-1,.5h-10.5c-.55,0-1-.23-1-.5s.45-.5,1-.5h10.5c.55,0,1,.23,1,.5Z" style="fill: #fff; stroke-width: 0px;"/><path d="m56.25,25c0,.27-.45.5-1,.5h-10.5c-.55,0-1-.23-1-.5s.45-.5,1-.5h10.5c.55,0,1,.23,1,.5Z" style="fill: none; stroke: #fff; stroke-miterlimit: 10;"/></g><g><path d="m56.25,40c0,.27-.45.5-1,.5h-10.5c-.55,0-1-.23-1-.5s.45-.5,1-.5h10.5c.55,0,1,.23,1,.5Z" style="fill: #fff; stroke-width: 0px;"/><path d="m56.25,40c0,.27-.45.5-1,.5h-10.5c-.55,0-1-.23-1-.5s.45-.5,1-.5h10.5c.55,0,1,.23,1,.5Z" style="fill: none; stroke: #fff; stroke-miterlimit: 10;"/></g><g><path d="m56.25,55c0,.27-.45.5-1,.5h-10.5c-.55,0-1-.23-1-.5s.45-.5,1-.5h10.5c.55,0,1,.23,1,.5Z" style="fill: #fff; stroke-width: 0px;"/><path d="m56.25,55c0,.27-.45.5-1,.5h-10.5c-.55,0-1-.23-1-.5s.45-.5,1-.5h10.5c.55,0,1,.23,1,.5Z" style="fill: none; stroke: #fff; stroke-miterlimit: 10;"/></g><g><circle cx="32.5" cy="25" r=".75" style="fill: #fff; stroke: #fff; stroke-miterlimit: 10;"/><circle cx="27.5" cy="25" r=".75" style="fill: #fff; stroke: #fff; stroke-miterlimit: 10;"/><circle cx="22.5" cy="25" r=".75" style="fill: #fff; stroke: #fff; stroke-miterlimit: 10;"/></g><g><circle cx="32.5" cy="40" r=".75" style="fill: #fff; stroke: #fff; stroke-miterlimit: 10;"/><circle cx="27.5" cy="40" r=".75" style="fill: #fff; stroke: #fff; stroke-miterlimit: 10;"/><circle cx="22.5" cy="40" r=".75" style="fill: #fff; stroke: #fff; stroke-miterlimit: 10;"/></g><g><circle cx="32.5" cy="55" r=".75" style="fill: #fff; stroke: #fff; stroke-miterlimit: 10;"/><circle cx="27.5" cy="55" r=".75" style="fill: #fff; stroke: #fff; stroke-miterlimit: 10;"/><circle cx="22.5" cy="55" r=".75" style="fill: #fff; stroke: #fff; stroke-miterlimit: 10;"/></g></g>"#
+            }
+            "disk" => {
+                r#"<g><rect width="80" height="80" style="fill: #087ebf; stroke-width: 0px;"/><rect x="20" y="15" width="40" height="50" rx="1" ry="1" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/><ellipse cx="24" cy="19.17" rx=".8" ry=".83" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/><ellipse cx="56" cy="19.17" rx=".8" ry=".83" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/><ellipse cx="24" cy="60.83" rx=".8" ry=".83" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/><ellipse cx="56" cy="60.83" rx=".8" ry=".83" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/><ellipse cx="40" cy="33.75" rx="14" ry="14.58" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/><ellipse cx="40" cy="33.75" rx="4" ry="4.17" style="fill: #fff; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/><path d="m37.51,42.52l-4.83,13.22c-.26.71-1.1,1.02-1.76.64l-4.18-2.42c-.66-.38-.81-1.26-.33-1.84l9.01-10.8c.88-1.05,2.56-.08,2.09,1.2Z" style="fill: #fff; stroke-width: 0px;"/></g>"#
+            }
+            "internet" => {
+                r#"<g><rect width="80" height="80" style="fill: #087ebf; stroke-width: 0px;"/><circle cx="40" cy="40" r="22.5" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/><line x1="40" y1="17.5" x2="40" y2="62.5" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/><line x1="17.5" y1="40" x2="62.5" y2="40" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/><path d="m39.99,17.51c-15.28,11.1-15.28,33.88,0,44.98" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/><path d="m40.01,17.51c15.28,11.1,15.28,33.88,0,44.98" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/><line x1="19.75" y1="30.1" x2="60.25" y2="30.1" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/><line x1="19.75" y1="49.9" x2="60.25" y2="49.9" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/></g>"#
+            }
+            "cloud" => {
+                r#"<g><rect width="80" height="80" style="fill: #087ebf; stroke-width: 0px;"/><path d="m65,47.5c0,2.76-2.24,5-5,5H20c-2.76,0-5-2.24-5-5,0-1.87,1.03-3.51,2.56-4.36-.04-.21-.06-.42-.06-.64,0-2.6,2.48-4.74,5.65-4.97,1.65-4.51,6.34-7.76,11.85-7.76.86,0,1.69.08,2.5.23,2.09-1.57,4.69-2.5,7.5-2.5,6.1,0,11.19,4.38,12.28,10.17,2.14.56,3.72,2.51,3.72,4.83,0,.03,0,.07-.01.1,2.29.46,4.01,2.48,4.01,4.9Z" style="fill: none; stroke: #fff; stroke-miterlimit: 10; stroke-width: 2px;"/></g>"#
+            }
+            "unknown" => {
+                r#"<g><rect width="80" height="80" style="fill: #087ebf; stroke-width: 0px;"/><text transform="translate(21.16 64.67)" style="fill: #fff; font-family: ArialMT, Arial; font-size: 67.75px;"><tspan x="0" y="0">?</tspan></text></g>"#
+            }
+            "blank" => {
+                r#"<g><rect width="80" height="80" style="fill: #087ebf; stroke-width: 0px;"/></g>"#
+            }
+            _ => arch_icon_body("unknown"),
+        }
+    }
+
+    fn arch_icon_svg(icon_name: &str, icon_size_px: f64) -> String {
+        let body = arch_icon_body(icon_name);
+        format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 80 80">{body}</svg>"#,
+            w = fmt(icon_size_px),
+            h = fmt(icon_size_px),
+            body = body
+        )
+    }
+
+    fn wrap_svg_words_to_lines(
+        text: &str,
+        max_width_px: f64,
+        measurer: &dyn crate::text::TextMeasurer,
+        style: &crate::text::TextStyle,
+    ) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for raw_line in crate::text::DeterministicTextMeasurer::normalized_text_lines(text) {
+            let tokens = crate::text::DeterministicTextMeasurer::split_line_to_words(&raw_line);
+            let mut curr = String::new();
+            for tok in tokens {
+                let candidate = format!("{curr}{tok}");
+                let w = measurer.measure(candidate.trim_end(), style).width;
+                if curr.is_empty() || w <= max_width_px {
+                    curr = candidate;
+                } else {
+                    out.push(curr.trim().to_string());
+                    curr = tok;
+                }
+            }
+            out.push(curr.trim().to_string());
+        }
+        out
+    }
+
+    fn write_svg_text_lines(out: &mut String, lines: &[String]) {
+        out.push_str(r#"<text y="-10.1" style="">"#);
+        if lines.is_empty() || (lines.len() == 1 && lines[0].is_empty()) {
+            out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em"/>"#);
+            out.push_str("</text>");
+            return;
+        }
+        for (idx, line) in lines.iter().enumerate() {
+            if idx == 0 {
+                out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em">"#);
+            } else {
+                let y_em = if idx == 1 {
+                    "1em".to_string()
+                } else {
+                    format!("{:.1}em", 1.0 + (idx as f64 - 1.0) * 1.1)
+                };
+                let _ = write!(
+                    out,
+                    r#"<tspan class="text-outer-tspan" x="0" y="{}" dy="1.1em">"#,
+                    y_em
+                );
+            }
+            let words: Vec<String> = line
+                .split_whitespace()
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect();
+            for (word_idx, word) in words.iter().enumerate() {
+                out.push_str(
+                    r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal">"#,
+                );
+                if word_idx == 0 {
+                    out.push_str(&escape_xml(word));
+                } else {
+                    out.push(' ');
+                    out.push_str(&escape_xml(word));
+                }
+                out.push_str("</tspan>");
+            }
+            out.push_str("</tspan>");
+        }
+        out.push_str("</text>");
+    }
+
+    fn write_architecture_service_title(
+        out: &mut String,
+        title: &str,
+        icon_size_px: f64,
+        title_width_px: f64,
+    ) {
+        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let style = crate::text::TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+        };
+        let lines = wrap_svg_words_to_lines(title, title_width_px, &measurer, &style);
+
+        let _ = write!(
+            out,
+            r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="middle" text-anchor="middle" transform="translate({x}, {y})"><g><rect class="background" style="stroke: none"/>"#,
+            x = fmt(icon_size_px / 2.0),
+            y = fmt(icon_size_px)
+        );
+        write_svg_text_lines(out, &lines);
+        out.push_str("</g></g>");
+    }
+
     #[derive(Debug, Clone, Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct ArchitectureService {
         id: String,
+        #[serde(default)]
+        icon: Option<String>,
+        #[serde(default, rename = "iconText")]
+        icon_text: Option<String>,
+        #[serde(default)]
+        title: Option<String>,
     }
 
     #[derive(Debug, Clone, Deserialize)]
@@ -8275,19 +8415,70 @@ pub fn render_architecture_diagram_svg(
         a11y = a11y_nodes
     );
 
+    let icon_size_px = 80.0;
+
     if model.services.is_empty() {
         out.push_str(r#"<g class="architecture-services"/>"#);
     } else {
         out.push_str(r#"<g class="architecture-services">"#);
         for svc in &model.services {
             let (x, y) = node_xy.get(&svc.id).copied().unwrap_or((0.0, 0.0));
+            let id_esc = escape_xml(&svc.id);
+
             let _ = write!(
                 &mut out,
-                r#"<g id="service-{id}" class="architecture-service" transform="translate({x},{y})"><g><path class="node-bkg" id="node-{id}" d="M0 80 v-80 q0,-5 5,-5 h80 q5,0 5,5 v80 H0 Z"/></g></g>"#,
-                id = escape_xml(&svc.id),
+                r#"<g id="service-{id}" class="architecture-service" transform="translate({x},{y})">"#,
+                id = id_esc,
                 x = fmt(x),
                 y = fmt(y)
             );
+
+            if let Some(title) = svc
+                .title
+                .as_deref()
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+            {
+                // Mermaid uses `width = iconSize * 1.5` for service titles.
+                write_architecture_service_title(&mut out, title, icon_size_px, icon_size_px * 1.5);
+            }
+
+            out.push_str("<g>");
+            match (svc.icon.as_deref(), svc.icon_text.as_deref()) {
+                (Some(icon), _) => {
+                    let svg = arch_icon_svg(icon, icon_size_px);
+                    out.push_str("<g>");
+                    out.push_str(&svg);
+                    out.push_str("</g>");
+                }
+                (None, Some(icon_text)) => {
+                    let svg = arch_icon_svg("blank", icon_size_px);
+                    out.push_str("<g>");
+                    out.push_str(&svg);
+                    out.push_str("</g>");
+
+                    let line_clamp = ((icon_size_px - 2.0) / 16.0).floor().max(1.0) as i64;
+                    let _ = write!(
+                        &mut out,
+                        r#"<g><foreignObject width="{w}" height="{h}"><div class="node-icon-text" style="height: {h}px;" xmlns="http://www.w3.org/1999/xhtml"><div style="-webkit-line-clamp: {clamp};">{text}</div></div></foreignObject></g>"#,
+                        w = fmt(icon_size_px),
+                        h = fmt(icon_size_px),
+                        clamp = line_clamp,
+                        text = escape_xml(icon_text.trim())
+                    );
+                }
+                (None, None) => {
+                    let _ = write!(
+                        &mut out,
+                        r#"<path class="node-bkg" id="node-{id}" d="M0 {s} v-{s} q0,-5 5,-5 h{s} q5,0 5,5 v{s} H0 Z"/>"#,
+                        id = id_esc,
+                        s = fmt(icon_size_px)
+                    );
+                }
+            }
+            out.push_str("</g>");
+
+            out.push_str("</g>");
         }
         out.push_str("</g>");
     }
