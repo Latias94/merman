@@ -109,3 +109,4 @@ upstream SVG baselines via `xtask compare-sankey-svgs` (DOM parity-root mode).
 - Internal consistency: `cargo run -p xtask -- check-alignment`
   - ensures every fixture has a `.golden.json`
   - ensures coverage docs reference existing local paths
+- Full SVG parity sweep (aggregated): `cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3`
