@@ -12,6 +12,7 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/sankey/parser/sankey.spe
 - parses `energy.csv` with `sankey-beta`: `fixtures/sankey/upstream_sankey_beta_energy_csv_spec.mmd`
 - parses csv with `sankey` header: `fixtures/sankey/upstream_sankey_header_energy_csv_spec.mmd`
 - allows `__proto__` as id (parser-only; upstream renderer errors on cycles): `fixtures/sankey/upstream_sankey_allows_proto_id_parser_only_spec.mmd`
+- allows `__proto__` as id with `sankey` header (parser-only; upstream renderer errors on cycles): `fixtures/sankey/upstream_sankey_allows_proto_id_sankey_header_parser_only_spec.mmd`
 
 Upstream SVG baselines:
 
