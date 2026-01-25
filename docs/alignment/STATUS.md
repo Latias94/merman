@@ -103,6 +103,9 @@ Recent progress: `radar` headless layout and Stage B SVG renderer exist and are 
 upstream SVG baselines via `xtask compare-radar-svgs` (DOM parity mode).
 Recent progress: `sankey` headless layout and Stage B SVG renderer exist and are validated against
 upstream SVG baselines via `xtask compare-sankey-svgs` (DOM parity-root mode).
+Recent progress: stateDiagram Stage B SVG DOM checks now participate cleanly in
+`xtask compare-all-svgs --check-dom` (state compare now honors `--check-dom`), and the state
+layout goldens were refreshed after aligning default text style (16px) and node padding behavior.
 
 ## Alignment Sanity Checks
 
