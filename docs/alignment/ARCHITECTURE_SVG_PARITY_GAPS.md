@@ -99,3 +99,6 @@ Next:
 - Some upstream Cypress Architecture fixtures use parenthesized port pairs like `servC (L--R) servL`.
   Mermaid CLI `@11.12.2` also renders these as an error SVG, so these remain `*_parser_only_` until the
   baseline source is clarified (CLI vs browser/Cypress).
+
+- Some upstream Cypress Architecture fixtures use label shorthands like `servC L-[Label]-R servL`.
+  Mermaid CLI `@11.12.2` renders these as an error SVG as well, so these stay `*_parser_only_` for now.
