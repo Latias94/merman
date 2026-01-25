@@ -185,6 +185,22 @@ Convention:
   - `xtask check-upstream-svgs`
   - diagram compare tasks like `xtask compare-flowchart-svgs`
 
+## Normalized Fixtures (CLI-Compatible)
+
+Some upstream suites (notably Cypress) include inputs that are accepted by the browser bundle but
+rejected by Mermaid CLI `@11.12.2` (Langium parser), often due to legacy shorthand syntax.
+
+To preserve the upstream strings *and* still get authoritative CLI SVG baselines + DOM parity
+comparisons, we add `*_normalized` variants that rewrite the input into the Mermaid@11.12.2 grammar.
+
+Rule of thumb:
+
+- keep the upstream string as a `*_parser_only_` fixture (semantic-only), and
+- add a `*_normalized` fixture that is eligible for:
+  - `xtask gen-upstream-svgs`
+  - layout snapshots (`*.layout.golden.json`)
+  - DOM parity compares
+
 ## Generate (C4 Stage B)
 
 Generate local Stage-B C4 SVG outputs (not upstream baselines):
