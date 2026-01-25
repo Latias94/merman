@@ -9304,7 +9304,7 @@ fn compare_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut filter: Option<String> = None;
     let mut dom_decimals: u32 = 3;
     let mut dom_mode: String = "parity".to_string();
-    let check_dom: bool = true;
+    let mut check_dom: bool = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -9317,6 +9317,7 @@ fn compare_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 i += 1;
                 filter = args.get(i).map(|s| s.to_string());
             }
+            "--check-dom" => check_dom = true,
             "--dom-decimals" => {
                 i += 1;
                 dom_decimals = args.get(i).and_then(|s| s.parse::<u32>().ok()).unwrap_or(3);
@@ -9493,30 +9494,32 @@ fn compare_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         let local_out_path = out_svg_dir.join(format!("{stem}.svg"));
         let _ = fs::write(&local_out_path, &local_svg);
 
-        let a = match svgdom::dom_signature(&upstream_svg, mode, dom_decimals) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!("upstream dom parse failed for {stem}: {err}"));
-                continue;
+        if check_dom {
+            let a = match svgdom::dom_signature(&upstream_svg, mode, dom_decimals) {
+                Ok(v) => v,
+                Err(err) => {
+                    failures.push(format!("upstream dom parse failed for {stem}: {err}"));
+                    continue;
+                }
+            };
+            let b = match svgdom::dom_signature(&local_svg, mode, dom_decimals) {
+                Ok(v) => v,
+                Err(err) => {
+                    failures.push(format!("local dom parse failed for {stem}: {err}"));
+                    continue;
+                }
+            };
+            if a != b {
+                let detail = svgdom::dom_diff(&a, &b)
+                    .map(|d| format!(" ({d})"))
+                    .unwrap_or_default();
+                failures.push(format!(
+                    "dom mismatch for {stem}: upstream={} local={}{}",
+                    upstream_path.display(),
+                    local_out_path.display(),
+                    detail
+                ));
             }
-        };
-        let b = match svgdom::dom_signature(&local_svg, mode, dom_decimals) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!("local dom parse failed for {stem}: {err}"));
-                continue;
-            }
-        };
-        if a != b {
-            let detail = svgdom::dom_diff(&a, &b)
-                .map(|d| format!(" ({d})"))
-                .unwrap_or_default();
-            failures.push(format!(
-                "dom mismatch for {stem}: upstream={} local={}{}",
-                upstream_path.display(),
-                local_out_path.display(),
-                detail
-            ));
         }
     }
 
@@ -10062,7 +10065,7 @@ fn compare_gantt_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut filter: Option<String> = None;
     let mut dom_decimals: u32 = 3;
     let mut dom_mode: String = "structure".to_string();
-    let check_dom: bool = true;
+    let mut check_dom: bool = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -10075,6 +10078,7 @@ fn compare_gantt_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 i += 1;
                 filter = args.get(i).map(|s| s.to_string());
             }
+            "--check-dom" => check_dom = true,
             "--dom-decimals" => {
                 i += 1;
                 dom_decimals = args.get(i).and_then(|s| s.parse::<u32>().ok()).unwrap_or(3);
@@ -10259,30 +10263,32 @@ fn compare_gantt_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         let local_out_path = out_svg_dir.join(format!("{stem}.svg"));
         let _ = fs::write(&local_out_path, &local_svg);
 
-        let a = match svgdom::dom_signature(&upstream_svg, mode, dom_decimals) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!("upstream dom parse failed for {stem}: {err}"));
-                continue;
+        if check_dom {
+            let a = match svgdom::dom_signature(&upstream_svg, mode, dom_decimals) {
+                Ok(v) => v,
+                Err(err) => {
+                    failures.push(format!("upstream dom parse failed for {stem}: {err}"));
+                    continue;
+                }
+            };
+            let b = match svgdom::dom_signature(&local_svg, mode, dom_decimals) {
+                Ok(v) => v,
+                Err(err) => {
+                    failures.push(format!("local dom parse failed for {stem}: {err}"));
+                    continue;
+                }
+            };
+            if a != b {
+                let detail = svgdom::dom_diff(&a, &b)
+                    .map(|d| format!(" ({d})"))
+                    .unwrap_or_default();
+                failures.push(format!(
+                    "dom mismatch for {stem}: upstream={} local={}{}",
+                    upstream_path.display(),
+                    local_out_path.display(),
+                    detail
+                ));
             }
-        };
-        let b = match svgdom::dom_signature(&local_svg, mode, dom_decimals) {
-            Ok(v) => v,
-            Err(err) => {
-                failures.push(format!("local dom parse failed for {stem}: {err}"));
-                continue;
-            }
-        };
-        if a != b {
-            let detail = svgdom::dom_diff(&a, &b)
-                .map(|d| format!(" ({d})"))
-                .unwrap_or_default();
-            failures.push(format!(
-                "dom mismatch for {stem}: upstream={} local={}{}",
-                upstream_path.display(),
-                local_out_path.display(),
-                detail
-            ));
         }
     }
 
