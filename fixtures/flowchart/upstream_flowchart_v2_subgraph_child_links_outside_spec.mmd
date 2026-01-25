@@ -1,0 +1,10 @@
+---
+title: "Flowchart v2: subgraph child links outside (flowchart-v2.spec.js#5064)"
+---
+flowchart TB
+  Out --> In
+  subgraph Sub
+    In
+  end
+  Sub --> In
+

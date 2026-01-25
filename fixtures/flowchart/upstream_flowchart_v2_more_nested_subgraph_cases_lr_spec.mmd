@@ -1,0 +1,19 @@
+---
+title: "Flowchart v2: more nested subgraph cases (LR) (flowchart-v2.spec.js#69)"
+config:
+  htmlLabels: true
+  securityLevel: loose
+  flowchart:
+    htmlLabels: true
+---
+flowchart LR
+  subgraph two
+    b1
+  end
+  subgraph three
+    c2
+  end
+
+  three --> two
+  two --> c2
+

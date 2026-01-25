@@ -221,6 +221,14 @@ Source: `repo-ref/mermaid/cypress/integration/rendering/flowchart-v2.spec.js`
 - styling matrix for all shapes: `fixtures/flowchart/upstream_flowchart_v2_shape_styling_matrix_spec.mmd`
 - icons in edge labels: `fixtures/flowchart/upstream_flowchart_v2_icons_in_edge_labels_spec.mmd`
 - YAML config for spacing in subgraphs: `fixtures/flowchart/upstream_flowchart_v2_subgraph_nodeSpacing_rankSpacing_yaml_spec.mmd`
+- styled subgraphs: `fixtures/flowchart/upstream_flowchart_v2_styled_subgraphs_spec.mmd`
+- subgraph title theme variables: `fixtures/flowchart/upstream_flowchart_v2_subgraph_title_themeable_spec.mmd`
+- class-based text color: `fixtures/flowchart/upstream_flowchart_v2_text_color_from_classes_spec.mmd`
+- class-based bold labels: `fixtures/flowchart/upstream_flowchart_v2_bold_text_from_classes_spec.mmd`
+- class-based large font labels: `fixtures/flowchart/upstream_flowchart_v2_bigger_font_from_classes_spec.mmd`
+- more nested subgraph cases (TB/RL/BT/LR): `fixtures/flowchart/upstream_flowchart_v2_more_nested_subgraph_cases_tb_spec.mmd` (and `*_rl_spec`, `*_bt_spec`, `*_lr_spec`)
+- nested subgraph links out/between (TB/RL/BT): `fixtures/flowchart/upstream_flowchart_v2_nested_subgraph_link_out_and_between_tb_spec.mmd` (and `*_rl_spec`, `*_bt_spec`)
+- `default` in node name: `fixtures/flowchart/upstream_flowchart_v2_default_in_node_name_spec.mmd`
 - subgraph title margins (LR, `htmlLabels: false`): `fixtures/flowchart/upstream_flowchart_v2_subgraph_title_margins_lr_htmlLabels_false_spec.mmd`
 - subgraph title margins (edge labels): `fixtures/flowchart/upstream_flowchart_v2_subgraph_title_margins_with_edge_labels_spec.mmd`
 - self loops (including nested subgraphs): `fixtures/flowchart/upstream_flowchart_v2_self_loops_spec.mmd`
@@ -231,6 +239,10 @@ Source: `repo-ref/mermaid/cypress/integration/rendering/flowchart-v2.spec.js`
 - unicode-encoded characters in HTML labels (`htmlLabels: true`): `fixtures/flowchart/upstream_flowchart_v2_unicode_encoded_character_html_labels_true_spec.mmd`
 - titled flowchart (`titleTopMargin: 10`): `fixtures/flowchart/upstream_flowchart_v2_titled_flowchart_titleTopMargin_10_spec.mmd`
 - invisible edges (`titleTopMargin: 10`): `fixtures/flowchart/upstream_flowchart_v2_invisible_edges_titleTopMargin_10_spec.mmd`
+- subgraph child links to outside node + subgraph (flowchart-v2.spec.js#5064): `fixtures/flowchart/upstream_flowchart_v2_subgraph_child_links_outside_spec.mmd`
+- subgraph contains only subgraphs, links outside (flowchart-v2.spec.js#5059): `fixtures/flowchart/upstream_flowchart_v2_subgraph_only_subgraphs_links_outside_spec.mmd`
+- nodeSpacing/rankSpacing (main graph override): `fixtures/flowchart/upstream_flowchart_v2_subgraph_nodeSpacing_rankSpacing_main_graph_spec.mmd`
+- nodeSpacing/rankSpacing (large config): `fixtures/flowchart/upstream_flowchart_v2_subgraph_nodeSpacing_rankSpacing_large_spec.mmd`
 
 ## Additional parity fixtures (non-upstream)
 

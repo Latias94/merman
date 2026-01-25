@@ -1,0 +1,13 @@
+---
+title: "Flowchart v2: text-color from classes (flowchart-v2.spec.js#65-1)"
+config:
+  htmlLabels: true
+  securityLevel: loose
+  flowchart:
+    htmlLabels: true
+---
+flowchart LR
+  classDef dark fill:#000,stroke:#000,stroke-width:4px,color:#fff
+  Lorem --> Ipsum --> Dolor
+  class Lorem,Dolor dark
+

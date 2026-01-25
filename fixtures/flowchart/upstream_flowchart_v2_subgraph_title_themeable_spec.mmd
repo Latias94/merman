@@ -1,0 +1,18 @@
+---
+title: "Flowchart v2: subgraph title themeable (flowchart-v2.spec.js#63)"
+config:
+  htmlLabels: true
+  securityLevel: loose
+  flowchart:
+    htmlLabels: true
+---
+%%{init:{"theme":"base", "themeVariables": {"primaryColor":"#411d4e", "titleColor":"white", "darkMode":true}}}%%
+flowchart LR
+  subgraph A
+    a --> b
+  end
+  subgraph B
+    i --> f
+  end
+  A --> B
+

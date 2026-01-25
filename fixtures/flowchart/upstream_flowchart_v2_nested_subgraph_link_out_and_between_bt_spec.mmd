@@ -1,0 +1,18 @@
+---
+title: "Flowchart v2: nested subgraph links out/between (BT) (flowchart-v2.spec.js#72)"
+config:
+  htmlLabels: true
+  securityLevel: loose
+  flowchart:
+    htmlLabels: true
+---
+flowchart BT
+  subgraph S1
+    sub1 --> sub2
+  end
+  subgraph S2
+    sub4
+  end
+  S1 --> S2
+  sub1 --> sub4
+
