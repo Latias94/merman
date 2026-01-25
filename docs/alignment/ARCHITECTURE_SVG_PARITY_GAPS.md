@@ -75,11 +75,11 @@ Completed:
 3. `fixtures/architecture/upstream_architecture_docs_edge_arrows.mmd`
 4. `fixtures/architecture/upstream_architecture_docs_example.mmd`
 5. `fixtures/architecture/upstream_architecture_docs_groups_within_groups.mmd`
+6. `fixtures/architecture/upstream_architecture_docs_group_edges.mmd`
 
 Next:
 
-1. `fixtures/architecture/upstream_architecture_docs_group_edges_parser_only_.mmd`
-2. Cypress-derived fixtures (groups, junction edges, labels, etc.)
+1. Cypress-derived fixtures (groups, junction edges, labels, etc.)
 
 ## Notes
 
