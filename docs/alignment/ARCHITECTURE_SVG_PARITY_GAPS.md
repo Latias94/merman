@@ -106,3 +106,7 @@ Next:
 - Some upstream Cypress Architecture fixtures use `{group}` boundary traversal combined with shorthand
   edges like `left_disk{group} (R--L) center_disk{group}`. Mermaid CLI `@11.12.2` renders these as an
   error SVG, so they remain `*_parser_only_` for now.
+
+- To preserve the original Cypress strings while still enabling CLI baselines + DOM parity, we add
+  `*_normalized` fixture variants that rewrite legacy shorthand into Mermaid@11.12.2's Langium syntax.
+  See `docs/alignment/ARCHITECTURE_UPSTREAM_TEST_COVERAGE.md` for the exact list.

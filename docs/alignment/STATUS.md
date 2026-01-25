@@ -106,6 +106,9 @@ upstream SVG baselines via `xtask compare-sankey-svgs` (DOM parity-root mode).
 Recent progress: `xtask compare-all-svgs --check-dom` now runs end-to-end (class/state/gantt
 compare tasks now honor `--check-dom`), and the state layout goldens were refreshed after
 aligning default text style (16px) and node padding behavior.
+Recent progress: Architecture Cypress fixtures that use legacy shorthand syntax now have
+CLI-compatible `*_normalized` variants so we can store upstream CLI SVG baselines and run DOM parity
+checks without losing the original Cypress strings.
 
 ## Alignment Sanity Checks
 
