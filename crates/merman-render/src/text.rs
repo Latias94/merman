@@ -966,10 +966,14 @@ impl VendoredFontMetricsTextMeasurer {
             .as_deref()
             .map(Self::normalize_font_key)
             .unwrap_or_default();
-        if key.is_empty() {
-            return None;
-        }
-        crate::generated::font_metrics_flowchart_11_12_2::lookup_font_metrics(&key)
+        let key = if key.is_empty() {
+            // Mermaid defaults to `"trebuchet ms", verdana, arial, sans-serif`. Many headless
+            // layout call sites omit `font_family` and rely on that implicit default.
+            "trebuchetms,verdana,arial,sans-serif"
+        } else {
+            key.as_str()
+        };
+        crate::generated::font_metrics_flowchart_11_12_2::lookup_font_metrics(key)
     }
 
     fn lookup_char_em(entries: &[(char, f64)], default_em: f64, ch: char) -> f64 {

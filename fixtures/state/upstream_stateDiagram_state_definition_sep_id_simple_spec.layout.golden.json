@@ -5,10 +5,10 @@
       "nodes": [
         {
           "id": "state1",
-          "x": 53.65,
-          "y": 15.5,
-          "width": 107.3,
-          "height": 31.0,
+          "x": 81.04,
+          "y": 20.0,
+          "width": 162.08,
+          "height": 40.0,
           "is_cluster": false
         }
       ],
@@ -17,8 +17,8 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 107.3,
-        "max_y": 31.0
+        "max_x": 162.08,
+        "max_y": 40.0
       }
     }
   }

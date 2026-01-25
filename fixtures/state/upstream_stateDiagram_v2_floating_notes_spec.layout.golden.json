@@ -5,58 +5,58 @@
       "nodes": [
         {
           "id": "N1",
-          "x": 146.25,
-          "y": 15.5,
-          "width": 27.6,
-          "height": 31.0,
+          "x": 201.0,
+          "y": 20.0,
+          "width": 34.56,
+          "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "N1----note-0",
-          "x": 60.3,
-          "y": 103.5,
-          "width": 120.6,
-          "height": 45.0,
+          "x": 87.48,
+          "y": 117.0,
+          "width": 174.96,
+          "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "N1----parent",
-          "x": 60.3,
-          "y": 103.5,
-          "width": 120.6,
-          "height": 45.0,
+          "x": 87.48,
+          "y": 117.0,
+          "width": 174.96,
+          "height": 54.0,
           "is_cluster": true
         },
         {
           "id": "N2",
-          "x": 223.85,
-          "y": 15.5,
-          "width": 27.6,
-          "height": 31.0,
+          "x": 285.56,
+          "y": 20.0,
+          "width": 34.56,
+          "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "N2----note-1",
-          "x": 230.9,
-          "y": 103.5,
-          "width": 120.6,
-          "height": 45.0,
+          "x": 312.44,
+          "y": 117.0,
+          "width": 174.96,
+          "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "N2----parent",
-          "x": 230.9,
-          "y": 103.5,
-          "width": 120.6,
-          "height": 45.0,
+          "x": 312.44,
+          "y": 117.0,
+          "width": 174.96,
+          "height": 54.0,
           "is_cluster": true
         },
         {
           "id": "foo",
-          "x": 68.0,
-          "y": 15.5,
-          "width": 28.9,
-          "height": 31.0,
+          "x": 115.4,
+          "y": 20.0,
+          "width": 36.64,
+          "height": 40.0,
           "is_cluster": false
         }
       ],
@@ -69,16 +69,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 146.25,
-              "y": 31.0
+              "x": 201.0,
+              "y": 40.0
             },
             {
-              "x": 103.275,
-              "y": 56.0
+              "x": 144.24,
+              "y": 65.0
             },
             {
-              "x": 60.3,
-              "y": 81.0
+              "x": 87.48,
+              "y": 90.0
             }
           ],
           "label": null,
@@ -98,16 +98,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 223.85,
-              "y": 31.0
+              "x": 285.56,
+              "y": 40.0
             },
             {
-              "x": 227.375,
-              "y": 56.0
+              "x": 299.0,
+              "y": 65.0
             },
             {
-              "x": 230.9,
-              "y": 81.0
+              "x": 312.44,
+              "y": 90.0
             }
           ],
           "label": null,
@@ -123,18 +123,18 @@
       "clusters": [
         {
           "id": "N1----parent",
-          "x": 60.3,
-          "y": 103.5,
-          "width": 120.6,
-          "height": 45.0,
+          "x": 87.48,
+          "y": 117.0,
+          "width": 174.96,
+          "height": 54.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "This is a floating note",
           "title_label": {
-            "x": 60.3,
-            "y": 89.5,
-            "width": 90.6,
-            "height": 15.0
+            "x": 87.48,
+            "y": 103.0,
+            "width": 144.96,
+            "height": 24.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
@@ -144,18 +144,18 @@
         },
         {
           "id": "N2----parent",
-          "x": 230.9,
-          "y": 103.5,
-          "width": 120.6,
-          "height": 45.0,
+          "x": 312.44,
+          "y": 117.0,
+          "width": 174.96,
+          "height": 54.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "This is a floating note",
           "title_label": {
-            "x": 230.9,
-            "y": 89.5,
-            "width": 90.6,
-            "height": 15.0
+            "x": 312.44,
+            "y": 103.0,
+            "width": 144.96,
+            "height": 24.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
@@ -167,8 +167,8 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 291.2,
-        "max_y": 126.0
+        "max_x": 399.92,
+        "max_y": 144.0
       }
     }
   }

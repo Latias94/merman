@@ -5,15 +5,15 @@
       "nodes": [
         {
           "id": "Configuring",
-          "x": 46.6,
-          "y": 281.0,
-          "width": 109.2,
-          "height": 492.0,
+          "x": 69.76,
+          "y": 294.5,
+          "width": 155.52,
+          "height": 537.0,
           "is_cluster": true
         },
         {
           "id": "Configuring_start",
-          "x": 46.6,
+          "x": 69.76,
           "y": 71.0,
           "width": 14.0,
           "height": 14.0,
@@ -21,63 +21,63 @@
         },
         {
           "id": "Idle",
-          "x": 78.6,
-          "y": 616.5,
-          "width": 30.4,
-          "height": 31.0,
+          "x": 105.8,
+          "y": 666.0,
+          "width": 39.04,
+          "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "NewValuePreview",
-          "x": 46.6,
-          "y": 407.0,
-          "width": 60.8,
-          "height": 224.0,
+          "x": 69.76,
+          "y": 429.5,
+          "width": 78.08,
+          "height": 251.0,
           "is_cluster": true
         },
         {
           "id": "NewValueSelection",
-          "x": 46.6,
-          "y": 193.5,
-          "width": 93.2,
-          "height": 31.0,
+          "x": 69.76,
+          "y": 198.0,
+          "width": 139.52,
+          "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "NotShooting",
-          "x": 74.6,
-          "y": 323.0,
-          "width": 181.2,
-          "height": 634.0,
+          "x": 101.8,
+          "y": 341.0,
+          "width": 235.6,
+          "height": 706.0,
           "is_cluster": true
         },
         {
           "id": "NotShooting_start",
-          "x": 150.2,
-          "y": 287.5,
+          "x": 204.6,
+          "y": 305.5,
           "width": 14.0,
           "height": 14.0,
           "is_cluster": false
         },
         {
           "id": "State1",
-          "x": 46.6,
-          "y": 339.5,
-          "width": 44.8,
-          "height": 31.0,
+          "x": 69.76,
+          "y": 362.0,
+          "width": 62.08,
+          "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "State2",
-          "x": 46.6,
-          "y": 495.5,
-          "width": 44.8,
-          "height": 31.0,
+          "x": 69.76,
+          "y": 527.0,
+          "width": 62.08,
+          "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "root_start",
-          "x": 78.6,
+          "x": 105.8,
           "y": 7.0,
           "width": 14.0,
           "height": 14.0,
@@ -93,15 +93,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 78.6,
+              "x": 105.8,
               "y": 14.0
             },
             {
-              "x": 78.6,
+              "x": 105.8,
               "y": 39.0
             },
             {
-              "x": 78.6,
+              "x": 105.8,
               "y": 64.0
             }
           ],
@@ -122,16 +122,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 150.2,
-              "y": 294.5
+              "x": 204.6,
+              "y": 312.5
             },
             {
-              "x": 114.4,
-              "y": 447.75
+              "x": 155.2,
+              "y": 479.25
             },
             {
-              "x": 78.6,
-              "y": 601.0
+              "x": 105.8,
+              "y": 646.0
             }
           ],
           "label": null,
@@ -151,23 +151,23 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 78.6,
-              "y": 601.0
+              "x": 105.8,
+              "y": 646.0
             },
             {
-              "x": 62.6,
-              "y": 556.0
+              "x": 87.78,
+              "y": 596.5
             },
             {
-              "x": 46.6,
-              "y": 511.0
+              "x": 69.76,
+              "y": 547.0
             }
           ],
           "label": {
-            "x": 62.6,
-            "y": 556.0,
-            "width": 36.3,
-            "height": 15.0
+            "x": 87.78,
+            "y": 596.5,
+            "width": 58.08,
+            "height": 24.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -185,23 +185,23 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 46.6,
-              "y": 511.0
+              "x": 69.76,
+              "y": 547.0
             },
             {
-              "x": 62.6,
-              "y": 556.0
+              "x": 87.78,
+              "y": 596.5
             },
             {
-              "x": 78.6,
-              "y": 601.0
+              "x": 105.8,
+              "y": 646.0
             }
           ],
           "label": {
-            "x": 62.6,
-            "y": 556.0,
-            "width": 36.3,
-            "height": 15.0
+            "x": 87.78,
+            "y": 596.5,
+            "width": 58.08,
+            "height": 24.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -219,15 +219,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 46.6,
+              "x": 69.76,
               "y": 78.0
             },
             {
-              "x": 46.6,
+              "x": 69.76,
               "y": 128.0
             },
             {
-              "x": 46.6,
+              "x": 69.76,
               "y": 178.0
             }
           ],
@@ -248,23 +248,23 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 46.6,
-              "y": 209.0
+              "x": 69.76,
+              "y": 218.0
             },
             {
-              "x": 46.6,
-              "y": 266.5
+              "x": 69.76,
+              "y": 280.0
             },
             {
-              "x": 46.6,
-              "y": 324.0
+              "x": 69.76,
+              "y": 342.0
             }
           ],
           "label": {
-            "x": 46.6,
-            "y": 266.5,
-            "width": 50.1,
-            "height": 15.0
+            "x": 69.76,
+            "y": 280.0,
+            "width": 80.16,
+            "height": 24.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -282,23 +282,23 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 46.6,
-              "y": 324.0
+              "x": 69.76,
+              "y": 342.0
             },
             {
-              "x": 46.6,
-              "y": 266.5
+              "x": 69.76,
+              "y": 280.0
             },
             {
-              "x": 46.6,
-              "y": 209.0
+              "x": 69.76,
+              "y": 218.0
             }
           ],
           "label": {
-            "x": 46.6,
-            "y": 266.5,
-            "width": 86.2,
-            "height": 15.0
+            "x": 69.76,
+            "y": 280.0,
+            "width": 137.92,
+            "height": 24.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -316,23 +316,23 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 46.6,
-              "y": 324.0
+              "x": 69.76,
+              "y": 342.0
             },
             {
-              "x": 46.6,
-              "y": 266.5
+              "x": 69.76,
+              "y": 280.0
             },
             {
-              "x": 46.6,
-              "y": 209.0
+              "x": 69.76,
+              "y": 218.0
             }
           ],
           "label": {
-            "x": 46.6,
-            "y": 266.5,
-            "width": 73.3,
-            "height": 15.0
+            "x": 69.76,
+            "y": 280.0,
+            "width": 117.28,
+            "height": 24.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -350,16 +350,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 46.6,
-              "y": 355.0
+              "x": 69.76,
+              "y": 382.0
             },
             {
-              "x": 46.6,
-              "y": 417.5
+              "x": 69.76,
+              "y": 444.5
             },
             {
-              "x": 46.6,
-              "y": 480.0
+              "x": 69.76,
+              "y": 507.0
             }
           ],
           "label": null,
@@ -375,18 +375,18 @@
       "clusters": [
         {
           "id": "Configuring",
-          "x": 46.6,
-          "y": 281.0,
-          "width": 109.2,
-          "height": 492.0,
+          "x": 69.76,
+          "y": 294.5,
+          "width": 155.52,
+          "height": 537.0,
           "diff": -8.0,
-          "offset_y": 11.0,
+          "offset_y": 20.0,
           "title": "Configuring",
           "title_label": {
-            "x": 46.6,
-            "y": 43.5,
-            "width": 46.0,
-            "height": 15.0
+            "x": 69.76,
+            "y": 39.0,
+            "width": 73.6,
+            "height": 24.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -396,18 +396,18 @@
         },
         {
           "id": "NewValuePreview",
-          "x": 46.6,
-          "y": 407.0,
-          "width": 60.8,
-          "height": 224.0,
-          "diff": 2.4,
-          "offset_y": 11.0,
+          "x": 69.76,
+          "y": 429.5,
+          "width": 78.08,
+          "height": 251.0,
+          "diff": 15.84,
+          "offset_y": 20.0,
           "title": "NewValuePreview",
           "title_label": {
-            "x": 46.6,
-            "y": 303.5,
-            "width": 73.6,
-            "height": 15.0
+            "x": 69.76,
+            "y": 317.0,
+            "width": 117.76,
+            "height": 24.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -417,18 +417,18 @@
         },
         {
           "id": "NotShooting",
-          "x": 74.6,
-          "y": 323.0,
-          "width": 181.2,
-          "height": 634.0,
+          "x": 101.8,
+          "y": 341.0,
+          "width": 235.6,
+          "height": 706.0,
           "diff": -8.0,
-          "offset_y": 11.0,
+          "offset_y": 20.0,
           "title": "NotShooting",
           "title_label": {
-            "x": 74.6,
-            "y": 14.5,
-            "width": 49.2,
-            "height": 15.0
+            "x": 101.8,
+            "y": 1.0,
+            "width": 78.72,
+            "height": 24.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -439,9 +439,9 @@
       ],
       "bounds": {
         "min_x": -16.0,
-        "min_y": 0.0,
-        "max_x": 165.2,
-        "max_y": 640.0
+        "min_y": -12.0,
+        "max_x": 219.6,
+        "max_y": 694.0
       }
     }
   }

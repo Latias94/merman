@@ -78,6 +78,18 @@ fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
     cur.as_bool()
 }
 
+fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
+    let mut cur = cfg;
+    for key in path {
+        cur = cur.get(*key)?;
+    }
+    cur.as_str().map(|s| s.to_string()).or_else(|| {
+        cur.as_array()
+            .and_then(|a| a.first()?.as_str())
+            .map(|s| s.to_string())
+    })
+}
+
 fn normalize_dir(direction: &str) -> String {
     match direction.trim().to_uppercase().as_str() {
         "TB" | "TD" => "TB".to_string(),
@@ -120,10 +132,15 @@ fn value_to_label_text(v: &Value) -> String {
 }
 
 pub(crate) fn state_text_style(effective_config: &Value) -> TextStyle {
-    // Mermaid's state diagram CSS uses 10px by default; model it via `state.textHeight`.
-    let font_size = config_f64(effective_config, &["state", "textHeight"]).unwrap_or(10.0);
+    // Mermaid state diagram v2 uses HTML labels (foreignObject) by default, inheriting the global
+    // `#id{font-size: ...}` rule (defaults to 16px). The 10px `g.stateGroup text{font-size:10px}`
+    // rule applies to SVG `<text>` elements, not HTML labels.
+    let font_family = config_string(effective_config, &["fontFamily"])
+        .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
+        .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
+    let font_size = config_f64(effective_config, &["fontSize"]).unwrap_or(16.0);
     TextStyle {
-        font_family: None,
+        font_family,
         font_size,
         font_weight: None,
     }
@@ -893,7 +910,7 @@ pub fn layout_state_diagram_v2(
             continue;
         }
 
-        let padding = n.padding.unwrap_or(0.0).max(0.0);
+        let padding = n.padding.unwrap_or(state_padding).max(0.0);
         let label_text = n
             .label
             .as_ref()

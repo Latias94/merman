@@ -5,32 +5,32 @@
       "nodes": [
         {
           "id": "Configuring",
-          "x": 43.0,
-          "y": 15.5,
-          "width": 86.0,
-          "height": 31.0,
+          "x": 64.0,
+          "y": 20.0,
+          "width": 128.0,
+          "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "Idle",
-          "x": 75.0,
-          "y": 136.5,
-          "width": 54.4,
-          "height": 31.0,
+          "x": 100.04,
+          "y": 159.0,
+          "width": 77.44,
+          "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "NotShooting",
-          "x": 75.0,
-          "y": 65.5,
-          "width": 166.0,
-          "height": 189.0,
+          "x": 100.04,
+          "y": 74.5,
+          "width": 216.08,
+          "height": 225.0,
           "is_cluster": true
         },
         {
           "id": "NotShooting_start",
-          "x": 143.0,
-          "y": 15.5,
+          "x": 193.08,
+          "y": 20.0,
           "width": 14.0,
           "height": 14.0,
           "is_cluster": false
@@ -45,16 +45,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 143.0,
-              "y": 22.5
+              "x": 193.08,
+              "y": 27.0
             },
             {
-              "x": 109.0,
-              "y": 71.75
+              "x": 146.56,
+              "y": 83.0
             },
             {
-              "x": 75.0,
-              "y": 121.0
+              "x": 100.04,
+              "y": 139.0
             }
           ],
           "label": null,
@@ -74,23 +74,23 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 75.0,
-              "y": 121.0
+              "x": 100.04,
+              "y": 139.0
             },
             {
-              "x": 59.0,
-              "y": 76.0
+              "x": 82.02,
+              "y": 89.5
             },
             {
-              "x": 43.0,
-              "y": 31.0
+              "x": 64.0,
+              "y": 40.0
             }
           ],
           "label": {
-            "x": 59.0,
-            "y": 76.0,
-            "width": 36.3,
-            "height": 15.0
+            "x": 82.02,
+            "y": 89.5,
+            "width": 58.08,
+            "height": 24.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -108,23 +108,23 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 43.0,
-              "y": 31.0
+              "x": 64.0,
+              "y": 40.0
             },
             {
-              "x": 59.0,
-              "y": 76.0
+              "x": 82.02,
+              "y": 89.5
             },
             {
-              "x": 75.0,
-              "y": 121.0
+              "x": 100.04,
+              "y": 139.0
             }
           ],
           "label": {
-            "x": 59.0,
-            "y": 76.0,
-            "width": 36.3,
-            "height": 15.0
+            "x": 82.02,
+            "y": 89.5,
+            "width": 58.08,
+            "height": 24.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -138,18 +138,18 @@
       "clusters": [
         {
           "id": "NotShooting",
-          "x": 75.0,
-          "y": 65.5,
-          "width": 166.0,
-          "height": 189.0,
+          "x": 100.04,
+          "y": 74.5,
+          "width": 216.08,
+          "height": 225.0,
           "diff": -8.0,
-          "offset_y": 11.0,
+          "offset_y": 20.0,
           "title": "Not Shooting State",
           "title_label": {
-            "x": 75.0,
-            "y": -20.5,
-            "width": 79.0,
-            "height": 15.0
+            "x": 100.04,
+            "y": -25.0,
+            "width": 126.4,
+            "height": 24.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -160,9 +160,9 @@
       ],
       "bounds": {
         "min_x": -8.0,
-        "min_y": -29.0,
-        "max_x": 158.0,
-        "max_y": 160.0
+        "min_y": -38.0,
+        "max_x": 208.08,
+        "max_y": 187.0
       }
     }
   }

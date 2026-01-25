@@ -9729,6 +9729,10 @@ pub fn render_state_diagram_v2_svg(
     let mut ctx = StateRenderCtx {
         diagram_id: diagram_id.to_string(),
         diagram_title: diagram_title.map(|s| s.to_string()),
+        hand_drawn_seed: effective_config
+            .get("handDrawnSeed")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
         nodes_by_id,
         layout_nodes_by_id,
         layout_edges_by_id,
@@ -9866,6 +9870,7 @@ struct StateRenderCtx<'a> {
     diagram_id: String,
     #[allow(dead_code)]
     diagram_title: Option<String>,
+    hand_drawn_seed: u64,
     nodes_by_id: std::collections::HashMap<&'a str, &'a StateSvgNode>,
     layout_nodes_by_id: std::collections::HashMap<&'a str, &'a LayoutNode>,
     layout_edges_by_id: std::collections::HashMap<&'a str, &'a crate::model::LayoutEdge>,
@@ -10701,6 +10706,329 @@ fn render_state_edge_label(
     );
 }
 
+fn roughjs_parse_hex_color_to_srgba(s: &str) -> Option<roughr::Srgba> {
+    let s = s.trim();
+    let hex = s.strip_prefix('#')?;
+    let (r, g, b) = match hex.len() {
+        6 => {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            (r, g, b)
+        }
+        3 => {
+            let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?;
+            let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?;
+            let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?;
+            (r, g, b)
+        }
+        _ => return None,
+    };
+    Some(roughr::Srgba::new(
+        r as f32 / 255.0,
+        g as f32 / 255.0,
+        b as f32 / 255.0,
+        1.0,
+    ))
+}
+
+fn roughjs_ops_to_svg_path_d(opset: &roughr::core::OpSet<f64>) -> String {
+    let mut out = String::new();
+    for op in &opset.ops {
+        match op.op {
+            roughr::core::OpType::Move => {
+                let _ = write!(
+                    &mut out,
+                    "M{} {} ",
+                    op.data[0].to_string(),
+                    op.data[1].to_string()
+                );
+            }
+            roughr::core::OpType::BCurveTo => {
+                let _ = write!(
+                    &mut out,
+                    "C{} {}, {} {}, {} {} ",
+                    op.data[0].to_string(),
+                    op.data[1].to_string(),
+                    op.data[2].to_string(),
+                    op.data[3].to_string(),
+                    op.data[4].to_string(),
+                    op.data[5].to_string()
+                );
+            }
+            roughr::core::OpType::LineTo => {
+                let _ = write!(
+                    &mut out,
+                    "L{} {} ",
+                    op.data[0].to_string(),
+                    op.data[1].to_string()
+                );
+            }
+        }
+    }
+    out.trim_end().to_string()
+}
+
+fn mermaid_create_path_from_points(points: &[(f64, f64)]) -> String {
+    let mut out = String::new();
+    for (i, (x, y)) in points.iter().copied().enumerate() {
+        let cmd = if i == 0 { 'M' } else { 'L' };
+        let _ = write!(&mut out, "{cmd}{x},{y} ");
+    }
+    out.push_str("Z");
+    out.trim_end().to_string()
+}
+
+fn mermaid_generate_arc_points(
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    rx: f64,
+    ry: f64,
+    clockwise: bool,
+) -> Vec<(f64, f64)> {
+    let num_points: usize = 20;
+
+    let mid_x = (x1 + x2) / 2.0;
+    let mid_y = (y1 + y2) / 2.0;
+    let angle = (y2 - y1).atan2(x2 - x1);
+
+    let dx = (x2 - x1) / 2.0;
+    let dy = (y2 - y1) / 2.0;
+    let transformed_x = dx / rx;
+    let transformed_y = dy / ry;
+    let distance = (transformed_x * transformed_x + transformed_y * transformed_y).sqrt();
+    if distance > 1.0 {
+        return vec![(x1, y1), (x2, y2)];
+    }
+
+    let scaled_center_distance = (1.0 - distance * distance).sqrt();
+    let sign = if clockwise { -1.0 } else { 1.0 };
+    let center_x = mid_x + scaled_center_distance * ry * angle.sin() * sign;
+    let center_y = mid_y - scaled_center_distance * rx * angle.cos() * sign;
+
+    let start_angle = ((y1 - center_y) / ry).atan2((x1 - center_x) / rx);
+    let end_angle = ((y2 - center_y) / ry).atan2((x2 - center_x) / rx);
+
+    let mut angle_range = end_angle - start_angle;
+    if clockwise && angle_range < 0.0 {
+        angle_range += 2.0 * std::f64::consts::PI;
+    }
+    if !clockwise && angle_range > 0.0 {
+        angle_range -= 2.0 * std::f64::consts::PI;
+    }
+
+    let mut points: Vec<(f64, f64)> = Vec::with_capacity(num_points);
+    for i in 0..num_points {
+        let t = i as f64 / (num_points - 1) as f64;
+        let a = start_angle + t * angle_range;
+        let x = center_x + rx * a.cos();
+        let y = center_y + ry * a.sin();
+        points.push((x, y));
+    }
+    points
+}
+
+fn mermaid_rounded_rect_path_data(w: f64, h: f64) -> String {
+    let radius = 5.0;
+    let taper = 5.0;
+
+    let mut points: Vec<(f64, f64)> = Vec::new();
+
+    points.push((-w / 2.0 + taper, -h / 2.0));
+    points.push((w / 2.0 - taper, -h / 2.0));
+    points.extend(mermaid_generate_arc_points(
+        w / 2.0 - taper,
+        -h / 2.0,
+        w / 2.0,
+        -h / 2.0 + taper,
+        radius,
+        radius,
+        true,
+    ));
+
+    points.push((w / 2.0, -h / 2.0 + taper));
+    points.push((w / 2.0, h / 2.0 - taper));
+    points.extend(mermaid_generate_arc_points(
+        w / 2.0,
+        h / 2.0 - taper,
+        w / 2.0 - taper,
+        h / 2.0,
+        radius,
+        radius,
+        true,
+    ));
+
+    points.push((w / 2.0 - taper, h / 2.0));
+    points.push((-w / 2.0 + taper, h / 2.0));
+    points.extend(mermaid_generate_arc_points(
+        -w / 2.0 + taper,
+        h / 2.0,
+        -w / 2.0,
+        h / 2.0 - taper,
+        radius,
+        radius,
+        true,
+    ));
+
+    points.push((-w / 2.0, h / 2.0 - taper));
+    points.push((-w / 2.0, -h / 2.0 + taper));
+    points.extend(mermaid_generate_arc_points(
+        -w / 2.0,
+        -h / 2.0 + taper,
+        -w / 2.0 + taper,
+        -h / 2.0,
+        radius,
+        radius,
+        true,
+    ));
+
+    mermaid_create_path_from_points(&points)
+}
+
+fn roughjs_paths_for_svg_path(
+    svg_path_data: &str,
+    fill: &str,
+    stroke: &str,
+    stroke_width: f32,
+    stroke_dasharray: &str,
+    seed: u64,
+) -> Option<(String, String)> {
+    let fill = roughjs_parse_hex_color_to_srgba(fill)?;
+    let stroke = roughjs_parse_hex_color_to_srgba(stroke)?;
+
+    let dash = stroke_dasharray.trim().replace(',', " ");
+    let nums: Vec<f32> = dash
+        .split_whitespace()
+        .filter_map(|t| t.parse::<f32>().ok())
+        .collect();
+    let (dash0, dash1) = match nums.as_slice() {
+        [a] => (*a, *a),
+        [a, b, ..] => (*a, *b),
+        _ => (0.0, 0.0),
+    };
+
+    let base_options = roughr::core::OptionsBuilder::default()
+        .seed(seed)
+        .roughness(0.0)
+        .fill_style(roughr::core::FillStyle::Solid)
+        .fill(fill)
+        .stroke(stroke)
+        .stroke_width(stroke_width)
+        .stroke_line_dash(vec![dash0 as f64, dash1 as f64])
+        .stroke_line_dash_offset(0.0)
+        .fill_line_dash(vec![0.0, 0.0])
+        .fill_line_dash_offset(0.0)
+        .disable_multi_stroke(false)
+        .disable_multi_stroke_fill(false)
+        .build()
+        .ok()?;
+
+    let distance = (1.0 + base_options.roughness.unwrap_or(1.0) as f64) / 2.0;
+    let sets = roughr::points_on_path::points_on_path::<f64>(
+        svg_path_data.to_string(),
+        Some(1.0),
+        Some(distance),
+    );
+
+    let mut stroke_opts = base_options.clone();
+    let stroke_opset =
+        roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut stroke_opts);
+
+    let fill_opset = if sets.len() == 1 {
+        let mut fill_opts = stroke_opts.clone();
+        fill_opts.disable_multi_stroke = Some(true);
+        let base_rough = fill_opts.roughness.unwrap_or(1.0);
+        fill_opts.roughness = Some(if base_rough != 0.0 {
+            base_rough + 0.8
+        } else {
+            0.0
+        });
+
+        let mut opset =
+            roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut fill_opts);
+        opset.ops = opset
+            .ops
+            .iter()
+            .cloned()
+            .enumerate()
+            .filter_map(|(idx, op)| {
+                if idx != 0 && op.op == roughr::core::OpType::Move {
+                    return None;
+                }
+                Some(op)
+            })
+            .collect();
+        opset
+    } else {
+        let mut fill_opts = stroke_opts.clone();
+        roughr::renderer::solid_fill_polygon(&sets, &mut fill_opts)
+    };
+
+    Some((
+        roughjs_ops_to_svg_path_d(&fill_opset),
+        roughjs_ops_to_svg_path_d(&stroke_opset),
+    ))
+}
+
+fn roughjs_paths_for_rect(
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    fill: &str,
+    stroke: &str,
+    stroke_width: f32,
+    seed: u64,
+) -> Option<(String, String)> {
+    let fill = roughjs_parse_hex_color_to_srgba(fill)?;
+    let stroke = roughjs_parse_hex_color_to_srgba(stroke)?;
+
+    let mut opts = roughr::core::OptionsBuilder::default()
+        .seed(seed)
+        .roughness(0.0)
+        .fill_style(roughr::core::FillStyle::Solid)
+        .fill(fill)
+        .stroke(stroke)
+        .stroke_width(stroke_width)
+        .stroke_line_dash(vec![0.0, 0.0])
+        .stroke_line_dash_offset(0.0)
+        .fill_line_dash(vec![0.0, 0.0])
+        .fill_line_dash_offset(0.0)
+        .disable_multi_stroke(false)
+        .disable_multi_stroke_fill(false)
+        .build()
+        .ok()?;
+
+    let fill_poly = vec![vec![
+        roughr::Point2D::new(x, y),
+        roughr::Point2D::new(x + w, y),
+        roughr::Point2D::new(x + w, y + h),
+        roughr::Point2D::new(x, y + h),
+    ]];
+    let fill_opset = roughr::renderer::solid_fill_polygon(&fill_poly, &mut opts);
+    let stroke_opset = roughr::renderer::rectangle::<f64>(x, y, w, h, &mut opts);
+
+    Some((
+        roughjs_ops_to_svg_path_d(&fill_opset),
+        roughjs_ops_to_svg_path_d(&stroke_opset),
+    ))
+}
+
+fn roughjs_circle_path_d(diameter: f64, seed: u64) -> Option<String> {
+    let mut opts = roughr::core::OptionsBuilder::default()
+        .seed(seed)
+        .roughness(0.0)
+        .fill_style(roughr::core::FillStyle::Solid)
+        .disable_multi_stroke(false)
+        .disable_multi_stroke_fill(false)
+        .build()
+        .ok()?;
+    let opset = roughr::renderer::ellipse::<f64>(0.0, 0.0, diameter, diameter, &mut opts);
+    Some(roughjs_ops_to_svg_path_d(&opset))
+}
+
 fn render_state_node_svg(
     out: &mut String,
     ctx: &StateRenderCtx<'_>,
@@ -10739,22 +11067,43 @@ fn render_state_node_svg(
             );
         }
         "stateEnd" => {
+            let outer_d = roughjs_circle_path_d(14.0, ctx.hand_drawn_seed)
+                .unwrap_or_else(|| "M0,0".to_string());
+            let inner_d = roughjs_circle_path_d(5.0, ctx.hand_drawn_seed)
+                .unwrap_or_else(|| "M0,0".to_string());
             let _ = write!(
                 out,
-                r##"<g class="node default" id="{}" transform="translate({}, {})"><g><path d="M0,0" stroke="none" stroke-width="0" fill="#ECECFF" style=""/><path d="M0,0" stroke="#333333" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/><g><path d="M0,0" stroke="none" stroke-width="0" fill="#9370DB" style=""/><path d="M0,0" stroke="#9370DB" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/></g></g></g>"##,
+                r##"<g class="node default" id="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="#ECECFF" style=""/><path d="{}" stroke="#333333" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/><g><path d="{}" stroke="none" stroke-width="0" fill="#9370DB" style=""/><path d="{}" stroke="#9370DB" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/></g></g></g>"##,
                 escape_attr(&node.dom_id),
                 fmt(cx),
-                fmt(cy)
+                fmt(cy),
+                outer_d,
+                outer_d,
+                inner_d,
+                inner_d
             );
         }
         "fork" | "join" => {
+            let (fill_d, stroke_d) = roughjs_paths_for_rect(
+                -w / 2.0,
+                -h / 2.0,
+                w,
+                h,
+                "#333333",
+                "#333333",
+                1.3,
+                ctx.hand_drawn_seed,
+            )
+            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
             let _ = write!(
                 out,
-                r##"<g class="{}" id="{}" transform="translate({}, {})"><g><path d="M0,0" stroke="none" stroke-width="0" fill="#333333" style=""/><path d="M0,0" stroke="#333333" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g></g>"##,
+                r##"<g class="{}" id="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="#333333" style=""/><path d="{}" stroke="#333333" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g></g>"##,
                 escape_attr(&node_class),
                 escape_attr(&node.dom_id),
                 fmt(cx),
-                fmt(cy)
+                fmt(cy),
+                fill_d,
+                stroke_d
             );
         }
         "note" => {
@@ -10767,13 +11116,26 @@ fn render_state_node_svg(
             );
             let lw = metrics.width.max(0.0);
             let lh = metrics.height.max(0.0);
+            let (fill_d, stroke_d) = roughjs_paths_for_rect(
+                -w / 2.0,
+                -h / 2.0,
+                w,
+                h,
+                "#fff5ad",
+                "#aaaa33",
+                1.3,
+                ctx.hand_drawn_seed,
+            )
+            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
             let _ = write!(
                 out,
-                r##"<g class="{}" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="M0,0" stroke="none" stroke-width="0" fill="#fff5ad"/><path d="M0,0" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">{}</div></foreignObject></g></g>"##,
+                r##"<g class="{}" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="{}" stroke="none" stroke-width="0" fill="#fff5ad"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">{}</div></foreignObject></g></g>"##,
                 escape_attr(&node_class),
                 escape_attr(&node.dom_id),
                 fmt(cx),
                 fmt(cy),
+                fill_d,
+                stroke_d,
                 fmt(-lw / 2.0),
                 fmt(-lh / 2.0),
                 fmt(lw),
@@ -10854,12 +11216,24 @@ fn render_state_node_svg(
             };
             let link_close = if link_open.is_empty() { "" } else { "</a>" };
 
+            let (fill_d, stroke_d) = roughjs_paths_for_svg_path(
+                &mermaid_rounded_rect_path_data(w, h),
+                "#ECECFF",
+                "#9370DB",
+                1.3,
+                "0 0",
+                ctx.hand_drawn_seed,
+            )
+            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+
             out.push_str(&format!(
-                r##"<g class="{}" id="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="M0,0" stroke="none" stroke-width="0" fill="#ECECFF" style=""/><path d="M0,0" stroke="#9370DB" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>{}<g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">{}</div></foreignObject></g>{}</g>"##,
+                r##"<g class="{}" id="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="#ECECFF" style=""/><path d="{}" stroke="#9370DB" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>{}<g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">{}</div></foreignObject></g>{}</g>"##,
                 escape_attr(&node_class),
                 escape_attr(&node.dom_id),
                 fmt(cx),
                 fmt(cy),
+                fill_d,
+                stroke_d,
                 link_open,
                 fmt(-lw / 2.0),
                 fmt(-lh / 2.0),

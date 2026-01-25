@@ -5,56 +5,56 @@
       "nodes": [
         {
           "id": "Active",
-          "x": 76.25,
-          "y": 125.5,
-          "width": 42.0,
-          "height": 31.0,
+          "x": 93.8,
+          "y": 148.0,
+          "width": 57.6,
+          "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "Active----note-2",
-          "x": 108.25,
-          "y": 30.0,
-          "width": 88.5,
-          "height": 60.0,
+          "x": 125.8,
+          "y": 39.0,
+          "width": 123.6,
+          "height": 78.0,
           "is_cluster": false
         },
         {
           "id": "Active----parent",
-          "x": 108.25,
-          "y": 30.0,
-          "width": 88.5,
-          "height": 60.0,
+          "x": 125.8,
+          "y": 39.0,
+          "width": 123.6,
+          "height": 78.0,
           "is_cluster": true
         },
         {
           "id": "Inactive",
-          "x": 76.25,
-          "y": 206.5,
-          "width": 47.6,
-          "height": 31.0,
+          "x": 93.8,
+          "y": 238.0,
+          "width": 66.56,
+          "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "Inactive----note-3",
-          "x": 76.25,
-          "y": 309.5,
-          "width": 91.7,
-          "height": 75.0,
+          "x": 93.8,
+          "y": 359.0,
+          "width": 128.72,
+          "height": 102.0,
           "is_cluster": false
         },
         {
           "id": "Inactive----parent",
-          "x": 76.25,
-          "y": 309.5,
-          "width": 91.7,
-          "height": 75.0,
+          "x": 93.8,
+          "y": 359.0,
+          "width": 128.72,
+          "height": 102.0,
           "is_cluster": true
         },
         {
           "id": "root_start",
           "x": 7.0,
-          "y": 30.0,
+          "y": 39.0,
           "width": 14.0,
           "height": 14.0,
           "is_cluster": false
@@ -69,16 +69,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 108.25,
-              "y": 60.0
+              "x": 125.8,
+              "y": 78.0
             },
             {
-              "x": 92.25,
-              "y": 85.0
+              "x": 109.8,
+              "y": 103.0
             },
             {
-              "x": 76.25,
-              "y": 110.0
+              "x": 93.8,
+              "y": 128.0
             }
           ],
           "label": null,
@@ -98,16 +98,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 76.25,
-              "y": 222.0
+              "x": 93.8,
+              "y": 258.0
             },
             {
-              "x": 76.25,
-              "y": 247.0
+              "x": 93.8,
+              "y": 283.0
             },
             {
-              "x": 76.25,
-              "y": 272.0
+              "x": 93.8,
+              "y": 308.0
             }
           ],
           "label": null,
@@ -128,15 +128,15 @@
           "points": [
             {
               "x": 7.0,
-              "y": 37.0
+              "y": 46.0
             },
             {
-              "x": 41.625,
-              "y": 73.5
+              "x": 50.4,
+              "y": 87.0
             },
             {
-              "x": 76.25,
-              "y": 110.0
+              "x": 93.8,
+              "y": 128.0
             }
           ],
           "label": null,
@@ -156,16 +156,16 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 76.25,
-              "y": 141.0
+              "x": 93.8,
+              "y": 168.0
             },
             {
-              "x": 76.25,
-              "y": 166.0
+              "x": 93.8,
+              "y": 193.0
             },
             {
-              "x": 76.25,
-              "y": 191.0
+              "x": 93.8,
+              "y": 218.0
             }
           ],
           "label": null,
@@ -181,18 +181,18 @@
       "clusters": [
         {
           "id": "Active----parent",
-          "x": 108.25,
-          "y": 30.0,
-          "width": 88.5,
-          "height": 60.0,
+          "x": 125.8,
+          "y": 39.0,
+          "width": 123.6,
+          "height": 78.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "this is a short<br/>note",
           "title_label": {
-            "x": 108.25,
-            "y": 16.0,
-            "width": 58.5,
-            "height": 30.0
+            "x": 125.8,
+            "y": 25.0,
+            "width": 93.6,
+            "height": 48.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
@@ -202,18 +202,18 @@
         },
         {
           "id": "Inactive----parent",
-          "x": 76.25,
-          "y": 309.5,
-          "width": 91.7,
-          "height": 75.0,
+          "x": 93.8,
+          "y": 359.0,
+          "width": 128.72,
+          "height": 102.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "A note can also\nbe defined on\nseveral lines",
           "title_label": {
-            "x": 76.25,
-            "y": 295.5,
-            "width": 61.7,
-            "height": 45.0
+            "x": 93.8,
+            "y": 345.0,
+            "width": 98.72,
+            "height": 72.0
           },
           "requested_dir": null,
           "effective_dir": "TB",
@@ -225,8 +225,8 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 152.5,
-        "max_y": 347.0
+        "max_x": 187.6,
+        "max_y": 410.0
       }
     }
   }
