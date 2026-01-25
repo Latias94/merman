@@ -8607,22 +8607,84 @@ pub fn render_architecture_diagram_svg(
                     _ => "XY",
                 };
 
-                let transform = match axis {
-                    "Y" => format!(r#"translate({}, {}) rotate(-90)"#, fmt(mid_x), fmt(mid_y)),
-                    _ => format!(r#"translate({}, {})"#, fmt(mid_x), fmt(mid_y)),
-                };
-
                 let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
                 let style = crate::text::TextStyle {
                     font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
                     font_size: 16.0,
                     font_weight: None,
                 };
-                let lines = wrap_svg_words_to_lines(label, 200.0, &measurer, &style);
+
+                // Mermaid@11.12.2 sets the label wrapping width based on the edge axis.
+                let wrap_width = match axis {
+                    "X" => (start_x - end_x).abs(),
+                    "Y" => (start_y - end_y).abs() / 1.5,
+                    _ => (start_x - end_x).abs() / 2.0,
+                };
+                let wrap_width = if wrap_width.is_finite() && wrap_width > 0.0 {
+                    wrap_width
+                } else {
+                    200.0
+                };
+                let lines = wrap_svg_words_to_lines(label, wrap_width, &measurer, &style);
+
+                // Mermaid's XY label placement uses `getBoundingClientRect()` in the browser and
+                // composes a multi-step transform. Approximate the bbox headlessly so the DOM
+                // structure matches the upstream SVG baseline.
+                let mut bbox_w = 0.0f64;
+                for line in &lines {
+                    let w = measurer.measure_wrapped(
+                        line,
+                        &style,
+                        None,
+                        crate::text::WrapMode::SvgLike,
+                    );
+                    bbox_w = bbox_w.max(w.width);
+                }
+                // For Mermaid's `createText()` SVG output with 16px font, one line bboxes to ~19px.
+                // Mirror this for parity-driven transforms (not for layout sizing).
+                let bbox_h = (lines.len().max(1) as f64) * style.font_size * 1.1875;
+                let half_bbox_h = bbox_h / 2.0;
+
+                let (dominant_baseline, transform) = match axis {
+                    "Y" => (
+                        "middle",
+                        format!(r#"translate({}, {}) rotate(-90)"#, fmt(mid_x), fmt(mid_y)),
+                    ),
+                    "XY" => {
+                        let pair = format!("{}{}", edge.lhs_dir, edge.rhs_dir);
+                        let (xf, yf): (f64, f64) = match pair.as_str() {
+                            "LT" | "TL" => (1.0, 1.0),
+                            "BL" | "LB" => (1.0, -1.0),
+                            "BR" | "RB" => (-1.0, -1.0),
+                            _ => (-1.0, 1.0),
+                        };
+                        let angle = (-1.0f64 * xf * yf * 45.0f64).round() as i64;
+
+                        // Rotated bbox at 45° (w' == h' == (w+h)*sqrt(2)/2).
+                        let diag = (bbox_w + bbox_h) * std::f64::consts::FRAC_1_SQRT_2;
+                        let t2x = xf * diag / 2.0;
+                        let t2y = yf * diag / 2.0;
+
+                        (
+                            "auto",
+                            format!(
+                                "translate({}, {})&#10;                translate({}, {})&#10;                rotate({}, 0, {})",
+                                fmt(mid_x),
+                                fmt(mid_y - half_bbox_h),
+                                fmt(t2x),
+                                fmt(t2y),
+                                angle,
+                                fmt(half_bbox_h)
+                            ),
+                        )
+                    }
+                    _ => ("middle", format!(r#"translate({}, {})"#, fmt(mid_x), fmt(mid_y))),
+                };
 
                 let _ = write!(
                     &mut out,
-                    r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="middle" text-anchor="middle" transform="{transform}">"#,
+                    r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="{baseline}" text-anchor="middle" transform="{transform}">"#,
+                    baseline = dominant_baseline,
                     transform = transform
                 );
                 out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);

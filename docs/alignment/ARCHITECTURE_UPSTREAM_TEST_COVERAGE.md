@@ -55,3 +55,18 @@ set of real-world inputs, including shorthand edge syntax that appears in exampl
 - simple junction edges: `fixtures/architecture/upstream_architecture_cypress_simple_junction_edges_parser_only_.mmd`
 - complex junction edges (unbalanced parenthesis in shorthand ports): `fixtures/architecture/upstream_architecture_cypress_complex_junction_edges_parser_only_.mmd`
 - “reasonable height” stress case: `fixtures/architecture/upstream_architecture_cypress_reasonable_height.mmd`
+
+Normalized (Langium grammar) variants:
+
+The Cypress suite mixes legacy shorthand syntax (which Mermaid CLI `@11.12.2` renders as an error SVG)
+and newer Langium syntax. For end-to-end CLI baselines + DOM parity, we keep the raw Cypress strings as
+`*_parser_only_` fixtures and add normalized variants that use the Mermaid@11.12.2 grammar:
+
+- normalized groups: `fixtures/architecture/upstream_architecture_cypress_groups_normalized.mmd`
+- normalized nested groups: `fixtures/architecture/upstream_architecture_cypress_groups_within_groups_normalized.mmd`
+- normalized split directioning: `fixtures/architecture/upstream_architecture_cypress_split_directioning_normalized.mmd`
+- normalized directional arrows: `fixtures/architecture/upstream_architecture_cypress_directional_arrows_normalized.mmd`
+- normalized group traversal edges: `fixtures/architecture/upstream_architecture_cypress_group_edges_normalized.mmd`
+- normalized edge labels: `fixtures/architecture/upstream_architecture_cypress_edge_labels_normalized.mmd`
+- normalized simple junction edges: `fixtures/architecture/upstream_architecture_cypress_simple_junction_edges_normalized.mmd`
+- normalized complex junction edges: `fixtures/architecture/upstream_architecture_cypress_complex_junction_edges_normalized.mmd`
