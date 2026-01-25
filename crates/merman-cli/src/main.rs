@@ -1,14 +1,20 @@
 use futures::executor::block_on;
 use merman::{Engine, ParseOptions};
+use merman_render::LayoutOptions;
+use merman_render::text::{
+    DeterministicTextMeasurer, TextMeasurer, VendoredFontMetricsTextMeasurer,
+};
 use serde::Serialize;
 use serde_json::Value;
 use std::io::Read;
+use std::sync::Arc;
 
 #[derive(Debug)]
 enum CliError {
     Usage(&'static str),
     Io(std::io::Error),
     Mermaid(merman::Error),
+    Render(merman_render::Error),
     Json(serde_json::Error),
     NoDiagram,
 }
@@ -19,6 +25,7 @@ impl std::fmt::Display for CliError {
             CliError::Usage(msg) => write!(f, "{msg}"),
             CliError::Io(err) => write!(f, "I/O error: {err}"),
             CliError::Mermaid(err) => write!(f, "{err}"),
+            CliError::Render(err) => write!(f, "{err}"),
             CliError::Json(err) => write!(f, "JSON error: {err}"),
             CliError::NoDiagram => write!(f, "No Mermaid diagram detected"),
         }
@@ -37,6 +44,12 @@ impl From<merman::Error> for CliError {
     }
 }
 
+impl From<merman_render::Error> for CliError {
+    fn from(value: merman_render::Error) -> Self {
+        Self::Render(value)
+    }
+}
+
 impl From<serde_json::Error> for CliError {
     fn from(value: serde_json::Error) -> Self {
         Self::Json(value)
@@ -48,6 +61,15 @@ enum Command {
     #[default]
     Parse,
     Detect,
+    Layout,
+    Render,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+enum TextMeasurerKind {
+    Deterministic,
+    #[default]
+    Vendored,
 }
 
 #[derive(Debug, Default)]
@@ -57,6 +79,11 @@ struct Args {
     pretty: bool,
     with_meta: bool,
     suppress_errors: bool,
+    text_measurer: TextMeasurerKind,
+    viewport_width: f64,
+    viewport_height: f64,
+    diagram_id: Option<String>,
+    out: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -79,16 +106,21 @@ fn usage() -> &'static str {
 USAGE:\n\
   merman-cli [parse] [--pretty] [--meta] [--suppress-errors] [<path>|-]\n\
   merman-cli detect [<path>|-]\n\
+  merman-cli layout [--pretty] [--text-measurer deterministic|vendored] [--viewport-width <w>] [--viewport-height <h>] [--suppress-errors] [<path>|-]\n\
+  merman-cli render [--text-measurer deterministic|vendored] [--viewport-width <w>] [--viewport-height <h>] [--id <diagram-id>] [--out <path>] [--suppress-errors] [<path>|-]\n\
 \n\
 NOTES:\n\
   - If <path> is omitted or '-', input is read from stdin.\n\
   - parse prints the semantic JSON model by default; --meta wraps it with parse metadata.\n\
+  - render prints SVG to stdout by default; use --out to write a file.\n\
 "
 }
 
 fn parse_args(argv: &[String]) -> Result<Args, CliError> {
     let mut args = Args {
         command: Command::Parse,
+        viewport_width: 800.0,
+        viewport_height: 600.0,
         ..Default::default()
     };
 
@@ -98,9 +130,45 @@ fn parse_args(argv: &[String]) -> Result<Args, CliError> {
             "--help" | "-h" => return Err(CliError::Usage(usage())),
             "parse" => args.command = Command::Parse,
             "detect" => args.command = Command::Detect,
+            "layout" => args.command = Command::Layout,
+            "render" => args.command = Command::Render,
             "--pretty" => args.pretty = true,
             "--meta" => args.with_meta = true,
             "--suppress-errors" => args.suppress_errors = true,
+            "--text-measurer" => {
+                let Some(kind) = it.next() else {
+                    return Err(CliError::Usage(usage()));
+                };
+                args.text_measurer = match kind.as_str() {
+                    "deterministic" => TextMeasurerKind::Deterministic,
+                    "vendored" => TextMeasurerKind::Vendored,
+                    _ => return Err(CliError::Usage(usage())),
+                };
+            }
+            "--viewport-width" => {
+                let Some(w) = it.next() else {
+                    return Err(CliError::Usage(usage()));
+                };
+                args.viewport_width = w.parse::<f64>().map_err(|_| CliError::Usage(usage()))?;
+            }
+            "--viewport-height" => {
+                let Some(h) = it.next() else {
+                    return Err(CliError::Usage(usage()));
+                };
+                args.viewport_height = h.parse::<f64>().map_err(|_| CliError::Usage(usage()))?;
+            }
+            "--id" => {
+                let Some(id) = it.next() else {
+                    return Err(CliError::Usage(usage()));
+                };
+                args.diagram_id = Some(id.clone());
+            }
+            "--out" => {
+                let Some(out) = it.next() else {
+                    return Err(CliError::Usage(usage()));
+                };
+                args.out = Some(out.clone());
+            }
             "--" => {
                 if let Some(rest) = it.next() {
                     if args.input.is_some() {
@@ -145,6 +213,26 @@ fn write_json(value: &impl Serialize, pretty: bool) -> Result<(), CliError> {
     Ok(())
 }
 
+fn build_text_measurer(kind: TextMeasurerKind) -> Arc<dyn TextMeasurer + Send + Sync> {
+    match kind {
+        TextMeasurerKind::Deterministic => Arc::new(DeterministicTextMeasurer::default()),
+        TextMeasurerKind::Vendored => Arc::new(VendoredFontMetricsTextMeasurer::default()),
+    }
+}
+
+fn write_text(text: &str, out: Option<&str>) -> Result<(), CliError> {
+    match out {
+        None => {
+            print!("{text}");
+            Ok(())
+        }
+        Some(path) => {
+            std::fs::write(path, text)?;
+            Ok(())
+        }
+    }
+}
+
 fn run(args: Args) -> Result<(), CliError> {
     let text = read_input(args.input.as_deref())?;
     let engine = Engine::new();
@@ -179,6 +267,46 @@ fn run(args: Args) -> Result<(), CliError> {
             } else {
                 write_json(&parsed.model, args.pretty)?;
             }
+            Ok(())
+        }
+        Command::Layout => {
+            let Some(parsed) = block_on(engine.parse_diagram(&text, options))? else {
+                return Err(CliError::NoDiagram);
+            };
+
+            let measurer = build_text_measurer(args.text_measurer);
+            let layout_opts = LayoutOptions {
+                text_measurer: Arc::clone(&measurer),
+                viewport_width: args.viewport_width,
+                viewport_height: args.viewport_height,
+            };
+            let layouted = merman_render::layout_parsed(&parsed, &layout_opts)?;
+            write_json(&layouted, args.pretty)?;
+            Ok(())
+        }
+        Command::Render => {
+            let Some(parsed) = block_on(engine.parse_diagram(&text, options))? else {
+                return Err(CliError::NoDiagram);
+            };
+
+            let measurer = build_text_measurer(args.text_measurer);
+            let layout_opts = LayoutOptions {
+                text_measurer: Arc::clone(&measurer),
+                viewport_width: args.viewport_width,
+                viewport_height: args.viewport_height,
+            };
+            let layouted = merman_render::layout_parsed(&parsed, &layout_opts)?;
+
+            let svg_options = merman_render::svg::SvgRenderOptions {
+                diagram_id: args.diagram_id.clone(),
+                ..Default::default()
+            };
+            let svg = merman_render::svg::render_layouted_svg(
+                &layouted,
+                measurer.as_ref(),
+                &svg_options,
+            )?;
+            write_text(&svg, args.out.as_deref())?;
             Ok(())
         }
     }

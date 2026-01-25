@@ -38,3 +38,7 @@ Populate `repo-ref/*` by cloning each repo at the pinned commit shown in
   - `cat path/to/diagram.mmd | cargo run -p merman-cli -- parse --pretty -`
 - Detect diagram type:
   - `cargo run -p merman-cli -- detect path/to/diagram.mmd`
+- Compute headless layout JSON (meta + semantic + layout):
+  - `cargo run -p merman-cli -- layout path/to/diagram.mmd --pretty`
+- Render SVG (prints to stdout by default):
+  - `cargo run -p merman-cli -- render path/to/diagram.mmd --out out.svg`

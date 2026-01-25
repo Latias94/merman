@@ -964,6 +964,7 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "merman",
+ "merman-render",
  "serde",
  "serde_json",
 ]
