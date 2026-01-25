@@ -62,6 +62,9 @@ Recent progress: `xychart` headless layout and Stage B parity renderer exist and
 upstream SVG baselines via `xtask compare-xychart-svgs` (DOM parity mode).
 Recent progress: flowchart Stage B now matches upstream SVG DOM for the current fixture set in parity mode
 (`cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`).
+Recent progress: flowchart-v2 stadium/cylinder geometry now matches upstream more closely in strict SVG XML parity
+(`xtask compare-svg-xml --diagram flowchart --dom-mode strict`) by modeling Chromium bbox quirks for cylinders and
+using stadium render-dimensions for edge intersections.
 Recent progress: flowchart Dagre config now uses Mermaid margins (`marginx/marginy=8`) for both the top-level
 graph and extracted cluster graphs, improving subgraph/cluster geometry parity.
 Recent progress: `dugong` now matches dagrejs graph defaults (`edgesep=20`), improving multiedge routing parity

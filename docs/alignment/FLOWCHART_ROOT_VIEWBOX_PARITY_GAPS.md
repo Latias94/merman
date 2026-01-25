@@ -64,6 +64,9 @@ As of the current implementation:
 - Flowchart-v2 stadium nodes (and other rough-path-based shapes) can have `node.width/height` used
   for Dagre layout derived from the rendered rough path bbox (`updateNodeBounds(getBBox)`), which
   can be narrower than the theoretical `(text bbox + padding)` sizing formula.
+- Flowchart-v2 cylinder nodes use a tiny bbox-height rounding quirk (modeled as “next f32 up” of the
+  theoretical height) to match Chromium `getBBox()` output. This affects Dagre spacing and the
+  strict `data-points` strings stored on edge `<path>` elements.
 - With `--text-measurer vendored`, `xtask compare-flowchart-svgs --check-dom --dom-mode parity-root`
   is expected to pass for the current upstream fixture set (at `--dom-decimals 3`).
 
