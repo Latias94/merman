@@ -747,11 +747,27 @@ fn parse_edge_middle_shorthand(
         return None;
     }
 
-    let in_parens = rest.starts_with('(');
-    let inner = if in_parens {
-        let (inner, tail) = take_bracketed(rest, '(', ')')?;
-        rest = tail.trim_start();
-        inner.trim().to_string()
+    let token = if rest.starts_with('(') {
+        // Prefer `(L--R)` style, but accept unbalanced forms like `(B--T` used in an upstream fixture.
+        if let Some((inner, tail)) = take_bracketed(rest, '(', ')') {
+            rest = tail.trim_start();
+            inner.trim().to_string()
+        } else {
+            // Middle token is a single non-whitespace run (e.g. `(B--T`)
+            let mut end = 0;
+            for (idx, ch) in rest.char_indices() {
+                if ch.is_whitespace() {
+                    end = idx;
+                    break;
+                }
+            }
+            if end == 0 {
+                end = rest.len();
+            }
+            let token = rest[..end].to_string();
+            rest = rest[end..].trim_start();
+            token
+        }
     } else {
         // Middle token is a single non-whitespace run (e.g. `L--R` or `L-[x]-R`)
         let mut end = 0;
@@ -769,7 +785,19 @@ fn parse_edge_middle_shorthand(
         token
     };
 
-    let mut t = inner.as_str().trim();
+    // In some upstream fixtures (complex junction edges), the parens are used in an unbalanced way:
+    // `top_gateway (B--T juncR` and `juncC{group} R--L) juncR{group}`.
+    // We accept those by treating a leading `(` and trailing `)` as optional wrappers.
+    let mut token = token.trim();
+    if let Some(stripped) = token.strip_prefix('(') {
+        token = stripped.trim();
+    }
+    if let Some(stripped) = token.strip_suffix(')') {
+        token = stripped.trim();
+    }
+    let token = token.to_string();
+
+    let mut t = token.as_str().trim();
     let lhs_dir = t.chars().next()?;
     if !is_arch_dir(lhs_dir) {
         return None;
@@ -814,7 +842,7 @@ fn parse_edge_middle_shorthand(
     }
     t = &t[rhs_dir.len_utf8()..];
     if !t.trim().is_empty() {
-        // In parens form we expect end; in non-parens form the token should also end here.
+        // The shorthand token should end after the rhs direction.
         return None;
     }
 
@@ -1150,5 +1178,17 @@ mod tests {
         assert_eq!(edges.len(), 1);
         assert_eq!(edges[0]["lhsDir"].as_str().unwrap(), "T");
         assert_eq!(edges[0]["rhsDir"].as_str().unwrap(), "B");
+    }
+
+    #[test]
+    fn architecture_edge_shorthand_allows_unbalanced_parentheses_is_parsed() {
+        let model =
+            parse("architecture-beta\n  service a\n  service b\n  a (L--R b\n  a L--R) b\n");
+        let edges = model["edges"].as_array().unwrap();
+        assert_eq!(edges.len(), 2);
+        assert_eq!(edges[0]["lhsDir"].as_str().unwrap(), "L");
+        assert_eq!(edges[0]["rhsDir"].as_str().unwrap(), "R");
+        assert_eq!(edges[1]["lhsDir"].as_str().unwrap(), "L");
+        assert_eq!(edges[1]["rhsDir"].as_str().unwrap(), "R");
     }
 }
