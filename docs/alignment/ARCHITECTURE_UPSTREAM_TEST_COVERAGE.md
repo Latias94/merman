@@ -53,9 +53,5 @@ set of real-world inputs, including shorthand edge syntax that appears in exampl
 - group boundary traversal edges (`{group}` modifier): `fixtures/architecture/upstream_architecture_cypress_group_edges_parser_only_.mmd`
 - edge label shorthand (`L-[Label]-R`): `fixtures/architecture/upstream_architecture_cypress_edge_labels_parser_only_.mmd`
 - simple junction edges: `fixtures/architecture/upstream_architecture_cypress_simple_junction_edges_parser_only_.mmd`
+- complex junction edges (unbalanced parenthesis in shorthand ports): `fixtures/architecture/upstream_architecture_cypress_complex_junction_edges_parser_only_.mmd`
 - “reasonable height” stress case (parser-only): `fixtures/architecture/upstream_architecture_cypress_reasonable_height_parser_only_.mmd`
-
-Known missing Cypress case (not yet captured as a fixture):
-
-- complex junction edges use a multi-line parenthesized edge syntax (parenthesis spans multiple lines),
-  which is not yet supported by the Rust parser. Once supported, add a fixture for that scenario.
