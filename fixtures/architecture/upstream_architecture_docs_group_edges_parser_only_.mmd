@@ -1,0 +1,9 @@
+architecture-beta
+
+group groupOne(cloud)[Group One]
+group groupTwo(cloud)[Group Two]
+
+service server(server)[Server] in groupOne
+service subnet(server)[Subnet] in groupTwo
+
+server{group}:B --> T:subnet{group}

@@ -1,0 +1,262 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [],
+    "nodes": [
+      {
+        "id": "subnet",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "subnet",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "gateway",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Subnet",
+        "in": null
+      },
+      {
+        "id": "gateway",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "subnet",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "gateway",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "gateway",
+            "lhsDir": "B",
+            "lhsInto": true,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "T",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "internet",
+        "iconText": null,
+        "title": "Gateway",
+        "in": null
+      },
+      {
+        "id": "db",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "gateway",
+            "lhsDir": "B",
+            "lhsInto": true,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "T",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "app",
+            "lhsDir": "L",
+            "lhsInto": true,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "R",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "database",
+        "iconText": null,
+        "title": "Database",
+        "in": null
+      },
+      {
+        "id": "app",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "app",
+            "lhsDir": "L",
+            "lhsInto": true,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "R",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "App",
+        "in": null
+      }
+    ],
+    "services": [
+      {
+        "id": "subnet",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "subnet",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "gateway",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Subnet",
+        "in": null
+      },
+      {
+        "id": "gateway",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "subnet",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "gateway",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "gateway",
+            "lhsDir": "B",
+            "lhsInto": true,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "T",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "internet",
+        "iconText": null,
+        "title": "Gateway",
+        "in": null
+      },
+      {
+        "id": "db",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "gateway",
+            "lhsDir": "B",
+            "lhsInto": true,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "T",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "app",
+            "lhsDir": "L",
+            "lhsInto": true,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "R",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "database",
+        "iconText": null,
+        "title": "Database",
+        "in": null
+      },
+      {
+        "id": "app",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "app",
+            "lhsDir": "L",
+            "lhsInto": true,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "R",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "App",
+        "in": null
+      }
+    ],
+    "junctions": [],
+    "edges": [
+      {
+        "lhsId": "subnet",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "gateway",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": null
+      },
+      {
+        "lhsId": "gateway",
+        "lhsDir": "B",
+        "lhsInto": true,
+        "lhsGroup": null,
+        "rhsId": "db",
+        "rhsDir": "T",
+        "rhsInto": null,
+        "rhsGroup": null,
+        "title": null
+      },
+      {
+        "lhsId": "app",
+        "lhsDir": "L",
+        "lhsInto": true,
+        "lhsGroup": null,
+        "rhsId": "db",
+        "rhsDir": "R",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": null
+      }
+    ]
+  }
+}

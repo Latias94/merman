@@ -1,0 +1,8 @@
+architecture-beta
+
+service a(server)[A]
+service b(server)[B]
+service c(server)[C]
+
+a:R -[sync]- L:b
+b:B -[async]-> T:c

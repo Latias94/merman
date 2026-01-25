@@ -1,0 +1,125 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [
+      {
+        "id": "groupOne",
+        "icon": "cloud",
+        "title": "Group One",
+        "in": null
+      },
+      {
+        "id": "groupTwo",
+        "icon": "cloud",
+        "title": "Group Two",
+        "in": null
+      }
+    ],
+    "nodes": [
+      {
+        "id": "server",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "server",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "subnet",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Server",
+        "in": "groupOne"
+      },
+      {
+        "id": "subnet",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "server",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "subnet",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Subnet",
+        "in": "groupTwo"
+      }
+    ],
+    "services": [
+      {
+        "id": "server",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "server",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "subnet",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Server",
+        "in": "groupOne"
+      },
+      {
+        "id": "subnet",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "server",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "subnet",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Subnet",
+        "in": "groupTwo"
+      }
+    ],
+    "junctions": [],
+    "edges": [
+      {
+        "lhsId": "server",
+        "lhsDir": "B",
+        "lhsInto": null,
+        "lhsGroup": true,
+        "rhsId": "subnet",
+        "rhsDir": "T",
+        "rhsInto": true,
+        "rhsGroup": true,
+        "title": null
+      }
+    ]
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [],
+    "nodes": [
+      {
+        "id": "plain",
+        "type": "service",
+        "edges": [],
+        "icon": null,
+        "iconText": null,
+        "title": null,
+        "in": null
+      },
+      {
+        "id": "with_icon",
+        "type": "service",
+        "edges": [],
+        "icon": "server",
+        "iconText": null,
+        "title": "Icon Node",
+        "in": null
+      },
+      {
+        "id": "with_icon_text",
+        "type": "service",
+        "edges": [],
+        "icon": null,
+        "iconText": "logos:aws-lambda",
+        "title": "Iconify Text Node",
+        "in": null
+      }
+    ],
+    "services": [
+      {
+        "id": "plain",
+        "type": "service",
+        "edges": [],
+        "icon": null,
+        "iconText": null,
+        "title": null,
+        "in": null
+      },
+      {
+        "id": "with_icon",
+        "type": "service",
+        "edges": [],
+        "icon": "server",
+        "iconText": null,
+        "title": "Icon Node",
+        "in": null
+      },
+      {
+        "id": "with_icon_text",
+        "type": "service",
+        "edges": [],
+        "icon": null,
+        "iconText": "logos:aws-lambda",
+        "title": "Iconify Text Node",
+        "in": null
+      }
+    ],
+    "junctions": [],
+    "edges": []
+  }
+}

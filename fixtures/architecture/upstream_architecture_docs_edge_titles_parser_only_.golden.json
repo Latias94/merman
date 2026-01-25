@@ -1,0 +1,187 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [],
+    "nodes": [
+      {
+        "id": "a",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "a",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "b",
+            "rhsDir": "L",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": "sync"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "A",
+        "in": null
+      },
+      {
+        "id": "b",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "a",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "b",
+            "rhsDir": "L",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": "sync"
+          },
+          {
+            "lhsId": "b",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "c",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "async"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "B",
+        "in": null
+      },
+      {
+        "id": "c",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "b",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "c",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "async"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "C",
+        "in": null
+      }
+    ],
+    "services": [
+      {
+        "id": "a",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "a",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "b",
+            "rhsDir": "L",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": "sync"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "A",
+        "in": null
+      },
+      {
+        "id": "b",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "a",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "b",
+            "rhsDir": "L",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": "sync"
+          },
+          {
+            "lhsId": "b",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "c",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "async"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "B",
+        "in": null
+      },
+      {
+        "id": "c",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "b",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "c",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "async"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "C",
+        "in": null
+      }
+    ],
+    "junctions": [],
+    "edges": [
+      {
+        "lhsId": "a",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "b",
+        "rhsDir": "L",
+        "rhsInto": null,
+        "rhsGroup": null,
+        "title": "sync"
+      },
+      {
+        "lhsId": "b",
+        "lhsDir": "B",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "c",
+        "rhsDir": "T",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": "async"
+      }
+    ]
+  }
+}

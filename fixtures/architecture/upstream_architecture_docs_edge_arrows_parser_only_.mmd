@@ -1,0 +1,10 @@
+architecture-beta
+
+service subnet(server)[Subnet]
+service gateway(internet)[Gateway]
+service db(database)[Database]
+service app(server)[App]
+
+subnet:R --> L:gateway
+gateway:B <-- T:db
+app:L <--> R:db

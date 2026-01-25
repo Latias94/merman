@@ -1,14 +1,14 @@
 {
   "diagramType": "architecture",
   "model": {
-    "accDescr": null,
+    "type": "architecture",
+    "title": null,
     "accTitle": null,
-    "edges": [],
+    "accDescr": null,
     "groups": [],
-    "junctions": [],
     "nodes": [],
     "services": [],
-    "title": null,
-    "type": "architecture"
+    "junctions": [],
+    "edges": []
   }
 }

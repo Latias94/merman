@@ -17,3 +17,24 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/architectur
 - title on separate line: `fixtures/architecture/upstream_architecture_title_other_line_spec.mmd`
 - accessibility title + description: `fixtures/architecture/upstream_architecture_acc_title_and_descr_spec.mmd`
 - multiline accessibility description: `fixtures/architecture/upstream_architecture_multiline_acc_descr_spec.mmd`
+
+Source: `repo-ref/mermaid/docs/syntax/architecture.md`
+
+The following fixtures are derived from the official syntax documentation and primarily cover
+edge syntax (ports, titles, arrows, group boundary traversal), nesting, and junction statements.
+
+Note: they are currently marked as parser-only fixtures (filename contains `_parser_only_`) so
+they are excluded from layout snapshots and SVG DOM parity compares while the Architecture layout
+and renderer are still being brought up.
+
+- docs example (group + services + edges): `fixtures/architecture/upstream_architecture_docs_example_parser_only_.mmd`
+- edge arrows (`-->`, `<--`, `<-->`): `fixtures/architecture/upstream_architecture_docs_edge_arrows_parser_only_.mmd`
+- edge titles (`-[label]-`, `-[label]->`): `fixtures/architecture/upstream_architecture_docs_edge_titles_parser_only_.mmd`
+- edges out of groups (`{group}` modifier): `fixtures/architecture/upstream_architecture_docs_group_edges_parser_only_.mmd`
+- groups within groups + edges: `fixtures/architecture/upstream_architecture_docs_groups_within_groups_parser_only_.mmd`
+- junction statements + edges: `fixtures/architecture/upstream_architecture_docs_junctions_parser_only_.mmd`
+- service icon vs. iconText string: `fixtures/architecture/upstream_architecture_docs_service_icon_text_parser_only_.mmd`
+
+Additional stress case (parser-only):
+
+- tall-ish nested layout input for future viewport/height parity work: `fixtures/architecture/upstream_architecture_layout_reasonable_height_parser_only_.mmd`
