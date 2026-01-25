@@ -8341,6 +8341,20 @@ pub fn render_architecture_diagram_svg(
         icon_text: Option<String>,
         #[serde(default)]
         title: Option<String>,
+        #[serde(default, rename = "in")]
+        in_group: Option<String>,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ArchitectureGroup {
+        id: String,
+        #[serde(default)]
+        icon: Option<String>,
+        #[serde(default)]
+        title: Option<String>,
+        #[serde(default, rename = "in")]
+        in_group: Option<String>,
     }
 
     #[derive(Debug, Clone, Deserialize)]
@@ -8369,6 +8383,8 @@ pub fn render_architecture_diagram_svg(
         acc_title: Option<String>,
         #[serde(default, rename = "accDescr")]
         acc_descr: Option<String>,
+        #[serde(default)]
+        groups: Vec<ArchitectureGroup>,
         #[serde(default)]
         services: Vec<ArchitectureService>,
         #[serde(default)]
@@ -8677,10 +8693,95 @@ pub fn render_architecture_diagram_svg(
         out.push_str("</g>");
     }
 
-    out.push_str(
-        r#"<g class="architecture-groups"/></svg>
-"#,
-    );
+    if model.groups.is_empty() {
+        out.push_str(r#"<g class="architecture-groups"/>"#);
+    } else {
+        out.push_str(r#"<g class="architecture-groups">"#);
+
+        for grp in &model.groups {
+            let id_esc = escape_xml(&grp.id);
+
+            let mut min_x: Option<f64> = None;
+            let mut min_y: Option<f64> = None;
+            let mut max_x: Option<f64> = None;
+            let mut max_y: Option<f64> = None;
+            for svc in &model.services {
+                if svc.in_group.as_deref() != Some(&grp.id) {
+                    continue;
+                }
+                let Some((x, y)) = node_xy.get(&svc.id).copied() else {
+                    continue;
+                };
+                let left = x;
+                let top = y;
+                let right = x + icon_size_px;
+                let bottom = y + icon_size_px;
+
+                min_x = Some(min_x.map_or(left, |v| v.min(left)));
+                min_y = Some(min_y.map_or(top, |v| v.min(top)));
+                max_x = Some(max_x.map_or(right, |v| v.max(right)));
+                max_y = Some(max_y.map_or(bottom, |v| v.max(bottom)));
+            }
+
+            let pad = icon_size_px / 2.0 + 2.5;
+            let x = min_x.map(|v| v - pad).unwrap_or(0.0);
+            let y = min_y.map(|v| v - pad).unwrap_or(0.0);
+            let w = max_x
+                .zip(min_x)
+                .map(|(a, b)| (a - b) + pad * 2.0)
+                .unwrap_or(icon_size_px);
+            let h = max_y
+                .zip(min_y)
+                .map(|(a, b)| (a - b) + pad * 2.0)
+                .unwrap_or(icon_size_px);
+
+            let _ = write!(
+                &mut out,
+                r#"<rect id="group-{id}" x="{x}" y="{y}" width="{w}" height="{h}" class="node-bkg"/>"#,
+                id = id_esc,
+                x = fmt(x),
+                y = fmt(y),
+                w = fmt(w.max(1.0)),
+                h = fmt(h.max(1.0))
+            );
+
+            out.push_str("<g>");
+
+            if let Some(icon) = grp.icon.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+                let svg = arch_icon_svg(icon, 30.0);
+                let _ = write!(
+                    &mut out,
+                    r#"<g transform="translate({x}, {y})"><g>{svg}</g></g>"#,
+                    x = fmt(x + 1.0),
+                    y = fmt(y + 1.0),
+                    svg = svg
+                );
+            }
+
+            if let Some(title) = grp
+                .title
+                .as_deref()
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+            {
+                let lines = vec![title.to_string()];
+                let _ = write!(
+                    &mut out,
+                    r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="start" text-anchor="start" transform="translate({x}, {y})"><g><rect class="background" style="stroke: none"/>"#,
+                    x = fmt(x + 33.0),
+                    y = fmt(y + 7.0)
+                );
+                write_svg_text_lines(&mut out, &lines);
+                out.push_str("</g></g>");
+            }
+
+            out.push_str("</g>");
+        }
+
+        out.push_str("</g>");
+    }
+
+    out.push_str("</svg>\n");
     Ok(out)
 }
 
