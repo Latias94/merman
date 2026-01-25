@@ -10,7 +10,7 @@
     "tooltips": {},
     "edgeDefaults": {
       "style": [
-        " stroke-width:1px"
+        "stroke-width:1px"
       ],
       "interpolate": "basis"
     },

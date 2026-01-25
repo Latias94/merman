@@ -3144,6 +3144,11 @@ fn parse_link_style_stmt(rest: &str) -> std::result::Result<LinkStyleStmt, LexEr
         interpolate = p.take_word();
     }
 
+    // Mermaid's `linkStyle ... interpolate <curve> ...` still tokenizes the styles list without the
+    // leading whitespace between the curve name and the first style token. Keep the whitespace
+    // inside comma-separated tokens (handled by `parse_linkstyle_styles_list`), but drop the
+    // leading separator spaces at the list boundary.
+    p.skip_ws();
     let styles = parse_linkstyle_styles_list(p.rest());
     Ok(LinkStyleStmt {
         positions,

@@ -67,6 +67,8 @@ Recent progress: flowchart-v2 stadium/cylinder geometry now matches upstream mor
 using stadium render-dimensions for edge intersections.
 Recent progress: flowchart-v2 `classDef` CSS rules now preserve Mermaid insertion order (IndexMap), matching upstream
 `<style>` rule ordering in strict SVG XML parity (e.g. `bigger_font_from_classes_spec`).
+Recent progress: flowchart-v2 `linkStyle ... interpolate ...` now trims the whitespace between the curve name and the
+first style token so rendered edge `style="...;;;..."` matches upstream strict SVG XML output.
 Recent progress: flowchart Dagre config now uses Mermaid margins (`marginx/marginy=8`) for both the top-level
 graph and extracted cluster graphs, improving subgraph/cluster geometry parity.
 Recent progress: `dugong` now matches dagrejs graph defaults (`edgesep=20`), improving multiedge routing parity
