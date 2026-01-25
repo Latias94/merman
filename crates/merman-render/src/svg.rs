@@ -8678,7 +8678,10 @@ pub fn render_architecture_diagram_svg(
                             ),
                         )
                     }
-                    _ => ("middle", format!(r#"translate({}, {})"#, fmt(mid_x), fmt(mid_y))),
+                    _ => (
+                        "middle",
+                        format!(r#"translate({}, {})"#, fmt(mid_x), fmt(mid_y)),
+                    ),
                 };
 
                 let _ = write!(
