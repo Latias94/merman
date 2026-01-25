@@ -5,8 +5,8 @@
     "nodes": [
       {
         "labelStyle": "",
-        "shape": "rectWithTitle",
-        "label": "this is a string",
+        "shape": "rect",
+        "label": "this is another string",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
@@ -21,9 +21,7 @@
         "look": "classic",
         "parentId": null,
         "centerLabel": true,
-        "description": [
-          "this is another string"
-        ]
+        "description": []
       },
       {
         "labelStyle": "",
@@ -108,7 +106,6 @@
         "id": "State1",
         "type": "default",
         "descriptions": [
-          "this is a string",
           "this is another string"
         ],
         "doc": null,

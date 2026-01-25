@@ -52,6 +52,8 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/state/stateDiagram.spec.
 - relation/state descriptions containing `-`: `fixtures/state/upstream_stateDiagram_spec.mmd`
 - state ids that include `as` (e.g. `assemble`, `assemblies`): `fixtures/state/upstream_stateDiagram_handle_as_in_state_names_spec.mmd`
 - `state "as" as as` (quoted description equals keyword): `fixtures/state/upstream_stateDiagram_handle_as_in_state_names_spec.mmd`
+- `accDescr: ...`: `fixtures/state/upstream_stateDiagram_acc_descr_spec.mmd`
+- multiline `accDescr { ... }`: `fixtures/state/upstream_stateDiagram_acc_descr_multiline_spec.mmd`
 - `accTitle: ...`: `fixtures/state/upstream_stateDiagram_acc_title_spec.mmd`
 - `state "Long state description" as state1`: `fixtures/state/upstream_stateDiagram_state_definition_sep_id_simple_spec.mmd`
 - composite state with `state "..." as <id> { ... }`: `fixtures/state/upstream_stateDiagram_state_definition_separation_spec.mmd`
@@ -77,6 +79,8 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/state/stateDiagram-v2.sp
 - `hide empty description`: `fixtures/state/upstream_stateDiagram_v2_spec.mmd`
 - `scale <n> width`: `fixtures/state/upstream_stateDiagram_v2_spec.mmd`
 - relationship label extraction (`id1 --> id2 : label`): `fixtures/state/upstream_stateDiagram_v2_spec.mmd`
+- `accDescr: ...`: `fixtures/state/upstream_stateDiagram_v2_acc_descr_spec.mmd`
+- `accTitle: ...`: `fixtures/state/upstream_stateDiagram_v2_acc_title_spec.mmd`
 - fork/join typed states (`state <id> <<fork>>` / `<<join>>`): `fixtures/state/upstream_stateDiagram_v2_fork_join_spec.mmd`
 - concurrent state divider (`--` inside `state <id> { ... }`): `fixtures/state/upstream_stateDiagram_v2_concurrent_state_spec.mmd`
 - note statements (left/right + `end note` block): `fixtures/state/upstream_stateDiagram_v2_note_statements_spec.mmd`
