@@ -37,7 +37,7 @@ and renderer are still being brought up. Promoted fixtures will have the suffix 
 
 Additional stress case (parser-only):
 
-- tall-ish nested layout input for future viewport/height parity work: `fixtures/architecture/upstream_architecture_layout_reasonable_height_parser_only_.mmd`
+- tall-ish nested layout input for future viewport/height parity work: `fixtures/architecture/upstream_architecture_layout_reasonable_height.mmd`
 
 Source: `repo-ref/mermaid/cypress/integration/rendering/architecture.spec.ts`
 
@@ -54,4 +54,4 @@ set of real-world inputs, including shorthand edge syntax that appears in exampl
 - edge label shorthand (`L-[Label]-R`): `fixtures/architecture/upstream_architecture_cypress_edge_labels_parser_only_.mmd`
 - simple junction edges: `fixtures/architecture/upstream_architecture_cypress_simple_junction_edges_parser_only_.mmd`
 - complex junction edges (unbalanced parenthesis in shorthand ports): `fixtures/architecture/upstream_architecture_cypress_complex_junction_edges_parser_only_.mmd`
-- “reasonable height” stress case (parser-only): `fixtures/architecture/upstream_architecture_cypress_reasonable_height_parser_only_.mmd`
+- “reasonable height” stress case: `fixtures/architecture/upstream_architecture_cypress_reasonable_height.mmd`
