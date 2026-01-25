@@ -73,11 +73,13 @@ Completed:
 1. `fixtures/architecture/upstream_architecture_docs_service_icon_text.mmd`
 2. `fixtures/architecture/upstream_architecture_docs_edge_titles.mmd`
 3. `fixtures/architecture/upstream_architecture_docs_edge_arrows.mmd`
+4. `fixtures/architecture/upstream_architecture_docs_example.mmd`
 
 Next:
 
-1. `fixtures/architecture/upstream_architecture_docs_example_parser_only_.mmd`
-2. Cypress-derived fixtures (groups, junction edges, labels, etc.)
+1. `fixtures/architecture/upstream_architecture_docs_groups_within_groups_parser_only_.mmd`
+2. `fixtures/architecture/upstream_architecture_docs_group_edges_parser_only_.mmd`
+3. Cypress-derived fixtures (groups, junction edges, labels, etc.)
 
 ## Notes
 

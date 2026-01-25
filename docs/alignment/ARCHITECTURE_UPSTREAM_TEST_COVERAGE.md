@@ -27,7 +27,7 @@ Note: most of these fixtures are currently marked as parser-only (filename conta
 so they are excluded from layout snapshots and SVG DOM parity compares while the Architecture layout
 and renderer are still being brought up. Promoted fixtures will have the suffix removed.
 
-- docs example (group + services + edges): `fixtures/architecture/upstream_architecture_docs_example_parser_only_.mmd`
+- docs example (group + services + edges): `fixtures/architecture/upstream_architecture_docs_example.mmd`
 - edge arrows (`-->`, `<--`, `<-->`): `fixtures/architecture/upstream_architecture_docs_edge_arrows.mmd`
 - edge titles (`-[label]-`, `-[label]->`): `fixtures/architecture/upstream_architecture_docs_edge_titles.mmd`
 - edges out of groups (`{group}` modifier): `fixtures/architecture/upstream_architecture_docs_group_edges_parser_only_.mmd`
