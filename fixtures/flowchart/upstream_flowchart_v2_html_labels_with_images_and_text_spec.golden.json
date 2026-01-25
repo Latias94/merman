@@ -2,69 +2,31 @@
   "diagramType": "flowchart-v2",
   "model": {
     "type": "flowchart-v2",
-    "keyword": "graph",
+    "keyword": "flowchart",
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
-    "classDefs": {
-      "dotClass": [
-        "background:#bbb",
-        "border:1.5px solid red"
-      ],
-      "spaceClass": [
-        "background:  #bbb",
-        "border:1.5px solid red"
-      ],
-      "exClass": [
-        "background:#bbb",
-        "border:1px solid red"
-      ],
-      "percentClass": [
-        "fill:#f96",
-        "stroke:#333",
-        "stroke-width:4px",
-        "font-size:50%",
-        "font-style:bold"
-      ]
-    },
+    "classDefs": {},
     "tooltips": {},
     "edgeDefaults": {
       "style": [],
       "interpolate": null
     },
     "vertexCalls": [
-      "a_a",
-      "b_b",
-      "a",
-      "b"
+      "B",
+      "B",
+      "C",
+      "B",
+      "D",
+      "B",
+      "E"
     ],
     "nodes": [
       {
-        "id": "a_a",
-        "label": "a_a",
+        "id": "B",
+        "label": "<img src='https://mermaid.js.org/mermaid-logo.svg'>",
         "labelType": "text",
-        "shape": null,
-        "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [
-          "exClass"
-        ],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "b_b",
-        "label": "b_b",
-        "labelType": "text",
-        "shape": null,
+        "shape": "square",
         "layoutShape": "squareRect",
         "icon": null,
         "form": null,
@@ -80,10 +42,10 @@
         "haveCallback": false
       },
       {
-        "id": "a",
-        "label": "a",
+        "id": "C",
+        "label": "<img src='https://mermaid.js.org/mermaid-logo.svg'> more text <img src='https://mermaid.js.org/mermaid-logo.svg'>",
         "labelType": "text",
-        "shape": null,
+        "shape": "square",
         "layoutShape": "squareRect",
         "icon": null,
         "form": null,
@@ -93,19 +55,17 @@
         "assetWidth": null,
         "assetHeight": null,
         "styles": [],
-        "classes": [
-          "exClass"
-        ],
+        "classes": [],
         "link": null,
         "linkTarget": null,
         "haveCallback": false
       },
       {
-        "id": "b",
-        "label": "b",
+        "id": "D",
+        "label": "<img src='https://mermaid.js.org/mermaid-logo.svg'> some text",
         "labelType": "text",
-        "shape": null,
-        "layoutShape": "squareRect",
+        "shape": "round",
+        "layoutShape": "roundedRect",
         "icon": null,
         "form": null,
         "pos": null,
@@ -114,9 +74,26 @@
         "assetWidth": null,
         "assetHeight": null,
         "styles": [],
-        "classes": [
-          "exClass"
-        ],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "E",
+        "label": "plain",
+        "labelType": "text",
+        "shape": "round",
+        "layoutShape": "roundedRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
         "link": null,
         "linkTarget": null,
         "haveCallback": false
@@ -124,9 +101,9 @@
     ],
     "edges": [
       {
-        "from": "a_a",
-        "to": "b_b",
-        "id": "L_a_a_b_b_0",
+        "from": "B",
+        "to": "C",
+        "id": "L_B_C_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
@@ -141,9 +118,26 @@
         "animation": null
       },
       {
-        "from": "a",
-        "to": "b",
-        "id": "L_a_b_0",
+        "from": "B",
+        "to": "D",
+        "id": "L_B_D_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "B",
+        "to": "E",
+        "id": "L_B_E_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",

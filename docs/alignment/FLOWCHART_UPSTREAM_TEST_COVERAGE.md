@@ -224,6 +224,13 @@ Source: `repo-ref/mermaid/cypress/integration/rendering/flowchart-v2.spec.js`
 - subgraph title margins (LR, `htmlLabels: false`): `fixtures/flowchart/upstream_flowchart_v2_subgraph_title_margins_lr_htmlLabels_false_spec.mmd`
 - subgraph title margins (edge labels): `fixtures/flowchart/upstream_flowchart_v2_subgraph_title_margins_with_edge_labels_spec.mmd`
 - self loops (including nested subgraphs): `fixtures/flowchart/upstream_flowchart_v2_self_loops_spec.mmd`
+- clipping of edges (flowchart-v2.spec.js#2824): `fixtures/flowchart/upstream_flowchart_v2_clipping_of_edges_spec.mmd`
+- multiple labeled edges between same nodes: `fixtures/flowchart/upstream_flowchart_v2_multiple_labeled_edges_between_same_nodes_spec.mmd`
+- HTML labels with images and/or text (flowchart-v2.spec.js#4023): `fixtures/flowchart/upstream_flowchart_v2_html_labels_with_images_and_text_spec.mmd`
+- missing images should not crash: `fixtures/flowchart/upstream_flowchart_v2_missing_images_should_not_crash_spec.mmd`
+- unicode-encoded characters in HTML labels (`htmlLabels: true`): `fixtures/flowchart/upstream_flowchart_v2_unicode_encoded_character_html_labels_true_spec.mmd`
+- titled flowchart (`titleTopMargin: 10`): `fixtures/flowchart/upstream_flowchart_v2_titled_flowchart_titleTopMargin_10_spec.mmd`
+- invisible edges (`titleTopMargin: 10`): `fixtures/flowchart/upstream_flowchart_v2_invisible_edges_titleTopMargin_10_spec.mmd`
 
 ## Additional parity fixtures (non-upstream)
 

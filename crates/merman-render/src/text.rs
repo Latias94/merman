@@ -122,7 +122,9 @@ pub fn ceil_to_1_64_px(v: f64) -> f64 {
     if !(v.is_finite() && v >= 0.0) {
         return 0.0;
     }
-    (v * 64.0).ceil() / 64.0
+    // Avoid "ceil to next 1/64" due to tiny positive FP drift (e.g. 2262.0000000000005 instead
+    // of 2262.0), which can bubble up into `viewBox`/`max-width` mismatches.
+    ((v * 64.0) - 1e-9).ceil() / 64.0
 }
 
 fn normalize_font_key(s: &str) -> String {
@@ -671,6 +673,15 @@ pub trait TextMeasurer {
         (half, half)
     }
 
+    /// Measures the horizontal extents for Mermaid diagram titles rendered as a single `<text>`
+    /// node (no whitespace-tokenized `<tspan>` runs).
+    ///
+    /// Mermaid flowchart-v2 uses this style for `flowchartTitleText`, and the bbox impacts the
+    /// final `viewBox` / `max-width` computed via `getBBox()`.
+    fn measure_svg_title_bbox_x(&self, text: &str, style: &TextStyle) -> (f64, f64) {
+        self.measure_svg_text_bbox_x(text, style)
+    }
+
     fn measure_wrapped(
         &self,
         text: &str,
@@ -1168,6 +1179,64 @@ impl VendoredFontMetricsTextMeasurer {
         (left, right)
     }
 
+    fn line_svg_bbox_extents_px_single_run(
+        table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
+        text: &str,
+        font_size: f64,
+    ) -> (f64, f64) {
+        let t = text.trim_end();
+        if t.is_empty() {
+            return (0.0, 0.0);
+        }
+
+        if let Some((left_em, right_em)) = Self::lookup_svg_override_em(table.svg_overrides, t) {
+            let left = Self::quantize_svg_bbox_px_nearest((left_em * font_size).max(0.0));
+            let right = Self::quantize_svg_bbox_px_nearest((right_em * font_size).max(0.0));
+            return (left, right);
+        }
+
+        let first = t.chars().next().unwrap_or(' ');
+        let last = t.chars().last().unwrap_or(' ');
+
+        // Mermaid titles (e.g. flowchartTitleText) are rendered as a single `<text>` run, without
+        // whitespace-tokenized `<tspan>` segments. Measure as one run to keep viewport parity.
+        let advance_px_unscaled = Self::line_width_px(
+            table.entries,
+            table.default_em.max(0.1),
+            table.kern_pairs,
+            table.space_trigrams,
+            table.trigrams,
+            t,
+            font_size,
+        );
+
+        let advance_px = advance_px_unscaled * table.svg_scale;
+        let half = Self::quantize_svg_half_px_nearest((advance_px / 2.0).max(0.0));
+
+        let left_oh_em = if first.is_ascii() {
+            0.0
+        } else {
+            Self::lookup_overhang_em(
+                table.svg_bbox_overhang_left,
+                table.svg_bbox_overhang_left_default_em,
+                first,
+            )
+        };
+        let right_oh_em = if last.is_ascii() {
+            0.0
+        } else {
+            Self::lookup_overhang_em(
+                table.svg_bbox_overhang_right,
+                table.svg_bbox_overhang_right_default_em,
+                last,
+            )
+        };
+
+        let left = (half + left_oh_em * font_size).max(0.0);
+        let right = (half + right_oh_em * font_size).max(0.0);
+        (left, right)
+    }
+
     fn line_svg_bbox_width_px(
         table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
         text: &str,
@@ -1349,7 +1418,8 @@ impl VendoredFontMetricsTextMeasurer {
         if !(v.is_finite() && v >= 0.0) {
             return 0.0;
         }
-        (v * 64.0).ceil() / 64.0
+        // Keep identical semantics with `crate::text::ceil_to_1_64_px`.
+        ((v * 64.0) - 1e-9).ceil() / 64.0
     }
 
     fn split_token_to_width_px(
@@ -1546,6 +1616,22 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
         let mut right: f64 = 0.0;
         for line in DeterministicTextMeasurer::normalized_text_lines(text) {
             let (l, r) = Self::line_svg_bbox_extents_px(table, &line, font_size);
+            left = left.max(l);
+            right = right.max(r);
+        }
+        (left, right)
+    }
+
+    fn measure_svg_title_bbox_x(&self, text: &str, style: &TextStyle) -> (f64, f64) {
+        let Some(table) = self.lookup_table(style) else {
+            return self.fallback.measure_svg_title_bbox_x(text, style);
+        };
+
+        let font_size = style.font_size.max(1.0);
+        let mut left: f64 = 0.0;
+        let mut right: f64 = 0.0;
+        for line in DeterministicTextMeasurer::normalized_text_lines(text) {
+            let (l, r) = Self::line_svg_bbox_extents_px_single_run(table, &line, font_size);
             left = left.max(l);
             right = right.max(r);
         }

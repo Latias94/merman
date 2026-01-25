@@ -1,0 +1,14 @@
+---
+title: "Flowchart v2: multiple labeled edges between same nodes (flowchart-v2.spec.js#74)"
+config:
+  htmlLabels: true
+  securityLevel: loose
+  flowchart:
+    htmlLabels: true
+---
+flowchart RL
+  subgraph one
+    a1 -- l1 --> a2
+    a1 -- l2 --> a2
+  end
+

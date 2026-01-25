@@ -156,18 +156,210 @@ pub(crate) fn flowchart_label_metrics_for_layout(
     } else {
         let html_labels = wrap_mode == WrapMode::HtmlLike;
         if html_labels {
+            fn measure_flowchart_html_images(
+                measurer: &dyn TextMeasurer,
+                html: &str,
+                style: &TextStyle,
+                max_width_px: Option<f64>,
+            ) -> crate::text::TextMetrics {
+                let max_width = max_width_px.unwrap_or(200.0).max(1.0);
+                let lower = html.to_ascii_lowercase();
+                if !lower.contains("<img") {
+                    return measurer.measure_wrapped(html, style, max_width_px, WrapMode::HtmlLike);
+                }
+
+                fn has_img_src(tag: &str) -> bool {
+                    let lower = tag.to_ascii_lowercase();
+                    let Some(idx) = lower.find("src=") else {
+                        return false;
+                    };
+                    let rest = tag[idx + 4..].trim_start();
+                    let Some(quote) = rest.chars().next() else {
+                        return false;
+                    };
+                    if quote != '"' && quote != '\'' {
+                        return false;
+                    }
+                    let mut it = rest.chars();
+                    let _ = it.next();
+                    let mut val = String::new();
+                    while let Some(ch) = it.next() {
+                        if ch == quote {
+                            break;
+                        }
+                        val.push(ch);
+                    }
+                    !val.trim().is_empty()
+                }
+
+                fn is_single_img_tag(html: &str) -> bool {
+                    let t = html.trim();
+                    let lower = t.to_ascii_lowercase();
+                    if !lower.starts_with("<img") {
+                        return false;
+                    }
+                    let Some(end) = t.find('>') else {
+                        return false;
+                    };
+                    t[end + 1..].trim().is_empty()
+                }
+
+                let fixed_img_width = is_single_img_tag(html);
+                let img_w = if fixed_img_width { 80.0 } else { max_width };
+
+                if fixed_img_width {
+                    let img_h = if has_img_src(html) { img_w } else { 0.0 };
+                    return crate::text::TextMetrics {
+                        width: crate::text::ceil_to_1_64_px(img_w),
+                        height: crate::text::ceil_to_1_64_px(img_h),
+                        line_count: if img_h > 0.0 { 1 } else { 0 },
+                    };
+                }
+
+                #[derive(Debug, Clone)]
+                enum Block {
+                    Text(String),
+                    Img { has_src: bool },
+                }
+
+                let mut blocks: Vec<Block> = Vec::new();
+                let mut text_buf = String::new();
+
+                let bytes = html.as_bytes();
+                let mut i = 0usize;
+                while i < bytes.len() {
+                    if bytes[i] == b'<' {
+                        let rest = &html[i..];
+                        let rest_lower = rest.to_ascii_lowercase();
+                        if rest_lower.starts_with("<img") {
+                            if let Some(rel_end) = rest.find('>') {
+                                if !text_buf.trim().is_empty() {
+                                    blocks.push(Block::Text(std::mem::take(&mut text_buf)));
+                                } else {
+                                    text_buf.clear();
+                                }
+                                let tag = &rest[..=rel_end];
+                                blocks.push(Block::Img {
+                                    has_src: has_img_src(tag),
+                                });
+                                i += rel_end + 1;
+                                continue;
+                            }
+                        }
+                        if rest_lower.starts_with("<br") {
+                            if let Some(rel_end) = rest.find('>') {
+                                text_buf.push('\n');
+                                i += rel_end + 1;
+                                continue;
+                            }
+                        }
+                        if let Some(rel_end) = rest.find('>') {
+                            i += rel_end + 1;
+                            continue;
+                        }
+                    }
+                    let ch = html[i..].chars().next().unwrap();
+                    text_buf.push(ch);
+                    i += ch.len_utf8();
+                }
+                if !text_buf.trim().is_empty() {
+                    blocks.push(Block::Text(text_buf));
+                }
+
+                fn normalize_text_block(input: &str) -> String {
+                    let mut out = String::with_capacity(input.len());
+                    let mut last_space = false;
+                    for ch in input.chars() {
+                        if ch == '\n' {
+                            while out.ends_with(' ') {
+                                out.pop();
+                            }
+                            out.push('\n');
+                            last_space = false;
+                            continue;
+                        }
+                        if ch.is_whitespace() {
+                            if !last_space {
+                                out.push(' ');
+                            }
+                            last_space = true;
+                            continue;
+                        }
+                        out.push(ch);
+                        last_space = false;
+                    }
+                    out.lines()
+                        .map(|l| l.trim())
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                        .trim()
+                        .to_string()
+                }
+
+                let mut width: f64 = 0.0;
+                let mut height: f64 = 0.0;
+                let mut lines = 0usize;
+
+                for b in blocks {
+                    match b {
+                        Block::Img { has_src } => {
+                            width = width.max(img_w);
+                            let img_h = if has_src { img_w } else { 0.0 };
+                            height += img_h;
+                            if img_h > 0.0 {
+                                lines += 1;
+                            }
+                        }
+                        Block::Text(t) => {
+                            let t = normalize_text_block(&t);
+                            if t.is_empty() {
+                                continue;
+                            }
+                            let m = measurer.measure_wrapped(
+                                &t,
+                                style,
+                                Some(max_width),
+                                WrapMode::HtmlLike,
+                            );
+                            width = width.max(m.width);
+                            height += m.height;
+                            lines += m.line_count;
+                        }
+                    }
+                }
+
+                crate::text::TextMetrics {
+                    width: crate::text::ceil_to_1_64_px(width),
+                    height: crate::text::ceil_to_1_64_px(height),
+                    line_count: lines,
+                }
+            }
+
             let mut label = raw_label.replace("\r\n", "\n");
             if label_type == "string" {
                 label = label.trim().to_string();
             }
             let label = label.trim_end_matches('\n').replace('\n', "<br />");
-            let html = format!("<p>{}</p>", label);
+            let fixed_img_width = {
+                let t = label.trim();
+                let lower = t.to_ascii_lowercase();
+                lower.starts_with("<img")
+                    && t.find('>')
+                        .is_some_and(|end| t[end + 1..].trim().is_empty())
+            };
+            let html = if fixed_img_width {
+                label
+            } else {
+                format!("<p>{}</p>", label)
+            };
             let html = crate::text::replace_fontawesome_icons(&html);
 
             let lower = html.to_ascii_lowercase();
             let has_inline_style = crate::text::flowchart_html_has_inline_style_tags(&lower);
 
-            if has_inline_style {
+            if lower.contains("<img") {
+                measure_flowchart_html_images(measurer, &html, style, max_width_px)
+            } else if has_inline_style {
                 crate::text::measure_html_with_flowchart_bold_deltas(
                     measurer,
                     &html,

@@ -2,67 +2,28 @@
   "diagramType": "flowchart-v2",
   "model": {
     "type": "flowchart-v2",
-    "keyword": "graph",
+    "keyword": "flowchart",
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
-    "classDefs": {
-      "dotClass": [
-        "background:#bbb",
-        "border:1.5px solid red"
-      ],
-      "spaceClass": [
-        "background:  #bbb",
-        "border:1.5px solid red"
-      ],
-      "exClass": [
-        "background:#bbb",
-        "border:1px solid red"
-      ],
-      "percentClass": [
-        "fill:#f96",
-        "stroke:#333",
-        "stroke-width:4px",
-        "font-size:50%",
-        "font-style:bold"
-      ]
-    },
+    "classDefs": {},
     "tooltips": {},
     "edgeDefaults": {
       "style": [],
       "interpolate": null
     },
     "vertexCalls": [
-      "a_a",
-      "b_b",
-      "a",
-      "b"
+      "A",
+      "B",
+      "A",
+      "C",
+      "B",
+      "C"
     ],
     "nodes": [
       {
-        "id": "a_a",
-        "label": "a_a",
-        "labelType": "text",
-        "shape": null,
-        "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [
-          "exClass"
-        ],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "b_b",
-        "label": "b_b",
+        "id": "A",
+        "label": "A",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -80,8 +41,8 @@
         "haveCallback": false
       },
       {
-        "id": "a",
-        "label": "a",
+        "id": "B",
+        "label": "B",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -93,16 +54,14 @@
         "assetWidth": null,
         "assetHeight": null,
         "styles": [],
-        "classes": [
-          "exClass"
-        ],
+        "classes": [],
         "link": null,
         "linkTarget": null,
         "haveCallback": false
       },
       {
-        "id": "b",
-        "label": "b",
+        "id": "C",
+        "label": "C",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -114,9 +73,7 @@
         "assetWidth": null,
         "assetHeight": null,
         "styles": [],
-        "classes": [
-          "exClass"
-        ],
+        "classes": [],
         "link": null,
         "linkTarget": null,
         "haveCallback": false
@@ -124,9 +81,9 @@
     ],
     "edges": [
       {
-        "from": "a_a",
-        "to": "b_b",
-        "id": "L_a_a_b_b_0",
+        "from": "A",
+        "to": "B",
+        "id": "L_A_B_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
@@ -141,9 +98,26 @@
         "animation": null
       },
       {
-        "from": "a",
-        "to": "b",
-        "id": "L_a_b_0",
+        "from": "A",
+        "to": "C",
+        "id": "L_A_C_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "B",
+        "to": "C",
+        "id": "L_B_C_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",

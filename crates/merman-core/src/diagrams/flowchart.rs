@@ -290,7 +290,45 @@ impl<'input> Lexer<'input> {
     fn lex_sep(&mut self) -> Option<(usize, Tok, usize)> {
         let start = self.pos;
         match self.peek()? {
-            b'\n' | b';' => {
+            b'\n' => {
+                let bytes = self.input.as_bytes();
+                let mut look = self.pos + 1;
+                while look < bytes.len() {
+                    match bytes[look] {
+                        b' ' | b'\t' | b'\r' => look += 1,
+                        _ => break,
+                    }
+                }
+                if look < bytes.len() {
+                    let is_linkish = match bytes[look] {
+                        b'~' => {
+                            look + 2 < bytes.len()
+                                && bytes[look + 1] == b'~'
+                                && bytes[look + 2] == b'~'
+                        }
+                        b'=' => look + 1 < bytes.len() && bytes[look + 1] == b'=',
+                        b'-' => {
+                            look + 1 < bytes.len()
+                                && (bytes[look + 1] == b'-' || bytes[look + 1] == b'.')
+                        }
+                        b'o' | b'x' | b'<' => {
+                            look + 2 < bytes.len()
+                                && ((bytes[look + 1] == b'-'
+                                    && (bytes[look + 2] == b'-' || bytes[look + 2] == b'.'))
+                                    || (bytes[look + 1] == b'=' && bytes[look + 2] == b'='))
+                        }
+                        _ => false,
+                    };
+                    if is_linkish {
+                        self.pos = look;
+                        return None;
+                    }
+                }
+
+                self.pos += 1;
+                Some((start, Tok::Sep, self.pos))
+            }
+            b';' => {
                 self.pos += 1;
                 Some((start, Tok::Sep, self.pos))
             }
@@ -1406,6 +1444,80 @@ pub fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
         }
     }
 
+    fn decode_mermaid_hash_entities(input: &str) -> std::borrow::Cow<'_, str> {
+        // Mermaid encodes `#quot;`-style placeholders in the parser and later decodes them before
+        // rendering (`encodeEntities` / `decodeEntities`). In our headless pipeline we decode them
+        // at parse time so layout + SVG output match upstream.
+        if !input.contains('#') {
+            return std::borrow::Cow::Borrowed(input);
+        }
+
+        fn decode_entity(entity: &str) -> Option<char> {
+            match entity {
+                "nbsp" => Some(' '),
+                "lt" => Some('<'),
+                "gt" => Some('>'),
+                "amp" => Some('&'),
+                "quot" => Some('"'),
+                "apos" => Some('\''),
+                _ => {
+                    if let Some(hex) = entity
+                        .strip_prefix("x")
+                        .or_else(|| entity.strip_prefix("X"))
+                    {
+                        u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
+                    } else if entity.chars().all(|c| c.is_ascii_digit() || c == '+') {
+                        entity
+                            .trim_start_matches('+')
+                            .parse::<u32>()
+                            .ok()
+                            .and_then(char::from_u32)
+                    } else {
+                        None
+                    }
+                }
+            }
+        }
+
+        let mut out = String::with_capacity(input.len());
+        let mut it = input.chars().peekable();
+        while let Some(ch) = it.next() {
+            if ch != '#' {
+                out.push(ch);
+                continue;
+            }
+            let mut entity = String::new();
+            let mut ok = false;
+            for _ in 0..32 {
+                match it.peek().copied() {
+                    Some(';') => {
+                        it.next();
+                        ok = true;
+                        break;
+                    }
+                    Some(c) if c.is_ascii_alphanumeric() || c == '+' => {
+                        entity.push(c);
+                        it.next();
+                    }
+                    _ => break,
+                }
+            }
+            if ok {
+                if let Some(decoded) = decode_entity(&entity) {
+                    out.push(decoded);
+                } else {
+                    out.push('#');
+                    out.push_str(&entity);
+                    out.push(';');
+                }
+            } else {
+                out.push('#');
+                out.push_str(&entity);
+            }
+        }
+        std::borrow::Cow::Owned(out)
+    }
+
     Ok(json!({
         "type": meta.diagram_type,
         "keyword": ast.keyword,
@@ -1422,6 +1534,7 @@ pub fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
         "nodes": nodes.into_iter().map(|n| {
             let layout_shape = get_layout_shape(&n);
             let label_raw = n.label.clone().unwrap_or_else(|| n.id.clone());
+            let label_raw = decode_mermaid_hash_entities(&label_raw);
             let mut label = sanitize_text(&label_raw, &meta.effective_config);
             if label.len() >= 2 && label.starts_with('\"') && label.ends_with('\"') {
                 label = label[1..label.len() - 1].to_string();
@@ -1450,7 +1563,10 @@ pub fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
             let label = e
                 .label
                 .as_ref()
-                .map(|s| sanitize_text(s, &meta.effective_config));
+                .map(|s| {
+                    let decoded = decode_mermaid_hash_entities(s);
+                    sanitize_text(&decoded, &meta.effective_config)
+                });
             json!({
                 "from": e.from,
                 "to": e.to,

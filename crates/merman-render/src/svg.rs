@@ -9419,7 +9419,7 @@ pub fn render_flowchart_v2_svg(
             font_size: TITLE_FONT_SIZE_PX,
             font_weight: None,
         };
-        let (title_left, title_right) = measurer.measure_svg_text_bbox_x(title, &title_style);
+        let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, &title_style);
         let baseline_y = -title_top_margin;
         // Mermaid title bbox uses SVG `getBBox()`, which varies slightly across fonts.
         // Courier in Mermaid@11.12.2 has a visibly smaller ascender than the default
@@ -15819,7 +15819,13 @@ fn flowchart_edge_class_attr(edge: &crate::flowchart::FlowEdge) -> String {
         _ => ("edge-thickness-normal", "edge-pattern-solid"),
     };
 
-    format!("{thickness_1} {pattern_1} edge-thickness-normal edge-pattern-solid flowchart-link")
+    if thickness_1 == "edge-thickness-invisible" {
+        // Mermaid@11.12.2 does *not* include the second tuple nor `flowchart-link` for invisible
+        // edges.
+        format!("{thickness_1} {pattern_1}")
+    } else {
+        format!("{thickness_1} {pattern_1} edge-thickness-normal edge-pattern-solid flowchart-link")
+    }
 }
 
 fn flowchart_edge_path_d_for_bbox(
@@ -16690,6 +16696,25 @@ fn render_flowchart_edge_path(
         matches!(layout_shape, Some("roundedRect" | "rounded"))
     }
 
+    fn is_polygon_layout_shape(layout_shape: Option<&str>) -> bool {
+        matches!(
+            layout_shape,
+            Some(
+                "hexagon"
+                    | "hex"
+                    | "lean_right"
+                    | "lean-r"
+                    | "lean-right"
+                    | "lean_left"
+                    | "lean-l"
+                    | "lean-left"
+                    | "trapezoid"
+                    | "inv_trapezoid"
+                    | "inv-trapezoid"
+            )
+        )
+    }
+
     fn intersect_rect(
         node: &BoundaryNode,
         point: &crate::model::LayoutPoint,
@@ -16775,6 +16800,224 @@ fn render_flowchart_edge_path(
         }
     }
 
+    fn intersect_line(
+        p1: crate::model::LayoutPoint,
+        p2: crate::model::LayoutPoint,
+        q1: crate::model::LayoutPoint,
+        q2: crate::model::LayoutPoint,
+    ) -> Option<crate::model::LayoutPoint> {
+        // Port of Mermaid `intersect-line.js` (11.12.2).
+        //
+        // This does segment intersection with a "denom/2" offset rounding that materially affects
+        // flowchart endpoints and thus SVG `viewBox`/`max-width` parity.
+        let a1 = p2.y - p1.y;
+        let b1 = p1.x - p2.x;
+        let c1 = p2.x * p1.y - p1.x * p2.y;
+
+        let r3 = a1 * q1.x + b1 * q1.y + c1;
+        let r4 = a1 * q2.x + b1 * q2.y + c1;
+
+        fn same_sign(r1: f64, r2: f64) -> bool {
+            r1 * r2 > 0.0
+        }
+
+        if r3 != 0.0 && r4 != 0.0 && same_sign(r3, r4) {
+            return None;
+        }
+
+        let a2 = q2.y - q1.y;
+        let b2 = q1.x - q2.x;
+        let c2 = q2.x * q1.y - q1.x * q2.y;
+
+        let r1 = a2 * p1.x + b2 * p1.y + c2;
+        let r2 = a2 * p2.x + b2 * p2.y + c2;
+
+        let epsilon = 1e-6;
+        if r1.abs() < epsilon && r2.abs() < epsilon && same_sign(r1, r2) {
+            return None;
+        }
+
+        let denom = a1 * b2 - a2 * b1;
+        if denom == 0.0 {
+            return None;
+        }
+
+        let offset = (denom / 2.0).abs();
+
+        let mut num = b1 * c2 - b2 * c1;
+        let x = if num < 0.0 {
+            (num - offset) / denom
+        } else {
+            (num + offset) / denom
+        };
+
+        num = a2 * c1 - a1 * c2;
+        let y = if num < 0.0 {
+            (num - offset) / denom
+        } else {
+            (num + offset) / denom
+        };
+
+        Some(crate::model::LayoutPoint { x, y })
+    }
+
+    fn intersect_polygon(
+        node: &BoundaryNode,
+        poly_points: &[crate::model::LayoutPoint],
+        point: &crate::model::LayoutPoint,
+    ) -> crate::model::LayoutPoint {
+        // Port of Mermaid `intersect-polygon.js` (11.12.2).
+        let x1 = node.x;
+        let y1 = node.y;
+
+        let mut min_x = f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        for p in poly_points {
+            min_x = min_x.min(p.x);
+            min_y = min_y.min(p.y);
+        }
+
+        let left = x1 - node.width / 2.0 - min_x;
+        let top = y1 - node.height / 2.0 - min_y;
+
+        let mut intersections: Vec<crate::model::LayoutPoint> = Vec::new();
+        for i in 0..poly_points.len() {
+            let p1 = &poly_points[i];
+            let p2 = &poly_points[if i + 1 < poly_points.len() { i + 1 } else { 0 }];
+            let q1 = crate::model::LayoutPoint {
+                x: left + p1.x,
+                y: top + p1.y,
+            };
+            let q2 = crate::model::LayoutPoint {
+                x: left + p2.x,
+                y: top + p2.y,
+            };
+            if let Some(inter) = intersect_line(
+                crate::model::LayoutPoint { x: x1, y: y1 },
+                point.clone(),
+                q1,
+                q2,
+            ) {
+                intersections.push(inter);
+            }
+        }
+
+        if intersections.is_empty() {
+            return crate::model::LayoutPoint { x: x1, y: y1 };
+        }
+
+        if intersections.len() > 1 {
+            intersections.sort_by(|p, q| {
+                let pdx = p.x - point.x;
+                let pdy = p.y - point.y;
+                let qdx = q.x - point.x;
+                let qdy = q.y - point.y;
+                let dist_p = (pdx * pdx + pdy * pdy).sqrt();
+                let dist_q = (qdx * qdx + qdy * qdy).sqrt();
+                dist_p
+                    .partial_cmp(&dist_q)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+        }
+
+        intersections[0].clone()
+    }
+
+    fn polygon_points_for_layout_shape(
+        layout_shape: &str,
+        node: &BoundaryNode,
+    ) -> Option<Vec<crate::model::LayoutPoint>> {
+        let w = node.width.max(1.0);
+        let h = node.height.max(1.0);
+        match layout_shape {
+            "hexagon" | "hex" => {
+                let half_width = w / 2.0;
+                let half_height = h / 2.0;
+                let fixed_length = half_height / 2.0;
+                let deduced_width = half_width - fixed_length;
+                Some(vec![
+                    crate::model::LayoutPoint {
+                        x: -deduced_width,
+                        y: -half_height,
+                    },
+                    crate::model::LayoutPoint {
+                        x: 0.0,
+                        y: -half_height,
+                    },
+                    crate::model::LayoutPoint {
+                        x: deduced_width,
+                        y: -half_height,
+                    },
+                    crate::model::LayoutPoint {
+                        x: half_width,
+                        y: 0.0,
+                    },
+                    crate::model::LayoutPoint {
+                        x: deduced_width,
+                        y: half_height,
+                    },
+                    crate::model::LayoutPoint {
+                        x: 0.0,
+                        y: half_height,
+                    },
+                    crate::model::LayoutPoint {
+                        x: -deduced_width,
+                        y: half_height,
+                    },
+                    crate::model::LayoutPoint {
+                        x: -half_width,
+                        y: 0.0,
+                    },
+                ])
+            }
+            "lean_right" | "lean-r" | "lean-right" => {
+                let total_w = w;
+                let w = (total_w - h).max(1.0);
+                let dx = (3.0 * h) / 6.0;
+                Some(vec![
+                    crate::model::LayoutPoint { x: -dx, y: 0.0 },
+                    crate::model::LayoutPoint { x: w, y: 0.0 },
+                    crate::model::LayoutPoint { x: w + dx, y: -h },
+                    crate::model::LayoutPoint { x: 0.0, y: -h },
+                ])
+            }
+            "lean_left" | "lean-l" | "lean-left" => {
+                let total_w = w;
+                let w = (total_w - h).max(1.0);
+                let dx = (3.0 * h) / 6.0;
+                Some(vec![
+                    crate::model::LayoutPoint { x: 0.0, y: 0.0 },
+                    crate::model::LayoutPoint { x: w + dx, y: 0.0 },
+                    crate::model::LayoutPoint { x: w, y: -h },
+                    crate::model::LayoutPoint { x: -dx, y: -h },
+                ])
+            }
+            "trapezoid" => {
+                let total_w = w;
+                let w = (total_w - h).max(1.0);
+                let dx = (3.0 * h) / 6.0;
+                Some(vec![
+                    crate::model::LayoutPoint { x: -dx, y: 0.0 },
+                    crate::model::LayoutPoint { x: w + dx, y: 0.0 },
+                    crate::model::LayoutPoint { x: w, y: -h },
+                    crate::model::LayoutPoint { x: 0.0, y: -h },
+                ])
+            }
+            "inv_trapezoid" | "inv-trapezoid" => {
+                let total_w = w;
+                let w = (total_w - h).max(1.0);
+                let dx = (3.0 * h) / 6.0;
+                Some(vec![
+                    crate::model::LayoutPoint { x: 0.0, y: 0.0 },
+                    crate::model::LayoutPoint { x: w, y: 0.0 },
+                    crate::model::LayoutPoint { x: w + dx, y: -h },
+                    crate::model::LayoutPoint { x: -dx, y: -h },
+                ])
+            }
+            _ => None,
+        }
+    }
+
     fn intersect_for_layout_shape(
         node: &BoundaryNode,
         layout_shape: Option<&str>,
@@ -16783,6 +17026,9 @@ fn render_flowchart_edge_path(
         match layout_shape {
             Some("circle") => intersect_circle(node, point),
             Some("diamond") => intersect_diamond(node, point),
+            Some(s) if is_polygon_layout_shape(Some(s)) => polygon_points_for_layout_shape(s, node)
+                .map(|pts| intersect_polygon(node, &pts, point))
+                .unwrap_or_else(|| intersect_rect(node, point)),
             _ => intersect_rect(node, point),
         }
     }
@@ -16823,7 +17069,7 @@ fn render_flowchart_edge_path(
                     matches!(
                         layout_shape,
                         Some("circle" | "diamond" | "roundedRect" | "rounded")
-                    )
+                    ) || is_polygon_layout_shape(layout_shape)
                 }
 
                 let mut start = base_points[0].clone();
@@ -18912,30 +19158,97 @@ fn flowchart_label_html(
             .replace("<br/>", "<br />")
             .replace("<br >", "<br />");
 
+        fn is_xhtml_void_tag(name: &str) -> bool {
+            matches!(
+                name,
+                "br" | "img"
+                    | "hr"
+                    | "input"
+                    | "meta"
+                    | "link"
+                    | "source"
+                    | "area"
+                    | "base"
+                    | "col"
+                    | "embed"
+                    | "param"
+                    | "track"
+                    | "wbr"
+            )
+        }
+
+        fn xhtml_self_close_void_tag(tag: &str) -> String {
+            if !tag.ends_with('>') {
+                return tag.to_string();
+            }
+            let mut inner = tag[..tag.len() - 1].to_string();
+            while inner.ends_with(|c: char| c.is_whitespace()) {
+                inner.pop();
+            }
+            if inner.ends_with('/') {
+                // Normalize to `<tag ... />` (space before `/`) to match upstream SVG baselines.
+                while inner.ends_with('/') {
+                    inner.pop();
+                }
+                while inner.ends_with(|c: char| c.is_whitespace()) {
+                    inner.pop();
+                }
+                inner.push_str(" /");
+                inner.push('>');
+                return inner;
+            }
+            inner.push_str(" /");
+            inner.push('>');
+            inner
+        }
+
         let mut out = String::with_capacity(input.len());
         let mut chars = input.chars().peekable();
-        let mut in_tag = false;
 
         while let Some(ch) = chars.next() {
-            if in_tag {
-                out.push(ch);
-                if ch == '>' {
-                    in_tag = false;
-                }
-                continue;
-            }
-
             match ch {
                 '<' => {
                     let next = chars.peek().copied();
-                    if matches!(
+                    if !matches!(
                         next,
                         Some(n) if n.is_ascii_alphabetic() || matches!(n, '/' | '!' | '?')
                     ) {
-                        in_tag = true;
-                        out.push('<');
-                    } else {
                         out.push_str("&lt;");
+                        continue;
+                    }
+
+                    let mut tag = String::from("<");
+                    let mut saw_end = false;
+                    while let Some(c) = chars.next() {
+                        tag.push(c);
+                        if c == '>' {
+                            saw_end = true;
+                            break;
+                        }
+                    }
+                    if !saw_end {
+                        out.push_str("&lt;");
+                        out.push_str(&tag[1..]);
+                        continue;
+                    }
+
+                    let tag_trim = tag.trim();
+                    let inner = tag_trim
+                        .trim_start_matches('<')
+                        .trim_end_matches('>')
+                        .trim();
+                    let is_closing = inner.starts_with('/');
+                    let name = inner
+                        .trim_start_matches('/')
+                        .trim_end_matches('/')
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("")
+                        .to_ascii_lowercase();
+                    if !is_closing && is_xhtml_void_tag(&name) {
+                        out.push_str(&xhtml_self_close_void_tag(tag_trim));
+                    } else {
+                        out.push_str(tag_trim);
                     }
                 }
                 '>' => out.push_str("&gt;"),
@@ -18975,6 +19288,84 @@ fn flowchart_label_html(
         out
     }
 
+    fn normalize_flowchart_img_tags(input: &str, fixed_width: bool) -> String {
+        // Mermaid flowchart-v2 adds inline styles to `<img>` tags inside HTML labels to constrain
+        // their layout. The SVG baseline uses XHTML, so we also self-close the tags later.
+        if !input.to_ascii_lowercase().contains("<img") {
+            return input.to_string();
+        }
+
+        let style = if fixed_width {
+            "display: flex; flex-direction: column; min-width: 80px; max-width: 80px;"
+        } else {
+            "display: flex; flex-direction: column; width: 100%;"
+        };
+
+        fn extract_img_src(tag: &str) -> Option<String> {
+            let lower = tag.to_ascii_lowercase();
+            let idx = lower.find("src=")?;
+            let rest = &tag[idx + 4..];
+            let rest = rest.trim_start();
+            let quote = rest.chars().next()?;
+            if quote != '"' && quote != '\'' {
+                return None;
+            }
+            let mut val = String::new();
+            let mut it = rest.chars();
+            let _ = it.next(); // consume quote
+            while let Some(ch) = it.next() {
+                if ch == quote {
+                    break;
+                }
+                val.push(ch);
+            }
+            let val = val.trim().to_string();
+            if val.is_empty() { None } else { Some(val) }
+        }
+
+        let mut out = String::with_capacity(input.len());
+        let bytes = input.as_bytes();
+        let mut i = 0usize;
+        while i < bytes.len() {
+            if bytes[i] == b'<' && i + 3 < bytes.len() {
+                let rest = &input[i..];
+                let rest_lower = rest.to_ascii_lowercase();
+                if rest_lower.starts_with("<img") {
+                    let Some(rel_end) = rest.find('>') else {
+                        out.push_str(rest);
+                        break;
+                    };
+                    let tag = &rest[..=rel_end];
+                    let src = extract_img_src(tag);
+                    out.push_str("<img");
+                    if let Some(src) = src {
+                        out.push_str(&format!(r#" src="{}""#, escape_attr(&src)));
+                    }
+                    out.push_str(&format!(r#" style="{}""#, style));
+                    out.push('>');
+                    i += rel_end + 1;
+                    continue;
+                }
+            }
+            let ch = input[i..].chars().next().unwrap();
+            out.push(ch);
+            i += ch.len_utf8();
+        }
+        out
+    }
+
+    fn is_single_img_label(label: &str) -> bool {
+        let t = label.trim();
+        let lower = t.to_ascii_lowercase();
+        if !lower.starts_with("<img") {
+            return false;
+        }
+        let Some(end) = t.find('>') else {
+            return false;
+        };
+        t[end + 1..].trim().is_empty()
+    }
+
     match label_type {
         "markdown" => {
             let mut html_out = String::new();
@@ -18999,7 +19390,13 @@ fn flowchart_label_html(
                 label = label.trim().to_string();
             }
             let label = label.trim_end_matches('\n').replace('\n', "<br />");
-            let wrapped = format!("<p>{}</p>", label);
+            let fixed_img_width = is_single_img_label(&label);
+            let label = normalize_flowchart_img_tags(&label, fixed_img_width);
+            let wrapped = if fixed_img_width {
+                label
+            } else {
+                format!("<p>{}</p>", label)
+            };
             let wrapped = crate::text::replace_fontawesome_icons(&wrapped);
             xhtml_fix_fragment(&merman_core::sanitize::sanitize_text(&wrapped, config))
         }
