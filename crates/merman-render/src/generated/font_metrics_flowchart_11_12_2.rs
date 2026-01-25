@@ -1120,6 +1120,7 @@ pub const FONT_METRICS_TABLES: &[FontMetricsTables] = &[
             ("H", 0.654296875),
             ("Haiya", 2.5322265625),
             ("I", 0.2783203125),
+            ("I am a circle", 5.567708333333333),
             ("J", 0.4765625),
             ("K", 0.576171875),
             ("L", 0.5068359375),
@@ -1233,6 +1234,7 @@ pub const FONT_METRICS_TABLES: &[FontMetricsTables] = &[
             ("d", 0.5576171875),
             ("default", 3.2353515625),
             ("default style", 5.671875),
+            ("dot.template.js", 7.087890625),
             ("dotted", 2.9892578125),
             ("e", 0.5458984375),
             ("endpoint", 3.970703125),
@@ -1632,9 +1634,24 @@ pub const FONT_METRICS_TABLES: &[FontMetricsTables] = &[
                 7.061577690972222,
             ),
             (
+                "Flowchart v2: bigger font from classes (flowchart-v2.spec.js#65-3)",
+                14.928819444444445,
+                14.928819444444445,
+            ),
+            (
+                "Flowchart v2: bold text from classes (flowchart-v2.spec.js#65-2)",
+                14.506944444444445,
+                14.506944444444445,
+            ),
+            (
                 "Flowchart v2: clipping of edges (flowchart-v2.spec.js#2824)",
                 13.4340277777778,
                 13.4340277777778,
+            ),
+            (
+                "Flowchart v2: default in node name (flowchart-v2.spec.js#2388)",
+                14.442708333333334,
+                14.442708333333334,
             ),
             (
                 "Flowchart v2: html labels with images and/or text (flowchart-v2.spec.js#4023)",
@@ -1647,9 +1664,69 @@ pub const FONT_METRICS_TABLES: &[FontMetricsTables] = &[
                 16.7821180555556,
             ),
             (
+                "Flowchart v2: more nested subgraph cases (BT) (flowchart-v2.spec.js#68)",
+                16.509114583333332,
+                16.509114583333332,
+            ),
+            (
+                "Flowchart v2: more nested subgraph cases (LR) (flowchart-v2.spec.js#69)",
+                16.48003472222222,
+                16.48003472222222,
+            ),
+            (
+                "Flowchart v2: more nested subgraph cases (RL) (flowchart-v2.spec.js#67)",
+                16.48003472222222,
+                16.48003472222222,
+            ),
+            (
+                "Flowchart v2: more nested subgraph cases (TB) (flowchart-v2.spec.js#66)",
+                16.509114583333332,
+                16.509114583333332,
+            ),
+            (
                 "Flowchart v2: multiple labeled edges between same nodes (flowchart-v2.spec.js#74)",
                 19.0703125,
                 19.0703125,
+            ),
+            (
+                "Flowchart v2: nested subgraph links out/between (BT) (flowchart-v2.spec.js#72)",
+                18.13107638888889,
+                18.13107638888889,
+            ),
+            (
+                "Flowchart v2: nested subgraph links out/between (RL) (flowchart-v2.spec.js#71)",
+                18.10199652777778,
+                18.10199652777778,
+            ),
+            (
+                "Flowchart v2: nested subgraph links out/between (TB) (flowchart-v2.spec.js#70)",
+                18.13107638888889,
+                18.13107638888889,
+            ),
+            (
+                "Flowchart v2: styled subgraphs (flowchart-v2.spec.js#62)",
+                12.829427931043837,
+                12.82942623562283,
+            ),
+            (
+                "Flowchart v2: subgraph child links outside (flowchart-v2.spec.js#5064)",
+                15.84982638888889,
+                15.84982638888889,
+            ),
+            (
+                "Flowchart v2: subgraph contains only subgraphs, links outside (flowchart-v2.spec.js#5059)",
+                20.26519097222222,
+                20.26519097222222,
+            ),
+            (
+                "Flowchart v2: subgraph title themeable (flowchart-v2.spec.js#63)",
+                14.784288194444445,
+                14.784288194444445,
+            ),
+            (
+                "Flowchart v2: text-color from classes (flowchart-v2.spec.js#65-1)",
+                14.692708333333334,
+                14.692708333333334,
             ),
             (
                 "Flowchart v2: unicode encoded character with HTML labels true (flowchart-v2.spec.js#76)",

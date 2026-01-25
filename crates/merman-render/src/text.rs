@@ -184,6 +184,21 @@ fn is_flowchart_default_font(style: &TextStyle) -> bool {
     normalize_font_key(f) == "trebuchetms,verdana,arial,sans-serif"
 }
 
+fn style_requests_bold_font_weight(style: &TextStyle) -> bool {
+    let Some(w) = style.font_weight.as_deref() else {
+        return false;
+    };
+    let w = w.trim();
+    if w.is_empty() {
+        return false;
+    }
+    let lower = w.to_ascii_lowercase();
+    if lower == "bold" || lower == "bolder" {
+        return true;
+    }
+    lower.parse::<i32>().ok().is_some_and(|n| n >= 600)
+}
+
 fn flowchart_default_bold_delta_em(ch: char) -> f64 {
     // Derived from browser `canvas.measureText()` using `font: bold 16px trebuchet ms, verdana, arial, sans-serif`.
     // Values are `bold_em(ch) - regular_em(ch)`.
@@ -1120,6 +1135,7 @@ impl VendoredFontMetricsTextMeasurer {
                             table.space_trigrams,
                             table.trigrams,
                             w,
+                            false,
                             font_size,
                         );
                     } else {
@@ -1131,6 +1147,7 @@ impl VendoredFontMetricsTextMeasurer {
                             table.space_trigrams,
                             table.trigrams,
                             &seg,
+                            false,
                             font_size,
                         );
                     }
@@ -1144,6 +1161,7 @@ impl VendoredFontMetricsTextMeasurer {
                     table.space_trigrams,
                     table.trigrams,
                     t,
+                    false,
                     font_size,
                 )
             }
@@ -1207,6 +1225,7 @@ impl VendoredFontMetricsTextMeasurer {
             table.space_trigrams,
             table.trigrams,
             t,
+            false,
             font_size,
         );
 
@@ -1389,6 +1408,7 @@ impl VendoredFontMetricsTextMeasurer {
         space_trigrams: &[(u32, u32, f64)],
         trigrams: &[(u32, u32, u32, f64)],
         text: &str,
+        bold: bool,
         font_size: f64,
     ) -> f64 {
         let mut em = 0.0;
@@ -1398,6 +1418,12 @@ impl VendoredFontMetricsTextMeasurer {
             em += Self::lookup_char_em(entries, default_em, ch);
             if let Some(p) = prev {
                 em += Self::lookup_kern_em(kern_pairs, p, ch);
+            }
+            if bold {
+                if let Some(p) = prev {
+                    em += flowchart_default_bold_kern_delta_em(p, ch);
+                }
+                em += flowchart_default_bold_delta_em(ch);
             }
             if let (Some(a), Some(b)) = (prevprev, prev) {
                 if b == ' ' {
@@ -1429,6 +1455,7 @@ impl VendoredFontMetricsTextMeasurer {
         trigrams: &[(u32, u32, u32, f64)],
         tok: &str,
         max_width_px: f64,
+        bold: bool,
         font_size: f64,
     ) -> (String, String) {
         if max_width_px <= 0.0 {
@@ -1444,6 +1471,12 @@ impl VendoredFontMetricsTextMeasurer {
             em += Self::lookup_char_em(entries, default_em, *ch);
             if let Some(p) = prev {
                 em += Self::lookup_kern_em(kern_pairs, p, *ch);
+            }
+            if bold {
+                if let Some(p) = prev {
+                    em += flowchart_default_bold_kern_delta_em(p, *ch);
+                }
+                em += flowchart_default_bold_delta_em(*ch);
             }
             if let (Some(a), Some(b)) = (prevprev, prev) {
                 if !(a.is_whitespace() || b.is_whitespace() || ch.is_whitespace()) {
@@ -1478,6 +1511,7 @@ impl VendoredFontMetricsTextMeasurer {
         max_width_px: f64,
         font_size: f64,
         break_long_words: bool,
+        bold: bool,
     ) -> Vec<String> {
         let mut tokens =
             std::collections::VecDeque::from(DeterministicTextMeasurer::split_line_to_words(line));
@@ -1498,6 +1532,7 @@ impl VendoredFontMetricsTextMeasurer {
                 space_trigrams,
                 trigrams,
                 candidate_trimmed,
+                bold,
                 font_size,
             ) <= max_width_px
             {
@@ -1521,6 +1556,7 @@ impl VendoredFontMetricsTextMeasurer {
                 space_trigrams,
                 trigrams,
                 tok.as_str(),
+                bold,
                 font_size,
             ) <= max_width_px
             {
@@ -1540,6 +1576,7 @@ impl VendoredFontMetricsTextMeasurer {
                 trigrams,
                 &tok,
                 max_width_px,
+                bold,
                 font_size,
             );
             out.push(head);
@@ -1567,6 +1604,7 @@ impl VendoredFontMetricsTextMeasurer {
         trigrams: &[(u32, u32, u32, f64)],
         text: &str,
         style: &TextStyle,
+        bold: bool,
         max_width_px: Option<f64>,
         wrap_mode: WrapMode,
     ) -> Vec<String> {
@@ -1587,6 +1625,7 @@ impl VendoredFontMetricsTextMeasurer {
                     w,
                     font_size,
                     break_long_words,
+                    bold,
                 ));
             } else {
                 lines.push(line);
@@ -1651,6 +1690,7 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
                 .measure_wrapped(text, style, max_width, wrap_mode);
         };
 
+        let bold = is_flowchart_default_font(style) && style_requests_bold_font_weight(style);
         let font_size = style.font_size.max(1.0);
         let max_width = max_width.filter(|w| w.is_finite() && *w > 0.0);
         let line_height_factor = match wrap_mode {
@@ -1680,6 +1720,7 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
                         table.space_trigrams,
                         table.trigrams,
                         &line,
+                        bold,
                         font_size,
                     ));
                 }
@@ -1698,6 +1739,7 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
                 table.trigrams,
                 text,
                 style,
+                bold,
                 max_width,
                 wrap_mode,
             ),
@@ -1720,6 +1762,7 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
                             table.space_trigrams,
                             table.trigrams,
                             line,
+                            bold,
                             font_size,
                         ));
                     }

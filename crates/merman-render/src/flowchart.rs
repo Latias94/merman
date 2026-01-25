@@ -9,6 +9,89 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 
+fn parse_style_decl(s: &str) -> Option<(&str, &str)> {
+    let s = s.trim().trim_end_matches(';').trim();
+    if s.is_empty() {
+        return None;
+    }
+    let (k, v) = s.split_once(':')?;
+    let k = k.trim();
+    let v = v.trim();
+    if k.is_empty() || v.is_empty() {
+        return None;
+    }
+    Some((k, v))
+}
+
+fn parse_css_px_f64(v: &str) -> Option<f64> {
+    let v = v.trim().trim_end_matches(';').trim();
+    let v = v.trim_end_matches("px").trim();
+    if v.is_empty() {
+        return None;
+    }
+    v.parse::<f64>().ok()
+}
+
+fn normalize_css_font_family(font_family: &str) -> String {
+    font_family.trim().trim_end_matches(';').trim().to_string()
+}
+
+pub(crate) fn flowchart_effective_text_style_for_classes(
+    base: &TextStyle,
+    class_defs: &HashMap<String, Vec<String>>,
+    classes: &[String],
+    inline_styles: &[String],
+) -> TextStyle {
+    let mut style = base.clone();
+
+    for class in classes {
+        let Some(decls) = class_defs.get(class) else {
+            continue;
+        };
+        for d in decls {
+            let Some((k, v)) = parse_style_decl(d) else {
+                continue;
+            };
+            match k {
+                "font-size" => {
+                    if let Some(px) = parse_css_px_f64(v) {
+                        style.font_size = px;
+                    }
+                }
+                "font-family" => {
+                    style.font_family = Some(normalize_css_font_family(v));
+                }
+                "font-weight" => {
+                    style.font_weight = Some(v.trim().to_string());
+                }
+                _ => {}
+            }
+        }
+    }
+
+    for d in inline_styles {
+        let Some((k, v)) = parse_style_decl(d) else {
+            continue;
+        };
+        match k {
+            "font-size" => {
+                if let Some(px) = parse_css_px_f64(v) {
+                    style.font_size = px;
+                }
+            }
+            "font-family" => {
+                style.font_family = Some(normalize_css_font_family(v));
+            }
+            "font-weight" => {
+                style.font_weight = Some(v.trim().to_string());
+            }
+            _ => {}
+        }
+    }
+
+    style
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct FlowchartV2Model {
     #[serde(default, rename = "accDescr")]
@@ -1095,11 +1178,17 @@ pub fn layout_flowchart_v2(
         }
         let raw_label = n.label.as_deref().unwrap_or(&n.id);
         let label_type = n.label_type.as_deref().unwrap_or("text");
+        let node_text_style = flowchart_effective_text_style_for_classes(
+            &text_style,
+            &model.class_defs,
+            &n.classes,
+            &n.styles,
+        );
         let mut metrics = flowchart_label_metrics_for_layout(
             measurer,
             raw_label,
             label_type,
-            &text_style,
+            &node_text_style,
             Some(wrapping_width),
             node_wrap_mode,
         );
@@ -1116,7 +1205,7 @@ pub fn layout_flowchart_v2(
         if span_css_height_parity {
             crate::text::flowchart_apply_mermaid_styled_node_height_parity(
                 &mut metrics,
-                &text_style,
+                &node_text_style,
             );
         }
         let (width, height) =
@@ -1135,11 +1224,17 @@ pub fn layout_flowchart_v2(
             continue;
         }
         let label_type = sg.label_type.as_deref().unwrap_or("text");
+        let sg_text_style = flowchart_effective_text_style_for_classes(
+            &text_style,
+            &model.class_defs,
+            &sg.classes,
+            &[],
+        );
         let metrics = flowchart_label_metrics_for_layout(
             measurer,
             &sg.title,
             label_type,
-            &text_style,
+            &sg_text_style,
             Some(cluster_title_wrapping_width),
             node_wrap_mode,
         );
@@ -1284,11 +1379,17 @@ pub fn layout_flowchart_v2(
         if edge_label_is_non_empty(e) {
             let label_text = e.label.as_deref().unwrap_or_default();
             let label_type = e.label_type.as_deref().unwrap_or("text");
+            let edge_text_style = flowchart_effective_text_style_for_classes(
+                &text_style,
+                &model.class_defs,
+                &e.classes,
+                &e.style,
+            );
             let metrics = flowchart_label_metrics_for_layout(
                 measurer,
                 label_text,
                 label_type,
-                &text_style,
+                &edge_text_style,
                 Some(wrapping_width),
                 edge_wrap_mode,
             );

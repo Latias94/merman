@@ -17597,7 +17597,7 @@ fn render_flowchart_edge_path(
     };
     let line_data = line_with_offset_points(&line_data, arrow_type_start, arrow_type_end);
 
-    let d = match interpolate {
+    let mut d = match interpolate {
         "linear" => curve_linear_path_d(&line_data),
         "step" => curve_step_path_d(&line_data),
         "stepAfter" => curve_step_after_path_d(&line_data),
@@ -17608,6 +17608,18 @@ fn render_flowchart_edge_path(
         // Mermaid defaults to `basis` for flowchart edges.
         _ => curve_basis_path_d(&line_data),
     };
+    // Mermaid flowchart-v2 can emit a degenerate edge path when linking a subgraph to one of its
+    // strict descendants (e.g. `Sub --> In` where `In` is declared inside `subgraph Sub`). Upstream
+    // renders these as a single-point path (`M..Z`) while preserving the original `data-points`.
+    if (ctx.subgraphs_by_id.contains_key(&edge.from)
+        && flowchart_is_strict_descendant(&ctx.parent, edge.to.as_str(), edge.from.as_str()))
+        || (ctx.subgraphs_by_id.contains_key(&edge.to)
+            && flowchart_is_strict_descendant(&ctx.parent, edge.from.as_str(), edge.to.as_str()))
+    {
+        if let Some(p) = points_for_data_points.last() {
+            d = format!("M{},{}Z", fmt(p.x + 4.0), fmt(p.y));
+        }
+    }
 
     let points_b64 = base64::engine::general_purpose::STANDARD
         .encode(json_stringify_points(&points_for_data_points));
@@ -19033,11 +19045,17 @@ fn render_flowchart_node(
 
     let label_text_plain =
         flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+    let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
+        &ctx.text_style,
+        &ctx.class_defs,
+        &node_classes,
+        &node_styles,
+    );
     let mut metrics = if label_type == "markdown" {
         crate::text::measure_markdown_with_flowchart_bold_deltas(
             ctx.measurer,
             &label_text,
-            &ctx.text_style,
+            &node_text_style,
             Some(ctx.wrapping_width),
             ctx.node_wrap_mode,
         )
@@ -19048,14 +19066,14 @@ fn render_flowchart_node(
         crate::text::measure_html_with_flowchart_bold_deltas(
             ctx.measurer,
             &label_text,
-            &ctx.text_style,
+            &node_text_style,
             Some(ctx.wrapping_width),
             ctx.node_wrap_mode,
         )
     } else {
         ctx.measurer.measure_wrapped(
             &label_text_plain,
-            &ctx.text_style,
+            &node_text_style,
             Some(ctx.wrapping_width),
             ctx.node_wrap_mode,
         )
@@ -19064,7 +19082,7 @@ fn render_flowchart_node(
         crate::text::flowchart_apply_mermaid_string_whitespace_height_parity(
             &mut metrics,
             &label_text,
-            &ctx.text_style,
+            &node_text_style,
         );
     }
     let span_css_height_parity = node_classes.iter().any(|c| {
@@ -19080,7 +19098,7 @@ fn render_flowchart_node(
     if span_css_height_parity {
         crate::text::flowchart_apply_mermaid_styled_node_height_parity(
             &mut metrics,
-            &ctx.text_style,
+            &node_text_style,
         );
     }
     if label_text_plain.trim().is_empty() {
@@ -19098,7 +19116,7 @@ fn render_flowchart_node(
         let wrapped = flowchart_wrap_svg_text_lines(
             ctx.measurer,
             &label_text_plain,
-            &ctx.text_style,
+            &node_text_style,
             Some(ctx.wrapping_width),
             true,
         )
@@ -19111,15 +19129,74 @@ fn render_flowchart_node(
         if !compiled_styles.label_style.trim().is_empty() {
             span_style_attr = format!(r#" style="{}""#, escape_attr(&compiled_styles.label_style));
         }
-        let div_style = if let Some(rgb) = label_color_rgb_string(&compiled_styles.label_style) {
-            format!(
-                r#"color: {} !important; display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"#,
-                rgb
-            )
+        let needs_wrap = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
+            let raw = if label_type == "markdown" {
+                crate::text::measure_markdown_with_flowchart_bold_deltas(
+                    ctx.measurer,
+                    &label_text,
+                    &node_text_style,
+                    None,
+                    ctx.node_wrap_mode,
+                )
+                .width
+            } else if ctx.node_html_labels && {
+                let lower = label_text.to_ascii_lowercase();
+                crate::text::flowchart_html_has_inline_style_tags(&lower)
+            } {
+                crate::text::measure_html_with_flowchart_bold_deltas(
+                    ctx.measurer,
+                    &label_text,
+                    &node_text_style,
+                    None,
+                    ctx.node_wrap_mode,
+                )
+                .width
+            } else {
+                ctx.measurer
+                    .measure_wrapped(
+                        &label_text_plain,
+                        &node_text_style,
+                        None,
+                        ctx.node_wrap_mode,
+                    )
+                    .width
+            };
+            raw > ctx.wrapping_width
         } else {
-            r#"display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"#
-                .to_string()
+            false
         };
+
+        let mut div_style = String::new();
+        if let Some(rgb) = label_color_rgb_string(&compiled_styles.label_style) {
+            div_style.push_str(&format!("color: {rgb} !important; "));
+        }
+        for decl in compiled_styles.label_style.split(';') {
+            let decl = decl.trim();
+            if decl.is_empty() {
+                continue;
+            }
+            let Some((k, v)) = decl.split_once(':') else {
+                continue;
+            };
+            let k = k.trim();
+            let v = v.trim();
+            if k == "color" {
+                continue;
+            }
+            if matches!(k, "font-size" | "font-weight" | "font-family" | "opacity") {
+                div_style.push_str(&format!("{k}: {v}; "));
+            }
+        }
+        if needs_wrap {
+            div_style.push_str(&format!(
+                "display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: {}px;",
+                fmt(ctx.wrapping_width)
+            ));
+        } else {
+            div_style.push_str(
+                "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;",
+            );
+        }
         let _ = write!(
             out,
             r#"<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
