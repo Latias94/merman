@@ -102,3 +102,7 @@ Next:
 
 - Some upstream Cypress Architecture fixtures use label shorthands like `servC L-[Label]-R servL`.
   Mermaid CLI `@11.12.2` renders these as an error SVG as well, so these stay `*_parser_only_` for now.
+
+- Some upstream Cypress Architecture fixtures use `{group}` boundary traversal combined with shorthand
+  edges like `left_disk{group} (R--L) center_disk{group}`. Mermaid CLI `@11.12.2` renders these as an
+  error SVG, so they remain `*_parser_only_` for now.
