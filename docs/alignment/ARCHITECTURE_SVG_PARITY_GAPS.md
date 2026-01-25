@@ -90,3 +90,8 @@ Next:
 - Some built-in Architecture icons include internal `id` attributes that can differ between Mermaid
   runs (e.g. `IconifyId...`). In parity mode, `xtask` normalizes those icon-internal IDs for DOM
   comparison to avoid flaky fixture updates.
+
+- Some upstream Cypress Architecture fixtures use a shorthand edge syntax like `db L--R server`.
+  Mermaid CLI `@11.12.2` renders these as an error SVG ("Syntax error in text"), so we currently keep
+  those fixtures in `*_parser_only_` form until we decide whether to align to the CLI parser behavior
+  (Langium grammar requires `db:L -- R:server`) or to the legacy/browser parser behavior.
