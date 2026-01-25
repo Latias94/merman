@@ -45,7 +45,7 @@ These fixtures are derived from the (currently skipped) Cypress rendering suite 
 set of real-world inputs, including shorthand edge syntax that appears in examples:
 
 - groups + services + shorthand edges (`db L--R server`): `fixtures/architecture/upstream_architecture_cypress_groups_parser_only_.mmd`
-- title + accessibility + colon-style ports: `fixtures/architecture/upstream_architecture_cypress_title_and_accessibilities_parser_only_.mmd`
+- title + accessibility + colon-style ports: `fixtures/architecture/upstream_architecture_cypress_title_and_accessibilities.mmd`
 - nested groups within groups: `fixtures/architecture/upstream_architecture_cypress_groups_within_groups_parser_only_.mmd`
 - fallback icon handling: `fixtures/architecture/upstream_architecture_cypress_fallback_icon.mmd`
 - split directioning (mixed port pairs): `fixtures/architecture/upstream_architecture_cypress_split_directioning_parser_only_.mmd`
