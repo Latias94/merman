@@ -926,7 +926,20 @@ O(-Label-)
         let w = tw + p;
         let rx = w / 2.0;
         let ry = rx / (2.5 + w / 50.0);
-        let expected_h = th + p + 3.0 * ry;
+        let expected_h = {
+            let h = th + p + 3.0 * ry;
+            let h_f32 = h as f32;
+            if h_f32.is_finite() && h_f32.is_sign_positive() {
+                let bits = h_f32.to_bits();
+                if bits < u32::MAX {
+                    f32::from_bits(bits + 1) as f64
+                } else {
+                    h
+                }
+            } else {
+                h
+            }
+        };
         assert_close(n.width, w, "cylinder width");
         assert_close(n.height, expected_h, "cylinder height");
     }

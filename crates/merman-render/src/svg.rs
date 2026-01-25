@@ -17846,6 +17846,10 @@ fn render_flowchart_edge_path(
             Some(
                 "hexagon"
                     | "hex"
+                    | "odd"
+                    | "rect_left_inv_arrow"
+                    | "stadium"
+                    | "subroutine"
                     | "lean_right"
                     | "lean-r"
                     | "lean-right"
@@ -17942,6 +17946,41 @@ fn render_flowchart_edge_path(
             x: node.x + vx * t,
             y: node.y + vy * t,
         }
+    }
+
+    fn intersect_cylinder(
+        node: &BoundaryNode,
+        point: &crate::model::LayoutPoint,
+    ) -> crate::model::LayoutPoint {
+        // Port of Mermaid `cylinder.ts` intersection logic (11.12.2):
+        // - start from `intersect.rect(node, point)`,
+        // - then adjust y when the intersection hits the curved top/bottom ellipses.
+        let mut pos = intersect_rect(node, point);
+        let x = pos.x - node.x;
+
+        let w = node.width.max(1.0);
+        let rx = w / 2.0;
+        let ry = rx / (2.5 + w / 50.0);
+
+        if rx != 0.0
+            && (x.abs() < w / 2.0
+                || ((x.abs() - w / 2.0).abs() < 1e-12
+                    && (pos.y - node.y).abs() > node.height / 2.0 - ry))
+        {
+            let mut y = ry * ry * (1.0 - (x * x) / (rx * rx));
+            if y > 0.0 {
+                y = y.sqrt();
+            } else {
+                y = 0.0;
+            }
+            y = ry - y;
+            if point.y - node.y > 0.0 {
+                y = -y;
+            }
+            pos.y += y;
+        }
+
+        pos
     }
 
     fn intersect_line(
@@ -18073,7 +18112,56 @@ fn render_flowchart_edge_path(
     ) -> Option<Vec<crate::model::LayoutPoint>> {
         let w = node.width.max(1.0);
         let h = node.height.max(1.0);
+
         match layout_shape {
+            // Mermaid "odd" nodes (`>... ]`) are rendered using `rect_left_inv_arrow`.
+            //
+            // Reference: Mermaid@11.12.2 `rectLeftInvArrow.ts`.
+            //
+            // Note: Flowchart layout dimensions model this as `node.width = w + h/4`, where `w`
+            // corresponds to Mermaid's `w = max(bbox.width + padding, node.width)` prior to the
+            // `updateNodeBounds(...)` bbox expansion.
+            "odd" | "rect_left_inv_arrow" => {
+                let base_w = (w - h / 4.0).max(1.0);
+                let x = -base_w / 2.0;
+                let y = -h / 2.0;
+                let notch = y / 2.0; // negative
+                Some(vec![
+                    crate::model::LayoutPoint { x: x + notch, y },
+                    crate::model::LayoutPoint { x, y: 0.0 },
+                    crate::model::LayoutPoint {
+                        x: x + notch,
+                        y: -y,
+                    },
+                    crate::model::LayoutPoint { x: -x, y: -y },
+                    crate::model::LayoutPoint { x: -x, y },
+                ])
+            }
+            "subroutine" => {
+                // Port of Mermaid@11.12.2 `subroutine.ts` points used for polygon intersection.
+                //
+                // Mermaid's insertPolygonShape(...) uses `w = bbox.width + padding` but the
+                // resulting bbox expands by `offset*2` (=16px) due to the outer frame.
+                let inner_w = (w - 16.0).max(1.0);
+                Some(vec![
+                    crate::model::LayoutPoint { x: 0.0, y: 0.0 },
+                    crate::model::LayoutPoint { x: inner_w, y: 0.0 },
+                    crate::model::LayoutPoint { x: inner_w, y: -h },
+                    crate::model::LayoutPoint { x: 0.0, y: -h },
+                    crate::model::LayoutPoint { x: 0.0, y: 0.0 },
+                    crate::model::LayoutPoint { x: -8.0, y: 0.0 },
+                    crate::model::LayoutPoint {
+                        x: inner_w + 8.0,
+                        y: 0.0,
+                    },
+                    crate::model::LayoutPoint {
+                        x: inner_w + 8.0,
+                        y: -h,
+                    },
+                    crate::model::LayoutPoint { x: -8.0, y: -h },
+                    crate::model::LayoutPoint { x: -8.0, y: 0.0 },
+                ])
+            }
             "hexagon" | "hex" => {
                 let half_width = w / 2.0;
                 let half_height = h / 2.0;
@@ -18163,13 +18251,148 @@ fn render_flowchart_edge_path(
     }
 
     fn intersect_for_layout_shape(
+        ctx: &FlowchartRenderCtx<'_>,
+        node_id: &str,
         node: &BoundaryNode,
         layout_shape: Option<&str>,
         point: &crate::model::LayoutPoint,
     ) -> crate::model::LayoutPoint {
+        fn intersect_stadium(
+            ctx: &FlowchartRenderCtx<'_>,
+            node_id: &str,
+            node: &BoundaryNode,
+            point: &crate::model::LayoutPoint,
+        ) -> crate::model::LayoutPoint {
+            // Port of Mermaid@11.12.2 `stadium.ts` intersection behavior:
+            // - `points` are generated from the theoretical render dimensions,
+            // - `node.width/height` used by `intersect.polygon(...)` come from `updateNodeBounds(...)`.
+            fn generate_circle_points(
+                center_x: f64,
+                center_y: f64,
+                radius: f64,
+                num_points: usize,
+                start_angle_deg: f64,
+                end_angle_deg: f64,
+            ) -> Vec<crate::model::LayoutPoint> {
+                let start = start_angle_deg.to_radians();
+                let end = end_angle_deg.to_radians();
+                let step = (end - start) / (num_points.saturating_sub(1).max(1) as f64);
+                let mut pts = Vec::with_capacity(num_points);
+                for i in 0..num_points {
+                    let angle = start + (i as f64) * step;
+                    let x = center_x + radius * angle.cos();
+                    let y = center_y + radius * angle.sin();
+                    pts.push(crate::model::LayoutPoint { x: -x, y: -y });
+                }
+                pts
+            }
+
+            let Some(flow_node) = ctx.nodes_by_id.get(node_id) else {
+                return intersect_rect(node, point);
+            };
+
+            let label_text = flow_node.label.clone().unwrap_or_default();
+            let label_type = flow_node
+                .label_type
+                .clone()
+                .unwrap_or_else(|| "text".to_string());
+
+            let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+                ctx.measurer,
+                &label_text,
+                &label_type,
+                &ctx.text_style,
+                Some(ctx.wrapping_width),
+                ctx.node_wrap_mode,
+            );
+
+            let span_css_height_parity = flow_node.classes.iter().any(|c| {
+                ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
+                    styles.iter().any(|s| {
+                        matches!(
+                            s.split_once(':').map(|p| p.0.trim()),
+                            Some("background" | "border")
+                        )
+                    })
+                })
+            });
+            if span_css_height_parity {
+                crate::text::flowchart_apply_mermaid_styled_node_height_parity(
+                    &mut metrics,
+                    &ctx.text_style,
+                );
+            }
+
+            let (render_w, render_h) = crate::flowchart::flowchart_node_render_dimensions(
+                Some("stadium"),
+                metrics,
+                ctx.node_padding,
+            );
+            let w = render_w.max(1.0);
+            let h = render_h.max(1.0);
+            let radius = h / 2.0;
+
+            let mut pts: Vec<crate::model::LayoutPoint> = Vec::with_capacity(2 + 50 + 1 + 50);
+            pts.push(crate::model::LayoutPoint {
+                x: -w / 2.0 + radius,
+                y: -h / 2.0,
+            });
+            pts.push(crate::model::LayoutPoint {
+                x: w / 2.0 - radius,
+                y: -h / 2.0,
+            });
+            pts.extend(generate_circle_points(
+                -w / 2.0 + radius,
+                0.0,
+                radius,
+                50,
+                90.0,
+                270.0,
+            ));
+            pts.push(crate::model::LayoutPoint {
+                x: w / 2.0 - radius,
+                y: h / 2.0,
+            });
+            pts.extend(generate_circle_points(
+                w / 2.0 - radius,
+                0.0,
+                radius,
+                50,
+                270.0,
+                450.0,
+            ));
+
+            let mut out = intersect_polygon(node, &pts, point);
+
+            // Upstream (`intersect.polygon` + `intersect-line`) tends to land one ULP above the
+            // exact y-coordinate for bottom intersections due to floating-point rounding.
+            // This affects strict-parity `data-points` strings (e.g. `761.5937500000001`).
+            if point.y > node.y && out.y.is_finite() {
+                fn next_up(v: f64) -> f64 {
+                    if !v.is_finite() {
+                        return v;
+                    }
+                    if v == 0.0 {
+                        return f64::from_bits(1);
+                    }
+                    let bits = v.to_bits();
+                    if v > 0.0 {
+                        f64::from_bits(bits + 1)
+                    } else {
+                        f64::from_bits(bits - 1)
+                    }
+                }
+                out.y = next_up(out.y);
+            }
+
+            out
+        }
+
         match layout_shape {
             Some("circle") => intersect_circle(node, point),
+            Some("cylinder" | "cyl") => intersect_cylinder(node, point),
             Some("diamond") => intersect_diamond(node, point),
+            Some("stadium") => intersect_stadium(ctx, node_id, node, point),
             Some(s) if is_polygon_layout_shape(Some(s)) => polygon_points_for_layout_shape(s, node)
                 .map(|pts| intersect_polygon(node, &pts, point))
                 .unwrap_or_else(|| intersect_rect(node, point)),
@@ -18212,7 +18435,8 @@ fn render_flowchart_edge_path(
                 fn force_intersect(layout_shape: Option<&str>) -> bool {
                     matches!(
                         layout_shape,
-                        Some("circle" | "diamond" | "roundedRect" | "rounded")
+                        Some("circle" | "diamond" | "roundedRect" | "rounded" | "cylinder" | "cyl")
+                            | Some("stadium")
                     ) || is_polygon_layout_shape(layout_shape)
                 }
 
@@ -18224,7 +18448,13 @@ fn render_flowchart_edge_path(
                 let end_is_center = (end.x - head.x).abs() < 1e-6 && (end.y - head.y).abs() < 1e-6;
 
                 if start_is_center || force_intersect(tail_shape) {
-                    start = intersect_for_layout_shape(&tail, tail_shape, &interior[0]);
+                    start = intersect_for_layout_shape(
+                        ctx,
+                        edge.from.as_str(),
+                        &tail,
+                        tail_shape,
+                        &interior[0],
+                    );
                     if is_rounded_intersect_shift_shape(tail_shape) {
                         start.x += 0.5;
                         start.y += 0.5;
@@ -18232,6 +18462,8 @@ fn render_flowchart_edge_path(
                 }
                 if end_is_center || force_intersect(head_shape) {
                     end = intersect_for_layout_shape(
+                        ctx,
+                        edge.to.as_str(),
                         &head,
                         head_shape,
                         &interior[interior.len() - 1],
@@ -19310,6 +19542,7 @@ fn render_flowchart_node(
     let compiled_styles = flowchart_compile_styles(&ctx.class_defs, &node_classes, &node_styles);
     let style = compiled_styles.node_style.clone();
     let mut label_dx: f64 = 0.0;
+    let mut label_dy: f64 = 0.0;
     let fill_color = compiled_styles
         .fill
         .as_deref()
@@ -19607,6 +19840,8 @@ fn render_flowchart_node(
             let ry = rx / (2.5 + w / 50.0);
             let total_h = layout_node.height.max(1.0);
             let h = (total_h - 2.0 * ry).max(1.0);
+            // Mermaid applies an extra downward label shift of `node.padding / 1.5`.
+            label_dy = ctx.node_padding / 1.5;
 
             let path_data = format!(
                 "M0,{ry} a{rx},{ry} 0,0,0 {w},0 a{rx},{ry} 0,0,0 {mw},0 l0,{h} a{rx},{ry} 0,0,0 {w},0 l0,{mh}",
@@ -20255,7 +20490,7 @@ fn render_flowchart_node(
             r#"<g class="label" style="{}" transform="translate({}, {})"><rect/><g><rect class="background" style="stroke: none"/>"#,
             escape_attr(&compiled_styles.label_style),
             fmt(label_dx),
-            fmt(-metrics.height / 2.0)
+            fmt(-metrics.height / 2.0 + label_dy)
         );
         let wrapped = flowchart_wrap_svg_text_lines(
             ctx.measurer,
@@ -20346,7 +20581,7 @@ fn render_flowchart_node(
             r#"<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
             escape_attr(&compiled_styles.label_style),
             fmt(-metrics.width / 2.0 + label_dx),
-            fmt(-metrics.height / 2.0),
+            fmt(-metrics.height / 2.0 + label_dy),
             fmt(metrics.width),
             fmt(metrics.height),
             escape_attr(&div_style),
