@@ -47,7 +47,7 @@ set of real-world inputs, including shorthand edge syntax that appears in exampl
 - groups + services + shorthand edges (`db L--R server`): `fixtures/architecture/upstream_architecture_cypress_groups_parser_only_.mmd`
 - title + accessibility + colon-style ports: `fixtures/architecture/upstream_architecture_cypress_title_and_accessibilities_parser_only_.mmd`
 - nested groups within groups: `fixtures/architecture/upstream_architecture_cypress_groups_within_groups_parser_only_.mmd`
-- fallback icon handling: `fixtures/architecture/upstream_architecture_cypress_fallback_icon_parser_only_.mmd`
+- fallback icon handling: `fixtures/architecture/upstream_architecture_cypress_fallback_icon.mmd`
 - split directioning (mixed port pairs): `fixtures/architecture/upstream_architecture_cypress_split_directioning_parser_only_.mmd`
 - directional arrows via parenthesized port pairs (`(L--R)`): `fixtures/architecture/upstream_architecture_cypress_directional_arrows_parser_only_.mmd`
 - group boundary traversal edges (`{group}` modifier): `fixtures/architecture/upstream_architecture_cypress_group_edges_parser_only_.mmd`
