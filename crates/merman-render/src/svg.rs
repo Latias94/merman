@@ -9715,7 +9715,7 @@ pub fn render_flowchart_v2_svg(
 
     let font_family = config_string(effective_config, &["fontFamily"])
         .map(|s| normalize_css_font_family(&s))
-        .unwrap_or_else(|| "\"trebuchet ms\", verdana, arial, sans-serif".to_string());
+        .unwrap_or_else(|| "\"trebuchet ms\",verdana,arial,sans-serif".to_string());
     let font_size = effective_config
         .get("fontSize")
         .and_then(|v| v.as_f64())
@@ -13568,7 +13568,46 @@ fn config_f64(cfg: &serde_json::Value, path: &[&str]) -> Option<f64> {
 }
 
 fn normalize_css_font_family(font_family: &str) -> String {
-    font_family.trim().trim_end_matches(';').trim().to_string()
+    let s = font_family.trim().trim_end_matches(';').trim();
+    if s.is_empty() {
+        return String::new();
+    }
+
+    // Mermaid's generated CSS uses a comma-separated `font-family` list with no extra whitespace
+    // around commas (e.g. `"trebuchet ms",verdana,arial,sans-serif`). Normalize config-provided
+    // values to the same format so strict SVG XML compares are stable.
+    let mut parts: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut in_single = false;
+    let mut in_double = false;
+
+    for ch in s.chars() {
+        match ch {
+            '\'' if !in_double => {
+                in_single = !in_single;
+                cur.push(ch);
+            }
+            '"' if !in_single => {
+                in_double = !in_double;
+                cur.push(ch);
+            }
+            ',' if !in_single && !in_double => {
+                let p = cur.trim();
+                if !p.is_empty() {
+                    parts.push(p.to_string());
+                }
+                cur.clear();
+            }
+            _ => cur.push(ch),
+        }
+    }
+
+    let p = cur.trim();
+    if !p.is_empty() {
+        parts.push(p.to_string());
+    }
+
+    parts.join(",")
 }
 
 fn theme_color(effective_config: &serde_json::Value, key: &str, fallback: &str) -> String {
@@ -16479,11 +16518,15 @@ fn flowchart_root_children_nodes(
         }
     }
     out.sort_by(|a, b| {
+        let ai = ctx.node_dom_index.get(a).copied().unwrap_or(usize::MAX);
+        let bi = ctx.node_dom_index.get(b).copied().unwrap_or(usize::MAX);
+
         let aa = ctx.layout_nodes_by_id.get(a);
         let bb = ctx.layout_nodes_by_id.get(b);
         let (ax, ay) = aa.map(|n| (n.x, n.y)).unwrap_or((0.0, 0.0));
         let (bx, by) = bb.map(|n| (n.x, n.y)).unwrap_or((0.0, 0.0));
-        ay.total_cmp(&by)
+        ai.cmp(&bi)
+            .then_with(|| ay.total_cmp(&by))
             .then_with(|| ax.total_cmp(&bx))
             .then_with(|| a.cmp(b))
     });
