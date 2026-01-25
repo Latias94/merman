@@ -29,6 +29,8 @@ Populate `repo-ref/*` by cloning each repo at the pinned commit shown in
   - `cargo nextest run -p merman-core`
 - Update golden fixtures:
   - `cargo run -p xtask -- update-snapshots`
+- Canonical SVG XML compare (stricter than DOM parity):
+  - `cargo run -p xtask -- compare-svg-xml --check`
 
 ## CLI (headless JSON)
 

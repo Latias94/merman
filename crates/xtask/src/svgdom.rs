@@ -390,6 +390,86 @@ pub(crate) fn dom_signature(svg: &str, mode: DomMode, decimals: u32) -> Result<S
     Ok(build_node(root, mode, decimals))
 }
 
+fn escape_xml_text(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+fn escape_xml_attr(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+fn write_indent(out: &mut String, depth: usize) {
+    for _ in 0..depth {
+        out.push_str("  ");
+    }
+}
+
+fn write_canonical_node(out: &mut String, n: &SvgDomNode, depth: usize) {
+    write_indent(out, depth);
+    out.push('<');
+    out.push_str(&n.name);
+
+    for (k, v) in &n.attrs {
+        out.push(' ');
+        out.push_str(k);
+        out.push_str("=\"");
+        out.push_str(&escape_xml_attr(v));
+        out.push('"');
+    }
+
+    let has_children = !n.children.is_empty();
+    let has_text = n.text.as_ref().is_some_and(|t| !t.is_empty());
+
+    if !has_children && !has_text {
+        out.push_str("/>\n");
+        return;
+    }
+
+    out.push('>');
+
+    if has_text {
+        out.push_str(&escape_xml_text(n.text.as_deref().unwrap_or_default()));
+    }
+
+    if has_children {
+        out.push('\n');
+        for c in &n.children {
+            write_canonical_node(out, c, depth + 1);
+        }
+        write_indent(out, depth);
+    }
+
+    out.push_str("</");
+    out.push_str(&n.name);
+    out.push_str(">\n");
+}
+
+pub(crate) fn canonical_xml(svg: &str, mode: DomMode, decimals: u32) -> Result<String, String> {
+    let dom = dom_signature(svg, mode, decimals)?;
+    let mut out = String::new();
+    write_canonical_node(&mut out, &dom, 0);
+    Ok(out)
+}
+
 fn truncate(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         return s.to_string();
