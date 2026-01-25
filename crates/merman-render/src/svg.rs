@@ -16002,13 +16002,13 @@ fn fmt_max_width_px(v: f64) -> String {
     if s == "-0" { "0".to_string() } else { s }
 }
 
-fn quantize_px_1_256(v: f64) -> f64 {
+fn quantize_px_1_1024(v: f64) -> f64 {
     if !v.is_finite() {
         return 0.0;
     }
     let sign = if v.is_sign_negative() { -1.0 } else { 1.0 };
     let ax = v.abs();
-    let x = ax * 256.0;
+    let x = ax * 1024.0;
     let f = x.floor();
     let frac = x - f;
     let i = if frac < 0.5 {
@@ -16019,7 +16019,7 @@ fn quantize_px_1_256(v: f64) -> f64 {
         let fi = f as i64;
         if fi % 2 == 0 { f } else { f + 1.0 }
     };
-    let out = sign * (i / 256.0);
+    let out = sign * (i / 1024.0);
     if out == -0.0 { 0.0 } else { out }
 }
 
@@ -16866,10 +16866,7 @@ fn render_flowchart_cluster(
     let top = (cluster.y - cluster.height / 2.0) + ctx.ty - origin_y;
     let rect_w = cluster.width.max(1.0);
     let rect_h = cluster.height.max(1.0);
-    let label_w = cluster.title_label.width.max(0.0);
-    let label_h = cluster.title_label.height.max(0.0);
-    let label_left = quantize_px_1_256(left + rect_w / 2.0 - label_w / 2.0);
-    let label_top = quantize_px_1_256(top + cluster.title_margin_top.max(0.0));
+    let label_top = quantize_px_1_1024(top + cluster.title_margin_top.max(0.0));
 
     let label_type = sg.label_type.as_deref().unwrap_or("text");
 
@@ -16891,14 +16888,19 @@ fn render_flowchart_cluster(
 
     if !ctx.node_html_labels {
         let title_text = flowchart_label_plain_text(&cluster.title, label_type, false);
-        let wrapped_title_text = flowchart_wrap_svg_text_lines(
+        let wrapped_lines = flowchart_wrap_svg_text_lines(
             ctx.measurer,
             &title_text,
             &ctx.text_style,
             Some(200.0),
             true,
-        )
-        .join("\n");
+        );
+        let mut label_w: f64 = 0.0;
+        for line in &wrapped_lines {
+            label_w = label_w.max(ctx.measurer.measure(line, &ctx.text_style).width.max(0.0));
+        }
+        let label_left = quantize_px_1_1024(left + rect_w / 2.0 - label_w / 2.0);
+        let wrapped_title_text = wrapped_lines.join("\n");
         let _ = write!(
             out,
             r#"<g class="{}" id="{}" data-look="classic"><rect style="" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><g><rect class="background" style="stroke: none"/>"#,
@@ -16917,6 +16919,9 @@ fn render_flowchart_cluster(
     }
 
     let title_html = flowchart_label_html(&cluster.title, label_type, &ctx.config);
+    let label_w = cluster.title_label.width.max(0.0);
+    let label_h = cluster.title_label.height.max(0.0);
+    let label_left = quantize_px_1_1024(left + rect_w / 2.0 - label_w / 2.0);
 
     let _ = write!(
         out,

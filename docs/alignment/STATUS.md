@@ -69,6 +69,8 @@ Recent progress: flowchart-v2 `classDef` CSS rules now preserve Mermaid insertio
 `<style>` rule ordering in strict SVG XML parity (e.g. `bigger_font_from_classes_spec`).
 Recent progress: flowchart-v2 `linkStyle ... interpolate ...` now trims the whitespace between the curve name and the
 first style token so rendered edge `style="...;;;..."` matches upstream strict SVG XML output.
+Recent progress: flowchart-v2 cluster label positioning now derives the SVG title bbox width from the rendered
+`<text>/<tspan>` lines (not the layout placeholder metrics), improving strict SVG XML parity for wrapped titles.
 Recent progress: flowchart Dagre config now uses Mermaid margins (`marginx/marginy=8`) for both the top-level
 graph and extracted cluster graphs, improving subgraph/cluster geometry parity.
 Recent progress: `dugong` now matches dagrejs graph defaults (`edgesep=20`), improving multiedge routing parity
