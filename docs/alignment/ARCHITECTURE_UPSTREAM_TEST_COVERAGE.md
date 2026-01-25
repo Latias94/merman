@@ -32,7 +32,7 @@ and renderer are still being brought up. Promoted fixtures will have the suffix 
 - edge titles (`-[label]-`, `-[label]->`): `fixtures/architecture/upstream_architecture_docs_edge_titles.mmd`
 - edges out of groups (`{group}` modifier): `fixtures/architecture/upstream_architecture_docs_group_edges.mmd`
 - groups within groups + edges: `fixtures/architecture/upstream_architecture_docs_groups_within_groups.mmd`
-- junction statements + edges: `fixtures/architecture/upstream_architecture_docs_junctions_parser_only_.mmd`
+- junction statements + edges: `fixtures/architecture/upstream_architecture_docs_junctions.mmd`
 - service icon vs. iconText string: `fixtures/architecture/upstream_architecture_docs_service_icon_text.mmd`
 
 Additional stress case (parser-only):

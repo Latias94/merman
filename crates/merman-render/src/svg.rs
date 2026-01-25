@@ -8347,6 +8347,12 @@ pub fn render_architecture_diagram_svg(
 
     #[derive(Debug, Clone, Deserialize)]
     #[serde(rename_all = "camelCase")]
+    struct ArchitectureJunction {
+        id: String,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(rename_all = "camelCase")]
     struct ArchitectureGroup {
         id: String,
         #[serde(default)]
@@ -8387,6 +8393,8 @@ pub fn render_architecture_diagram_svg(
         groups: Vec<ArchitectureGroup>,
         #[serde(default)]
         services: Vec<ArchitectureService>,
+        #[serde(default)]
+        junctions: Vec<ArchitectureJunction>,
         #[serde(default)]
         edges: Vec<ArchitectureEdge>,
     }
@@ -8627,7 +8635,7 @@ pub fn render_architecture_diagram_svg(
     }
     out.push_str("</g>");
 
-    if model.services.is_empty() {
+    if model.services.is_empty() && model.junctions.is_empty() {
         out.push_str(r#"<g class="architecture-services"/>"#);
     } else {
         out.push_str(r#"<g class="architecture-services">"#);
@@ -8689,6 +8697,20 @@ pub fn render_architecture_diagram_svg(
             out.push_str("</g>");
 
             out.push_str("</g>");
+        }
+
+        for junction in &model.junctions {
+            let (x, y) = node_xy.get(&junction.id).copied().unwrap_or((0.0, 0.0));
+            let id_esc = escape_xml(&junction.id);
+
+            let _ = write!(
+                &mut out,
+                r#"<g class="architecture-junction" transform="translate({x},{y})"><g><rect id="node-{id}" fill-opacity="0" width="{s}" height="{s}"/></g></g>"#,
+                x = fmt(x),
+                y = fmt(y),
+                id = id_esc,
+                s = fmt(icon_size_px)
+            );
         }
         out.push_str("</g>");
     }
