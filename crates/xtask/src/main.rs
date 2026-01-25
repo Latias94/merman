@@ -55,11 +55,74 @@ enum XtaskError {
     SvgCompareFailed(String),
 }
 
+fn print_help(topic: Option<&str>) {
+    if let Some(topic) = topic.filter(|t| !t.trim().is_empty()) {
+        println!("usage: xtask {topic} ...");
+        println!();
+        println!("This repository uses a lightweight custom CLI parser for xtask commands.");
+        println!("Most subcommands accept `--help`/`-h` and will show a usage error.");
+        println!();
+        println!("See: `crates/xtask/src/main.rs` for the full argument grammar.");
+        return;
+    }
+
+    println!("usage: xtask <command> ...");
+    println!();
+    println!("Common commands:");
+    println!("  check-alignment");
+    println!("  update-snapshots");
+    println!("  update-layout-snapshots   (alias: gen-layout-goldens)");
+    println!("  gen-upstream-svgs");
+    println!("  check-upstream-svgs");
+    println!("  compare-all-svgs");
+    println!();
+    println!("Per-diagram SVG compare commands:");
+    println!("  compare-er-svgs");
+    println!("  compare-flowchart-svgs");
+    println!("  compare-sequence-svgs");
+    println!("  compare-class-svgs");
+    println!("  compare-state-svgs");
+    println!("  compare-info-svgs");
+    println!("  compare-pie-svgs");
+    println!("  compare-sankey-svgs");
+    println!("  compare-packet-svgs");
+    println!("  compare-timeline-svgs");
+    println!("  compare-journey-svgs");
+    println!("  compare-kanban-svgs");
+    println!("  compare-gitgraph-svgs");
+    println!("  compare-gantt-svgs");
+    println!("  compare-c4-svgs");
+    println!("  compare-block-svgs");
+    println!("  compare-radar-svgs");
+    println!("  compare-requirement-svgs");
+    println!("  compare-mindmap-svgs");
+    println!("  compare-architecture-svgs");
+    println!("  compare-quadrantchart-svgs");
+    println!("  compare-treemap-svgs");
+    println!("  compare-xychart-svgs");
+    println!();
+    println!("Tips:");
+    println!("  - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3`");
+    println!("  - `cargo run -p xtask -- gen-upstream-svgs --diagram <name>`");
+    println!();
+    println!("Topics:");
+    println!("  xtask help <command>");
+}
+
 fn main() -> Result<(), XtaskError> {
     let mut args = std::env::args().skip(1);
     let Some(cmd) = args.next() else {
         return Err(XtaskError::Usage);
     };
+
+    if matches!(cmd.as_str(), "--help" | "-h") {
+        print_help(None);
+        return Ok(());
+    }
+    if cmd == "help" {
+        print_help(args.next().as_deref());
+        return Ok(());
+    }
 
     match cmd.as_str() {
         "gen-default-config" => gen_default_config(args.collect()),
