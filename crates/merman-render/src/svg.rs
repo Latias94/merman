@@ -1054,13 +1054,14 @@ pub fn render_sequence_diagram_svg(
     // Mermaid draws activation boxes by creating an anchored `<g>` at ACTIVE_START and inserting the
     // `<rect class="activation{0..2}">` when the corresponding ACTIVE_END is encountered.
     //
-    // For headless rendering, precompute activation rectangles from the semantic message stream and
-    // render them as root-level `<g><rect .../></g>` nodes before notes/blocks/messages.
+    // Important DOM detail: if an activation is started but never closed, Mermaid still creates the
+    // anchored `<g/>` but never inserts a `<rect>`. Preserve that behavior for DOM parity.
     #[derive(Debug, Clone)]
     struct SequenceActivationStart {
         startx: f64,
         starty: f64,
         start_index: usize,
+        group_index: usize,
     }
 
     #[derive(Debug, Clone)]
@@ -1118,7 +1119,7 @@ pub fn render_sequence_diagram_svg(
     let mut activation_counter: usize = 0;
     let mut activation_stacks: std::collections::BTreeMap<String, Vec<SequenceActivationStart>> =
         std::collections::BTreeMap::new();
-    let mut activations: Vec<SequenceActivationRect> = Vec::new();
+    let mut activation_groups: Vec<Option<SequenceActivationRect>> = Vec::new();
 
     for msg in &model.messages {
         if let Some(y) = msg_line_y(&edges_by_id, &msg.id) {
@@ -1142,10 +1143,13 @@ pub fn render_sequence_diagram_svg(
                     .or_else(|| lifeline_y(&edges_by_id, actor_id).map(|(y0, _y1)| y0))
                     .unwrap_or(0.0);
 
+                let group_index = activation_groups.len();
+                activation_groups.push(None);
                 stack.push(SequenceActivationStart {
                     startx,
                     starty,
                     start_index: activation_counter,
+                    group_index,
                 });
                 activation_counter += 1;
             }
@@ -1169,14 +1173,17 @@ pub fn render_sequence_diagram_svg(
                 }
 
                 let class_idx = stack.len() % 3;
-                activations.push(SequenceActivationRect {
+                let rect = SequenceActivationRect {
                     startx: start.startx,
                     starty,
                     width: activation_width,
                     height: (vertical_pos - starty).max(0.0),
                     class_idx,
                     start_index: start.start_index,
-                });
+                };
+                if let Some(slot) = activation_groups.get_mut(start.group_index) {
+                    *slot = Some(rect);
+                }
             }
             _ => {}
         }
@@ -1184,41 +1191,23 @@ pub fn render_sequence_diagram_svg(
         let _ = msg.activate;
     }
 
-    // Close any dangling activations at the end of the lifeline / diagram bounds.
-    if !activation_stacks.is_empty() {
-        let diagram_bottom = bounds.max_y;
-        for (actor_id, stack) in activation_stacks.iter_mut() {
-            let lifeline_bottom = lifeline_y(&edges_by_id, actor_id)
-                .map(|(_y0, y1)| y1)
-                .unwrap_or(diagram_bottom);
-            while let Some(start) = stack.pop() {
-                let class_idx = stack.len() % 3;
-                activations.push(SequenceActivationRect {
-                    startx: start.startx,
-                    starty: start.starty,
-                    width: activation_width,
-                    height: (lifeline_bottom - start.starty).max(0.0),
-                    class_idx,
-                    start_index: start.start_index,
-                });
-            }
-        }
-    }
-
-    activations.sort_by_key(|a| a.start_index);
-    for a in &activations {
+    // Render activation groups in start order, preserving Mermaid's "empty <g/> when unclosed"
+    // behavior.
+    for maybe_rect in &activation_groups {
         out.push_str("<g>");
-        let _ = write!(
-            &mut out,
-            r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="{stroke}" width="{w}" height="{h}" class="activation{idx}"/>"##,
-            x = fmt(a.startx),
-            y = fmt(a.starty),
-            w = fmt(a.width),
-            h = fmt(a.height),
-            idx = a.class_idx,
-            fill = escape_xml(activation_fill),
-            stroke = escape_xml(activation_stroke),
-        );
+        if let Some(a) = maybe_rect {
+            let _ = write!(
+                &mut out,
+                r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="{stroke}" width="{w}" height="{h}" class="activation{idx}"/>"##,
+                x = fmt(a.startx),
+                y = fmt(a.starty),
+                w = fmt(a.width),
+                h = fmt(a.height),
+                idx = a.class_idx,
+                fill = escape_xml(activation_fill),
+                stroke = escape_xml(activation_stroke),
+            );
+        }
         out.push_str("</g>");
     }
 
