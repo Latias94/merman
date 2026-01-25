@@ -46,6 +46,7 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceDiagram
 - `par_over` blocks: `fixtures/sequence/upstream_par_over_spec.mmd`
 - `<br>` variants + `wrap:` / `nowrap:` prefixes: `fixtures/sequence/html_br_variants_and_wrap.mmd`
 - wrap directive `%%{wrap}%%`: `fixtures/sequence/wrap_directive_default.mmd`
+- init directive `%%{init: { config: ... } }%%` sets `sequence.wrap`: `fixtures/sequence/upstream_sequence_init_config_wrap_spec.mmd`
 - note placement forms: `fixtures/sequence/notes_placements.mmd`
 - boxes: `fixtures/sequence/box_variants.mmd`
 - create / destroy:
