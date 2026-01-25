@@ -68,14 +68,23 @@ Missing pieces likely include:
 
 ## Suggested Promotion Order (smallest deltas first)
 
-1. `fixtures/architecture/upstream_architecture_docs_service_icon_text_parser_only_.mmd`
-2. `fixtures/architecture/upstream_architecture_docs_edge_titles_parser_only_.mmd`
-3. `fixtures/architecture/upstream_architecture_docs_edge_arrows_parser_only_.mmd`
-4. `fixtures/architecture/upstream_architecture_docs_example_parser_only_.mmd`
-5. Cypress-derived fixtures (groups, junction edges, labels, etc.)
+Completed:
+
+1. `fixtures/architecture/upstream_architecture_docs_service_icon_text.mmd`
+2. `fixtures/architecture/upstream_architecture_docs_edge_titles.mmd`
+3. `fixtures/architecture/upstream_architecture_docs_edge_arrows.mmd`
+
+Next:
+
+1. `fixtures/architecture/upstream_architecture_docs_example_parser_only_.mmd`
+2. Cypress-derived fixtures (groups, junction edges, labels, etc.)
 
 ## Notes
 
 - Upstream Cypress rendering specs explicitly skip some cases due to non-deterministic layout.
   For `merman`, the parity target is the pinned upstream SVG baseline generated via the official
   Mermaid CLI at `@11.12.2`, so we should keep promotions incremental and backed by DOM parity checks.
+
+- Some built-in Architecture icons include internal `id` attributes that can differ between Mermaid
+  runs (e.g. `IconifyId...`). In parity mode, `xtask` normalizes those icon-internal IDs for DOM
+  comparison to avoid flaky fixture updates.

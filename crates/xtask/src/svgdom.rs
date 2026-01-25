@@ -178,6 +178,27 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             false
         }
 
+        fn is_architecture_service_icon_content(n: roxmltree::Node<'_, '_>) -> bool {
+            let mut svg_count = 0;
+            for a in n.ancestors() {
+                if a.is_element() && a.tag_name().name() == "svg" {
+                    svg_count += 1;
+                    if svg_count >= 2 {
+                        break;
+                    }
+                }
+            }
+            if svg_count < 2 {
+                return false;
+            }
+            n.ancestors().any(|a| {
+                a.is_element()
+                    && a.tag_name().name() == "g"
+                    && a.attribute("class")
+                        .is_some_and(|c| c.split_whitespace().any(|t| t == "architecture-service"))
+            })
+        }
+
         for a in n.attributes() {
             let key = a.name().to_string();
             let mut val = a.value().to_string();
@@ -235,6 +256,13 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             if key == "class" {
                 val = normalize_class_list(&val, mode);
                 val = normalize_gitgraph_dynamic_commit_ids(&val);
+            }
+            if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
+                && key == "id"
+                && is_architecture_service_icon_content(n)
+                && (val.starts_with("IconifyId") || val.len() <= 2)
+            {
+                val = "<icon-id>".to_string();
             }
             if mode == DomMode::Structure && is_identifier_like_attr(&key) {
                 val = normalize_identifier_tokens(&val);
