@@ -29,7 +29,7 @@ and renderer are still being brought up. Promoted fixtures will have the suffix 
 
 - docs example (group + services + edges): `fixtures/architecture/upstream_architecture_docs_example_parser_only_.mmd`
 - edge arrows (`-->`, `<--`, `<-->`): `fixtures/architecture/upstream_architecture_docs_edge_arrows_parser_only_.mmd`
-- edge titles (`-[label]-`, `-[label]->`): `fixtures/architecture/upstream_architecture_docs_edge_titles_parser_only_.mmd`
+- edge titles (`-[label]-`, `-[label]->`): `fixtures/architecture/upstream_architecture_docs_edge_titles.mmd`
 - edges out of groups (`{group}` modifier): `fixtures/architecture/upstream_architecture_docs_group_edges_parser_only_.mmd`
 - groups within groups + edges: `fixtures/architecture/upstream_architecture_docs_groups_within_groups_parser_only_.mmd`
 - junction statements + edges: `fixtures/architecture/upstream_architecture_docs_junctions_parser_only_.mmd`
