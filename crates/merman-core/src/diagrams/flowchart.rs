@@ -1,6 +1,7 @@
 use crate::sanitize::sanitize_text;
 use crate::utils::format_url;
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
+use indexmap::IndexMap;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -1391,7 +1392,7 @@ pub fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let mut builder = SubgraphBuilder::new(inherit_dir, ast.direction.clone());
     let _ = builder.eval_statements(&ast.statements);
 
-    let mut class_defs: HashMap<String, Vec<String>> = HashMap::new();
+    let mut class_defs: IndexMap<String, Vec<String>> = IndexMap::new();
     let mut tooltips: HashMap<String, String> = HashMap::new();
     let mut edge_defaults = EdgeDefaults {
         style: Vec::new(),
@@ -1524,7 +1525,7 @@ pub fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
         "direction": ast.direction,
         "accTitle": acc_title,
         "accDescr": acc_descr,
-        "classDefs": class_defs.into_iter().collect::<HashMap<_, _>>(),
+        "classDefs": class_defs,
         "tooltips": tooltips.into_iter().collect::<HashMap<_, _>>(),
         "edgeDefaults": {
             "style": edge_defaults.style,
@@ -2607,7 +2608,7 @@ fn apply_semantic_statements(
     edges: &mut Vec<Edge>,
     subgraphs: &mut Vec<FlowSubGraph>,
     subgraph_index: &mut HashMap<String, usize>,
-    class_defs: &mut HashMap<String, Vec<String>>,
+    class_defs: &mut IndexMap<String, Vec<String>>,
     tooltips: &mut HashMap<String, String>,
     edge_defaults: &mut EdgeDefaults,
     security_level_loose: bool,

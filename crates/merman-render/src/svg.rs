@@ -9,6 +9,7 @@ use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use base64::Engine as _;
 use chrono::TimeZone;
+use indexmap::IndexMap;
 use serde::Deserialize;
 use std::fmt::Write as _;
 
@@ -16051,7 +16052,7 @@ struct FlowchartRenderCtx<'a> {
     config: merman_core::MermaidConfig,
     node_html_labels: bool,
     edge_html_labels: bool,
-    class_defs: std::collections::HashMap<String, Vec<String>>,
+    class_defs: IndexMap<String, Vec<String>>,
     node_border_color: String,
     node_fill_color: String,
     default_edge_interpolate: String,
@@ -16122,7 +16123,7 @@ fn flowchart_css(
     effective_config: &serde_json::Value,
     font_family: &str,
     font_size: f64,
-    class_defs: &std::collections::HashMap<String, Vec<String>>,
+    class_defs: &IndexMap<String, Vec<String>>,
 ) -> String {
     let id = escape_xml(diagram_id);
     let stroke = theme_color(effective_config, "lineColor", "#333333");
@@ -19261,7 +19262,7 @@ fn render_flowchart_edge_label(
 }
 
 fn flowchart_inline_style_for_classes(
-    class_defs: &std::collections::HashMap<String, Vec<String>>,
+    class_defs: &IndexMap<String, Vec<String>>,
     classes: &[String],
 ) -> String {
     let mut out = String::new();
@@ -19290,7 +19291,7 @@ struct FlowchartCompiledStyles {
 }
 
 fn flowchart_compile_styles(
-    class_defs: &std::collections::HashMap<String, Vec<String>>,
+    class_defs: &IndexMap<String, Vec<String>>,
     classes: &[String],
     inline_styles: &[String],
 ) -> FlowchartCompiledStyles {

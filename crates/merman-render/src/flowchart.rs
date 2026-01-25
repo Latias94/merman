@@ -5,6 +5,7 @@ use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
+use indexmap::IndexMap;
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -38,7 +39,7 @@ fn normalize_css_font_family(font_family: &str) -> String {
 
 pub(crate) fn flowchart_effective_text_style_for_classes(
     base: &TextStyle,
-    class_defs: &HashMap<String, Vec<String>>,
+    class_defs: &IndexMap<String, Vec<String>>,
     classes: &[String],
     inline_styles: &[String],
 ) -> TextStyle {
@@ -99,7 +100,7 @@ pub(crate) struct FlowchartV2Model {
     #[serde(default, rename = "accTitle")]
     pub acc_title: Option<String>,
     #[serde(default, rename = "classDefs")]
-    pub class_defs: HashMap<String, Vec<String>>,
+    pub class_defs: IndexMap<String, Vec<String>>,
     #[serde(default)]
     pub direction: Option<String>,
     #[serde(default, rename = "edgeDefaults")]

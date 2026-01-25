@@ -18,6 +18,7 @@ license = "MIT"
 
 [workspace.dependencies]
 base64 = "0.22.1"
+indexmap = { version = "2.2.6", features = ["serde"] }
 lalrpop = "0.20.2"
 lalrpop-util = "0.20.2"
 logos = "0.14.4"
