@@ -956,6 +956,8 @@ name = "merman"
 version = "0.1.0"
 dependencies = [
  "merman-core",
+ "merman-render",
+ "thiserror 2.0.17",
 ]
 
 [[package]]

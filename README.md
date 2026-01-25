@@ -42,3 +42,10 @@ Populate `repo-ref/*` by cloning each repo at the pinned commit shown in
   - `cargo run -p merman-cli -- layout path/to/diagram.mmd --pretty`
 - Render SVG (prints to stdout by default):
   - `cargo run -p merman-cli -- render path/to/diagram.mmd --out out.svg`
+
+## Library (headless)
+
+The `merman` crate can be used as a headless library. Enable the optional `render` feature to get a
+convenience API for layout + SVG rendering:
+
+- `merman = { path = "...", features = ["render"] }`

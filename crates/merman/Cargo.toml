@@ -4,5 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+render = ["dep:merman-render", "dep:thiserror"]
+
 [dependencies]
 merman-core = { path = "../merman-core" }
+merman-render = { path = "../merman-render", optional = true }
+thiserror = { workspace = true, optional = true }
