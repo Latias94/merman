@@ -95,3 +95,7 @@ Next:
   Mermaid CLI `@11.12.2` renders these as an error SVG ("Syntax error in text"), so we currently keep
   those fixtures in `*_parser_only_` form until we decide whether to align to the CLI parser behavior
   (Langium grammar requires `db:L -- R:server`) or to the legacy/browser parser behavior.
+
+- Some upstream Cypress Architecture fixtures use parenthesized port pairs like `servC (L--R) servL`.
+  Mermaid CLI `@11.12.2` also renders these as an error SVG, so these remain `*_parser_only_` until the
+  baseline source is clarified (CLI vs browser/Cypress).
