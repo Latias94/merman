@@ -8345,6 +8345,25 @@ pub fn render_architecture_diagram_svg(
 
     #[derive(Debug, Clone, Deserialize)]
     #[serde(rename_all = "camelCase")]
+    struct ArchitectureEdge {
+        #[serde(rename = "lhsId")]
+        lhs_id: String,
+        #[serde(rename = "lhsDir")]
+        lhs_dir: String,
+        #[serde(default, rename = "lhsInto")]
+        lhs_into: Option<bool>,
+        #[serde(rename = "rhsId")]
+        rhs_id: String,
+        #[serde(rename = "rhsDir")]
+        rhs_dir: String,
+        #[serde(default, rename = "rhsInto")]
+        rhs_into: Option<bool>,
+        #[serde(default)]
+        title: Option<String>,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(rename_all = "camelCase")]
     struct ArchitectureModel {
         #[serde(default, rename = "accTitle")]
         acc_title: Option<String>,
@@ -8352,6 +8371,8 @@ pub fn render_architecture_diagram_svg(
         acc_descr: Option<String>,
         #[serde(default)]
         services: Vec<ArchitectureService>,
+        #[serde(default)]
+        edges: Vec<ArchitectureEdge>,
     }
 
     let model: ArchitectureModel = serde_json::from_value(semantic.clone())?;
@@ -8406,16 +8427,189 @@ pub fn render_architecture_diagram_svg(
         );
     }
 
+    fn is_arch_dir_x(dir: &str) -> bool {
+        matches!(dir, "L" | "R")
+    }
+
+    fn is_arch_dir_y(dir: &str) -> bool {
+        matches!(dir, "T" | "B")
+    }
+
+    fn arrow_points(dir: &str, arrow_size: f64) -> String {
+        match dir {
+            "L" => format!(
+                "{s},{hs} 0,{s} 0,0",
+                s = fmt(arrow_size),
+                hs = fmt(arrow_size / 2.0)
+            ),
+            "R" => format!(
+                "0,{hs} {s},0 {s},{s}",
+                s = fmt(arrow_size),
+                hs = fmt(arrow_size / 2.0)
+            ),
+            "T" => format!(
+                "0,0 {s},0 {hs},{s}",
+                s = fmt(arrow_size),
+                hs = fmt(arrow_size / 2.0)
+            ),
+            "B" => format!(
+                "{hs},0 {s},{s} 0,{s}",
+                s = fmt(arrow_size),
+                hs = fmt(arrow_size / 2.0)
+            ),
+            _ => arrow_points("R", arrow_size),
+        }
+    }
+
+    fn arrow_shift(dir: &str, orig: f64, arrow_size: f64) -> f64 {
+        // Mermaid@11.12.2 `ArchitectureDirectionArrowShift`.
+        match dir {
+            "L" | "T" => orig - arrow_size + 2.0,
+            "R" | "B" => orig - 2.0,
+            _ => orig,
+        }
+    }
+
+    fn edge_id(prefix: &str, from: &str, to: &str, counter: usize) -> String {
+        // Mirrors Mermaid `getEdgeId(from, to, { prefix })` (counter defaults to 0).
+        format!("{prefix}_{from}_{to}_{counter}")
+    }
+
     let mut out = String::new();
     let _ = write!(
         &mut out,
-        r#"<svg id="{id}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: 80px; background-color: white;" viewBox="-40 -40 80 80" role="graphics-document document" aria-roledescription="architecture"{aria}>{a11y}<style></style><g/><g class="architecture-edges"/>"#,
+        r#"<svg id="{id}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: 80px; background-color: white;" viewBox="-40 -40 80 80" role="graphics-document document" aria-roledescription="architecture"{aria}>{a11y}<style></style><g/><g class="architecture-edges">"#,
         id = diagram_id_esc,
         aria = aria_attrs,
         a11y = a11y_nodes
     );
 
     let icon_size_px = 80.0;
+
+    // Edges (DOM structure parity; geometry values are layout-dependent and normalized in parity mode).
+    if !model.edges.is_empty() {
+        let arrow_size = icon_size_px / 6.0;
+        let half_arrow_size = arrow_size / 2.0;
+        let half_icon = icon_size_px / 2.0;
+
+        for edge in &model.edges {
+            let (sx, sy) = node_xy.get(&edge.lhs_id).copied().unwrap_or((0.0, 0.0));
+            let (tx, ty) = node_xy.get(&edge.rhs_id).copied().unwrap_or((0.0, 0.0));
+
+            let (start_x, start_y) = match edge.lhs_dir.as_str() {
+                "L" => (sx - half_icon, sy),
+                "R" => (sx + half_icon, sy),
+                "T" => (sx, sy - half_icon),
+                "B" => (sx, sy + half_icon),
+                _ => (sx, sy),
+            };
+            let (end_x, end_y) = match edge.rhs_dir.as_str() {
+                "L" => (tx - half_icon, ty),
+                "R" => (tx + half_icon, ty),
+                "T" => (tx, ty - half_icon),
+                "B" => (tx, ty + half_icon),
+                _ => (tx, ty),
+            };
+
+            let mid_x = (start_x + end_x) / 2.0;
+            let mid_y = (start_y + end_y) / 2.0;
+
+            out.push_str("<g>");
+            let id = edge_id("L", &edge.lhs_id, &edge.rhs_id, 0);
+            let _ = write!(
+                &mut out,
+                r#"<path d="M {sx},{sy} L {mx},{my} L{ex},{ey} " class="edge" id="{id}"/>"#,
+                sx = fmt(start_x),
+                sy = fmt(start_y),
+                mx = fmt(mid_x),
+                my = fmt(mid_y),
+                ex = fmt(end_x),
+                ey = fmt(end_y),
+                id = escape_xml(&id)
+            );
+
+            if edge.lhs_into == Some(true) {
+                let x_shift = if is_arch_dir_x(edge.lhs_dir.as_str()) {
+                    arrow_shift(edge.lhs_dir.as_str(), start_x, arrow_size)
+                } else {
+                    start_x - half_arrow_size
+                };
+                let y_shift = if is_arch_dir_y(edge.lhs_dir.as_str()) {
+                    arrow_shift(edge.lhs_dir.as_str(), start_y, arrow_size)
+                } else {
+                    start_y - half_arrow_size
+                };
+                let _ = write!(
+                    &mut out,
+                    r#"<polygon points="{pts}" transform="translate({x},{y})" class="arrow"/>"#,
+                    pts = arrow_points(edge.lhs_dir.as_str(), arrow_size),
+                    x = fmt(x_shift),
+                    y = fmt(y_shift)
+                );
+            }
+
+            if edge.rhs_into == Some(true) {
+                let x_shift = if is_arch_dir_x(edge.rhs_dir.as_str()) {
+                    arrow_shift(edge.rhs_dir.as_str(), end_x, arrow_size)
+                } else {
+                    end_x - half_arrow_size
+                };
+                let y_shift = if is_arch_dir_y(edge.rhs_dir.as_str()) {
+                    arrow_shift(edge.rhs_dir.as_str(), end_y, arrow_size)
+                } else {
+                    end_y - half_arrow_size
+                };
+                let _ = write!(
+                    &mut out,
+                    r#"<polygon points="{pts}" transform="translate({x},{y})" class="arrow"/>"#,
+                    pts = arrow_points(edge.rhs_dir.as_str(), arrow_size),
+                    x = fmt(x_shift),
+                    y = fmt(y_shift)
+                );
+            }
+
+            if let Some(label) = edge
+                .title
+                .as_deref()
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+            {
+                let axis = match (
+                    is_arch_dir_x(edge.lhs_dir.as_str()),
+                    is_arch_dir_x(edge.rhs_dir.as_str()),
+                ) {
+                    (true, true) => "X",
+                    (false, false) => "Y",
+                    _ => "XY",
+                };
+
+                let transform = match axis {
+                    "Y" => format!(r#"translate({}, {}) rotate(-90)"#, fmt(mid_x), fmt(mid_y)),
+                    _ => format!(r#"translate({}, {})"#, fmt(mid_x), fmt(mid_y)),
+                };
+
+                let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+                let style = crate::text::TextStyle {
+                    font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+                    font_size: 16.0,
+                    font_weight: None,
+                };
+                let lines = wrap_svg_words_to_lines(label, 200.0, &measurer, &style);
+
+                let _ = write!(
+                    &mut out,
+                    r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="middle" text-anchor="middle" transform="{transform}">"#,
+                    transform = transform
+                );
+                out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
+                write_svg_text_lines(&mut out, &lines);
+                out.push_str("</g></g>");
+            }
+
+            out.push_str("</g>");
+        }
+    }
+    out.push_str("</g>");
 
     if model.services.is_empty() {
         out.push_str(r#"<g class="architecture-services"/>"#);

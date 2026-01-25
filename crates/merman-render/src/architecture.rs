@@ -13,8 +13,14 @@ struct ArchitectureNodeModel {
 
 #[derive(Debug, Clone, Deserialize)]
 struct ArchitectureEdgeModel {
-    lhs: String,
-    rhs: String,
+    #[serde(rename = "lhsId", alias = "lhs")]
+    lhs_id: String,
+    #[serde(rename = "rhsId", alias = "rhs")]
+    rhs_id: String,
+    #[serde(default, rename = "lhsDir")]
+    lhs_dir: Option<String>,
+    #[serde(default, rename = "rhsDir")]
+    rhs_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -77,25 +83,46 @@ pub fn layout_architecture_diagram(
 
     let mut edges: Vec<LayoutEdge> = Vec::new();
     for (idx, e) in model.edges.iter().enumerate() {
-        let Some(a) = node_by_id.get(&e.lhs) else {
+        let Some(a) = node_by_id.get(&e.lhs_id) else {
             return Err(Error::InvalidModel {
-                message: format!("edge lhs node not found: {}", e.lhs),
+                message: format!("edge lhs node not found: {}", e.lhs_id),
             });
         };
-        let Some(b) = node_by_id.get(&e.rhs) else {
+        let Some(b) = node_by_id.get(&e.rhs_id) else {
             return Err(Error::InvalidModel {
-                message: format!("edge rhs node not found: {}", e.rhs),
+                message: format!("edge rhs node not found: {}", e.rhs_id),
             });
+        };
+
+        let icon_size = 80.0;
+        let half = icon_size / 2.0;
+
+        fn endpoint(x: f64, y: f64, dir: Option<&str>, half: f64) -> (f64, f64) {
+            match dir.unwrap_or("") {
+                "L" => (x - half, y),
+                "R" => (x + half, y),
+                "T" => (x, y - half),
+                "B" => (x, y + half),
+                _ => (x, y),
+            }
+        }
+
+        let (sx, sy) = endpoint(a.x, a.y, e.lhs_dir.as_deref(), half);
+        let (tx, ty) = endpoint(b.x, b.y, e.rhs_dir.as_deref(), half);
+        let mid = LayoutPoint {
+            x: (sx + tx) / 2.0,
+            y: (sy + ty) / 2.0,
         };
         edges.push(LayoutEdge {
             id: format!("edge-{idx}"),
-            from: e.lhs.clone(),
-            to: e.rhs.clone(),
+            from: e.lhs_id.clone(),
+            to: e.rhs_id.clone(),
             from_cluster: None,
             to_cluster: None,
             points: vec![
-                LayoutPoint { x: a.x, y: a.y },
-                LayoutPoint { x: b.x, y: b.y },
+                LayoutPoint { x: sx, y: sy },
+                mid,
+                LayoutPoint { x: tx, y: ty },
             ],
             label: None,
             start_label_left: None,
