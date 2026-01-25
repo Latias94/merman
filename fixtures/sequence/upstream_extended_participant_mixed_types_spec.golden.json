@@ -1,0 +1,107 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "lead",
+      "dsa",
+      "API",
+      "Database"
+    ],
+    "actors": {
+      "lead": {
+        "name": "lead",
+        "description": "lead",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "dsa": {
+        "name": "dsa",
+        "description": "dsa",
+        "wrap": false,
+        "type": "queue",
+        "links": {},
+        "properties": {}
+      },
+      "API": {
+        "name": "API",
+        "description": "API",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Database": {
+        "name": "Database",
+        "description": "Database",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "API",
+        "to": "Database",
+        "message": "getUserb",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "1",
+        "from": "Database",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "Database",
+        "to": "API",
+        "message": "userb",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "Database",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "dsa",
+        "to": "Database",
+        "message": "hello",
+        "wrap": false,
+        "type": 6,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

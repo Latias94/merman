@@ -56,6 +56,8 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceDiagram
 - trailing colon message content: `fixtures/sequence/trailing_colon_empty_message.mmd`
 - extended participant syntax / `type` override:
   - type parsing: `fixtures/sequence/participant_types.mmd`
+  - extended syntax quote styles + whitespace: `fixtures/sequence/upstream_extended_participant_quote_styles_spec.mmd`
+  - mixed implicit/explicit participants with extended syntax + activation: `fixtures/sequence/upstream_extended_participant_mixed_types_spec.mmd`
   - mixed types and invalid configs: unit tests under `crates/merman-core/src/lib.rs`
 - `autonumber` statements: `fixtures/sequence/autonumber_variants.mmd`
 
