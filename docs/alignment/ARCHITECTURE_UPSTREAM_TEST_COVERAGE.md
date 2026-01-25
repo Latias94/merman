@@ -38,3 +38,24 @@ and renderer are still being brought up.
 Additional stress case (parser-only):
 
 - tall-ish nested layout input for future viewport/height parity work: `fixtures/architecture/upstream_architecture_layout_reasonable_height_parser_only_.mmd`
+
+Source: `repo-ref/mermaid/cypress/integration/rendering/architecture.spec.ts`
+
+These fixtures are derived from the (currently skipped) Cypress rendering suite and cover a broader
+set of real-world inputs, including shorthand edge syntax that appears in examples:
+
+- groups + services + shorthand edges (`db L--R server`): `fixtures/architecture/upstream_architecture_cypress_groups_parser_only_.mmd`
+- title + accessibility + colon-style ports: `fixtures/architecture/upstream_architecture_cypress_title_and_accessibilities_parser_only_.mmd`
+- nested groups within groups: `fixtures/architecture/upstream_architecture_cypress_groups_within_groups_parser_only_.mmd`
+- fallback icon handling: `fixtures/architecture/upstream_architecture_cypress_fallback_icon_parser_only_.mmd`
+- split directioning (mixed port pairs): `fixtures/architecture/upstream_architecture_cypress_split_directioning_parser_only_.mmd`
+- directional arrows via parenthesized port pairs (`(L--R)`): `fixtures/architecture/upstream_architecture_cypress_directional_arrows_parser_only_.mmd`
+- group boundary traversal edges (`{group}` modifier): `fixtures/architecture/upstream_architecture_cypress_group_edges_parser_only_.mmd`
+- edge label shorthand (`L-[Label]-R`): `fixtures/architecture/upstream_architecture_cypress_edge_labels_parser_only_.mmd`
+- simple junction edges: `fixtures/architecture/upstream_architecture_cypress_simple_junction_edges_parser_only_.mmd`
+- “reasonable height” stress case (parser-only): `fixtures/architecture/upstream_architecture_cypress_reasonable_height_parser_only_.mmd`
+
+Known missing Cypress case (not yet captured as a fixture):
+
+- complex junction edges use a multi-line parenthesized edge syntax (parenthesis spans multiple lines),
+  which is not yet supported by the Rust parser. Once supported, add a fixture for that scenario.
