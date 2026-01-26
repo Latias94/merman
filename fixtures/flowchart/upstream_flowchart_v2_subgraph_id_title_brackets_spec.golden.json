@@ -122,6 +122,7 @@
         ],
         "title": "Some Title",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       }

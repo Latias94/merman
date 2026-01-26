@@ -427,6 +427,7 @@
         ],
         "title": "old style that is broken",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -438,6 +439,7 @@
         ],
         "title": "title in quotes",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -449,6 +451,7 @@
         ],
         "title": "a-b-c",
         "classes": [],
+        "styles": [],
         "dir": "RL",
         "labelType": "text"
       },
@@ -460,6 +463,7 @@
         ],
         "title": "text of doom",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -471,6 +475,7 @@
         ],
         "title": "text of doom",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "string"
       },
@@ -481,6 +486,7 @@
         ],
         "title": "1test",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       }

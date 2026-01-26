@@ -180,6 +180,7 @@
         ],
         "title": "S1",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -190,6 +191,7 @@
         ],
         "title": "S2",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       }

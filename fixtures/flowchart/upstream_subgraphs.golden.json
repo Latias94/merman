@@ -255,6 +255,7 @@
         ],
         "title": "A",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -266,6 +267,7 @@
         ],
         "title": "Title with dashes - ok",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -277,6 +279,7 @@
         ],
         "title": "Title With Spaces",
         "classes": [],
+        "styles": [],
         "dir": "RL",
         "labelType": "text"
       },
@@ -288,6 +291,7 @@
         ],
         "title": "Child",
         "classes": [],
+        "styles": [],
         "dir": "BT",
         "labelType": "string"
       },
@@ -298,6 +302,7 @@
         ],
         "title": "Parent",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "string"
       }

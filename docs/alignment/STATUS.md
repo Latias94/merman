@@ -93,6 +93,8 @@ Recent progress: flowchart Markdown measurement in HTML-like mode now accounts f
 `upstream_markdown_subgraphs` in strict SVG XML parity.
 Recent progress: flowchart-v2 extracted cluster root groups now follow Mermaid’s sibling ordering more closely by
 sorting in reverse subgraph definition order (mirrors Dagre child registration behavior in upstream SVG DOM).
+Recent progress: flowchart-v2 subgraph `style` statements now apply to the cluster `<rect>` and title `<span>`
+styles (including `color: ... !important` on the label), matching Mermaid’s styled subgraph semantics.
 Recent progress: flowchart-v2 `data-points` strict parity no longer relies on a global fixed-point quantization;
 instead we apply a very narrow truncation heuristic only for coordinates extremely close to `1/3` or `2/3` remainders
 at the 2^18 scale, which keeps `flowchart/basic` aligned while preserving prior Markdown strict parity fixes.

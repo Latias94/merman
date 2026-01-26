@@ -141,6 +141,7 @@
         ],
         "title": "One",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -152,6 +153,7 @@
         ],
         "title": "**Two**",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "markdown"
       }

@@ -7,13 +7,13 @@
     "accTitle": null,
     "accDescr": null,
     "classDefs": {
-      "TestSub": [
-        "fill:green"
-      ],
       "Test": [
         "fill:#F84E68",
         "stroke:#333",
         "color:white"
+      ],
+      "TestSub": [
+        "fill:green"
       ]
     },
     "tooltips": {},
@@ -186,6 +186,7 @@
           "Test",
           "TestSub"
         ],
+        "styles": [],
         "dir": null,
         "labelType": "string"
       }

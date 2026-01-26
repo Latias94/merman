@@ -142,6 +142,7 @@
         ],
         "title": "Cluster",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "string"
       }

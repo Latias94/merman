@@ -122,6 +122,7 @@
         ],
         "title": "SG1",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -132,6 +133,7 @@
         ],
         "title": "SG2",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       }

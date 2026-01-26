@@ -160,6 +160,7 @@
         ],
         "title": "Left",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "string"
       },
@@ -171,6 +172,7 @@
         ],
         "title": "Right",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "string"
       },
@@ -182,6 +184,7 @@
         ],
         "title": "Outer",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "string"
       }

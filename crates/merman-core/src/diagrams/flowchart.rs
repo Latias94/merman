@@ -175,6 +175,7 @@ pub(crate) struct FlowSubGraph {
     pub nodes: Vec<String>,
     pub title: String,
     pub classes: Vec<String>,
+    pub styles: Vec<String>,
     pub dir: Option<String>,
     pub label_type: String,
 }
@@ -2243,6 +2244,7 @@ fn flow_subgraph_to_json(sg: FlowSubGraph) -> Value {
         "nodes": sg.nodes,
         "title": sg.title,
         "classes": sg.classes,
+        "styles": sg.styles,
         "dir": sg.dir,
         "labelType": sg.label_type,
     })
@@ -2439,6 +2441,7 @@ impl SubgraphBuilder {
             nodes: members,
             title,
             classes: Vec::new(),
+            styles: Vec::new(),
             dir,
             label_type,
         });
@@ -2634,8 +2637,12 @@ fn apply_semantic_statements(
                 )?;
             }
             Stmt::Style(s) => {
-                let idx = ensure_node(nodes, node_index, &s.target);
-                nodes[idx].styles.extend(s.styles.iter().cloned());
+                if let Some(&idx) = subgraph_index.get(&s.target) {
+                    subgraphs[idx].styles.extend(s.styles.iter().cloned());
+                } else {
+                    let idx = ensure_node(nodes, node_index, &s.target);
+                    nodes[idx].styles.extend(s.styles.iter().cloned());
+                }
             }
             Stmt::ClassDef(c) => {
                 for id in &c.ids {
@@ -2801,12 +2808,12 @@ fn add_class_to_target(
     target: &str,
     class_name: &str,
 ) {
-    if let Some(&idx) = node_index.get(target) {
-        nodes[idx].classes.push(class_name.to_string());
-        return;
-    }
     if let Some(&idx) = subgraph_index.get(target) {
         subgraphs[idx].classes.push(class_name.to_string());
+        return;
+    }
+    if let Some(&idx) = node_index.get(target) {
+        nodes[idx].classes.push(class_name.to_string());
     }
 }
 
@@ -3249,6 +3256,7 @@ mod tests {
                 ],
                 title: "".to_string(),
                 classes: Vec::new(),
+                styles: Vec::new(),
                 dir: None,
                 label_type: "text".to_string(),
             },
@@ -3257,6 +3265,7 @@ mod tests {
                 nodes: vec!["f".to_string(), "g".to_string(), "h".to_string()],
                 title: "".to_string(),
                 classes: Vec::new(),
+                styles: Vec::new(),
                 dir: None,
                 label_type: "text".to_string(),
             },
@@ -3265,6 +3274,7 @@ mod tests {
                 nodes: vec!["i".to_string(), "j".to_string()],
                 title: "".to_string(),
                 classes: Vec::new(),
+                styles: Vec::new(),
                 dir: None,
                 label_type: "text".to_string(),
             },
@@ -3273,6 +3283,7 @@ mod tests {
                 nodes: vec!["k".to_string()],
                 title: "".to_string(),
                 classes: Vec::new(),
+                styles: Vec::new(),
                 dir: None,
                 label_type: "text".to_string(),
             },

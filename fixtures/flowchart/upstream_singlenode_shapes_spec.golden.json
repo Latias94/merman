@@ -245,6 +245,7 @@
         ],
         "title": "hello",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       }

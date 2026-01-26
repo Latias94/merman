@@ -173,6 +173,8 @@ pub(crate) struct FlowSubgraph {
     pub label_type: Option<String>,
     #[serde(default)]
     pub classes: Vec<String>,
+    #[serde(default)]
+    pub styles: Vec<String>,
     pub nodes: Vec<String>,
 }
 

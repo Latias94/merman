@@ -164,6 +164,7 @@
         ],
         "title": "X",
         "classes": [],
+        "styles": [],
         "dir": "LR",
         "labelType": "text"
       },
@@ -175,6 +176,7 @@
         ],
         "title": "Y",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       }

@@ -85,6 +85,7 @@
         ],
         "title": "A",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -93,6 +94,7 @@
         "nodes": [],
         "title": "B",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       }

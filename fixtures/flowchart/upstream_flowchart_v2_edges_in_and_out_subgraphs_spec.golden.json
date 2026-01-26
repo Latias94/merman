@@ -322,6 +322,7 @@
         ],
         "title": "subnet1",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -333,6 +334,7 @@
         ],
         "title": "subnet2",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -346,6 +348,7 @@
         ],
         "title": "project",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       }

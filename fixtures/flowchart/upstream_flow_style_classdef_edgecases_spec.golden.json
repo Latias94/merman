@@ -7,6 +7,10 @@
     "accTitle": null,
     "accDescr": null,
     "classDefs": {
+      "exClass": [
+        "background:#bbb",
+        "border:1px solid red"
+      ],
       "dotClass": [
         "background:#bbb",
         "border:1.5px solid red"
@@ -14,10 +18,6 @@
       "spaceClass": [
         "background:  #bbb",
         "border:1.5px solid red"
-      ],
-      "exClass": [
-        "background:#bbb",
-        "border:1px solid red"
       ],
       "percentClass": [
         "fill:#f96",

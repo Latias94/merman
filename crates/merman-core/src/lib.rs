@@ -1830,6 +1830,7 @@ A_node-->P[\Inv trapezoid/];
                 "nodes": ["B", "A"],
                 "title": "S",
                 "classes": [],
+                "styles": [],
                 "dir": null,
                 "labelType": "text"
             }])
@@ -1850,6 +1851,7 @@ A_node-->P[\Inv trapezoid/];
                 "nodes": ["B", "A"],
                 "title": "Inner",
                 "classes": [],
+                "styles": [],
                 "dir": null,
                 "labelType": "text"
             }, {
@@ -1857,6 +1859,7 @@ A_node-->P[\Inv trapezoid/];
                 "nodes": ["Inner"],
                 "title": "Outer",
                 "classes": [],
+                "styles": [],
                 "dir": null,
                 "labelType": "text"
             }])
@@ -1877,6 +1880,7 @@ A_node-->P[\Inv trapezoid/];
                 "nodes": ["B", "A"],
                 "title": "one",
                 "classes": [],
+                "styles": [],
                 "dir": null,
                 "labelType": "text"
             }])
@@ -1897,6 +1901,7 @@ A_node-->P[\Inv trapezoid/];
                 "nodes": ["B", "A"],
                 "title": "number as labels",
                 "classes": [],
+                "styles": [],
                 "dir": null,
                 "labelType": "text"
             }])
@@ -1917,6 +1922,7 @@ A_node-->P[\Inv trapezoid/];
                 "nodes": ["B", "A"],
                 "title": "TOP",
                 "classes": [],
+                "styles": [],
                 "dir": "TB",
                 "labelType": "text"
             }])
@@ -1949,6 +1955,7 @@ A_node-->P[\Inv trapezoid/];
                 "nodes": ["a2", "a1"],
                 "title": "One",
                 "classes": [],
+                "styles": [],
                 "dir": null,
                 "labelType": "text"
             }])

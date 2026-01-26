@@ -160,6 +160,7 @@
         ],
         "title": "Cluster",
         "classes": [],
+        "styles": [],
         "dir": "LR",
         "labelType": "string"
       }

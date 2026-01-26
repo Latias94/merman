@@ -291,6 +291,7 @@
         ],
         "title": "myTitle",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       }

@@ -192,12 +192,7 @@
         "constraint": null,
         "assetWidth": null,
         "assetHeight": null,
-        "styles": [
-          "fill:#F99",
-          "stroke-width:2px",
-          "stroke:#F0F",
-          "color:darkred"
-        ],
+        "styles": [],
         "classes": [],
         "link": null,
         "linkTarget": null,
@@ -216,12 +211,7 @@
         "constraint": null,
         "assetWidth": null,
         "assetHeight": null,
-        "styles": [
-          "fill:#999",
-          "stroke-width:10px",
-          "stroke:#0F0",
-          "color:blue"
-        ],
+        "styles": [],
         "classes": [],
         "link": null,
         "linkTarget": null,
@@ -426,6 +416,12 @@
         ],
         "title": "Foo SubGraph",
         "classes": [],
+        "styles": [
+          "fill:#F99",
+          "stroke-width:2px",
+          "stroke:#F0F",
+          "color:darkred"
+        ],
         "dir": null,
         "labelType": "text"
       },
@@ -437,6 +433,12 @@
         ],
         "title": "Bar SubGraph",
         "classes": [],
+        "styles": [
+          "fill:#999",
+          "stroke-width:10px",
+          "stroke:#0F0",
+          "color:blue"
+        ],
         "dir": null,
         "labelType": "text"
       }

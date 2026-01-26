@@ -7,11 +7,11 @@
     "accTitle": null,
     "accDescr": null,
     "classDefs": {
-      "class2": [
-        "fill:pink"
-      ],
       "class1": [
         "fill:lightblue"
+      ],
+      "class2": [
+        "fill:pink"
       ],
       "larger": [
         "font-size:30px",

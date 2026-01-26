@@ -17048,6 +17048,10 @@ fn render_flowchart_cluster(
         return;
     }
 
+    let compiled_styles = flowchart_compile_styles(&ctx.class_defs, &sg.classes, &sg.styles);
+    let rect_style = compiled_styles.node_style.trim();
+    let label_style = compiled_styles.label_style.trim();
+
     let left = (cluster.x - cluster.width / 2.0) + ctx.tx - origin_x;
     let top = (cluster.y - cluster.height / 2.0) + ctx.ty - origin_y;
     let rect_w = cluster.width.max(1.0);
@@ -17089,9 +17093,10 @@ fn render_flowchart_cluster(
         let wrapped_title_text = wrapped_lines.join("\n");
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-look="classic"><rect style="" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><g><rect class="background" style="stroke: none"/>"#,
+            r#"<g class="{}" id="{}" data-look="classic"><rect style="{}" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><g><rect class="background" style="stroke: none"/>"#,
             escape_attr(&class_attr),
             escape_attr(&cluster.id),
+            escape_attr(rect_style),
             fmt(left),
             fmt(top),
             fmt(rect_w),
@@ -17109,11 +17114,18 @@ fn render_flowchart_cluster(
     let label_h = cluster.title_label.height.max(0.0);
     let label_left = left + rect_w / 2.0 - label_w / 2.0;
 
+    let span_style_attr = if label_style.is_empty() {
+        String::new()
+    } else {
+        format!(r#" style="{}""#, escape_attr(label_style))
+    };
+
     let _ = write!(
         out,
-        r#"<g class="{}" id="{}" data-look="classic"><rect style="" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g></g>"#,
+        r#"<g class="{}" id="{}" data-look="classic"><rect style="{}" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
         escape_attr(&class_attr),
         escape_attr(&cluster.id),
+        escape_attr(rect_style),
         fmt(left),
         fmt(top),
         fmt(rect_w),
@@ -17122,6 +17134,7 @@ fn render_flowchart_cluster(
         fmt(label_top),
         fmt(label_w),
         fmt(label_h),
+        span_style_attr,
         title_html
     );
 }

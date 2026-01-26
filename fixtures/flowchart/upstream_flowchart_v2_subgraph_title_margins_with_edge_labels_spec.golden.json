@@ -292,6 +292,7 @@
         ],
         "title": "B1",
         "classes": [],
+        "styles": [],
         "dir": "RL",
         "labelType": "text"
       },
@@ -303,6 +304,7 @@
         ],
         "title": "B2",
         "classes": [],
+        "styles": [],
         "dir": "BT",
         "labelType": "text"
       },
@@ -314,6 +316,7 @@
         ],
         "title": "TOP",
         "classes": [],
+        "styles": [],
         "dir": "TB",
         "labelType": "text"
       }

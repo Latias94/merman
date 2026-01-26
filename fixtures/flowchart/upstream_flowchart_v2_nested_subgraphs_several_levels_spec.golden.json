@@ -164,6 +164,7 @@
         ],
         "title": "O",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -174,6 +175,7 @@
         ],
         "title": "B",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -186,6 +188,7 @@
         ],
         "title": "A",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       }

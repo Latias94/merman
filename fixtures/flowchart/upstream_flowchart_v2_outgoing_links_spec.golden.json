@@ -84,6 +84,7 @@
         ],
         "title": "subcontainer",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -95,6 +96,7 @@
         ],
         "title": "main",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       }

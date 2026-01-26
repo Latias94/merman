@@ -254,6 +254,7 @@
         ],
         "title": "B",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -264,6 +265,7 @@
         ],
         "title": "D",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -275,6 +277,7 @@
         ],
         "title": "C1",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -285,6 +288,7 @@
         ],
         "title": "C",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       }

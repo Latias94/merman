@@ -331,6 +331,7 @@
         ],
         "title": "one",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -342,6 +343,7 @@
         ],
         "title": "two",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -353,6 +355,7 @@
         ],
         "title": "three",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       }

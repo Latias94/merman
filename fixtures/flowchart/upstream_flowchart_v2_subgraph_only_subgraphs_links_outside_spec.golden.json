@@ -221,6 +221,7 @@
         ],
         "title": "Child1",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -232,6 +233,7 @@
         ],
         "title": "Child2",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -243,6 +245,7 @@
         ],
         "title": "Main",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       }

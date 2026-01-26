@@ -198,6 +198,7 @@
         ],
         "title": "container_Beta",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       },
@@ -210,6 +211,7 @@
         ],
         "title": "container_Alpha",
         "classes": [],
+        "styles": [],
         "dir": null,
         "labelType": "text"
       }
