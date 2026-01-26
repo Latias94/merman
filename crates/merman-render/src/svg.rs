@@ -18992,10 +18992,68 @@ fn render_flowchart_edge_path(
         if out == -0.0 { 0.0 } else { out }
     }
 
+    fn maybe_snap_data_point_to_f32(v: f64) -> f64 {
+        if !v.is_finite() {
+            return 0.0;
+        }
+
+        // Upstream Mermaid (V8) frequently ends up with coordinates that are effectively
+        // f32-rounded due to DOM/layout measurement pipelines. When our headless math lands
+        // extremely close to those f32 values, snap to that lattice so `data-points`
+        // Base64(JSON.stringify(...)) matches bit-for-bit.
+        fn next_up(v: f64) -> f64 {
+            if !v.is_finite() {
+                return v;
+            }
+            if v == 0.0 {
+                return f64::from_bits(1);
+            }
+            let bits = v.to_bits();
+            if v > 0.0 {
+                f64::from_bits(bits + 1)
+            } else {
+                f64::from_bits(bits - 1)
+            }
+        }
+
+        fn next_down(v: f64) -> f64 {
+            if !v.is_finite() {
+                return v;
+            }
+            if v == 0.0 {
+                return -f64::from_bits(1);
+            }
+            let bits = v.to_bits();
+            if v > 0.0 {
+                f64::from_bits(bits - 1)
+            } else {
+                f64::from_bits(bits + 1)
+            }
+        }
+
+        let snapped = (v as f32) as f64;
+        if !snapped.is_finite() {
+            return v;
+        }
+
+        // Preserve exact 1-ULP offsets around the snapped value. Upstream Mermaid frequently
+        // produces values like `761.5937500000001` (next_up of `761.59375`) due to intersect-line
+        // rounding, and snapping those back to the f32 lattice would *reduce* strict parity.
+        if v.to_bits() == snapped.to_bits() || v.to_bits() == next_up(snapped).to_bits() {
+            return if v == -0.0 { 0.0 } else { v };
+        }
+
+        if (v - snapped).abs() < 1e-11 {
+            if snapped == -0.0 { 0.0 } else { snapped }
+        } else {
+            v
+        }
+    }
+
     let mut points_for_data_points = points_after_intersect.clone();
     for p in &mut points_for_data_points {
-        p.x = maybe_truncate_data_point(p.x);
-        p.y = maybe_truncate_data_point(p.y);
+        p.x = maybe_snap_data_point_to_f32(maybe_truncate_data_point(p.x));
+        p.y = maybe_snap_data_point_to_f32(maybe_truncate_data_point(p.y));
     }
     let mut points_for_render = points_after_intersect;
     if let Some(tc) = le.to_cluster.as_deref() {

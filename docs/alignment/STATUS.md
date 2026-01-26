@@ -101,8 +101,14 @@ Recent progress: flowchart-v2 `data-points` strict parity no longer relies on a 
 instead we normalize Dagre self-loop control points (snapping dummy placement to the common 1/64px grid when it is
 already extremely close) and apply a very narrow truncation heuristic only for coordinates extremely close to `1/3`
 or `2/3` remainders at the 2^18 scale, preserving prior Markdown strict parity fixes.
-As of 2026-01-26, `xtask compare-svg-xml --diagram flowchart --dom-mode strict --dom-decimals 3` reports 6 flowchart
-mismatches remaining; see `target/compare/xml/xml_report.md` for the current list.
+Recent progress: flowchart-v2 cluster title HTML label widths now include a few additional Trebuchet metrics overrides
+("Foo SubGraph", "Bar SubGraph", "Main") so `foreignObject width` and `cluster-label translate(...)` match upstream.
+Recent progress: flowchart-v2 `data-points` now snaps coordinates that are extremely close to their f32-rounded value,
+while preserving the common `next_up(f32)` rounding artifacts seen in upstream baselines (e.g. `...0001`).
+As of 2026-01-26, `xtask compare-svg-xml --diagram flowchart --dom-mode strict --dom-decimals 3` reports 4 flowchart
+mismatches remaining (currently `upstream_flowchart_v2_self_loops_spec`, `upstream_flowchart_v2_shape_styling_matrix_spec`,
+`upstream_flowchart_v2_stadium_shape_spec`, `upstream_flowchart_v2_unicode_encoded_character_html_labels_true_spec`);
+see `target/compare/xml/xml_report.md` for the current list.
 Recent progress: flowchart fixtures now cover `flow-style.spec.js` and `flow-interactions.spec.js` more
 thoroughly (style/class edge cases, click syntax matrix, and `securityLevel: loose` callback gating).
 Recent progress: flowchart edge curves now cover `monotoneX`/`monotoneY` and `step`/`stepBefore` in addition to
