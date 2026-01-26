@@ -177,10 +177,14 @@ fn fixtures_match_golden_snapshots() {
     for mmd_path in fixtures {
         let text = std::fs::read_to_string(&mmd_path)
             .unwrap_or_else(|e| panic!("failed to read fixture {}: {e}", mmd_path.display()));
-        let parsed =
-            futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-                .unwrap_or_else(|e| panic!("parse failed for {}: {e}", mmd_path.display()))
-                .unwrap_or_else(|| panic!("no diagram detected in {}", mmd_path.display()));
+        let parsed = futures::executor::block_on(engine.parse_diagram(
+            &text,
+            ParseOptions {
+                suppress_errors: true,
+            },
+        ))
+        .unwrap_or_else(|e| panic!("parse failed for {}: {e}", mmd_path.display()))
+        .unwrap_or_else(|| panic!("no diagram detected in {}", mmd_path.display()));
 
         let snapshot = snapshot_value(&parsed.meta.diagram_type, parsed.model);
         let golden_path = mmd_path.with_extension("golden.json");

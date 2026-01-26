@@ -1006,6 +1006,13 @@ pub struct C4DiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ErrorDiagramLayout {
+    pub viewbox_width: f64,
+    pub viewbox_height: f64,
+    pub max_width_px: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LayoutDiagram {
     BlockDiagram(BlockDiagramLayout),
     RequirementDiagram(RequirementDiagramLayout),
@@ -1030,6 +1037,7 @@ pub enum LayoutDiagram {
     GitGraphDiagram(GitGraphDiagramLayout),
     GanttDiagram(GanttDiagramLayout),
     C4Diagram(C4DiagramLayout),
+    ErrorDiagram(ErrorDiagramLayout),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

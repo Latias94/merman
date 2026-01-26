@@ -154,19 +154,22 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
             }
         };
 
-        let parsed =
-            match futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-            {
-                Ok(Some(v)) => v,
-                Ok(None) => {
-                    failures.push(format!("no diagram detected in {}", mmd_path.display()));
-                    continue;
-                }
-                Err(err) => {
-                    failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
-                    continue;
-                }
-            };
+        let parsed = match futures::executor::block_on(engine.parse_diagram(
+            &text,
+            ParseOptions {
+                suppress_errors: true,
+            },
+        )) {
+            Ok(Some(v)) => v,
+            Ok(None) => {
+                failures.push(format!("no diagram detected in {}", mmd_path.display()));
+                continue;
+            }
+            Err(err) => {
+                failures.push(format!("parse failed for {}: {err}", mmd_path.display()));
+                continue;
+            }
+        };
 
         let layouted = match layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,

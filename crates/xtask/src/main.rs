@@ -4363,9 +4363,12 @@ fn gen_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let parsed = match futures::executor::block_on(
-            engine.parse_diagram(&text, merman::ParseOptions::default()),
-        ) {
+        let parsed = match futures::executor::block_on(engine.parse_diagram(
+            &text,
+            merman::ParseOptions {
+                suppress_errors: true,
+            },
+        )) {
             Ok(Some(v)) => v,
             Ok(None) => {
                 failures.push(format!("no diagram detected in {}", mmd_path.display()));
@@ -4776,9 +4779,12 @@ fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let parsed = match futures::executor::block_on(
-            engine.parse_diagram(&text, merman::ParseOptions::default()),
-        ) {
+        let parsed = match futures::executor::block_on(engine.parse_diagram(
+            &text,
+            merman::ParseOptions {
+                suppress_errors: true,
+            },
+        )) {
             Ok(Some(v)) => v,
             Ok(None) => {
                 failures.push(format!("no diagram detected in {}", mmd_path.display()));
@@ -5049,9 +5055,12 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let parsed = match futures::executor::block_on(
-            engine.parse_diagram(&text, merman::ParseOptions::default()),
-        ) {
+        let parsed = match futures::executor::block_on(engine.parse_diagram(
+            &text,
+            merman::ParseOptions {
+                suppress_errors: true,
+            },
+        )) {
             Ok(Some(v)) => v,
             Ok(None) => {
                 failures.push(format!("no diagram detected in {}", mmd_path.display()));
@@ -5952,9 +5961,12 @@ fn gen_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let parsed = match futures::executor::block_on(
-            engine.parse_diagram(&text, merman::ParseOptions::default()),
-        ) {
+        let parsed = match futures::executor::block_on(engine.parse_diagram(
+            &text,
+            merman::ParseOptions {
+                suppress_errors: true,
+            },
+        )) {
             Ok(Some(v)) => v,
             Ok(None) => {
                 failures.push(format!("no diagram detected in {}", mmd_path.display()));
@@ -8274,6 +8286,9 @@ fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mode = svgdom::DomMode::parse(&dom_mode);
 
     let engine = merman::Engine::new();
+    let parse_opts = merman::ParseOptions {
+        suppress_errors: true,
+    };
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
@@ -8318,9 +8333,7 @@ fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let parsed = match futures::executor::block_on(
-            engine.parse_diagram(&text, merman::ParseOptions::default()),
-        ) {
+        let parsed = match futures::executor::block_on(engine.parse_diagram(&text, parse_opts)) {
             Ok(Some(v)) => v,
             Ok(None) => {
                 failures.push(format!("no diagram detected in {}", mmd_path.display()));
@@ -10831,6 +10844,9 @@ fn compare_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mode = svgdom::DomMode::parse(&dom_mode);
 
     let engine = merman::Engine::new();
+    let parse_opts = merman::ParseOptions {
+        suppress_errors: true,
+    };
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
@@ -10865,9 +10881,7 @@ fn compare_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let parsed = match futures::executor::block_on(
-            engine.parse_diagram(&text, merman::ParseOptions::default()),
-        ) {
+        let parsed = match futures::executor::block_on(engine.parse_diagram(&text, parse_opts)) {
             Ok(Some(v)) => v,
             Ok(None) => {
                 failures.push(format!("no diagram detected in {}", mmd_path.display()));
@@ -11615,6 +11629,9 @@ fn compare_treemap_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mode = svgdom::DomMode::parse(&dom_mode);
 
     let engine = merman::Engine::new();
+    let parse_opts = merman::ParseOptions {
+        suppress_errors: true,
+    };
     let mut report = String::new();
     let _ = writeln!(
         &mut report,
@@ -11660,9 +11677,7 @@ fn compare_treemap_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let parsed = match futures::executor::block_on(
-            engine.parse_diagram(&text, merman::ParseOptions::default()),
-        ) {
+        let parsed = match futures::executor::block_on(engine.parse_diagram(&text, parse_opts)) {
             Ok(Some(v)) => v,
             Ok(None) => {
                 failures.push(format!("no diagram detected in {}", mmd_path.display()));
@@ -11683,24 +11698,14 @@ fn compare_treemap_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let merman_render::model::LayoutDiagram::TreemapDiagram(layout) = &layouted.layout else {
-            failures.push(format!(
-                "unexpected layout type for {}: {}",
-                mmd_path.display(),
-                layouted.meta.diagram_type
-            ));
-            continue;
-        };
-
         let svg_opts = merman_render::svg::SvgRenderOptions {
             diagram_id: Some(diagram_id),
             ..Default::default()
         };
 
-        let local_svg = match merman_render::svg::render_treemap_diagram_svg(
-            layout,
-            &layouted.semantic,
-            &layouted.meta.effective_config,
+        let local_svg = match merman_render::svg::render_layouted_svg(
+            &layouted,
+            layout_opts.text_measurer.as_ref(),
             &svg_opts,
         ) {
             Ok(v) => v,

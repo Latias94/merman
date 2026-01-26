@@ -100,12 +100,32 @@ impl Engine {
         let Some((code, meta)) = self.preprocess_and_detect(text, options)? else {
             return Ok(None);
         };
-        let mut model = diagram::parse_or_unsupported(
+
+        let mut model = match diagram::parse_or_unsupported(
             &self.diagram_registry,
             &meta.diagram_type,
             &code,
             &meta,
-        )?;
+        ) {
+            Ok(v) => v,
+            Err(err) => {
+                if !options.suppress_errors {
+                    return Err(err);
+                }
+
+                let mut error_meta = meta.clone();
+                error_meta.diagram_type = "error".to_string();
+                let mut error_model = serde_json::json!({ "type": "error" });
+                common_db::apply_common_db_sanitization(
+                    &mut error_model,
+                    &error_meta.effective_config,
+                );
+                return Ok(Some(ParsedDiagram {
+                    meta: error_meta,
+                    model: error_model,
+                }));
+            }
+        };
         common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
         Ok(Some(ParsedDiagram { meta, model }))
     }

@@ -5,6 +5,7 @@ pub mod block;
 pub mod c4;
 pub mod class;
 pub mod er;
+pub mod error;
 pub mod flowchart;
 pub mod gantt;
 mod generated;
@@ -68,6 +69,11 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
     let diagram_type = parsed.meta.diagram_type.as_str();
 
     let layout = match diagram_type {
+        "error" => LayoutDiagram::ErrorDiagram(error::layout_error_diagram(
+            &parsed.model,
+            &meta.effective_config,
+            options.text_measurer.as_ref(),
+        )?),
         "block" => LayoutDiagram::BlockDiagram(block::layout_block_diagram(
             &parsed.model,
             &meta.effective_config,
