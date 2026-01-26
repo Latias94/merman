@@ -16150,6 +16150,14 @@ fn flowchart_css(
     let node_border = theme_color(effective_config, "nodeBorder", "#9370DB");
     let main_bkg = theme_color(effective_config, "mainBkg", "#ECECFF");
     let text_color = theme_color(effective_config, "textColor", "#333");
+    let title_color = theme_color(effective_config, "titleColor", text_color.as_str());
+    let error_bkg = theme_color(effective_config, "errorBkgColor", "#552222");
+    let error_text = theme_color(effective_config, "errorTextColor", "#552222");
+    let edge_label_background = theme_color(
+        effective_config,
+        "edgeLabelBackground",
+        "rgba(232,232,232, 0.8)",
+    );
     let tertiary = theme_color(
         effective_config,
         "tertiaryColor",
@@ -16157,6 +16165,123 @@ fn flowchart_css(
     );
     let cluster_bkg = theme_color(effective_config, "clusterBkg", "#ffffde");
     let cluster_border = theme_color(effective_config, "clusterBorder", "#aaaa33");
+
+    fn flowchart_label_bkg_from_edge_label_background(edge_label_background: &str) -> String {
+        fn parse_hex_channel(hex: &str) -> Option<u8> {
+            u8::from_str_radix(hex, 16).ok()
+        }
+
+        fn parse_hex_rgb(s: &str) -> Option<(f64, f64, f64)> {
+            let s = s.trim();
+            let hex = s.strip_prefix('#')?;
+            match hex.len() {
+                3 => {
+                    let r = parse_hex_channel(&hex[0..1].repeat(2))? as f64;
+                    let g = parse_hex_channel(&hex[1..2].repeat(2))? as f64;
+                    let b = parse_hex_channel(&hex[2..3].repeat(2))? as f64;
+                    Some((r, g, b))
+                }
+                6 => {
+                    let r = parse_hex_channel(&hex[0..2])? as f64;
+                    let g = parse_hex_channel(&hex[2..4])? as f64;
+                    let b = parse_hex_channel(&hex[4..6])? as f64;
+                    Some((r, g, b))
+                }
+                _ => None,
+            }
+        }
+
+        fn parse_csv_f64(s: &str) -> Option<Vec<f64>> {
+            let mut out = Vec::new();
+            for p in s.split(',') {
+                let p = p.trim();
+                if p.is_empty() {
+                    return None;
+                }
+                out.push(p.parse::<f64>().ok()?);
+            }
+            Some(out)
+        }
+
+        fn parse_rgb_like(s: &str, prefix: &str) -> Option<(f64, f64, f64)> {
+            let inner = s.trim().strip_prefix(prefix)?.strip_suffix(')')?;
+            let parts = parse_csv_f64(inner)?;
+            if parts.len() < 3 {
+                return None;
+            }
+            Some((parts[0], parts[1], parts[2]))
+        }
+
+        fn parse_hsl_to_rgb(s: &str) -> Option<(f64, f64, f64)> {
+            let inner = s.trim().strip_prefix("hsl(")?.strip_suffix(')')?;
+            let mut parts = inner.split(',').map(|p| p.trim());
+            let h = parts.next()?.parse::<f64>().ok()?;
+            let s = parts
+                .next()?
+                .strip_suffix('%')?
+                .trim()
+                .parse::<f64>()
+                .ok()?;
+            let l = parts
+                .next()?
+                .strip_suffix('%')?
+                .trim()
+                .parse::<f64>()
+                .ok()?;
+
+            let h = (h / 360.0) % 1.0;
+            let s = (s / 100.0).clamp(0.0, 1.0);
+            let l = (l / 100.0).clamp(0.0, 1.0);
+
+            if s == 0.0 {
+                let v = (l * 255.0).round();
+                return Some((v, v, v));
+            }
+
+            fn hue_to_rgb(p: f64, q: f64, mut t: f64) -> f64 {
+                if t < 0.0 {
+                    t += 1.0;
+                }
+                if t > 1.0 {
+                    t -= 1.0;
+                }
+                if t < 1.0 / 6.0 {
+                    return p + (q - p) * 6.0 * t;
+                }
+                if t < 1.0 / 2.0 {
+                    return q;
+                }
+                if t < 2.0 / 3.0 {
+                    return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
+                }
+                p
+            }
+
+            let q = if l < 0.5 {
+                l * (1.0 + s)
+            } else {
+                l + s - l * s
+            };
+            let p = 2.0 * l - q;
+            let r = hue_to_rgb(p, q, h + 1.0 / 3.0) * 255.0;
+            let g = hue_to_rgb(p, q, h) * 255.0;
+            let b = hue_to_rgb(p, q, h - 1.0 / 3.0) * 255.0;
+            Some((r, g, b))
+        }
+
+        let rgb = parse_hex_rgb(edge_label_background)
+            .or_else(|| parse_rgb_like(edge_label_background, "rgb("))
+            .or_else(|| parse_rgb_like(edge_label_background, "rgba("))
+            .or_else(|| parse_hsl_to_rgb(edge_label_background));
+
+        let (r, g, b) = rgb.unwrap_or((232.0, 232.0, 232.0));
+        let r = r.round().clamp(0.0, 255.0) as i64;
+        let g = g.round().clamp(0.0, 255.0) as i64;
+        let b = b.round().clamp(0.0, 255.0) as i64;
+        format!("rgba({r}, {g}, {b}, 0.5)")
+    }
+
+    let label_bkg = flowchart_label_bkg_from_edge_label_background(&edge_label_background);
 
     let mut out = String::new();
     let _ = write!(
@@ -16178,9 +16303,12 @@ fn flowchart_css(
     );
     let _ = write!(
         &mut out,
-        r#"#{} .error-icon{{fill:#552222;}}#{} .error-text{{fill:#552222;stroke:#552222;}}"#,
+        r#"#{} .error-icon{{fill:{};}}#{} .error-text{{fill:{};stroke:{};}}"#,
         escape_xml(diagram_id),
-        escape_xml(diagram_id)
+        error_bkg,
+        escape_xml(diagram_id),
+        error_text,
+        error_text
     );
     let _ = write!(
         &mut out,
@@ -16216,9 +16344,9 @@ fn flowchart_css(
         &mut out,
         r#"#{} .cluster-label text{{fill:{};}}#{} .cluster-label span{{color:{};}}#{} .cluster-label span p{{background-color:transparent;}}#{} .label text,#{} span{{fill:{};color:{};}}"#,
         escape_xml(diagram_id),
-        text_color,
+        title_color,
         escape_xml(diagram_id),
-        text_color,
+        title_color,
         escape_xml(diagram_id),
         escape_xml(diagram_id),
         escape_xml(diagram_id),
@@ -16244,11 +16372,16 @@ fn flowchart_css(
     );
     let _ = write!(
         &mut out,
-        r#"#{} .edgeLabel{{background-color:rgba(232,232,232, 0.8);text-align:center;}}#{} .edgeLabel p{{background-color:rgba(232,232,232, 0.8);}}#{} .edgeLabel rect{{opacity:0.5;background-color:rgba(232,232,232, 0.8);fill:rgba(232,232,232, 0.8);}}#{} .labelBkg{{background-color:rgba(232, 232, 232, 0.5);}}"#,
+        r#"#{} .edgeLabel{{background-color:{};text-align:center;}}#{} .edgeLabel p{{background-color:{};}}#{} .edgeLabel rect{{opacity:0.5;background-color:{};fill:{};}}#{} .labelBkg{{background-color:{};}}"#,
         escape_xml(diagram_id),
+        edge_label_background,
         escape_xml(diagram_id),
+        edge_label_background,
         escape_xml(diagram_id),
-        escape_xml(diagram_id)
+        edge_label_background,
+        edge_label_background,
+        escape_xml(diagram_id),
+        label_bkg
     );
     let _ = write!(
         &mut out,
@@ -16257,9 +16390,9 @@ fn flowchart_css(
         cluster_bkg,
         cluster_border,
         escape_xml(diagram_id),
-        text_color,
+        title_color,
         escape_xml(diagram_id),
-        text_color,
+        title_color,
         escape_xml(diagram_id),
         font_family,
         tertiary,
@@ -16270,13 +16403,17 @@ fn flowchart_css(
     );
     let _ = write!(
         &mut out,
-        r#"#{} .icon-shape,#{} .image-shape{{background-color:rgba(232,232,232, 0.8);text-align:center;}}#{} .icon-shape p,#{} .image-shape p{{background-color:rgba(232,232,232, 0.8);padding:2px;}}#{} .icon-shape rect,#{} .image-shape rect{{opacity:0.5;background-color:rgba(232,232,232, 0.8);fill:rgba(232,232,232, 0.8);}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}#{} :root{{--mermaid-font-family:{};}}"#,
+        r#"#{} .icon-shape,#{} .image-shape{{background-color:{};text-align:center;}}#{} .icon-shape p,#{} .image-shape p{{background-color:{};padding:2px;}}#{} .icon-shape rect,#{} .image-shape rect{{opacity:0.5;background-color:{};fill:{};}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}#{} :root{{--mermaid-font-family:{};}}"#,
         escape_xml(diagram_id),
         escape_xml(diagram_id),
+        edge_label_background,
         escape_xml(diagram_id),
         escape_xml(diagram_id),
+        edge_label_background,
         escape_xml(diagram_id),
         escape_xml(diagram_id),
+        edge_label_background,
+        edge_label_background,
         escape_xml(diagram_id),
         escape_xml(diagram_id),
         escape_xml(diagram_id),

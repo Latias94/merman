@@ -10,6 +10,7 @@ pub mod error;
 pub mod generated;
 pub mod preprocess;
 pub mod sanitize;
+mod theme;
 pub mod utils;
 
 pub use config::MermaidConfig;
@@ -135,6 +136,7 @@ impl Engine {
                 return Err(err);
             }
         };
+        theme::apply_theme_defaults(&mut effective_config);
 
         let title = pre
             .title

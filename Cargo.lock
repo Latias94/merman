@@ -985,6 +985,7 @@ dependencies = [
  "logos",
  "lol_html",
  "regex",
+ "ryu-js",
  "serde",
  "serde_json",
  "serde_yaml",
