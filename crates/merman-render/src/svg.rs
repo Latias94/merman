@@ -19435,6 +19435,36 @@ fn render_flowchart_edge_label(
     let label_text = edge.label.as_deref().unwrap_or_default();
     let label_type = edge.label_type.as_deref().unwrap_or("text");
     let label_text_plain = flowchart_label_plain_text(label_text, label_type, ctx.edge_html_labels);
+    let mut edge_label_styles: Vec<String> = ctx.default_edge_style.clone();
+    edge_label_styles.extend(edge.style.iter().cloned());
+    let compiled_label_styles =
+        flowchart_compile_styles(&ctx.class_defs, &edge.classes, &edge_label_styles);
+    let span_style_attr = if compiled_label_styles.label_style.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            r#" style="{}""#,
+            escape_attr(compiled_label_styles.label_style.trim())
+        )
+    };
+    let div_color_prefix = {
+        let mut color: Option<&str> = None;
+        for part in compiled_label_styles.label_style.split(';') {
+            let p = part.trim();
+            let Some(rest) = p.strip_prefix("color:") else {
+                continue;
+            };
+            let v = rest.trim().split_whitespace().next().unwrap_or_default();
+            if !v.is_empty() {
+                color = Some(v);
+            }
+        }
+        if let Some(v) = color {
+            format!("color: {} !important; ", v.to_ascii_lowercase())
+        } else {
+            String::new()
+        }
+    };
 
     fn js_round(v: f64, decimals: i32) -> f64 {
         if !v.is_finite() {
@@ -19816,9 +19846,14 @@ fn render_flowchart_edge_label(
             } else {
                 "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;".to_string()
             };
+            let div_style = if div_color_prefix.is_empty() {
+                wrapped_style
+            } else {
+                format!("{div_color_prefix}{wrapped_style}")
+            };
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
+                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g></g>"#,
                 fmt(x),
                 fmt(y),
                 escape_attr(&edge.id),
@@ -19826,7 +19861,8 @@ fn render_flowchart_edge_label(
                 fmt(-h / 2.0),
                 fmt(w),
                 fmt(h),
-                escape_attr(&wrapped_style),
+                escape_attr(&div_style),
+                span_style_attr,
                 label_html
             );
             return;
@@ -19873,9 +19909,14 @@ fn render_flowchart_edge_label(
             } else {
                 "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;".to_string()
             };
+            let div_style = if div_color_prefix.is_empty() {
+                wrapped_style
+            } else {
+                format!("{div_color_prefix}{wrapped_style}")
+            };
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
+                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g></g>"#,
                 fmt(x),
                 fmt(y),
                 escape_attr(&edge.id),
@@ -19883,7 +19924,8 @@ fn render_flowchart_edge_label(
                 fmt(-h / 2.0),
                 fmt(w.max(0.0)),
                 fmt(h.max(0.0)),
-                escape_attr(&wrapped_style),
+                escape_attr(&div_style),
+                span_style_attr,
                 label_html
             );
             return;
@@ -20538,10 +20580,12 @@ fn render_flowchart_node(
             let inner = (r - 5.0).max(0.5);
             let _ = write!(
                 out,
-                r#"<g class="basic label-container" style="{}"><circle class="outer-circle" style="" r="{}" cx="0" cy="0"/><circle class="inner-circle" style="" r="{}" cx="0" cy="0"/></g>"#,
+                r#"<g class="basic label-container" style="{}"><circle class="outer-circle" cx="0" cy="0" r="{}" style="{}"/><circle class="inner-circle" cx="0" cy="0" r="{}" style="{}"/></g>"#,
                 escape_attr(&style),
                 fmt(r),
+                escape_attr(&style),
                 fmt(inner),
+                escape_attr(&style),
             );
         }
         "roundedRect" | "rounded" => {
