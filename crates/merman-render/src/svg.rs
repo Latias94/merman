@@ -16515,6 +16515,9 @@ fn flowchart_root_children_clusters(
         }
     }
     out.sort_by(|a, b| {
+        let a_idx = ctx.subgraph_order.iter().position(|id| id == a);
+        let b_idx = ctx.subgraph_order.iter().position(|id| id == b);
+
         let aa = ctx.layout_clusters_by_id.get(a);
         let bb = ctx.layout_clusters_by_id.get(b);
         let (al, at) = aa
@@ -16523,9 +16526,18 @@ fn flowchart_root_children_clusters(
         let (bl, bt) = bb
             .map(|c| (c.x - c.width / 2.0, c.y - c.height / 2.0))
             .unwrap_or((0.0, 0.0));
-        al.total_cmp(&bl)
-            .then_with(|| at.total_cmp(&bt))
-            .then_with(|| a.cmp(b))
+        if let (Some(ai), Some(bi)) = (a_idx, b_idx) {
+            // Mirror Mermaid's Dagre graph registration behavior: sibling cluster roots tend to
+            // appear in reverse subgraph definition order.
+            bi.cmp(&ai)
+                .then_with(|| al.total_cmp(&bl))
+                .then_with(|| at.total_cmp(&bt))
+                .then_with(|| a.cmp(b))
+        } else {
+            al.total_cmp(&bl)
+                .then_with(|| at.total_cmp(&bt))
+                .then_with(|| a.cmp(b))
+        }
     });
     out
 }

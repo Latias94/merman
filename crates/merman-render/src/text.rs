@@ -563,11 +563,44 @@ pub fn measure_markdown_with_flowchart_bold_deltas(
     max_width: Option<f64>,
     wrap_mode: WrapMode,
 ) -> TextMetrics {
-    // Mermaid renders Markdown as HTML inside a `<foreignObject>` (for `htmlLabels: true`), and
-    // in the upstream SVG baselines the UA-style `<strong>/<em>` styling does not reliably affect
-    // measured bbox widths. Treat Markdown styling as having no width impact in HTML-like mode.
+    // Mermaid renders Markdown as HTML inside a `<foreignObject>` (for `htmlLabels: true`). In the
+    // upstream SVG baselines, bold styling often does not affect measured bbox widths when it is
+    // mixed with non-bold text, but it does for labels that are fully bold (e.g. `**Two**`).
     let bold_delta_scale: f64 = if wrap_mode == WrapMode::HtmlLike {
-        0.0
+        let mut strong_depth: usize = 0;
+        let mut saw_text = false;
+        let mut saw_non_strong_text = false;
+        let parser = pulldown_cmark::Parser::new_ext(
+            markdown,
+            pulldown_cmark::Options::ENABLE_TABLES
+                | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
+                | pulldown_cmark::Options::ENABLE_TASKLISTS,
+        );
+        for ev in parser {
+            match ev {
+                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Strong) => {
+                    strong_depth += 1;
+                }
+                pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Strong) => {
+                    strong_depth = strong_depth.saturating_sub(1);
+                }
+                pulldown_cmark::Event::Text(t) | pulldown_cmark::Event::Code(t) => {
+                    if t.chars().any(|ch| !ch.is_whitespace()) {
+                        saw_text = true;
+                        if strong_depth == 0 {
+                            saw_non_strong_text = true;
+                            break;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        if saw_text && !saw_non_strong_text {
+            1.0
+        } else {
+            0.0
+        }
     } else {
         1.0
     };
@@ -910,7 +943,7 @@ mod tests {
             Some(200.0),
             WrapMode::HtmlLike,
         );
-        assert_eq!(strong_html.width, regular_html.width);
+        assert_eq!(strong_html.width, 30.109375);
 
         let regular_svg = measurer.measure_wrapped("Two", &style, Some(200.0), WrapMode::SvgLike);
         assert_eq!(regular_svg.width, 27.5703125);

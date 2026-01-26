@@ -88,9 +88,12 @@ Recent progress: flowchart-v2 renders empty subgraphs (node-like subgraph declar
 root groups inside `.nodes`, matching upstream DOM order in `outgoing_links_4_spec`.
 Recent progress: flowchart HTML `<img>` labels now contribute to foreignObject sizing (instead of being treated as
 empty text), matching upstream SVG baselines for image-only and mixed image+text nodes.
-Recent progress: flowchart Markdown measurement in HTML-like mode now ignores `<strong>/<em>` width deltas, matching
-upstream foreignObject bbox sizing more closely (fixes `upstream_markdown_strings` in strict SVG XML parity).
-As of 2026-01-26, `xtask compare-svg-xml --diagram flowchart --dom-mode strict --dom-decimals 3` reports 19 flowchart
+Recent progress: flowchart Markdown measurement in HTML-like mode now ignores `<strong>/<em>` width deltas for mixed
+styling, but still applies bold deltas for fully-bold labels (e.g. `**Two**`), matching upstream foreignObject bbox
+sizing more closely (fixes `upstream_markdown_strings` in strict SVG XML parity).
+Recent progress: flowchart-v2 extracted cluster root groups now follow Mermaid’s sibling ordering more closely by
+sorting in reverse subgraph definition order (mirrors Dagre child registration behavior in upstream SVG DOM).
+As of 2026-01-26, `xtask compare-svg-xml --diagram flowchart --dom-mode strict --dom-decimals 3` reports 13 flowchart
 mismatches remaining; see `target/compare/xml/xml_report.md` for the current list.
 Recent progress: flowchart fixtures now cover `flow-style.spec.js` and `flow-interactions.spec.js` more
 thoroughly (style/class edge cases, click syntax matrix, and `securityLevel: loose` callback gating).
