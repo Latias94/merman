@@ -16551,11 +16551,23 @@ fn flowchart_root_children_nodes(
         }
     }
 
-    fn cluster_nesting_depth(ctx: &FlowchartRenderCtx<'_>, id: &str) -> usize {
+    fn cluster_nesting_depth(
+        ctx: &FlowchartRenderCtx<'_>,
+        id: &str,
+        parent_cluster: Option<&str>,
+    ) -> usize {
         let mut depth: usize = 0;
         let mut cur = ctx.parent.get(id).map(|s| s.as_str());
         while let Some(p) = cur {
-            if ctx.subgraphs_by_id.contains_key(p) {
+            let count = if parent_cluster.is_some() {
+                // Within an extracted root, Mermaid's node insertion/DOM ordering is sensitive
+                // to the full cluster nesting (including non-recursive clusters).
+                ctx.subgraphs_by_id.contains_key(p)
+            } else {
+                // At the top-level root, only extracted clusters introduce additional nesting.
+                ctx.recursive_clusters.contains(p)
+            };
+            if count {
                 depth = depth.saturating_add(1);
             }
             cur = ctx.parent.get(p).map(|s| s.as_str());
@@ -16563,14 +16575,21 @@ fn flowchart_root_children_nodes(
         depth
     }
 
-    fn nearest_cluster_id<'a>(ctx: &'a FlowchartRenderCtx<'_>, id: &str) -> Option<&'a str> {
+    fn nearest_cluster_id<'a>(
+        ctx: &'a FlowchartRenderCtx<'_>,
+        id: &str,
+        parent_cluster: Option<&str>,
+    ) -> Option<&'a str> {
         let mut cur = ctx.parent.get(id).map(|s| s.as_str());
         while let Some(p) = cur {
-            if ctx
-                .subgraphs_by_id
-                .get(p)
-                .is_some_and(|sg| !sg.nodes.is_empty())
-            {
+            let keep = if parent_cluster.is_some() {
+                ctx.subgraphs_by_id
+                    .get(p)
+                    .is_some_and(|sg| !sg.nodes.is_empty())
+            } else {
+                ctx.recursive_clusters.contains(p)
+            };
+            if keep {
                 return Some(p);
             }
             cur = ctx.parent.get(p).map(|s| s.as_str());
@@ -16595,8 +16614,8 @@ fn flowchart_root_children_nodes(
         let bb = ctx.layout_nodes_by_id.get(b);
         let (ax, ay) = aa.map(|n| (n.x, n.y)).unwrap_or((0.0, 0.0));
         let (bx, by) = bb.map(|n| (n.x, n.y)).unwrap_or((0.0, 0.0));
-        let ad = cluster_nesting_depth(ctx, a);
-        let bd = cluster_nesting_depth(ctx, b);
+        let ad = cluster_nesting_depth(ctx, a, parent_cluster);
+        let bd = cluster_nesting_depth(ctx, b, parent_cluster);
         bd.cmp(&ad)
             .then_with(|| {
                 if ad == 0 && bd == 0 {
@@ -16608,8 +16627,8 @@ fn flowchart_root_children_nodes(
                 } else {
                     // For nodes that are nested in subgraphs, upstream Mermaid's DOM ordering is
                     // closer to “flow direction” ordering within the nearest cluster.
-                    let ag = nearest_cluster_id(ctx, a);
-                    let bg = nearest_cluster_id(ctx, b);
+                    let ag = nearest_cluster_id(ctx, a, parent_cluster);
+                    let bg = nearest_cluster_id(ctx, b, parent_cluster);
                     if ag == bg {
                         let dir = ag
                             .and_then(|id| ctx.layout_clusters_by_id.get(id))

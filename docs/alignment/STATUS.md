@@ -96,7 +96,7 @@ sorting in reverse subgraph definition order (mirrors Dagre child registration b
 Recent progress: flowchart-v2 `data-points` strict parity no longer relies on a global fixed-point quantization;
 instead we apply a very narrow truncation heuristic only for coordinates extremely close to `1/3` or `2/3` remainders
 at the 2^18 scale, which keeps `flowchart/basic` aligned while preserving prior Markdown strict parity fixes.
-As of 2026-01-26, `xtask compare-svg-xml --diagram flowchart --dom-mode strict --dom-decimals 3` reports 13 flowchart
+As of 2026-01-26, `xtask compare-svg-xml --diagram flowchart --dom-mode strict --dom-decimals 3` reports 11 flowchart
 mismatches remaining; see `target/compare/xml/xml_report.md` for the current list.
 Recent progress: flowchart fixtures now cover `flow-style.spec.js` and `flow-interactions.spec.js` more
 thoroughly (style/class edge cases, click syntax matrix, and `securityLevel: loose` callback gating).
