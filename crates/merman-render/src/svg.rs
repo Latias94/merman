@@ -9714,6 +9714,32 @@ pub fn render_flowchart_v2_svg(
         render_edges.push(edge2);
     }
 
+    // Mermaid's `adjustClustersAndEdges(graph)` rewrites edges that connect directly to cluster
+    // nodes by removing and re-adding them (after swapping endpoints to anchor nodes). This has a
+    // visible side-effect: those edges end up later in `graph.edges()` insertion order, so the
+    // DOM emitted under `.edgePaths` / `.edgeLabels` matches that stable partition.
+    let cluster_ids_with_children: std::collections::HashSet<&str> = model
+        .subgraphs
+        .iter()
+        .filter(|sg| !sg.nodes.is_empty())
+        .map(|sg| sg.id.as_str())
+        .collect();
+    if !cluster_ids_with_children.is_empty() && render_edges.len() >= 2 {
+        let mut normal: Vec<crate::flowchart::FlowEdge> = Vec::with_capacity(render_edges.len());
+        let mut cluster: Vec<crate::flowchart::FlowEdge> = Vec::new();
+        for e in render_edges {
+            if cluster_ids_with_children.contains(e.from.as_str())
+                || cluster_ids_with_children.contains(e.to.as_str())
+            {
+                cluster.push(e);
+            } else {
+                normal.push(e);
+            }
+        }
+        normal.extend(cluster);
+        render_edges = normal;
+    }
+
     let font_family = config_string(effective_config, &["fontFamily"])
         .map(|s| normalize_css_font_family(&s))
         .unwrap_or_else(|| "\"trebuchet ms\",verdana,arial,sans-serif".to_string());
@@ -16677,6 +16703,55 @@ fn render_flowchart_root(
     if clusters_to_draw.is_empty() {
         out.push_str(r#"<g class="clusters"/>"#);
     } else {
+        // Mermaid emits clusters by traversing the Dagre graph hierarchy (pre-order over
+        // `graph.children()`), which in practice matches a stable bottom-to-top ordering in the
+        // upstream SVG baselines (see `flowchart-v2 outgoing-links-*` fixtures).
+        fn is_ancestor(
+            parent: &std::collections::HashMap<String, String>,
+            ancestor: &str,
+            node: &str,
+        ) -> bool {
+            let mut cur = node.to_string();
+            while let Some(p) = parent.get(&cur) {
+                if p.as_str() == ancestor {
+                    return true;
+                }
+                cur = p.clone();
+            }
+            false
+        }
+
+        clusters_to_draw.sort_by(|a, b| {
+            if a.id != b.id {
+                if is_ancestor(&ctx.parent, &a.id, &b.id) {
+                    return std::cmp::Ordering::Less;
+                }
+                if is_ancestor(&ctx.parent, &b.id, &a.id) {
+                    return std::cmp::Ordering::Greater;
+                }
+            }
+
+            let a_top_y = a.y - a.height / 2.0;
+            let b_top_y = b.y - b.height / 2.0;
+            let a_top_x = a.x - a.width / 2.0;
+            let b_top_x = b.x - b.width / 2.0;
+            let a_idx = ctx.subgraph_order.iter().position(|id| id == &a.id);
+            let b_idx = ctx.subgraph_order.iter().position(|id| id == &b.id);
+            if let (Some(ai), Some(bi)) = (a_idx, b_idx) {
+                // Mermaid's cluster insertion order tracks the order in which subgraphs are
+                // defined/registered, but for SVG output the baselines match a reverse (last
+                // defined first) ordering for sibling cluster boxes.
+                bi.cmp(&ai)
+                    .then_with(|| b_top_y.total_cmp(&a_top_y))
+                    .then_with(|| b_top_x.total_cmp(&a_top_x))
+                    .then_with(|| a.id.cmp(&b.id))
+            } else {
+                b_top_y
+                    .total_cmp(&a_top_y)
+                    .then_with(|| b_top_x.total_cmp(&a_top_x))
+                    .then_with(|| a.id.cmp(&b.id))
+            }
+        });
         out.push_str(r#"<g class="clusters">"#);
         for cluster in clusters_to_draw {
             render_flowchart_cluster(out, ctx, cluster, origin_x, content_origin_y);
@@ -16720,14 +16795,33 @@ fn render_flowchart_root(
     }
 
     out.push_str(r#"<g class="nodes">"#);
+    let child_nodes = flowchart_root_children_nodes(ctx, cluster_id);
+    let mut empty_subgraph_nodes: Vec<String> = Vec::new();
+    let mut regular_nodes: Vec<String> = Vec::new();
+    for id in child_nodes {
+        if ctx
+            .subgraphs_by_id
+            .get(&id)
+            .is_some_and(|sg| sg.nodes.is_empty())
+        {
+            empty_subgraph_nodes.push(id);
+        } else {
+            regular_nodes.push(id);
+        }
+    }
+
+    // Mermaid renders empty subgraphs as plain nodes. In SVG baselines these node elements can
+    // appear before extracted cluster root groups.
+    for node_id in &empty_subgraph_nodes {
+        render_flowchart_node(out, ctx, node_id, origin_x, content_origin_y);
+    }
 
     let child_clusters = flowchart_root_children_clusters(ctx, cluster_id);
     for child in &child_clusters {
         render_flowchart_root(out, ctx, Some(child.as_str()), origin_x, origin_y);
     }
 
-    let child_nodes = flowchart_root_children_nodes(ctx, cluster_id);
-    for node_id in &child_nodes {
+    for node_id in &regular_nodes {
         render_flowchart_node(out, ctx, node_id, origin_x, content_origin_y);
     }
 

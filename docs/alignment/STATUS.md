@@ -81,7 +81,12 @@ Recent progress: `dugong` now matches dagrejs graph defaults (`edgesep=20`), imp
 and reducing Flowchart root viewport drift.
 Recent progress: flowchart-v2 headless text measurement strips `fa:fa-*` / `fas:fa-*` tokens for HTML labels so
 icon placeholders don’t inflate node/cluster bbox in exported SVG baselines where FontAwesome CSS is absent.
-As of 2026-01-26, `xtask compare-svg-xml --diagram flowchart --dom-mode strict --dom-decimals 3` reports 32 flowchart
+Recent progress: flowchart-v2 strict SVG XML parity now matches Mermaid’s DOM insertion order more closely by
+partitioning cluster endpoint edges to the end (mirroring `adjustClustersAndEdges` remove+readd behavior) and by
+ordering cluster boxes consistently (ancestor-first, then reverse subgraph registration order).
+Recent progress: flowchart-v2 renders empty subgraphs (node-like subgraph declarations) before extracted cluster
+root groups inside `.nodes`, matching upstream DOM order in `outgoing_links_4_spec`.
+As of 2026-01-26, `xtask compare-svg-xml --diagram flowchart --dom-mode strict --dom-decimals 3` reports 22 flowchart
 mismatches remaining; see `target/compare/xml/xml_report.md` for the current list.
 Recent progress: flowchart fixtures now cover `flow-style.spec.js` and `flow-interactions.spec.js` more
 thoroughly (style/class edge cases, click syntax matrix, and `securityLevel: loose` callback gating).
