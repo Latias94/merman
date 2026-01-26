@@ -1333,8 +1333,8 @@ pub fn layout_flowchart_v2(
                     // runs `insertNode(...)` + `updateNodeBounds(...)` before Dagre layout. For an
                     // empty `labelRect`, the measured bbox collapses to ~0.1x0.1 and that is what
                     // Dagre actually sees for spacing. Match that here for layout parity.
-                    width: 0.1,
-                    height: 0.1,
+                    width: 0.1_f32 as f64,
+                    height: 0.1_f32 as f64,
                     ..Default::default()
                 },
             );

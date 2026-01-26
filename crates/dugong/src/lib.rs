@@ -474,10 +474,26 @@ pub mod self_edges {
                 continue;
             };
 
-            let i = vx + v_node.width / 2.0;
-            let a = vy;
-            let o = x - i;
-            let l = v_node.height / 2.0;
+            // Mermaid's Dagre self-edge dummy placement tends to land on 1/64px-aligned
+            // coordinates (the same grid as many flowchart node dimensions). Tiny floating-point
+            // drift here propagates into the `2/3` and `5/6` fractions below and shows up in
+            // strict SVG `data-points` parity.
+            fn snap_to_1_64_px_if_close(v: f64) -> f64 {
+                if !v.is_finite() {
+                    return v;
+                }
+                let nearest = (v * 64.0).round() / 64.0;
+                if (v - nearest).abs() <= 1e-5 {
+                    nearest
+                } else {
+                    v
+                }
+            }
+
+            let i = snap_to_1_64_px_if_close(vx + v_node.width / 2.0);
+            let a = snap_to_1_64_px_if_close(vy);
+            let o = snap_to_1_64_px_if_close(x - i);
+            let l = snap_to_1_64_px_if_close(v_node.height / 2.0);
 
             label.points = vec![
                 Point {

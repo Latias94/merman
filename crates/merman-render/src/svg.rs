@@ -18095,6 +18095,72 @@ fn render_flowchart_edge_path(
         height: f64,
     }
 
+    fn boundary_for_node(
+        ctx: &FlowchartRenderCtx<'_>,
+        node_id: &str,
+        origin_x: f64,
+        origin_y: f64,
+    ) -> Option<BoundaryNode> {
+        let n = ctx.layout_nodes_by_id.get(node_id)?;
+        Some(BoundaryNode {
+            x: n.x + ctx.tx - origin_x,
+            y: n.y + ctx.ty - origin_y,
+            width: n.width,
+            height: n.height,
+        })
+    }
+
+    fn maybe_normalize_selfedge_loop_points(points: &mut [crate::model::LayoutPoint]) {
+        if points.len() != 7 {
+            return;
+        }
+        let eps = 1e-6;
+        let i = points[0].x;
+        if (points[6].x - i).abs() > eps {
+            return;
+        }
+        let top_y = points[1].y;
+        let bottom_y = points[4].y;
+        let a = points[3].y;
+        let l = bottom_y - a;
+        if !l.is_finite() || l.abs() < eps {
+            return;
+        }
+        if (top_y - (a - l)).abs() > eps {
+            return;
+        }
+        if (points[2].y - top_y).abs() > eps
+            || (points[5].y - bottom_y).abs() > eps
+            || (points[1].y - top_y).abs() > eps
+            || (points[4].y - bottom_y).abs() > eps
+        {
+            return;
+        }
+        let mid_y = (top_y + bottom_y) / 2.0;
+        if (mid_y - a).abs() > eps {
+            return;
+        }
+        let dummy_x = points[3].x;
+        let o = dummy_x - i;
+        if !o.is_finite() {
+            return;
+        }
+        let x1 = i + 2.0 * o / 3.0;
+        let x2 = i + 5.0 * o / 6.0;
+        if !(x1.is_finite() && x2.is_finite()) {
+            return;
+        }
+        points[1].x = x1;
+        points[2].x = x2;
+        points[4].x = x2;
+        points[5].x = x1;
+        points[1].y = top_y;
+        points[2].y = top_y;
+        points[3].y = a;
+        points[4].y = bottom_y;
+        points[5].y = bottom_y;
+    }
+
     fn outside_node(node: &BoundaryNode, point: &crate::model::LayoutPoint) -> bool {
         let dx = (point.x - node.x).abs();
         let dy = (point.y - node.y).abs();
@@ -18257,7 +18323,8 @@ fn render_flowchart_edge_path(
     }
 
     let is_cyclic_special = edge.id.contains("-cyclic-special-");
-    let base_points = dedup_consecutive_points(&local_points);
+    let mut base_points = dedup_consecutive_points(&local_points);
+    maybe_normalize_selfedge_loop_points(&mut base_points);
 
     fn is_rounded_intersect_shift_shape(layout_shape: Option<&str>) -> bool {
         matches!(layout_shape, Some("roundedRect" | "rounded"))
@@ -18823,21 +18890,6 @@ fn render_flowchart_edge_path(
         }
     }
 
-    fn boundary_for_node(
-        ctx: &FlowchartRenderCtx<'_>,
-        node_id: &str,
-        origin_x: f64,
-        origin_y: f64,
-    ) -> Option<BoundaryNode> {
-        let n = ctx.layout_nodes_by_id.get(node_id)?;
-        Some(BoundaryNode {
-            x: n.x + ctx.tx - origin_x,
-            y: n.y + ctx.ty - origin_y,
-            width: n.width,
-            height: n.height,
-        })
-    }
-
     let mut points_after_intersect = base_points.clone();
     if base_points.len() >= 3 {
         let tail_shape = ctx
@@ -18852,6 +18904,8 @@ fn render_flowchart_edge_path(
             boundary_for_node(ctx, edge.from.as_str(), origin_x, origin_y),
             boundary_for_node(ctx, edge.to.as_str(), origin_x, origin_y),
         ) {
+            points_after_intersect = base_points.clone();
+
             let mut interior: Vec<crate::model::LayoutPoint> =
                 base_points[1..base_points.len() - 1].to_vec();
             if !interior.is_empty() {
@@ -18866,9 +18920,10 @@ fn render_flowchart_edge_path(
                 let mut start = base_points[0].clone();
                 let mut end = base_points[base_points.len() - 1].clone();
 
+                let eps = 1e-4;
                 let start_is_center =
-                    (start.x - tail.x).abs() < 1e-6 && (start.y - tail.y).abs() < 1e-6;
-                let end_is_center = (end.x - head.x).abs() < 1e-6 && (end.y - head.y).abs() < 1e-6;
+                    (start.x - tail.x).abs() < eps && (start.y - tail.y).abs() < eps;
+                let end_is_center = (end.x - head.x).abs() < eps && (end.y - head.y).abs() < eps;
 
                 if start_is_center || force_intersect(tail_shape) {
                     start = intersect_for_layout_shape(
@@ -18922,7 +18977,10 @@ fn render_flowchart_edge_path(
         let floor = scaled.floor();
         let frac = scaled - floor;
 
-        let eps = 1e-7;
+        // Keep this extremely conservative: legitimate Dagre self-loop points frequently land
+        // near 1/3 multiples at this scale (e.g. `...45833333333334`), and upstream Mermaid does
+        // not truncate those. Only truncate when we're effectively on the boundary.
+        let eps = 1e-12;
         let one_third = 1.0 / 3.0;
         let two_thirds = 2.0 / 3.0;
         let should_truncate = (frac - one_third).abs() < eps || (frac - two_thirds).abs() < eps;
@@ -21303,10 +21361,17 @@ fn render_flowchart_node(
                 let decl = decl.trim();
                 let rest = decl.strip_prefix("color:")?;
                 let v = rest.trim().trim_end_matches("!important").trim();
-                if v.is_empty() { None } else { Some(v.to_string()) }
+                if v.is_empty() {
+                    None
+                } else {
+                    Some(v.to_string())
+                }
             })
         {
-            div_style.push_str(&format!("color: {} !important; ", color.to_ascii_lowercase()));
+            div_style.push_str(&format!(
+                "color: {} !important; ",
+                color.to_ascii_lowercase()
+            ));
         }
         for decl in compiled_styles.label_style.split(';') {
             let decl = decl.trim();
