@@ -16425,11 +16425,15 @@ fn flowchart_css(
             continue;
         }
         let mut style = String::new();
+        let mut text_color: Option<String> = None;
         for d in decls {
             let Some((k, v)) = parse_style_decl(d) else {
                 continue;
             };
             let _ = write!(&mut style, "{}:{}!important;", k, v);
+            if k == "color" {
+                text_color = Some(v.to_string());
+            }
         }
         if style.is_empty() {
             continue;
@@ -16444,6 +16448,15 @@ fn flowchart_css(
             escape_xml(class),
             style
         );
+        if let Some(c) = text_color.as_deref() {
+            let _ = write!(
+                &mut out,
+                r#"#{} .{} tspan{{fill:{}!important;}}"#,
+                escape_xml(diagram_id),
+                escape_xml(class),
+                escape_xml(c)
+            );
+        }
     }
 
     out
