@@ -67,14 +67,22 @@ Recent progress: flowchart-v2 stadium/cylinder geometry now matches upstream mor
 using stadium render-dimensions for edge intersections.
 Recent progress: flowchart-v2 `classDef` CSS rules now preserve Mermaid insertion order (IndexMap), matching upstream
 `<style>` rule ordering in strict SVG XML parity (e.g. `bigger_font_from_classes_spec`).
+Recent progress: flowchart-v2 strict SVG XML parity now stringifies `data-points` using ECMAScript-compatible float
+formatting (via `ryu-js`) to match V8 tie-breaking in shortest round-trippable decimals.
 Recent progress: flowchart-v2 `linkStyle ... interpolate ...` now trims the whitespace between the curve name and the
 first style token so rendered edge `style="...;;;..."` matches upstream strict SVG XML output.
 Recent progress: flowchart-v2 cluster label positioning now derives the SVG title bbox width from the rendered
 `<text>/<tspan>` lines (not the layout placeholder metrics), improving strict SVG XML parity for wrapped titles.
+Recent progress: flowchart-v2 cluster edge labels are positioned using the cut edge polyline midpoint (mirroring
+Mermaid’s `cutPathAtIntersect` + `calcLabelPosition`), improving strict SVG XML parity for subgraph outgoing links.
 Recent progress: flowchart Dagre config now uses Mermaid margins (`marginx/marginy=8`) for both the top-level
 graph and extracted cluster graphs, improving subgraph/cluster geometry parity.
 Recent progress: `dugong` now matches dagrejs graph defaults (`edgesep=20`), improving multiedge routing parity
 and reducing Flowchart root viewport drift.
+Recent progress: flowchart-v2 headless text measurement strips `fa:fa-*` / `fas:fa-*` tokens for HTML labels so
+icon placeholders don’t inflate node/cluster bbox in exported SVG baselines where FontAwesome CSS is absent.
+As of 2026-01-26, `xtask compare-svg-xml --diagram flowchart --dom-mode strict --dom-decimals 3` reports 32 flowchart
+mismatches remaining; see `target/compare/xml/xml_report.md` for the current list.
 Recent progress: flowchart fixtures now cover `flow-style.spec.js` and `flow-interactions.spec.js` more
 thoroughly (style/class edge cases, click syntax matrix, and `securityLevel: loose` callback gating).
 Recent progress: flowchart edge curves now cover `monotoneX`/`monotoneY` and `step`/`stepBefore` in addition to

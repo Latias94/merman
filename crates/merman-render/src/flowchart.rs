@@ -3441,6 +3441,11 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
         _ => {
             let mut t = label.replace("\r\n", "\n");
             if html_labels || label_type == "html" {
+                // Mermaid converts `fa:fa-...` / `fas:fa-...` tokens into `<i class="..."></i>`
+                // during HTML label rendering. In exported SVG fixtures the FontAwesome CSS is not
+                // embedded, so these `<i/>` elements contribute `0` width and `0` textContent.
+                // Mirror that by stripping the icon token before we compute a headless text run.
+                t = crate::text::replace_fontawesome_icons(&t);
                 t = strip_html_for_layout(&t);
             } else {
                 t = t.replace("<br />", "\n");

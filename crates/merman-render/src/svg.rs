@@ -15933,16 +15933,31 @@ fn fmt_path(v: f64) -> String {
 fn json_stringify_points(points: &[crate::model::LayoutPoint]) -> String {
     // Mermaid encodes `data-points` as Base64(JSON.stringify(points)).
     // JS `JSON.stringify` prints whole numbers without a `.0` suffix.
+    //
+    // For strict SVG XML parity we must also match V8's number-to-string behavior, including
+    // tie-breaking cases where Rust's default float formatting can pick a different shortest
+    // round-trippable decimal (e.g. `...0312` vs `...0313`).
+    fn js_number_to_string<'a>(mut v: f64, buf: &'a mut ryu_js::Buffer) -> &'a str {
+        if !v.is_finite() {
+            return "0";
+        }
+        if v == -0.0 {
+            v = 0.0;
+        }
+        buf.format_finite(v)
+    }
+
     let mut out = String::new();
     out.push('[');
+    let mut buf = ryu_js::Buffer::new();
     for (i, p) in points.iter().enumerate() {
         if i > 0 {
             out.push(',');
         }
         out.push_str(r#"{"x":"#);
-        out.push_str(&fmt(p.x));
+        out.push_str(js_number_to_string(p.x, &mut buf));
         out.push_str(r#","y":"#);
-        out.push_str(&fmt(p.y));
+        out.push_str(js_number_to_string(p.y, &mut buf));
         out.push('}');
     }
     out.push(']');
@@ -19068,6 +19083,69 @@ fn render_flowchart_edge_label(
     let label_type = edge.label_type.as_deref().unwrap_or("text");
     let label_text_plain = flowchart_label_plain_text(label_text, label_type, ctx.edge_html_labels);
 
+    fn js_round(v: f64, decimals: i32) -> f64 {
+        if !v.is_finite() {
+            return 0.0;
+        }
+        let factor = 10f64.powi(decimals);
+        let x = v * factor;
+        let r = (x + 0.5).floor() / factor;
+        if r == -0.0 { 0.0 } else { r }
+    }
+
+    fn calc_label_position(
+        points: &[crate::model::LayoutPoint],
+    ) -> Option<crate::model::LayoutPoint> {
+        // Mermaid `utils.calcLabelPosition(points)`:
+        // - computes polyline total length
+        // - traverses half distance along segments
+        // - rounds interpolated coordinates to 5 decimals using JS `Math.round`.
+        if points.is_empty() {
+            return None;
+        }
+        if points.len() == 1 {
+            return Some(points[0].clone());
+        }
+
+        let mut total = 0.0;
+        for w in points.windows(2) {
+            total += (w[1].x - w[0].x).hypot(w[1].y - w[0].y);
+        }
+        if !total.is_finite() || total <= 0.0 {
+            return Some(points[0].clone());
+        }
+
+        let mut remaining = total / 2.0;
+        for w in points.windows(2) {
+            let a = &w[0];
+            let b = &w[1];
+            let seg = (b.x - a.x).hypot(b.y - a.y);
+            if !seg.is_finite() || seg <= 0.0 {
+                return Some(a.clone());
+            }
+            if seg < remaining {
+                remaining -= seg;
+                continue;
+            }
+            let ratio = remaining / seg;
+            if ratio <= 0.0 {
+                return Some(a.clone());
+            }
+            if ratio >= 1.0 {
+                return Some(crate::model::LayoutPoint {
+                    x: js_round(b.x, 5),
+                    y: js_round(b.y, 5),
+                });
+            }
+            return Some(crate::model::LayoutPoint {
+                x: js_round((1.0 - ratio) * a.x + ratio * b.x, 5),
+                y: js_round((1.0 - ratio) * a.y + ratio * b.y, 5),
+            });
+        }
+
+        Some(points[0].clone())
+    }
+
     fn fallback_midpoint(
         le: &crate::model::LayoutEdge,
         ctx: &FlowchartRenderCtx<'_>,
@@ -19171,8 +19249,208 @@ fn render_flowchart_edge_label(
 
     if let Some(le) = ctx.layout_edges_by_id.get(&edge.id) {
         if let Some(lbl) = le.label.as_ref() {
-            let x = lbl.x + ctx.tx - origin_x;
-            let y = lbl.y + ctx.ty - origin_y;
+            let mut x = lbl.x + ctx.tx - origin_x;
+            let mut y = lbl.y + ctx.ty - origin_y;
+
+            // Mermaid cuts cluster edges at the cluster boundary during path generation, then
+            // repositions the label along the cut polyline (see `insertEdge` + `positionEdgeLabel`).
+            if le.to_cluster.is_some() || le.from_cluster.is_some() {
+                fn dedup_consecutive_points(
+                    input: &[crate::model::LayoutPoint],
+                ) -> Vec<crate::model::LayoutPoint> {
+                    if input.len() <= 1 {
+                        return input.to_vec();
+                    }
+                    const EPS: f64 = 1e-9;
+                    let mut out: Vec<crate::model::LayoutPoint> = Vec::with_capacity(input.len());
+                    for p in input {
+                        if out.last().is_some_and(|prev| {
+                            (prev.x - p.x).abs() <= EPS && (prev.y - p.y).abs() <= EPS
+                        }) {
+                            continue;
+                        }
+                        out.push(p.clone());
+                    }
+                    out
+                }
+
+                #[derive(Debug, Clone, Copy)]
+                struct BoundaryNode {
+                    x: f64,
+                    y: f64,
+                    width: f64,
+                    height: f64,
+                }
+
+                fn outside_node(node: &BoundaryNode, point: &crate::model::LayoutPoint) -> bool {
+                    let dx = (point.x - node.x).abs();
+                    let dy = (point.y - node.y).abs();
+                    let w = node.width / 2.0;
+                    let h = node.height / 2.0;
+                    dx >= w || dy >= h
+                }
+
+                fn rect_intersection(
+                    node: &BoundaryNode,
+                    outside_point: &crate::model::LayoutPoint,
+                    inside_point: &crate::model::LayoutPoint,
+                ) -> crate::model::LayoutPoint {
+                    let x = node.x;
+                    let y = node.y;
+
+                    let w = node.width / 2.0;
+                    let h = node.height / 2.0;
+
+                    let q_abs = (outside_point.y - inside_point.y).abs();
+                    let r_abs = (outside_point.x - inside_point.x).abs();
+
+                    if (y - outside_point.y).abs() * w > (x - outside_point.x).abs() * h {
+                        let q = if inside_point.y < outside_point.y {
+                            outside_point.y - h - y
+                        } else {
+                            y - h - outside_point.y
+                        };
+                        let r = if q_abs == 0.0 {
+                            0.0
+                        } else {
+                            (r_abs * q) / q_abs
+                        };
+                        let mut res = crate::model::LayoutPoint {
+                            x: if inside_point.x < outside_point.x {
+                                inside_point.x + r
+                            } else {
+                                inside_point.x - r_abs + r
+                            },
+                            y: if inside_point.y < outside_point.y {
+                                inside_point.y + q_abs - q
+                            } else {
+                                inside_point.y - q_abs + q
+                            },
+                        };
+
+                        if r.abs() <= 1e-9 {
+                            res.x = outside_point.x;
+                            res.y = outside_point.y;
+                        }
+                        if r_abs == 0.0 {
+                            res.x = outside_point.x;
+                        }
+                        if q_abs == 0.0 {
+                            res.y = outside_point.y;
+                        }
+                        return res;
+                    }
+
+                    let r = if inside_point.x < outside_point.x {
+                        outside_point.x - w - x
+                    } else {
+                        x - w - outside_point.x
+                    };
+                    let q = if r_abs == 0.0 {
+                        0.0
+                    } else {
+                        (q_abs * r) / r_abs
+                    };
+                    let mut ix = if inside_point.x < outside_point.x {
+                        inside_point.x + r_abs - r
+                    } else {
+                        inside_point.x - r_abs + r
+                    };
+                    let mut iy = if inside_point.y < outside_point.y {
+                        inside_point.y + q
+                    } else {
+                        inside_point.y - q
+                    };
+
+                    if r.abs() <= 1e-9 {
+                        ix = outside_point.x;
+                        iy = outside_point.y;
+                    }
+                    if r_abs == 0.0 {
+                        ix = outside_point.x;
+                    }
+                    if q_abs == 0.0 {
+                        iy = outside_point.y;
+                    }
+
+                    crate::model::LayoutPoint { x: ix, y: iy }
+                }
+
+                fn cut_path_at_intersect(
+                    input: &[crate::model::LayoutPoint],
+                    boundary: &BoundaryNode,
+                ) -> Vec<crate::model::LayoutPoint> {
+                    if input.is_empty() {
+                        return Vec::new();
+                    }
+                    let mut out: Vec<crate::model::LayoutPoint> = Vec::new();
+                    let mut last_point_outside = input[0].clone();
+                    let mut is_inside = false;
+                    const EPS: f64 = 1e-9;
+
+                    for point in input {
+                        if !outside_node(boundary, point) && !is_inside {
+                            let inter = rect_intersection(boundary, &last_point_outside, point);
+                            if !out.iter().any(|p| {
+                                (p.x - inter.x).abs() <= EPS && (p.y - inter.y).abs() <= EPS
+                            }) {
+                                out.push(inter);
+                            }
+                            is_inside = true;
+                        } else {
+                            last_point_outside = point.clone();
+                            if !is_inside {
+                                out.push(point.clone());
+                            }
+                        }
+                    }
+                    out
+                }
+
+                fn boundary_for_cluster(
+                    ctx: &FlowchartRenderCtx<'_>,
+                    cluster_id: &str,
+                    origin_x: f64,
+                    origin_y: f64,
+                ) -> Option<BoundaryNode> {
+                    let n = ctx.layout_clusters_by_id.get(cluster_id)?;
+                    Some(BoundaryNode {
+                        x: n.x + ctx.tx - origin_x,
+                        y: n.y + ctx.ty - origin_y,
+                        width: n.width,
+                        height: n.height,
+                    })
+                }
+
+                let mut points: Vec<crate::model::LayoutPoint> = le
+                    .points
+                    .iter()
+                    .map(|p| crate::model::LayoutPoint {
+                        x: p.x + ctx.tx - origin_x,
+                        y: p.y + ctx.ty - origin_y,
+                    })
+                    .collect();
+                points = dedup_consecutive_points(&points);
+
+                if let Some(tc) = le.to_cluster.as_deref() {
+                    if let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y) {
+                        points = cut_path_at_intersect(&points, &boundary);
+                    }
+                }
+                if let Some(fc) = le.from_cluster.as_deref() {
+                    if let Some(boundary) = boundary_for_cluster(ctx, fc, origin_x, origin_y) {
+                        points.reverse();
+                        points = cut_path_at_intersect(&points, &boundary);
+                        points.reverse();
+                    }
+                }
+
+                if let Some(pos) = calc_label_position(&points) {
+                    x = pos.x;
+                    y = pos.y;
+                }
+            }
+
             let w = lbl.width.max(0.0);
             let h = lbl.height.max(0.0);
             let wrapped_style = if (w - ctx.wrapping_width).abs() < 0.01
