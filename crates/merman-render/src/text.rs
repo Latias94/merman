@@ -563,47 +563,12 @@ pub fn measure_markdown_with_flowchart_bold_deltas(
     max_width: Option<f64>,
     wrap_mode: WrapMode,
 ) -> TextMetrics {
-    // Mermaid renders Markdown as HTML inside a `<foreignObject>` (for `htmlLabels: true`). In the
-    // upstream SVG baselines, bold styling often does not affect measured bbox widths when it is
-    // mixed with non-bold text, but it does for labels that are fully bold (e.g. `**Two**`).
-    let bold_delta_scale: f64 = if wrap_mode == WrapMode::HtmlLike {
-        let mut strong_depth: usize = 0;
-        let mut saw_text = false;
-        let mut saw_non_strong_text = false;
-        let parser = pulldown_cmark::Parser::new_ext(
-            markdown,
-            pulldown_cmark::Options::ENABLE_TABLES
-                | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
-                | pulldown_cmark::Options::ENABLE_TASKLISTS,
-        );
-        for ev in parser {
-            match ev {
-                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Strong) => {
-                    strong_depth += 1;
-                }
-                pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Strong) => {
-                    strong_depth = strong_depth.saturating_sub(1);
-                }
-                pulldown_cmark::Event::Text(t) | pulldown_cmark::Event::Code(t) => {
-                    if t.chars().any(|ch| !ch.is_whitespace()) {
-                        saw_text = true;
-                        if strong_depth == 0 {
-                            saw_non_strong_text = true;
-                            break;
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-        if saw_text && !saw_non_strong_text {
-            1.0
-        } else {
-            0.0
-        }
-    } else {
-        1.0
-    };
+    // Mermaid measures Markdown labels via DOM (`getBoundingClientRect`) after converting the
+    // Markdown into HTML inside a `<foreignObject>` (for `htmlLabels: true`). In the Mermaid@11.12.2
+    // upstream SVG baselines, both `<strong>` and `<em>` spans contribute measurable width deltas.
+    //
+    // Apply a 1:1 bold delta scale for Markdown (unlike raw-HTML labels, which are empirically ~0.5).
+    let bold_delta_scale: f64 = 1.0;
 
     // Mermaid's flowchart HTML labels support inline Markdown images. These affect layout even
     // when the label has no textual content (e.g. `![](...)`).
@@ -807,7 +772,7 @@ pub fn measure_markdown_with_flowchart_bold_deltas(
                             deltas_px_by_line[line_idx] +=
                                 flowchart_default_bold_delta_em(ch) * font_size * bold_delta_scale;
                         }
-                        if em_depth > 0 && wrap_mode != WrapMode::HtmlLike {
+                        if em_depth > 0 {
                             deltas_px_by_line[line_idx] +=
                                 flowchart_default_italic_delta_em(ch) * font_size;
                         }
@@ -896,6 +861,20 @@ pub trait TextMeasurer {
         let _ = max_width;
         let _ = wrap_mode;
         self.measure(text, style)
+    }
+
+    /// Measures wrapped text while disabling any implementation-specific HTML overrides.
+    ///
+    /// This is primarily used for Markdown labels measured via DOM in upstream Mermaid, where we
+    /// want a raw regular-weight baseline before applying `<strong>/<em>` deltas.
+    fn measure_wrapped_raw(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> TextMetrics {
+        self.measure_wrapped(text, style, max_width, wrap_mode)
     }
 }
 
@@ -1650,7 +1629,7 @@ impl VendoredFontMetricsTextMeasurer {
             return 0.0;
         }
         // Keep identical semantics with `crate::text::ceil_to_1_64_px`.
-        ((v * 64.0) - 1e-9).ceil() / 64.0
+        ((v * 64.0) - 1e-5).ceil() / 64.0
     }
 
     fn split_token_to_width_px(
@@ -1845,6 +1824,163 @@ impl VendoredFontMetricsTextMeasurer {
     }
 }
 
+fn vendored_measure_wrapped_impl(
+    measurer: &VendoredFontMetricsTextMeasurer,
+    text: &str,
+    style: &TextStyle,
+    max_width: Option<f64>,
+    wrap_mode: WrapMode,
+    use_html_overrides: bool,
+) -> TextMetrics {
+    let Some(table) = measurer.lookup_table(style) else {
+        return measurer
+            .fallback
+            .measure_wrapped(text, style, max_width, wrap_mode);
+    };
+
+    let bold = is_flowchart_default_font(style) && style_requests_bold_font_weight(style);
+    let font_size = style.font_size.max(1.0);
+    let max_width = max_width.filter(|w| w.is_finite() && *w > 0.0);
+    let line_height_factor = match wrap_mode {
+        WrapMode::SvgLike => 1.1,
+        WrapMode::HtmlLike => 1.5,
+    };
+
+    let html_overrides: &[(&'static str, f64)] = if use_html_overrides {
+        table.html_overrides
+    } else {
+        &[]
+    };
+
+    // Mermaid HTML labels behave differently depending on whether the content "needs" wrapping:
+    // - if the unwrapped line width exceeds the configured wrapping width, Mermaid constrains
+    //   the element to `width=max_width` and lets HTML wrapping determine line breaks
+    //   (`white-space: break-spaces` / `width: 200px` patterns in upstream SVGs).
+    // - otherwise, Mermaid uses an auto-sized container and measures the natural width.
+    //
+    // In headless mode we model this by computing the unwrapped width first, then forcing the
+    // measured width to `max_width` when it would overflow.
+    let raw_width_unscaled = if wrap_mode == WrapMode::HtmlLike {
+        let mut raw_w: f64 = 0.0;
+        for line in DeterministicTextMeasurer::normalized_text_lines(text) {
+            if let Some(em) =
+                VendoredFontMetricsTextMeasurer::lookup_html_override_em(html_overrides, &line)
+            {
+                raw_w = raw_w.max(em * font_size);
+            } else {
+                raw_w = raw_w.max(VendoredFontMetricsTextMeasurer::line_width_px(
+                    table.entries,
+                    table.default_em.max(0.1),
+                    table.kern_pairs,
+                    table.space_trigrams,
+                    table.trigrams,
+                    &line,
+                    bold,
+                    font_size,
+                ));
+            }
+        }
+        Some(raw_w)
+    } else {
+        None
+    };
+
+    let lines = match wrap_mode {
+        WrapMode::HtmlLike => VendoredFontMetricsTextMeasurer::wrap_text_lines_px(
+            table.entries,
+            table.default_em.max(0.1),
+            table.kern_pairs,
+            table.space_trigrams,
+            table.trigrams,
+            text,
+            style,
+            bold,
+            max_width,
+            wrap_mode,
+        ),
+        WrapMode::SvgLike => VendoredFontMetricsTextMeasurer::wrap_text_lines_svg_bbox_px(
+            table, text, max_width, font_size,
+        ),
+    };
+
+    let mut width: f64 = 0.0;
+    match wrap_mode {
+        WrapMode::HtmlLike => {
+            for line in &lines {
+                if let Some(em) =
+                    VendoredFontMetricsTextMeasurer::lookup_html_override_em(html_overrides, line)
+                {
+                    width = width.max(em * font_size);
+                } else {
+                    width = width.max(VendoredFontMetricsTextMeasurer::line_width_px(
+                        table.entries,
+                        table.default_em.max(0.1),
+                        table.kern_pairs,
+                        table.space_trigrams,
+                        table.trigrams,
+                        line,
+                        bold,
+                        font_size,
+                    ));
+                }
+            }
+        }
+        WrapMode::SvgLike => {
+            for line in &lines {
+                width = width.max(VendoredFontMetricsTextMeasurer::line_svg_bbox_width_px(
+                    table, line, font_size,
+                ));
+            }
+        }
+    }
+
+    // Mermaid HTML labels use `max-width` and can visually overflow for long words, but their
+    // layout width is effectively clamped to the max width.
+    if wrap_mode == WrapMode::HtmlLike {
+        if let Some(w) = max_width {
+            let needs_wrap = raw_width_unscaled.is_some_and(|rw| rw > w);
+            if needs_wrap {
+                width = w;
+            } else {
+                width = width.min(w);
+            }
+        }
+        // Empirically, Mermaid's HTML label widths (via `getBoundingClientRect()`) behave like
+        // `ceil(width * 64) / 64` over the underlying text advances.
+        width = VendoredFontMetricsTextMeasurer::ceil_to_1_64_px(width);
+        if let Some(w) = max_width {
+            width = width.min(w);
+        }
+    }
+
+    let height = match wrap_mode {
+        WrapMode::HtmlLike => lines.len() as f64 * font_size * line_height_factor,
+        WrapMode::SvgLike => {
+            if lines.is_empty() {
+                0.0
+            } else {
+                // Mermaid's SVG `<text>.getBBox().height` behaves as "one taller first line"
+                // plus 1.1em per additional wrapped line (observed in upstream fixtures at
+                // Mermaid@11.12.2).
+                let first_line_em = if table.font_key == "courier" {
+                    1.125
+                } else {
+                    1.1875
+                };
+                let first_line_h = font_size * first_line_em;
+                let additional = (lines.len().saturating_sub(1)) as f64 * font_size * 1.1;
+                first_line_h + additional
+            }
+        }
+    };
+
+    TextMetrics {
+        width,
+        height,
+        line_count: lines.len(),
+    }
+}
+
 impl TextMeasurer for VendoredFontMetricsTextMeasurer {
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
         self.measure_wrapped(text, style, None, WrapMode::SvgLike)
@@ -1889,142 +2025,17 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
         max_width: Option<f64>,
         wrap_mode: WrapMode,
     ) -> TextMetrics {
-        let Some(table) = self.lookup_table(style) else {
-            return self
-                .fallback
-                .measure_wrapped(text, style, max_width, wrap_mode);
-        };
+        vendored_measure_wrapped_impl(self, text, style, max_width, wrap_mode, true)
+    }
 
-        let bold = is_flowchart_default_font(style) && style_requests_bold_font_weight(style);
-        let font_size = style.font_size.max(1.0);
-        let max_width = max_width.filter(|w| w.is_finite() && *w > 0.0);
-        let line_height_factor = match wrap_mode {
-            WrapMode::SvgLike => 1.1,
-            WrapMode::HtmlLike => 1.5,
-        };
-
-        // Mermaid HTML labels behave differently depending on whether the content "needs" wrapping:
-        // - if the unwrapped line width exceeds the configured wrapping width, Mermaid constrains
-        //   the element to `width=max_width` and lets HTML wrapping determine line breaks
-        //   (`white-space: break-spaces` / `width: 200px` patterns in upstream SVGs).
-        // - otherwise, Mermaid uses an auto-sized container and measures the natural width.
-        //
-        // In headless mode we model this by computing the unwrapped width first, then forcing the
-        // measured width to `max_width` when it would overflow.
-        let raw_width_unscaled = if wrap_mode == WrapMode::HtmlLike {
-            let mut raw_w: f64 = 0.0;
-            for line in DeterministicTextMeasurer::normalized_text_lines(text) {
-                if let Some(em) = Self::lookup_html_override_em(table.html_overrides, line.as_str())
-                {
-                    raw_w = raw_w.max(em * font_size);
-                } else {
-                    raw_w = raw_w.max(Self::line_width_px(
-                        table.entries,
-                        table.default_em.max(0.1),
-                        table.kern_pairs,
-                        table.space_trigrams,
-                        table.trigrams,
-                        &line,
-                        bold,
-                        font_size,
-                    ));
-                }
-            }
-            Some(raw_w)
-        } else {
-            None
-        };
-
-        let lines = match wrap_mode {
-            WrapMode::HtmlLike => Self::wrap_text_lines_px(
-                table.entries,
-                table.default_em.max(0.1),
-                table.kern_pairs,
-                table.space_trigrams,
-                table.trigrams,
-                text,
-                style,
-                bold,
-                max_width,
-                wrap_mode,
-            ),
-            WrapMode::SvgLike => {
-                Self::wrap_text_lines_svg_bbox_px(table, text, max_width, font_size)
-            }
-        };
-
-        let mut width: f64 = 0.0;
-        match wrap_mode {
-            WrapMode::HtmlLike => {
-                for line in &lines {
-                    if let Some(em) = Self::lookup_html_override_em(table.html_overrides, line) {
-                        width = width.max(em * font_size);
-                    } else {
-                        width = width.max(Self::line_width_px(
-                            table.entries,
-                            table.default_em.max(0.1),
-                            table.kern_pairs,
-                            table.space_trigrams,
-                            table.trigrams,
-                            line,
-                            bold,
-                            font_size,
-                        ));
-                    }
-                }
-            }
-            WrapMode::SvgLike => {
-                for line in &lines {
-                    width = width.max(Self::line_svg_bbox_width_px(table, line, font_size));
-                }
-            }
-        }
-
-        // Mermaid HTML labels use `max-width` and can visually overflow for long words, but their
-        // layout width is effectively clamped to the max width.
-        if wrap_mode == WrapMode::HtmlLike {
-            if let Some(w) = max_width {
-                let needs_wrap = raw_width_unscaled.is_some_and(|rw| rw > w);
-                if needs_wrap {
-                    width = w;
-                } else {
-                    width = width.min(w);
-                }
-            }
-            // Empirically, Mermaid's HTML label widths (via `getBoundingClientRect()`) behave like
-            // `ceil(width * 64) / 64` over the underlying text advances.
-            width = Self::ceil_to_1_64_px(width);
-            if let Some(w) = max_width {
-                width = width.min(w);
-            }
-        } else {
-        }
-
-        let height = match wrap_mode {
-            WrapMode::HtmlLike => lines.len() as f64 * font_size * line_height_factor,
-            WrapMode::SvgLike => {
-                if lines.is_empty() {
-                    0.0
-                } else {
-                    // Mermaid's SVG `<text>.getBBox().height` behaves as "one taller first line"
-                    // plus 1.1em per additional wrapped line (observed in upstream fixtures at
-                    // Mermaid@11.12.2).
-                    let first_line_em = if table.font_key == "courier" {
-                        1.125
-                    } else {
-                        1.1875
-                    };
-                    let first_line_h = font_size * first_line_em;
-                    let additional = (lines.len().saturating_sub(1)) as f64 * font_size * 1.1;
-                    first_line_h + additional
-                }
-            }
-        };
-        TextMetrics {
-            width,
-            height,
-            line_count: lines.len(),
-        }
+    fn measure_wrapped_raw(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> TextMetrics {
+        vendored_measure_wrapped_impl(self, text, style, max_width, wrap_mode, false)
     }
 }
 
