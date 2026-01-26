@@ -128,6 +128,12 @@ pub fn parse_treemap(code: &str, meta: &ParseMetadata) -> Result<Value> {
         let TreemapRow::ClassDef(c) = row else {
             continue;
         };
+        if let Some(style) = c.style_text.as_deref() {
+            validate_class_def_style(style).map_err(|message| Error::DiagramParse {
+                diagram_type: "treemap".to_string(),
+                message,
+            })?;
+        }
         add_class(
             &mut class_defs,
             &c.class_name,
@@ -330,6 +336,33 @@ fn add_class(
     }
 
     classes.insert(id.to_string(), style_class);
+}
+
+fn validate_class_def_style(style: &str) -> std::result::Result<(), String> {
+    let style = style.trim().trim_end_matches(';').trim();
+    if style.is_empty() {
+        return Ok(());
+    }
+
+    const PLACEHOLDER: &str = "ก์ก์ก์";
+    let replaced = style.replace("\\,", PLACEHOLDER);
+    let replaced = replaced.replace(',', ";");
+    let replaced = replaced.replace(PLACEHOLDER, ",");
+
+    for raw in replaced.split(';') {
+        let s = raw.trim();
+        if s.is_empty() {
+            continue;
+        }
+        let Some((k, v)) = s.split_once(':') else {
+            return Err(format!("invalid classDef style token `{s}`"));
+        };
+        if k.trim().is_empty() || v.trim().is_empty() {
+            return Err(format!("invalid classDef style token `{s}`"));
+        }
+    }
+
+    Ok(())
 }
 
 fn get_styles_for_class(
