@@ -18575,6 +18575,7 @@ fn render_flowchart_edge_path(
                         start.y += 0.5;
                     }
                 }
+
                 if end_is_center || force_intersect(head_shape) {
                     end = intersect_for_layout_shape(
                         ctx,
@@ -20808,40 +20809,14 @@ fn render_flowchart_node(
         &node_classes,
         &node_styles,
     );
-    let mut metrics = if label_type == "markdown" {
-        crate::text::measure_markdown_with_flowchart_bold_deltas(
-            ctx.measurer,
-            &label_text,
-            &node_text_style,
-            Some(ctx.wrapping_width),
-            ctx.node_wrap_mode,
-        )
-    } else if ctx.node_html_labels && {
-        let lower = label_text.to_ascii_lowercase();
-        crate::text::flowchart_html_has_inline_style_tags(&lower)
-    } {
-        crate::text::measure_html_with_flowchart_bold_deltas(
-            ctx.measurer,
-            &label_text,
-            &node_text_style,
-            Some(ctx.wrapping_width),
-            ctx.node_wrap_mode,
-        )
-    } else {
-        ctx.measurer.measure_wrapped(
-            &label_text_plain,
-            &node_text_style,
-            Some(ctx.wrapping_width),
-            ctx.node_wrap_mode,
-        )
-    };
-    if label_type == "string" {
-        crate::text::flowchart_apply_mermaid_string_whitespace_height_parity(
-            &mut metrics,
-            &label_text,
-            &node_text_style,
-        );
-    }
+    let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+        ctx.measurer,
+        &label_text,
+        &label_type,
+        &node_text_style,
+        Some(ctx.wrapping_width),
+        ctx.node_wrap_mode,
+    );
     let span_css_height_parity = node_classes.iter().any(|c| {
         ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
             styles.iter().any(|s| {
@@ -20858,7 +20833,9 @@ fn render_flowchart_node(
             &node_text_style,
         );
     }
-    if label_text_plain.trim().is_empty() {
+    let label_has_visual_content = label_text.to_ascii_lowercase().contains("<img")
+        || (label_type == "markdown" && label_text.contains("!["));
+    if label_text_plain.trim().is_empty() && !label_has_visual_content {
         metrics.width = 0.0;
         metrics.height = 0.0;
     }

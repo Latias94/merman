@@ -124,7 +124,7 @@ pub fn ceil_to_1_64_px(v: f64) -> f64 {
     }
     // Avoid "ceil to next 1/64" due to tiny positive FP drift (e.g. 2262.0000000000005 instead
     // of 2262.0), which can bubble up into `viewBox`/`max-width` mismatches.
-    ((v * 64.0) - 1e-9).ceil() / 64.0
+    ((v * 64.0) - 1e-5).ceil() / 64.0
 }
 
 fn normalize_font_key(s: &str) -> String {
@@ -564,6 +564,155 @@ pub fn measure_markdown_with_flowchart_bold_deltas(
     wrap_mode: WrapMode,
 ) -> TextMetrics {
     const BOLD_DELTA_SCALE: f64 = 1.0;
+
+    // Mermaid's flowchart HTML labels support inline Markdown images. These affect layout even
+    // when the label has no textual content (e.g. `![](...)`).
+    //
+    // We keep the existing text-focused Markdown measurement for the common case, and only
+    // special-case when we observe at least one image token.
+    if markdown.contains("![") {
+        #[derive(Debug, Default, Clone)]
+        struct Paragraph {
+            text: String,
+            image_urls: Vec<String>,
+        }
+
+        fn measure_markdown_images(
+            measurer: &dyn TextMeasurer,
+            markdown: &str,
+            style: &TextStyle,
+            max_width: Option<f64>,
+            wrap_mode: WrapMode,
+        ) -> Option<TextMetrics> {
+            let parser = pulldown_cmark::Parser::new_ext(
+                markdown,
+                pulldown_cmark::Options::ENABLE_TABLES
+                    | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
+                    | pulldown_cmark::Options::ENABLE_TASKLISTS,
+            );
+
+            let mut paragraphs: Vec<Paragraph> = Vec::new();
+            let mut current = Paragraph::default();
+            let mut in_paragraph = false;
+
+            for ev in parser {
+                match ev {
+                    pulldown_cmark::Event::Start(pulldown_cmark::Tag::Paragraph) => {
+                        if in_paragraph {
+                            paragraphs.push(std::mem::take(&mut current));
+                        }
+                        in_paragraph = true;
+                    }
+                    pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Paragraph) => {
+                        if in_paragraph {
+                            paragraphs.push(std::mem::take(&mut current));
+                        }
+                        in_paragraph = false;
+                    }
+                    pulldown_cmark::Event::Start(pulldown_cmark::Tag::Image {
+                        dest_url, ..
+                    }) => {
+                        current.image_urls.push(dest_url.to_string());
+                    }
+                    pulldown_cmark::Event::Text(t) | pulldown_cmark::Event::Code(t) => {
+                        current.text.push_str(&t);
+                    }
+                    pulldown_cmark::Event::SoftBreak | pulldown_cmark::Event::HardBreak => {
+                        current.text.push('\n');
+                    }
+                    _ => {}
+                }
+            }
+            if in_paragraph {
+                paragraphs.push(current);
+            }
+
+            let total_images: usize = paragraphs.iter().map(|p| p.image_urls.len()).sum();
+            if total_images == 0 {
+                return None;
+            }
+
+            let total_text = paragraphs
+                .iter()
+                .map(|p| p.text.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            let has_any_text = !total_text.trim().is_empty();
+
+            // Mermaid renders a single standalone Markdown image without a `<p>` wrapper and
+            // applies fixed `80px` sizing. In the upstream fixtures, missing/empty `src` yields
+            // `height="0"` while keeping the width.
+            if total_images == 1 && !has_any_text {
+                let url = paragraphs
+                    .iter()
+                    .flat_map(|p| p.image_urls.iter())
+                    .next()
+                    .cloned()
+                    .unwrap_or_default();
+                let img_w = 80.0;
+                let has_src = !url.trim().is_empty();
+                let img_h = if has_src { img_w } else { 0.0 };
+                return Some(TextMetrics {
+                    width: ceil_to_1_64_px(img_w),
+                    height: ceil_to_1_64_px(img_h),
+                    line_count: if img_h > 0.0 { 1 } else { 0 },
+                });
+            }
+
+            let max_w = max_width.unwrap_or(200.0).max(1.0);
+            let line_height = style.font_size.max(1.0) * 1.5;
+
+            let mut width: f64 = 0.0;
+            let mut height: f64 = 0.0;
+            let mut line_count: usize = 0;
+
+            for p in paragraphs {
+                let p_text = p.text.trim().to_string();
+                let text_metrics = if p_text.is_empty() {
+                    TextMetrics {
+                        width: 0.0,
+                        height: 0.0,
+                        line_count: 0,
+                    }
+                } else {
+                    measurer.measure_wrapped(&p_text, style, Some(max_w), wrap_mode)
+                };
+
+                if !p.image_urls.is_empty() {
+                    // Markdown images inside paragraphs use `width: 100%` in Mermaid's HTML label
+                    // output, so they expand to the available width.
+                    width = width.max(max_w);
+                    if text_metrics.line_count == 0 {
+                        // Image-only paragraphs include an extra line box from the `<p>` element.
+                        height += line_height;
+                        line_count += 1;
+                    }
+                    for url in p.image_urls {
+                        let has_src = !url.trim().is_empty();
+                        let img_h = if has_src { max_w } else { 0.0 };
+                        height += img_h;
+                        if img_h > 0.0 {
+                            line_count += 1;
+                        }
+                    }
+                }
+
+                width = width.max(text_metrics.width);
+                height += text_metrics.height;
+                line_count += text_metrics.line_count;
+            }
+
+            Some(TextMetrics {
+                width: ceil_to_1_64_px(width),
+                height: ceil_to_1_64_px(height),
+                line_count,
+            })
+        }
+
+        if let Some(m) = measure_markdown_images(measurer, markdown, style, max_width, wrap_mode) {
+            return m;
+        }
+    }
 
     let mut plain = String::new();
     let mut deltas_px_by_line: Vec<f64> = vec![0.0];
