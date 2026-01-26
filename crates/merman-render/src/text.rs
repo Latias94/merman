@@ -563,7 +563,14 @@ pub fn measure_markdown_with_flowchart_bold_deltas(
     max_width: Option<f64>,
     wrap_mode: WrapMode,
 ) -> TextMetrics {
-    const BOLD_DELTA_SCALE: f64 = 1.0;
+    // Mermaid renders Markdown as HTML inside a `<foreignObject>` (for `htmlLabels: true`), and
+    // in the upstream SVG baselines the UA-style `<strong>/<em>` styling does not reliably affect
+    // measured bbox widths. Treat Markdown styling as having no width impact in HTML-like mode.
+    let bold_delta_scale: f64 = if wrap_mode == WrapMode::HtmlLike {
+        0.0
+    } else {
+        1.0
+    };
 
     // Mermaid's flowchart HTML labels support inline Markdown images. These affect layout even
     // when the label has no textual content (e.g. `![](...)`).
@@ -760,14 +767,14 @@ pub fn measure_markdown_with_flowchart_bold_deltas(
                                 deltas_px_by_line[line_idx] +=
                                     flowchart_default_bold_kern_delta_em(prev, ch)
                                         * font_size
-                                        * BOLD_DELTA_SCALE;
+                                        * bold_delta_scale;
                             }
                         }
                         if is_strong {
                             deltas_px_by_line[line_idx] +=
-                                flowchart_default_bold_delta_em(ch) * font_size * BOLD_DELTA_SCALE;
+                                flowchart_default_bold_delta_em(ch) * font_size * bold_delta_scale;
                         }
-                        if em_depth > 0 {
+                        if em_depth > 0 && wrap_mode != WrapMode::HtmlLike {
                             deltas_px_by_line[line_idx] +=
                                 flowchart_default_italic_delta_em(ch) * font_size;
                         }
@@ -893,17 +900,29 @@ mod tests {
             font_weight: None,
         };
 
-        let regular = measurer.measure_wrapped("Two", &style, Some(200.0), WrapMode::HtmlLike);
-        assert_eq!(regular.width, 27.578125);
+        let regular_html = measurer.measure_wrapped("Two", &style, Some(200.0), WrapMode::HtmlLike);
+        assert_eq!(regular_html.width, 27.578125);
 
-        let strong = measure_markdown_with_flowchart_bold_deltas(
+        let strong_html = measure_markdown_with_flowchart_bold_deltas(
             &measurer,
             "**Two**",
             &style,
             Some(200.0),
             WrapMode::HtmlLike,
         );
-        assert_eq!(strong.width, 30.109375);
+        assert_eq!(strong_html.width, regular_html.width);
+
+        let regular_svg = measurer.measure_wrapped("Two", &style, Some(200.0), WrapMode::SvgLike);
+        assert_eq!(regular_svg.width, 27.5703125);
+
+        let strong_svg = measure_markdown_with_flowchart_bold_deltas(
+            &measurer,
+            "**Two**",
+            &style,
+            Some(200.0),
+            WrapMode::SvgLike,
+        );
+        assert_eq!(strong_svg.width, 30.09375);
     }
 }
 
