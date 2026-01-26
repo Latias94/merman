@@ -3098,9 +3098,12 @@ fn node_render_dimensions(
         "hexagon" | "hex" => {
             let h = text_h + p;
             let w0 = text_w + 2.5 * p;
-            // The current Mermaid implementation expands the half-width by `m = (w/2)/6`,
-            // resulting in a total width of `7/6 * w`.
-            (w0 * (7.0 / 6.0), h)
+            // Match Mermaid@11.12.2 evaluation order:
+            // `halfWidth = w / 2; m = halfWidth / 6; halfWidth += m; width = 2 * halfWidth`.
+            let mut half_width = w0 / 2.0;
+            let m = half_width / 6.0;
+            half_width += m;
+            (half_width * 2.0, h)
         }
 
         // Stadium/terminator.
