@@ -1465,6 +1465,16 @@ pub fn layout_flowchart_v2(
         );
     }
 
+    // Mermaid's flowchart-v2 renderer inserts node DOM elements in `graph.nodes()` order before
+    // running Dagre layout, including for recursively extracted cluster graphs. Capture that
+    // insertion order per root so the headless SVG matches strict DOM expectations.
+    let mut dom_node_order_by_root: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    dom_node_order_by_root.insert(String::new(), g.node_ids());
+    for (id, cg) in &extracted_graphs {
+        dom_node_order_by_root.insert(id.clone(), cg.node_ids());
+    }
+
     #[derive(Debug, Clone, Copy)]
     struct Rect {
         min_x: f64,
@@ -1797,7 +1807,7 @@ pub fn layout_flowchart_v2(
             let y = n.y.unwrap_or(0.0) + offset.1;
             if leaf_node_ids.contains(&id) {
                 base_pos.insert(id.clone(), (x, y));
-                leaf_rects.insert(id, Rect::from_center(x, y, n.width, n.height));
+                leaf_rects.insert(id.clone(), Rect::from_center(x, y, n.width, n.height));
                 continue;
             }
         }
@@ -3056,6 +3066,7 @@ pub fn layout_flowchart_v2(
         edges: out_edges,
         clusters,
         bounds,
+        dom_node_order_by_root,
     })
 }
 

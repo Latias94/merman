@@ -10374,6 +10374,7 @@ pub fn render_flowchart_v2_svg(
         layout_nodes_by_id,
         layout_edges_by_id,
         layout_clusters_by_id,
+        dom_node_order_by_root: layout.dom_node_order_by_root.clone(),
         node_dom_index,
         node_padding,
         wrapping_width,
@@ -16136,6 +16137,7 @@ struct FlowchartRenderCtx<'a> {
     layout_nodes_by_id: std::collections::HashMap<String, LayoutNode>,
     layout_edges_by_id: std::collections::HashMap<String, crate::model::LayoutEdge>,
     layout_clusters_by_id: std::collections::HashMap<String, LayoutCluster>,
+    dom_node_order_by_root: std::collections::HashMap<String, Vec<String>>,
     node_dom_index: std::collections::HashMap<String, usize>,
     node_padding: f64,
     wrapping_width: f64,
@@ -16748,6 +16750,17 @@ fn flowchart_root_children_nodes(
         }
     }
 
+    let dom_order_idx: Option<std::collections::HashMap<&str, usize>> = ctx
+        .dom_node_order_by_root
+        .get(parent_cluster.unwrap_or(""))
+        .map(|ids| {
+            let mut m: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+            for (i, id) in ids.iter().enumerate() {
+                m.insert(id.as_str(), i);
+            }
+            m
+        });
+
     fn cluster_nesting_depth(
         ctx: &FlowchartRenderCtx<'_>,
         id: &str,
@@ -16804,6 +16817,14 @@ fn flowchart_root_children_nodes(
     }
 
     out.sort_by(|a, b| {
+        if let Some(ref dom) = dom_order_idx {
+            let adi = dom.get(a.as_str()).copied().unwrap_or(usize::MAX);
+            let bdi = dom.get(b.as_str()).copied().unwrap_or(usize::MAX);
+            if adi != bdi {
+                return adi.cmp(&bdi);
+            }
+        }
+
         let ai = ctx.node_dom_index.get(a).copied().unwrap_or(usize::MAX);
         let bi = ctx.node_dom_index.get(b).copied().unwrap_or(usize::MAX);
 
@@ -19508,13 +19529,17 @@ fn render_flowchart_edge_label(
         )
     };
     let div_color_prefix = {
-        let mut color: Option<&str> = None;
+        let mut color: Option<String> = None;
         for part in compiled_label_styles.label_style.split(';') {
             let p = part.trim();
             let Some(rest) = p.strip_prefix("color:") else {
                 continue;
             };
-            let v = rest.trim().split_whitespace().next().unwrap_or_default();
+            let v = rest
+                .trim()
+                .trim_end_matches("!important")
+                .trim()
+                .to_string();
             if !v.is_empty() {
                 color = Some(v);
             }
@@ -19994,8 +20019,13 @@ fn render_flowchart_edge_label(
 
     let _ = write!(
         out,
-        r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-        escape_attr(&edge.id)
+        r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}></span></div></foreignObject></g></g>"#,
+        escape_attr(&edge.id),
+        escape_attr(&format!(
+            "{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;",
+            div_color_prefix
+        )),
+        span_style_attr
     );
 }
 
@@ -21265,6 +21295,18 @@ fn render_flowchart_node(
         let mut div_style = String::new();
         if let Some(rgb) = label_color_rgb_string(&compiled_styles.label_style) {
             div_style.push_str(&format!("color: {rgb} !important; "));
+        } else if let Some(color) = compiled_styles
+            .label_style
+            .split(';')
+            .rev()
+            .find_map(|decl| {
+                let decl = decl.trim();
+                let rest = decl.strip_prefix("color:")?;
+                let v = rest.trim().trim_end_matches("!important").trim();
+                if v.is_empty() { None } else { Some(v.to_string()) }
+            })
+        {
+            div_style.push_str(&format!("color: {} !important; ", color.to_ascii_lowercase()));
         }
         for decl in compiled_styles.label_style.split(';') {
             let decl = decl.trim();

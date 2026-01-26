@@ -446,6 +446,9 @@ pub struct FlowchartV2Layout {
     pub edges: Vec<LayoutEdge>,
     pub clusters: Vec<LayoutCluster>,
     pub bounds: Option<Bounds>,
+    /// Mermaid's DOM insertion order for each extracted root graph (`""` = top-level root).
+    #[serde(skip)]
+    pub dom_node_order_by_root: std::collections::HashMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
