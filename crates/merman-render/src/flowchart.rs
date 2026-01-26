@@ -3252,6 +3252,21 @@ fn node_layout_dimensions(
         }
     }
 
+    // Mermaid flowchart-v2 uses `updateNodeBounds(node, polygon)` for hexagon nodes.
+    // In Chromium, `getBBox().width` for the roughjs `<path>` ends up rounded to an f32 grid,
+    // which affects Dagre spacing and therefore strict-parity `data-points`.
+    if matches!(shape, "hexagon" | "hex") {
+        let w_f32 = render_w as f32;
+        let h_f32 = render_h as f32;
+        if w_f32.is_finite()
+            && h_f32.is_finite()
+            && w_f32.is_sign_positive()
+            && h_f32.is_sign_positive()
+        {
+            return (w_f32 as f64, h_f32 as f64);
+        }
+    }
+
     // Mermaid flowchart-v2 cylinder layout dimensions are derived from `updateNodeBounds(...)`
     // over an SVG `<path>` with arc commands. On Chromium this tends to round the bbox height to
     // the next representable f32 value above the theoretical height, which affects Dagre spacing

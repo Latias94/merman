@@ -870,8 +870,13 @@ O(-Label-)
     {
         let n = nodes_by_id["F"];
         let w0 = tw + 2.5 * p;
-        assert_close(n.width, w0 * (7.0 / 6.0), "hexagon width");
-        assert_close(n.height, th + p, "hexagon height");
+        // Mermaid uses `updateNodeBounds(...).getBBox()` to set the final node width/height that
+        // Dagre uses for layout. For hexagon nodes, Chromium rounds the roughjs path bbox to an
+        // f32 grid, so we mirror that to match strict SVG parity `data-points`.
+        let expected_w = (w0 * (7.0 / 6.0)) as f32 as f64;
+        let expected_h = (th + p) as f32 as f64;
+        assert_close(n.width, expected_w, "hexagon width");
+        assert_close(n.height, expected_h, "hexagon height");
     }
 
     // odd (`rect_left_inv_arrow`)
