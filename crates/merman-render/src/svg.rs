@@ -16550,6 +16550,43 @@ fn flowchart_root_children_nodes(
             out.push(id.clone());
         }
     }
+
+    fn cluster_nesting_depth(ctx: &FlowchartRenderCtx<'_>, id: &str) -> usize {
+        let mut depth: usize = 0;
+        let mut cur = ctx.parent.get(id).map(|s| s.as_str());
+        while let Some(p) = cur {
+            if ctx.subgraphs_by_id.contains_key(p) {
+                depth = depth.saturating_add(1);
+            }
+            cur = ctx.parent.get(p).map(|s| s.as_str());
+        }
+        depth
+    }
+
+    fn nearest_cluster_id<'a>(ctx: &'a FlowchartRenderCtx<'_>, id: &str) -> Option<&'a str> {
+        let mut cur = ctx.parent.get(id).map(|s| s.as_str());
+        while let Some(p) = cur {
+            if ctx
+                .subgraphs_by_id
+                .get(p)
+                .is_some_and(|sg| !sg.nodes.is_empty())
+            {
+                return Some(p);
+            }
+            cur = ctx.parent.get(p).map(|s| s.as_str());
+        }
+        None
+    }
+
+    fn dir_sort_key(primary_dir: &str, x: f64, y: f64) -> (f64, f64) {
+        match primary_dir {
+            "BT" => (-y, x),
+            "LR" => (x, y),
+            "RL" => (-x, y),
+            _ => (y, x), // TB (default)
+        }
+    }
+
     out.sort_by(|a, b| {
         let ai = ctx.node_dom_index.get(a).copied().unwrap_or(usize::MAX);
         let bi = ctx.node_dom_index.get(b).copied().unwrap_or(usize::MAX);
@@ -16558,9 +16595,39 @@ fn flowchart_root_children_nodes(
         let bb = ctx.layout_nodes_by_id.get(b);
         let (ax, ay) = aa.map(|n| (n.x, n.y)).unwrap_or((0.0, 0.0));
         let (bx, by) = bb.map(|n| (n.x, n.y)).unwrap_or((0.0, 0.0));
-        ai.cmp(&bi)
-            .then_with(|| ay.total_cmp(&by))
-            .then_with(|| ax.total_cmp(&bx))
+        let ad = cluster_nesting_depth(ctx, a);
+        let bd = cluster_nesting_depth(ctx, b);
+        bd.cmp(&ad)
+            .then_with(|| {
+                if ad == 0 && bd == 0 {
+                    // For nodes not nested in any subgraph, upstream Mermaid keeps the graph
+                    // insertion order as the primary key, then uses position to stabilize ties.
+                    ai.cmp(&bi)
+                        .then_with(|| ay.total_cmp(&by))
+                        .then_with(|| ax.total_cmp(&bx))
+                } else {
+                    // For nodes that are nested in subgraphs, upstream Mermaid's DOM ordering is
+                    // closer to “flow direction” ordering within the nearest cluster.
+                    let ag = nearest_cluster_id(ctx, a);
+                    let bg = nearest_cluster_id(ctx, b);
+                    if ag == bg {
+                        let dir = ag
+                            .and_then(|id| ctx.layout_clusters_by_id.get(id))
+                            .map(|c| c.effective_dir.as_str())
+                            .unwrap_or("TB");
+                        let (ap, as_) = dir_sort_key(dir, ax, ay);
+                        let (bp, bs) = dir_sort_key(dir, bx, by);
+                        ap.total_cmp(&bp)
+                            .then_with(|| as_.total_cmp(&bs))
+                            .then_with(|| ai.cmp(&bi))
+                    } else {
+                        // Different clusters at the same nesting depth: keep insertion order stable.
+                        ai.cmp(&bi)
+                            .then_with(|| ay.total_cmp(&by))
+                            .then_with(|| ax.total_cmp(&bx))
+                    }
+                }
+            })
             .then_with(|| a.cmp(b))
     });
     out
