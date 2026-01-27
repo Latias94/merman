@@ -27,6 +27,7 @@ pub mod svg;
 pub mod text;
 pub mod timeline;
 pub mod treemap;
+mod trig_tables;
 pub mod xychart;
 
 use crate::model::{LayoutDiagram, LayoutMeta, LayoutedDiagram};

@@ -3213,23 +3213,18 @@ fn node_layout_dimensions(
     // `w = bbox.width + h/4 + padding` used to generate the points. That bbox width is what Dagre
     // uses for spacing, which affects node x-positions and ultimately the root `viewBox`.
     if shape == "stadium" {
-        fn generate_circle_points(
+        fn include_circle_points(
             center_x: f64,
             center_y: f64,
             radius: f64,
-            num_points: usize,
-            start_angle_deg: f64,
-            end_angle_deg: f64,
-        ) -> impl Iterator<Item = (f64, f64)> {
-            let start = start_angle_deg.to_radians();
-            let end = end_angle_deg.to_radians();
-            let step = (end - start) / (num_points.saturating_sub(1).max(1) as f64);
-            (0..num_points).map(move |i| {
-                let angle = start + (i as f64) * step;
-                let x = center_x + radius * angle.cos();
-                let y = center_y + radius * angle.sin();
-                (-x, -y)
-            })
+            table: &[(f64, f64)],
+            mut include: impl FnMut(f64, f64),
+        ) {
+            for &(cos, sin) in table {
+                let x = center_x + radius * cos;
+                let y = center_y + radius * sin;
+                include(-x, -y);
+            }
         }
 
         let w = render_w.max(0.0);
@@ -3249,16 +3244,41 @@ fn node_layout_dimensions(
 
             include(-w / 2.0 + radius, -h / 2.0);
             include(w / 2.0 - radius, -h / 2.0);
-            for (x, y) in generate_circle_points(-w / 2.0 + radius, 0.0, radius, 50, 90.0, 270.0) {
-                include(x, y);
-            }
+            include_circle_points(
+                -w / 2.0 + radius,
+                0.0,
+                radius,
+                &crate::trig_tables::STADIUM_ARC_90_270_COS_SIN,
+                &mut include,
+            );
             include(w / 2.0 - radius, h / 2.0);
-            for (x, y) in generate_circle_points(w / 2.0 - radius, 0.0, radius, 50, 270.0, 450.0) {
-                include(x, y);
-            }
+            include_circle_points(
+                w / 2.0 - radius,
+                0.0,
+                radius,
+                &crate::trig_tables::STADIUM_ARC_270_450_COS_SIN,
+                &mut include,
+            );
 
             if min_x.is_finite() && max_x.is_finite() && min_y.is_finite() && max_y.is_finite() {
-                return ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0));
+                let bbox_w = (max_x - min_x).max(0.0);
+                let bbox_h = (max_y - min_y).max(0.0);
+
+                // Mermaid flowchart-v2 feeds Dagre with dimensions produced by `getBBox()`, and
+                // Chromium returns those extents as f32-rounded values. Matching that lattice is
+                // important for strict SVG `data-points` parity, since tiny width differences
+                // propagate into Dagre x-coordinates.
+                let w_f32 = bbox_w as f32;
+                let h_f32 = bbox_h as f32;
+                if w_f32.is_finite()
+                    && h_f32.is_finite()
+                    && w_f32.is_sign_positive()
+                    && h_f32.is_sign_positive()
+                {
+                    return (w_f32 as f64, h_f32 as f64);
+                }
+
+                return (bbox_w, bbox_h);
             }
         }
     }

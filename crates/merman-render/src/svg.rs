@@ -16097,7 +16097,6 @@ fn escape_xml(text: &str) -> String {
         match ch {
             '&' => out.push_str("&amp;"),
             '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
             '\'' => out.push_str("&#39;"),
             _ => out.push(ch),
@@ -16469,6 +16468,21 @@ fn flowchart_css(
         font_family
     );
 
+    // Mermaid `createCssStyles(...)` chooses different selectors based on `htmlLabels`.
+    // - HTML labels: `.classDef > *` + `.classDef span`
+    // - SVG labels: `.classDef rect|polygon|ellipse|circle|path`
+    let html_labels = effective_config
+        .get("htmlLabels")
+        .and_then(|v| v.as_bool())
+        .or_else(|| {
+            effective_config
+                .get("flowchart")
+                .and_then(|v| v.get("htmlLabels"))
+                .and_then(|v| v.as_bool())
+        })
+        .unwrap_or(false);
+    let shape_elements: &[&str] = &["rect", "polygon", "ellipse", "circle", "path"];
+
     for (class, decls) in class_defs {
         if decls.is_empty() {
             continue;
@@ -16487,16 +16501,31 @@ fn flowchart_css(
         if style.is_empty() {
             continue;
         }
-        let _ = write!(
-            &mut out,
-            r#"#{} .{}&gt;*{{{}}}#{} .{} span{{{}}}"#,
-            escape_xml(diagram_id),
-            escape_xml(class),
-            style,
-            escape_xml(diagram_id),
-            escape_xml(class),
-            style
-        );
+        if html_labels {
+            // Mermaid (via Stylis) ends up serializing the `>` combinator inside `<style>` as
+            // `&gt;` in the final SVG string (see upstream baselines).
+            let _ = write!(
+                &mut out,
+                r#"#{} .{}&gt;*{{{}}}#{} .{} span{{{}}}"#,
+                escape_xml(diagram_id),
+                escape_xml(class),
+                style,
+                escape_xml(diagram_id),
+                escape_xml(class),
+                style
+            );
+        } else {
+            for css_element in shape_elements {
+                let _ = write!(
+                    &mut out,
+                    r#"#{} .{} {}{{{}}}"#,
+                    escape_xml(diagram_id),
+                    escape_xml(class),
+                    css_element,
+                    style
+                );
+            }
+        }
         if let Some(c) = text_color.as_deref() {
             let _ = write!(
                 &mut out,
@@ -18544,6 +18573,9 @@ fn render_flowchart_edge_path(
         let r1 = a2 * p1.x + b2 * p1.y + c2;
         let r2 = a2 * p2.x + b2 * p2.y + c2;
 
+        // Match Mermaid@11.12.2 `intersect-line.js`: the side test is an exact `!== 0` guard.
+        // Keep this exact check so our segment intersection matches upstream for collinear and
+        // endpoint cases (flowing into strict SVG `data-points` parity).
         if r1 != 0.0 && r2 != 0.0 && same_sign(r1, r2) {
             return None;
         }
@@ -18798,19 +18830,12 @@ fn render_flowchart_edge_path(
                 center_x: f64,
                 center_y: f64,
                 radius: f64,
-                num_points: usize,
-                start_angle_deg: f64,
-                end_angle_deg: f64,
+                table: &[(f64, f64)],
             ) -> Vec<crate::model::LayoutPoint> {
-                let mut pts = Vec::with_capacity(num_points);
-
-                let start = start_angle_deg.to_radians();
-                let end = end_angle_deg.to_radians();
-                let step = (end - start) / (num_points.saturating_sub(1).max(1) as f64);
-                for i in 0..num_points {
-                    let angle = start + (i as f64) * step;
-                    let x = center_x + radius * angle.cos();
-                    let y = center_y + radius * angle.sin();
+                let mut pts = Vec::with_capacity(table.len());
+                for &(cos, sin) in table {
+                    let x = center_x + radius * cos;
+                    let y = center_y + radius * sin;
                     pts.push(crate::model::LayoutPoint { x: -x, y: -y });
                 }
                 pts
@@ -18857,8 +18882,23 @@ fn render_flowchart_edge_path(
                 metrics,
                 ctx.node_padding,
             );
-            let w = render_w.max(1.0);
-            let h = render_h.max(1.0);
+            let mut w = render_w.max(1.0);
+            let mut h = render_h.max(1.0);
+
+            // The input bbox values that Mermaid uses to derive these dimensions come from DOM
+            // APIs and behave like f32-rounded values in Chromium. Keep the sampled polygon points
+            // on the same lattice so the downstream intersection rounding matches strict baselines.
+            let w_f32 = w as f32;
+            let h_f32 = h as f32;
+            if w_f32.is_finite()
+                && h_f32.is_finite()
+                && w_f32.is_sign_positive()
+                && h_f32.is_sign_positive()
+            {
+                w = w_f32 as f64;
+                h = h_f32 as f64;
+            }
+
             let radius = h / 2.0;
 
             let mut pts: Vec<crate::model::LayoutPoint> = Vec::with_capacity(2 + 50 + 1 + 50);
@@ -18874,9 +18914,7 @@ fn render_flowchart_edge_path(
                 -w / 2.0 + radius,
                 0.0,
                 radius,
-                50,
-                90.0,
-                270.0,
+                &crate::trig_tables::STADIUM_ARC_90_270_COS_SIN,
             ));
             pts.push(crate::model::LayoutPoint {
                 x: w / 2.0 - radius,
@@ -18886,33 +18924,10 @@ fn render_flowchart_edge_path(
                 w / 2.0 - radius,
                 0.0,
                 radius,
-                50,
-                270.0,
-                450.0,
+                &crate::trig_tables::STADIUM_ARC_270_450_COS_SIN,
             ));
 
             let mut out = intersect_polygon(node, &pts, point);
-
-            // Upstream (`intersect.polygon` + `intersect-line`) tends to land one ULP above the
-            // exact y-coordinate for bottom intersections due to floating-point rounding.
-            // This affects strict-parity `data-points` strings (e.g. `761.5937500000001`).
-            if point.y > node.y && out.y.is_finite() {
-                fn next_up(v: f64) -> f64 {
-                    if !v.is_finite() {
-                        return v;
-                    }
-                    if v == 0.0 {
-                        return f64::from_bits(1);
-                    }
-                    let bits = v.to_bits();
-                    if v > 0.0 {
-                        f64::from_bits(bits + 1)
-                    } else {
-                        f64::from_bits(bits - 1)
-                    }
-                }
-                out.y = next_up(out.y);
-            }
 
             out
         }
@@ -19182,7 +19197,10 @@ fn render_flowchart_edge_path(
             return if v == -0.0 { 0.0 } else { v };
         }
 
-        if (v - snapped).abs() < 1e-11 {
+        // Keep the snapping extremely tight: upstream `data-points` frequently include tiny
+        // non-f32 artifacts (several f64 ulps away from the f32-rounded value), and snapping too
+        // aggressively erases those strict-parity baselines.
+        if (v - snapped).abs() < 1e-14 {
             if snapped == -0.0 { 0.0 } else { snapped }
         } else {
             v
