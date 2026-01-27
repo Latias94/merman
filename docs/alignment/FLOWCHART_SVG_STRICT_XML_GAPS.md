@@ -12,11 +12,9 @@ in `strict` mode for flowchart-v2.
 - Diff a single fixture:
   - `git diff --no-index target/compare/xml/flowchart/<fixture>.upstream.xml target/compare/xml/flowchart/<fixture>.local.xml`
 
-## Current mismatches (3)
+## Current mismatches (1)
 
 - `upstream_flowchart_v2_self_loops_spec`
-- `upstream_flowchart_v2_shape_styling_matrix_spec`
-- `upstream_flowchart_v2_stadium_shape_spec`
 
 Observed pattern so far: these are primarily `data-points` (Base64(JSON.stringify(points))) float
 differences at ~1e-6–1e-5 magnitude. The rendered path `d` often matches after the `--dom-decimals`
@@ -28,6 +26,8 @@ masking, so the remaining work is to match upstream's high-precision float pipel
    - `cargo run -p xtask -- compare-flowchart-svgs --text-measurer vendored --filter <fixture> --out target/compare/flowchart_report.md`
 2. Decode and compare `data-points` for a single edge:
    - `cargo run -p xtask -- debug-flowchart-data-points --fixture <fixture> --edge <edge-id>`
+3. Compare node/labelRect/clusters positional deltas (3-decimal debug view):
+   - `cargo run -p xtask -- debug-flowchart-svg-positions --fixture <fixture>`
 
 Notes:
 
