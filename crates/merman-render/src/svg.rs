@@ -19172,9 +19172,13 @@ fn render_flowchart_edge_path(
         }
 
         // Preserve exact 1-ULP offsets around the snapped value. Upstream Mermaid frequently
-        // produces values like `761.5937500000001` (next_up of `761.59375`) due to floating-point
-        // rounding, and snapping those back to the f32 lattice would *reduce* strict parity.
-        if v.to_bits() == snapped.to_bits() || v.to_bits() == next_up(snapped).to_bits() {
+        // produces values like `761.5937500000001` (next_up of `761.59375`) and
+        // `145.49999999999997` (next_down of `145.5`) due to floating-point rounding, and
+        // snapping those back to the f32 lattice would *reduce* strict parity.
+        if v.to_bits() == snapped.to_bits()
+            || v.to_bits() == next_up(snapped).to_bits()
+            || v.to_bits() == next_down(snapped).to_bits()
+        {
             return if v == -0.0 { 0.0 } else { v };
         }
 
