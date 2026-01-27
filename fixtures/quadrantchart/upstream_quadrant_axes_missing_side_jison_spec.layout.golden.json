@@ -128,7 +128,7 @@
       "points": [],
       "axisLabels": [
         {
-          "text": "Urgent(* +=[? ?",
+          "text": "Urgent(* +=[? ⟶",
           "x": 31.0,
           "y": 5.0,
           "fill": "#131300",
@@ -138,7 +138,7 @@
           "horizontalPos": "top"
         },
         {
-          "text": "Urgent(* +=[? ?",
+          "text": "Urgent(* +=[? ⟶",
           "x": 5.0,
           "y": 495.0,
           "fill": "#131300",

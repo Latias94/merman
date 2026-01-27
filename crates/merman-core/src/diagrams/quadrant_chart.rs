@@ -507,7 +507,7 @@ pub fn parse_quadrant_chart(code: &str, meta: &ParseMetadata) -> Result<Value> {
                 if let Some((left_raw, right_raw)) = split_axis_text(rest) {
                     let mut left = parse_text_value(&left_raw)?;
                     if right_raw.is_none() {
-                        left.push_str(" ? ");
+                        left.push_str(" ⟶");
                     }
                     db.set_x_axis_left(&left, &meta.effective_config);
                     if let Some(r) = right_raw {
@@ -526,7 +526,7 @@ pub fn parse_quadrant_chart(code: &str, meta: &ParseMetadata) -> Result<Value> {
                 if let Some((bottom_raw, top_raw)) = split_axis_text(rest) {
                     let mut bottom = parse_text_value(&bottom_raw)?;
                     if top_raw.is_none() {
-                        bottom.push_str(" ? ");
+                        bottom.push_str(" ⟶");
                     }
                     db.set_y_axis_bottom(&bottom, &meta.effective_config);
                     if let Some(t) = top_raw {
@@ -703,7 +703,7 @@ mod tests {
         let model = parse("quadrantChart\nx-AxIs \"Urgent(* +=[?\"  --> \n");
         assert_eq!(
             axes(&model)["xAxisLeftText"].as_str().unwrap(),
-            "Urgent(* +=[? ?"
+            "Urgent(* +=[? ⟶"
         );
         assert_eq!(axes(&model)["xAxisRightText"].as_str().unwrap(), "");
     }
@@ -717,7 +717,7 @@ mod tests {
         let model = parse("quadrantChart\ny-AxIs \"Urgent(* +=[?\"  --> \n");
         assert_eq!(
             axes(&model)["yAxisBottomText"].as_str().unwrap(),
-            "Urgent(* +=[? ?"
+            "Urgent(* +=[? ⟶"
         );
         assert_eq!(axes(&model)["yAxisTopText"].as_str().unwrap(), "");
     }

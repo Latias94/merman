@@ -1,23 +1,23 @@
 {
   "diagramType": "quadrantChart",
   "model": {
-    "accDescr": null,
+    "type": "quadrantChart",
+    "title": null,
     "accTitle": null,
-    "axes": {
-      "xAxisLeftText": "Urgent(* +=[? ?",
-      "xAxisRightText": "",
-      "yAxisBottomText": "Urgent(* +=[? ?",
-      "yAxisTopText": ""
-    },
-    "classes": {},
-    "points": [],
+    "accDescr": null,
     "quadrants": {
       "quadrant1Text": "",
       "quadrant2Text": "",
       "quadrant3Text": "",
       "quadrant4Text": ""
     },
-    "title": null,
-    "type": "quadrantChart"
+    "axes": {
+      "xAxisLeftText": "Urgent(* +=[? ⟶",
+      "xAxisRightText": "",
+      "yAxisBottomText": "Urgent(* +=[? ⟶",
+      "yAxisTopText": ""
+    },
+    "points": [],
+    "classes": {}
   }
 }
