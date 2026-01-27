@@ -12,7 +12,7 @@ Unlike DOM parity mode (used for day-to-day regression checks), `strict` canonic
 
 ## Current status (as of 2026-01-27)
 
-Total strict mismatches: **331**
+Total strict mismatches: **329**
 
 Mismatch counts by diagram:
 
@@ -35,7 +35,6 @@ Mismatch counts by diagram:
 - `timeline`: 8
 - `packet`: 7
 - `treemap`: 3
-- `sankey`: 2
 
 ## Workflow
 
@@ -45,4 +44,3 @@ Mismatch counts by diagram:
    - `target/compare/xml/xml_report.md`
 3. Diff a single fixture:
    - `git diff --no-index target/compare/xml/<diagram>/<fixture>.upstream.xml target/compare/xml/<diagram>/<fixture>.local.xml`
-
