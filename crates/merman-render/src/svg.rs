@@ -17093,6 +17093,21 @@ fn render_flowchart_root(
     let child_nodes = flowchart_root_children_nodes(ctx, cluster_id);
     let mut empty_subgraph_nodes: Vec<String> = Vec::new();
     let mut regular_nodes: Vec<String> = Vec::new();
+
+    fn is_self_loop_label_node_id(id: &str) -> bool {
+        let mut parts = id.split("---");
+        let Some(a) = parts.next() else {
+            return false;
+        };
+        let Some(b) = parts.next() else {
+            return false;
+        };
+        let Some(n) = parts.next() else {
+            return false;
+        };
+        parts.next().is_none() && a == b && (n == "1" || n == "2")
+    }
+
     for id in child_nodes {
         if ctx
             .subgraphs_by_id
@@ -17112,11 +17127,35 @@ fn render_flowchart_root(
     }
 
     let child_clusters = flowchart_root_children_clusters(ctx, cluster_id);
+    let cluster_id_set: std::collections::HashSet<&str> =
+        child_clusters.iter().map(|s| s.as_str()).collect();
+
+    let mut nodes_before_clusters: Vec<String> = Vec::new();
+    let mut nodes_after_clusters: Vec<String> = Vec::new();
+    for id in regular_nodes {
+        if is_self_loop_label_node_id(&id)
+            && id
+                .split("---")
+                .next()
+                .is_some_and(|base| cluster_id_set.contains(base))
+        {
+            // Mermaid renders self-loop placeholder nodes for cluster nodes before the nested
+            // `.root` group for that cluster.
+            nodes_before_clusters.push(id);
+        } else {
+            nodes_after_clusters.push(id);
+        }
+    }
+
+    for node_id in &nodes_before_clusters {
+        render_flowchart_node(out, ctx, node_id, origin_x, content_origin_y);
+    }
+
     for child in &child_clusters {
         render_flowchart_root(out, ctx, Some(child.as_str()), origin_x, origin_y);
     }
 
-    for node_id in &regular_nodes {
+    for node_id in &nodes_after_clusters {
         render_flowchart_node(out, ctx, node_id, origin_x, content_origin_y);
     }
 

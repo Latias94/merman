@@ -89,6 +89,8 @@ partitioning cluster endpoint edges to the end (mirroring `adjustClustersAndEdge
 ordering cluster boxes consistently (ancestor-first, then reverse subgraph registration order).
 Recent progress: flowchart-v2 renders empty subgraphs (node-like subgraph declarations) before extracted cluster
 root groups inside `.nodes`, matching upstream DOM order in `outgoing_links_4_spec`.
+Recent progress: flowchart-v2 now renders self-loop label placeholder nodes for cluster nodes (e.g. `C1---C1---{1,2}`)
+before the nested extracted cluster `.root` group, matching upstream DOM order in `upstream_flowchart_v2_self_loops_spec`.
 Recent progress: flowchart HTML `<img>` labels now contribute to foreignObject sizing (instead of being treated as
 empty text), matching upstream SVG baselines for image-only and mixed image+text nodes.
 Recent progress: flowchart Markdown measurement in HTML-like mode now accounts for `<strong>/<em>` styling deltas
