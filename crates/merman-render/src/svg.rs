@@ -18505,8 +18505,7 @@ fn render_flowchart_edge_path(
         let r1 = a2 * p1.x + b2 * p1.y + c2;
         let r2 = a2 * p2.x + b2 * p2.y + c2;
 
-        let epsilon = 1e-6;
-        if r1.abs() < epsilon && r2.abs() < epsilon && same_sign(r1, r2) {
+        if r1 != 0.0 && r2 != 0.0 && same_sign(r1, r2) {
             return None;
         }
 
@@ -18764,10 +18763,11 @@ fn render_flowchart_edge_path(
                 start_angle_deg: f64,
                 end_angle_deg: f64,
             ) -> Vec<crate::model::LayoutPoint> {
+                let mut pts = Vec::with_capacity(num_points);
+
                 let start = start_angle_deg.to_radians();
                 let end = end_angle_deg.to_radians();
                 let step = (end - start) / (num_points.saturating_sub(1).max(1) as f64);
-                let mut pts = Vec::with_capacity(num_points);
                 for i in 0..num_points {
                     let angle = start + (i as f64) * step;
                     let x = center_x + radius * angle.cos();
@@ -18878,11 +18878,107 @@ fn render_flowchart_edge_path(
             out
         }
 
+        fn intersect_hexagon(
+            ctx: &FlowchartRenderCtx<'_>,
+            node_id: &str,
+            node: &BoundaryNode,
+            point: &crate::model::LayoutPoint,
+        ) -> crate::model::LayoutPoint {
+            // Port of Mermaid@11.12.2 `hexagon.ts` intersection behavior:
+            // - `points` are generated from the theoretical render dimensions,
+            // - `node.width/height` used by `intersect.polygon(...)` come from `updateNodeBounds(...)`.
+            let Some(flow_node) = ctx.nodes_by_id.get(node_id) else {
+                return intersect_rect(node, point);
+            };
+
+            let label_text = flow_node.label.clone().unwrap_or_default();
+            let label_type = flow_node
+                .label_type
+                .clone()
+                .unwrap_or_else(|| "text".to_string());
+
+            let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+                ctx.measurer,
+                &label_text,
+                &label_type,
+                &ctx.text_style,
+                Some(ctx.wrapping_width),
+                ctx.node_wrap_mode,
+            );
+
+            let span_css_height_parity = flow_node.classes.iter().any(|c| {
+                ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
+                    styles.iter().any(|s| {
+                        matches!(
+                            s.split_once(':').map(|p| p.0.trim()),
+                            Some("background" | "border")
+                        )
+                    })
+                })
+            });
+            if span_css_height_parity {
+                crate::text::flowchart_apply_mermaid_styled_node_height_parity(
+                    &mut metrics,
+                    &ctx.text_style,
+                );
+            }
+
+            let (render_w, render_h) = crate::flowchart::flowchart_node_render_dimensions(
+                Some("hexagon"),
+                metrics,
+                ctx.node_padding,
+            );
+            let w = render_w.max(1.0);
+            let h = render_h.max(1.0);
+            let half_width = w / 2.0;
+            let half_height = h / 2.0;
+            let fixed_length = half_height / 2.0;
+            let deduced_width = half_width - fixed_length;
+
+            let pts: Vec<crate::model::LayoutPoint> = vec![
+                crate::model::LayoutPoint {
+                    x: -deduced_width,
+                    y: -half_height,
+                },
+                crate::model::LayoutPoint {
+                    x: 0.0,
+                    y: -half_height,
+                },
+                crate::model::LayoutPoint {
+                    x: deduced_width,
+                    y: -half_height,
+                },
+                crate::model::LayoutPoint {
+                    x: half_width,
+                    y: 0.0,
+                },
+                crate::model::LayoutPoint {
+                    x: deduced_width,
+                    y: half_height,
+                },
+                crate::model::LayoutPoint {
+                    x: 0.0,
+                    y: half_height,
+                },
+                crate::model::LayoutPoint {
+                    x: -deduced_width,
+                    y: half_height,
+                },
+                crate::model::LayoutPoint {
+                    x: -half_width,
+                    y: 0.0,
+                },
+            ];
+
+            intersect_polygon(node, &pts, point)
+        }
+
         match layout_shape {
             Some("circle") => intersect_circle(node, point),
             Some("cylinder" | "cyl") => intersect_cylinder(node, point),
             Some("diamond") => intersect_diamond(node, point),
             Some("stadium") => intersect_stadium(ctx, node_id, node, point),
+            Some("hexagon" | "hex") => intersect_hexagon(ctx, node_id, node, point),
             Some(s) if is_polygon_layout_shape(Some(s)) => polygon_points_for_layout_shape(s, node)
                 .map(|pts| intersect_polygon(node, &pts, point))
                 .unwrap_or_else(|| intersect_rect(node, point)),
@@ -19037,7 +19133,7 @@ fn render_flowchart_edge_path(
         }
 
         // Preserve exact 1-ULP offsets around the snapped value. Upstream Mermaid frequently
-        // produces values like `761.5937500000001` (next_up of `761.59375`) due to intersect-line
+        // produces values like `761.5937500000001` (next_up of `761.59375`) due to floating-point
         // rounding, and snapping those back to the f32 lattice would *reduce* strict parity.
         if v.to_bits() == snapped.to_bits() || v.to_bits() == next_up(snapped).to_bits() {
             return if v == -0.0 { 0.0 } else { v };
@@ -19052,7 +19148,10 @@ fn render_flowchart_edge_path(
 
     let mut points_for_data_points = points_after_intersect.clone();
     for p in &mut points_for_data_points {
-        p.x = maybe_snap_data_point_to_f32(maybe_truncate_data_point(p.x));
+        // Keep truncation scoped to y-coordinates: the observed upstream fixed-point artifacts
+        // are for vertical intersections, while x-coordinates can legitimately land on thirds for
+        // some polygon shapes (and truncating those breaks strict parity).
+        p.x = maybe_snap_data_point_to_f32(p.x);
         p.y = maybe_snap_data_point_to_f32(maybe_truncate_data_point(p.y));
     }
     let mut points_for_render = points_after_intersect;

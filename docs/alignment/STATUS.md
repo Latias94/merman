@@ -65,6 +65,9 @@ Recent progress: flowchart Stage B now matches upstream SVG DOM for the current 
 Recent progress: flowchart-v2 stadium/cylinder geometry now matches upstream more closely in strict SVG XML parity
 (`xtask compare-svg-xml --diagram flowchart --dom-mode strict`) by modeling Chromium bbox quirks for cylinders and
 using stadium render-dimensions for edge intersections.
+Recent progress: flowchart-v2 hexagon edge intersections now mirror Mermaid `hexagon.ts` by generating polygon
+points from render dimensions (text bbox + padding) while still using `updateNodeBounds(...)`-derived node sizes
+for the `intersect.polygon(...)` transform, eliminating hexagon-related `data-points` drift.
 Recent progress: flowchart-v2 `classDef` CSS rules now preserve Mermaid insertion order (IndexMap), matching upstream
 `<style>` rule ordering in strict SVG XML parity (e.g. `bigger_font_from_classes_spec`).
 Recent progress: flowchart-v2 strict SVG XML parity now stringifies `data-points` using ECMAScript-compatible float

@@ -3264,8 +3264,8 @@ fn node_layout_dimensions(
     }
 
     // Mermaid flowchart-v2 uses `updateNodeBounds(node, polygon)` for hexagon nodes.
-    // In Chromium, `getBBox().width` for the roughjs `<path>` ends up rounded to an f32 grid,
-    // which affects Dagre spacing and therefore strict-parity `data-points`.
+    // Upstream baselines for the roughjs hexagon bbox consistently land on f32-rounded values;
+    // mirroring that improves strict-parity `data-points` stability without affecting rendering.
     if matches!(shape, "hexagon" | "hex") {
         let w_f32 = render_w as f32;
         let h_f32 = render_h as f32;
