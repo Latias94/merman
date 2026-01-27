@@ -149,6 +149,7 @@ fn main() -> Result<(), XtaskError> {
         "debug-flowchart-svg-roots" => debug_flowchart_svg_roots(args.collect()),
         "debug-flowchart-svg-positions" => debug_flowchart_svg_positions(args.collect()),
         "debug-flowchart-svg-diff" => debug_flowchart_svg_diff(args.collect()),
+        "debug-flowchart-data-points" => debug_flowchart_data_points(args.collect()),
         "compare-sequence-svgs" => compare_sequence_svgs(args.collect()),
         "compare-class-svgs" => compare_class_svgs(args.collect()),
         "compare-state-svgs" => compare_state_svgs(args.collect()),
@@ -3956,6 +3957,197 @@ fn debug_flowchart_svg_diff(args: Vec<String>) -> Result<(), XtaskError> {
     for (_, line) in edge_rows.into_iter().take(max_rows) {
         println!("{line}");
     }
+
+    Ok(())
+}
+
+fn debug_flowchart_data_points(args: Vec<String>) -> Result<(), XtaskError> {
+    let mut fixture: Option<String> = None;
+    let mut upstream: Option<PathBuf> = None;
+    let mut local: Option<PathBuf> = None;
+    let mut edge_id: Option<String> = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--fixture" => {
+                i += 1;
+                fixture = args.get(i).map(|s| s.to_string());
+            }
+            "--upstream" => {
+                i += 1;
+                upstream = args.get(i).map(PathBuf::from);
+            }
+            "--local" => {
+                i += 1;
+                local = args.get(i).map(PathBuf::from);
+            }
+            "--edge" => {
+                i += 1;
+                edge_id = args.get(i).map(|s| s.to_string());
+            }
+            "--help" | "-h" => return Err(XtaskError::Usage),
+            _ => return Err(XtaskError::Usage),
+        }
+        i += 1;
+    }
+
+    let Some(edge_id) = edge_id.as_deref() else {
+        return Err(XtaskError::Usage);
+    };
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+
+    if let Some(f) = fixture.as_deref() {
+        let upstream_default = workspace_root
+            .join("fixtures")
+            .join("upstream-svgs")
+            .join("flowchart")
+            .join(format!("{f}.svg"));
+        let local_default = workspace_root
+            .join("target")
+            .join("compare")
+            .join("flowchart")
+            .join(format!("{f}.svg"));
+        upstream = upstream.or(Some(upstream_default));
+        local = local.or(Some(local_default));
+    }
+
+    let Some(upstream_path) = upstream else {
+        return Err(XtaskError::Usage);
+    };
+    let Some(local_path) = local else {
+        return Err(XtaskError::Usage);
+    };
+
+    let upstream_svg =
+        fs::read_to_string(&upstream_path).map_err(|source| XtaskError::ReadFile {
+            path: upstream_path.display().to_string(),
+            source,
+        })?;
+    let local_svg = fs::read_to_string(&local_path).map_err(|source| XtaskError::ReadFile {
+        path: local_path.display().to_string(),
+        source,
+    })?;
+
+    fn find_data_points(doc: &roxmltree::Document<'_>, edge_id: &str) -> Option<String> {
+        for n in doc.descendants().filter(|n| n.is_element()) {
+            if n.tag_name().name() != "path" {
+                continue;
+            }
+            let Some(id) = n.attribute("data-id") else {
+                continue;
+            };
+            if id != edge_id {
+                continue;
+            }
+            let Some(dp) = n.attribute("data-points") else {
+                continue;
+            };
+            return Some(dp.to_string());
+        }
+        None
+    }
+
+    fn decode_data_points_json(dp: &str) -> Option<serde_json::Value> {
+        use base64::Engine as _;
+        let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(dp.as_bytes()) else {
+            return None;
+        };
+        serde_json::from_slice::<serde_json::Value>(&bytes).ok()
+    }
+
+    fn to_points(v: &serde_json::Value) -> Vec<(f64, f64)> {
+        let Some(arr) = v.as_array() else {
+            return Vec::new();
+        };
+        let mut out = Vec::with_capacity(arr.len());
+        for p in arr {
+            let (Some(x), Some(y)) = (
+                p.get("x").and_then(|v| v.as_f64()),
+                p.get("y").and_then(|v| v.as_f64()),
+            ) else {
+                continue;
+            };
+            if x.is_finite() && y.is_finite() {
+                out.push((x, y));
+            }
+        }
+        out
+    }
+
+    let upstream_doc = roxmltree::Document::parse(&upstream_svg)
+        .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
+    let local_doc = roxmltree::Document::parse(&local_svg)
+        .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
+
+    let Some(up_dp) = find_data_points(&upstream_doc, edge_id) else {
+        return Err(XtaskError::DebugSvgFailed(format!(
+            "missing data-points for edge {edge_id:?} in {}",
+            upstream_path.display()
+        )));
+    };
+    let Some(lo_dp) = find_data_points(&local_doc, edge_id) else {
+        return Err(XtaskError::DebugSvgFailed(format!(
+            "missing data-points for edge {edge_id:?} in {}",
+            local_path.display()
+        )));
+    };
+
+    let up_json = decode_data_points_json(&up_dp).ok_or_else(|| {
+        XtaskError::DebugSvgFailed("failed to decode upstream data-points".into())
+    })?;
+    let lo_json = decode_data_points_json(&lo_dp)
+        .ok_or_else(|| XtaskError::DebugSvgFailed("failed to decode local data-points".into()))?;
+
+    println!("upstream: {}", upstream_path.display());
+    println!("local:    {}", local_path.display());
+    println!("edge:     {edge_id}");
+    println!();
+
+    println!("== Upstream decoded JSON ==");
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&up_json).unwrap_or_else(|_| "<unprintable>".to_string())
+    );
+    println!();
+
+    println!("== Local decoded JSON ==");
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&lo_json).unwrap_or_else(|_| "<unprintable>".to_string())
+    );
+    println!();
+
+    let up_pts = to_points(&up_json);
+    let lo_pts = to_points(&lo_json);
+    if up_pts.is_empty() || lo_pts.is_empty() {
+        return Ok(());
+    }
+
+    println!("== Point deltas (upstream -> local) ==");
+    let n = up_pts.len().min(lo_pts.len());
+    let mut max_abs = 0.0f64;
+    for idx in 0..n {
+        let (ux, uy) = up_pts[idx];
+        let (lx, ly) = lo_pts[idx];
+        let dx = lx - ux;
+        let dy = ly - uy;
+        max_abs = max_abs.max(dx.abs()).max(dy.abs());
+        println!(
+            "#{idx}: upstream=({ux:.17},{uy:.17}) local=({lx:.17},{ly:.17}) Δ=({dx:.17},{dy:.17})"
+        );
+    }
+    if up_pts.len() != lo_pts.len() {
+        println!(
+            "length mismatch: upstream={} local={}",
+            up_pts.len(),
+            lo_pts.len()
+        );
+    }
+    println!("max |Δ| = {max_abs:.17}");
 
     Ok(())
 }
