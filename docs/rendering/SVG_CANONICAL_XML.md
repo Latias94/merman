@@ -15,7 +15,7 @@ representation so comparisons are stable across:
 
 - attribute ordering
 - insignificant whitespace differences
-- numeric formatting noise (rounded via `--dom-decimals`)
+- numeric formatting noise (rounded via `--dom-decimals`, including decoded `data-points` in `strict` mode)
 
 Canonical XML is meant as a stepping stone toward stricter parity, while keeping diffs readable and
 deterministic.
@@ -38,6 +38,8 @@ deterministic.
   - Recommendation for canonical XML: `strict` (default)
 - `--dom-decimals <n>`
   - Rounds numeric tokens to reduce float drift (default: `3`)
+  - In `strict` mode this also normalizes `data-points` by decoding the Base64 JSON payload, rounding JSON numbers,
+    and re-encoding.
 - `--text-measurer deterministic|vendored`
   - Default: `vendored` (uses vendored font tables where available, falls back deterministically)
 
@@ -51,4 +53,3 @@ When mismatches are found, the canonical XML files are written to:
 And the summary report is written to:
 
 - `target/compare/xml/xml_report.md`
-

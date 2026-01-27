@@ -1,6 +1,7 @@
 /target
 /node_modules/
 /package-lock.json
+/package.json
 /repo-ref/*
 !/repo-ref/README.md
 !/repo-ref/REPOS.lock.json

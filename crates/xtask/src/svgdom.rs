@@ -34,6 +34,43 @@ fn round_f64(v: f64, decimals: u32) -> f64 {
     (v * p).round() / p
 }
 
+fn normalize_data_points_base64_json(s: &str, decimals: u32) -> Option<String> {
+    use base64::Engine as _;
+
+    fn round_json_numbers(value: &mut serde_json::Value, decimals: u32) {
+        match value {
+            serde_json::Value::Number(n) => {
+                let Some(v) = n.as_f64() else {
+                    return;
+                };
+                let r = round_f64(v, decimals);
+                if let Some(new_n) = serde_json::Number::from_f64(r) {
+                    *n = new_n;
+                }
+            }
+            serde_json::Value::Array(arr) => {
+                for v in arr {
+                    round_json_numbers(v, decimals);
+                }
+            }
+            serde_json::Value::Object(map) => {
+                for (_, v) in map.iter_mut() {
+                    round_json_numbers(v, decimals);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(s.as_bytes())
+        .ok()?;
+    let mut json = serde_json::from_slice::<serde_json::Value>(&bytes).ok()?;
+    round_json_numbers(&mut json, decimals);
+    let out = serde_json::to_string(&json).ok()?;
+    Some(base64::engine::general_purpose::STANDARD.encode(out.as_bytes()))
+}
+
 fn re_num() -> &'static Regex {
     static ONCE: OnceLock<Regex> = OnceLock::new();
     ONCE.get_or_init(|| Regex::new(r"-?(?:\d+\.\d+|\d+\.|\.\d+|\d+)(?:[eE][+-]?\d+)?").unwrap())
@@ -202,6 +239,18 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
         for a in n.attributes() {
             let key = a.name().to_string();
             let mut val = a.value().to_string();
+
+            // `data-points` is a base64-encoded JSON payload (Mermaid uses `btoa(JSON.stringify(...))`).
+            // In strict mode we want stable, precision-controlled DOM comparisons, so we normalize the
+            // *decoded* JSON numbers and then re-encode. Importantly, we must not run generic numeric
+            // token normalization on the base64 string itself (it can corrupt the payload).
+            if mode == DomMode::Strict && key == "data-points" {
+                if let Some(normalized) = normalize_data_points_base64_json(&val, decimals) {
+                    val = normalized;
+                }
+                attrs.insert(key, val);
+                continue;
+            }
 
             let mut normalized_geom = false;
             if mode != DomMode::Strict {

@@ -150,6 +150,7 @@ fn main() -> Result<(), XtaskError> {
         "debug-flowchart-svg-positions" => debug_flowchart_svg_positions(args.collect()),
         "debug-flowchart-svg-diff" => debug_flowchart_svg_diff(args.collect()),
         "debug-flowchart-data-points" => debug_flowchart_data_points(args.collect()),
+        "debug-flowchart-edge-trace" => debug_flowchart_edge_trace(args.collect()),
         "compare-sequence-svgs" => compare_sequence_svgs(args.collect()),
         "compare-class-svgs" => compare_class_svgs(args.collect()),
         "compare-state-svgs" => compare_state_svgs(args.collect()),
@@ -4148,6 +4149,259 @@ fn debug_flowchart_data_points(args: Vec<String>) -> Result<(), XtaskError> {
         );
     }
     println!("max |Δ| = {max_abs:.17}");
+
+    Ok(())
+}
+
+fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskError> {
+    let mut fixture: Option<String> = None;
+    let mut edge_id: Option<String> = None;
+    let mut out: Option<PathBuf> = None;
+    let mut upstream: Option<PathBuf> = None;
+    let mut local: Option<PathBuf> = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--fixture" => {
+                i += 1;
+                fixture = args.get(i).map(|s| s.to_string());
+            }
+            "--edge" => {
+                i += 1;
+                edge_id = args.get(i).map(|s| s.to_string());
+            }
+            "--out" => {
+                i += 1;
+                out = args.get(i).map(PathBuf::from);
+            }
+            "--upstream" => {
+                i += 1;
+                upstream = args.get(i).map(PathBuf::from);
+            }
+            "--local" => {
+                i += 1;
+                local = args.get(i).map(PathBuf::from);
+            }
+            "--help" | "-h" => return Err(XtaskError::Usage),
+            _ => return Err(XtaskError::Usage),
+        }
+        i += 1;
+    }
+
+    let Some(edge_id) = edge_id.as_deref() else {
+        return Err(XtaskError::Usage);
+    };
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+
+    let fixture_name = fixture
+        .as_deref()
+        .unwrap_or("upstream_flowchart_v2_self_loops_spec");
+    let mmd_path = workspace_root
+        .join("fixtures")
+        .join("flowchart")
+        .join(format!("{fixture_name}.mmd"));
+
+    let text = fs::read_to_string(&mmd_path).map_err(|source| XtaskError::ReadFile {
+        path: mmd_path.display().to_string(),
+        source,
+    })?;
+
+    // Match compare-svg-xml defaults (handDrawnSeed ensures deterministic output).
+    let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
+        serde_json::json!({ "handDrawnSeed": 1 }),
+    ));
+    let measurer: std::sync::Arc<dyn merman_render::text::TextMeasurer + Send + Sync> =
+        std::sync::Arc::new(merman_render::text::VendoredFontMetricsTextMeasurer::default());
+    let layout_opts = merman_render::LayoutOptions {
+        text_measurer: std::sync::Arc::clone(&measurer),
+        ..Default::default()
+    };
+
+    let parsed =
+        futures::executor::block_on(engine.parse_diagram(&text, merman::ParseOptions::default()))
+            .map_err(|e| XtaskError::DebugSvgFailed(format!("parse failed: {e}")))?
+            .ok_or_else(|| XtaskError::DebugSvgFailed("no diagram detected".to_string()))?;
+
+    let layouted = merman_render::layout_parsed(&parsed, &layout_opts)
+        .map_err(|e| XtaskError::DebugSvgFailed(format!("layout failed: {e}")))?;
+
+    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = &layouted.layout else {
+        return Err(XtaskError::DebugSvgFailed(format!(
+            "expected flowchart-v2 layout, got {}",
+            layouted.meta.diagram_type
+        )));
+    };
+
+    let out = out.unwrap_or_else(|| {
+        workspace_root
+            .join("target")
+            .join("trace")
+            .join("flowchart")
+            .join(fixture_name)
+            .join(format!("{edge_id}.json"))
+    });
+    if let Some(parent) = out.parent() {
+        fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
+            path: parent.display().to_string(),
+            source,
+        })?;
+    }
+
+    // Rust 1.85+ marks environment mutation as `unsafe` due to potential UB when other
+    // threads concurrently read/modify the process environment. `xtask` sets these vars
+    // up-front before invoking rendering code, so this is safe in our usage.
+    unsafe {
+        std::env::set_var("MERMAN_TRACE_FLOWCHART_EDGE", edge_id);
+        std::env::set_var("MERMAN_TRACE_FLOWCHART_OUT", &out);
+    }
+
+    let svg_opts = merman_render::svg::SvgRenderOptions {
+        diagram_id: Some(fixture_name.to_string()),
+        ..Default::default()
+    };
+
+    // Render once to trigger the trace emission inside `merman-render`.
+    let svg = merman_render::svg::render_flowchart_v2_svg(
+        layout,
+        &layouted.semantic,
+        &layouted.meta.effective_config,
+        layouted.meta.title.as_deref(),
+        layout_opts.text_measurer.as_ref(),
+        &svg_opts,
+    )
+    .map_err(|e| XtaskError::DebugSvgFailed(format!("render failed: {e}")))?;
+
+    if let Ok(doc) = roxmltree::Document::parse(&svg) {
+        if let Some(dp) = find_data_points(&doc, edge_id) {
+            if let Some(json) = decode_data_points_json(&dp) {
+                println!("== Rendered SVG data-points (decoded) ==");
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&json)
+                        .unwrap_or_else(|_| "<unprintable>".to_string())
+                );
+                println!();
+            }
+        }
+    }
+
+    let trace_json = fs::read_to_string(&out).map_err(|source| XtaskError::ReadFile {
+        path: out.display().to_string(),
+        source,
+    })?;
+
+    println!("trace:   {}", out.display());
+    println!("fixture: {fixture_name}");
+    println!("edge:    {edge_id}");
+    println!();
+    println!("== Local edge trace (JSON) ==");
+    println!("{trace_json}");
+
+    // Optional: also print upstream/local decoded `data-points` from the XML compare output if available.
+    if upstream.is_none() && local.is_none() {
+        let upstream_default = workspace_root
+            .join("target")
+            .join("compare")
+            .join("xml")
+            .join("flowchart")
+            .join(format!("{fixture_name}.upstream.xml"));
+        let local_default = workspace_root
+            .join("target")
+            .join("compare")
+            .join("xml")
+            .join("flowchart")
+            .join(format!("{fixture_name}.local.xml"));
+        upstream = Some(upstream_default);
+        local = Some(local_default);
+    }
+
+    let (Some(upstream_path), Some(local_path)) = (upstream, local) else {
+        return Ok(());
+    };
+    let upstream_svg =
+        fs::read_to_string(&upstream_path).map_err(|source| XtaskError::ReadFile {
+            path: upstream_path.display().to_string(),
+            source,
+        })?;
+    let local_svg = fs::read_to_string(&local_path).map_err(|source| XtaskError::ReadFile {
+        path: local_path.display().to_string(),
+        source,
+    })?;
+
+    fn find_data_points(doc: &roxmltree::Document<'_>, edge_id: &str) -> Option<String> {
+        for n in doc.descendants().filter(|n| n.is_element()) {
+            if n.tag_name().name() != "path" {
+                continue;
+            }
+            let Some(id) = n.attribute("data-id") else {
+                continue;
+            };
+            if id != edge_id {
+                continue;
+            }
+            let Some(dp) = n.attribute("data-points") else {
+                continue;
+            };
+            return Some(dp.to_string());
+        }
+        None
+    }
+
+    fn decode_data_points_json(dp: &str) -> Option<serde_json::Value> {
+        use base64::Engine as _;
+        let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(dp.as_bytes()) else {
+            return None;
+        };
+        serde_json::from_slice::<serde_json::Value>(&bytes).ok()
+    }
+
+    let upstream_doc = roxmltree::Document::parse(&upstream_svg)
+        .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
+    let local_doc = roxmltree::Document::parse(&local_svg)
+        .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
+    let Some(up_dp) = find_data_points(&upstream_doc, edge_id) else {
+        println!();
+        println!(
+            "(no upstream data-points found for edge {edge_id} in {})",
+            upstream_path.display()
+        );
+        return Ok(());
+    };
+    let Some(lo_dp) = find_data_points(&local_doc, edge_id) else {
+        println!();
+        println!(
+            "(no local data-points found for edge {edge_id} in {})",
+            local_path.display()
+        );
+        return Ok(());
+    };
+
+    let up_json = decode_data_points_json(&up_dp).ok_or_else(|| {
+        XtaskError::DebugSvgFailed("failed to decode upstream data-points".into())
+    })?;
+    let lo_json = decode_data_points_json(&lo_dp)
+        .ok_or_else(|| XtaskError::DebugSvgFailed("failed to decode local data-points".into()))?;
+
+    println!();
+    println!("== XML data-points (decoded) ==");
+    println!("upstream: {}", upstream_path.display());
+    println!("local:    {}", local_path.display());
+    println!();
+    println!("-- Upstream --");
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&up_json).unwrap_or_else(|_| "<unprintable>".to_string())
+    );
+    println!();
+    println!("-- Local --");
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&lo_json).unwrap_or_else(|_| "<unprintable>".to_string())
+    );
 
     Ok(())
 }

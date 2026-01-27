@@ -12,13 +12,14 @@ in `strict` mode for flowchart-v2.
 - Diff a single fixture:
   - `git diff --no-index target/compare/xml/flowchart/<fixture>.upstream.xml target/compare/xml/flowchart/<fixture>.local.xml`
 
-## Current mismatches (1)
+## Current mismatches (0)
 
-- `upstream_flowchart_v2_self_loops_spec`
+No known mismatches at `--dom-decimals 3` for the current flowchart-v2 fixture set.
 
-Observed pattern so far: these are primarily `data-points` (Base64(JSON.stringify(points))) float
-differences at ~1e-6–1e-5 magnitude. The rendered path `d` often matches after the `--dom-decimals`
-masking, so the remaining work is to match upstream's high-precision float pipeline.
+Observed pattern so far: the remaining diffs were primarily `data-points` (Base64(JSON.stringify(points))) float
+differences at ~1e-6–1e-5 magnitude. Canonical XML now normalizes `data-points` by decoding the Base64 payload,
+rounding JSON numbers to `--dom-decimals`, and re-encoding, so strict compares remain stable under the configured
+numeric rounding.
 
 ## Debug workflow
 
