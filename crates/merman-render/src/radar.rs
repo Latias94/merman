@@ -82,7 +82,7 @@ fn polar_xy(radius: f64, angle: f64) -> LayoutPoint {
     }
 }
 
-fn closed_cardinal_path(points: &[LayoutPoint], tension: f64) -> String {
+fn closed_round_curve_path(points: &[LayoutPoint], tension: f64) -> String {
     if points.is_empty() {
         return String::new();
     }
@@ -91,25 +91,27 @@ fn closed_cardinal_path(points: &[LayoutPoint], tension: f64) -> String {
         return format!("M{},{}Z", fmt_number(p.x), fmt_number(p.y));
     }
 
-    let k = ((1.0 - tension).clamp(0.0, 1.0)) / 6.0;
     let mut out = String::new();
     let p0 = points[0].clone();
     out.push_str(&format!("M{},{}", fmt_number(p0.x), fmt_number(p0.y)));
 
     let n = points.len();
     for i in 0..n {
-        let p_prev = points[(i + n - 1) % n].clone();
-        let p = points[i].clone();
-        let p_next = points[(i + 1) % n].clone();
-        let p_next2 = points[(i + 2) % n].clone();
+        let p0 = points[(i + n - 1) % n].clone();
+        let p1 = points[i].clone();
+        let p2 = points[(i + 1) % n].clone();
+        let p3 = points[(i + 2) % n].clone();
 
+        // Mermaid's radar renderer uses a simple Catmull-Rom conversion:
+        // - `cp1 = p1 + (p2 - p0) * tension`
+        // - `cp2 = p2 - (p3 - p1) * tension`
         let cp1 = LayoutPoint {
-            x: p.x + k * (p_next.x - p_prev.x),
-            y: p.y + k * (p_next.y - p_prev.y),
+            x: p1.x + (p2.x - p0.x) * tension,
+            y: p1.y + (p2.y - p0.y) * tension,
         };
         let cp2 = LayoutPoint {
-            x: p_next.x - k * (p_next2.x - p.x),
-            y: p_next.y - k * (p_next2.y - p.y),
+            x: p2.x - (p3.x - p1.x) * tension,
+            y: p2.y - (p3.y - p1.y) * tension,
         };
 
         out.push_str(&format!(
@@ -118,8 +120,8 @@ fn closed_cardinal_path(points: &[LayoutPoint], tension: f64) -> String {
             fmt_number(cp1.y),
             fmt_number(cp2.x),
             fmt_number(cp2.y),
-            fmt_number(p_next.x),
-            fmt_number(p_next.y)
+            fmt_number(p2.x),
+            fmt_number(p2.y)
         ));
     }
     out.push_str(" Z");
@@ -144,17 +146,18 @@ pub fn layout_radar_diagram(
     let margin_left = config_f64(cfg, &["radar", "marginLeft"], 50.0);
     let margin_right = config_f64(cfg, &["radar", "marginRight"], 50.0);
     let margin_top = config_f64(cfg, &["radar", "marginTop"], 50.0);
+    let margin_bottom = config_f64(cfg, &["radar", "marginBottom"], 50.0);
     let axis_scale_factor = config_f64(cfg, &["radar", "axisScaleFactor"], 1.0);
     let axis_label_factor = config_f64(cfg, &["radar", "axisLabelFactor"], 1.05);
     let curve_tension = config_f64(cfg, &["radar", "curveTension"], 0.17);
 
-    // Mermaid radar uses a square SVG sized from the configured width and horizontal margins.
     let svg_width = width + margin_left + margin_right;
-    let svg_height = svg_width;
+    let svg_height = height + margin_top + margin_bottom;
 
     let center_x = margin_left + width / 2.0;
     let center_y = margin_top + height / 2.0;
-    let radius = (width / 2.0) * axis_scale_factor;
+    let base_radius = (width / 2.0).min(height / 2.0);
+    let radius = base_radius;
 
     let title_y = -center_y;
 
@@ -164,8 +167,8 @@ pub fn layout_radar_diagram(
         for (i, axis) in model.axes.iter().enumerate() {
             let angle = -std::f64::consts::FRAC_PI_2
                 + (i as f64) * (std::f64::consts::TAU / (axis_count as f64));
-            let line = polar_xy(radius, angle);
-            let label = polar_xy(radius * axis_label_factor, angle);
+            let line = polar_xy(base_radius * axis_scale_factor, angle);
+            let label = polar_xy(base_radius * axis_label_factor, angle);
             axes.push(RadarAxisLayout {
                 label: axis.label.clone(),
                 angle,
@@ -181,7 +184,7 @@ pub fn layout_radar_diagram(
     let mut graticules: Vec<RadarGraticuleShapeLayout> = Vec::new();
     if ticks > 0 {
         for t in 1..=ticks {
-            let r = radius * (t as f64) / (ticks as f64);
+            let r = base_radius * (t as f64) / (ticks as f64);
             if model.options.graticule.trim() == "polygon" {
                 let points = if axis_count == 0 {
                     Vec::new()
@@ -230,10 +233,14 @@ pub fn layout_radar_diagram(
                     + (i as f64) * (std::f64::consts::TAU / (axis_count as f64));
                 let v = curve.entries.get(i).copied().unwrap_or(min_value);
                 let frac = ((v - min_value) / denom).clamp(0.0, 1.0);
-                points.push(polar_xy(radius * frac, angle));
+                points.push(polar_xy(base_radius * frac, angle));
             }
         }
-        let path_d = closed_cardinal_path(&points, curve_tension);
+        let path_d = if model.options.graticule.trim() == "polygon" {
+            String::new()
+        } else {
+            closed_round_curve_path(&points, curve_tension)
+        };
         curves.push(RadarCurveLayout {
             label: curve.label.clone(),
             class_index: curve_idx as i64,
@@ -244,9 +251,9 @@ pub fn layout_radar_diagram(
 
     let mut legend_items: Vec<RadarLegendItemLayout> = Vec::new();
     if model.options.show_legend && !curves.is_empty() {
-        let base_x = radius * 0.875;
-        let base_y = -radius * 0.875;
-        let step_y = 22.5;
+        let base_x = ((width / 2.0 + margin_right) * 3.0) / 4.0;
+        let base_y = (-(height / 2.0 + margin_top) * 3.0) / 4.0;
+        let step_y = 20.0;
         for (i, c) in model.curves.iter().enumerate() {
             legend_items.push(RadarLegendItemLayout {
                 label: c.label.clone(),

@@ -28,11 +28,9 @@ fn fmt_js_1e10(v: f64) -> String {
 }
 
 fn round_hsl_1e10(mut hsl: Hsl) -> Hsl {
-    hsl.h_deg = round_1e10(hsl.h_deg);
-    hsl.h_deg %= 360.0;
-    if hsl.h_deg < 0.0 {
-        hsl.h_deg += 360.0;
-    }
+    // Match Mermaid's base theme output: wrap using remainder without forcing positive hue.
+    // (JS `%` keeps the sign, so negative hues remain negative.)
+    hsl.h_deg = round_1e10(hsl.h_deg) % 360.0;
     hsl.s_pct = round_1e10(hsl.s_pct).clamp(0.0, 100.0);
     hsl.l_pct = round_1e10(hsl.l_pct).clamp(0.0, 100.0);
     hsl
@@ -114,12 +112,7 @@ fn rgb01_to_hsl(rgb: Rgb01) -> Hsl {
 }
 
 fn adjust_hsl(mut hsl: Hsl, h_delta: f64, s_delta: f64, l_delta: f64) -> Hsl {
-    let mut h = hsl.h_deg + h_delta;
-    h %= 360.0;
-    if h < 0.0 {
-        h += 360.0;
-    }
-    hsl.h_deg = h;
+    hsl.h_deg = (hsl.h_deg + h_delta) % 360.0;
     hsl.s_pct = (hsl.s_pct + s_delta).clamp(0.0, 100.0);
     hsl.l_pct = (hsl.l_pct + l_delta).clamp(0.0, 100.0);
     round_hsl_1e10(hsl)
@@ -371,6 +364,53 @@ pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) {
         "errorTextColor",
         Value::String(tertiary_text_color),
     );
+
+    // Theme color scales (used across multiple diagrams, including radar's `cScale*` palette).
+    // Mermaid's base theme derives these from `primaryColor` and then darkens them.
+    let darken_amount = if dark_mode { 75.0 } else { 25.0 };
+    for (key, base) in [
+        ("cScale0", primary_hsl),
+        ("cScale1", secondary_hsl),
+        ("cScale2", tertiary_hsl),
+        ("cScale3", adjust_hsl(primary_hsl, 30.0, 0.0, 0.0)),
+        ("cScale4", adjust_hsl(primary_hsl, 60.0, 0.0, 0.0)),
+        ("cScale5", adjust_hsl(primary_hsl, 90.0, 0.0, 0.0)),
+        ("cScale6", adjust_hsl(primary_hsl, 120.0, 0.0, 0.0)),
+        ("cScale7", adjust_hsl(primary_hsl, 150.0, 0.0, 0.0)),
+        ("cScale8", adjust_hsl(primary_hsl, 210.0, 0.0, 150.0)),
+        ("cScale9", adjust_hsl(primary_hsl, 270.0, 0.0, 0.0)),
+        ("cScale10", adjust_hsl(primary_hsl, 300.0, 0.0, 0.0)),
+        ("cScale11", adjust_hsl(primary_hsl, 330.0, 0.0, 0.0)),
+    ] {
+        let v = adjust_hsl(base, 0.0, 0.0, -darken_amount);
+        set_if_missing(&mut tv, key, Value::String(fmt_hsl(v)));
+    }
+
+    // Diagram style defaults (themeVariables.radar.*).
+    let mut radar = match tv.get("radar") {
+        Some(Value::Object(m)) => m.clone(),
+        _ => Map::new(),
+    };
+    let line_color = get_truthy_string(&tv, "lineColor").unwrap_or_else(|| "#333333".to_string());
+    set_if_missing(&mut radar, "axisColor", Value::String(line_color));
+    set_if_missing(&mut radar, "axisStrokeWidth", Value::Number(2.into()));
+    set_if_missing(&mut radar, "axisLabelFontSize", Value::Number(12.into()));
+    set_if_missing(
+        &mut radar,
+        "curveOpacity",
+        Value::Number(serde_json::Number::from_f64(0.5).unwrap()),
+    );
+    set_if_missing(&mut radar, "curveStrokeWidth", Value::Number(2.into()));
+    set_if_missing(&mut radar, "graticuleColor", Value::String("#DEDEDE".to_string()));
+    set_if_missing(&mut radar, "graticuleStrokeWidth", Value::Number(1.into()));
+    set_if_missing(
+        &mut radar,
+        "graticuleOpacity",
+        Value::Number(serde_json::Number::from_f64(0.3).unwrap()),
+    );
+    set_if_missing(&mut radar, "legendBoxSize", Value::Number(12.into()));
+    set_if_missing(&mut radar, "legendFontSize", Value::Number(12.into()));
+    tv.insert("radar".to_string(), Value::Object(radar));
 
     config.set_value("themeVariables", Value::Object(tv));
 }
