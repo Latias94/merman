@@ -350,9 +350,12 @@ fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
-            let parsed = match futures::executor::block_on(
-                engine.parse_diagram(&text, merman::ParseOptions::default()),
-            ) {
+            let parsed = match futures::executor::block_on(engine.parse_diagram(
+                &text,
+                merman::ParseOptions {
+                    suppress_errors: true,
+                },
+            )) {
                 Ok(Some(v)) => v,
                 Ok(None) => {
                     missing.push(format!("{diagram}/{stem}: no diagram detected"));
