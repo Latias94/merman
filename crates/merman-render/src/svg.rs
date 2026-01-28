@@ -3212,12 +3212,52 @@ fn sankey_css(diagram_id: &str) -> String {
 }
 
 fn treemap_css(diagram_id: &str) -> String {
+    // Keep `:root` last (matches upstream Mermaid treemap SVG baselines).
     let id = escape_xml(diagram_id);
-    let mut out = info_css(diagram_id);
+    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
+    let mut out = String::new();
+    let _ = write!(
+        &mut out,
+        r#"#{}{{font-family:{};font-size:16px;fill:#333;}}"#,
+        id, font
+    );
+    out.push_str(
+        r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .error-icon{{fill:#552222;}}#{} .error-text{{fill:#552222;stroke:#552222;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
+        id, id, id, id, id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .marker{{fill:#333333;stroke:#333333;}}#{} .marker.cross{{stroke:#333333;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} svg{{font-family:{};font-size:16px;}}#{} p{{margin:0;}}"#,
+        id, font, id
+    );
     let _ = write!(
         &mut out,
         r#"#{} .treemapNode.section{{stroke:black;stroke-width:1;fill:#efefef;}}#{} .treemapNode.leaf{{stroke:black;stroke-width:1;fill:#efefef;}}#{} .treemapLabel{{fill:black;font-size:12px;}}#{} .treemapValue{{fill:black;font-size:10px;}}#{} .treemapTitle{{fill:black;font-size:14px;}}"#,
         id, id, id, id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} :root{{--mermaid-font-family:{};}}"#,
+        id, font
     );
     out
 }
@@ -5637,6 +5677,183 @@ pub fn render_treemap_diagram_svg(
         }
     }
 
+    fn replace_first(haystack: &str, needle: &str, replacement: &str) -> String {
+        if needle.is_empty() {
+            return haystack.to_string();
+        }
+        let Some(idx) = haystack.find(needle) else {
+            return haystack.to_string();
+        };
+        let mut out = String::with_capacity(haystack.len() - needle.len() + replacement.len());
+        out.push_str(&haystack[..idx]);
+        out.push_str(replacement);
+        out.push_str(&haystack[idx + needle.len()..]);
+        out
+    }
+
+    #[derive(Default)]
+    struct OrderedMap {
+        order: Vec<(String, String)>,
+        idx: std::collections::HashMap<String, usize>,
+    }
+
+    impl OrderedMap {
+        fn set(&mut self, k: &str, v: &str) {
+            if k.is_empty() {
+                return;
+            }
+            if let Some(&i) = self.idx.get(k) {
+                self.order[i].1 = v.to_string();
+                return;
+            }
+            self.idx.insert(k.to_string(), self.order.len());
+            self.order.push((k.to_string(), v.to_string()));
+        }
+    }
+
+    fn treemap_is_label_style(key: &str) -> bool {
+        matches!(
+            key.trim(),
+            "color"
+                | "font-size"
+                | "font-family"
+                | "font-weight"
+                | "font-style"
+                | "text-decoration"
+                | "text-align"
+                | "text-transform"
+                | "line-height"
+                | "letter-spacing"
+                | "word-spacing"
+                | "text-shadow"
+                | "text-overflow"
+                | "white-space"
+                | "word-wrap"
+                | "word-break"
+                | "overflow-wrap"
+                | "hyphens"
+        )
+    }
+
+    #[derive(Default)]
+    struct TreemapCompiledStyles {
+        label_styles: String,
+        node_styles: String,
+        border_styles: Vec<String>,
+    }
+
+    fn treemap_styles2_string(css_compiled_styles: &[String]) -> TreemapCompiledStyles {
+        // Ported from Mermaid `handDrawnShapeStyles.compileStyles()` / `styles2String()`:
+        // - preserve insertion order of the first occurrence of a key
+        // - later occurrences override values, without changing order
+        // - tolerate tokens without `:` (JS `split(':')` yields `value = undefined`)
+        let mut m = OrderedMap::default();
+
+        for entry in css_compiled_styles {
+            for raw in entry.split(';') {
+                let s = raw.trim();
+                if s.is_empty() {
+                    continue;
+                }
+                let (k, v) = if let Some((k, v)) = s.split_once(':') {
+                    (k.trim(), v.trim())
+                } else {
+                    (s.trim(), "")
+                };
+                m.set(k, v);
+            }
+        }
+
+        let mut label_styles: Vec<String> = Vec::new();
+        let mut node_styles: Vec<String> = Vec::new();
+        let mut border_styles: Vec<String> = Vec::new();
+
+        for (k, v) in &m.order {
+            let decl = if v.is_empty() {
+                format!("{k}:")
+            } else {
+                format!("{k}:{v}")
+            };
+            let decl_imp = format!("{decl} !important");
+            if treemap_is_label_style(k) {
+                label_styles.push(decl_imp);
+            } else {
+                node_styles.push(decl_imp.clone());
+                if k.contains("stroke") {
+                    border_styles.push(decl_imp);
+                }
+            }
+        }
+
+        TreemapCompiledStyles {
+            label_styles: label_styles.join(";"),
+            node_styles: node_styles.join(";"),
+            border_styles,
+        }
+    }
+
+    fn parse_css_rgb(color: &str) -> Option<(u8, u8, u8)> {
+        let c = color.trim();
+        if c.eq_ignore_ascii_case("black") {
+            return Some((0, 0, 0));
+        }
+        if c.eq_ignore_ascii_case("white") {
+            return Some((255, 255, 255));
+        }
+        if let Some(hex) = c.strip_prefix('#') {
+            let h = hex.trim();
+            if h.len() == 3 {
+                let r = u8::from_str_radix(&h[0..1].repeat(2), 16).ok()?;
+                let g = u8::from_str_radix(&h[1..2].repeat(2), 16).ok()?;
+                let b = u8::from_str_radix(&h[2..3].repeat(2), 16).ok()?;
+                return Some((r, g, b));
+            }
+            if h.len() == 6 {
+                let r = u8::from_str_radix(&h[0..2], 16).ok()?;
+                let g = u8::from_str_radix(&h[2..4], 16).ok()?;
+                let b = u8::from_str_radix(&h[4..6], 16).ok()?;
+                return Some((r, g, b));
+            }
+        }
+        let lower = c.to_ascii_lowercase();
+        if let Some(args) = lower.strip_prefix("rgb(").and_then(|s| s.strip_suffix(')')) {
+            let parts = args
+                .split(',')
+                .map(|p| p.trim())
+                .filter(|p| !p.is_empty())
+                .collect::<Vec<_>>();
+            if parts.len() >= 3 {
+                let r = parts[0].parse::<u16>().ok()?;
+                let g = parts[1].parse::<u16>().ok()?;
+                let b = parts[2].parse::<u16>().ok()?;
+                if r <= 255 && g <= 255 && b <= 255 {
+                    return Some((r as u8, g as u8, b as u8));
+                }
+            }
+        }
+        None
+    }
+
+    fn invert_css_color_to_hex(color: &str) -> Option<String> {
+        let (r, g, b) = parse_css_rgb(color)?;
+        let ir = 255u8.saturating_sub(r);
+        let ig = 255u8.saturating_sub(g);
+        let ib = 255u8.saturating_sub(b);
+        Some(format!("#{:02x}{:02x}{:02x}", ir, ig, ib))
+    }
+
+    fn normalize_dom_style_color(color: &str) -> String {
+        // jsdom serialization tends to normalize hex colors to `rgb(r, g, b)` when the style
+        // attribute has been mutated (e.g. via `.style(...)` in upstream Mermaid).
+        let c = color.trim();
+        if c.starts_with('#') {
+            if let Some((r, g, b)) = parse_css_rgb(c) {
+                return format!("rgb({r}, {g}, {b})");
+            }
+        }
+        c.to_string()
+    }
+
     fn default_c_scale(i: usize) -> &'static str {
         match i {
             0 => "hsl(240, 100%, 76.2745098039%)",
@@ -5740,6 +5957,32 @@ pub fn render_treemap_diagram_svg(
         let key = format!("cScalePeer{i}");
         let v = theme_color(effective_config, &key, default_c_scale_peer(i));
         color_scale_peer.range.push(v);
+    }
+
+    // Mermaid treemap uses `cScaleLabel*` theme variables (see `renderer.ts`), but not all of our
+    // effective configs include the derived fields. Mirror theme-default's defaults as a
+    // fallback so strict SVG baselines match:
+    // - `cScaleLabel0` and `cScaleLabel3`: `invert(labelTextColor)`
+    // - the rest: `labelTextColor`
+    let label_text_color = theme_color(effective_config, "labelTextColor", "black");
+    let label_text_is_calculated = label_text_color.trim() == "calculated";
+    let scale_label_color = theme_color(effective_config, "scaleLabelColor", &label_text_color);
+    let mut color_scale_label = OrdinalScale::default();
+    for i in 0..12 {
+        let key = format!("cScaleLabel{i}");
+        let v = config_string(effective_config, &["themeVariables", key.as_str()]).unwrap_or_else(
+            || {
+                if label_text_is_calculated {
+                    scale_label_color.clone()
+                } else if i == 0 || i == 3 {
+                    invert_css_color_to_hex(&label_text_color)
+                        .unwrap_or_else(|| label_text_color.clone())
+                } else {
+                    label_text_color.clone()
+                }
+            },
+        );
+        color_scale_label.range.push(v);
     }
 
     let has_acc_title = layout
@@ -5868,6 +6111,9 @@ pub fn render_treemap_diagram_svg(
         ty = fmt(layout.title_height)
     );
 
+    let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+    let font_family = r#""trebuchet ms",verdana,arial,sans-serif"#.to_string();
+
     for (i, section) in layout.sections.iter().enumerate() {
         let w = section.x1 - section.x0;
         let h = section.y1 - section.y0;
@@ -5902,10 +6148,16 @@ pub fn render_treemap_diagram_svg(
 
         let fill = color_scale.get(&section.name);
         let stroke = color_scale_peer.get(&section.name);
+        let section_css: &[String] = section.css_compiled_styles.as_deref().unwrap_or(&[]);
+        let compiled = treemap_styles2_string(section_css);
         let section_style = if section.depth == 0 {
-            "display: none;"
+            "display: none;".to_string()
         } else {
-            ";"
+            format!(
+                "{};{}",
+                compiled.node_styles,
+                compiled.border_styles.join(";")
+            )
         };
         let _ = write!(
             &mut out,
@@ -5915,24 +6167,82 @@ pub fn render_treemap_diagram_svg(
             i = i,
             fill = escape_attr(&fill),
             stroke = escape_attr(&stroke),
-            style = section_style
+            style = escape_attr(&section_style)
         );
 
-        let label_text = if section.depth == 0 {
-            ""
+        let mut label_text = if section.depth == 0 {
+            String::new()
         } else {
-            section.name.as_str()
+            section.name.clone()
         };
+
+        let label_fill = if section.depth == 0 {
+            String::new()
+        } else {
+            color_scale_label.get(&section.name)
+        };
+        let label_styles_suffix = replace_first(&compiled.label_styles, "color:", "fill:");
+
         if label_text.is_empty() {
             let _ = write!(
                 &mut out,
                 r#"<text class="treemapSectionLabel" x="6" y="12.5" dominant-baseline="middle" font-weight="bold" style="display: none;"/>"#
             );
         } else {
+            // Mirror Mermaid's truncation loop in `renderer.ts` (uses `getComputedTextLength()`).
+            let total_header_width = w;
+            let label_x_position = 6.0;
+            let mut space_for_text_content = total_header_width - label_x_position - 6.0;
+            if layout.show_values && section.value != 0.0 {
+                let value_ends_at_x_relative = total_header_width - 10.0;
+                let estimated_value_text_actual_width = 30.0;
+                let gap_between_label_and_value = 10.0;
+                let label_must_end_before_x = value_ends_at_x_relative
+                    - estimated_value_text_actual_width
+                    - gap_between_label_and_value;
+                space_for_text_content = label_must_end_before_x - label_x_position;
+            }
+            let minimum_width_to_display: f64 = 15.0;
+            let actual_available_width = minimum_width_to_display.max(space_for_text_content);
+
+            let style = crate::text::TextStyle {
+                font_family: Some(font_family.clone()),
+                font_size: 12.0,
+                font_weight: Some("bold".to_string()),
+            };
+
+            if measurer.measure(&label_text, &style).width > actual_available_width {
+                let ellipsis = "...";
+                let original = label_text.clone();
+                let mut current = original.clone();
+                while !current.is_empty() {
+                    current.pop();
+                    if current.is_empty() {
+                        if measurer.measure(ellipsis, &style).width > actual_available_width {
+                            label_text.clear();
+                        } else {
+                            label_text = ellipsis.to_string();
+                        }
+                        break;
+                    }
+                    let candidate = format!("{current}{ellipsis}");
+                    if measurer.measure(&candidate, &style).width <= actual_available_width {
+                        label_text = candidate;
+                        break;
+                    }
+                }
+            }
+
+            let section_label_style = format!(
+                "dominant-baseline: middle; font-size: 12px; fill:{fill}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;{suffix}",
+                fill = escape_attr(&label_fill),
+                suffix = label_styles_suffix
+            );
             let _ = write!(
                 &mut out,
-                r#"<text class="treemapSectionLabel" x="6" y="12.5" dominant-baseline="middle" font-weight="bold">{text}</text>"#,
-                text = escape_xml(label_text)
+                r#"<text class="treemapSectionLabel" x="6" y="12.5" dominant-baseline="middle" font-weight="bold" style="{style}">{text}</text>"#,
+                style = escape_attr(&section_label_style),
+                text = escape_xml(&label_text)
             );
         }
 
@@ -5942,27 +6252,28 @@ pub fn render_treemap_diagram_svg(
             } else {
                 String::new()
             };
+            let section_value_style = if section.depth == 0 {
+                "display: none;".to_string()
+            } else {
+                format!(
+                    "text-anchor: end; dominant-baseline: middle; font-size: 10px; fill:{fill}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;{suffix}",
+                    fill = escape_attr(&label_fill),
+                    suffix = label_styles_suffix
+                )
+            };
             if value_text.is_empty() {
                 let _ = write!(
                     &mut out,
                     r#"<text class="treemapSectionValue" x="{x}" y="12.5" text-anchor="end" dominant-baseline="middle" font-style="italic" style="{style}"/>"#,
                     x = fmt(w - 10.0),
-                    style = if section.depth == 0 {
-                        "display: none;"
-                    } else {
-                        ""
-                    }
+                    style = escape_attr(&section_value_style)
                 );
             } else {
                 let _ = write!(
                     &mut out,
                     r#"<text class="treemapSectionValue" x="{x}" y="12.5" text-anchor="end" dominant-baseline="middle" font-style="italic" style="{style}">{text}</text>"#,
                     x = fmt(w - 10.0),
-                    style = if section.depth == 0 {
-                        "display: none;"
-                    } else {
-                        ""
-                    },
+                    style = escape_attr(&section_value_style),
                     text = escape_xml(&value_text)
                 );
             }
@@ -5991,6 +6302,12 @@ pub fn render_treemap_diagram_svg(
             .unwrap_or_else(|| leaf.name.as_str());
         let fill = color_scale.get(fill_key);
 
+        let leaf_css: &[String] = leaf.css_compiled_styles.as_deref().unwrap_or(&[]);
+        let compiled = treemap_styles2_string(leaf_css);
+        let leaf_rect_style = compiled.node_styles.clone();
+        let label_styles_suffix = replace_first(&compiled.label_styles, "color:", "fill:");
+        let leaf_label_fill = color_scale_label.get(&leaf.name);
+
         let _ = write!(
             &mut out,
             r#"<g class="{class}" transform="translate({x},{y})">"#,
@@ -6001,10 +6318,11 @@ pub fn render_treemap_diagram_svg(
 
         let _ = write!(
             &mut out,
-            r#"<rect width="{w}" height="{h}" class="treemapLeaf" fill="{fill}" style="" fill-opacity="0.3" stroke="{fill}" stroke-width="3"/>"#,
+            r#"<rect width="{w}" height="{h}" class="treemapLeaf" fill="{fill}" style="{style}" fill-opacity="0.3" stroke="{fill}" stroke-width="3"/>"#,
             w = fmt(w),
             h = fmt(h),
-            fill = escape_attr(&fill)
+            fill = escape_attr(&fill),
+            style = escape_attr(&leaf_rect_style)
         );
 
         let _ = write!(
@@ -6016,11 +6334,91 @@ pub fn render_treemap_diagram_svg(
             h = fmt((h - 4.0).max(0.0))
         );
 
+        let padding = 4.0;
+        let available_w = w - 2.0 * padding;
+        let available_h = h - 2.0 * padding;
+
+        let mut label_font_size = 38.0;
+        let min_label_font_size = 8.0;
+        let original_value_rel_font_size = 28.0;
+        let value_scale_factor = 0.6;
+        let min_value_font_size = 6.0;
+        let spacing_between_label_and_value = 2.0;
+
+        let mut label_hidden = false;
+        if available_w < 10.0 || available_h < 10.0 {
+            label_hidden = true;
+        } else {
+            let mut style = crate::text::TextStyle {
+                font_family: Some(font_family.clone()),
+                font_size: label_font_size,
+                font_weight: None,
+            };
+
+            while measurer.measure(&leaf.name, &style).width > available_w
+                && label_font_size > min_label_font_size
+            {
+                label_font_size -= 1.0;
+                style.font_size = label_font_size;
+            }
+
+            let mut prospective_value_font_size = (label_font_size * value_scale_factor)
+                .round()
+                .min(original_value_rel_font_size)
+                .max(min_value_font_size);
+            let mut combined_h =
+                label_font_size + spacing_between_label_and_value + prospective_value_font_size;
+
+            while combined_h > available_h && label_font_size > min_label_font_size {
+                label_font_size -= 1.0;
+                style.font_size = label_font_size;
+                prospective_value_font_size = (label_font_size * value_scale_factor)
+                    .round()
+                    .min(original_value_rel_font_size)
+                    .max(min_value_font_size);
+                combined_h =
+                    label_font_size + spacing_between_label_and_value + prospective_value_font_size;
+            }
+
+            style.font_size = label_font_size;
+            if measurer.measure(&leaf.name, &style).width > available_w
+                || label_font_size < min_label_font_size
+                || available_h < label_font_size
+            {
+                label_hidden = true;
+            }
+        }
+
+        let label_style = if !label_hidden && (label_font_size - 38.0).abs() < 1e-9 {
+            // Preserve Mermaid's "raw attr('style', ...)" formatting when the label isn't
+            // modified by the `.each()` loop.
+            format!(
+                "text-anchor: middle; dominant-baseline: middle; font-size: 38px;fill:{fill};{suffix}",
+                fill = escape_attr(&leaf_label_fill),
+                suffix = label_styles_suffix
+            )
+        } else {
+            let fill = normalize_dom_style_color(&leaf_label_fill);
+            let mut s = format!(
+                "text-anchor: middle; dominant-baseline: middle; font-size: {fs}px; fill: {fill};",
+                fs = fmt(label_font_size),
+                fill = escape_attr(&fill),
+            );
+            if label_hidden {
+                s.push_str(" display: none;");
+            }
+            if !label_styles_suffix.is_empty() {
+                s.push_str(&label_styles_suffix);
+            }
+            s
+        };
+
         let _ = write!(
             &mut out,
-            r#"<text class="treemapLabel" x="{x}" y="{y}" style="text-anchor: middle; dominant-baseline: middle; font-size: 38px;fill:black;" clip-path="url(#clip-{id}-{i})">{text}</text>"#,
+            r#"<text class="treemapLabel" x="{x}" y="{y}" style="{style}" clip-path="url(#clip-{id}-{i})">{text}</text>"#,
             x = fmt(w / 2.0),
             y = fmt(h / 2.0),
+            style = escape_attr(&label_style),
             id = escape_attr(diagram_id),
             i = i,
             text = escape_xml(&leaf.name)
@@ -6032,21 +6430,69 @@ pub fn render_treemap_diagram_svg(
             } else {
                 String::new()
             };
+            let mut value_font_size = 28.0;
+            let mut value_y = h / 2.0; // placeholder (overwritten when label is visible)
+            let mut value_hidden = true;
+
+            if !label_hidden {
+                let actual_value_font_size = (label_font_size * value_scale_factor)
+                    .round()
+                    .min(original_value_rel_font_size)
+                    .max(min_value_font_size);
+                value_font_size = actual_value_font_size;
+
+                let label_center_y = h / 2.0;
+                value_y =
+                    label_center_y + (label_font_size / 2.0) + spacing_between_label_and_value;
+
+                let cell_bottom_padding = 4.0;
+                let max_value_bottom_y = h - cell_bottom_padding;
+                let available_w_for_value = w - 2.0 * 4.0;
+
+                let style = crate::text::TextStyle {
+                    font_family: Some(font_family.clone()),
+                    font_size: value_font_size,
+                    font_weight: None,
+                };
+                let value_w_px = measurer.measure(&value_text, &style).width;
+                if value_w_px <= available_w_for_value
+                    && value_y + value_font_size <= max_value_bottom_y
+                    && value_font_size >= min_value_font_size
+                {
+                    value_hidden = false;
+                }
+            }
+
+            let fill = normalize_dom_style_color(&leaf_label_fill);
+            let mut value_style = format!(
+                "text-anchor: middle; dominant-baseline: hanging; font-size: {fs}px; fill: {fill};",
+                fs = fmt(value_font_size),
+                fill = escape_attr(&fill)
+            );
+            if value_hidden {
+                value_style.push_str(" display: none;");
+            }
+            if !label_styles_suffix.is_empty() {
+                value_style.push_str(&label_styles_suffix);
+            }
+
             if value_text.is_empty() {
                 let _ = write!(
                     &mut out,
-                    r#"<text class="treemapValue" x="{x}" y="{y}" style="text-anchor: middle; dominant-baseline: hanging; font-size: 28px; fill: black;" clip-path="url(#clip-{id}-{i})"/>"#,
+                    r#"<text class="treemapValue" x="{x}" y="{y}" style="{style}" clip-path="url(#clip-{id}-{i})"/>"#,
                     x = fmt(w / 2.0),
-                    y = fmt(h / 2.0),
+                    y = fmt(value_y),
+                    style = escape_attr(&value_style),
                     id = escape_attr(diagram_id),
                     i = i,
                 );
             } else {
                 let _ = write!(
                     &mut out,
-                    r#"<text class="treemapValue" x="{x}" y="{y}" style="text-anchor: middle; dominant-baseline: hanging; font-size: 28px; fill: black;" clip-path="url(#clip-{id}-{i})">{text}</text>"#,
+                    r#"<text class="treemapValue" x="{x}" y="{y}" style="{style}" clip-path="url(#clip-{id}-{i})">{text}</text>"#,
                     x = fmt(w / 2.0),
-                    y = fmt(h / 2.0),
+                    y = fmt(value_y),
+                    style = escape_attr(&value_style),
                     id = escape_attr(diagram_id),
                     i = i,
                     text = escape_xml(&value_text)
