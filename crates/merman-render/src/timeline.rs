@@ -158,9 +158,21 @@ fn wrap_lines(
     }
 }
 
-fn text_bbox_height(lines: usize, font_size: f64) -> f64 {
-    let lh = font_size.max(1.0) * 1.1;
-    (lines.max(1) as f64) * lh
+fn text_bbox_height(lines: &[String], font_size: f64) -> f64 {
+    // Mermaid timeline measures SVG `<text>.getBBox().height` (see upstream `svgDraw.js`).
+    //
+    // In Mermaid@11.12.2, the bbox behaves as:
+    // - first line: ~1.1875em (Trebuchet MS default)
+    // - additional lines: 1.1em each
+    let font_size = font_size.max(1.0);
+    let lines = lines.iter().filter(|l| !l.trim().is_empty()).count();
+    if lines == 0 {
+        return 0.0;
+    }
+    let first_line_em = 1.1875;
+    let first = font_size * first_line_em;
+    let additional = (lines.saturating_sub(1) as f64) * font_size * 1.1;
+    first + additional
 }
 
 fn virtual_node_height(
@@ -176,7 +188,7 @@ fn virtual_node_height(
         font_weight: None,
     };
     let lines = wrap_lines(text, content_width.max(1.0), &style, measurer);
-    let bbox_h = text_bbox_height(lines.len(), font_size);
+    let bbox_h = text_bbox_height(&lines, font_size);
     let h = bbox_h + font_size.max(1.0) * 1.1 * 0.5 + padding;
     (h, lines)
 }
@@ -239,6 +251,38 @@ fn bounds_from_nodes_and_lines<'a, 'b>(
         Some((min_x, min_y, max_x, max_y))
     } else {
         None
+    }
+}
+
+fn expand_bounds_for_node_text(
+    min_x: &mut f64,
+    _min_y: &mut f64,
+    max_x: &mut f64,
+    _max_y: &mut f64,
+    nodes: &[TimelineNodeLayout],
+    font_size: f64,
+    measurer: &dyn TextMeasurer,
+) {
+    let style = TextStyle {
+        font_family: None,
+        font_size,
+        font_weight: None,
+    };
+
+    for n in nodes {
+        if n.kind == "title-bounds" {
+            continue;
+        }
+
+        let anchor_x = n.x + n.width / 2.0;
+        for line in &n.label_lines {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let (left, right) = measurer.measure_svg_text_bbox_x(line, &style);
+            *min_x = (*min_x).min(anchor_x - left);
+            *max_x = (*max_x).max(anchor_x + right);
+        }
     }
 }
 
@@ -466,9 +510,18 @@ pub fn layout_timeline_diagram(
         }
     }
 
-    let (pre_min_x, pre_min_y, pre_max_x, pre_max_y) =
+    let (mut pre_min_x, mut pre_min_y, mut pre_max_x, mut pre_max_y) =
         bounds_from_nodes_and_lines(&all_nodes_pre_title, &all_lines_pre_title)
             .unwrap_or((0.0, 0.0, 100.0, 100.0));
+    expand_bounds_for_node_text(
+        &mut pre_min_x,
+        &mut pre_min_y,
+        &mut pre_max_x,
+        &mut pre_max_y,
+        &all_nodes_pre_title,
+        font_size,
+        measurer,
+    );
     let pre_title_box_width = (pre_max_x - pre_min_x).max(1.0);
 
     let title = model
@@ -498,15 +551,19 @@ pub fn layout_timeline_diagram(
 
     if let Some(t) = title.as_deref() {
         // Approximate the title bounds so the viewBox can include it (Mermaid uses a bold 4ex).
+        //
+        // Note: `ex` depends on the font x-height; for Mermaid's default theme at 16px, `4ex`
+        // resolves to ~31px in upstream fixtures.
+        let title_font_size = font_size * 1.9375;
         let title_style = TextStyle {
             font_family: None,
-            font_size: 32.0,
+            font_size: title_font_size,
             font_weight: Some("bold".to_string()),
         };
         let metrics = measurer.measure(t, &title_style);
         all_nodes_full.push(TimelineNodeLayout {
             x: title_x,
-            y: 0.0_f64.max(TITLE_Y - title_style.font_size),
+            y: TITLE_Y - title_style.font_size,
             width: metrics.width.max(1.0),
             height: title_style.font_size.max(1.0),
             content_width: metrics.width.max(1.0),
@@ -518,9 +575,18 @@ pub fn layout_timeline_diagram(
         });
     }
 
-    let (full_min_x, full_min_y, full_max_x, full_max_y) =
+    let (mut full_min_x, mut full_min_y, mut full_max_x, mut full_max_y) =
         bounds_from_nodes_and_lines(&all_nodes_full, &all_lines_full)
             .unwrap_or((pre_min_x, pre_min_y, pre_max_x, pre_max_y));
+    expand_bounds_for_node_text(
+        &mut full_min_x,
+        &mut full_min_y,
+        &mut full_max_x,
+        &mut full_max_y,
+        &all_nodes_full,
+        font_size,
+        measurer,
+    );
 
     let viewbox_padding =
         cfg_f64(effective_config, &["timeline", "padding"]).unwrap_or(DEFAULT_VIEWBOX_PADDING);

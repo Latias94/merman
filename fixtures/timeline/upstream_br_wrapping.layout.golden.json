@@ -4,9 +4,9 @@
     "TimelineDiagram": {
       "bounds": {
         "min_x": 100.0,
-        "min_y": -50.0,
+        "min_y": -61.0,
         "max_x": 1490.0,
-        "max_y": 564.4
+        "max_y": 568.6
       },
       "left_margin": 150.0,
       "base_x": 200.0,
@@ -18,7 +18,7 @@
             "x": 200.0,
             "y": 50.0,
             "width": 590.0,
-            "height": 66.4,
+            "height": 67.8,
             "content_width": 550.0,
             "padding": 20.0,
             "section_class": "section--1",
@@ -32,9 +32,9 @@
             {
               "node": {
                 "x": 200.0,
-                "y": 166.4,
+                "y": 167.8,
                 "width": 190.0,
-                "height": 66.4,
+                "height": 67.8,
                 "content_width": 150.0,
                 "padding": 20.0,
                 "section_class": "section--1",
@@ -47,16 +47,16 @@
               "connector": {
                 "kind": "task-events",
                 "x1": 295.0,
-                "y1": 232.8,
+                "y1": 235.6,
                 "x2": 295.0,
-                "y2": 514.4
+                "y2": 518.6
               },
               "events": [
                 {
                   "x": 200.0,
-                  "y": 366.4,
+                  "y": 367.8,
                   "width": 190.0,
-                  "height": 81.6,
+                  "height": 83.0,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
@@ -73,9 +73,9 @@
             {
               "node": {
                 "x": 400.0,
-                "y": 166.4,
+                "y": 167.8,
                 "width": 190.0,
-                "height": 66.4,
+                "height": 67.8,
                 "content_width": 150.0,
                 "padding": 20.0,
                 "section_class": "section--1",
@@ -88,16 +88,16 @@
               "connector": {
                 "kind": "task-events",
                 "x1": 495.0,
-                "y1": 232.8,
+                "y1": 235.6,
                 "x2": 495.0,
-                "y2": 514.4
+                "y2": 518.6
               },
               "events": [
                 {
                   "x": 400.0,
-                  "y": 366.4,
+                  "y": 367.8,
                   "width": 190.0,
-                  "height": 81.6,
+                  "height": 83.0,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
@@ -114,9 +114,9 @@
             {
               "node": {
                 "x": 600.0,
-                "y": 166.4,
+                "y": 167.8,
                 "width": 190.0,
-                "height": 66.4,
+                "height": 67.8,
                 "content_width": 150.0,
                 "padding": 20.0,
                 "section_class": "section--1",
@@ -129,16 +129,16 @@
               "connector": {
                 "kind": "task-events",
                 "x1": 695.0,
-                "y1": 232.8,
+                "y1": 235.6,
                 "x2": 695.0,
-                "y2": 514.4
+                "y2": 518.6
               },
               "events": [
                 {
                   "x": 600.0,
-                  "y": 366.4,
+                  "y": 367.8,
                   "width": 190.0,
-                  "height": 81.6,
+                  "height": 83.0,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
@@ -159,7 +159,7 @@
             "x": 800.0,
             "y": 50.0,
             "width": 390.0,
-            "height": 66.4,
+            "height": 67.8,
             "content_width": 350.0,
             "padding": 20.0,
             "section_class": "section-0",
@@ -173,9 +173,9 @@
             {
               "node": {
                 "x": 800.0,
-                "y": 166.4,
+                "y": 167.8,
                 "width": 190.0,
-                "height": 66.4,
+                "height": 67.8,
                 "content_width": 150.0,
                 "padding": 20.0,
                 "section_class": "section-0",
@@ -188,16 +188,16 @@
               "connector": {
                 "kind": "task-events",
                 "x1": 895.0,
-                "y1": 232.8,
+                "y1": 235.6,
                 "x2": 895.0,
-                "y2": 514.4
+                "y2": 518.6
               },
               "events": [
                 {
                   "x": 800.0,
-                  "y": 366.4,
+                  "y": 367.8,
                   "width": 190.0,
-                  "height": 64.0,
+                  "height": 65.4,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-0",
@@ -213,9 +213,9 @@
             {
               "node": {
                 "x": 1000.0,
-                "y": 166.4,
+                "y": 167.8,
                 "width": 190.0,
-                "height": 66.4,
+                "height": 67.8,
                 "content_width": 150.0,
                 "padding": 20.0,
                 "section_class": "section-0",
@@ -228,16 +228,16 @@
               "connector": {
                 "kind": "task-events",
                 "x1": 1095.0,
-                "y1": 232.8,
+                "y1": 235.6,
                 "x2": 1095.0,
-                "y2": 514.4
+                "y2": 518.6
               },
               "events": [
                 {
                   "x": 1000.0,
-                  "y": 366.4,
+                  "y": 367.8,
                   "width": 190.0,
-                  "height": 81.6,
+                  "height": 83.0,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-0",
@@ -258,9 +258,9 @@
       "activity_line": {
         "kind": "activity",
         "x1": 150.0,
-        "y1": 282.8,
+        "y1": 285.6,
         "x2": 1440.0,
-        "y2": 282.8
+        "y2": 285.6
       },
       "title": "Timeline of Industrial Revolution",
       "title_x": 345.0,

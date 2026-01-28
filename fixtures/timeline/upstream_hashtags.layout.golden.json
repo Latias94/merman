@@ -4,9 +4,9 @@
     "TimelineDiagram": {
       "bounds": {
         "min_x": -105.0,
-        "min_y": -50.0,
+        "min_y": -61.0,
         "max_x": 690.0,
-        "max_y": 642.0
+        "max_y": 649.0
       },
       "left_margin": 150.0,
       "base_x": 200.0,
@@ -18,7 +18,7 @@
             "x": 200.0,
             "y": 50.0,
             "width": 190.0,
-            "height": 66.4,
+            "height": 67.8,
             "content_width": 150.0,
             "padding": 20.0,
             "section_class": "section--1",
@@ -32,9 +32,9 @@
             {
               "node": {
                 "x": 200.0,
-                "y": 166.4,
+                "y": 167.8,
                 "width": 190.0,
-                "height": 66.4,
+                "height": 67.8,
                 "content_width": 150.0,
                 "padding": 20.0,
                 "section_class": "section--1",
@@ -47,14 +47,14 @@
               "connector": {
                 "kind": "task-events",
                 "x1": 295.0,
-                "y1": 232.8,
+                "y1": 235.6,
                 "x2": 295.0,
-                "y2": 592.0
+                "y2": 599.0
               },
               "events": [
                 {
                   "x": 200.0,
-                  "y": 366.4,
+                  "y": 367.8,
                   "width": 190.0,
                   "height": 50.0,
                   "content_width": 150.0,
@@ -68,7 +68,7 @@
                 },
                 {
                   "x": 200.0,
-                  "y": 426.4,
+                  "y": 427.8,
                   "width": 190.0,
                   "height": 50.0,
                   "content_width": 150.0,
@@ -82,7 +82,7 @@
                 },
                 {
                   "x": 200.0,
-                  "y": 486.4,
+                  "y": 487.8,
                   "width": 190.0,
                   "height": 50.0,
                   "content_width": 150.0,
@@ -103,9 +103,9 @@
       "activity_line": {
         "kind": "activity",
         "x1": 150.0,
-        "y1": 282.8,
+        "y1": 285.6,
         "x2": 640.0,
-        "y2": 282.8
+        "y2": 285.6
       },
       "title": "#my#title#",
       "title_x": -55.0,

@@ -3540,14 +3540,181 @@ fn xychart_css(diagram_id: &str) -> String {
     info_css(diagram_id)
 }
 
-fn timeline_css(diagram_id: &str) -> String {
+fn timeline_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let id = escape_xml(diagram_id);
+    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
+
+    fn default_c_scale(i: usize) -> &'static str {
+        match i {
+            0 => "hsl(240, 100%, 76.2745098039%)",
+            1 => "hsl(60, 100%, 73.5294117647%)",
+            2 => "hsl(80, 100%, 76.2745098039%)",
+            3 => "hsl(270, 100%, 76.2745098039%)",
+            4 => "hsl(300, 100%, 76.2745098039%)",
+            5 => "hsl(330, 100%, 76.2745098039%)",
+            6 => "hsl(0, 100%, 76.2745098039%)",
+            7 => "hsl(30, 100%, 76.2745098039%)",
+            8 => "hsl(90, 100%, 76.2745098039%)",
+            9 => "hsl(150, 100%, 76.2745098039%)",
+            10 => "hsl(180, 100%, 76.2745098039%)",
+            _ => "hsl(210, 100%, 76.2745098039%)",
+        }
+    }
+
+    fn round_1e10(v: f64) -> f64 {
+        let v = (v * 1e10).round() / 1e10;
+        if v == -0.0 { 0.0 } else { v }
+    }
+
+    fn invert_css_color_to_hex(color: &str) -> Option<String> {
+        let color = color.trim();
+        if color.is_empty() {
+            return None;
+        }
+        if color.eq_ignore_ascii_case("black") {
+            return Some("#ffffff".to_string());
+        }
+        if color.eq_ignore_ascii_case("white") {
+            return Some("#000000".to_string());
+        }
+        if let Some(hex) = color.strip_prefix('#') {
+            let hex = hex.trim();
+            let (r, g, b) = match hex.len() {
+                3 => {
+                    let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?;
+                    let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?;
+                    let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?;
+                    (r, g, b)
+                }
+                6 => {
+                    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+                    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+                    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+                    (r, g, b)
+                }
+                _ => return None,
+            };
+            return Some(format!("#{:02x}{:02x}{:02x}", 255 - r, 255 - g, 255 - b));
+        }
+        None
+    }
+
+    fn parse_hsl(s: &str) -> Option<(f64, f64, f64)> {
+        let inner = s.trim().strip_prefix("hsl(")?.strip_suffix(')')?;
+        let mut parts = inner.split(',').map(|p| p.trim());
+        let h = parts.next()?.parse::<f64>().ok()?;
+        let s = parts
+            .next()?
+            .strip_suffix('%')?
+            .trim()
+            .parse::<f64>()
+            .ok()?;
+        let l = parts
+            .next()?
+            .strip_suffix('%')?
+            .trim()
+            .parse::<f64>()
+            .ok()?;
+        Some((h, s, l))
+    }
+
+    fn fmt_hsl(h: f64, s: f64, l: f64, buf: &mut ryu_js::Buffer) -> String {
+        let h = buf.format_finite(round_1e10(h)).to_string();
+        let s = buf.format_finite(round_1e10(s)).to_string();
+        let l = buf.format_finite(round_1e10(l)).to_string();
+        format!("hsl({h}, {s}%, {l}%)")
+    }
+
+    fn derive_c_scale_inv_fallback(c_scale: &str, buf: &mut ryu_js::Buffer) -> Option<String> {
+        let (h, s, l) = parse_hsl(c_scale)?;
+        let h = (h + 180.0) % 360.0;
+        let l = (l + 10.0).clamp(0.0, 100.0);
+        Some(fmt_hsl(h, s, l, buf))
+    }
+
+    // Keep `:root` last (matches upstream Mermaid timeline SVG baselines).
+    let root_rule = format!(r#"#{} :root{{--mermaid-font-family:{};}}"#, id, font);
     let mut out = info_css(diagram_id);
+    if let Some(prefix) = out.strip_suffix(&root_rule) {
+        out = prefix.to_string();
+    }
+
+    let label_text_color = theme_color(effective_config, "labelTextColor", "black");
+    let label_text_is_calculated = label_text_color.trim() == "calculated";
+    let scale_label_color = theme_color(effective_config, "scaleLabelColor", &label_text_color);
+    let mut buf = ryu_js::Buffer::new();
+
+    let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, id);
+    for i in 0..12usize {
+        let section = i as i64 - 1;
+        let c_scale = theme_color(effective_config, &format!("cScale{i}"), default_c_scale(i));
+        let c_scale_label = config_string(
+            effective_config,
+            &["themeVariables", &format!("cScaleLabel{i}")],
+        )
+        .unwrap_or_else(|| {
+            if label_text_is_calculated {
+                scale_label_color.clone()
+            } else if i == 0 || i == 3 {
+                invert_css_color_to_hex(&label_text_color)
+                    .unwrap_or_else(|| label_text_color.clone())
+            } else {
+                label_text_color.clone()
+            }
+        });
+        let c_scale_inv = config_string(
+            effective_config,
+            &["themeVariables", &format!("cScaleInv{i}")],
+        )
+        .or_else(|| derive_c_scale_inv_fallback(&c_scale, &mut buf))
+        .unwrap_or_else(|| c_scale.clone());
+        let sw = 17 - 3 * (i as i64);
+
+        let _ = write!(
+            &mut out,
+            r#"#{} .section-{} rect,#{} .section-{} path,#{} .section-{} circle,#{} .section-{} path{{fill:{};}}#{} .section-{} text{{fill:{};}}#{} .node-icon-{}{{font-size:40px;color:{};}}#{} .section-edge-{}{{stroke:{};}}#{} .edge-depth-{}{{stroke-width:{};}}#{} .section-{} line{{stroke:{};stroke-width:3;}}#{} .lineWrapper line{{stroke:{};}}#{} .disabled,#{} .disabled circle,#{} .disabled text{{fill:lightgray;}}#{} .disabled text{{fill:#efefef;}}"#,
+            id,
+            section,
+            id,
+            section,
+            id,
+            section,
+            id,
+            section,
+            c_scale,
+            id,
+            section,
+            c_scale_label,
+            id,
+            section,
+            c_scale_label,
+            id,
+            section,
+            c_scale,
+            id,
+            section,
+            sw,
+            id,
+            section,
+            c_scale_inv,
+            id,
+            c_scale_label,
+            id,
+            id,
+            id,
+            id,
+        );
+    }
+
+    let git0 = theme_color(effective_config, "git0", "hsl(240, 100%, 46.2745098039%)");
+    let git_branch_label0 = theme_color(effective_config, "gitBranchLabel0", "#ffffff");
     let _ = write!(
         &mut out,
-        r#"#{} .edge{{stroke-width:3;}}#{} .edge{{fill:none;}}#{} .eventWrapper{{filter:brightness(120%);}}"#,
-        id, id, id
+        r#"#{} .section-root rect,#{} .section-root path,#{} .section-root circle{{fill:{};}}#{} .section-root text{{fill:{};}}#{} .icon-container{{height:100%;display:flex;justify-content:center;align-items:center;}}#{} .edge{{fill:none;}}#{} .eventWrapper{{filter:brightness(120%);}}"#,
+        id, id, id, git0, id, git_branch_label0, id, id, id
     );
+
+    out.push_str(&root_rule);
     out
 }
 
@@ -7152,7 +7319,7 @@ pub fn render_timeline_diagram_svg(
         h = fmt(vb_h),
         max_w = fmt(vb_w),
     );
-    let css = timeline_css(diagram_id);
+    let css = timeline_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);
     out.push_str(r#"<g/>"#);

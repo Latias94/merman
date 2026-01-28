@@ -1752,6 +1752,11 @@ pub const FONT_METRICS_TABLES: &[FontMetricsTables] = &[
                 10.846082899305555,
             ),
             ("Supercalifragilisticexpialido", 6.2197265625, 6.24560546875),
+            (
+                "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious",
+                14.70751953125,
+                14.740234375,
+            ),
             ("TOP", 0.94091796875, 0.88330078125),
             ("b", 0.27880859375, 0.28369140625),
             ("ciousSupercalifragilisticexp", 6.11181640625, 6.11669921875),

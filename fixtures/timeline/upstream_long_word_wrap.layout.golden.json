@@ -3,22 +3,22 @@
   "layout": {
     "TimelineDiagram": {
       "bounds": {
-        "min_x": 100.0,
+        "min_x": 32.36,
         "min_y": 0.0,
-        "max_x": 690.0,
-        "max_y": 546.8
+        "max_x": 925.28,
+        "max_y": 533.4
       },
       "left_margin": 150.0,
       "base_x": 200.0,
       "base_y": 50.0,
-      "pre_title_box_width": 190.0,
+      "pre_title_box_width": 425.28,
       "sections": [
         {
           "node": {
             "x": 200.0,
             "y": 50.0,
             "width": 190.0,
-            "height": 66.4,
+            "height": 67.8,
             "content_width": 150.0,
             "padding": 20.0,
             "section_class": "section--1",
@@ -32,9 +32,9 @@
             {
               "node": {
                 "x": 200.0,
-                "y": 166.4,
+                "y": 167.8,
                 "width": 190.0,
-                "height": 66.4,
+                "height": 67.8,
                 "content_width": 150.0,
                 "padding": 20.0,
                 "section_class": "section--1",
@@ -47,16 +47,16 @@
               "connector": {
                 "kind": "task-events",
                 "x1": 295.0,
-                "y1": 232.8,
+                "y1": 235.6,
                 "x2": 295.0,
-                "y2": 496.8
+                "y2": 483.4
               },
               "events": [
                 {
                   "x": 200.0,
-                  "y": 366.4,
+                  "y": 367.8,
                   "width": 190.0,
-                  "height": 64.0,
+                  "height": 50.0,
                   "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
@@ -76,12 +76,12 @@
       "activity_line": {
         "kind": "activity",
         "x1": 150.0,
-        "y1": 282.8,
-        "x2": 640.0,
-        "y2": 282.8
+        "y1": 285.6,
+        "x2": 875.28,
+        "y2": 285.6
       },
       "title": null,
-      "title_x": -55.0,
+      "title_x": 62.64,
       "title_y": 20.0
     }
   }

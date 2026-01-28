@@ -4,9 +4,9 @@
     "TimelineDiagram": {
       "bounds": {
         "min_x": 95.0,
-        "min_y": -50.0,
+        "min_y": -61.0,
         "max_x": 1090.0,
-        "max_y": 412.8
+        "max_y": 415.6
       },
       "left_margin": 150.0,
       "base_x": 200.0,
@@ -19,7 +19,7 @@
             "x": 200.0,
             "y": 50.0,
             "width": 190.0,
-            "height": 66.4,
+            "height": 67.8,
             "content_width": 150.0,
             "padding": 20.0,
             "section_class": "section--1",
@@ -32,9 +32,9 @@
           "connector": {
             "kind": "task-events",
             "x1": 295.0,
-            "y1": 116.4,
+            "y1": 117.8,
             "x2": 295.0,
-            "y2": 362.8
+            "y2": 365.6
           },
           "events": [
             {
@@ -58,7 +58,7 @@
             "x": 400.0,
             "y": 50.0,
             "width": 190.0,
-            "height": 66.4,
+            "height": 67.8,
             "content_width": 150.0,
             "padding": 20.0,
             "section_class": "section--1",
@@ -71,9 +71,9 @@
           "connector": {
             "kind": "task-events",
             "x1": 495.0,
-            "y1": 116.4,
+            "y1": 117.8,
             "x2": 495.0,
-            "y2": 362.8
+            "y2": 365.6
           },
           "events": [
             {
@@ -97,7 +97,7 @@
             "x": 600.0,
             "y": 50.0,
             "width": 190.0,
-            "height": 66.4,
+            "height": 67.8,
             "content_width": 150.0,
             "padding": 20.0,
             "section_class": "section--1",
@@ -110,9 +110,9 @@
           "connector": {
             "kind": "task-events",
             "x1": 695.0,
-            "y1": 116.4,
+            "y1": 117.8,
             "x2": 695.0,
-            "y2": 362.8
+            "y2": 365.6
           },
           "events": [
             {
@@ -135,9 +135,9 @@
       "activity_line": {
         "kind": "activity",
         "x1": 150.0,
-        "y1": 166.4,
+        "y1": 167.8,
         "x2": 1040.0,
-        "y2": 166.4
+        "y2": 167.8
       },
       "title": "Disable multicolor",
       "title_x": 145.0,
