@@ -12,7 +12,7 @@ Unlike DOM parity mode (used for day-to-day regression checks), `strict` canonic
 
 ## Current status (as of 2026-01-28)
 
-Total strict mismatches: **311**
+Total strict mismatches: **303**
 
 Mismatch counts by diagram:
 
@@ -30,8 +30,11 @@ Mismatch counts by diagram:
 - `c4`: 10
 - `er`: 10
 - `requirement`: 9
-- `journey`: 8
 - `timeline`: 8
+
+Recently resolved:
+
+- `journey`: 0 (was 8)
 
 ## Workflow
 

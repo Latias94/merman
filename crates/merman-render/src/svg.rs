@@ -3227,7 +3227,11 @@ fn radar_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
             .unwrap_or_else(|| fallback.to_string())
     }
 
-    fn theme_var_number_as_string(cfg: &serde_json::Value, path: &[&str], fallback: &str) -> String {
+    fn theme_var_number_as_string(
+        cfg: &serde_json::Value,
+        path: &[&str],
+        fallback: &str,
+    ) -> String {
         let mut cur = cfg;
         for key in path {
             cur = match cur.get(*key) {
@@ -3268,11 +3272,21 @@ fn radar_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
         theme_var_number_as_string(effective_config, &["themeVariables", "fontSize"], "16px");
     let base_text_color =
         theme_var_string(effective_config, &["themeVariables", "textColor"], "#333");
-    let error_bkg_color =
-        theme_var_string(effective_config, &["themeVariables", "errorBkgColor"], "#552222");
-    let error_text_color =
-        theme_var_string(effective_config, &["themeVariables", "errorTextColor"], "#552222");
-    let line_color = theme_var_string(effective_config, &["themeVariables", "lineColor"], "#333333");
+    let error_bkg_color = theme_var_string(
+        effective_config,
+        &["themeVariables", "errorBkgColor"],
+        "#552222",
+    );
+    let error_text_color = theme_var_string(
+        effective_config,
+        &["themeVariables", "errorTextColor"],
+        "#552222",
+    );
+    let line_color = theme_var_string(
+        effective_config,
+        &["themeVariables", "lineColor"],
+        "#333333",
+    );
 
     let title_font_size = base_font_size.clone();
     let title_color = theme_color(effective_config, "titleColor", "#333");
@@ -3315,8 +3329,11 @@ fn radar_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     )
     .unwrap_or(12.0);
 
-    let curve_opacity = config_f64(effective_config, &["themeVariables", "radar", "curveOpacity"])
-        .unwrap_or(0.5);
+    let curve_opacity = config_f64(
+        effective_config,
+        &["themeVariables", "radar", "curveOpacity"],
+    )
+    .unwrap_or(0.5);
     let curve_stroke_width = config_f64(
         effective_config,
         &["themeVariables", "radar", "curveStrokeWidth"],
@@ -3536,14 +3553,114 @@ fn timeline_css(diagram_id: &str) -> String {
 
 fn journey_css(diagram_id: &str) -> String {
     let id = escape_xml(diagram_id);
+    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
+
+    // Keep `:root` last (matches upstream Mermaid journey SVG baselines).
+    let root_rule = format!(r#"#{} :root{{--mermaid-font-family:{};}}"#, id, font);
     let mut out = info_css(diagram_id);
-    // Keep this intentionally small: DOM compare tooling ignores `<style>` text, but CSS helps
-    // when visually inspecting rendered SVGs.
+    if let Some(prefix) = out.strip_suffix(&root_rule) {
+        out = prefix.to_string();
+    }
+
+    // Mermaid's journey diagram reuses the legacy "user-journey" stylesheet, post-processed by
+    // Mermaid's CSS pipeline (nesting expansion + id scoping + minification).
     let _ = write!(
         &mut out,
-        r#"#{} .label{{font-family:"trebuchet ms",verdana,arial,sans-serif;color:#333;}}#{} .mouth{{stroke:#666;}}#{} line{{stroke:#333;}}#{} .legend{{fill:#333;font-family:"trebuchet ms",verdana,arial,sans-serif;}}#{} .label text{{fill:#333;}}#{} .label{{color:#333;}}#{} .face{{fill:#FFF8DC;stroke:#999;}}"#,
-        id, id, id, id, id, id, id
+        r#"#{} .label{{font-family:{};color:#333;}}"#,
+        id, font
     );
+    let _ = write!(&mut out, r#"#{} .mouth{{stroke:#666;}}"#, id);
+    let _ = write!(&mut out, r#"#{} line{{stroke:#333;}}"#, id);
+    let _ = write!(
+        &mut out,
+        r#"#{} .legend{{fill:#333;font-family:{};}}"#,
+        id, font
+    );
+    let _ = write!(&mut out, r#"#{} .label text{{fill:#333;}}"#, id);
+    let _ = write!(&mut out, r#"#{} .label{{color:#333;}}"#, id);
+    let _ = write!(&mut out, r#"#{} .face{{fill:#FFF8DC;stroke:#999;}}"#, id);
+    let _ = write!(
+        &mut out,
+        r#"#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon,#{} .node path{{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}}"#,
+        id, id, id, id, id
+    );
+    let _ = write!(&mut out, r#"#{} .node .label{{text-align:center;}}"#, id);
+    let _ = write!(&mut out, r#"#{} .node.clickable{{cursor:pointer;}}"#, id);
+    let _ = write!(&mut out, r#"#{} .arrowheadPath{{fill:#333333;}}"#, id);
+    let _ = write!(
+        &mut out,
+        r#"#{} .edgePath .path{{stroke:#333333;stroke-width:1.5px;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .flowchart-link{{stroke:#333333;fill:none;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .edgeLabel{{background-color:rgba(232,232,232, 0.8);text-align:center;}}"#,
+        id
+    );
+    let _ = write!(&mut out, r#"#{} .edgeLabel rect{{opacity:0.5;}}"#, id);
+    let _ = write!(&mut out, r#"#{} .cluster text{{fill:#333;}}"#, id);
+    let _ = write!(
+        &mut out,
+        r#"#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:hsl(80, 100%, 96.2745098039%);border:1px solid #aaaa33;border-radius:2px;pointer-events:none;z-index:100;}}"#,
+        id, font
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .task-type-0,#{} .section-type-0{{fill:#ECECFF;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .task-type-1,#{} .section-type-1{{fill:#ffffde;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .task-type-2,#{} .section-type-2{{fill:hsl(304, 100%, 96.2745098039%);}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .task-type-3,#{} .section-type-3{{fill:hsl(124, 100%, 93.5294117647%);}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .task-type-4,#{} .section-type-4{{fill:hsl(176, 100%, 96.2745098039%);}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .task-type-5,#{} .section-type-5{{fill:hsl(-4, 100%, 93.5294117647%);}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .task-type-6,#{} .section-type-6{{fill:hsl(8, 100%, 96.2745098039%);}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .task-type-7,#{} .section-type-7{{fill:hsl(188, 100%, 93.5294117647%);}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}"#,
+        id
+    );
+
+    out.push_str(&root_rule);
     out
 }
 
