@@ -3159,12 +3159,52 @@ fn pie_css(diagram_id: &str) -> String {
 }
 
 fn packet_css(diagram_id: &str) -> String {
+    // Keep `:root` last (matches upstream Mermaid packet SVG baselines).
     let id = escape_xml(diagram_id);
-    let mut out = info_css(diagram_id);
+    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
+    let mut out = String::new();
+    let _ = write!(
+        &mut out,
+        r#"#{}{{font-family:{};font-size:16px;fill:#333;}}"#,
+        id, font
+    );
+    out.push_str(
+        r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .error-icon{{fill:#552222;}}#{} .error-text{{fill:#552222;stroke:#552222;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
+        id, id, id, id, id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .marker{{fill:#333333;stroke:#333333;}}#{} .marker.cross{{stroke:#333333;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} svg{{font-family:{};font-size:16px;}}#{} p{{margin:0;}}"#,
+        id, font, id
+    );
     let _ = write!(
         &mut out,
         r#"#{} .packetByte{{font-size:10px;}}#{} .packetByte.start{{fill:black;}}#{} .packetByte.end{{fill:black;}}#{} .packetLabel{{fill:black;font-size:12px;}}#{} .packetTitle{{fill:black;font-size:14px;}}#{} .packetBlock{{stroke:black;stroke-width:1;fill:#efefef;}}"#,
         id, id, id, id, id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} :root{{--mermaid-font-family:{};}}"#,
+        id, font
     );
     out
 }
