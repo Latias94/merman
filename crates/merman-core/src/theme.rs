@@ -401,7 +401,11 @@ pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) {
         Value::Number(serde_json::Number::from_f64(0.5).unwrap()),
     );
     set_if_missing(&mut radar, "curveStrokeWidth", Value::Number(2.into()));
-    set_if_missing(&mut radar, "graticuleColor", Value::String("#DEDEDE".to_string()));
+    set_if_missing(
+        &mut radar,
+        "graticuleColor",
+        Value::String("#DEDEDE".to_string()),
+    );
     set_if_missing(&mut radar, "graticuleStrokeWidth", Value::Number(1.into()));
     set_if_missing(
         &mut radar,
