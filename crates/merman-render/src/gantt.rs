@@ -1040,8 +1040,18 @@ pub fn layout_gantt_diagram(
     }
 
     // Tasks (bars + labels).
+    // Mermaid gantt task labels inherit the diagram font family (defaulting to
+    // `"trebuchet ms", verdana, arial, sans-serif`), not the axis group's `sans-serif`.
+    // Use the effective Mermaid font family here so `getBBox().width`-derived `width-*` class
+    // values match upstream SVG baselines.
+    let task_font_family = gantt_cfg
+        .get("fontFamily")
+        .and_then(|v| v.as_str())
+        .or_else(|| config.get("fontFamily").and_then(|v| v.as_str()))
+        .unwrap_or("\"trebuchet ms\", verdana, arial, sans-serif")
+        .to_string();
     let text_style = TextStyle {
-        font_family: Some("sans-serif".to_string()),
+        font_family: Some(task_font_family),
         font_size,
         font_weight: None,
     };
