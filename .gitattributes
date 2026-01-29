@@ -1,0 +1,32 @@
+# Normalize text line endings to LF to avoid CRLF-only diffs on Windows.
+* text=auto
+
+# Core sources/docs/fixtures
+.gitattributes text eol=lf
+.gitignore     text eol=lf
+*.rs  text eol=lf
+*.toml text eol=lf
+*.md  text eol=lf
+*.json text eol=lf
+*.svg text eol=lf
+*.mmd text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.js  text eol=lf
+*.ts  text eol=lf
+*.tsx text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.sh  text eol=lf
+
+# Windows script formats
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
