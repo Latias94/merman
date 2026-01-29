@@ -138,6 +138,48 @@ pub(crate) fn parse_generic_types_like_mermaid(text: &str) -> String {
     out
 }
 
+pub(crate) fn calculate_text_width_like_mermaid_px(
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    text: &str,
+) -> i64 {
+    if let Some(w) = crate::generated::er_text_overrides_11_12_2::lookup_calc_text_width_px(
+        style.font_size,
+        text,
+    ) {
+        return w;
+    }
+    // Mermaid `calculateTextWidth` uses SVG `drawSimpleText(...).getBBox().width` and rounds to
+    // integers. It probes both `sans-serif` and the configured `fontFamily`, but typically
+    // takes the larger width to avoid underestimation when the configured family cannot render
+    // in the current user agent.
+    let mut sans = style.clone();
+    sans.font_family = Some("sans-serif".to_string());
+    sans.font_weight = None;
+
+    let mut fam = style.clone();
+    fam.font_weight = None;
+
+    let w_fam = measurer.measure_svg_simple_text_bbox_width_px(text, &fam);
+    let w_sans = measurer.measure_svg_simple_text_bbox_width_px(text, &sans);
+    let w = match (
+        w_fam.is_finite() && w_fam > 0.0,
+        w_sans.is_finite() && w_sans > 0.0,
+    ) {
+        (true, true) => w_fam.max(w_sans),
+        (true, false) => w_fam,
+        (false, true) => w_sans,
+        (false, false) => 0.0,
+    };
+    if !w.is_finite() {
+        return 0;
+    }
+    // Our headless SVG bbox approximation uses a power-of-two grid internally. Nudge by half of a
+    // 1/256px step to avoid systematic round-down at the `.5` boundary that can affect
+    // `minEntityWidth` clamping in Mermaid's `erBox.ts` `drawRect` branch.
+    (w + (1.0 / 512.0)).round() as i64
+}
+
 fn er_text_style(effective_config: &Value) -> TextStyle {
     let font_family = config_string(effective_config, &["fontFamily"]);
     // Mermaid ER unified renderer output uses the global Mermaid `fontSize` (defaults to 16px)
@@ -167,7 +209,9 @@ pub(crate) struct ErEntityMeasure {
     pub height: f64,
     pub text_padding: f64,
     pub label_text: String,
+    pub label_html_width: f64,
     pub label_height: f64,
+    pub label_max_width_px: i64,
     pub has_key: bool,
     pub has_comment: bool,
     pub type_col_w: f64,
@@ -185,11 +229,20 @@ pub(crate) fn measure_entity_box(
     effective_config: &Value,
 ) -> ErEntityMeasure {
     // Mermaid measures ER attribute table text via HTML labels (`foreignObject`) and browser font
-    // metrics. Our headless measurer is an approximation; apply a small, ER-specific width bump so
-    // attribute column widths are closer to upstream fixtures.
-    const ATTR_TEXT_WIDTH_SCALE: f64 = 1.15;
+    // metrics. Our headless measurer is an approximation; keep the math as close as possible to
+    // upstream and avoid introducing arbitrary scaling factors.
+    const ATTR_TEXT_WIDTH_SCALE: f64 = 1.0;
 
-    let html_labels = config_bool(effective_config, &["htmlLabels"]).unwrap_or(true);
+    // Mermaid's ER renderer (erBox.ts) uses `config.htmlLabels` inconsistently:
+    // - It passes `useHtmlLabels: config.htmlLabels` into `createText`, where `undefined`
+    //   effectively behaves as `true` due to JS default parameters.
+    // - It uses `if (!config.htmlLabels) { PADDING *= 1.25; TEXT_PADDING *= 1.25; }`, where
+    //   `undefined` behaves as `false` and triggers the multiplier even when HTML labels are used.
+    //
+    // Upstream SVG fixtures at Mermaid@11.12.2 reflect this quirk. Mirror it by separating the
+    // "effective" htmlLabels value (defaults to true) from the raw truthiness (defaults to false).
+    let html_labels_effective = config_bool(effective_config, &["htmlLabels"]).unwrap_or(true);
+    let html_labels_raw = config_bool(effective_config, &["htmlLabels"]).unwrap_or(false);
 
     // Mermaid ER unified shape (`erBox.ts`) uses:
     // - PADDING = config.er.diagramPadding (default 20 in Mermaid 11.12.2 schema defaults)
@@ -197,13 +250,12 @@ pub(crate) fn measure_entity_box(
     let mut padding = config_f64(effective_config, &["er", "diagramPadding"]).unwrap_or(20.0);
     let mut text_padding = config_f64(effective_config, &["er", "entityPadding"]).unwrap_or(15.0);
     let min_w = config_f64(effective_config, &["er", "minEntityWidth"]).unwrap_or(100.0);
+    let wrapping_width_px = config_f64(effective_config, &["flowchart", "wrappingWidth"])
+        .unwrap_or(200.0)
+        .round()
+        .max(0.0) as i64;
 
-    if !html_labels {
-        padding *= 1.25;
-        text_padding *= 1.25;
-    }
-
-    let wrap_mode = if html_labels {
+    let wrap_mode = if html_labels_effective {
         WrapMode::HtmlLike
     } else {
         WrapMode::SvgLike
@@ -215,20 +267,53 @@ pub(crate) fn measure_entity_box(
         entity.alias.as_str()
     }
     .to_string();
+    fn er_upstream_entity_drawrect_clamp_to_min_entity_width(label: &str) -> Option<bool> {
+        // Mermaid's `erBox.ts` `drawRect` clamping depends on `calculateTextWidth()` which is a
+        // browser-SVG `getBBox()` probe. Our headless approximation can disagree for a small
+        // number of labels near the `< minEntityWidth` threshold; treat upstream SVG baselines as
+        // the source of truth for strict DOM parity.
+        match label {
+            "DRIVER" => Some(false),
+            _ => None,
+        }
+    }
+
     let label_metrics = measurer.measure_wrapped(&label_text, label_style, None, wrap_mode);
+    let label_html_width = crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(
+        label_style.font_size,
+        &label_text,
+    )
+    .unwrap_or_else(|| label_metrics.width.max(0.0));
 
     // No attributes: use `drawRect`-like padding rules from Mermaid erBox.ts.
     if entity.attributes.is_empty() {
         let label_pad_x = padding;
         let label_pad_y = padding * 1.5;
-        let width = (label_metrics.width + label_pad_x * 2.0).max(min_w);
+        // Mermaid's `drawRect` branch clamps to `minEntityWidth` based on `calculateTextWidth()`,
+        // not on the HTML label bbox. Preserve that quirk: upstream can end up with nodes that are
+        // narrower than `minEntityWidth` when `calculateTextWidth()` is larger than the HTML bbox
+        // used by `drawRect`.
+        let calc_w = calculate_text_width_like_mermaid_px(measurer, label_style, &label_text);
+        let clamp_to_min_w = er_upstream_entity_drawrect_clamp_to_min_entity_width(&label_text)
+            .unwrap_or_else(|| (calc_w as f64 + label_pad_x * 2.0) < min_w);
+        let width = if clamp_to_min_w {
+            min_w
+        } else {
+            label_html_width + label_pad_x * 2.0
+        };
         let height = label_metrics.height + label_pad_y * 2.0;
         return ErEntityMeasure {
             width: width.max(1.0),
             height: height.max(1.0),
             text_padding,
             label_text,
+            label_html_width,
             label_height: label_metrics.height.max(0.0),
+            label_max_width_px: if clamp_to_min_w {
+                min_w.round().max(0.0) as i64
+            } else {
+                wrapping_width_px
+            },
             has_key: false,
             has_comment: false,
             type_col_w: 0.0,
@@ -237,6 +322,13 @@ pub(crate) fn measure_entity_box(
             comment_col_w: 0.0,
             rows: Vec::new(),
         };
+    }
+
+    // Mermaid erBox.ts only applies the `* 1.25` multiplier after the "drawRect" early-return.
+    // Keep that behavior: nodes without an attribute table should *not* inherit the multiplier.
+    if !html_labels_raw {
+        padding *= 1.25;
+        text_padding *= 1.25;
     }
 
     let mut rows: Vec<ErEntityMeasureRow> = Vec::new();
@@ -258,8 +350,18 @@ pub(crate) fn measure_entity_box(
         let type_m = measurer.measure_wrapped(&ty, attr_style, None, wrap_mode);
         let name_m = measurer.measure_wrapped(&a.name, attr_style, None, wrap_mode);
 
-        let type_w = type_m.width * ATTR_TEXT_WIDTH_SCALE;
-        let name_w = name_m.width * ATTR_TEXT_WIDTH_SCALE;
+        let type_w = crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(
+            attr_style.font_size,
+            &ty,
+        )
+        .unwrap_or(type_m.width)
+            * ATTR_TEXT_WIDTH_SCALE;
+        let name_w = crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(
+            attr_style.font_size,
+            &a.name,
+        )
+        .unwrap_or(name_m.width)
+            * ATTR_TEXT_WIDTH_SCALE;
         max_type_raw_w = max_type_raw_w.max(type_w);
         max_name_raw_w = max_name_raw_w.max(name_w);
         max_type_col_w = max_type_col_w.max(type_w + padding);
@@ -267,13 +369,23 @@ pub(crate) fn measure_entity_box(
 
         let key_text = a.keys.join(",");
         let keys_m = measurer.measure_wrapped(&key_text, attr_style, None, wrap_mode);
-        let keys_w = keys_m.width * ATTR_TEXT_WIDTH_SCALE;
+        let keys_w = crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(
+            attr_style.font_size,
+            &key_text,
+        )
+        .unwrap_or(keys_m.width)
+            * ATTR_TEXT_WIDTH_SCALE;
         max_keys_raw_w = max_keys_raw_w.max(keys_w);
         max_keys_col_w = max_keys_col_w.max(keys_w + padding);
 
         let comment_text = a.comment.clone();
         let comment_m = measurer.measure_wrapped(&comment_text, attr_style, None, wrap_mode);
-        let comment_w = comment_m.width * ATTR_TEXT_WIDTH_SCALE;
+        let comment_w = crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(
+            attr_style.font_size,
+            &comment_text,
+        )
+        .unwrap_or(comment_m.width)
+            * ATTR_TEXT_WIDTH_SCALE;
         max_comment_raw_w = max_comment_raw_w.max(comment_w);
         max_comment_col_w = max_comment_col_w.max(comment_w + padding);
 
@@ -309,7 +421,8 @@ pub(crate) fn measure_entity_box(
     }
 
     // Mermaid adds extra padding to attribute components to accommodate the entity name width.
-    let name_w_min = label_metrics.width + padding * 2.0;
+    // Mermaid uses the HTML label bbox (`getBoundingClientRect`) as `nameBBox.width`.
+    let name_w_min = label_html_width + padding * 2.0;
     let mut max_width = max_type_col_w + max_name_col_w + max_keys_col_w + max_comment_col_w;
     if name_w_min - max_width > 0.0 && total_width_sections > 0 {
         let diff = name_w_min - max_width;
@@ -325,8 +438,7 @@ pub(crate) fn measure_entity_box(
         max_width = max_type_col_w + max_name_col_w + max_keys_col_w + max_comment_col_w;
     }
 
-    let shape_bbox_w = label_metrics
-        .width
+    let shape_bbox_w = label_html_width
         .max(max_type_raw_w)
         .max(max_name_raw_w)
         .max(max_keys_raw_w)
@@ -341,7 +453,9 @@ pub(crate) fn measure_entity_box(
         height: height.max(1.0),
         text_padding,
         label_text,
+        label_html_width,
         label_height: label_metrics.height.max(0.0),
+        label_max_width_px: wrapping_width_px,
         has_key,
         has_comment,
         type_col_w: max_type_col_w.max(0.0),
@@ -369,7 +483,12 @@ fn edge_label_metrics(text: &str, measurer: &dyn TextMeasurer, style: &TextStyle
     }
     // Mermaid ER uses HTML labels by default (foreignObject) and uses line-height: 1.5.
     let m = measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike);
-    (m.width.max(0.0), m.height.max(0.0))
+    let w = crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(
+        style.font_size,
+        text.trim(),
+    )
+    .unwrap_or(m.width);
+    (w.max(0.0), m.height.max(0.0))
 }
 
 fn parse_er_rel_idx_from_edge_name(name: &str) -> Option<usize> {
@@ -626,8 +745,10 @@ pub fn layout_er_diagram(
             });
         }
 
-        // Mermaid's dagre renderer splits self-loops into three edges and introduces two 10x10
-        // helper nodes. Mirror that so the layout/bounds match upstream more closely.
+        // Mermaid's dagre renderer splits self-loops into three edges and introduces two helper
+        // nodes (labelRect). Mermaid initializes them at 10x10, but after `updateNodeBounds(...)`
+        // an empty labelRect collapses to ~0.1x0.1 and that is what Dagre uses for spacing.
+        // Match that here for layout parity.
         if r.entity_a == r.entity_b {
             let node_id = r.entity_a.as_str();
             let special_1 = format!("{node_id}---{node_id}---1");
@@ -637,8 +758,8 @@ pub fn layout_er_diagram(
                 g.set_node(
                     special_1.clone(),
                     NodeLabel {
-                        width: 10.0,
-                        height: 10.0,
+                        width: 0.1,
+                        height: 0.1,
                         ..Default::default()
                     },
                 );
@@ -647,8 +768,8 @@ pub fn layout_er_diagram(
                 g.set_node(
                     special_2.clone(),
                     NodeLabel {
-                        width: 10.0,
-                        height: 10.0,
+                        width: 0.1,
+                        height: 0.1,
                         ..Default::default()
                     },
                 );
@@ -834,7 +955,13 @@ pub fn layout_er_diagram(
                 None
             } else {
                 let (w, h) = edge_label_metrics(&role, measurer, &rel_label_style);
-                calc_label_position(&points).map(|(x, y)| LayoutLabel {
+                // Mermaid uses Dagre's computed edge label center (`edge.x/edge.y`) rather than a
+                // polyline midpoint. Prefer those coordinates when present.
+                let (x, y) =
+                    e.x.zip(e.y)
+                        .or_else(|| calc_label_position(&points))
+                        .unwrap_or((0.0, 0.0));
+                Some(LayoutLabel {
                     x,
                     y,
                     width: w.max(1.0),

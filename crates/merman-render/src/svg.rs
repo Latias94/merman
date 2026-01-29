@@ -3205,6 +3205,106 @@ fn requirement_css(diagram_id: &str) -> String {
     out
 }
 
+fn er_css(diagram_id: &str) -> String {
+    // Mirrors Mermaid@11.12.2 ER unified renderer stylesheet ordering (see `diagrams/er/styles.js`
+    // and shared base stylesheet).
+    // Keep `:root` last (matches upstream fixtures).
+    let id = escape_xml(diagram_id);
+    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
+    let mut out = String::new();
+    let _ = write!(
+        &mut out,
+        r#"#{}{{font-family:{};font-size:16px;fill:#333;}}"#,
+        id, font
+    );
+    out.push_str(
+        r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .error-icon{{fill:#552222;}}#{} .error-text{{fill:#552222;stroke:#552222;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
+        id, id, id, id, id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .marker{{fill:#333333;stroke:#333333;}}#{} .marker.cross{{stroke:#333333;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} svg{{font-family:{};font-size:16px;}}#{} p{{margin:0;}}"#,
+        id, font, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .entityBox{{fill:#ECECFF;stroke:#9370DB;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .relationshipLabelBox{{fill:hsl(80, 100%, 96.2745098039%);opacity:0.7;background-color:hsl(80, 100%, 96.2745098039%);}}"#,
+        id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .relationshipLabelBox rect{{opacity:0.5;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .labelBkg{{background-color:rgba(248.6666666666, 255, 235.9999999999, 0.5);}}"#,
+        id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .edgeLabel .label{{fill:#9370DB;font-size:14px;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .label{{font-family:{};color:#333;}}"#,
+        id, font
+    );
+    // Mermaid duplicates `.edge-pattern-dashed` (base rule earlier sets dasharray:3).
+    let _ = write!(
+        &mut out,
+        r#"#{} .edge-pattern-dashed{{stroke-dasharray:8,8;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon{{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}}"#,
+        id, id, id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .relationshipLine{{stroke:#333333;stroke-width:1;fill:none;}}"#,
+        id
+    );
+    // Mermaid duplicates `.marker` (base rule earlier sets fill/stroke to #333333).
+    let _ = write!(
+        &mut out,
+        r#"#{} .marker{{fill:none!important;stroke:#333333!important;stroke-width:1;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} :root{{--mermaid-font-family:{};}}"#,
+        id, font
+    );
+    out
+}
+
 fn pie_css(diagram_id: &str) -> String {
     let id = escape_xml(diagram_id);
     let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
@@ -15131,7 +15231,19 @@ pub fn render_er_diagram_debug_svg(layout: &ErDiagramLayout, options: &SvgRender
     let mut edges = layout.edges.clone();
     edges.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let bounds = compute_layout_bounds(&[], &nodes, &edges).unwrap_or(Bounds {
+    // Mermaid `setupViewPortForSVG` uses `svg.node().getBBox()`. In Chromium, ER edge labels are
+    // rendered via `<foreignObject>` and do not reliably contribute to the root SVG bbox. Exclude
+    // edge label boxes from our bounds computation so `viewBox` / translation matches upstream.
+    let mut edges_for_bounds = edges.clone();
+    for e in &mut edges_for_bounds {
+        e.label = None;
+        e.start_label_left = None;
+        e.start_label_right = None;
+        e.end_label_left = None;
+        e.end_label_right = None;
+    }
+
+    let bounds = compute_layout_bounds(&[], &nodes, &edges_for_bounds).unwrap_or(Bounds {
         min_x: 0.0,
         min_y: 0.0,
         max_x: 100.0,
@@ -15516,6 +15628,62 @@ fn parse_px_f64(v: &str) -> Option<f64> {
     raw.parse::<f64>().ok()
 }
 
+fn is_label_coordinate_in_path(point: crate::model::LayoutPoint, d_attr: &str) -> bool {
+    // Mermaid `@11.12.2`:
+    // - `packages/mermaid/src/utils.ts:isLabelCoordinateInPath`
+    // - `packages/mermaid/src/rendering-util/rendering-elements/edges.js`
+    //
+    // This is intentionally a very rough heuristic: it rounds the mid point and checks whether
+    // either the rounded x or y shows up in the rounded SVG path `d` string.
+    let rounded_x = point.x.round() as i64;
+    let rounded_y = point.y.round() as i64;
+
+    let re = regex::Regex::new(r"(\d+\.\d+)").expect("regex must compile");
+    let sanitized_d = re.replace_all(d_attr, |caps: &regex::Captures<'_>| {
+        let v = caps
+            .get(1)
+            .and_then(|m| m.as_str().parse::<f64>().ok())
+            .unwrap_or(0.0);
+        format!("{}", v.round() as i64)
+    });
+
+    sanitized_d.contains(&rounded_x.to_string()) || sanitized_d.contains(&rounded_y.to_string())
+}
+
+fn calc_label_position(points: &[crate::model::LayoutPoint]) -> Option<(f64, f64)> {
+    if points.is_empty() {
+        return None;
+    }
+    if points.len() == 1 {
+        return Some((points[0].x, points[0].y));
+    }
+
+    let mut total = 0.0;
+    for i in 1..points.len() {
+        let dx = points[i].x - points[i - 1].x;
+        let dy = points[i].y - points[i - 1].y;
+        total += (dx * dx + dy * dy).sqrt();
+    }
+    let mut remaining = total / 2.0;
+    for i in 1..points.len() {
+        let p0 = &points[i - 1];
+        let p1 = &points[i];
+        let dx = p1.x - p0.x;
+        let dy = p1.y - p0.y;
+        let seg = (dx * dx + dy * dy).sqrt();
+        if seg == 0.0 {
+            continue;
+        }
+        if seg < remaining {
+            remaining -= seg;
+            continue;
+        }
+        let t = (remaining / seg).clamp(0.0, 1.0);
+        return Some((p0.x + t * dx, p0.y + t * dy));
+    }
+    Some((points.last()?.x, points.last()?.y))
+}
+
 pub fn render_er_diagram_svg(
     layout: &ErDiagramLayout,
     semantic: &serde_json::Value,
@@ -15684,11 +15852,12 @@ pub fn render_er_diagram_svg(
     let w_attr = fmt(vb_w.max(1.0));
     let h_attr = fmt(vb_h.max(1.0));
     if use_max_width {
+        let max_w_style = fmt_max_width_px(vb_w.max(1.0));
         let _ = write!(
             &mut out,
             r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="erDiagram" style="max-width: {}px; background-color: white;" viewBox="0 0 {} {}" role="graphics-document document" aria-roledescription="{}""#,
             escape_xml(diagram_id),
-            w_attr,
+            max_w_style,
             w_attr,
             h_attr,
             diagram_type
@@ -15744,35 +15913,7 @@ pub fn render_er_diagram_svg(
         out.push_str("</desc>");
     }
 
-    let _ = writeln!(
-        &mut out,
-        r#"<style>
-  .erDiagramTitleText {{ text-anchor: middle; font-size: 18px; fill: {}; font-family: {}; }}
-  .entityBox {{ fill: {}; stroke: {}; stroke-width: 1px; }}
-  .relationshipLine {{ stroke: {}; stroke-width: 1; fill: none; }}
-  .relationshipLabelBox {{ fill: {}; opacity: 0.7; }}
-  .edge-pattern-dashed {{ stroke-dasharray: 8,8; }}
-  .relationshipLabel {{ fill: {}; font-family: {}; dominant-baseline: middle; text-anchor: middle; }}
-  .entityLabel {{ fill: {}; font-family: {}; dominant-baseline: middle; text-anchor: middle; }}
-  .attributeText {{ fill: {}; font-family: {}; dominant-baseline: middle; text-anchor: left; }}
-  .attributeBoxOdd {{ fill: rgba(0,0,0,0.03); stroke: {}; stroke-width: 0; }}
-  .attributeBoxEven {{ fill: rgba(0,0,0,0.06); stroke: {}; stroke-width: 0; }}
-</style>"#,
-        text_color,
-        escape_xml(&font_family),
-        main_bkg,
-        node_border,
-        stroke,
-        tertiary,
-        node_text_color,
-        escape_xml(&font_family),
-        node_text_color,
-        escape_xml(&font_family),
-        node_text_color,
-        escape_xml(&font_family),
-        node_border,
-        node_border
-    );
+    let _ = write!(&mut out, r#"<style>{}</style>"#, er_css(diagram_id));
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
@@ -15930,7 +16071,7 @@ pub fn render_er_diagram_svg(
             let edge_dom_id = er_edge_dom_id(&e.id, &model.relationships);
 
             let has_label_text = !rel_text.is_empty();
-            let (w, h, cx, cy) = if has_label_text {
+            let (w, h, mut cx, mut cy) = if has_label_text {
                 if let Some(lbl) = &e.label {
                     (
                         lbl.width.max(0.0),
@@ -15944,6 +16085,46 @@ pub fn render_er_diagram_svg(
             } else {
                 (0.0, 0.0, 0.0, 0.0)
             };
+
+            if has_label_text && w > 0.0 && h > 0.0 {
+                // Mermaid positions edge labels using Dagre's `edge.x/edge.y` by default, but it
+                // recomputes the label position along the polyline when the edge path `d` doesn't
+                // contain the midpoint coordinates (see `edges.js:isLabelCoordinateInPath`).
+                //
+                // Replicate that behavior here to match upstream DOM parity for certain curved
+                // edges (notably parallel relationship edges in ER diagrams).
+                let shifted: Vec<crate::model::LayoutPoint> = e
+                    .points
+                    .iter()
+                    .map(|p| crate::model::LayoutPoint {
+                        x: p.x + translate_x,
+                        y: p.y + translate_y,
+                    })
+                    .collect();
+                if !shifted.is_empty() {
+                    let mid_idx = shifted.len() / 2;
+                    let mid = shifted[mid_idx].clone();
+                    let mut curve_points = shifted.clone();
+                    if curve_points.len() == 2 {
+                        let a = &curve_points[0];
+                        let b = &curve_points[1];
+                        curve_points.insert(
+                            1,
+                            crate::model::LayoutPoint {
+                                x: (a.x + b.x) / 2.0,
+                                y: (a.y + b.y) / 2.0,
+                            },
+                        );
+                    }
+                    let d = curve_basis_path_d(&curve_points);
+                    if !is_label_coordinate_in_path(mid, &d) {
+                        if let Some((x, y)) = calc_label_position(&shifted) {
+                            cx = x;
+                            cy = y;
+                        }
+                    }
+                }
+            }
 
             if has_label_text && w > 0.0 && h > 0.0 {
                 let _ = write!(
@@ -16073,17 +16254,22 @@ pub fn render_er_diagram_svg(
             };
             let label_metrics =
                 measurer.measure_wrapped(&measure.label_text, &label_style, None, wrap_mode);
-            let lw = label_metrics.width.max(0.0);
+            let lw = if wrap_mode == crate::text::WrapMode::HtmlLike {
+                measure.label_html_width.max(0.0)
+            } else {
+                label_metrics.width.max(0.0)
+            };
             let lh = label_metrics.height.max(0.0);
 
             let _ = write!(
                 &mut out,
-                r#"<g class="label" transform="translate({}, {})" {}><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g>"#,
+                r#"<g class="label" transform="translate({}, {})" {}><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g>"#,
                 fmt(-lw / 2.0),
                 fmt(-lh / 2.0),
                 label_style_attr,
                 fmt(lw),
                 fmt(lh),
+                measure.label_max_width_px.max(0),
                 escape_xml(&measure.label_text)
             );
             out.push_str("</g>");
@@ -16104,7 +16290,7 @@ pub fn render_er_diagram_svg(
             )
         }
 
-        fn rough_line_path_d(x0: f64, y0: f64, x1: f64, y1: f64) -> String {
+        fn fallback_rough_line_path_d(x0: f64, y0: f64, x1: f64, y1: f64) -> String {
             let c1x = x0 + (x1 - x0) * 0.25;
             let c1y = y0 + (y1 - y0) * 0.25;
             let c2x = x0 + (x1 - x0) * 0.75;
@@ -16138,11 +16324,11 @@ pub fn render_er_diagram_svg(
             format!("{d1} {d2}")
         }
 
-        fn rough_rect_border_path_d(x0: f64, y0: f64, x1: f64, y1: f64) -> String {
-            let top = rough_line_path_d(x0, y0, x1, y0);
-            let right = rough_line_path_d(x1, y0, x1, y1);
-            let bottom = rough_line_path_d(x1, y1, x0, y1);
-            let left = rough_line_path_d(x0, y1, x0, y0);
+        fn fallback_rough_rect_border_path_d(x0: f64, y0: f64, x1: f64, y1: f64) -> String {
+            let top = fallback_rough_line_path_d(x0, y0, x1, y0);
+            let right = fallback_rough_line_path_d(x1, y0, x1, y1);
+            let bottom = fallback_rough_line_path_d(x1, y1, x0, y1);
+            let left = fallback_rough_line_path_d(x0, y1, x0, y0);
             format!("{top} {right} {bottom} {left}")
         }
 
@@ -16238,19 +16424,143 @@ pub fn render_er_diagram_svg(
             .map(|s| format!(r#" style="{}""#, escape_xml(s)))
             .unwrap_or_default();
 
+        let hand_drawn_seed = effective_config
+            .get("handDrawnSeed")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
+        // Mermaid erBox.ts uses Rough.js with `roughness=0` for default (non-handDrawn) nodes.
+        //
+        // Even with roughness=0, Rough.js still depends on seeded randomness via `divergePoint`.
+        // For strict SVG parity we use the same Rough.js algorithm (v4.6.6) here instead of a
+        // generic sketchy-stroke renderer.
+        fn roughjs46_next_f64(seed: &mut u32) -> f64 {
+            if *seed == 0 {
+                // Mermaid (Rough.js) falls back to `Math.random()` when seed=0. We keep our SVG
+                // stable in that case by returning 0, which yields `divergePoint=0.2`.
+                return 0.0;
+            }
+            // Rough.js v4.6.6 (bin/math.js):
+            //   this.seed = Math.imul(48271, this.seed)
+            //   return ((2**31 - 1) & this.seed) / 2**31
+            let prod = seed.wrapping_mul(48_271);
+            *seed = prod & 0x7fff_ffff;
+            (*seed as f64) / 2_147_483_648.0
+        }
+
+        fn roughjs46_diverge_point(seed: &mut u32) -> f64 {
+            0.2 + roughjs46_next_f64(seed) * 0.2
+        }
+
+        fn roughjs46_double_line_path_d(
+            seed: &mut u32,
+            x0: f64,
+            y0: f64,
+            x1: f64,
+            y1: f64,
+        ) -> String {
+            let mut out = String::new();
+            let dx = x1 - x0;
+            let dy = y1 - y0;
+
+            for _ in 0..2 {
+                let d = roughjs46_diverge_point(seed);
+                // Rough.js `_line()` continues to call into `_offsetOpt()` even when `roughness=0`
+                // (the random terms get multiplied by zero, but the PRNG state still advances).
+                //
+                // In Rough.js v4.6.6 `_line()` uses:
+                // - 2 random() calls for `midDispX/midDispY` offsetOpt
+                // - 2 random() calls for moveTo (x1/y1)
+                // - 6 random() calls for bcurveTo (cp1/cp2/x2/y2)
+                // Total: 10 random() calls after divergePoint.
+                for _ in 0..10 {
+                    let _ = roughjs46_next_f64(seed);
+                }
+                let cx1 = x0 + dx * d;
+                let cy1 = y0 + dy * d;
+                let cx2 = x0 + dx * 2.0 * d;
+                let cy2 = y0 + dy * 2.0 * d;
+                let _ = write!(
+                    &mut out,
+                    "M{} {} C{} {}, {} {}, {} {} ",
+                    x0.to_string(),
+                    y0.to_string(),
+                    cx1.to_string(),
+                    cy1.to_string(),
+                    cx2.to_string(),
+                    cy2.to_string(),
+                    x1.to_string(),
+                    y1.to_string()
+                );
+            }
+
+            out.trim_end().to_string()
+        }
+
+        fn rough_line_path_d(seed: u64, x0: f64, y0: f64, x1: f64, y1: f64) -> String {
+            if seed == 0 {
+                return fallback_rough_line_path_d(x0, y0, x1, y1);
+            }
+            let mut s = seed as u32;
+            roughjs46_double_line_path_d(&mut s, x0, y0, x1, y1)
+        }
+
+        fn rough_rect_border_path_d(seed: u64, x0: f64, y0: f64, x1: f64, y1: f64) -> String {
+            let w = (x1 - x0).max(0.0);
+            let h = (y1 - y0).max(0.0);
+            if seed == 0 {
+                return fallback_rough_rect_border_path_d(x0, y0, x1, y1);
+            }
+            let mut s = seed as u32;
+
+            // Rough.js v4.6.6 renderer.rectangle -> polygon -> linearPath:
+            //   segments: (x,y)->(x+w,y)->(x+w,y+h)->(x,y+h)->(x,y)
+            let mut out = String::new();
+            let x2 = x0 + w;
+            let y2 = y0 + h;
+
+            let segs = [
+                (x0, y0, x2, y0),
+                (x2, y0, x2, y2),
+                (x2, y2, x0, y2),
+                (x0, y2, x0, y0),
+            ];
+            for (ax, ay, bx, by) in segs {
+                let d = roughjs46_double_line_path_d(&mut s, ax, ay, bx, by);
+                out.push_str(&d);
+                out.push(' ');
+            }
+
+            out.trim_end().to_string()
+        }
+
+        fn roughjs46_rect_fill_path_d(x0: f64, y0: f64, x1: f64, y1: f64) -> String {
+            format!(
+                "M{} {} L{} {} L{} {} L{} {}",
+                x0.to_string(),
+                y0.to_string(),
+                x1.to_string(),
+                y0.to_string(),
+                x1.to_string(),
+                y1.to_string(),
+                x0.to_string(),
+                y1.to_string()
+            )
+        }
+
         // Base box (fill + border)
         let _ = write!(&mut out, r#"<g {}>"#, group_style_attr);
         let _ = write!(
             &mut out,
             r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"{} />"#,
-            rect_fill_path_d(box_x0, box_y0, box_x1, box_y1),
+            roughjs46_rect_fill_path_d(box_x0, box_y0, box_x1, box_y1),
             escape_xml(&box_fill),
             override_style_attr
         );
         let _ = write!(
             &mut out,
             r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} />"#,
-            rough_rect_border_path_d(box_x0, box_y0, box_x1, box_y1),
+            rough_rect_border_path_d(hand_drawn_seed, box_x0, box_y0, box_x1, box_y1),
             escape_xml(&box_stroke),
             stroke_width_attr,
             override_style_attr
@@ -16302,14 +16612,14 @@ pub fn render_er_diagram_svg(
             let _ = write!(
                 &mut out,
                 r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"{} />"#,
-                rect_fill_path_d(box_x0, y0, box_x1, y1),
+                roughjs46_rect_fill_path_d(box_x0, y0, box_x1, y1),
                 row_fill,
                 row_override_style_attr
             );
             let _ = write!(
                 &mut out,
                 r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0"{} />"#,
-                rough_rect_border_path_d(box_x0, y0, box_x1, y1),
+                rough_rect_border_path_d(hand_drawn_seed, box_x0, y0, box_x1, y1),
                 escape_xml(&node_border),
                 stroke_width_attr,
                 row_override_style_attr
@@ -16319,6 +16629,27 @@ pub fn render_er_diagram_svg(
 
         // HTML labels
         let line_h = (font_size * 1.5).max(1.0);
+        let mut pad = config_f64(effective_config, &["er", "diagramPadding"]).unwrap_or(20.0);
+        // Keep parity with Mermaid's erBox.ts `if (!config.htmlLabels) { PADDING *= 1.25; }`:
+        // when `htmlLabels` is unset (undefined), upstream still applies the 1.25 multiplier.
+        let html_labels_raw = effective_config
+            .get("htmlLabels")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if !html_labels_raw {
+            pad *= 1.25;
+        }
+
+        fn er_calc_text_input_for_calculate_text_width(text: &str) -> String {
+            // Mermaid erBox.ts measures `calculateTextWidth` on the pre-workaround string, which
+            // can include literal `&lt;` / `&gt;` for generics.
+            if text.contains('<') || text.contains('>') {
+                text.replace('<', "&lt;").replace('>', "&gt;")
+            } else {
+                text.to_string()
+            }
+        }
+
         let name_w = measurer
             .measure_wrapped(
                 &measure.label_text,
@@ -16330,15 +16661,21 @@ pub fn render_er_diagram_svg(
             .max(0.0);
         let name_x = -name_w / 2.0;
         let name_y = oy + name_row_h / 2.0 - line_h / 2.0;
+        let name_mw_px = crate::er::calculate_text_width_like_mermaid_px(
+            measurer,
+            &label_style,
+            &er_calc_text_input_for_calculate_text_width(&measure.label_text),
+        ) + 100;
         let _ = write!(
             &mut out,
-            r#"<g class="label name" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: start;">{}"#,
+            r#"<g class="label name" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
             fmt(name_x),
             fmt(name_y),
             label_style_attr,
             fmt(name_w),
             fmt(line_h),
             escape_xml(&label_div_color_prefix),
+            name_mw_px.max(0),
             html_label_content(&measure.label_text, &span_style_attr)
         );
         out.push_str("</div></foreignObject></g>");
@@ -16348,10 +16685,11 @@ pub fn render_er_diagram_svg(
         let key_col_w = measure.key_col_w.max(0.0);
         let comment_col_w = measure.comment_col_w.max(0.0);
 
-        let type_center = ox + type_col_w / 2.0;
-        let name_center = ox + type_col_w + name_col_w / 2.0;
-        let key_center = ox + type_col_w + name_col_w + key_col_w / 2.0;
-        let comment_center = ox + type_col_w + name_col_w + key_col_w + comment_col_w / 2.0;
+        let left_text_x = ox + pad / 2.0;
+        let type_left = left_text_x;
+        let name_left = left_text_x + type_col_w;
+        let key_left = left_text_x + type_col_w + name_col_w;
+        let comment_left = left_text_x + type_col_w + name_col_w + key_col_w;
 
         let mut row_top = sep_y;
         for row in &measure.rows {
@@ -16395,36 +16733,59 @@ pub fn render_er_diagram_svg(
                 .width
                 .max(0.0);
 
+            let type_mw_px = crate::er::calculate_text_width_like_mermaid_px(
+                measurer,
+                &attr_style,
+                &er_calc_text_input_for_calculate_text_width(&row.type_text),
+            ) + 100;
+            let name_mw_px = crate::er::calculate_text_width_like_mermaid_px(
+                measurer,
+                &attr_style,
+                &er_calc_text_input_for_calculate_text_width(&row.name_text),
+            ) + 100;
+            let keys_mw_px = crate::er::calculate_text_width_like_mermaid_px(
+                measurer,
+                &attr_style,
+                &er_calc_text_input_for_calculate_text_width(&row.key_text),
+            ) + 100;
+            let comment_mw_px = crate::er::calculate_text_width_like_mermaid_px(
+                measurer,
+                &attr_style,
+                &er_calc_text_input_for_calculate_text_width(&row.comment_text),
+            ) + 100;
+
             let _ = write!(
                 &mut out,
-                r#"<g class="label attribute-type" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: start;">{}"#,
-                fmt(type_center - type_w / 2.0),
+                r#"<g class="label attribute-type" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
+                fmt(type_left),
                 fmt(cell_y),
                 label_style_attr,
                 fmt(type_w),
                 fmt(line_h),
                 escape_xml(&label_div_color_prefix),
+                type_mw_px.max(0),
                 html_label_content(&row.type_text, &span_style_attr)
             );
             out.push_str("</div></foreignObject></g>");
 
             let _ = write!(
                 &mut out,
-                r#"<g class="label attribute-name" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: start;">{}"#,
-                fmt(name_center - name_w / 2.0),
+                r#"<g class="label attribute-name" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
+                fmt(name_left),
                 fmt(cell_y),
                 label_style_attr,
                 fmt(name_w),
                 fmt(line_h),
                 escape_xml(&label_div_color_prefix),
+                name_mw_px.max(0),
                 html_label_content(&row.name_text, &span_style_attr)
             );
             out.push_str("</div></foreignObject></g>");
 
             let _ = write!(
                 &mut out,
-                r#"<g class="label attribute-keys" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: start;">{}"#,
-                fmt(key_center - keys_w / 2.0),
+                r#"<g class="label attribute-keys" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
+                fmt(key_left),
                 fmt(cell_y),
                 label_style_attr,
                 fmt(keys_w),
@@ -16434,14 +16795,15 @@ pub fn render_er_diagram_svg(
                     line_h
                 }),
                 escape_xml(&label_div_color_prefix),
+                keys_mw_px.max(0),
                 html_label_content(&row.key_text, &span_style_attr)
             );
             out.push_str("</div></foreignObject></g>");
 
             let _ = write!(
                 &mut out,
-                r#"<g class="label attribute-comment" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: start;">{}"#,
-                fmt(comment_center - comment_w / 2.0),
+                r#"<g class="label attribute-comment" transform="translate({}, {})" {}><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: start;">{}"#,
+                fmt(comment_left),
                 fmt(cell_y),
                 label_style_attr,
                 fmt(comment_w),
@@ -16451,6 +16813,7 @@ pub fn render_er_diagram_svg(
                     line_h
                 }),
                 escape_xml(&label_div_color_prefix),
+                comment_mw_px.max(0),
                 html_label_content(&row.comment_text, &span_style_attr)
             );
             out.push_str("</div></foreignObject></g>");
@@ -16467,8 +16830,8 @@ pub fn render_er_diagram_svg(
             divider_style
         );
         // Two rough strokes for the header separator.
-        let d_h1 = rough_line_path_d(box_x0, sep_y, box_x1, sep_y);
-        let d_h2 = rough_line_path_d(box_x0, sep_y, box_x1, sep_y);
+        let d_h1 = rough_line_path_d(hand_drawn_seed, box_x0, sep_y, box_x1, sep_y);
+        let d_h2 = rough_line_path_d(hand_drawn_seed, box_x0, sep_y, box_x1, sep_y);
         let _ = write!(
             &mut out,
             r#"<g class="divider"><path d="{}"{} /></g>"#,
@@ -16484,7 +16847,7 @@ pub fn render_er_diagram_svg(
             divider_xs.push(ox + type_col_w + name_col_w + key_col_w);
         }
         for x in divider_xs {
-            let dv = rough_line_path_d(x, sep_y, x, box_y1);
+            let dv = rough_line_path_d(hand_drawn_seed, x, sep_y, x, box_y1);
             let _ = write!(
                 &mut out,
                 r#"<g class="divider"><path d="{}"{} /></g>"#,

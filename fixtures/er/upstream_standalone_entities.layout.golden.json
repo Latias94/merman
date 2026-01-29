@@ -13,9 +13,9 @@
         },
         {
           "id": "entity-MAINLAND-1",
-          "x": 296.0,
+          "x": 296.508,
           "y": 42.0,
-          "width": 112.0,
+          "width": 113.016,
           "height": 84.0,
           "is_cluster": false
         }
@@ -24,7 +24,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 352.0,
+        "max_x": 353.016,
         "max_y": 84.0
       }
     }
