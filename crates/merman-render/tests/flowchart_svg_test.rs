@@ -2,7 +2,9 @@ use futures::executor::block_on;
 use merman_core::{Engine, ParseOptions};
 use merman_render::model::LayoutDiagram;
 use merman_render::svg::{SvgRenderOptions, render_flowchart_v2_debug_svg};
+use merman_render::text::VendoredFontMetricsTextMeasurer;
 use merman_render::{LayoutOptions, layout_parsed};
+use std::path::PathBuf;
 
 fn fmt(v: f64) -> String {
     if !v.is_finite() {
@@ -56,4 +58,43 @@ fn flowchart_debug_svg_includes_cluster_positioning_metadata() {
         svg.contains(&expected),
         "expected debug SVG to include cluster diff/offset-y metadata"
     );
+}
+
+#[test]
+fn flowchart_v2_fontawesome_edge_label_width_matches_upstream() {
+    // Mermaid upstream fixture:
+    // fixtures/upstream-svgs/flowchart/upstream_flowchart_v2_icons_in_edge_labels_spec.svg
+    let mmd_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("fixtures")
+        .join("flowchart")
+        .join("upstream_flowchart_v2_icons_in_edge_labels_spec.mmd");
+    let text = std::fs::read_to_string(&mmd_path).expect("read fixture .mmd");
+
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(&text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let out = layout_parsed(
+        &parsed,
+        &LayoutOptions {
+            text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
+            ..Default::default()
+        },
+    )
+    .expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+
+    let edge = layout
+        .edges
+        .iter()
+        .find(|e| e.id == "L_C_F_0")
+        .expect("edge L_C_F_0");
+    let lbl = edge.label.as_ref().expect("edge label");
+    assert_eq!(lbl.width, 45.015625);
+    assert_eq!(lbl.height, 24.0);
 }

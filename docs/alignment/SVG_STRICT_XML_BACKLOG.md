@@ -10,9 +10,14 @@ Unlike DOM parity mode (used for day-to-day regression checks), `strict` canonic
 - full text contents
 - all geometry attributes (subject to `--dom-decimals`)
 
+Notes:
+
+- Strict canonicalization keeps identifier-like attributes byte-for-byte (e.g. `id="flowchart-A-0"` is not rewritten).
+- Strict canonicalization preserves mixed-content text segments (e.g. `foo<br />bar` keeps the `bar` tail text).
+
 ## Current status (as of 2026-01-29)
 
-Total strict mismatches: **283**
+Total strict mismatches: **276**
 
 Mismatch counts by diagram:
 
@@ -28,14 +33,25 @@ Mismatch counts by diagram:
 - `pie`: 11
 - `xychart`: 11
 - `c4`: 10
-- `flowchart`: 7
+- `flowchart`: 0
 
 Recently resolved:
 
 - `er`: 0 (was 5)
+- `flowchart`: 0 (was 7)
 - `journey`: 0 (was 8)
 - `requirement`: 0 (was 9)
 - `timeline`: 0 (was 1)
+
+### Flowchart notes
+
+- Strict parity for flowchart text metrics relies on a small set of vendored per-string overrides in
+  `crates/merman-render/src/generated/font_metrics_flowchart_11_12_2.rs` to exactly match
+  upstream `getBoundingClientRect()` / `getBBox()` lattice values (1/64px / binary fractions).
+- `<strong>/<b>` HTML runs use a full bold delta model in `crates/merman-render/src/text.rs` to
+  match Mermaid@11.12.2 upstream fixtures.
+- When text metrics change, some layout goldens may need regeneration via
+  `cargo run -p xtask -- update-layout-snapshots --filter <fixture>`.
 
 ## Workflow
 

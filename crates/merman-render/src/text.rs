@@ -122,9 +122,23 @@ pub fn ceil_to_1_64_px(v: f64) -> f64 {
     if !(v.is_finite() && v >= 0.0) {
         return 0.0;
     }
-    // Avoid "ceil to next 1/64" due to tiny positive FP drift (e.g. 2262.0000000000005 instead
-    // of 2262.0), which can bubble up into `viewBox`/`max-width` mismatches.
-    ((v * 64.0) - 1e-5).ceil() / 64.0
+    // Avoid "ceil to next 1/64" due to tiny FP drift (e.g. `...0000000002` over the exact
+    // lattice). Upstream Mermaid fixtures frequently land exactly on the 1/64px grid.
+    let x = v * 64.0;
+    let r = x.round();
+    if (x - r).abs() < 1e-4 {
+        return r / 64.0;
+    }
+    ((x) - 1e-5).ceil() / 64.0
+}
+
+pub fn round_to_1_64_px(v: f64) -> f64 {
+    if !(v.is_finite() && v >= 0.0) {
+        return 0.0;
+    }
+    let x = v * 64.0;
+    let r = (x + 0.5).floor();
+    r / 64.0
 }
 
 fn normalize_font_key(s: &str) -> String {
@@ -306,8 +320,8 @@ fn flowchart_default_italic_delta_em(ch: char) -> f64 {
     // per-character additive delta in `em` space.
     //
     // This constant matches the observed delta for common ASCII letters in upstream fixtures:
-    // e.g. `<em>bat</em>` widens by `25/64px` at 16px, i.e. `25/3072em`.
-    const DELTA_EM: f64 = 25.0 / 3072.0;
+    // e.g. `<em>bat</em>` widens by `3/8px` at 16px, i.e. `1/128em`.
+    const DELTA_EM: f64 = 1.0 / 128.0;
     match ch {
         'A'..='Z' | 'a'..='z' | '0'..='9' => DELTA_EM,
         _ => 0.0,
@@ -322,10 +336,9 @@ pub fn measure_html_with_flowchart_bold_deltas(
     wrap_mode: WrapMode,
 ) -> TextMetrics {
     // Mermaid HTML labels are measured via DOM (`getBoundingClientRect`) and do not always match a
-    // pure `canvas.measureText` bold delta model. Empirically (Mermaid@11.12.2 baselines) the bold
-    // delta contribution is ~50% of the canvas-derived deltas for the default flowchart font for
-    // "raw HTML" labels (`labelType=text/html` that contain `<b>/<strong>` markup).
-    const BOLD_DELTA_SCALE: f64 = 0.5;
+    // pure `canvas.measureText` bold delta model. For Mermaid@11.12.2 flowchart-v2 fixtures, the
+    // exported SVG baselines match a full `font-weight: bold` delta model for `<b>/<strong>` runs.
+    const BOLD_DELTA_SCALE: f64 = 1.0;
 
     // Mermaid supports inline FontAwesome icons via `<i class="fa fa-..."></i>` inside HTML
     // labels. Mermaid's exported SVG baselines do not include the icon glyph in `foreignObject`
@@ -356,6 +369,7 @@ pub fn measure_html_with_flowchart_bold_deltas(
 
     let mut plain = String::new();
     let mut deltas_px_by_line: Vec<f64> = vec![0.0];
+    let mut icon_on_line: Vec<bool> = vec![false];
     let mut strong_depth: usize = 0;
     let mut em_depth: usize = 0;
     let mut fa_icon_depth: usize = 0;
@@ -416,6 +430,20 @@ pub fn measure_html_with_flowchart_bold_deltas(
                             em_depth = em_depth.saturating_sub(1);
                         }
                     } else if is_fontawesome_icon_i {
+                        // Mermaid's FontAwesome icons in HTML labels contribute measurable width in
+                        // upstream fixtures (layout is computed with FA styles present), even though
+                        // the exported SVG does not embed the FA stylesheet.
+                        //
+                        // Model each `<i class="fa ..."></i>` as a fixed `1em` wide inline box.
+                        let line_idx = deltas_px_by_line.len().saturating_sub(1);
+                        // In practice the inline FA `<i/>` box measures slightly under `1em` in
+                        // upstream fixtures (Chromium `getBoundingClientRect()`), so subtract one
+                        // 1/64px lattice step to match the baselines.
+                        let icon_w = (style.font_size.max(1.0) - (1.0 / 64.0)).max(0.0);
+                        deltas_px_by_line[line_idx] += icon_w;
+                        if let Some(slot) = icon_on_line.get_mut(line_idx) {
+                            *slot = true;
+                        }
                         fa_icon_depth += 1;
                     } else {
                         em_depth += 1;
@@ -424,12 +452,14 @@ pub fn measure_html_with_flowchart_bold_deltas(
                 "br" => {
                     plain.push('\n');
                     deltas_px_by_line.push(0.0);
+                    icon_on_line.push(false);
                     prev_char = None;
                     prev_is_strong = false;
                 }
                 "p" | "div" | "li" | "tr" | "ul" | "ol" if is_closing => {
                     plain.push('\n');
                     deltas_px_by_line.push(0.0);
+                    icon_on_line.push(false);
                     prev_char = None;
                     prev_is_strong = false;
                 }
@@ -441,11 +471,13 @@ pub fn measure_html_with_flowchart_bold_deltas(
         let push_char = |decoded: char,
                          plain: &mut String,
                          deltas_px_by_line: &mut Vec<f64>,
+                         icon_on_line: &mut Vec<bool>,
                          prev_char: &mut Option<char>,
                          prev_is_strong: &mut bool| {
             plain.push(decoded);
             if decoded == '\n' {
                 deltas_px_by_line.push(0.0);
+                icon_on_line.push(false);
                 *prev_char = None;
                 *prev_is_strong = false;
                 return;
@@ -499,6 +531,7 @@ pub fn measure_html_with_flowchart_bold_deltas(
                         decoded,
                         &mut plain,
                         &mut deltas_px_by_line,
+                        &mut icon_on_line,
                         &mut prev_char,
                         &mut prev_is_strong,
                     );
@@ -518,27 +551,40 @@ pub fn measure_html_with_flowchart_bold_deltas(
             ch,
             &mut plain,
             &mut deltas_px_by_line,
+            &mut icon_on_line,
             &mut prev_char,
             &mut prev_is_strong,
         );
     }
 
-    let plain = plain.trim().to_string();
-    let base = measurer.measure_wrapped(&plain, style, max_width, wrap_mode);
+    // Keep leading whitespace: in HTML it can become significant when it follows a non-text
+    // element (e.g. `<i class="fa ..."></i> Car`), even though it would otherwise be collapsed.
+    let plain = plain.trim_end().to_string();
+    let base = measurer.measure_wrapped_raw(plain.trim(), style, max_width, wrap_mode);
 
     let mut lines = DeterministicTextMeasurer::normalized_text_lines(&plain);
     if lines.is_empty() {
         lines.push(String::new());
     }
     deltas_px_by_line.resize(lines.len(), 0.0);
+    icon_on_line.resize(lines.len(), false);
 
     let mut max_line_width: f64 = 0.0;
     for (idx, line) in lines.iter().enumerate() {
-        let w = measurer.measure_wrapped(line, style, None, wrap_mode).width;
+        let line = if icon_on_line[idx] {
+            line.trim_end()
+        } else {
+            line.trim()
+        };
+        let w = measurer
+            .measure_wrapped_raw(line, style, None, wrap_mode)
+            .width;
         max_line_width = max_line_width.max(w + deltas_px_by_line[idx]);
     }
 
-    let mut width = ceil_to_1_64_px(max_line_width);
+    // Mermaid's upstream baselines land on a 1/64px lattice (from DOM measurement). We round to
+    // the nearest lattice point rather than always ceiling, to avoid systematic +1/64 drift.
+    let mut width = round_to_1_64_px(max_line_width);
     if wrap_mode == WrapMode::HtmlLike {
         if let Some(w) = max_width.filter(|w| w.is_finite() && *w > 0.0) {
             if max_line_width > w {
@@ -795,7 +841,7 @@ pub fn measure_markdown_with_flowchart_bold_deltas(
     }
 
     let plain = plain.trim().to_string();
-    let base = measurer.measure_wrapped(&plain, style, max_width, wrap_mode);
+    let base = measurer.measure_wrapped_raw(&plain, style, max_width, wrap_mode);
 
     let mut lines = DeterministicTextMeasurer::normalized_text_lines(&plain);
     if lines.is_empty() {
@@ -805,11 +851,15 @@ pub fn measure_markdown_with_flowchart_bold_deltas(
 
     let mut max_line_width: f64 = 0.0;
     for (idx, line) in lines.iter().enumerate() {
-        let w = measurer.measure_wrapped(line, style, None, wrap_mode).width;
+        let w = measurer
+            .measure_wrapped_raw(line, style, None, wrap_mode)
+            .width;
         max_line_width = max_line_width.max(w + deltas_px_by_line[idx]);
     }
 
-    let mut width = ceil_to_1_64_px(max_line_width);
+    // Mermaid's upstream baselines land on a 1/64px lattice (from DOM measurement). We round to
+    // the nearest lattice point rather than always ceiling, to avoid systematic +1/64 drift.
+    let mut width = round_to_1_64_px(max_line_width);
     if wrap_mode == WrapMode::HtmlLike {
         if let Some(w) = max_width.filter(|w| w.is_finite() && *w > 0.0) {
             if max_line_width > w {
@@ -961,6 +1011,71 @@ mod tests {
             WrapMode::SvgLike,
         );
         assert_eq!(strong_svg.width, 30.09375);
+    }
+
+    #[test]
+    fn flowchart_html_unwrapped_width_matches_upstream_at_30px() {
+        // Mermaid upstream fixture:
+        // fixtures/upstream-svgs/flowchart/upstream_flowchart_v2_bigger_font_from_classes_spec.svg
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let style = TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_size: 30.0,
+            font_weight: None,
+        };
+
+        let m = measurer.measure_wrapped("I am a circle", &style, None, WrapMode::HtmlLike);
+        assert_eq!(m.width, 167.03125);
+        assert_eq!(m.height, 45.0);
+        assert_eq!(m.line_count, 1);
+    }
+
+    #[test]
+    fn flowchart_html_fontawesome_icon_width_matches_upstream() {
+        // Mermaid upstream fixture:
+        // fixtures/upstream-svgs/flowchart/upstream_flowchart_v2_icons_in_edge_labels_spec.svg
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let style = TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+        };
+
+        let html = "<p><i class=\"fa fa-car\"></i> Car</p>";
+        let m = measure_html_with_flowchart_bold_deltas(
+            &measurer,
+            html,
+            &style,
+            Some(200.0),
+            WrapMode::HtmlLike,
+        );
+        assert_eq!(m.width, 45.015625);
+        assert_eq!(m.height, 24.0);
+        assert_eq!(m.line_count, 1);
+    }
+
+    #[test]
+    fn flowchart_label_metrics_for_layout_fontawesome_matches_upstream() {
+        // Mermaid upstream fixture:
+        // fixtures/upstream-svgs/flowchart/upstream_flowchart_v2_icons_in_edge_labels_spec.svg
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let style = TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+        };
+
+        let m = crate::flowchart::flowchart_label_metrics_for_layout(
+            &measurer,
+            "fa:fa-car Car",
+            "text",
+            &style,
+            Some(200.0),
+            WrapMode::HtmlLike,
+        );
+        assert_eq!(m.width, 45.015625);
+        assert_eq!(m.height, 24.0);
+        assert_eq!(m.line_count, 1);
     }
 }
 
@@ -1718,7 +1833,12 @@ impl VendoredFontMetricsTextMeasurer {
             return 0.0;
         }
         // Keep identical semantics with `crate::text::ceil_to_1_64_px`.
-        ((v * 64.0) - 1e-5).ceil() / 64.0
+        let x = v * 64.0;
+        let r = x.round();
+        if (x - r).abs() < 1e-4 {
+            return r / 64.0;
+        }
+        ((x) - 1e-5).ceil() / 64.0
     }
 
     fn split_token_to_width_px(
@@ -1941,6 +2061,21 @@ fn vendored_measure_wrapped_impl(
         &[]
     };
 
+    let html_override_px = |em: f64| -> f64 {
+        // `html_overrides` entries are generated from upstream fixtures by dividing the measured
+        // pixel width by `base_font_size_px`. When a fixture applies a non-default `font-size`
+        // via CSS (e.g. flowchart class definitions), the recorded width already reflects that
+        // larger font size, so we must *not* scale it again by `font_size`.
+        //
+        // Empirically (Mermaid@11.12.2), upstream HTML label widths in those cases match
+        // `em * base_font_size_px` rather than `em * font_size`.
+        if (font_size - table.base_font_size_px).abs() < 0.01 {
+            em * font_size
+        } else {
+            em * table.base_font_size_px
+        }
+    };
+
     let er_html_width_override_px = |line: &str| -> Option<f64> {
         // ER strict DOM baselines in Mermaid's test fixtures record the final HTML label width
         // via `getBoundingClientRect()` into `foreignObject width="..."` (1/64px lattice). For
@@ -1970,7 +2105,7 @@ fn vendored_measure_wrapped_impl(
             if let Some(em) =
                 VendoredFontMetricsTextMeasurer::lookup_html_override_em(html_overrides, &line)
             {
-                raw_w = raw_w.max(em * font_size);
+                raw_w = raw_w.max(html_override_px(em));
             } else {
                 raw_w = raw_w.max(VendoredFontMetricsTextMeasurer::line_width_px(
                     table.entries,
@@ -2018,7 +2153,7 @@ fn vendored_measure_wrapped_impl(
                 if let Some(em) =
                     VendoredFontMetricsTextMeasurer::lookup_html_override_em(html_overrides, line)
                 {
-                    width = width.max(em * font_size);
+                    width = width.max(html_override_px(em));
                 } else {
                     width = width.max(VendoredFontMetricsTextMeasurer::line_width_px(
                         table.entries,
@@ -2053,9 +2188,9 @@ fn vendored_measure_wrapped_impl(
                 width = width.min(w);
             }
         }
-        // Empirically, Mermaid's HTML label widths (via `getBoundingClientRect()`) behave like
-        // `ceil(width * 64) / 64` over the underlying text advances.
-        width = VendoredFontMetricsTextMeasurer::ceil_to_1_64_px(width);
+        // Empirically, upstream HTML label widths (via `getBoundingClientRect()`) land on a 1/64px
+        // lattice. Quantize to that grid to keep our layout math stable.
+        width = round_to_1_64_px(width);
         if let Some(w) = max_width {
             width = width.min(w);
         }

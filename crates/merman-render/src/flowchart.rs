@@ -3492,11 +3492,12 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
         _ => {
             let mut t = label.replace("\r\n", "\n");
             if html_labels || label_type == "html" {
-                // Mermaid converts `fa:fa-...` / `fas:fa-...` tokens into `<i class="..."></i>`
-                // during HTML label rendering. In exported SVG fixtures the FontAwesome CSS is not
-                // embedded, so these `<i/>` elements contribute `0` width and `0` textContent.
-                // Mirror that by stripping the icon token before we compute a headless text run.
-                t = crate::text::replace_fontawesome_icons(&t);
+                // Keep the raw label text for layout, then strip HTML tags/entities.
+                //
+                // Note: in Mermaid@11.12.2 flowchart-v2, FontAwesome icon tokens (e.g. `fa:fa-car`)
+                // can affect the measured label width even though the exported SVG replaces them
+                // with empty `<i class="fa ..."></i>` nodes (FontAwesome CSS is not embedded).
+                // For strict parity we therefore *do not* rewrite the `fa:` token here.
                 t = strip_html_for_layout(&t);
             } else {
                 t = t.replace("<br />", "\n");
