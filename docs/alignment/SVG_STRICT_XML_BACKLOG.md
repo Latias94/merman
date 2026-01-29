@@ -10,9 +10,9 @@ Unlike DOM parity mode (used for day-to-day regression checks), `strict` canonic
 - full text contents
 - all geometry attributes (subject to `--dom-decimals`)
 
-## Current status (as of 2026-01-28)
+## Current status (as of 2026-01-29)
 
-Total strict mismatches: **295**
+Total strict mismatches: **286**
 
 Mismatch counts by diagram:
 
@@ -29,12 +29,12 @@ Mismatch counts by diagram:
 - `xychart`: 11
 - `c4`: 10
 - `er`: 10
-- `requirement`: 9
 
 Recently resolved:
 
 - `journey`: 0 (was 8)
 - `timeline`: 0 (was 8)
+- `requirement`: 0 (was 9)
 
 ## Workflow
 

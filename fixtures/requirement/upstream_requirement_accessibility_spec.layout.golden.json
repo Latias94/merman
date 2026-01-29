@@ -5,19 +5,19 @@
       "nodes": [
         {
           "id": "test_name",
-          "x": 0.0,
-          "y": 0.0,
-          "width": 185.2,
+          "x": 8.0,
+          "y": 8.0,
+          "width": 142.281,
           "height": 136.0,
           "is_cluster": false
         }
       ],
       "edges": [],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 185.2,
-        "max_y": 136.0
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 150.281,
+        "max_y": 144.0
       }
     }
   }

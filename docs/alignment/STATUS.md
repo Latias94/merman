@@ -112,6 +112,8 @@ Recent progress: flowchart-v2 `data-points` now snaps coordinates that are extre
 while preserving the common `next_up(f32)` rounding artifacts seen in upstream baselines (e.g. `...0001`).
 As of 2026-01-27, `xtask compare-svg-xml --diagram flowchart --dom-mode strict --dom-decimals 3` reports 0 flowchart
 mismatches.
+As of 2026-01-29, `xtask compare-svg-xml --diagram requirement --dom-mode strict --dom-decimals 3` reports 0
+requirement mismatches (for the pinned Mermaid@11.12.2 upstream baselines).
 See `docs/alignment/FLOWCHART_SVG_STRICT_XML_GAPS.md` for a workflow to debug float-level `data-points` drift when
 new fixtures are introduced.
 Recent progress: flowchart fixtures now cover `flow-style.spec.js` and `flow-interactions.spec.js` more

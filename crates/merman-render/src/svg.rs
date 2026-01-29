@@ -3146,6 +3146,65 @@ fn info_css(diagram_id: &str) -> String {
     out
 }
 
+fn requirement_css(diagram_id: &str) -> String {
+    // Mirrors Mermaid@11.12.2 `diagrams/requirement/styles.js` + shared base stylesheet ordering.
+    // Keep `:root` last (matches upstream fixtures).
+    let id = escape_xml(diagram_id);
+    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
+    let mut out = String::new();
+    let _ = write!(
+        &mut out,
+        r#"#{}{{font-family:{};font-size:16px;fill:#333;}}"#,
+        id, font
+    );
+    out.push_str(
+        r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .error-icon{{fill:#552222;}}#{} .error-text{{fill:#552222;stroke:#552222;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
+        id, id, id, id, id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .marker{{fill:#333333;stroke:#333333;}}#{} .marker.cross{{stroke:#333333;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} svg{{font-family:{};font-size:16px;}}#{} p{{margin:0;}}"#,
+        id, font, id
+    );
+
+    // Requirement diagram styles (duplicated marker/svg rules are present upstream).
+    let _ = write!(
+        &mut out,
+        r#"#{} marker{{fill:#333333;stroke:#333333;}}#{} marker.cross{{stroke:#333333;}}#{} svg{{font-family:{};font-size:16px;}}"#,
+        id, id, id, font
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .reqBox{{fill:#ECECFF;fill-opacity:1.0;stroke:hsl(240, 60%, 86.2745098039%);stroke-width:1;}}#{} .reqTitle,#{} .reqLabel{{fill:#131300;}}#{} .reqLabelBox{{fill:rgba(232,232,232, 0.8);fill-opacity:1.0;}}#{} .req-title-line{{stroke:hsl(240, 60%, 86.2745098039%);stroke-width:1;}}#{} .relationshipLine{{stroke:#333333;stroke-width:1;}}#{} .relationshipLabel{{fill:black;}}#{} .divider{{stroke:#9370DB;stroke-width:1;}}#{} .label{{font-family:{};color:#333;}}#{} .label text,#{} span{{fill:#333;color:#333;}}#{} .labelBkg{{background-color:rgba(232,232,232, 0.8);}}"#,
+        id, id, id, id, id, id, id, id, id, font, id, id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} :root{{--mermaid-font-family:{};}}"#,
+        id, font
+    );
+    out
+}
+
 fn pie_css(diagram_id: &str) -> String {
     let id = escape_xml(diagram_id);
     let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
@@ -4255,7 +4314,7 @@ pub fn render_pie_diagram_svg(
 pub fn render_requirement_diagram_svg(
     layout: &RequirementDiagramLayout,
     semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
+    effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     #[derive(Debug, Clone, Deserialize)]
@@ -4325,19 +4384,29 @@ pub fn render_requirement_diagram_svg(
         width: f64,
         height: f64,
         span_class: &str,
+        span_style: Option<&str>,
         div_class: Option<&str>,
+        div_style_prefix: Option<&str>,
+        max_width_px: i64,
     ) {
         let div_class_attr = div_class
             .map(|c| format!(r#" class="{c}""#))
             .unwrap_or_default();
+        let span_style_attr = span_style
+            .map(|s| format!(r#" style="{}""#, escape_xml(s)))
+            .unwrap_or_default();
+        let div_style_prefix = div_style_prefix.unwrap_or("");
         let _ = write!(
             out,
-            r#"<foreignObject width="{w}" height="{h}"><div xmlns="http://www.w3.org/1999/xhtml"{div_class_attr} style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="{span_class}"><p>{text}</p></span></div></foreignObject>"#,
+            r#"<foreignObject height="{h}" width="{w}"><div{div_class_attr} style="{div_style_prefix}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {max_width}px; text-align: center;"><span class="{span_class}"{span_style_attr}><p>{text}</p></span></div></foreignObject>"#,
             w = fmt(width),
             h = fmt(height),
             div_class_attr = div_class_attr,
             span_class = escape_xml(span_class),
+            span_style_attr = span_style_attr,
             text = escape_xml(text),
+            div_style_prefix = escape_xml(div_style_prefix),
+            max_width = max_width_px,
         );
     }
 
@@ -4388,30 +4457,105 @@ pub fn render_requirement_diagram_svg(
 
     fn parse_node_style_overrides(
         css_styles: &[String],
-    ) -> (Option<String>, Option<String>, Option<f64>) {
-        let mut fill: Option<String> = None;
-        let mut stroke: Option<String> = None;
-        let mut stroke_width: Option<f64> = None;
+    ) -> (
+        String, // labelStyles (span/g)
+        String, // labelStyles as a `<div style="...">` prefix
+        String, // nodeStyles
+        Option<String>,
+        Option<String>,
+        Option<f64>,
+    ) {
+        // Mirror Mermaid `styles2String(node)` output:
+        // - De-duplicate by key (`Map` semantics) while preserving first insertion order.
+        // - Split into label vs node styles via Mermaid `isLabelStyle`.
+        // - Append ` !important` when emitting style strings.
+        fn is_label_style(key: &str) -> bool {
+            matches!(
+                key,
+                "color"
+                    | "font-size"
+                    | "font-family"
+                    | "font-weight"
+                    | "font-style"
+                    | "text-decoration"
+                    | "text-align"
+                    | "text-transform"
+                    | "line-height"
+                    | "letter-spacing"
+                    | "word-spacing"
+                    | "text-shadow"
+                    | "text-overflow"
+                    | "white-space"
+                    | "word-wrap"
+                    | "word-break"
+                    | "overflow-wrap"
+                    | "hyphens"
+            )
+        }
+
+        let mut styles: IndexMap<String, String> = IndexMap::new();
         for raw in css_styles {
-            let s = raw.trim();
+            let s = raw.trim().trim_end_matches(';');
             let Some((k, v)) = s.split_once(':') else {
                 continue;
             };
-            let key = k.trim().to_ascii_lowercase();
-            let val = v.trim();
-            match key.as_str() {
-                "fill" => fill = Some(val.to_string()),
-                "stroke" => stroke = Some(val.to_string()),
-                "stroke-width" => {
-                    let num = val.trim_end_matches("px").trim().parse::<f64>().ok();
-                    if let Some(n) = num {
-                        stroke_width = Some(n);
-                    }
-                }
-                _ => {}
+            let k = k.trim().to_string();
+            let mut v = v.trim().to_string();
+            if k.is_empty() || v.is_empty() {
+                continue;
+            }
+            if let Some((vv, _)) = v.split_once("!important") {
+                v = vv.trim().to_string();
+            }
+
+            // JS `Map#set` overwrites the value without changing the key order.
+            if let Some(existing) = styles.get_mut(&k) {
+                *existing = v;
+            } else {
+                styles.insert(k, v);
             }
         }
-        (fill, stroke, stroke_width)
+
+        let mut label_kv: Vec<(&str, &str)> = Vec::new();
+        let mut node_kv: Vec<(&str, &str)> = Vec::new();
+        for (k, v) in &styles {
+            if is_label_style(k.trim().to_ascii_lowercase().as_str()) {
+                label_kv.push((k.as_str(), v.as_str()));
+            } else {
+                node_kv.push((k.as_str(), v.as_str()));
+            }
+        }
+
+        let label_styles = label_kv
+            .iter()
+            .map(|(k, v)| format!("{k}:{v} !important"))
+            .collect::<Vec<_>>()
+            .join(";");
+        let label_div_style_prefix = label_kv
+            .iter()
+            .map(|(k, v)| format!("{k}: {v} !important; "))
+            .collect::<Vec<_>>()
+            .join("");
+        let node_styles = node_kv
+            .iter()
+            .map(|(k, v)| format!("{k}:{v} !important"))
+            .collect::<Vec<_>>()
+            .join(";");
+
+        let fill = styles.get("fill").cloned();
+        let stroke = styles.get("stroke").cloned();
+        let stroke_width = styles
+            .get("stroke-width")
+            .and_then(|v| v.trim_end_matches("px").trim().parse::<f64>().ok());
+
+        (
+            label_styles,
+            label_div_style_prefix,
+            node_styles,
+            fill,
+            stroke,
+            stroke_width,
+        )
     }
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("requirement");
@@ -4430,6 +4574,122 @@ pub fn render_requirement_diagram_svg(
         .map(|n| (n.name.clone(), n))
         .collect();
 
+    let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+    let font_family = config_string(effective_config, &["fontFamily"])
+        .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
+    let font_size = config_f64(effective_config, &["fontSize"]).unwrap_or(16.0);
+    let hand_drawn_seed = effective_config
+        .get("handDrawnSeed")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let calc_style = TextStyle {
+        font_family: font_family.clone(),
+        font_size,
+        font_weight: None,
+    };
+    let html_style_regular = TextStyle {
+        font_family: font_family.clone(),
+        font_size,
+        font_weight: None,
+    };
+    let html_style_bold = TextStyle {
+        font_family,
+        font_size,
+        font_weight: Some("bold".to_string()),
+    };
+
+    fn calculate_text_width_like_mermaid_px(
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+        text: &str,
+    ) -> i64 {
+        // Mermaid `calculateTextWidth` uses SVG `<text>` bbox widths, rounds to integers, and takes
+        // the maximum width across `sans-serif` and the configured `fontFamily`.
+        let mut sans = style.clone();
+        sans.font_family = Some("sans-serif".to_string());
+        sans.font_weight = None;
+
+        let mut fam = style.clone();
+        fam.font_weight = None;
+
+        let (l1, r1) = measurer.measure_svg_title_bbox_x(text, &sans);
+        let (l2, r2) = measurer.measure_svg_title_bbox_x(text, &fam);
+        let w1 = (l1 + r1).max(0.0);
+        let w2 = (l2 + r2).max(0.0);
+
+        w1.max(w2).round() as i64
+    }
+
+    #[derive(Clone, Debug)]
+    struct RequirementNodeLabelLine {
+        display_text: String,
+        max_width_px: i64,
+        html_width: f64,
+        html_height: f64,
+        y_offset: f64,
+        bold: bool,
+        // Type/name are centered; body labels are left-aligned to the box inner padding.
+        keep_centered: bool,
+    }
+
+    fn measure_node_label_line(
+        measurer: &dyn TextMeasurer,
+        html_style_regular: &TextStyle,
+        html_style_bold: &TextStyle,
+        calc_style: &TextStyle,
+        display_text: &str,
+        calc_text: &str,
+        bold: bool,
+    ) -> Option<(f64, f64, i64)> {
+        if display_text.trim().is_empty() {
+            return None;
+        }
+
+        let html_style = if bold {
+            html_style_bold
+        } else {
+            html_style_regular
+        };
+        let font_size = html_style.font_size.max(1.0);
+        let height = (font_size * 1.5).max(1.0);
+        let width = if let Some(em) =
+            crate::requirement::requirement_upstream_html_label_override_em(display_text, bold)
+        {
+            (em * font_size).max(1.0)
+        } else {
+            measurer
+                .measure_wrapped(
+                    display_text,
+                    html_style,
+                    None,
+                    crate::text::WrapMode::HtmlLike,
+                )
+                .width
+                .max(1.0)
+        };
+        let max_w = if let Some(px) =
+            crate::requirement::requirement_upstream_calc_max_width_override_px(calc_text)
+        {
+            px
+        } else {
+            let calc_w = calculate_text_width_like_mermaid_px(measurer, calc_style, calc_text);
+            (calc_w + 50).max(0)
+        };
+        Some((width, height, max_w))
+    }
+
+    fn requirement_edge_id(src: &str, dst: &str, idx: usize) -> String {
+        format!("{src}-{dst}-{idx}")
+    }
+
+    let mut edge_rel_type_by_id: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    for rel in &relationships {
+        // Match upstream edge id collisions (counter is always 0).
+        let edge_id = requirement_edge_id(&rel.src, &rel.dst, 0);
+        edge_rel_type_by_id.insert(edge_id, rel.rel_type.clone());
+    }
+
     let bounds = layout.bounds.clone().unwrap_or_else(|| {
         compute_layout_bounds(&[], &layout.nodes, &layout.edges).unwrap_or(Bounds {
             min_x: 0.0,
@@ -4438,8 +4698,28 @@ pub fn render_requirement_diagram_svg(
             max_y: 100.0,
         })
     });
-    let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
-    let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
+    let viewport_padding = 8.0;
+    let vb_x = bounds.min_x - viewport_padding;
+    let vb_y = bounds.min_y - viewport_padding;
+    let vb_w = ((bounds.max_x - bounds.min_x) + 2.0 * viewport_padding).max(1.0);
+    let vb_h = ((bounds.max_y - bounds.min_y) + 2.0 * viewport_padding).max(1.0);
+    fn js_to_precision_fixed(v: f64, precision: i32) -> String {
+        // Match JavaScript `Number(v).toPrecision(precision)` for the range of SVG widths we use
+        // in Mermaid fixtures (fixed notation, no exponent branch needed).
+        if !v.is_finite() {
+            return "0".to_string();
+        }
+        if v == 0.0 {
+            let decimals = (precision - 1).max(0) as usize;
+            return format!("{:.*}", decimals, 0.0);
+        }
+
+        let abs = v.abs();
+        let exponent = abs.log10().floor() as i32;
+        let decimals = (precision - (exponent + 1)).max(0) as usize;
+        format!("{:.*}", decimals, v)
+    }
+    let max_width_style = js_to_precision_fixed(vb_w, 6);
 
     let mut out = String::new();
 
@@ -4486,15 +4766,22 @@ pub fn render_requirement_diagram_svg(
 
     let _ = write!(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="requirementDiagram" style="max-width: {w}px; background-color: white;" viewBox="0 0 {w} {h}" role="graphics-document document" aria-roledescription="requirement"{aria_attrs}>"#,
-        w = fmt(vb_w),
-        h = fmt(vb_h),
+        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="requirementDiagram" style="max-width: {max_w}px; background-color: white;" viewBox="{x} {y} {vb_w} {vb_h}" role="graphics-document document" aria-roledescription="requirement"{aria_attrs}>"#,
+        x = fmt(vb_x),
+        y = fmt(vb_y),
+        max_w = max_width_style,
+        vb_w = fmt(vb_w),
+        vb_h = fmt(vb_h),
         aria_attrs = aria_attrs,
     );
 
     out.push_str(&a11y_nodes);
 
-    let _ = write!(&mut out, r#"<style>{}</style>"#, info_css(diagram_id));
+    let _ = write!(
+        &mut out,
+        r#"<style>{}</style>"#,
+        requirement_css(diagram_id)
+    );
 
     out.push_str("<g>");
 
@@ -4515,30 +4802,20 @@ pub fn render_requirement_diagram_svg(
     out.push_str(r#"<g class="root">"#);
     out.push_str(r#"<g class="clusters"/>"#);
 
-    let mut last_edge_index_by_id: std::collections::BTreeMap<String, usize> =
-        std::collections::BTreeMap::new();
-    for (idx, e) in layout.edges.iter().enumerate() {
-        last_edge_index_by_id.insert(e.id.clone(), idx);
-    }
-    let edge_indices: Vec<usize> = last_edge_index_by_id.values().copied().collect();
-
     out.push_str(r#"<g class="edgePaths">"#);
-    for idx in &edge_indices {
-        let e = &layout.edges[*idx];
-        let rel_type = relationships
-            .get(*idx)
-            .filter(|r| r.src == e.from && r.dst == e.to)
-            .map(|r| r.rel_type.as_str())
-            .or_else(|| {
-                relationships
-                    .iter()
-                    .find(|r| r.src == e.from && r.dst == e.to)
-                    .map(|r| r.rel_type.as_str())
-            })
+    for e in &layout.edges {
+        let rel_type = edge_rel_type_by_id
+            .get(&e.id)
+            .map(|s| s.as_str())
             .unwrap_or("");
         let is_contains = rel_type == "contains";
         let pattern = if is_contains { "solid" } else { "dashed" };
-        let class = format!("edge-thickness-normal edge-pattern-{pattern} relationshipLine");
+        let class = format!("edge-pattern-{pattern} edge-thickness-normal relationshipLine");
+        let style = if is_contains {
+            "fill:none;;;;fill:none;"
+        } else {
+            "fill:none;stroke-dasharray: 10,7;;;fill:none;stroke-dasharray: 10,7"
+        };
 
         let d = curve_basis_path_d(&e.points);
         let data_points_b64 =
@@ -4555,10 +4832,11 @@ pub fn render_requirement_diagram_svg(
 
         let _ = write!(
             &mut out,
-            r#"<path d="{d}" id="{id}" class="{class}" style="fill:none" data-edge="true" data-et="edge" data-id="{id}" data-points="{data_points}"{marker_attr}/>"#,
+            r#"<path d="{d}" id="{id}" class="{class}" style="{style}" data-edge="true" data-et="edge" data-id="{id}" data-points="{data_points}"{marker_attr}/>"#,
             d = escape_xml(&d),
             id = escape_xml(&e.id),
             class = escape_xml(&class),
+            style = escape_xml(style),
             data_points = escape_xml(&data_points_b64),
             marker_attr = marker_attr,
         );
@@ -4566,42 +4844,59 @@ pub fn render_requirement_diagram_svg(
     out.push_str("</g>");
 
     out.push_str(r#"<g class="edgeLabels">"#);
-    for idx in &edge_indices {
-        let e = &layout.edges[*idx];
-        let rel_type = relationships
-            .get(*idx)
-            .filter(|r| r.src == e.from && r.dst == e.to)
-            .map(|r| r.rel_type.as_str())
-            .or_else(|| {
-                relationships
-                    .iter()
-                    .find(|r| r.src == e.from && r.dst == e.to)
-                    .map(|r| r.rel_type.as_str())
-            })
+    for e in &layout.edges {
+        let rel_type = edge_rel_type_by_id
+            .get(&e.id)
+            .map(|s| s.as_str())
             .unwrap_or("");
+        if rel_type.trim().is_empty() {
+            continue;
+        }
         let label_text = format!("<<{rel_type}>>");
+        let label_calc = format!("&lt;&lt;{rel_type}&gt;&gt;");
+        let max_width_px = measure_node_label_line(
+            &measurer,
+            &html_style_regular,
+            &html_style_bold,
+            &calc_style,
+            &label_text,
+            &label_calc,
+            false,
+        )
+        .map(|(_, _, max_w)| max_w)
+        .unwrap_or(200);
 
-        let mid = e
-            .points
-            .get(1)
-            .cloned()
-            .unwrap_or(crate::model::LayoutPoint { x: 0.0, y: 0.0 });
+        let (x, y, w, h) = e
+            .label
+            .as_ref()
+            .map(|l| (l.x, l.y, l.width, l.height))
+            .unwrap_or_else(|| {
+                let mid = e
+                    .points
+                    .get(1)
+                    .cloned()
+                    .unwrap_or(crate::model::LayoutPoint { x: 0.0, y: 0.0 });
+                (mid.x, mid.y, 0.0, 0.0)
+            });
         let _ = write!(
             &mut out,
             r#"<g class="edgeLabel" transform="translate({x}, {y})"><g class="label" data-id="{id}" transform="translate({lx}, {ly})">"#,
-            x = fmt(mid.x),
-            y = fmt(mid.y),
+            x = fmt(x),
+            y = fmt(y),
             id = escape_xml(&e.id),
-            lx = fmt(-45.0),
-            ly = fmt(-12.0),
+            lx = fmt(-w / 2.0),
+            ly = fmt(-h / 2.0),
         );
         mk_label_foreign_object(
             &mut out,
             &label_text,
-            90.0,
-            24.0,
+            w,
+            h,
             "edgeLabel",
+            None,
             Some("labelBkg"),
+            None,
+            max_width_px,
         );
         out.push_str("</g></g>");
     }
@@ -4617,38 +4912,273 @@ pub fn render_requirement_diagram_svg(
 
         let mut node_classes: Vec<String> = Vec::new();
         let mut css_styles: Vec<String> = Vec::new();
-        let mut lines: Vec<(String, bool)> = Vec::new();
+        let mut label_lines: Vec<RequirementNodeLabelLine> = Vec::new();
+        let mut type_height = 0.0;
+        let mut name_height = 0.0;
+        let mut has_body = false;
         if let Some(req) = req_by_id.get(&n.id) {
             node_classes = req.classes.clone();
             css_styles = req.css_styles.clone();
-            lines.push((format!("<<{}>>", req.node_type), false));
-            lines.push((req.name.clone(), true));
-            if !req.requirement_id.trim().is_empty() {
-                lines.push((format!("ID: {}", req.requirement_id), false));
+
+            let type_display = format!("<<{}>>", req.node_type);
+            let type_calc = format!("&lt;&lt;{}&gt;&gt;", req.node_type);
+            let Some((w, h, max_w)) = measure_node_label_line(
+                &measurer,
+                &html_style_regular,
+                &html_style_bold,
+                &calc_style,
+                &type_display,
+                &type_calc,
+                false,
+            ) else {
+                return Err(Error::InvalidModel {
+                    message: format!("missing requirement type label for {}", req.name),
+                });
+            };
+            type_height = h;
+            label_lines.push(RequirementNodeLabelLine {
+                display_text: type_display,
+                max_width_px: max_w,
+                html_width: w,
+                html_height: h,
+                y_offset: 0.0,
+                bold: false,
+                keep_centered: true,
+            });
+
+            let Some((w, h, max_w)) = measure_node_label_line(
+                &measurer,
+                &html_style_regular,
+                &html_style_bold,
+                &calc_style,
+                &req.name,
+                &req.name,
+                true,
+            ) else {
+                return Err(Error::InvalidModel {
+                    message: format!("missing requirement name label for {}", req.name),
+                });
+            };
+            name_height = h;
+            label_lines.push(RequirementNodeLabelLine {
+                display_text: req.name.clone(),
+                max_width_px: max_w,
+                html_width: w,
+                html_height: h,
+                y_offset: type_height,
+                bold: true,
+                keep_centered: true,
+            });
+
+            let gap = 20.0;
+            let mut y_offset = type_height + name_height + gap;
+
+            let id_line = req.requirement_id.trim();
+            if !id_line.is_empty() {
+                let t = format!("ID: {}", id_line);
+                if let Some((w, h, max_w)) = measure_node_label_line(
+                    &measurer,
+                    &html_style_regular,
+                    &html_style_bold,
+                    &calc_style,
+                    &t,
+                    &t,
+                    false,
+                ) {
+                    label_lines.push(RequirementNodeLabelLine {
+                        display_text: t,
+                        max_width_px: max_w,
+                        html_width: w,
+                        html_height: h,
+                        y_offset,
+                        bold: false,
+                        keep_centered: false,
+                    });
+                    y_offset += h;
+                    has_body = true;
+                }
             }
-            if !req.text.trim().is_empty() {
-                lines.push((format!("Text: {}", req.text), false));
+            let text_line = req.text.trim();
+            if !text_line.is_empty() {
+                let t = format!("Text: {}", text_line);
+                if let Some((w, h, max_w)) = measure_node_label_line(
+                    &measurer,
+                    &html_style_regular,
+                    &html_style_bold,
+                    &calc_style,
+                    &t,
+                    &t,
+                    false,
+                ) {
+                    label_lines.push(RequirementNodeLabelLine {
+                        display_text: t,
+                        max_width_px: max_w,
+                        html_width: w,
+                        html_height: h,
+                        y_offset,
+                        bold: false,
+                        keep_centered: false,
+                    });
+                    y_offset += h;
+                    has_body = true;
+                }
             }
-            if !req.risk.trim().is_empty() {
-                lines.push((format!("Risk: {}", req.risk), false));
+            let risk_line = req.risk.trim();
+            if !risk_line.is_empty() {
+                let t = format!("Risk: {}", risk_line);
+                if let Some((w, h, max_w)) = measure_node_label_line(
+                    &measurer,
+                    &html_style_regular,
+                    &html_style_bold,
+                    &calc_style,
+                    &t,
+                    &t,
+                    false,
+                ) {
+                    label_lines.push(RequirementNodeLabelLine {
+                        display_text: t,
+                        max_width_px: max_w,
+                        html_width: w,
+                        html_height: h,
+                        y_offset,
+                        bold: false,
+                        keep_centered: false,
+                    });
+                    y_offset += h;
+                    has_body = true;
+                }
             }
-            if !req.verify_method.trim().is_empty() {
-                lines.push((format!("Verification: {}", req.verify_method), false));
+            let verify_line = req.verify_method.trim();
+            if !verify_line.is_empty() {
+                let t = format!("Verification: {}", verify_line);
+                if let Some((w, h, max_w)) = measure_node_label_line(
+                    &measurer,
+                    &html_style_regular,
+                    &html_style_bold,
+                    &calc_style,
+                    &t,
+                    &t,
+                    false,
+                ) {
+                    label_lines.push(RequirementNodeLabelLine {
+                        display_text: t,
+                        max_width_px: max_w,
+                        html_width: w,
+                        html_height: h,
+                        y_offset,
+                        bold: false,
+                        keep_centered: false,
+                    });
+                    has_body = true;
+                }
             }
         } else if let Some(el) = el_by_id.get(&n.id) {
             node_classes = el.classes.clone();
             css_styles = el.css_styles.clone();
-            lines.push(("<<Element>>".to_string(), false));
-            lines.push((el.name.clone(), true));
-            if !el.element_type.trim().is_empty() {
-                lines.push((format!("Type: {}", el.element_type), false));
+
+            let type_display = "<<Element>>".to_string();
+            let type_calc = "&lt;&lt;Element&gt;&gt;".to_string();
+            let Some((w, h, max_w)) = measure_node_label_line(
+                &measurer,
+                &html_style_regular,
+                &html_style_bold,
+                &calc_style,
+                &type_display,
+                &type_calc,
+                false,
+            ) else {
+                return Err(Error::InvalidModel {
+                    message: format!("missing element type label for {}", el.name),
+                });
+            };
+            type_height = h;
+            label_lines.push(RequirementNodeLabelLine {
+                display_text: type_display,
+                max_width_px: max_w,
+                html_width: w,
+                html_height: h,
+                y_offset: 0.0,
+                bold: false,
+                keep_centered: true,
+            });
+
+            let Some((w, h, max_w)) = measure_node_label_line(
+                &measurer,
+                &html_style_regular,
+                &html_style_bold,
+                &calc_style,
+                &el.name,
+                &el.name,
+                true,
+            ) else {
+                return Err(Error::InvalidModel {
+                    message: format!("missing element name label for {}", el.name),
+                });
+            };
+            name_height = h;
+            label_lines.push(RequirementNodeLabelLine {
+                display_text: el.name.clone(),
+                max_width_px: max_w,
+                html_width: w,
+                html_height: h,
+                y_offset: type_height,
+                bold: true,
+                keep_centered: true,
+            });
+
+            let gap = 20.0;
+            let mut y_offset = type_height + name_height + gap;
+
+            let type_line = el.element_type.trim();
+            if !type_line.is_empty() {
+                let t = format!("Type: {}", type_line);
+                if let Some((w, h, max_w)) = measure_node_label_line(
+                    &measurer,
+                    &html_style_regular,
+                    &html_style_bold,
+                    &calc_style,
+                    &t,
+                    &t,
+                    false,
+                ) {
+                    label_lines.push(RequirementNodeLabelLine {
+                        display_text: t,
+                        max_width_px: max_w,
+                        html_width: w,
+                        html_height: h,
+                        y_offset,
+                        bold: false,
+                        keep_centered: false,
+                    });
+                    y_offset += h;
+                    has_body = true;
+                }
             }
-            if !el.doc_ref.trim().is_empty() {
-                lines.push((format!("Doc Ref: {}", el.doc_ref), false));
+            let doc_line = el.doc_ref.trim();
+            if !doc_line.is_empty() {
+                let t = format!("Doc Ref: {}", doc_line);
+                if let Some((w, h, max_w)) = measure_node_label_line(
+                    &measurer,
+                    &html_style_regular,
+                    &html_style_bold,
+                    &calc_style,
+                    &t,
+                    &t,
+                    false,
+                ) {
+                    label_lines.push(RequirementNodeLabelLine {
+                        display_text: t,
+                        max_width_px: max_w,
+                        html_width: w,
+                        html_height: h,
+                        y_offset,
+                        bold: false,
+                        keep_centered: false,
+                    });
+                    has_body = true;
+                }
             }
         }
-
-        let has_body = lines.len() > 2;
 
         if !node_classes.iter().any(|c| c == "default") {
             node_classes.insert(0, "default".to_string());
@@ -4673,8 +5203,14 @@ pub fn render_requirement_diagram_svg(
             cy = fmt(cy),
         );
 
-        let (fill_override, stroke_override, stroke_width_override) =
-            parse_node_style_overrides(&css_styles);
+        let (
+            label_styles,
+            label_div_style_prefix,
+            node_styles,
+            fill_override,
+            stroke_override,
+            stroke_width_override,
+        ) = parse_node_style_overrides(&css_styles);
         let fill_color = fill_override.as_deref().unwrap_or("#ECECFF");
         let stroke_color = stroke_override.as_deref().unwrap_or("#9370DB");
         let stroke_width = stroke_width_override.unwrap_or(1.3);
@@ -4692,9 +5228,24 @@ pub fn render_requirement_diagram_svg(
             fmt(x),
             fmt(y + n.height)
         );
-        let stroke_path = rough_rect_stroke_path_d(x, y, n.width, n.height);
+        let stroke_path = roughjs_paths_for_rect(
+            x,
+            y,
+            n.width,
+            n.height,
+            fill_color,
+            stroke_color,
+            stroke_width as f32,
+            hand_drawn_seed,
+        )
+        .map(|(_, stroke_d)| stroke_d)
+        .unwrap_or_else(|| rough_rect_stroke_path_d(x, y, n.width, n.height));
 
-        out.push_str(r#"<g class="basic label-container" style="">"#);
+        let _ = write!(
+            &mut out,
+            r#"<g class="basic label-container" style="{style}">"#,
+            style = escape_xml(&node_styles)
+        );
         let _ = write!(
             &mut out,
             r##"<path d="{d}" stroke="none" stroke-width="0" fill="{fill}"/>"##,
@@ -4712,42 +5263,90 @@ pub fn render_requirement_diagram_svg(
 
         // Labels.
         let padding = 20.0;
-        let gap = 20.0;
-        let line_h = 24.0;
-        for (idx, (text, bold)) in lines.iter().enumerate() {
-            let label_x = if idx < 2 { -60.0 } else { x + padding / 2.0 };
-            let label_y = if idx < 2 {
-                y + padding + idx as f64 * line_h
+        for line in &label_lines {
+            let label_x = if line.keep_centered {
+                -line.html_width / 2.0
             } else {
-                let body_idx = idx - 2;
-                let extra = if has_body { gap } else { 0.0 };
-                y + padding + 2.0 * line_h + extra + body_idx as f64 * line_h
+                x + padding / 2.0
             };
-            let style = if *bold { "; font-weight: bold;" } else { "" };
+            let label_y = y + line.y_offset - line.html_height / 2.0 + padding;
+            let style = if line.bold {
+                format!("{label_styles}; font-weight: bold;")
+            } else {
+                label_styles.clone()
+            };
+            let span_style = if style.trim().is_empty() {
+                None
+            } else {
+                Some(style.as_str())
+            };
+            let div_style_prefix = {
+                let mut p = String::new();
+                if !label_div_style_prefix.is_empty() {
+                    p.push_str(&label_div_style_prefix);
+                }
+                if line.bold {
+                    p.push_str("font-weight: bold; ");
+                }
+                if p.is_empty() { None } else { Some(p) }
+            };
+            let div_style_prefix = div_style_prefix.as_deref();
             let _ = write!(
                 &mut out,
                 r#"<g class="label" style="{style}" transform="translate({x}, {y})">"#,
-                style = escape_xml(style),
+                style = escape_xml(&style),
                 x = fmt(label_x),
                 y = fmt(label_y),
             );
             mk_label_foreign_object(
                 &mut out,
-                text,
-                if idx == 0 { 125.0 } else { 150.0 },
-                24.0,
-                "nodeLabel markdown-node-label",
+                &line.display_text,
+                line.html_width,
+                line.html_height,
+                "markdown-node-label nodeLabel",
+                span_style,
                 None,
+                div_style_prefix,
+                line.max_width_px,
             );
             out.push_str("</g>");
         }
 
         if has_body {
-            let divider_y = y + 2.0 * line_h + gap;
-            let divider_d = rough_double_line_path_d(x, divider_y, x + n.width, divider_y);
+            let gap = 20.0;
+            let divider_y = y + type_height + name_height + gap;
+            let divider_d = if let Some(stroke) = roughjs_parse_hex_color_to_srgba(stroke_color) {
+                if let Ok(mut opts) = roughr::core::OptionsBuilder::default()
+                    .seed(hand_drawn_seed)
+                    .roughness(0.0)
+                    .fill_style(roughr::core::FillStyle::Solid)
+                    .stroke(stroke)
+                    .stroke_width(stroke_width as f32)
+                    .stroke_line_dash(vec![0.0, 0.0])
+                    .stroke_line_dash_offset(0.0)
+                    .fill_line_dash(vec![0.0, 0.0])
+                    .fill_line_dash_offset(0.0)
+                    .disable_multi_stroke(false)
+                    .disable_multi_stroke_fill(false)
+                    .build()
+                {
+                    roughjs_ops_to_svg_path_d(&roughr::renderer::line::<f64>(
+                        x,
+                        divider_y,
+                        x + n.width,
+                        divider_y,
+                        &mut opts,
+                    ))
+                } else {
+                    rough_double_line_path_d(x, divider_y, x + n.width, divider_y)
+                }
+            } else {
+                rough_double_line_path_d(x, divider_y, x + n.width, divider_y)
+            };
             let _ = write!(
                 &mut out,
-                r##"<g style=""><path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"/></g>"##,
+                r##"<g style="{style}"><path d="{d}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none" stroke-dasharray="0 0"/></g>"##,
+                style = escape_xml(&node_styles),
                 d = escape_xml(&divider_d),
                 stroke = escape_xml(stroke_color),
                 stroke_width = fmt(stroke_width),
@@ -12867,8 +13466,11 @@ fn roughjs_paths_for_rect(
         roughr::Point2D::new(x + w, y + h),
         roughr::Point2D::new(x, y + h),
     ]];
-    let fill_opset = roughr::renderer::solid_fill_polygon(&fill_poly, &mut opts);
+    // Rough.js computes the rectangle outline first (advancing the PRNG state), then the fill, and
+    // finally emits the fill path before the stroke path. Keep the same generation order to match
+    // Mermaid's seeded output.
     let stroke_opset = roughr::renderer::rectangle::<f64>(x, y, w, h, &mut opts);
+    let fill_opset = roughr::renderer::solid_fill_polygon(&fill_poly, &mut opts);
 
     Some((
         roughjs_ops_to_svg_path_d(&fill_opset),

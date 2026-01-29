@@ -5,17 +5,17 @@
       "nodes": [
         {
           "id": "req2",
-          "x": 0.0,
-          "y": 0.0,
-          "width": 190.0,
+          "x": 55.93,
+          "y": 8.0,
+          "width": 145.219,
           "height": 184.0,
           "is_cluster": false
         },
         {
           "id": "e1",
-          "x": 0.0,
-          "y": 234.0,
-          "width": 263.28,
+          "x": 8.0,
+          "y": 266.0,
+          "width": 241.078,
           "height": 136.0,
           "is_cluster": false
         }
@@ -29,19 +29,24 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 95.0,
-              "y": 184.0
+              "x": 128.539,
+              "y": 192.0
             },
             {
-              "x": 95.0,
-              "y": 209.0
+              "x": 128.539,
+              "y": 229.0
             },
             {
-              "x": 131.64,
-              "y": 234.0
+              "x": 128.539,
+              "y": 266.0
             }
           ],
-          "label": null,
+          "label": {
+            "x": 128.539,
+            "y": 229.0,
+            "width": 91.516,
+            "height": 24.0
+          },
           "start_label_left": null,
           "start_label_right": null,
           "end_label_left": null,
@@ -52,10 +57,10 @@
         }
       ],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 263.28,
-        "max_y": 370.0
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 249.078,
+        "max_y": 402.0
       }
     }
   }

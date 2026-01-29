@@ -5,59 +5,59 @@
       "nodes": [
         {
           "id": "req_requirement",
-          "x": 0.0,
-          "y": 0.0,
-          "width": 221.68,
+          "x": 8.0,
+          "y": 8.0,
+          "width": 187.625,
           "height": 184.0,
           "is_cluster": false
         },
         {
           "id": "req_functional",
-          "x": 0.0,
-          "y": 234.0,
-          "width": 262.0,
+          "x": 245.625,
+          "y": 8.0,
+          "width": 227.781,
           "height": 184.0,
           "is_cluster": false
         },
         {
           "id": "req_interface",
-          "x": 0.0,
-          "y": 468.0,
-          "width": 255.12,
+          "x": 523.406,
+          "y": 8.0,
+          "width": 220.672,
           "height": 184.0,
           "is_cluster": false
         },
         {
           "id": "req_performance",
-          "x": 0.0,
-          "y": 702.0,
-          "width": 279.28,
+          "x": 794.078,
+          "y": 8.0,
+          "width": 246.766,
           "height": 184.0,
           "is_cluster": false
         },
         {
           "id": "req_physical",
-          "x": 0.0,
-          "y": 936.0,
-          "width": 250.16,
+          "x": 1090.844,
+          "y": 8.0,
+          "width": 212.734,
           "height": 184.0,
           "is_cluster": false
         },
         {
           "id": "req_design",
-          "x": 0.0,
-          "y": 1170.0,
-          "width": 224.4,
+          "x": 1353.578,
+          "y": 8.0,
+          "width": 187.078,
           "height": 184.0,
           "is_cluster": false
         }
       ],
       "edges": [],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 279.28,
-        "max_y": 1354.0
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 1540.656,
+        "max_y": 192.0
       }
     }
   }
