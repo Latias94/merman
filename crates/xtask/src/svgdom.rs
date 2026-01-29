@@ -319,6 +319,11 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
                 && is_identifier_like_attr(&key)
             {
                 val = normalize_mermaid_generated_id_only(&val);
+            } else if mode == DomMode::Strict && is_identifier_like_attr(&key) {
+                // In strict mode, keep identifier-like attributes byte-for-byte (aside from XML
+                // escaping). Applying numeric token normalization here is unsafe, as it can
+                // accidentally rewrite IDs like `flowchart-A-0` into `flowchart-A0` by treating
+                // `-0` as a number.
             } else if !normalized_geom
                 && matches!(mode, DomMode::Parity | DomMode::ParityRoot)
                 && is_geometry_attr(&key)
@@ -334,21 +339,52 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
         }
     }
 
-    let mut text = n
-        .text()
-        .map(|t| t.split_whitespace().collect::<Vec<_>>().join(" "))
-        .filter(|t| !t.is_empty());
+    fn normalize_text_node_text(t: &str) -> Option<String> {
+        let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
+        if t.is_empty() { None } else { Some(t) }
+    }
+
+    let mut text: Option<String> = None;
+    let mut children: Vec<SvgDomNode> = Vec::new();
+
+    if mode == DomMode::Strict {
+        // In strict mode we must preserve mixed-content text (e.g. `foo<br />bar`), where
+        // `roxmltree::Node::text()` would only return the first text segment.
+        let has_element_child = n.children().any(|c| c.is_element());
+        if has_element_child {
+            for c in n.children() {
+                if c.is_element() {
+                    children.push(build_node(c, mode, decimals));
+                } else if c.is_text() {
+                    if let Some(t) = c.text().and_then(normalize_text_node_text) {
+                        children.push(SvgDomNode {
+                            name: "#text".to_string(),
+                            attrs: BTreeMap::new(),
+                            text: Some(t),
+                            children: Vec::new(),
+                        });
+                    }
+                }
+            }
+        } else {
+            text = n.text().and_then(normalize_text_node_text);
+            for c in n.children().filter(|c| c.is_element()) {
+                children.push(build_node(c, mode, decimals));
+            }
+        }
+    } else {
+        // Non-strict modes treat text as non-semantic and only track element structure.
+        for c in n.children().filter(|c| c.is_element()) {
+            children.push(build_node(c, mode, decimals));
+        }
+    }
 
     if mode != DomMode::Strict && n.is_element() && n.tag_name().name() == "style" {
         // Stylesheets are large and may differ in whitespace, ordering, and numeric precision
         // even when the effective rendering is unchanged. Treat them as non-semantic for DOM
         // parity checks.
+        // (In strict mode, we keep style text verbatim for byte-level parity.)
         text = None;
-    }
-
-    let mut children: Vec<SvgDomNode> = Vec::new();
-    for c in n.children().filter(|c| c.is_element()) {
-        children.push(build_node(c, mode, decimals));
     }
 
     if mode != DomMode::Strict {
@@ -425,7 +461,7 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
     SvgDomNode {
         name: n.tag_name().name().to_string(),
         attrs,
-        text: if mode == DomMode::Strict { text } else { None },
+        text,
         children,
     }
 }
@@ -473,6 +509,16 @@ fn write_indent(out: &mut String, depth: usize) {
 }
 
 fn write_canonical_node(out: &mut String, n: &SvgDomNode, depth: usize) {
+    if n.name == "#text" {
+        let Some(t) = n.text.as_deref().filter(|t| !t.is_empty()) else {
+            return;
+        };
+        write_indent(out, depth);
+        out.push_str(&escape_xml_text(t));
+        out.push('\n');
+        return;
+    }
+
     write_indent(out, depth);
     out.push('<');
     out.push_str(&n.name);
@@ -605,6 +651,54 @@ pub(crate) fn dom_diff(upstream: &SvgDomNode, local: &SvgDomNode) -> Option<Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strict_does_not_normalize_numbers_inside_identifier_like_attrs() {
+        let svg = r#"<svg id="flowchart-A-0" aria-label="foo-0 bar" aria-roledescription="flowchart-v2"><g id="id-abc-0"/></svg>"#;
+        let dom = dom_signature(svg, DomMode::Strict, 3).unwrap();
+        assert_eq!(
+            dom.attrs.get("id").map(|s| s.as_str()),
+            Some("flowchart-A-0")
+        );
+        assert_eq!(
+            dom.attrs.get("aria-label").map(|s| s.as_str()),
+            Some("foo-0 bar")
+        );
+        assert_eq!(
+            dom.attrs.get("aria-roledescription").map(|s| s.as_str()),
+            Some("flowchart-v2")
+        );
+        assert_eq!(dom.children.len(), 1);
+        assert_eq!(
+            dom.children[0].attrs.get("id").map(|s| s.as_str()),
+            Some("id-abc-0")
+        );
+    }
+
+    #[test]
+    fn strict_preserves_mixed_content_text_segments() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject><div xmlns="http://www.w3.org/1999/xhtml"><p>This is a<br />multiline string</p></div></foreignObject></svg>"#;
+        let dom = dom_signature(svg, DomMode::Strict, 3).unwrap();
+
+        let p = dom
+            .children
+            .iter()
+            .find(|n| n.name == "foreignObject")
+            .and_then(|fo| fo.children.iter().find(|n| n.name == "div"))
+            .and_then(|div| div.children.iter().find(|n| n.name == "p"))
+            .expect("p exists");
+
+        assert_eq!(p.children.len(), 3);
+        assert_eq!(p.children[0].name, "#text");
+        assert_eq!(p.children[0].text.as_deref(), Some("This is a"));
+        assert_eq!(p.children[1].name, "br");
+        assert_eq!(p.children[2].name, "#text");
+        assert_eq!(p.children[2].text.as_deref(), Some("multiline string"));
+
+        let xml = canonical_xml(svg, DomMode::Strict, 3).unwrap();
+        assert!(xml.contains("This is a"));
+        assert!(xml.contains("multiline string"));
+    }
 
     #[test]
     fn parity_keeps_path_commands_but_masks_numbers() {
