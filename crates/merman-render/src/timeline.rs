@@ -279,7 +279,10 @@ fn expand_bounds_for_node_text(
             if line.trim().is_empty() {
                 continue;
             }
-            let (left, right) = measurer.measure_svg_text_bbox_x(line, &style);
+            // Timeline node labels can overflow the node shape. Mermaid computes the final
+            // viewport from SVG `getBBox()`, which includes glyph overhang and can be asymmetric
+            // even for ASCII strings (observed in upstream fixtures).
+            let (left, right) = measurer.measure_svg_text_bbox_x_with_ascii_overhang(line, &style);
             *min_x = (*min_x).min(anchor_x - left);
             *max_x = (*max_x).max(anchor_x + right);
         }
