@@ -37,6 +37,9 @@ pub struct SvgRenderOptions {
     pub include_cluster_debug_markers: bool,
     /// When true, label edge routes with edge ids.
     pub include_edge_id_labels: bool,
+    /// Optional override for "current time" used by diagrams that render time-dependent markers
+    /// (e.g. Gantt `today` line). This exists to make parity/golden comparisons reproducible.
+    pub now_ms_override: Option<i64>,
 }
 
 impl Default for SvgRenderOptions {
@@ -50,6 +53,7 @@ impl Default for SvgRenderOptions {
             include_clusters: true,
             include_cluster_debug_markers: false,
             include_edge_id_labels: false,
+            now_ms_override: None,
         }
     }
 }
@@ -9697,7 +9701,9 @@ pub fn render_gantt_diagram_svg(
         let today_x = if layout.tasks.is_empty() {
             f64::NAN
         } else {
-            let now_ms = chrono::Local::now().timestamp_millis();
+            let now_ms = options
+                .now_ms_override
+                .unwrap_or_else(|| chrono::Local::now().timestamp_millis());
             gantt_scale_time_round(now_ms, min_ms, max_ms, range) + layout.left_padding
         };
         let y1 = layout.title_top_margin;
@@ -9710,9 +9716,16 @@ pub fn render_gantt_diagram_svg(
             y1 = fmt(y1),
             y2 = fmt(y2),
         );
-        let style = model.today_marker.as_deref().unwrap_or("").trim();
-        if !style.is_empty() && style != "off" {
-            let style = style.replace(',', ";");
+        let style_raw = model.today_marker.as_deref().unwrap_or("").trim();
+        if !style_raw.is_empty() && style_raw != "off" {
+            let mut style = style_raw.to_string();
+            // Mermaid upstream mmdc output for `todayMarker stroke:#00f;opacity:0.5` ends up as
+            // `style="stroke:&00f;opacity:0.5"` (note the `#` → `&`), while comma-separated style
+            // strings preserve `#`. Mirror this quirk based on whether the raw marker contains `;`.
+            if style.contains(';') {
+                style = style.replace('#', "&");
+            }
+            style = style.replace(',', ";");
             let _ = write!(&mut out, r#" style="{}""#, escape_attr(&style));
         }
         out.push_str("/></g>");

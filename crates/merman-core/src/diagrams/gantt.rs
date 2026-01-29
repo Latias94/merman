@@ -2083,7 +2083,7 @@ fn parse_gantt_statement(
         db.set_excludes(v);
         return Ok(());
     }
-    if let Some(v) = parse_keyword_arg_semi_only(stripped, "todayMarker") {
+    if let Some(v) = parse_keyword_arg_full_line(stripped, "todayMarker") {
         db.set_today_marker(v.trim());
         return Ok(());
     }
@@ -2142,12 +2142,7 @@ fn parse_gantt_statement(
         return Ok(());
     }
 
-    let mut task_stmt = stripped.trim_start();
-    // Mermaid's gantt lexer allows leading ';' / '#' before a task definition line.
-    // Example upstream spec: `;Design jison grammar:...` / `#Design jison grammar:...`
-    if task_stmt.starts_with(';') || task_stmt.starts_with('#') {
-        task_stmt = task_stmt[1..].trim_start();
-    }
+    let task_stmt = stripped.trim_start();
 
     let Some(colon) = task_stmt.find(':') else {
         return Err(Error::DiagramParse {

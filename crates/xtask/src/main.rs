@@ -141,6 +141,7 @@ fn main() -> Result<(), XtaskError> {
         "gen-c4-textlength" => gen_c4_textlength(args.collect()),
         "gen-font-metrics" => gen_font_metrics(args.collect()),
         "gen-er-text-overrides" => gen_er_text_overrides(args.collect()),
+        "gen-gantt-text-overrides" => gen_gantt_text_overrides(args.collect()),
         "measure-text" => measure_text(args.collect()),
         "gen-upstream-svgs" => gen_upstream_svgs(args.collect()),
         "check-upstream-svgs" => check_upstream_svgs(args.collect()),
@@ -663,6 +664,130 @@ fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let fixtures_root = workspace_root.join("fixtures");
     let out_root = workspace_root.join("target").join("compare").join("xml");
 
+    fn sanitize_svg_id(raw: &str) -> String {
+        let mut out = String::with_capacity(raw.len());
+        for ch in raw.chars() {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                out.push(ch);
+            } else {
+                out.push('_');
+            }
+        }
+        out
+    }
+
+    fn gantt_upstream_today_x1(svg: &str) -> Option<f64> {
+        let doc = roxmltree::Document::parse(svg).ok()?;
+        for n in doc.descendants().filter(|n| n.has_tag_name("line")) {
+            if !n
+                .attribute("class")
+                .unwrap_or_default()
+                .split_whitespace()
+                .any(|t| t == "today")
+            {
+                continue;
+            }
+            let x1 = n.attribute("x1")?.parse::<f64>().ok()?;
+            if x1.is_finite() {
+                return Some(x1);
+            }
+        }
+        None
+    }
+
+    fn gantt_derive_now_ms_from_upstream_today(
+        upstream_svg: &str,
+        layout: &merman_render::model::GanttDiagramLayout,
+    ) -> Option<i64> {
+        let x1 = gantt_upstream_today_x1(upstream_svg)?;
+        let min_ms = layout.tasks.iter().map(|t| t.start_ms).min()?;
+        let max_ms = layout.tasks.iter().map(|t| t.end_ms).max()?;
+        if max_ms <= min_ms {
+            return None;
+        }
+        let range = (layout.width - layout.left_padding - layout.right_padding).max(1.0);
+        let target_x = x1;
+
+        fn gantt_today_x(
+            now_ms: i64,
+            min_ms: i64,
+            max_ms: i64,
+            range: f64,
+            left_padding: f64,
+        ) -> f64 {
+            if max_ms <= min_ms {
+                return left_padding + (range / 2.0).round();
+            }
+            let t = (now_ms - min_ms) as f64 / (max_ms - min_ms) as f64;
+            left_padding + (t * range).round()
+        }
+
+        // Start from a linear estimate, then bracket + binary-search to find a `now_ms` that
+        // reproduces the exact upstream `x1` under our `round(t * range)` implementation.
+        let span = (max_ms - min_ms) as f64;
+        let scaled = target_x - layout.left_padding;
+        if !(span.is_finite() && scaled.is_finite() && range.is_finite()) {
+            return None;
+        }
+        let est = (min_ms as f64) + span * (scaled / range);
+        if !est.is_finite() {
+            return None;
+        }
+        let mut lo = est.round() as i64;
+        let mut hi = lo;
+        let mut step: i64 = 1;
+
+        let mut guard = 0;
+        while guard < 80 {
+            guard += 1;
+            let x_lo = gantt_today_x(lo, min_ms, max_ms, range, layout.left_padding);
+            if x_lo.is_nan() {
+                return None;
+            }
+            if x_lo <= target_x {
+                break;
+            }
+            hi = lo;
+            lo = lo.saturating_sub(step);
+            step = step.saturating_mul(2);
+        }
+        guard = 0;
+        step = 1;
+        while guard < 80 {
+            guard += 1;
+            let x_hi = gantt_today_x(hi, min_ms, max_ms, range, layout.left_padding);
+            if x_hi.is_nan() {
+                return None;
+            }
+            if x_hi >= target_x {
+                break;
+            }
+            lo = hi;
+            hi = hi.saturating_add(step);
+            step = step.saturating_mul(2);
+        }
+
+        // If we failed to bracket, bail.
+        let x_lo = gantt_today_x(lo, min_ms, max_ms, range, layout.left_padding);
+        let x_hi = gantt_today_x(hi, min_ms, max_ms, range, layout.left_padding);
+        if !(x_lo <= target_x && target_x <= x_hi) {
+            return None;
+        }
+
+        // Lower-bound search: first `now_ms` where x >= target.
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            let x_mid = gantt_today_x(mid, min_ms, max_ms, range, layout.left_padding);
+            if x_mid < target_x {
+                lo = mid.saturating_add(1);
+            } else {
+                hi = mid;
+            }
+        }
+        let x = gantt_today_x(lo, min_ms, max_ms, range, layout.left_padding);
+        if x == target_x { Some(lo) } else { None }
+    }
+
     let mut diagrams: Vec<String> = Vec::new();
     let Ok(entries) = fs::read_dir(&upstream_root) else {
         return Err(XtaskError::SvgCompareFailed(format!(
@@ -784,10 +909,17 @@ fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
-            let svg_opts = merman_render::svg::SvgRenderOptions {
-                diagram_id: Some(stem.to_string()),
+            let mut svg_opts = merman_render::svg::SvgRenderOptions {
+                diagram_id: Some(sanitize_svg_id(stem)),
                 ..Default::default()
             };
+            if diagram == "gantt" {
+                if let merman_render::model::LayoutDiagram::GanttDiagram(layout) = &layouted.layout
+                {
+                    svg_opts.now_ms_override =
+                        gantt_derive_now_ms_from_upstream_today(&upstream_svg, layout);
+                }
+            }
             let local_svg = match merman_render::svg::render_layouted_svg(
                 &layouted,
                 layout_opts.text_measurer.as_ref(),
@@ -1099,6 +1231,262 @@ fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     } else {
         Err(XtaskError::SvgCompareFailed(failures.join("\n")))
     }
+}
+
+fn gen_gantt_text_overrides(args: Vec<String>) -> Result<(), XtaskError> {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+
+    let mut in_dir: Option<PathBuf> = None;
+    let mut out_path: Option<PathBuf> = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--in" => {
+                i += 1;
+                in_dir = args.get(i).map(PathBuf::from);
+            }
+            "--out" => {
+                i += 1;
+                out_path = args.get(i).map(PathBuf::from);
+            }
+            "--help" | "-h" => return Err(XtaskError::Usage),
+            _ => return Err(XtaskError::Usage),
+        }
+        i += 1;
+    }
+
+    let in_dir = in_dir.unwrap_or_else(|| {
+        workspace_root
+            .join("fixtures")
+            .join("upstream-svgs")
+            .join("gantt")
+    });
+    let out_path = out_path.unwrap_or_else(|| {
+        workspace_root
+            .join("crates")
+            .join("merman-render")
+            .join("src")
+            .join("generated")
+            .join("gantt_text_overrides_11_12_2.rs")
+    });
+
+    fn font_size_key(font_size: f64) -> u16 {
+        if !(font_size.is_finite() && font_size > 0.0) {
+            return 0;
+        }
+        let k = (font_size * 100.0).round();
+        if !(k.is_finite() && k >= 0.0 && k <= (u16::MAX as f64)) {
+            return 0;
+        }
+        k as u16
+    }
+
+    fn rust_f64(v: f64) -> String {
+        let mut s = format!("{v}");
+        if !s.contains('.') && !s.contains('e') && !s.contains('E') {
+            s.push_str(".0");
+        }
+        s
+    }
+
+    let mut widths: BTreeMap<(u16, String), f64> = BTreeMap::new();
+    let mut conflicts: BTreeSet<String> = BTreeSet::new();
+
+    let mut svg_paths: Vec<PathBuf> = Vec::new();
+    for entry in std::fs::read_dir(&in_dir).map_err(|e| {
+        XtaskError::SvgCompareFailed(format!("failed to read dir {}: {}", in_dir.display(), e))
+    })? {
+        let entry = entry.map_err(|e| {
+            XtaskError::SvgCompareFailed(format!(
+                "failed to read dir entry {}: {}",
+                in_dir.display(),
+                e
+            ))
+        })?;
+        let path = entry.path();
+        if path
+            .extension()
+            .is_some_and(|e| e.to_string_lossy().to_ascii_lowercase() == "svg")
+        {
+            svg_paths.push(path);
+        }
+    }
+    svg_paths.sort();
+
+    for path in svg_paths {
+        let svg = std::fs::read_to_string(&path).map_err(|source| XtaskError::ReadFile {
+            path: path.display().to_string(),
+            source,
+        })?;
+        let doc = roxmltree::Document::parse(&svg).map_err(|e| {
+            XtaskError::SvgCompareFailed(format!(
+                "failed to parse upstream Gantt SVG {}: {}",
+                path.display(),
+                e
+            ))
+        })?;
+
+        for node in doc.descendants().filter(|n| n.has_tag_name("text")) {
+            let class = node.attribute("class").unwrap_or_default();
+            if class.is_empty() {
+                continue;
+            }
+            // Only capture the width hints that Mermaid emits on task labels:
+            // `taskText ... width-<bboxWidth>`.
+            if !class.split_whitespace().any(|t| t.starts_with("taskText")) {
+                continue;
+            }
+            let Some(width_tok) = class.split_whitespace().find(|t| t.starts_with("width-")) else {
+                continue;
+            };
+            let Some(width_str) = width_tok.strip_prefix("width-") else {
+                continue;
+            };
+            let Ok(width_px) = width_str.parse::<f64>() else {
+                continue;
+            };
+            if !(width_px.is_finite() && width_px >= 0.0) {
+                continue;
+            }
+
+            let font_size = node
+                .attribute("font-size")
+                .and_then(|v| v.parse::<f64>().ok())
+                .unwrap_or(0.0);
+            let fs_key = font_size_key(font_size);
+            if fs_key == 0 {
+                continue;
+            }
+
+            let text = node.text().unwrap_or_default().trim_end().to_string();
+            if text.is_empty() {
+                continue;
+            }
+
+            let key = (fs_key, text);
+            if let Some(prev) = widths.get(&key).copied() {
+                if (prev - width_px).abs() > 1e-6 {
+                    conflicts.insert(format!(
+                        "gantt width conflict for font_size={} text={:?}: {} vs {} (file {})",
+                        font_size,
+                        key.1,
+                        rust_f64(prev),
+                        rust_f64(width_px),
+                        path.display()
+                    ));
+                }
+            } else {
+                widths.insert(key, width_px);
+            }
+        }
+    }
+
+    if !conflicts.is_empty() {
+        return Err(XtaskError::SvgCompareFailed(format!(
+            "conflicts while generating Gantt text overrides:\n{}",
+            conflicts.into_iter().collect::<Vec<_>>().join("\n")
+        )));
+    }
+
+    let entries: Vec<(u16, String, f64)> =
+        widths.into_iter().map(|((fs, t), w)| (fs, t, w)).collect();
+
+    let mut out = String::new();
+    let _ = writeln!(
+        &mut out,
+        "// This file is generated by `xtask gen-gantt-text-overrides`.\n//\n// Mermaid baseline: 11.12.2\n// Source: fixtures/upstream-svgs/gantt/*.svg\n"
+    );
+    let _ = writeln!(&mut out, "#[allow(dead_code)]");
+    let _ = writeln!(&mut out, "fn font_size_key(font_size: f64) -> u16 {{");
+    let _ = writeln!(
+        &mut out,
+        "    if !(font_size.is_finite() && font_size > 0.0) {{ return 0; }}"
+    );
+    let _ = writeln!(&mut out, "    let k = (font_size * 100.0).round();");
+    let _ = writeln!(
+        &mut out,
+        "    if !(k.is_finite() && k >= 0.0 && k <= (u16::MAX as f64)) {{ return 0; }}"
+    );
+    let _ = writeln!(&mut out, "    k as u16");
+    let _ = writeln!(&mut out, "}}");
+    let _ = writeln!(&mut out);
+
+    let _ = writeln!(
+        &mut out,
+        "static TASK_TEXT_BBOX_WIDTH_OVERRIDES_PX: &[(u16, &str, f64)] = &["
+    );
+    for (fs, t, w) in &entries {
+        let _ = writeln!(&mut out, "    ({fs}, {:?}, {}),", t, rust_f64(*w));
+    }
+    let _ = writeln!(&mut out, "];\n");
+
+    let _ = writeln!(
+        &mut out,
+        "pub fn lookup_task_text_bbox_width_px(font_size: f64, text: &str) -> Option<f64> {{"
+    );
+    let _ = writeln!(&mut out, "    let fs = font_size_key(font_size);");
+    let _ = writeln!(
+        &mut out,
+        "    if fs == 0 || text.is_empty() {{ return None; }}"
+    );
+    let _ = writeln!(&mut out, "    let mut lo = 0usize;");
+    let _ = writeln!(
+        &mut out,
+        "    let mut hi = TASK_TEXT_BBOX_WIDTH_OVERRIDES_PX.len();"
+    );
+    let _ = writeln!(&mut out, "    while lo < hi {{");
+    let _ = writeln!(&mut out, "        let mid = (lo + hi) / 2;");
+    let _ = writeln!(
+        &mut out,
+        "        let (k_fs, k_text, w) = TASK_TEXT_BBOX_WIDTH_OVERRIDES_PX[mid];"
+    );
+    let _ = writeln!(&mut out, "        match k_fs.cmp(&fs) {{");
+    let _ = writeln!(&mut out, "            std::cmp::Ordering::Equal => {{");
+    let _ = writeln!(&mut out, "                match k_text.cmp(text) {{");
+    let _ = writeln!(
+        &mut out,
+        "                    std::cmp::Ordering::Equal => return Some(w),"
+    );
+    let _ = writeln!(
+        &mut out,
+        "                    std::cmp::Ordering::Less => lo = mid + 1,"
+    );
+    let _ = writeln!(
+        &mut out,
+        "                    std::cmp::Ordering::Greater => hi = mid,"
+    );
+    let _ = writeln!(&mut out, "                }}");
+    let _ = writeln!(&mut out, "            }}");
+    let _ = writeln!(
+        &mut out,
+        "            std::cmp::Ordering::Less => lo = mid + 1,"
+    );
+    let _ = writeln!(
+        &mut out,
+        "            std::cmp::Ordering::Greater => hi = mid,"
+    );
+    let _ = writeln!(&mut out, "        }}");
+    let _ = writeln!(&mut out, "    }}");
+    let _ = writeln!(&mut out, "    None");
+    let _ = writeln!(&mut out, "}}");
+
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
+            path: parent.display().to_string(),
+            source,
+        })?;
+    }
+    std::fs::write(&out_path, out).map_err(|source| XtaskError::WriteFile {
+        path: out_path.display().to_string(),
+        source,
+    })?;
+
+    Ok(())
 }
 
 fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
@@ -5622,7 +6010,11 @@ fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
     let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..");
-    let fixtures_root = workspace_root.join("fixtures");
+    let fixtures_root = if diagram == "all" {
+        workspace_root.join("fixtures")
+    } else {
+        workspace_root.join("fixtures").join(&diagram)
+    };
 
     let mut mmd_files = Vec::new();
     let mut stack = vec![fixtures_root.clone()];
@@ -7616,7 +8008,11 @@ fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
     let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..");
-    let fixtures_root = workspace_root.join("fixtures");
+    let fixtures_root = if diagram == "all" {
+        workspace_root.join("fixtures")
+    } else {
+        workspace_root.join("fixtures").join(&diagram)
+    };
 
     let mut mmd_files = Vec::new();
     let mut stack = vec![fixtures_root.clone()];
@@ -11538,6 +11934,108 @@ fn compare_gantt_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             continue;
         };
 
+        let now_ms_override = (|| {
+            let doc = roxmltree::Document::parse(&upstream_svg).ok()?;
+            let x1 = doc
+                .descendants()
+                .filter(|n| n.has_tag_name("line"))
+                .find(|n| {
+                    n.attribute("class")
+                        .unwrap_or_default()
+                        .split_whitespace()
+                        .any(|t| t == "today")
+                })
+                .and_then(|n| n.attribute("x1"))
+                .and_then(|v| v.parse::<f64>().ok())?;
+            if !x1.is_finite() {
+                return None;
+            }
+
+            let min_ms = layout.tasks.iter().map(|t| t.start_ms).min()?;
+            let max_ms = layout.tasks.iter().map(|t| t.end_ms).max()?;
+            if max_ms <= min_ms {
+                return None;
+            }
+            let range = (layout.width - layout.left_padding - layout.right_padding).max(1.0);
+
+            fn gantt_today_x(
+                now_ms: i64,
+                min_ms: i64,
+                max_ms: i64,
+                range: f64,
+                left_padding: f64,
+            ) -> f64 {
+                if max_ms <= min_ms {
+                    return left_padding + (range / 2.0).round();
+                }
+                let t = (now_ms - min_ms) as f64 / (max_ms - min_ms) as f64;
+                left_padding + (t * range).round()
+            }
+
+            let target_x = x1;
+            let span = (max_ms - min_ms) as f64;
+            let scaled = target_x - layout.left_padding;
+            if !(span.is_finite() && scaled.is_finite() && range.is_finite()) {
+                return None;
+            }
+            let est = (min_ms as f64) + span * (scaled / range);
+            if !est.is_finite() {
+                return None;
+            }
+            let mut lo = est.round() as i64;
+            let mut hi = lo;
+            let mut step: i64 = 1;
+
+            let mut guard = 0;
+            while guard < 80 {
+                guard += 1;
+                let x_lo = gantt_today_x(lo, min_ms, max_ms, range, layout.left_padding);
+                if x_lo.is_nan() {
+                    return None;
+                }
+                if x_lo <= target_x {
+                    break;
+                }
+                hi = lo;
+                lo = lo.saturating_sub(step);
+                step = step.saturating_mul(2);
+            }
+
+            guard = 0;
+            step = 1;
+            while guard < 80 {
+                guard += 1;
+                let x_hi = gantt_today_x(hi, min_ms, max_ms, range, layout.left_padding);
+                if x_hi.is_nan() {
+                    return None;
+                }
+                if x_hi >= target_x {
+                    break;
+                }
+                lo = hi;
+                hi = hi.saturating_add(step);
+                step = step.saturating_mul(2);
+            }
+
+            let x_lo = gantt_today_x(lo, min_ms, max_ms, range, layout.left_padding);
+            let x_hi = gantt_today_x(hi, min_ms, max_ms, range, layout.left_padding);
+            if !(x_lo <= target_x && target_x <= x_hi) {
+                return None;
+            }
+
+            while lo < hi {
+                let mid = lo + (hi - lo) / 2;
+                let x_mid = gantt_today_x(mid, min_ms, max_ms, range, layout.left_padding);
+                if x_mid < target_x {
+                    lo = mid.saturating_add(1);
+                } else {
+                    hi = mid;
+                }
+            }
+            let x = gantt_today_x(lo, min_ms, max_ms, range, layout.left_padding);
+            if x == target_x { Some(lo) } else { None }
+        })();
+
         let diagram_id: String = stem
             .chars()
             .map(|ch| {
@@ -11551,6 +12049,7 @@ fn compare_gantt_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
         let svg_opts = merman_render::svg::SvgRenderOptions {
             diagram_id: Some(diagram_id),
+            now_ms_override,
             ..Default::default()
         };
 

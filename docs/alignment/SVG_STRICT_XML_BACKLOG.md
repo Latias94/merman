@@ -17,11 +17,10 @@ Notes:
 
 ## Current status (as of 2026-01-29)
 
-Total strict mismatches: **276**
+Total strict mismatches: **211**
 
 Mismatch counts by diagram:
 
-- `gantt`: 65
 - `sequence`: 40
 - `state`: 36
 - `architecture`: 25
@@ -33,10 +32,12 @@ Mismatch counts by diagram:
 - `pie`: 11
 - `xychart`: 11
 - `c4`: 10
+- `gantt`: 0
 - `flowchart`: 0
 
 Recently resolved:
 
+- `gantt`: 0 (was 65)
 - `er`: 0 (was 5)
 - `flowchart`: 0 (was 7)
 - `journey`: 0 (was 8)

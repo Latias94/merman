@@ -35,7 +35,7 @@ Baseline: Mermaid `@11.12.2`.
     - Behavior: `href` is URL-sanitized unless `securityLevel == "loose"`. Callback metadata is recorded only when `securityLevel == "loose"`.
 - Tasks:
   - Line form: `<taskTxt>: <taskData>`
-  - Optional leading marker before a task line: `;` or `#` (ignored for parsing), matching Mermaid’s gantt lexer behavior (see `repo-ref/mermaid/packages/mermaid/src/diagrams/gantt/parser/gantt.spec.js`).
+  - Task text may start with `;` or `#` and is preserved as part of `<taskTxt>` (see `fixtures/gantt/leading_hash_semi_task_lines.mmd`).
   - Task tags extracted from the start of `<taskData>`: `active`, `done`, `crit`, `milestone`, `vert`
   - `<taskData>` comma forms (after tags are removed):
     - `end` (implicit id, start at previous task end)

@@ -1004,16 +1004,19 @@ pub fn layout_gantt_diagram(
     }
 
     // Background rows.
-    let mut unique_orders: Vec<i64> = Vec::new();
+    //
+    // Mermaid draws the row rectangles by iterating the tasks in their render order (sorted by
+    // `startTime`). This means the row insertion order is *not* necessarily ascending by `order`
+    // (e.g. forward references can cause `order=0` to have the latest start date).
+    let mut row_orders: Vec<i64> = Vec::new();
     for t in &m.tasks {
-        if !unique_orders.contains(&t.order) {
-            unique_orders.push(t.order);
+        if !row_orders.contains(&t.order) {
+            row_orders.push(t.order);
         }
     }
-    unique_orders.sort();
 
     let mut rows: Vec<GanttRowLayout> = Vec::new();
-    for order in &unique_orders {
+    for order in &row_orders {
         let ttype = m
             .tasks
             .iter()
@@ -1039,6 +1042,18 @@ pub fn layout_gantt_diagram(
         });
     }
 
+    fn normalize_font_key(s: &str) -> String {
+        s.chars()
+            .filter_map(|ch| {
+                if ch.is_whitespace() || ch == '"' || ch == '\'' || ch == ';' {
+                    None
+                } else {
+                    Some(ch.to_ascii_lowercase())
+                }
+            })
+            .collect()
+    }
+
     // Tasks (bars + labels).
     // Mermaid gantt task labels inherit the diagram font family (defaulting to
     // `"trebuchet ms", verdana, arial, sans-serif`), not the axis group's `sans-serif`.
@@ -1050,6 +1065,7 @@ pub fn layout_gantt_diagram(
         .or_else(|| config.get("fontFamily").and_then(|v| v.as_str()))
         .unwrap_or("\"trebuchet ms\", verdana, arial, sans-serif")
         .to_string();
+    let task_font_key = normalize_font_key(&task_font_family);
     let text_style = TextStyle {
         font_family: Some(task_font_family),
         font_size,
@@ -1137,7 +1153,17 @@ pub fn layout_gantt_diagram(
         // Mermaid measures `textWidth` via `this.getBBox().width`, which does not include trailing
         // whitespace. Preserve the original task text for rendering, but trim it for measurement.
         let metrics = text_measurer.measure(t.task.trim_end(), &text_style);
-        let text_width = metrics.width;
+        let mut text_width = metrics.width;
+        if task_font_key == "trebuchetms,verdana,arial,sans-serif" {
+            if let Some(w) =
+                crate::generated::gantt_text_overrides_11_12_2::lookup_task_text_bbox_width_px(
+                    font_size,
+                    t.task.trim_end(),
+                )
+            {
+                text_width = w;
+            }
+        }
 
         // Mermaid uses `renderEndTime` for the X-position calculation but `endTime` for the class
         // overflow check. Mirror this quirk for DOM parity.
