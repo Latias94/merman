@@ -1257,6 +1257,370 @@ pub fn layout_sequence_diagram(
         });
     }
 
+    // Mermaid's SVG `viewBox` is derived from `svg.getBBox()` plus diagram margins. Block frames
+    // (`alt`, `par`, `loop`, `opt`, `break`, `critical`) can extend beyond the node/edge graph we
+    // model in headless layout. Capture their extents so we can expand bounds before emitting the
+    // final `viewBox`.
+    let block_bounds = {
+        use std::collections::HashMap;
+
+        let nodes_by_id: HashMap<&str, &LayoutNode> = nodes
+            .iter()
+            .map(|n| (n.id.as_str(), n))
+            .collect::<HashMap<_, _>>();
+        let edges_by_id: HashMap<&str, &LayoutEdge> = edges
+            .iter()
+            .map(|e| (e.id.as_str(), e))
+            .collect::<HashMap<_, _>>();
+
+        let mut msg_endpoints: HashMap<&str, (&str, &str)> = HashMap::new();
+        for msg in &model.messages {
+            let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
+                continue;
+            };
+            msg_endpoints.insert(msg.id.as_str(), (from, to));
+        }
+
+        fn item_y_range(
+            item_id: &str,
+            nodes_by_id: &HashMap<&str, &LayoutNode>,
+            edges_by_id: &HashMap<&str, &LayoutEdge>,
+            msg_endpoints: &HashMap<&str, (&str, &str)>,
+        ) -> Option<(f64, f64)> {
+            const SELF_MESSAGE_EXTRA_Y: f64 = 60.0;
+            let edge_id = format!("msg-{item_id}");
+            if let Some(e) = edges_by_id.get(edge_id.as_str()).copied() {
+                let y = e.points.first()?.y;
+                let extra = msg_endpoints
+                    .get(item_id)
+                    .copied()
+                    .filter(|(from, to)| from == to)
+                    .map(|_| SELF_MESSAGE_EXTRA_Y)
+                    .unwrap_or(0.0);
+                return Some((y, y + extra));
+            }
+
+            let node_id = format!("note-{item_id}");
+            let n = nodes_by_id.get(node_id.as_str()).copied()?;
+            let top = n.y - n.height / 2.0;
+            let bottom = n.y + n.height / 2.0;
+            Some((top, bottom))
+        }
+
+        fn frame_x_from_item_ids<'a>(
+            item_ids: impl IntoIterator<Item = &'a String>,
+            nodes_by_id: &HashMap<&str, &LayoutNode>,
+            edges_by_id: &HashMap<&str, &LayoutEdge>,
+            msg_endpoints: &HashMap<&str, (&str, &str)>,
+        ) -> Option<(f64, f64, f64)> {
+            const SIDE_PAD: f64 = 11.0;
+            const GEOM_PAD: f64 = 10.0;
+            let mut min_cx = f64::INFINITY;
+            let mut max_cx = f64::NEG_INFINITY;
+            let mut min_left = f64::INFINITY;
+            let mut geom_min_x = f64::INFINITY;
+            let mut geom_max_x = f64::NEG_INFINITY;
+
+            for id in item_ids {
+                // Notes contribute directly via their node bounds.
+                let note_id = format!("note-{id}");
+                if let Some(n) = nodes_by_id.get(note_id.as_str()).copied() {
+                    geom_min_x = geom_min_x.min(n.x - n.width / 2.0 - GEOM_PAD);
+                    geom_max_x = geom_max_x.max(n.x + n.width / 2.0 + GEOM_PAD);
+                }
+
+                let Some((from, to)) = msg_endpoints.get(id.as_str()).copied() else {
+                    continue;
+                };
+                for actor_id in [from, to] {
+                    let actor_node_id = format!("actor-top-{actor_id}");
+                    let Some(n) = nodes_by_id.get(actor_node_id.as_str()).copied() else {
+                        continue;
+                    };
+                    min_cx = min_cx.min(n.x);
+                    max_cx = max_cx.max(n.x);
+                    min_left = min_left.min(n.x - n.width / 2.0);
+                }
+
+                // Message edges can overflow via label widths.
+                let edge_id = format!("msg-{id}");
+                if let Some(e) = edges_by_id.get(edge_id.as_str()).copied() {
+                    for p in &e.points {
+                        geom_min_x = geom_min_x.min(p.x);
+                        geom_max_x = geom_max_x.max(p.x);
+                    }
+                    if let Some(label) = e.label.as_ref() {
+                        geom_min_x = geom_min_x.min(label.x - (label.width / 2.0) - GEOM_PAD);
+                        geom_max_x = geom_max_x.max(label.x + (label.width / 2.0) + GEOM_PAD);
+                    }
+                }
+            }
+
+            if !min_cx.is_finite() || !max_cx.is_finite() {
+                return None;
+            }
+            let mut x1 = min_cx - SIDE_PAD;
+            let mut x2 = max_cx + SIDE_PAD;
+            if geom_min_x.is_finite() {
+                x1 = x1.min(geom_min_x);
+            }
+            if geom_max_x.is_finite() {
+                x2 = x2.max(geom_max_x);
+            }
+            Some((x1, x2, min_left))
+        }
+
+        #[derive(Debug)]
+        enum BlockStackEntry {
+            Loop { items: Vec<String> },
+            Opt { items: Vec<String> },
+            Break { items: Vec<String> },
+            Alt { sections: Vec<Vec<String>> },
+            Par { sections: Vec<Vec<String>> },
+            Critical { sections: Vec<Vec<String>> },
+        }
+
+        let mut block_min_x = f64::INFINITY;
+        let mut block_min_y = f64::INFINITY;
+        let mut block_max_x = f64::NEG_INFINITY;
+        let mut block_max_y = f64::NEG_INFINITY;
+
+        let mut stack: Vec<BlockStackEntry> = Vec::new();
+        for msg in &model.messages {
+            let msg_id = msg.id.clone();
+            match msg.message_type {
+                10 => stack.push(BlockStackEntry::Loop { items: Vec::new() }),
+                11 => {
+                    if let Some(BlockStackEntry::Loop { items }) = stack.pop() {
+                        if let (Some((x1, x2, _min_left)), Some((y0, y1))) = (
+                            frame_x_from_item_ids(
+                                &items,
+                                &nodes_by_id,
+                                &edges_by_id,
+                                &msg_endpoints,
+                            ),
+                            items
+                                .iter()
+                                .filter_map(|id| {
+                                    item_y_range(id, &nodes_by_id, &edges_by_id, &msg_endpoints)
+                                })
+                                .reduce(|a, b| (a.0.min(b.0), a.1.max(b.1))),
+                        ) {
+                            let frame_y1 = y0 - 79.0;
+                            let frame_y2 = y1 + 10.0;
+                            block_min_x = block_min_x.min(x1);
+                            block_max_x = block_max_x.max(x2);
+                            block_min_y = block_min_y.min(frame_y1);
+                            block_max_y = block_max_y.max(frame_y2);
+                        }
+                    }
+                }
+                15 => stack.push(BlockStackEntry::Opt { items: Vec::new() }),
+                16 => {
+                    if let Some(BlockStackEntry::Opt { items }) = stack.pop() {
+                        if let (Some((x1, x2, _min_left)), Some((y0, y1))) = (
+                            frame_x_from_item_ids(
+                                &items,
+                                &nodes_by_id,
+                                &edges_by_id,
+                                &msg_endpoints,
+                            ),
+                            items
+                                .iter()
+                                .filter_map(|id| {
+                                    item_y_range(id, &nodes_by_id, &edges_by_id, &msg_endpoints)
+                                })
+                                .reduce(|a, b| (a.0.min(b.0), a.1.max(b.1))),
+                        ) {
+                            let frame_y1 = y0 - 79.0;
+                            let frame_y2 = y1 + 10.0;
+                            block_min_x = block_min_x.min(x1);
+                            block_max_x = block_max_x.max(x2);
+                            block_min_y = block_min_y.min(frame_y1);
+                            block_max_y = block_max_y.max(frame_y2);
+                        }
+                    }
+                }
+                30 => stack.push(BlockStackEntry::Break { items: Vec::new() }),
+                31 => {
+                    if let Some(BlockStackEntry::Break { items }) = stack.pop() {
+                        if let (Some((x1, x2, _min_left)), Some((y0, y1))) = (
+                            frame_x_from_item_ids(
+                                &items,
+                                &nodes_by_id,
+                                &edges_by_id,
+                                &msg_endpoints,
+                            ),
+                            items
+                                .iter()
+                                .filter_map(|id| {
+                                    item_y_range(id, &nodes_by_id, &edges_by_id, &msg_endpoints)
+                                })
+                                .reduce(|a, b| (a.0.min(b.0), a.1.max(b.1))),
+                        ) {
+                            let frame_y1 = y0 - 93.0;
+                            let frame_y2 = y1 + 10.0;
+                            block_min_x = block_min_x.min(x1);
+                            block_max_x = block_max_x.max(x2);
+                            block_min_y = block_min_y.min(frame_y1);
+                            block_max_y = block_max_y.max(frame_y2);
+                        }
+                    }
+                }
+                12 => stack.push(BlockStackEntry::Alt {
+                    sections: vec![Vec::new()],
+                }),
+                13 => {
+                    if let Some(BlockStackEntry::Alt { sections }) = stack.last_mut() {
+                        sections.push(Vec::new());
+                    }
+                }
+                14 => {
+                    if let Some(BlockStackEntry::Alt { sections }) = stack.pop() {
+                        let items: Vec<String> = sections.into_iter().flatten().collect();
+                        if let (Some((x1, x2, _min_left)), Some((y0, y1))) = (
+                            frame_x_from_item_ids(
+                                &items,
+                                &nodes_by_id,
+                                &edges_by_id,
+                                &msg_endpoints,
+                            ),
+                            items
+                                .iter()
+                                .filter_map(|id| {
+                                    item_y_range(id, &nodes_by_id, &edges_by_id, &msg_endpoints)
+                                })
+                                .reduce(|a, b| (a.0.min(b.0), a.1.max(b.1))),
+                        ) {
+                            let frame_y1 = y0 - 79.0;
+                            let frame_y2 = y1 + 10.0;
+                            block_min_x = block_min_x.min(x1);
+                            block_max_x = block_max_x.max(x2);
+                            block_min_y = block_min_y.min(frame_y1);
+                            block_max_y = block_max_y.max(frame_y2);
+                        }
+                    }
+                }
+                19 | 32 => stack.push(BlockStackEntry::Par {
+                    sections: vec![Vec::new()],
+                }),
+                20 => {
+                    if let Some(BlockStackEntry::Par { sections }) = stack.last_mut() {
+                        sections.push(Vec::new());
+                    }
+                }
+                21 => {
+                    if let Some(BlockStackEntry::Par { sections }) = stack.pop() {
+                        let items: Vec<String> = sections.into_iter().flatten().collect();
+                        if let (Some((x1, x2, _min_left)), Some((y0, y1))) = (
+                            frame_x_from_item_ids(
+                                &items,
+                                &nodes_by_id,
+                                &edges_by_id,
+                                &msg_endpoints,
+                            ),
+                            items
+                                .iter()
+                                .filter_map(|id| {
+                                    item_y_range(id, &nodes_by_id, &edges_by_id, &msg_endpoints)
+                                })
+                                .reduce(|a, b| (a.0.min(b.0), a.1.max(b.1))),
+                        ) {
+                            let frame_y1 = y0 - 79.0;
+                            let frame_y2 = y1 + 10.0;
+                            block_min_x = block_min_x.min(x1);
+                            block_max_x = block_max_x.max(x2);
+                            block_min_y = block_min_y.min(frame_y1);
+                            block_max_y = block_max_y.max(frame_y2);
+                        }
+                    }
+                }
+                27 => stack.push(BlockStackEntry::Critical {
+                    sections: vec![Vec::new()],
+                }),
+                28 => {
+                    if let Some(BlockStackEntry::Critical { sections }) = stack.last_mut() {
+                        sections.push(Vec::new());
+                    }
+                }
+                29 => {
+                    if let Some(BlockStackEntry::Critical { sections }) = stack.pop() {
+                        let section_count = sections.len();
+                        let items: Vec<String> = sections.into_iter().flatten().collect();
+                        if let (Some((mut x1, x2, min_left)), Some((y0, y1))) = (
+                            frame_x_from_item_ids(
+                                &items,
+                                &nodes_by_id,
+                                &edges_by_id,
+                                &msg_endpoints,
+                            ),
+                            items
+                                .iter()
+                                .filter_map(|id| {
+                                    item_y_range(id, &nodes_by_id, &edges_by_id, &msg_endpoints)
+                                })
+                                .reduce(|a, b| (a.0.min(b.0), a.1.max(b.1))),
+                        ) {
+                            if min_left.is_finite() && !items.is_empty() && section_count > 1 {
+                                x1 = x1.min(min_left - 9.0);
+                            }
+                            let frame_y1 = y0 - 79.0;
+                            let frame_y2 = y1 + 10.0;
+                            block_min_x = block_min_x.min(x1);
+                            block_max_x = block_max_x.max(x2);
+                            block_min_y = block_min_y.min(frame_y1);
+                            block_max_y = block_max_y.max(frame_y2);
+                        }
+                    }
+                }
+                2 => {
+                    for entry in stack.iter_mut() {
+                        match entry {
+                            BlockStackEntry::Alt { sections }
+                            | BlockStackEntry::Par { sections }
+                            | BlockStackEntry::Critical { sections } => {
+                                if let Some(cur) = sections.last_mut() {
+                                    cur.push(msg_id.clone());
+                                }
+                            }
+                            BlockStackEntry::Loop { items }
+                            | BlockStackEntry::Opt { items }
+                            | BlockStackEntry::Break { items } => {
+                                items.push(msg_id.clone());
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    if msg.from.is_some() && msg.to.is_some() {
+                        for entry in stack.iter_mut() {
+                            match entry {
+                                BlockStackEntry::Alt { sections }
+                                | BlockStackEntry::Par { sections }
+                                | BlockStackEntry::Critical { sections } => {
+                                    if let Some(cur) = sections.last_mut() {
+                                        cur.push(msg_id.clone());
+                                    }
+                                }
+                                BlockStackEntry::Loop { items }
+                                | BlockStackEntry::Opt { items }
+                                | BlockStackEntry::Break { items } => {
+                                    items.push(msg_id.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if block_min_x.is_finite() && block_min_y.is_finite() {
+            Some((block_min_x, block_min_y, block_max_x, block_max_y))
+        } else {
+            None
+        }
+    };
+
     let mut content_min_x = f64::INFINITY;
     let mut content_min_y = f64::INFINITY;
     let mut content_max_x = f64::NEG_INFINITY;
@@ -1276,6 +1640,13 @@ pub fn layout_sequence_diagram(
         content_min_y = 0.0;
         content_max_x = actor_width_min.max(1.0);
         content_max_y = (bottom_box_top_y + actor_height).max(1.0);
+    }
+
+    if let Some((min_x, min_y, max_x, max_y)) = block_bounds {
+        content_min_x = content_min_x.min(min_x);
+        content_min_y = content_min_y.min(min_y);
+        content_max_x = content_max_x.max(max_x);
+        content_max_y = content_max_y.max(max_y);
     }
 
     let bounds = Some(Bounds {

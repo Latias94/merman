@@ -1682,6 +1682,24 @@ pub fn render_sequence_diagram_svg(
                     id: msg.id.clone(),
                     raw: raw_label.to_string(),
                 });
+                // Notes inside blocks must contribute to block frame bounds and section separators.
+                // Track them in the active block scopes, similar to message edges.
+                for entry in stack.iter_mut() {
+                    match entry {
+                        BlockStackEntry::Alt { sections, .. }
+                        | BlockStackEntry::Par { sections, .. }
+                        | BlockStackEntry::Critical { sections, .. } => {
+                            if let Some(cur) = sections.last_mut() {
+                                cur.push(msg.id.clone());
+                            }
+                        }
+                        BlockStackEntry::Loop { messages, .. }
+                        | BlockStackEntry::Opt { messages, .. }
+                        | BlockStackEntry::Break { messages, .. } => {
+                            messages.push(msg.id.clone());
+                        }
+                    }
+                }
                 continue;
             }
             // loop start/end
@@ -1916,6 +1934,7 @@ pub fn render_sequence_diagram_svg(
             msg_endpoints: &std::collections::HashMap<&str, (&str, &str)>,
             actor_nodes_by_id: &std::collections::HashMap<&str, &LayoutNode>,
             edges_by_id: &std::collections::HashMap<&str, &crate::model::LayoutEdge>,
+            nodes_by_id: &std::collections::HashMap<&str, &LayoutNode>,
         ) -> Option<(f64, f64, f64)> {
             const SIDE_PAD: f64 = 11.0;
             const GEOM_PAD: f64 = 10.0;
@@ -1926,6 +1945,13 @@ pub fn render_sequence_diagram_svg(
             let mut geom_max_x = f64::NEG_INFINITY;
 
             for msg_id in message_ids {
+                // Notes are nodes (not edges); include their bounding boxes in frame extents.
+                let note_node_id = format!("note-{msg_id}");
+                if let Some(n) = nodes_by_id.get(note_node_id.as_str()).copied() {
+                    geom_min_x = geom_min_x.min(n.x - n.width / 2.0 - GEOM_PAD);
+                    geom_max_x = geom_max_x.max(n.x + n.width / 2.0 + GEOM_PAD);
+                }
+
                 let Some((from, to)) = msg_endpoints.get(msg_id.as_str()).copied() else {
                     continue;
                 };
@@ -1965,6 +1991,22 @@ pub fn render_sequence_diagram_svg(
                 x2 = x2.max(geom_max_x);
             }
             Some((x1, x2, min_left))
+        }
+
+        fn item_y_range(
+            edges_by_id: &std::collections::HashMap<&str, &crate::model::LayoutEdge>,
+            nodes_by_id: &std::collections::HashMap<&str, &LayoutNode>,
+            msg_endpoints: &std::collections::HashMap<&str, (&str, &str)>,
+            item_id: &str,
+        ) -> Option<(f64, f64)> {
+            if let Some((y0, y1)) = msg_y_range(edges_by_id, msg_endpoints, item_id) {
+                return Some((y0, y1));
+            }
+            let note_node_id = format!("note-{item_id}");
+            let n = nodes_by_id.get(note_node_id.as_str()).copied()?;
+            let top = n.y - n.height / 2.0;
+            let bottom = n.y + n.height / 2.0;
+            Some((top, bottom))
         }
 
         for item in &pre_items {
@@ -2015,9 +2057,12 @@ pub fn render_sequence_diagram_svg(
                             let mut max_y = f64::NEG_INFINITY;
                             for sec in sections {
                                 for msg_id in &sec.message_ids {
-                                    if let Some((y0, y1)) =
-                                        msg_y_range(&edges_by_id, &msg_endpoints, msg_id)
-                                    {
+                                    if let Some((y0, y1)) = item_y_range(
+                                        &edges_by_id,
+                                        &nodes_by_id,
+                                        &msg_endpoints,
+                                        msg_id,
+                                    ) {
                                         min_y = min_y.min(y0);
                                         max_y = max_y.max(y1);
                                     }
@@ -2032,6 +2077,7 @@ pub fn render_sequence_diagram_svg(
                                 &msg_endpoints,
                                 &actor_nodes_by_id,
                                 &edges_by_id,
+                                &nodes_by_id,
                             )
                             .unwrap_or((_frame_x1, _frame_x2, f64::INFINITY));
 
@@ -2079,9 +2125,12 @@ pub fn render_sequence_diagram_svg(
                             for sec in sections {
                                 let mut sec_max_y = f64::NEG_INFINITY;
                                 for msg_id in &sec.message_ids {
-                                    if let Some((_y0, y1)) =
-                                        msg_y_range(&edges_by_id, &msg_endpoints, msg_id)
-                                    {
+                                    if let Some((_y0, y1)) = item_y_range(
+                                        &edges_by_id,
+                                        &nodes_by_id,
+                                        &msg_endpoints,
+                                        msg_id,
+                                    ) {
                                         sec_max_y = sec_max_y.max(y1);
                                     }
                                 }
@@ -2182,9 +2231,12 @@ pub fn render_sequence_diagram_svg(
                             let mut max_y = f64::NEG_INFINITY;
                             for sec in sections {
                                 for msg_id in &sec.message_ids {
-                                    if let Some((y0, y1)) =
-                                        msg_y_range(&edges_by_id, &msg_endpoints, msg_id)
-                                    {
+                                    if let Some((y0, y1)) = item_y_range(
+                                        &edges_by_id,
+                                        &nodes_by_id,
+                                        &msg_endpoints,
+                                        msg_id,
+                                    ) {
                                         min_y = min_y.min(y0);
                                         max_y = max_y.max(y1);
                                     }
@@ -2199,6 +2251,7 @@ pub fn render_sequence_diagram_svg(
                                 &msg_endpoints,
                                 &actor_nodes_by_id,
                                 &edges_by_id,
+                                &nodes_by_id,
                             )
                             .unwrap_or((_frame_x1, _frame_x2, f64::INFINITY));
 
@@ -2244,9 +2297,12 @@ pub fn render_sequence_diagram_svg(
                             for sec in sections {
                                 let mut sec_max_y = f64::NEG_INFINITY;
                                 for msg_id in &sec.message_ids {
-                                    if let Some((_y0, y1)) =
-                                        msg_y_range(&edges_by_id, &msg_endpoints, msg_id)
-                                    {
+                                    if let Some((_y0, y1)) = item_y_range(
+                                        &edges_by_id,
+                                        &nodes_by_id,
+                                        &msg_endpoints,
+                                        msg_id,
+                                    ) {
                                         sec_max_y = sec_max_y.max(y1);
                                     }
                                 }
@@ -2345,7 +2401,7 @@ pub fn render_sequence_diagram_svg(
                             let mut max_y = f64::NEG_INFINITY;
                             for msg_id in message_ids {
                                 if let Some((y0, y1)) =
-                                    msg_y_range(&edges_by_id, &msg_endpoints, msg_id)
+                                    item_y_range(&edges_by_id, &nodes_by_id, &msg_endpoints, msg_id)
                                 {
                                     min_y = min_y.min(y0);
                                     max_y = max_y.max(y1);
@@ -2360,6 +2416,7 @@ pub fn render_sequence_diagram_svg(
                                 &msg_endpoints,
                                 &actor_nodes_by_id,
                                 &edges_by_id,
+                                &nodes_by_id,
                             )
                             .unwrap_or((_frame_x1, _frame_x2, f64::INFINITY));
 
@@ -2447,7 +2504,7 @@ pub fn render_sequence_diagram_svg(
                             let mut max_y = f64::NEG_INFINITY;
                             for msg_id in message_ids {
                                 if let Some((y0, y1)) =
-                                    msg_y_range(&edges_by_id, &msg_endpoints, msg_id)
+                                    item_y_range(&edges_by_id, &nodes_by_id, &msg_endpoints, msg_id)
                                 {
                                     min_y = min_y.min(y0);
                                     max_y = max_y.max(y1);
@@ -2462,6 +2519,7 @@ pub fn render_sequence_diagram_svg(
                                 &msg_endpoints,
                                 &actor_nodes_by_id,
                                 &edges_by_id,
+                                &nodes_by_id,
                             )
                             .unwrap_or((_frame_x1, _frame_x2, f64::INFINITY));
 
@@ -2547,7 +2605,7 @@ pub fn render_sequence_diagram_svg(
                             let mut max_y = f64::NEG_INFINITY;
                             for msg_id in message_ids {
                                 if let Some((y0, y1)) =
-                                    msg_y_range(&edges_by_id, &msg_endpoints, msg_id)
+                                    item_y_range(&edges_by_id, &nodes_by_id, &msg_endpoints, msg_id)
                                 {
                                     min_y = min_y.min(y0);
                                     max_y = max_y.max(y1);
@@ -2562,6 +2620,7 @@ pub fn render_sequence_diagram_svg(
                                 &msg_endpoints,
                                 &actor_nodes_by_id,
                                 &edges_by_id,
+                                &nodes_by_id,
                             )
                             .unwrap_or((_frame_x1, _frame_x2, f64::INFINITY));
 
@@ -2648,9 +2707,12 @@ pub fn render_sequence_diagram_svg(
                             let mut max_y = f64::NEG_INFINITY;
                             for sec in sections {
                                 for msg_id in &sec.message_ids {
-                                    if let Some((y0, y1)) =
-                                        msg_y_range(&edges_by_id, &msg_endpoints, msg_id)
-                                    {
+                                    if let Some((y0, y1)) = item_y_range(
+                                        &edges_by_id,
+                                        &nodes_by_id,
+                                        &msg_endpoints,
+                                        msg_id,
+                                    ) {
                                         min_y = min_y.min(y0);
                                         max_y = max_y.max(y1);
                                     }
@@ -2665,6 +2727,7 @@ pub fn render_sequence_diagram_svg(
                                 &msg_endpoints,
                                 &actor_nodes_by_id,
                                 &edges_by_id,
+                                &nodes_by_id,
                             )
                             .unwrap_or((_frame_x1, _frame_x2, f64::INFINITY));
                             if sections.len() > 1 && min_left.is_finite() {
@@ -2714,9 +2777,12 @@ pub fn render_sequence_diagram_svg(
                             for sec in sections {
                                 let mut sec_max_y = f64::NEG_INFINITY;
                                 for msg_id in &sec.message_ids {
-                                    if let Some((_y0, y1)) =
-                                        msg_y_range(&edges_by_id, &msg_endpoints, msg_id)
-                                    {
+                                    if let Some((_y0, y1)) = item_y_range(
+                                        &edges_by_id,
+                                        &nodes_by_id,
+                                        &msg_endpoints,
+                                        msg_id,
+                                    ) {
                                         sec_max_y = sec_max_y.max(y1);
                                     }
                                 }
