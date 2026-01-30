@@ -78,10 +78,10 @@
             "id": "id6-text",
             "text": "test6",
             "font_size": 11.0,
-            "width": 25.08,
+            "width": 25.175,
             "x": 282.0,
             "y": 63.5,
-            "class": "taskText taskText0 width-25.080000000000002"
+            "class": "taskText taskText0 width-25.1748046875"
           }
         }
       ],

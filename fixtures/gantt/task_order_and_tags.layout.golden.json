@@ -106,10 +106,10 @@
             "id": "des1-text",
             "text": "Completed task",
             "font_size": 11.0,
-            "width": 70.51,
+            "width": 77.382,
             "x": 169.0,
             "y": 63.5,
-            "class": "taskText taskText0 width-70.51"
+            "class": "taskText taskText0 width-77.3818359375"
           }
         },
         {
@@ -137,10 +137,10 @@
             "id": "des2-text",
             "text": "Active task",
             "font_size": 11.0,
-            "width": 52.47,
+            "width": 55.727,
             "x": 498.0,
             "y": 87.5,
-            "class": "taskText taskText0 width-52.470000000000006"
+            "class": "taskText taskText0 width-55.7265625"
           }
         },
         {
@@ -168,10 +168,10 @@
             "id": "des3-text",
             "text": "Future task",
             "font_size": 11.0,
-            "width": 54.12,
+            "width": 56.338,
             "x": 874.0,
             "y": 111.5,
-            "class": "taskText taskText1 width-54.12"
+            "class": "taskText taskText1 width-56.337890625"
           }
         }
       ],

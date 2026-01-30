@@ -8,7 +8,7 @@
     "dateFormat": "YYYY-MM-DD",
     "axisFormat": "",
     "tickInterval": null,
-    "todayMarker": "stroke:#00f",
+    "todayMarker": "stroke:#00f;opacity:0.5",
     "includes": [],
     "excludes": [],
     "inclusiveEndDates": false,

@@ -40,20 +40,20 @@
           "class": "section section0"
         },
         {
-          "index": 1.0,
-          "x": 0.0,
-          "y": 72.0,
-          "width": 1146.5,
-          "height": 24.0,
-          "class": "section section0"
-        },
-        {
           "index": 2.0,
           "x": 0.0,
           "y": 96.0,
           "width": 1146.5,
           "height": 24.0,
           "class": "section section1"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
         }
       ],
       "section_titles": [
@@ -106,10 +106,10 @@
             "id": "id1-text",
             "text": "test1",
             "font_size": 11.0,
-            "width": 25.08,
+            "width": 24.953,
             "x": 501.0,
             "y": 63.5,
-            "class": "taskText taskText0 width-25.080000000000002"
+            "class": "taskText taskText0 width-24.953125"
           }
         },
         {
@@ -137,10 +137,10 @@
             "id": "id3-text",
             "text": "test3",
             "font_size": 11.0,
-            "width": 25.08,
+            "width": 25.175,
             "x": 987.5,
             "y": 111.5,
-            "class": "taskText taskText1 width-25.080000000000002"
+            "class": "taskText taskText1 width-25.1748046875"
           }
         },
         {
@@ -168,10 +168,10 @@
             "id": "id2-text",
             "text": "test2",
             "font_size": 11.0,
-            "width": 25.08,
+            "width": 25.175,
             "x": 1078.5,
             "y": 87.5,
-            "class": "taskText taskText0 width-25.080000000000002"
+            "class": "taskText taskText0 width-25.1748046875"
           }
         }
       ],

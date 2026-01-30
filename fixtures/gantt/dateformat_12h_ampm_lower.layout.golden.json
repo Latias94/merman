@@ -78,10 +78,10 @@
             "id": "p1-text",
             "text": "One PM",
             "font_size": 11.0,
-            "width": 32.89,
+            "width": 37.87,
             "x": 592.0,
             "y": 63.5,
-            "class": "taskText taskText0 width-32.89"
+            "class": "taskText taskText0 width-37.86962890625"
           }
         }
       ],

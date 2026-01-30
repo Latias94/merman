@@ -86,10 +86,10 @@
             "id": "cl1-text",
             "text": "Visit mermaidjs",
             "font_size": 11.0,
-            "width": 74.47,
+            "width": 78.279,
             "x": 333.5,
             "y": 63.5,
-            "class": "clickable taskText taskText0 width-74.47"
+            "class": "clickable taskText taskText0 width-78.27880859375"
           }
         },
         {
@@ -117,10 +117,10 @@
             "id": "cl2-text",
             "text": "Calling a callback",
             "font_size": 11.0,
-            "width": 77.88,
+            "width": 86.991,
             "x": 850.5,
             "y": 87.5,
-            "class": "clickable taskText taskText0 width-77.88"
+            "class": "clickable taskText taskText0 width-86.99072265625"
           }
         }
       ],

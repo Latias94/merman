@@ -110,10 +110,10 @@
             "id": "task1-text",
             "text": "test1",
             "font_size": 11.0,
-            "width": 25.08,
+            "width": 24.953,
             "x": 607.0,
             "y": 63.5,
-            "class": "taskTextOutsideRight taskTextOutside0 width-25.080000000000002"
+            "class": "taskTextOutsideRight taskTextOutside0 width-24.953125"
           }
         },
         {
@@ -141,10 +141,10 @@
             "id": "task2-text",
             "text": "test2",
             "font_size": 11.0,
-            "width": 25.08,
+            "width": 25.175,
             "x": 592.0,
             "y": 87.5,
-            "class": "taskText taskText0 width-25.080000000000002"
+            "class": "taskText taskText0 width-25.1748046875"
           }
         },
         {
@@ -172,10 +172,10 @@
             "id": "task3-text",
             "text": "test3",
             "font_size": 11.0,
-            "width": 25.08,
+            "width": 25.175,
             "x": 592.0,
             "y": 111.5,
-            "class": "taskText taskText0 width-25.080000000000002"
+            "class": "taskText taskText0 width-25.1748046875"
           }
         },
         {
@@ -203,10 +203,10 @@
             "id": "task4-text",
             "text": "test4",
             "font_size": 11.0,
-            "width": 25.08,
+            "width": 25.175,
             "x": 592.0,
             "y": 135.5,
-            "class": "taskText taskText0 width-25.080000000000002"
+            "class": "taskText taskText0 width-25.1748046875"
           }
         },
         {
@@ -234,10 +234,10 @@
             "id": "task5-text",
             "text": "test5",
             "font_size": 11.0,
-            "width": 25.08,
+            "width": 25.175,
             "x": 607.0,
             "y": 159.5,
-            "class": "taskTextOutsideRight taskTextOutside0 width-25.080000000000002"
+            "class": "taskTextOutsideRight taskTextOutside0 width-25.1748046875"
           }
         }
       ],

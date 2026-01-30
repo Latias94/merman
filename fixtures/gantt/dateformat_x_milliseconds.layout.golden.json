@@ -114,10 +114,10 @@
             "id": "id1-text",
             "text": "test1",
             "font_size": 11.0,
-            "width": 25.08,
+            "width": 24.953,
             "x": 370.5,
             "y": 63.5,
-            "class": "taskText taskText0 width-25.080000000000002"
+            "class": "taskText taskText0 width-24.953125"
           }
         },
         {
@@ -145,10 +145,10 @@
             "id": "id2-text",
             "text": "test2",
             "font_size": 11.0,
-            "width": 25.08,
+            "width": 25.175,
             "x": 740.0,
             "y": 87.5,
-            "class": "taskText taskText0 width-25.080000000000002"
+            "class": "taskText taskText0 width-25.1748046875"
           }
         },
         {
@@ -176,10 +176,10 @@
             "id": "id3-text",
             "text": "test3",
             "font_size": 11.0,
-            "width": 25.08,
+            "width": 25.175,
             "x": 813.5,
             "y": 111.5,
-            "class": "taskText taskText1 width-25.080000000000002"
+            "class": "taskText taskText1 width-25.1748046875"
           }
         },
         {
@@ -207,10 +207,10 @@
             "id": "id4-text",
             "text": "test4",
             "font_size": 11.0,
-            "width": 25.08,
+            "width": 25.175,
             "x": 1035.0,
             "y": 135.5,
-            "class": "taskText taskText1 width-25.080000000000002"
+            "class": "taskText taskText1 width-25.1748046875"
           }
         }
       ],

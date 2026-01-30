@@ -98,10 +98,10 @@
             "id": "des1-text",
             "text": "Design",
             "font_size": 11.0,
-            "width": 28.6,
+            "width": 31.875,
             "x": 463.0,
             "y": 63.5,
-            "class": "taskText taskText0 width-28.6"
+            "class": "taskText taskText0 width-31.875"
           }
         },
         {
@@ -129,10 +129,10 @@
             "id": "des2-text",
             "text": "Build",
             "font_size": 11.0,
-            "width": 22.22,
+            "width": 24.75,
             "x": 980.0,
             "y": 87.5,
-            "class": "taskText taskText1 width-22.22"
+            "class": "taskText taskText1 width-24.75"
           }
         }
       ],

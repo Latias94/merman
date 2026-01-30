@@ -39,17 +39,17 @@
           "class": "section section0"
         },
         {
-          "index": 1.0,
+          "index": 2.0,
           "x": 0.0,
-          "y": 72.0,
+          "y": 96.0,
           "width": 1146.5,
           "height": 24.0,
           "class": "section section0"
         },
         {
-          "index": 2.0,
+          "index": 1.0,
           "x": 0.0,
-          "y": 96.0,
+          "y": 72.0,
           "width": 1146.5,
           "height": 24.0,
           "class": "section section0"
@@ -94,10 +94,10 @@
             "id": "a1-text",
             "text": "A ",
             "font_size": 11.0,
-            "width": 6.6,
+            "width": 9.0,
             "x": 419.5,
             "y": 63.5,
-            "class": "taskText taskText0 width-6.6"
+            "class": "taskText taskText0 width-9"
           }
         },
         {
@@ -125,10 +125,10 @@
             "id": "a3-text",
             "text": "C ",
             "font_size": 11.0,
-            "width": 6.6,
+            "width": 7.0,
             "x": 419.5,
             "y": 111.5,
-            "class": "taskText taskText0 width-6.6"
+            "class": "taskText taskText0 width-7"
           }
         },
         {
@@ -156,10 +156,10 @@
             "id": "a2-text",
             "text": "B ",
             "font_size": 11.0,
-            "width": 6.6,
+            "width": 7.0,
             "x": 936.5,
             "y": 87.5,
-            "class": "taskText taskText0 width-6.6"
+            "class": "taskText taskText0 width-7"
           }
         }
       ],

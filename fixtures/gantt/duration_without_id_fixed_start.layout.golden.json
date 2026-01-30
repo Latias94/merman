@@ -78,10 +78,10 @@
             "id": "task1-text",
             "text": "test1",
             "font_size": 11.0,
-            "width": 25.08,
+            "width": 24.953,
             "x": 592.0,
             "y": 63.5,
-            "class": "taskText taskText0 width-25.080000000000002"
+            "class": "taskText taskText0 width-24.953125"
           }
         }
       ],

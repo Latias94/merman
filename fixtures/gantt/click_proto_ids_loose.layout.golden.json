@@ -86,10 +86,10 @@
             "id": "__proto__-text",
             "text": "Proto task",
             "font_size": 11.0,
-            "width": 49.39,
+            "width": 49.968,
             "x": 333.5,
             "y": 63.5,
-            "class": "taskText taskText0 width-49.39"
+            "class": "taskText taskText0 width-49.9677734375"
           }
         },
         {
@@ -117,10 +117,10 @@
             "id": "constructor-text",
             "text": "Ctor task",
             "font_size": 11.0,
-            "width": 44.66,
+            "width": 45.026,
             "x": 850.5,
             "y": 87.5,
-            "class": "clickable taskText taskText0 width-44.660000000000004"
+            "class": "clickable taskText taskText0 width-45.0263671875"
           }
         }
       ],

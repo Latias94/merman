@@ -23,7 +23,7 @@
       {
         "section": "Documentation",
         "type": "Documentation",
-        "task": "Design jison grammar",
+        "task": ";Design jison grammar",
         "id": "des1",
         "prevTaskId": null,
         "order": 0,
@@ -52,7 +52,7 @@
       {
         "section": "Documentation",
         "type": "Documentation",
-        "task": "Design jison grammar",
+        "task": "#Design jison grammar",
         "id": "des2",
         "prevTaskId": "des1",
         "order": 1,

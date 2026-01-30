@@ -86,10 +86,10 @@
             "id": "a1-text",
             "text": "Task1",
             "font_size": 11.0,
-            "width": 28.27,
+            "width": 27.578,
             "x": 463.0,
             "y": 63.5,
-            "class": "clickable taskText taskText0 width-28.27"
+            "class": "clickable taskText taskText0 width-27.578125"
           }
         },
         {
@@ -117,10 +117,10 @@
             "id": "a2-text",
             "text": "Task2",
             "font_size": 11.0,
-            "width": 28.27,
+            "width": 27.797,
             "x": 721.5,
             "y": 87.5,
-            "class": "clickable taskText taskText0 width-28.27"
+            "class": "clickable taskText taskText0 width-27.796875"
           }
         }
       ],

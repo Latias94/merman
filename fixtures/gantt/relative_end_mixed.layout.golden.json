@@ -31,22 +31,6 @@
       ],
       "rows": [
         {
-          "index": 0.0,
-          "x": 0.0,
-          "y": 48.0,
-          "width": 1146.5,
-          "height": 24.0,
-          "class": "section section0"
-        },
-        {
-          "index": 1.0,
-          "x": 0.0,
-          "y": 72.0,
-          "width": 1146.5,
-          "height": 24.0,
-          "class": "section section0"
-        },
-        {
           "index": 2.0,
           "x": 0.0,
           "y": 96.0,
@@ -55,9 +39,25 @@
           "class": "section section0"
         },
         {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
           "index": 3.0,
           "x": 0.0,
           "y": 120.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
           "width": 1146.5,
           "height": 24.0,
           "class": "section section0"
@@ -102,10 +102,10 @@
             "id": "c-text",
             "text": "task C",
             "font_size": 11.0,
-            "width": 30.47,
+            "width": 30.456,
             "x": 437.0,
             "y": 111.5,
-            "class": "taskText taskText0 width-30.47"
+            "class": "taskText taskText0 width-30.45556640625"
           }
         },
         {
@@ -133,10 +133,10 @@
             "id": "a-text",
             "text": "task A",
             "font_size": 11.0,
-            "width": 30.47,
+            "width": 30.849,
             "x": 850.5,
             "y": 63.5,
-            "class": "taskText taskText0 width-30.47"
+            "class": "taskText taskText0 width-30.8486328125"
           }
         },
         {
@@ -164,10 +164,10 @@
             "id": "d-text",
             "text": "task D",
             "font_size": 11.0,
-            "width": 30.47,
+            "width": 30.456,
             "x": 850.5,
             "y": 135.5,
-            "class": "taskText taskText0 width-30.47"
+            "class": "taskText taskText0 width-30.45556640625"
           }
         },
         {
@@ -195,10 +195,10 @@
             "id": "b-text",
             "text": "task B",
             "font_size": 11.0,
-            "width": 30.47,
+            "width": 30.456,
             "x": 1005.5,
             "y": 87.5,
-            "class": "taskText taskText0 width-30.47"
+            "class": "taskText taskText0 width-30.45556640625"
           }
         }
       ],

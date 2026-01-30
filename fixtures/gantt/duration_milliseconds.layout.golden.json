@@ -78,10 +78,10 @@
             "id": "id1-text",
             "text": "ms",
             "font_size": 11.0,
-            "width": 13.31,
+            "width": 14.131,
             "x": 592.0,
             "y": 63.5,
-            "class": "taskText taskText0 width-13.309999999999999"
+            "class": "taskText taskText0 width-14.130859375"
           }
         }
       ],

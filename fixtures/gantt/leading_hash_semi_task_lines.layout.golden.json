@@ -63,7 +63,7 @@
       "tasks": [
         {
           "id": "des1",
-          "task": "Design jison grammar",
+          "task": ";Design jison grammar",
           "section": "Documentation",
           "task_type": "Documentation",
           "order": 0.0,
@@ -84,17 +84,17 @@
           },
           "label": {
             "id": "des1-text",
-            "text": "Design jison grammar",
+            "text": ";Design jison grammar",
             "font_size": 11.0,
-            "width": 98.67,
+            "width": 110.687,
             "x": 592.0,
             "y": 63.5,
-            "class": "taskText taskText0 width-98.66999999999999"
+            "class": "taskText taskText0 width-110.68701171875"
           }
         },
         {
           "id": "des2",
-          "task": "Design jison grammar",
+          "task": "#Design jison grammar",
           "section": "Documentation",
           "task_type": "Documentation",
           "order": 1.0,
@@ -115,12 +115,12 @@
           },
           "label": {
             "id": "des2-text",
-            "text": "Design jison grammar",
+            "text": "#Design jison grammar",
             "font_size": 11.0,
-            "width": 98.67,
+            "width": 113.417,
             "x": 592.0,
             "y": 87.5,
-            "class": "taskText taskText0 width-98.66999999999999"
+            "class": "taskText taskText0 width-113.41650390625"
           }
         }
       ],

@@ -31,17 +31,17 @@
       ],
       "rows": [
         {
-          "index": 0.0,
+          "index": 1.0,
           "x": 0.0,
-          "y": 48.0,
+          "y": 72.0,
           "width": 1146.5,
           "height": 24.0,
           "class": "section section0"
         },
         {
-          "index": 1.0,
+          "index": 0.0,
           "x": 0.0,
-          "y": 72.0,
+          "y": 48.0,
           "width": 1146.5,
           "height": 24.0,
           "class": "section section0"
@@ -86,10 +86,10 @@
             "id": "t2-text",
             "text": "y69",
             "font_size": 11.0,
-            "width": 18.37,
+            "width": 18.193,
             "x": 80.0,
             "y": 87.5,
-            "class": "taskTextOutsideRight taskTextOutside0 width-18.37"
+            "class": "taskTextOutsideRight taskTextOutside0 width-18.193359375"
           }
         },
         {
@@ -117,10 +117,10 @@
             "id": "t1-text",
             "text": "y68",
             "font_size": 11.0,
-            "width": 18.37,
+            "width": 18.193,
             "x": 1114.0,
             "y": 63.5,
-            "class": "taskTextOutsideRight taskTextOutside0 width-18.37"
+            "class": "taskTextOutsideRight taskTextOutside0 width-18.193359375"
           }
         }
       ],

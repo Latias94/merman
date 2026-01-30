@@ -31,17 +31,17 @@
       ],
       "rows": [
         {
-          "index": 0.0,
+          "index": 1.0,
           "x": 0.0,
-          "y": 48.0,
+          "y": 72.0,
           "width": 1146.5,
           "height": 24.0,
           "class": "section section0"
         },
         {
-          "index": 1.0,
+          "index": 0.0,
           "x": 0.0,
-          "y": 72.0,
+          "y": 48.0,
           "width": 1146.5,
           "height": 24.0,
           "class": "section section0"
@@ -86,10 +86,10 @@
             "id": "task2-text",
             "text": "London Trip 2",
             "font_size": 11.0,
-            "width": 62.81,
+            "width": 66.672,
             "x": 80.0,
             "y": 87.5,
-            "class": "taskTextOutsideRight taskTextOutside0 width-62.81000000000001"
+            "class": "taskTextOutsideRight taskTextOutside0 width-66.671875"
           }
         },
         {
