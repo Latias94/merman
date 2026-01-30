@@ -1314,6 +1314,7 @@ pub fn render_sequence_diagram_svg(
                 let Some(cx) = actor_center_x(&nodes_by_id, actor_id) else {
                     continue;
                 };
+                let has_any_activation = !activation_stacks.is_empty();
                 let stack = activation_stacks.entry(actor_id.to_string()).or_default();
                 let stacked_size = stack.len();
                 let startx = cx + (((stacked_size as f64) - 1.0) * activation_width) / 2.0;
@@ -1321,6 +1322,11 @@ pub fn render_sequence_diagram_svg(
                 let starty = last_line_y
                     .or_else(|| lifeline_y(&edges_by_id, actor_id).map(|(y0, _y1)| y0))
                     .unwrap_or(0.0);
+                let starty = if last_line_y.is_some() && has_any_activation {
+                    starty + 2.0
+                } else {
+                    starty
+                };
 
                 let group_index = activation_groups.len();
                 activation_groups.push(None);

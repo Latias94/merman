@@ -235,8 +235,7 @@ pub fn layout_sequence_diagram(
             message: format!("missing actor {id}"),
         })?;
         let (w0, _h0) = measure_svg_like_with_html_br(measurer, &a.description, &actor_text_style);
-        let w0 = w0.round();
-        let w = (w0 + 2.0 * wrap_padding).max(actor_width_min).round();
+        let w = (w0 + 2.0 * wrap_padding).max(actor_width_min);
         actor_widths.push(w.max(1.0));
     }
 
@@ -282,8 +281,8 @@ pub fn layout_sequence_diagram(
         }
 
         let (w0, _h0) = measure_svg_like_with_html_br(measurer, text, style);
-        let w0 = (w0 * message_width_scale).round();
-        let message_w = (w0 + 2.0 * wrap_padding).round().max(0.0);
+        let w0 = w0 * message_width_scale;
+        let message_w = (w0 + 2.0 * wrap_padding).max(0.0);
 
         let prev_idx = if to_idx > 0 { Some(to_idx - 1) } else { None };
         let next_idx = if to_idx + 1 < model.actor_order.len() {
@@ -930,8 +929,42 @@ pub fn layout_sequence_diagram(
 
     let mut cursor_y = actor_height + message_step;
     let mut rect_stack: Vec<RectOpen> = Vec::new();
+    let activation_width = config_f64(seq_cfg, &["activationWidth"])
+        .unwrap_or(10.0)
+        .max(1.0);
+    let mut activation_stacks: std::collections::BTreeMap<&str, Vec<f64>> =
+        std::collections::BTreeMap::new();
 
     for msg in &model.messages {
+        match msg.message_type {
+            // ACTIVE_START
+            17 => {
+                let Some(actor_id) = msg.from.as_deref() else {
+                    continue;
+                };
+                let Some(&idx) = actor_index.get(actor_id) else {
+                    continue;
+                };
+                let cx = actor_centers_x[idx];
+                let stack = activation_stacks.entry(actor_id).or_default();
+                let stacked_size = stack.len();
+                let startx = cx + (((stacked_size as f64) - 1.0) * activation_width) / 2.0;
+                stack.push(startx);
+                continue;
+            }
+            // ACTIVE_END
+            18 => {
+                let Some(actor_id) = msg.from.as_deref() else {
+                    continue;
+                };
+                if let Some(stack) = activation_stacks.get_mut(actor_id) {
+                    let _ = stack.pop();
+                }
+                continue;
+            }
+            _ => {}
+        }
+
         if let Some(step) = directive_steps.get(msg.id.as_str()).copied() {
             cursor_y += step;
             continue;
@@ -1065,31 +1098,49 @@ pub fn layout_sequence_diagram(
         };
         let from_x = actor_centers_x[fi];
         let to_x = actor_centers_x[ti];
-        let sign = if to_x >= from_x { 1.0 } else { -1.0 };
 
-        // These small offsets match Mermaid's sequence arrow rendering in SVG.
-        // - Most arrows (incl. `->>`, `-->>`, `-x`, `-)`) start at `+1` and end at `-4`.
-        // - Open arrows (`->`, `-->`) end closer to the target lifeline (`-1`) because no marker
-        //   is drawn.
-        // - Bidirectional arrows (`<<->>`, `<<-->>`) use a larger start offset (`+4`) to account
-        //   for the start marker.
-        let (start_dx, end_dx) = match msg.message_type {
-            // Bidirectional: marker-start + marker-end.
-            33 | 34 => (4.0, 4.0),
-            // Open arrows: no marker-end.
-            5 | 6 => (1.0, 1.0),
-            // Default: marker-end present.
-            _ => (1.0, 4.0),
-        };
-        let x1 = from_x + sign * start_dx;
-        let is_self = from == to;
-        let x2 = if is_self {
-            // Mermaid uses `startx === stopx` to render self-messages as a `<path>` (curved or
-            // right-angled). Keep start/stop identical in layout so SVG can emit the correct DOM.
-            x1
+        let (from_left, from_right) = activation_stacks
+            .get(from)
+            .and_then(|s| s.last().copied())
+            .map(|startx| (startx, startx + activation_width))
+            .unwrap_or((from_x - 1.0, from_x + 1.0));
+
+        let (to_left, to_right) = activation_stacks
+            .get(to)
+            .and_then(|s| s.last().copied())
+            .map(|startx| (startx, startx + activation_width))
+            .unwrap_or((to_x - 1.0, to_x + 1.0));
+
+        let is_arrow_to_right = from_left <= to_left;
+        let mut startx = if is_arrow_to_right {
+            from_right
         } else {
-            to_x - sign * end_dx
+            from_left
         };
+        let mut stopx = if is_arrow_to_right { to_left } else { to_right };
+
+        let adjust_value = |v: f64| if is_arrow_to_right { -v } else { v };
+        let is_arrow_to_activation = (to_left - to_right).abs() > 2.0;
+
+        let is_self = from == to;
+        if is_self {
+            stopx = startx;
+        } else {
+            if msg.activate && !is_arrow_to_activation {
+                stopx += adjust_value(activation_width / 2.0 - 1.0);
+            }
+
+            if !matches!(msg.message_type, 5 | 6) {
+                stopx += adjust_value(3.0);
+            }
+
+            if matches!(msg.message_type, 33 | 34) {
+                startx -= adjust_value(3.0);
+            }
+        }
+
+        let x1 = startx;
+        let x2 = stopx;
         let y = cursor_y;
 
         let text = msg.message.as_str().unwrap_or_default();
