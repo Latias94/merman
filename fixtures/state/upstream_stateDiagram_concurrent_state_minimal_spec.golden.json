@@ -1,288 +1,383 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "accDescr": null,
-    "accTitle": null,
-    "direction": "TB",
-    "edges": [
-      {
-        "arrowTypeEnd": "arrow_barb",
-        "arrowhead": "normal",
-        "arrowheadStyle": "fill: #333",
-        "classes": "transition",
-        "end": "Active",
-        "id": "edge0",
-        "label": "",
-        "labelStyle": "",
-        "labelType": "text",
-        "labelpos": "c",
-        "look": "classic",
-        "start": "root_start",
-        "style": "fill:none",
-        "thickness": "normal"
-      },
-      {
-        "arrowTypeEnd": "arrow_barb",
-        "arrowhead": "normal",
-        "arrowheadStyle": "fill: #333",
-        "classes": "transition",
-        "end": "NumLockOff",
-        "id": "edge1",
-        "label": "",
-        "labelStyle": "",
-        "labelType": "text",
-        "labelpos": "c",
-        "look": "classic",
-        "start": "divider-id-1_start",
-        "style": "fill:none",
-        "thickness": "normal"
-      },
-      {
-        "arrowTypeEnd": "arrow_barb",
-        "arrowhead": "normal",
-        "arrowheadStyle": "fill: #333",
-        "classes": "transition",
-        "end": "CapsLockOff",
-        "id": "edge2",
-        "label": "",
-        "labelStyle": "",
-        "labelType": "text",
-        "labelpos": "c",
-        "look": "classic",
-        "start": "divider-id-2_start",
-        "style": "fill:none",
-        "thickness": "normal"
-      },
-      {
-        "arrowTypeEnd": "arrow_barb",
-        "arrowhead": "normal",
-        "arrowheadStyle": "fill: #333",
-        "classes": "transition",
-        "end": "ScrollLockOff",
-        "id": "edge3",
-        "label": "",
-        "labelStyle": "",
-        "labelType": "text",
-        "labelpos": "c",
-        "look": "classic",
-        "start": "id-38dvt516gkfs-1_start",
-        "style": "fill:none",
-        "thickness": "normal"
-      }
-    ],
-    "links": {},
+    "type": "stateDiagram",
     "nodes": [
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "root_start",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "root_start",
         "dir": null,
         "domId": "state-root_start-0",
-        "id": "root_start",
+        "type": null,
         "isGroup": false,
-        "label": "root_start",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "shape": "stateStart",
-        "type": null
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
       },
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "roundedWithTitle",
+        "label": "Active",
         "cssClasses": "statediagram-state statediagram-cluster",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "Active",
         "dir": "TB",
         "domId": "state-Active-1",
-        "id": "Active",
+        "type": "group",
         "isGroup": true,
-        "label": "Active",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "shape": "roundedWithTitle",
-        "type": "group"
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
       },
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "divider",
+        "label": "",
         "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "divider-id-1",
         "dir": "TB",
         "domId": "state-divider-id-1-1",
-        "id": "divider-id-1",
+        "type": "group",
         "isGroup": true,
-        "label": "",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": "Active",
         "rx": 10,
         "ry": 10,
-        "shape": "divider",
-        "type": "group"
+        "look": "classic",
+        "parentId": "Active",
+        "centerLabel": true
       },
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "divider-id-1_start",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "divider-id-1_start",
         "dir": null,
         "domId": "state-divider-id-1_start-1",
-        "id": "divider-id-1_start",
+        "type": null,
         "isGroup": false,
-        "label": "divider-id-1_start",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": "divider-id-1",
         "rx": 10,
         "ry": 10,
-        "shape": "stateStart",
-        "type": null
+        "look": "classic",
+        "parentId": "divider-id-1",
+        "centerLabel": true
       },
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "NumLockOff",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "NumLockOff",
         "dir": null,
         "domId": "state-NumLockOff-1",
-        "id": "NumLockOff",
+        "type": null,
         "isGroup": false,
-        "label": "NumLockOff",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": "divider-id-1",
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
-        "type": null
+        "look": "classic",
+        "parentId": "divider-id-1",
+        "centerLabel": true
       },
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "divider",
+        "label": "",
         "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "divider-id-2",
         "dir": "TB",
         "domId": "state-divider-id-2-2",
-        "id": "divider-id-2",
+        "type": "group",
         "isGroup": true,
-        "label": "",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": "Active",
         "rx": 10,
         "ry": 10,
-        "shape": "divider",
-        "type": "group"
+        "look": "classic",
+        "parentId": "Active",
+        "centerLabel": true
       },
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "divider-id-2_start",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "divider-id-2_start",
         "dir": null,
         "domId": "state-divider-id-2_start-2",
-        "id": "divider-id-2_start",
+        "type": null,
         "isGroup": false,
-        "label": "divider-id-2_start",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": "divider-id-2",
         "rx": 10,
         "ry": 10,
-        "shape": "stateStart",
-        "type": null
+        "look": "classic",
+        "parentId": "divider-id-2",
+        "centerLabel": true
       },
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "CapsLockOff",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "CapsLockOff",
         "dir": null,
         "domId": "state-CapsLockOff-2",
-        "id": "CapsLockOff",
+        "type": null,
         "isGroup": false,
-        "label": "CapsLockOff",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": "divider-id-2",
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
-        "type": null
+        "look": "classic",
+        "parentId": "divider-id-2",
+        "centerLabel": true
       },
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "divider",
+        "label": "",
         "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "id-38dvt516gkfs-1",
         "dir": "TB",
         "domId": "state-id-38dvt516gkfs-1-3",
-        "id": "id-38dvt516gkfs-1",
+        "type": "group",
         "isGroup": true,
-        "label": "",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": "Active",
         "rx": 10,
         "ry": 10,
-        "shape": "divider",
-        "type": "group"
+        "look": "classic",
+        "parentId": "Active",
+        "centerLabel": true
       },
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "id-38dvt516gkfs-1_start",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "id-38dvt516gkfs-1_start",
         "dir": null,
         "domId": "state-id-38dvt516gkfs-1_start-3",
-        "id": "id-38dvt516gkfs-1_start",
+        "type": null,
         "isGroup": false,
-        "label": "id-38dvt516gkfs-1_start",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": "id-38dvt516gkfs-1",
         "rx": 10,
         "ry": 10,
-        "shape": "stateStart",
-        "type": null
+        "look": "classic",
+        "parentId": "id-38dvt516gkfs-1",
+        "centerLabel": true
       },
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "ScrollLockOff",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "ScrollLockOff",
         "dir": null,
         "domId": "state-ScrollLockOff-3",
-        "id": "ScrollLockOff",
+        "type": null,
         "isGroup": false,
-        "label": "ScrollLockOff",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": "id-38dvt516gkfs-1",
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
-        "type": null
+        "look": "classic",
+        "parentId": "id-38dvt516gkfs-1",
+        "centerLabel": true
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge0",
+        "start": "root_start",
+        "end": "Active",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge1",
+        "start": "divider-id-1_start",
+        "end": "NumLockOff",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge2",
+        "start": "divider-id-2_start",
+        "end": "CapsLockOff",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge3",
+        "start": "id-38dvt516gkfs-1_start",
+        "end": "ScrollLockOff",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
       }
     ],
     "other": {},
+    "links": {},
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "states": {
+      "root_start": {
+        "id": "root_start",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": true
+      },
+      "Active": {
+        "id": "Active",
+        "type": "default",
+        "descriptions": [],
+        "doc": [
+          {
+            "stmt": "state",
+            "id": "divider-id-1",
+            "type": "divider",
+            "description": null,
+            "doc": [
+              {
+                "stmt": "relation",
+                "state1": {
+                  "id": "divider-id-1_start",
+                  "type": "default",
+                  "classes": []
+                },
+                "state2": {
+                  "id": "NumLockOff",
+                  "type": "default",
+                  "classes": []
+                },
+                "description": null
+              }
+            ],
+            "classes": []
+          },
+          {
+            "stmt": "state",
+            "id": "divider-id-2",
+            "type": "divider",
+            "description": null,
+            "doc": [
+              {
+                "stmt": "relation",
+                "state1": {
+                  "id": "divider-id-2_start",
+                  "type": "default",
+                  "classes": []
+                },
+                "state2": {
+                  "id": "CapsLockOff",
+                  "type": "default",
+                  "classes": []
+                },
+                "description": null
+              }
+            ],
+            "classes": []
+          },
+          {
+            "stmt": "state",
+            "id": "id-38dvt516gkfs-1",
+            "type": "divider",
+            "description": null,
+            "doc": [
+              {
+                "stmt": "relation",
+                "state1": {
+                  "id": "id-38dvt516gkfs-1_start",
+                  "type": "default",
+                  "classes": []
+                },
+                "state2": {
+                  "id": "ScrollLockOff",
+                  "type": "default",
+                  "classes": []
+                },
+                "description": null
+              }
+            ],
+            "classes": []
+          }
+        ],
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      }
+    },
     "relations": [
       {
         "id1": "root_start",
@@ -290,101 +385,6 @@
         "relationTitle": null
       }
     ],
-    "states": {
-      "Active": {
-        "classes": [],
-        "descriptions": [],
-        "doc": [
-          {
-            "classes": [],
-            "description": null,
-            "doc": [
-              {
-                "description": null,
-                "state1": {
-                  "classes": [],
-                  "id": "divider-id-1_start",
-                  "type": "default"
-                },
-                "state2": {
-                  "classes": [],
-                  "id": "NumLockOff",
-                  "type": "default"
-                },
-                "stmt": "relation"
-              }
-            ],
-            "id": "divider-id-1",
-            "stmt": "state",
-            "type": "divider"
-          },
-          {
-            "classes": [],
-            "description": null,
-            "doc": [
-              {
-                "description": null,
-                "state1": {
-                  "classes": [],
-                  "id": "divider-id-2_start",
-                  "type": "default"
-                },
-                "state2": {
-                  "classes": [],
-                  "id": "CapsLockOff",
-                  "type": "default"
-                },
-                "stmt": "relation"
-              }
-            ],
-            "id": "divider-id-2",
-            "stmt": "state",
-            "type": "divider"
-          },
-          {
-            "classes": [],
-            "description": null,
-            "doc": [
-              {
-                "description": null,
-                "state1": {
-                  "classes": [],
-                  "id": "id-38dvt516gkfs-1_start",
-                  "type": "default"
-                },
-                "state2": {
-                  "classes": [],
-                  "id": "ScrollLockOff",
-                  "type": "default"
-                },
-                "stmt": "relation"
-              }
-            ],
-            "id": "id-38dvt516gkfs-1",
-            "stmt": "state",
-            "type": "divider"
-          }
-        ],
-        "id": "Active",
-        "note": null,
-        "start": null,
-        "styles": [],
-        "textStyles": [],
-        "type": "default"
-      },
-      "root_start": {
-        "classes": [],
-        "descriptions": [],
-        "doc": null,
-        "id": "root_start",
-        "note": null,
-        "start": true,
-        "styles": [],
-        "textStyles": [],
-        "type": "default"
-      }
-    },
-    "styleClasses": {},
-    "type": "stateDiagram"
+    "styleClasses": {}
   }
 }

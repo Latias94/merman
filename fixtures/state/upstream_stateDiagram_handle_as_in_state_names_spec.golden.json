@@ -1,111 +1,111 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "accDescr": null,
-    "accTitle": null,
-    "direction": "TB",
-    "edges": [],
-    "links": {},
+    "type": "stateDiagram",
     "nodes": [
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "assemble",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "assemble",
         "dir": null,
         "domId": "state-assemble-0",
-        "id": "assemble",
+        "type": null,
         "isGroup": false,
-        "label": "assemble",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
-        "type": null
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
       },
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "assemblies",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "assemblies",
         "dir": null,
         "domId": "state-assemblies-0",
-        "id": "assemblies",
+        "type": null,
         "isGroup": false,
-        "label": "assemblies",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
-        "type": null
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
       },
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "as",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "description": [],
+        "id": "as",
         "dir": null,
         "domId": "state-as-0",
-        "id": "as",
+        "type": null,
         "isGroup": false,
-        "label": "as",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
-        "type": null
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true,
+        "description": []
       }
     ],
+    "edges": [],
     "other": {},
-    "relations": [],
+    "links": {},
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
     "states": {
-      "as": {
+      "assemble": {
+        "id": "assemble",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
         "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "assemblies": {
+        "id": "assemblies",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "as": {
+        "id": "as",
+        "type": "default",
         "descriptions": [
           "as"
         ],
         "doc": null,
-        "id": "as",
         "note": null,
-        "start": null,
-        "styles": [],
-        "textStyles": [],
-        "type": "default"
-      },
-      "assemble": {
         "classes": [],
-        "descriptions": [],
-        "doc": null,
-        "id": "assemble",
-        "note": null,
-        "start": null,
         "styles": [],
         "textStyles": [],
-        "type": "default"
-      },
-      "assemblies": {
-        "classes": [],
-        "descriptions": [],
-        "doc": null,
-        "id": "assemblies",
-        "note": null,
-        "start": null,
-        "styles": [],
-        "textStyles": [],
-        "type": "default"
+        "start": null
       }
     },
-    "styleClasses": {},
-    "type": "stateDiagram"
+    "relations": [],
+    "styleClasses": {}
   }
 }

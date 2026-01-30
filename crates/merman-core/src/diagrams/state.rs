@@ -1,5 +1,6 @@
 use crate::sanitize::{sanitize_text, sanitize_text_or_array};
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
+use indexmap::IndexMap;
 use serde_json::{Value, json};
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, VecDeque};
@@ -944,7 +945,7 @@ struct StateDb {
     states: HashMap<String, StateRecord>,
     state_order: Vec<String>,
     relations: Vec<RelationEdge>,
-    style_classes: HashMap<String, StyleClass>,
+    style_classes: IndexMap<String, StyleClass>,
     direction: Option<String>,
     acc_title: Option<String>,
     acc_descr: Option<String>,
@@ -1459,7 +1460,7 @@ fn get_dir_for_doc(doc: &[Stmt], default_dir: &str) -> String {
     dir
 }
 
-fn compiled_styles(css_classes: &str, classes: &HashMap<String, StyleClass>) -> Vec<String> {
+fn compiled_styles(css_classes: &str, classes: &IndexMap<String, StyleClass>) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for class_name in css_classes.split_whitespace() {
         if let Some(c) = classes.get(class_name) {
@@ -1493,7 +1494,7 @@ fn upsert_node(nodes: &mut Vec<Value>, index: &mut HashMap<String, usize>, node:
 fn build_layout_data(
     root_doc: &[Stmt],
     states: &HashMap<String, StateRecord>,
-    classes: &HashMap<String, StyleClass>,
+    classes: &IndexMap<String, StyleClass>,
     config: &MermaidConfig,
     look: &Value,
 ) -> std::result::Result<(Vec<Value>, Vec<Value>), String> {
@@ -1508,7 +1509,7 @@ fn build_layout_data(
         parent: Option<&StateStmt>,
         doc: &[Stmt],
         states: &HashMap<String, StateRecord>,
-        classes: &HashMap<String, StyleClass>,
+        classes: &IndexMap<String, StyleClass>,
         config: &MermaidConfig,
         look: &Value,
         nodes: &mut Vec<Value>,
@@ -1598,7 +1599,7 @@ fn build_layout_data(
         parent: Option<&StateStmt>,
         parsed_item: &StateStmt,
         states: &HashMap<String, StateRecord>,
-        classes: &HashMap<String, StyleClass>,
+        classes: &IndexMap<String, StyleClass>,
         config: &MermaidConfig,
         look: &Value,
         nodes: &mut Vec<Value>,

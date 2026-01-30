@@ -1,104 +1,140 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "accDescr": null,
-    "accTitle": null,
-    "direction": "TB",
-    "edges": [
-      {
-        "arrowTypeEnd": "arrow_barb",
-        "arrowhead": "normal",
-        "arrowheadStyle": "fill: #333",
-        "classes": "transition",
-        "end": "State1",
-        "id": "edge0",
-        "label": "This is the description +-!",
-        "labelStyle": "",
-        "labelType": "text",
-        "labelpos": "c",
-        "look": "classic",
-        "start": "root_start",
-        "style": "fill:none",
-        "thickness": "normal"
-      },
-      {
-        "arrowTypeEnd": "arrow_barb",
-        "arrowhead": "normal",
-        "arrowheadStyle": "fill: #333",
-        "classes": "transition",
-        "end": "root_end",
-        "id": "edge1",
-        "label": "",
-        "labelStyle": "",
-        "labelType": "text",
-        "labelpos": "c",
-        "look": "classic",
-        "start": "State1",
-        "style": "fill:none",
-        "thickness": "normal"
-      }
-    ],
-    "links": {},
+    "type": "stateDiagram",
     "nodes": [
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "root_start",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "root_start",
         "dir": null,
         "domId": "state-root_start-0",
-        "id": "root_start",
+        "type": null,
         "isGroup": false,
-        "label": "root_start",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "shape": "stateStart",
-        "type": null
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
       },
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "State1",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "State1",
         "dir": null,
         "domId": "state-State1-1",
-        "id": "State1",
+        "type": null,
         "isGroup": false,
-        "label": "State1",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
-        "type": null
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
       },
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "stateEnd",
+        "label": "root_end",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "root_end",
         "dir": null,
         "domId": "state-root_end-1",
-        "id": "root_end",
+        "type": null,
         "isGroup": false,
-        "label": "root_end",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "shape": "stateEnd",
-        "type": null
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge0",
+        "start": "root_start",
+        "end": "State1",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "This is the description +-!",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge1",
+        "start": "State1",
+        "end": "root_end",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
       }
     ],
     "other": {},
+    "links": {},
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "states": {
+      "root_start": {
+        "id": "root_start",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": true
+      },
+      "State1": {
+        "id": "State1",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "root_end": {
+        "id": "root_end",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": false
+      }
+    },
     "relations": [
       {
         "id1": "root_start",
@@ -111,42 +147,6 @@
         "relationTitle": null
       }
     ],
-    "states": {
-      "State1": {
-        "classes": [],
-        "descriptions": [],
-        "doc": null,
-        "id": "State1",
-        "note": null,
-        "start": null,
-        "styles": [],
-        "textStyles": [],
-        "type": "default"
-      },
-      "root_end": {
-        "classes": [],
-        "descriptions": [],
-        "doc": null,
-        "id": "root_end",
-        "note": null,
-        "start": false,
-        "styles": [],
-        "textStyles": [],
-        "type": "default"
-      },
-      "root_start": {
-        "classes": [],
-        "descriptions": [],
-        "doc": null,
-        "id": "root_start",
-        "note": null,
-        "start": true,
-        "styles": [],
-        "textStyles": [],
-        "type": "default"
-      }
-    },
-    "styleClasses": {},
-    "type": "stateDiagram"
+    "styleClasses": {}
   }
 }

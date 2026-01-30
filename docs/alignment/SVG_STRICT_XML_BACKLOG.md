@@ -78,6 +78,16 @@ Recently resolved:
   - IMPORTANT: the diagram source must use real newlines (`\n`) in the Mermaid definition; joining
     lines with a literal `\\n` changes Mermaid parsing and yields a different layout baseline.
 
+### State notes
+
+- State strict XML parity currently fails for every state fixture; the fastest path to progress is to:
+  1. Reach SVG DOM parity first (layout + node/edge routing + viewBox).
+  2. Then iterate on strict-only deltas (`<style>` contents, rule ordering, and attribute ordering).
+- The upstream renderer sets `ranker: 'tight-tree'` and computes `viewBox` from `svg.getBBox()` plus
+  `conf.padding` (outer SVG padding, not Dagre `marginx/marginy`).
+- When chasing strict deltas, start by diffing a single fixture:
+  `git diff --no-index target/compare/xml/state/<fixture>.upstream.xml target/compare/xml/state/<fixture>.local.xml`
+
 ## Workflow
 
 1. Generate the report:

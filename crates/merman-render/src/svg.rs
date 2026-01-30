@@ -12400,7 +12400,8 @@ pub fn render_state_diagram_v2_svg(
     }
 
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
-    let _ = write!(&mut out, "<style>{}</style>", "");
+    let css = state_css(diagram_id, &model, effective_config);
+    let _ = write!(&mut out, "<style>{}</style>", css);
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
@@ -12535,6 +12536,17 @@ struct StateSvgModel {
     pub links: std::collections::HashMap<String, StateSvgLink>,
     #[serde(default)]
     pub states: std::collections::HashMap<String, StateSvgState>,
+    #[serde(default, rename = "styleClasses")]
+    pub style_classes: IndexMap<String, StateSvgStyleClass>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct StateSvgStyleClass {
+    pub id: String,
+    #[serde(default)]
+    pub styles: Vec<String>,
+    #[serde(default, rename = "textStyles")]
+    pub text_styles: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -12619,6 +12631,370 @@ fn state_markers(out: &mut String, diagram_id: &str) {
         out,
         r#"<defs><marker id="{diagram_id}_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L9,13 L14,7 L9,1 Z"/></marker></defs>"#
     );
+}
+
+fn state_css(
+    diagram_id: &str,
+    model: &StateSvgModel,
+    effective_config: &serde_json::Value,
+) -> String {
+    fn font_family_css(effective_config: &serde_json::Value) -> String {
+        let mut ff = config_string(effective_config, &["fontFamily"])
+            .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
+            .unwrap_or_else(|| "\"trebuchet ms\",verdana,arial,sans-serif".to_string());
+        ff = ff.replace(", ", ",").replace(",\t", ",");
+        ff
+    }
+
+    fn normalize_decl(s: &str) -> Option<(String, String)> {
+        let s = s.trim().trim_end_matches(';').trim();
+        if s.is_empty() {
+            return None;
+        }
+        let (k, v) = s.split_once(':')?;
+        let key = k.trim().to_string();
+        let mut val = v.trim().to_string();
+        // Mermaid emits class styles with `!important` (no spaces).
+        if !val.to_lowercase().contains("!important") {
+            val.push_str("!important");
+        } else {
+            val = val.replace(" !important", "!important");
+        }
+        Some((key, val))
+    }
+
+    fn class_decl_block(styles: &[String], text_styles: &[String]) -> String {
+        let mut out = String::new();
+        for raw in styles.iter().chain(text_styles.iter()) {
+            let Some((k, v)) = normalize_decl(raw) else {
+                continue;
+            };
+            // Mermaid tightens `prop: value` -> `prop:value`.
+            let _ = write!(&mut out, "{}:{};", k, v);
+        }
+        out
+    }
+
+    fn should_duplicate_class_rules(styles: &[String], text_styles: &[String]) -> bool {
+        let has_fontish = |s: &str| {
+            let s = s.trim_start().to_lowercase();
+            s.starts_with("font-") || s.starts_with("text-")
+        };
+        styles.iter().any(|s| has_fontish(s)) || text_styles.iter().any(|s| has_fontish(s))
+    }
+
+    let ff = font_family_css(effective_config);
+    let font_size = config_f64(effective_config, &["fontSize"])
+        .unwrap_or(16.0)
+        .max(1.0);
+    let id = escape_xml(diagram_id);
+
+    // Keep the base stylesheet byte-for-byte compatible with Mermaid@11.12.2.
+    let mut css = String::new();
+    let font_size_s = fmt(font_size);
+    let _ = write!(
+        &mut css,
+        r#"#{}{{font-family:{};font-size:{}px;fill:#333;}}"#,
+        id, ff, font_size_s
+    );
+    css.push_str("@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}");
+    css.push_str("@keyframes dash{to{stroke-dashoffset:0;}}");
+    let _ = write!(
+        &mut css,
+        r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
+        id
+    );
+    let _ = write!(&mut css, r#"#{} .error-icon{{fill:#552222;}}"#, id);
+    let _ = write!(
+        &mut css,
+        r#"#{} .error-text{{fill:#552222;stroke:#552222;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .edge-thickness-normal{{stroke-width:1px;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .edge-thickness-thick{{stroke-width:3.5px;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .edge-pattern-solid{{stroke-dasharray:0;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .edge-pattern-dashed{{stroke-dasharray:3;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .marker{{fill:#333333;stroke:#333333;}}"#,
+        id
+    );
+    let _ = write!(&mut css, r#"#{} .marker.cross{{stroke:#333333;}}"#, id);
+    let _ = write!(
+        &mut css,
+        r#"#{} svg{{font-family:{};font-size:{}px;}}"#,
+        id, ff, font_size_s
+    );
+    let _ = write!(&mut css, r#"#{} p{{margin:0;}}"#, id);
+    let _ = write!(
+        &mut css,
+        r#"#{} defs #statediagram-barbEnd{{fill:#333333;stroke:#333333;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} g.stateGroup text{{fill:#9370DB;stroke:none;font-size:10px;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} g.stateGroup text{{fill:#333;stroke:none;font-size:10px;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} g.stateGroup .state-title{{font-weight:bolder;fill:#131300;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} g.stateGroup rect{{fill:#ECECFF;stroke:#9370DB;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} g.stateGroup line{{stroke:#333333;stroke-width:1;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .transition{{stroke:#333333;stroke-width:1;fill:none;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .stateGroup .composit{{fill:white;border-bottom:1px;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .stateGroup .alt-composit{{fill:#e0e0e0;border-bottom:1px;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .state-note{{stroke:#aaaa33;fill:#fff5ad;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .state-note text{{fill:black;stroke:none;font-size:10px;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .stateLabel .box{{stroke:none;stroke-width:0;fill:#ECECFF;opacity:0.5;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .edgeLabel .label rect{{fill:#ECECFF;opacity:0.5;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .edgeLabel{{background-color:rgba(232,232,232, 0.8);text-align:center;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .edgeLabel p{{background-color:rgba(232,232,232, 0.8);}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .edgeLabel rect{{opacity:0.5;background-color:rgba(232,232,232, 0.8);fill:rgba(232,232,232, 0.8);}}"#,
+        id
+    );
+    let _ = write!(&mut css, r#"#{} .edgeLabel .label text{{fill:#333;}}"#, id);
+    let _ = write!(&mut css, r#"#{} .label div .edgeLabel{{color:#333;}}"#, id);
+    let _ = write!(
+        &mut css,
+        r#"#{} .stateLabel text{{fill:#131300;font-size:10px;font-weight:bold;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .node circle.state-start{{fill:#333333;stroke:#333333;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .node .fork-join{{fill:#333333;stroke:#333333;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .node circle.state-end{{fill:#9370DB;stroke:white;stroke-width:1.5;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .end-state-inner{{fill:white;stroke-width:1.5;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .node rect{{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .node polygon{{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} #statediagram-barbEnd{{fill:#333333;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .statediagram-cluster rect{{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .cluster-label,#{} .nodeLabel{{color:#131300;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .statediagram-cluster rect.outer{{rx:5px;ry:5px;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .statediagram-state .divider{{stroke:#9370DB;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .statediagram-state .title-state{{rx:5px;ry:5px;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .statediagram-cluster.statediagram-cluster .inner{{fill:white;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .statediagram-cluster.statediagram-cluster-alt .inner{{fill:#f0f0f0;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .statediagram-cluster .inner{{rx:0;ry:0;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .statediagram-state rect.basic{{rx:5px;ry:5px;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .statediagram-state rect.divider{{stroke-dasharray:10,10;fill:#f0f0f0;}}"#,
+        id
+    );
+    let _ = write!(&mut css, r#"#{} .note-edge{{stroke-dasharray:5;}}"#, id);
+    let _ = write!(
+        &mut css,
+        r#"#{} .statediagram-note rect{{fill:#fff5ad;stroke:#aaaa33;stroke-width:1px;rx:0;ry:0;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .statediagram-note rect{{fill:#fff5ad;stroke:#aaaa33;stroke-width:1px;rx:0;ry:0;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .statediagram-note text{{fill:black;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .statediagram-note .nodeLabel{{color:black;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .statediagram .edgeLabel{{color:red;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} #dependencyStart,#{} #dependencyEnd{{fill:#333333;stroke:#333333;stroke-width:1;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .statediagramTitleText{{text-anchor:middle;font-size:18px;fill:#333;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} :root{{--mermaid-font-family:{};}}"#,
+        id, ff
+    );
+
+    if !model.style_classes.is_empty() {
+        // Mermaid keeps classDef ordering stable and appends each class as:
+        //   `#id .class&gt;*{...}#id .class span{...}`
+        for sc in model.style_classes.values() {
+            let decls = class_decl_block(&sc.styles, &sc.text_styles);
+            if decls.is_empty() {
+                continue;
+            }
+            let repeats = if should_duplicate_class_rules(&sc.styles, &sc.text_styles) {
+                2
+            } else {
+                1
+            };
+            for _ in 0..repeats {
+                let _ = write!(
+                    &mut css,
+                    r#"#{} .{}&gt;*{{{}}}#{} .{} span{{{}}}"#,
+                    id, sc.id, decls, id, sc.id, decls
+                );
+            }
+        }
+    }
+
+    css
 }
 
 fn state_value_to_label_text(v: &serde_json::Value) -> String {

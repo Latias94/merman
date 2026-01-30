@@ -1,51 +1,51 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "accDescr": null,
-    "accTitle": null,
-    "direction": "TB",
-    "edges": [],
-    "links": {},
+    "type": "stateDiagram",
     "nodes": [
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Long state description",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "description": [],
+        "id": "state1",
         "dir": null,
         "domId": "state-state1-0",
-        "id": "state1",
+        "type": null,
         "isGroup": false,
-        "label": "Long state description",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
-        "type": null
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true,
+        "description": []
       }
     ],
+    "edges": [],
     "other": {},
-    "relations": [],
+    "links": {},
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
     "states": {
       "state1": {
-        "classes": [],
+        "id": "state1",
+        "type": "default",
         "descriptions": [
           "Long state description"
         ],
         "doc": null,
-        "id": "state1",
         "note": null,
-        "start": null,
+        "classes": [],
         "styles": [],
         "textStyles": [],
-        "type": "default"
+        "start": null
       }
     },
-    "styleClasses": {},
-    "type": "stateDiagram"
+    "relations": [],
+    "styleClasses": {}
   }
 }

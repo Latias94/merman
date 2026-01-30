@@ -893,6 +893,8 @@ pub fn layout_state_diagram_v2(
         rankdir: diagram_dir,
         nodesep,
         ranksep,
+        // Mermaid state renderer explicitly selects the `tight-tree` ranker.
+        ranker: Some("tight-tree".to_string()),
         ..Default::default()
     });
 

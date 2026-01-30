@@ -1,87 +1,87 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "accDescr": null,
-    "accTitle": null,
-    "direction": "TB",
-    "edges": [],
-    "links": {
-      "S1": {
-        "tooltip": "Go to Example",
-        "url": "https://example.com"
-      },
-      "S2": {
-        "tooltip": "",
-        "url": "https://example.com"
-      }
-    },
+    "type": "stateDiagram",
     "nodes": [
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "S1",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "S1",
         "dir": null,
         "domId": "state-S1-0",
-        "id": "S1",
+        "type": null,
         "isGroup": false,
-        "label": "S1",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
-        "type": null
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
       },
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "S2",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "S2",
         "dir": null,
         "domId": "state-S2-0",
-        "id": "S2",
+        "type": null,
         "isGroup": false,
-        "label": "S2",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
-        "type": null
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
       }
     ],
+    "edges": [],
     "other": {},
-    "relations": [],
-    "states": {
+    "links": {
       "S1": {
-        "classes": [],
-        "descriptions": [],
-        "doc": null,
-        "id": "S1",
-        "note": null,
-        "start": null,
-        "styles": [],
-        "textStyles": [],
-        "type": "default"
+        "url": "https://example.com",
+        "tooltip": "Go to Example"
       },
       "S2": {
-        "classes": [],
-        "descriptions": [],
-        "doc": null,
-        "id": "S2",
-        "note": null,
-        "start": null,
-        "styles": [],
-        "textStyles": [],
-        "type": "default"
+        "url": "https://example.com",
+        "tooltip": ""
       }
     },
-    "styleClasses": {},
-    "type": "stateDiagram"
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "states": {
+      "S1": {
+        "id": "S1",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "S2": {
+        "id": "S2",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      }
+    },
+    "relations": [],
+    "styleClasses": {}
   }
 }

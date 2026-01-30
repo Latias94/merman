@@ -1,227 +1,227 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "accDescr": null,
-    "accTitle": null,
-    "direction": "TB",
-    "edges": [
-      {
-        "arrowTypeEnd": "arrow_barb",
-        "arrowhead": "normal",
-        "arrowheadStyle": "fill: #333",
-        "classes": "transition",
-        "end": "NewValueSelection",
-        "id": "edge0",
-        "label": "",
-        "labelStyle": "",
-        "labelType": "text",
-        "labelpos": "c",
-        "look": "classic",
-        "start": "Configuring_start",
-        "style": "fill:none",
-        "thickness": "normal"
-      },
-      {
-        "arrowTypeEnd": "arrow_barb",
-        "arrowhead": "normal",
-        "arrowheadStyle": "fill: #333",
-        "classes": "transition",
-        "end": "NewValuePreview",
-        "id": "edge1",
-        "label": "EvNewValue",
-        "labelStyle": "",
-        "labelType": "text",
-        "labelpos": "c",
-        "look": "classic",
-        "start": "NewValueSelection",
-        "style": "fill:none",
-        "thickness": "normal"
-      },
-      {
-        "arrowTypeEnd": "arrow_barb",
-        "arrowhead": "normal",
-        "arrowheadStyle": "fill: #333",
-        "classes": "transition",
-        "end": "NewValueSelection",
-        "id": "edge2",
-        "label": "EvNewValueRejected",
-        "labelStyle": "",
-        "labelType": "text",
-        "labelpos": "c",
-        "look": "classic",
-        "start": "NewValuePreview",
-        "style": "fill:none",
-        "thickness": "normal"
-      },
-      {
-        "arrowTypeEnd": "arrow_barb",
-        "arrowhead": "normal",
-        "arrowheadStyle": "fill: #333",
-        "classes": "transition",
-        "end": "NewValueSelection",
-        "id": "edge3",
-        "label": "EvNewValueSaved1",
-        "labelStyle": "",
-        "labelType": "text",
-        "labelpos": "c",
-        "look": "classic",
-        "start": "NewValuePreview",
-        "style": "fill:none",
-        "thickness": "normal"
-      }
-    ],
-    "links": {},
+    "type": "stateDiagram",
     "nodes": [
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "roundedWithTitle",
+        "label": "Configuring",
         "cssClasses": "statediagram-state statediagram-cluster",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "Configuring",
         "dir": "TB",
         "domId": "state-Configuring-0",
-        "id": "Configuring",
+        "type": "group",
         "isGroup": true,
-        "label": "Configuring",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "shape": "roundedWithTitle",
-        "type": "group"
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
       },
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "Configuring_start",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "Configuring_start",
         "dir": null,
         "domId": "state-Configuring_start-0",
-        "id": "Configuring_start",
+        "type": null,
         "isGroup": false,
-        "label": "Configuring_start",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": "Configuring",
         "rx": 10,
         "ry": 10,
-        "shape": "stateStart",
-        "type": null
+        "look": "classic",
+        "parentId": "Configuring",
+        "centerLabel": true
       },
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "NewValueSelection",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "NewValueSelection",
         "dir": null,
         "domId": "state-NewValueSelection-3",
-        "id": "NewValueSelection",
+        "type": null,
         "isGroup": false,
-        "label": "NewValueSelection",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": "Configuring",
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
-        "type": null
+        "look": "classic",
+        "parentId": "Configuring",
+        "centerLabel": true
       },
       {
-        "centerLabel": true,
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "NewValuePreview",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
+        "id": "NewValuePreview",
         "dir": null,
         "domId": "state-NewValuePreview-3",
-        "id": "NewValuePreview",
+        "type": null,
         "isGroup": false,
-        "label": "NewValuePreview",
-        "labelStyle": "",
-        "look": "classic",
         "padding": 8,
-        "parentId": "Configuring",
         "rx": 10,
         "ry": 10,
-        "shape": "rect",
-        "type": null
+        "look": "classic",
+        "parentId": "Configuring",
+        "centerLabel": true
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge0",
+        "start": "Configuring_start",
+        "end": "NewValueSelection",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge1",
+        "start": "NewValueSelection",
+        "end": "NewValuePreview",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "EvNewValue",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge2",
+        "start": "NewValuePreview",
+        "end": "NewValueSelection",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "EvNewValueRejected",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge3",
+        "start": "NewValuePreview",
+        "end": "NewValueSelection",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "EvNewValueSaved1",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
       }
     ],
     "other": {},
-    "relations": [],
+    "links": {},
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
     "states": {
       "Configuring": {
-        "classes": [],
+        "id": "Configuring",
+        "type": "default",
         "descriptions": [],
         "doc": [
           {
-            "description": null,
+            "stmt": "relation",
             "state1": {
-              "classes": [],
               "id": "Configuring_start",
-              "type": "default"
+              "type": "default",
+              "classes": []
             },
             "state2": {
-              "classes": [],
               "id": "NewValueSelection",
-              "type": "default"
+              "type": "default",
+              "classes": []
             },
-            "stmt": "relation"
+            "description": null
           },
           {
-            "description": "EvNewValue",
+            "stmt": "relation",
             "state1": {
-              "classes": [],
               "id": "NewValueSelection",
-              "type": "default"
+              "type": "default",
+              "classes": []
             },
             "state2": {
-              "classes": [],
               "id": "NewValuePreview",
-              "type": "default"
+              "type": "default",
+              "classes": []
             },
-            "stmt": "relation"
+            "description": "EvNewValue"
           },
           {
-            "description": "EvNewValueRejected",
+            "stmt": "relation",
             "state1": {
-              "classes": [],
               "id": "NewValuePreview",
-              "type": "default"
+              "type": "default",
+              "classes": []
             },
             "state2": {
-              "classes": [],
               "id": "NewValueSelection",
-              "type": "default"
+              "type": "default",
+              "classes": []
             },
-            "stmt": "relation"
+            "description": "EvNewValueRejected"
           },
           {
-            "description": "EvNewValueSaved1",
+            "stmt": "relation",
             "state1": {
-              "classes": [],
               "id": "NewValuePreview",
-              "type": "default"
+              "type": "default",
+              "classes": []
             },
             "state2": {
-              "classes": [],
               "id": "NewValueSelection",
-              "type": "default"
+              "type": "default",
+              "classes": []
             },
-            "stmt": "relation"
+            "description": "EvNewValueSaved1"
           }
         ],
-        "id": "Configuring",
         "note": null,
-        "start": null,
+        "classes": [],
         "styles": [],
         "textStyles": [],
-        "type": "default"
+        "start": null
       }
     },
-    "styleClasses": {},
-    "type": "stateDiagram"
+    "relations": [],
+    "styleClasses": {}
   }
 }
