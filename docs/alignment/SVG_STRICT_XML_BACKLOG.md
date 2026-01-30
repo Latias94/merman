@@ -17,23 +17,37 @@ Notes:
 
 ## Current status (as of 2026-01-30)
 
-Total strict mismatches: **197**
+Total strict mismatches: **196**
+
+Total fixtures compared: **468**
+
+Strict matches: **272 / 468 (58.12%)**
 
 Mismatch counts by diagram:
 
-- `sequence`: 26
-- `state`: 36
 - `architecture`: 25
 - `block`: 22
-- `class`: 16
-- `kanban`: 15
-- `gitgraph`: 14
-- `mindmap`: 11
-- `pie`: 11
-- `xychart`: 11
 - `c4`: 10
-- `gantt`: 0
+- `class`: 16
+- `er`: 0
 - `flowchart`: 0
+- `gantt`: 0
+- `gitgraph`: 14
+- `info`: 0
+- `journey`: 0
+- `kanban`: 15
+- `mindmap`: 11
+- `packet`: 0
+- `pie`: 11
+- `quadrantchart`: 0
+- `radar`: 0
+- `requirement`: 0
+- `sankey`: 0
+- `sequence`: 25
+- `state`: 36
+- `timeline`: 0
+- `treemap`: 0
+- `xychart`: 11
 
 Recently resolved:
 

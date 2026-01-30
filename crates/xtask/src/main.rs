@@ -628,21 +628,20 @@ const strings = input.strings;
         .to_string();
 
         // IMPORTANT: we infer Mermaid's internal `calculateTextDimensions(...).width` by
-        // rendering a minimal 2-actor sequence diagram and inverting Mermaid's margin formula:
+        // rendering a minimal 2-actor sequence diagram and inverting Mermaid's margin formula.
         //
-        // - Mermaid positions actors using `actor.x = prevWidth + prevMargin` (x is left edge).
-        // - For 2 actors with default widths `W=150`, we can read `actor0/actor1` lifeline x1
-        //   (center x) from the produced SVG:
-        //     centerDiff = x1(actor1) - x1(actor0) = W + margin
-        //     margin = centerDiff - W
-        // - Mermaid's margin formula (when `margin > actorMargin`) is:
-        //     margin = messageWidth + actorMargin - W
-        //     messageWidth = calculateTextDimensions.width + 2*wrapPadding
-        //   With defaults `actorMargin=50`, `wrapPadding=10`, `W=150`:
-        //     calculateTextDimensions.width = margin + 80
+        // Mermaid computes an actor-to-next margin using:
         //
-        // If `margin == actorMargin`, the string didn't exceed the saturation threshold and the
-        // exact width can't be recovered from layout; we return `null` for those.
+        //   actor.margin = max(conf.actorMargin, messageWidth + conf.actorMargin - actor.width/2 - next.width/2)
+        //
+        // where:
+        //
+        //   messageWidth = calculateTextDimensions.width + 2*conf.wrapPadding
+        //
+        // If the margin saturates to `conf.actorMargin`, the exact width can't be recovered from
+        // layout. To avoid that, we intentionally render with a very small `sequence.width`,
+        // making actor widths small enough that typical message labels are in the non-saturated
+        // regime.
         const JS: &str = r#"
 const fs = require('fs');
 const path = require('path');
@@ -684,7 +683,9 @@ const mermaidIifePath = path.join(cliRoot, 'node_modules', 'mermaid', 'dist', 'm
        handDrawnSeed: 1,
        sequence: {
          actorMargin: 50,
-         width: 150,
+         // Use a tiny min actor width to avoid margin saturation at `actorMargin`, so we can
+         // invert from actor center distance to the internal text width deterministically.
+         width: 1,
          wrapPadding: 10,
          messageFontSize: 16,
          messageFontFamily: '\"trebuchet ms\", verdana, arial, sans-serif',
@@ -695,8 +696,8 @@ const mermaidIifePath = path.join(cliRoot, 'node_modules', 'mermaid', 'dist', 'm
 
      const results = [];
      const container = document.getElementById('container') || document.body;
-     const W = 150; // conf.width default
      const ACTOR_MARGIN = 50; // conf.actorMargin default
+     const WRAP_PADDING = 10; // conf.wrapPadding default
 
     for (let i = 0; i < strings.length; i++) {
       const raw = String(strings[i] ?? '');
@@ -756,38 +757,26 @@ const mermaidIifePath = path.join(cliRoot, 'node_modules', 'mermaid', 'dist', 'm
          continue;
        }
        const centerDiff = xs[xs.length - 1] - xs[0];
-       const margin = centerDiff - W;
+       const rectWs = Array.from(doc.querySelectorAll('rect'))
+         .filter((n) => String(n.getAttribute('class') || '').split(/\\s+/g).includes('actor-top'))
+         .map((n) => parseNumber(n.getAttribute('width')))
+         .filter((n) => n !== null)
+         .slice(0, 4);
+       const w0 = rectWs.length >= 1 ? rectWs[0] : null;
+       const w1 = rectWs.length >= 2 ? rectWs[1] : null;
+       const margin = (w0 !== null && w1 !== null) ? (centerDiff - (w0 / 2) - (w1 / 2)) : null;
 
-       // Only infer widths when Mermaid actually widened the margin beyond ACTOR_MARGIN.
-       if (!(margin > ACTOR_MARGIN)) {
-         const meta = { width_px: null, center_diff: centerDiff, margin_px: margin };
-         if (debug) {
-           meta.debug_actor_x1 = xs;
-           const rectWs = Array.from(doc.querySelectorAll('rect'))
-             .filter((n) => String(n.getAttribute('class') || '').split(/\\s+/g).includes('actor-top'))
-             .map((n) => parseNumber(n.getAttribute('width')))
-             .filter((n) => n !== null)
-             .slice(0, 4);
-           meta.debug_actor_rect_w = rectWs;
-           if (i === 0 && cfgSeq) {
-             meta.debug_cfg_message_font_family = String(cfgSeq.messageFontFamily ?? '');
-             meta.debug_cfg_actor_margin = Number(cfgSeq.actorMargin ?? NaN);
-             meta.debug_cfg_wrap_padding = Number(cfgSeq.wrapPadding ?? NaN);
-             meta.debug_cfg_width = Number(cfgSeq.width ?? NaN);
-           }
-         }
-         results.push(meta);
-         continue;
-       }
-       // Derived formula: dimsWidth = margin + 80 (see comment in Rust).
-       const meta = { width_px: Math.round(margin + 80), center_diff: centerDiff, margin_px: margin };
+       // With non-saturated margins (ensured by `sequence.width: 1`), we have:
+       //   centerDiff = messageWidth + ACTOR_MARGIN
+       //   messageWidth = calculateTextDimensions.width + 2*WRAP_PADDING
+       const inferredWidthPx = Math.round(centerDiff - ACTOR_MARGIN - 2 * WRAP_PADDING);
+       const meta = {
+         width_px: Number.isFinite(inferredWidthPx) ? inferredWidthPx : null,
+         center_diff: centerDiff,
+         margin_px: margin,
+       };
        if (debug) {
          meta.debug_actor_x1 = xs;
-         const rectWs = Array.from(doc.querySelectorAll('rect'))
-           .filter((n) => String(n.getAttribute('class') || '').split(/\\s+/g).includes('actor-top'))
-           .map((n) => parseNumber(n.getAttribute('width')))
-           .filter((n) => n !== null)
-           .slice(0, 4);
          meta.debug_actor_rect_w = rectWs;
          if (i === 0 && cfgSeq) {
            meta.debug_cfg_message_font_family = String(cfgSeq.messageFontFamily ?? '');
