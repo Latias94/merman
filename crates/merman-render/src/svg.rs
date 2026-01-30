@@ -564,6 +564,14 @@ pub fn render_sequence_diagram_svg(
         .or_else(|| effective_config.get("fontSize").and_then(|v| v.as_f64()))
         .unwrap_or(16.0)
         .max(1.0);
+    let loop_text_style = TextStyle {
+        font_family: effective_config
+            .get("fontFamily")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        font_size: actor_label_font_size,
+        font_weight: Some("400".to_string()),
+    };
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
@@ -1438,51 +1446,6 @@ pub fn render_sequence_diagram_svg(
         format!("[{t}]")
     }
 
-    fn estimate_char_width_em(ch: char) -> f64 {
-        if ch == ' ' {
-            return 0.33;
-        }
-        if ch == '\t' {
-            return 0.66;
-        }
-        if ch == '_' || ch == '-' {
-            return 0.33;
-        }
-        if matches!(ch, '.' | ',' | ':' | ';') {
-            return 0.28;
-        }
-        if matches!(ch, '(' | ')' | '[' | ']' | '{' | '}' | '/') {
-            return 0.33;
-        }
-        if matches!(ch, '+' | '*' | '=' | '\\' | '^' | '|' | '~') {
-            return 0.45;
-        }
-        if ch.is_ascii_digit() {
-            return 0.56;
-        }
-        if ch.is_ascii_uppercase() {
-            return match ch {
-                'I' => 0.30,
-                'W' => 0.85,
-                _ => 0.60,
-            };
-        }
-        if ch.is_ascii_lowercase() {
-            return match ch {
-                'i' | 'l' => 0.28,
-                'm' | 'w' => 0.78,
-                'k' | 'y' => 0.55,
-                _ => 0.43,
-            };
-        }
-        0.60
-    }
-
-    fn estimate_line_width_px(line: &str, font_size: f64) -> f64 {
-        let em: f64 = line.chars().map(estimate_char_width_em).sum();
-        em * font_size
-    }
-
     fn split_line_to_words(text: &str) -> Vec<String> {
         let parts = text.split(' ').collect::<Vec<_>>();
         let mut out: Vec<String> = Vec::new();
@@ -1498,7 +1461,12 @@ pub fn render_sequence_diagram_svg(
         out
     }
 
-    fn wrap_svg_text_line(line: &str, font_size: f64, max_width: f64) -> Vec<String> {
+    fn wrap_svg_text_line(
+        line: &str,
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+        max_width: f64,
+    ) -> Vec<String> {
         use std::collections::VecDeque;
 
         if !max_width.is_finite() || max_width <= 0.0 {
@@ -1515,7 +1483,7 @@ pub fn render_sequence_diagram_svg(
             }
 
             let candidate = format!("{cur}{tok}");
-            if estimate_line_width_px(&candidate, font_size) <= max_width {
+            if measurer.measure(&candidate, style).width <= max_width {
                 cur = candidate;
                 continue;
             }
@@ -1536,7 +1504,7 @@ pub fn render_sequence_diagram_svg(
             let mut cut = 1usize;
             while cut < chars.len() {
                 let head: String = chars[..cut].iter().collect();
-                if estimate_line_width_px(&head, font_size) > max_width {
+                if measurer.measure(&head, style).width > max_width {
                     break;
                 }
                 cut += 1;
@@ -1561,11 +1529,16 @@ pub fn render_sequence_diagram_svg(
         }
     }
 
-    fn wrap_svg_text_lines(text: &str, font_size: f64, max_width: Option<f64>) -> Vec<String> {
+    fn wrap_svg_text_lines(
+        text: &str,
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+        max_width: Option<f64>,
+    ) -> Vec<String> {
         let mut lines: Vec<String> = Vec::new();
         for line in split_html_br_lines(text) {
             if let Some(w) = max_width {
-                lines.extend(wrap_svg_text_line(line, font_size, w));
+                lines.extend(wrap_svg_text_line(line, measurer, style, w));
             } else {
                 lines.push(line.to_string());
             }
@@ -1579,15 +1552,16 @@ pub fn render_sequence_diagram_svg(
 
     fn write_loop_text_lines(
         out: &mut String,
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
         x: f64,
         y0: f64,
-        font_size: f64,
         max_width: Option<f64>,
         text: &str,
         use_tspan: bool,
     ) {
-        let line_step = font_size * 1.1875;
-        let lines = wrap_svg_text_lines(text, font_size, max_width);
+        let line_step = style.font_size * 1.1875;
+        let lines = wrap_svg_text_lines(text, measurer, style, max_width);
         for (i, line) in lines.into_iter().enumerate() {
             let y = y0 + (i as f64) * line_step;
             if use_tspan {
@@ -1596,7 +1570,7 @@ pub fn render_sequence_diagram_svg(
                     r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText" style="font-size: {fs}px; font-weight: 400;"><tspan x="{x}">{text}</tspan></text>"#,
                     x = fmt(x),
                     y = fmt(y),
-                    fs = fmt(font_size),
+                    fs = fmt(style.font_size),
                     text = escape_xml(&line)
                 );
             } else {
@@ -1605,7 +1579,7 @@ pub fn render_sequence_diagram_svg(
                     r#"<text x="{x}" y="{y}" text-anchor="middle" class="loopText" style="font-size: {fs}px; font-weight: 400;">{text}</text>"#,
                     x = fmt(x),
                     y = fmt(y),
-                    fs = fmt(font_size),
+                    fs = fmt(style.font_size),
                     text = escape_xml(&line)
                 );
             }
@@ -1638,6 +1612,24 @@ pub fn render_sequence_diagram_svg(
         let edge_id = format!("msg-{msg_id}");
         let e = edges_by_id.get(edge_id.as_str()).copied()?;
         Some(e.points.first()?.y)
+    }
+
+    fn msg_y_range(
+        edges_by_id: &std::collections::HashMap<&str, &crate::model::LayoutEdge>,
+        msg_endpoints: &std::collections::HashMap<&str, (&str, &str)>,
+        msg_id: &str,
+    ) -> Option<(f64, f64)> {
+        // Self messages (`A -> A`) are drawn as a loop curve that consumes additional vertical
+        // space beyond the message line y coordinate. Account for that when sizing block frames.
+        const SELF_MESSAGE_EXTRA_Y: f64 = 60.0;
+        let y = msg_line_y(edges_by_id, msg_id)?;
+        let extra = msg_endpoints
+            .get(msg_id)
+            .copied()
+            .filter(|(from, to)| from == to)
+            .map(|_| SELF_MESSAGE_EXTRA_Y)
+            .unwrap_or(0.0);
+        Some((y, y + extra))
     }
 
     // Mermaid renders block frames (`alt`, `loop`, ...) as `<g>` elements before message lines.
@@ -1923,16 +1915,34 @@ pub fn render_sequence_diagram_svg(
             message_ids: impl IntoIterator<Item = &'a String>,
             msg_endpoints: &std::collections::HashMap<&str, (&str, &str)>,
             actor_nodes_by_id: &std::collections::HashMap<&str, &LayoutNode>,
+            edges_by_id: &std::collections::HashMap<&str, &crate::model::LayoutEdge>,
         ) -> Option<(f64, f64, f64)> {
             const SIDE_PAD: f64 = 11.0;
+            const GEOM_PAD: f64 = 10.0;
             let mut min_cx = f64::INFINITY;
             let mut max_cx = f64::NEG_INFINITY;
             let mut min_left = f64::INFINITY;
+            let mut geom_min_x = f64::INFINITY;
+            let mut geom_max_x = f64::NEG_INFINITY;
 
             for msg_id in message_ids {
                 let Some((from, to)) = msg_endpoints.get(msg_id.as_str()).copied() else {
                     continue;
                 };
+
+                // Expand frames to cover message geometry and label overflow (especially important
+                // for single-actor blocks containing long self-message labels).
+                let edge_id = format!("msg-{msg_id}");
+                if let Some(e) = edges_by_id.get(edge_id.as_str()).copied() {
+                    for p in &e.points {
+                        geom_min_x = geom_min_x.min(p.x);
+                        geom_max_x = geom_max_x.max(p.x);
+                    }
+                    if let Some(label) = e.label.as_ref() {
+                        geom_min_x = geom_min_x.min(label.x - (label.width / 2.0) - GEOM_PAD);
+                        geom_max_x = geom_max_x.max(label.x + (label.width / 2.0) + GEOM_PAD);
+                    }
+                }
                 for actor_id in [from, to] {
                     let Some(n) = actor_nodes_by_id.get(actor_id).copied() else {
                         continue;
@@ -1946,7 +1956,15 @@ pub fn render_sequence_diagram_svg(
             if !min_cx.is_finite() || !max_cx.is_finite() {
                 return None;
             }
-            Some((min_cx - SIDE_PAD, max_cx + SIDE_PAD, min_left))
+            let mut x1 = min_cx - SIDE_PAD;
+            let mut x2 = max_cx + SIDE_PAD;
+            if geom_min_x.is_finite() {
+                x1 = x1.min(geom_min_x);
+            }
+            if geom_max_x.is_finite() {
+                x2 = x2.max(geom_max_x);
+            }
+            Some((x1, x2, min_left))
         }
 
         for item in &pre_items {
@@ -1997,9 +2015,11 @@ pub fn render_sequence_diagram_svg(
                             let mut max_y = f64::NEG_INFINITY;
                             for sec in sections {
                                 for msg_id in &sec.message_ids {
-                                    if let Some(y) = msg_line_y(&edges_by_id, msg_id) {
-                                        min_y = min_y.min(y);
-                                        max_y = max_y.max(y);
+                                    if let Some((y0, y1)) =
+                                        msg_y_range(&edges_by_id, &msg_endpoints, msg_id)
+                                    {
+                                        min_y = min_y.min(y0);
+                                        max_y = max_y.max(y1);
                                     }
                                 }
                             }
@@ -2011,6 +2031,7 @@ pub fn render_sequence_diagram_svg(
                                 sections.iter().flat_map(|s| s.message_ids.iter()),
                                 &msg_endpoints,
                                 &actor_nodes_by_id,
+                                &edges_by_id,
                             )
                             .unwrap_or((_frame_x1, _frame_x2, f64::INFINITY));
 
@@ -2058,8 +2079,10 @@ pub fn render_sequence_diagram_svg(
                             for sec in sections {
                                 let mut sec_max_y = f64::NEG_INFINITY;
                                 for msg_id in &sec.message_ids {
-                                    if let Some(y) = msg_line_y(&edges_by_id, msg_id) {
-                                        sec_max_y = sec_max_y.max(y);
+                                    if let Some((_y0, y1)) =
+                                        msg_y_range(&edges_by_id, &msg_endpoints, msg_id)
+                                    {
+                                        sec_max_y = sec_max_y.max(y1);
                                     }
                                 }
                                 if !sec_max_y.is_finite() {
@@ -2102,7 +2125,7 @@ pub fn render_sequence_diagram_svg(
                                 x3 = fmt(x3),
                                 y3 = fmt(y3)
                             );
-                            let label_cx = x1 + 25.0;
+                            let label_cx = (x1 + 25.0).round();
                             let label_cy = y1 + 13.0;
                             let _ = write!(
                                 &mut out,
@@ -2125,9 +2148,10 @@ pub fn render_sequence_diagram_svg(
                                     let max_w = (frame_x2 - label_box_right).max(0.0);
                                     write_loop_text_lines(
                                         &mut out,
+                                        _measurer,
+                                        &loop_text_style,
                                         main_text_x,
                                         y,
-                                        actor_label_font_size,
                                         Some(max_w),
                                         &label_text,
                                         true,
@@ -2137,9 +2161,10 @@ pub fn render_sequence_diagram_svg(
                                 let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
                                 write_loop_text_lines(
                                     &mut out,
+                                    _measurer,
+                                    &loop_text_style,
                                     center_text_x,
                                     y,
-                                    actor_label_font_size,
                                     None,
                                     &label_text,
                                     false,
@@ -2157,9 +2182,11 @@ pub fn render_sequence_diagram_svg(
                             let mut max_y = f64::NEG_INFINITY;
                             for sec in sections {
                                 for msg_id in &sec.message_ids {
-                                    if let Some(y) = msg_line_y(&edges_by_id, msg_id) {
-                                        min_y = min_y.min(y);
-                                        max_y = max_y.max(y);
+                                    if let Some((y0, y1)) =
+                                        msg_y_range(&edges_by_id, &msg_endpoints, msg_id)
+                                    {
+                                        min_y = min_y.min(y0);
+                                        max_y = max_y.max(y1);
                                     }
                                 }
                             }
@@ -2171,6 +2198,7 @@ pub fn render_sequence_diagram_svg(
                                 sections.iter().flat_map(|s| s.message_ids.iter()),
                                 &msg_endpoints,
                                 &actor_nodes_by_id,
+                                &edges_by_id,
                             )
                             .unwrap_or((_frame_x1, _frame_x2, f64::INFINITY));
 
@@ -2216,8 +2244,10 @@ pub fn render_sequence_diagram_svg(
                             for sec in sections {
                                 let mut sec_max_y = f64::NEG_INFINITY;
                                 for msg_id in &sec.message_ids {
-                                    if let Some(y) = msg_line_y(&edges_by_id, msg_id) {
-                                        sec_max_y = sec_max_y.max(y);
+                                    if let Some((_y0, y1)) =
+                                        msg_y_range(&edges_by_id, &msg_endpoints, msg_id)
+                                    {
+                                        sec_max_y = sec_max_y.max(y1);
                                     }
                                 }
                                 if !sec_max_y.is_finite() {
@@ -2259,7 +2289,7 @@ pub fn render_sequence_diagram_svg(
                                 x3 = fmt(x3),
                                 y3 = fmt(y3)
                             );
-                            let label_cx = x1 + 25.0;
+                            let label_cx = (x1 + 25.0).round();
                             let label_cy = y1 + 13.0;
                             let _ = write!(
                                 &mut out,
@@ -2282,9 +2312,10 @@ pub fn render_sequence_diagram_svg(
                                     let max_w = (frame_x2 - label_box_right).max(0.0);
                                     write_loop_text_lines(
                                         &mut out,
+                                        _measurer,
+                                        &loop_text_style,
                                         main_text_x,
                                         y,
-                                        actor_label_font_size,
                                         Some(max_w),
                                         &label_text,
                                         true,
@@ -2294,9 +2325,10 @@ pub fn render_sequence_diagram_svg(
                                 let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
                                 write_loop_text_lines(
                                     &mut out,
+                                    _measurer,
+                                    &loop_text_style,
                                     center_text_x,
                                     y,
-                                    actor_label_font_size,
                                     None,
                                     &label_text,
                                     false,
@@ -2312,9 +2344,11 @@ pub fn render_sequence_diagram_svg(
                             let mut min_y = f64::INFINITY;
                             let mut max_y = f64::NEG_INFINITY;
                             for msg_id in message_ids {
-                                if let Some(y) = msg_line_y(&edges_by_id, msg_id) {
-                                    min_y = min_y.min(y);
-                                    max_y = max_y.max(y);
+                                if let Some((y0, y1)) =
+                                    msg_y_range(&edges_by_id, &msg_endpoints, msg_id)
+                                {
+                                    min_y = min_y.min(y0);
+                                    max_y = max_y.max(y1);
                                 }
                             }
                             if !min_y.is_finite() || !max_y.is_finite() {
@@ -2325,201 +2359,12 @@ pub fn render_sequence_diagram_svg(
                                 message_ids.iter(),
                                 &msg_endpoints,
                                 &actor_nodes_by_id,
+                                &edges_by_id,
                             )
                             .unwrap_or((_frame_x1, _frame_x2, f64::INFINITY));
 
-                            let frame_y1 = min_y - 40.0;
-                            let frame_y2 = max_y + 10.0;
-
-                            out.push_str(r#"<g>"#);
-                            let _ = write!(
-                                &mut out,
-                                r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y1}" class="loopLine"/>"#,
-                                x1 = fmt(frame_x1),
-                                x2 = fmt(frame_x2),
-                                y1 = fmt(frame_y1)
-                            );
-                            let _ = write!(
-                                &mut out,
-                                r#"<line x1="{x2}" y1="{y1}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
-                                x2 = fmt(frame_x2),
-                                y1 = fmt(frame_y1),
-                                y2 = fmt(frame_y2)
-                            );
-                            let _ = write!(
-                                &mut out,
-                                r#"<line x1="{x1}" y1="{y2}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
-                                x1 = fmt(frame_x1),
-                                x2 = fmt(frame_x2),
-                                y2 = fmt(frame_y2)
-                            );
-                            let _ = write!(
-                                &mut out,
-                                r#"<line x1="{x1}" y1="{y1}" x2="{x1}" y2="{y2}" class="loopLine"/>"#,
-                                x1 = fmt(frame_x1),
-                                y1 = fmt(frame_y1),
-                                y2 = fmt(frame_y2)
-                            );
-                            let x1 = frame_x1;
-                            let y1 = frame_y1;
-                            let x2 = x1 + 50.0;
-                            let y2 = y1 + 13.0;
-                            let y3 = y1 + 20.0;
-                            let x3 = x2 - 8.4;
-                            let _ = write!(
-                                &mut out,
-                                r#"<polygon points="{x1},{y1} {x2},{y1} {x2},{y2} {x3},{y3} {x1},{y3}" class="labelBox"/>"#,
-                                x1 = fmt(x1),
-                                y1 = fmt(y1),
-                                x2 = fmt(x2),
-                                y2 = fmt(y2),
-                                x3 = fmt(x3),
-                                y3 = fmt(y3)
-                            );
-                            let label_cx = x1 + 25.0;
-                            let label_cy = y1 + 13.0;
-                            let _ = write!(
-                                &mut out,
-                                r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="font-size: 16px; font-weight: 400;">loop</text>"#,
-                                x = fmt(label_cx),
-                                y = fmt(label_cy)
-                            );
-                            let label_box_right = frame_x1 + 50.0;
-                            let text_x = (label_box_right + frame_x2) / 2.0;
-                            let text_y = frame_y1 + 18.0;
-                            let label = display_block_label(raw_label, true)
-                                .unwrap_or_else(|| "\u{200B}".to_string());
-                            let max_w = (frame_x2 - label_box_right).max(0.0);
-                            write_loop_text_lines(
-                                &mut out,
-                                text_x,
-                                text_y,
-                                actor_label_font_size,
-                                Some(max_w),
-                                &label,
-                                true,
-                            );
-                            out.push_str("</g>");
-                        }
-                        SequenceBlock::Opt {
-                            raw_label,
-                            message_ids,
-                        } => {
-                            let mut min_y = f64::INFINITY;
-                            let mut max_y = f64::NEG_INFINITY;
-                            for msg_id in message_ids {
-                                if let Some(y) = msg_line_y(&edges_by_id, msg_id) {
-                                    min_y = min_y.min(y);
-                                    max_y = max_y.max(y);
-                                }
-                            }
-                            if !min_y.is_finite() || !max_y.is_finite() {
-                                continue;
-                            }
-
-                            let (frame_x1, frame_x2, _min_left) = frame_x_from_message_ids(
-                                message_ids.iter(),
-                                &msg_endpoints,
-                                &actor_nodes_by_id,
-                            )
-                            .unwrap_or((_frame_x1, _frame_x2, f64::INFINITY));
-
-                            let frame_y1 = min_y - 40.0;
-                            let frame_y2 = max_y + 10.0;
-
-                            out.push_str(r#"<g>"#);
-                            let _ = write!(
-                                &mut out,
-                                r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y1}" class="loopLine"/>"#,
-                                x1 = fmt(frame_x1),
-                                x2 = fmt(frame_x2),
-                                y1 = fmt(frame_y1)
-                            );
-                            let _ = write!(
-                                &mut out,
-                                r#"<line x1="{x2}" y1="{y1}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
-                                x2 = fmt(frame_x2),
-                                y1 = fmt(frame_y1),
-                                y2 = fmt(frame_y2)
-                            );
-                            let _ = write!(
-                                &mut out,
-                                r#"<line x1="{x1}" y1="{y2}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
-                                x1 = fmt(frame_x1),
-                                x2 = fmt(frame_x2),
-                                y2 = fmt(frame_y2)
-                            );
-                            let _ = write!(
-                                &mut out,
-                                r#"<line x1="{x1}" y1="{y1}" x2="{x1}" y2="{y2}" class="loopLine"/>"#,
-                                x1 = fmt(frame_x1),
-                                y1 = fmt(frame_y1),
-                                y2 = fmt(frame_y2)
-                            );
-                            let x1 = frame_x1;
-                            let y1 = frame_y1;
-                            let x2 = x1 + 50.0;
-                            let y2 = y1 + 13.0;
-                            let y3 = y1 + 20.0;
-                            let x3 = x2 - 8.4;
-                            let _ = write!(
-                                &mut out,
-                                r#"<polygon points="{x1},{y1} {x2},{y1} {x2},{y2} {x3},{y3} {x1},{y3}" class="labelBox"/>"#,
-                                x1 = fmt(x1),
-                                y1 = fmt(y1),
-                                x2 = fmt(x2),
-                                y2 = fmt(y2),
-                                x3 = fmt(x3),
-                                y3 = fmt(y3)
-                            );
-                            let label_cx = x1 + 25.0;
-                            let label_cy = y1 + 13.0;
-                            let _ = write!(
-                                &mut out,
-                                r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="font-size: 16px; font-weight: 400;">opt</text>"#,
-                                x = fmt(label_cx),
-                                y = fmt(label_cy)
-                            );
-                            let label_box_right = frame_x1 + 50.0;
-                            let text_x = (label_box_right + frame_x2) / 2.0;
-                            let text_y = frame_y1 + 18.0;
-                            let label = display_block_label(raw_label, true)
-                                .unwrap_or_else(|| "\u{200B}".to_string());
-                            let max_w = (frame_x2 - label_box_right).max(0.0);
-                            write_loop_text_lines(
-                                &mut out,
-                                text_x,
-                                text_y,
-                                actor_label_font_size,
-                                Some(max_w),
-                                &label,
-                                true,
-                            );
-                            out.push_str("</g>");
-                        }
-                        SequenceBlock::Break {
-                            raw_label,
-                            message_ids,
-                        } => {
-                            let mut min_y = f64::INFINITY;
-                            let mut max_y = f64::NEG_INFINITY;
-                            for msg_id in message_ids {
-                                if let Some(y) = msg_line_y(&edges_by_id, msg_id) {
-                                    min_y = min_y.min(y);
-                                    max_y = max_y.max(y);
-                                }
-                            }
-                            if !min_y.is_finite() || !max_y.is_finite() {
-                                continue;
-                            }
-
-                            let (frame_x1, frame_x2, _min_left) = frame_x_from_message_ids(
-                                message_ids.iter(),
-                                &msg_endpoints,
-                                &actor_nodes_by_id,
-                            )
-                            .unwrap_or((_frame_x1, _frame_x2, f64::INFINITY));
-
+                            // Mermaid draws the loop frame far enough above the first message line to
+                            // leave room for the header label box + label text.
                             let frame_y1 = min_y - 79.0;
                             let frame_y2 = max_y + 10.0;
 
@@ -2568,7 +2413,207 @@ pub fn render_sequence_diagram_svg(
                                 x3 = fmt(x3),
                                 y3 = fmt(y3)
                             );
-                            let label_cx = x1 + 25.0;
+                            let label_cx = (x1 + 25.0).round();
+                            let label_cy = y1 + 13.0;
+                            let _ = write!(
+                                &mut out,
+                                r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="font-size: 16px; font-weight: 400;">loop</text>"#,
+                                x = fmt(label_cx),
+                                y = fmt(label_cy)
+                            );
+                            let label_box_right = frame_x1 + 50.0;
+                            let text_x = (label_box_right + frame_x2) / 2.0;
+                            let text_y = frame_y1 + 18.0;
+                            let label = display_block_label(raw_label, true)
+                                .unwrap_or_else(|| "\u{200B}".to_string());
+                            let max_w = (frame_x2 - label_box_right).max(0.0);
+                            write_loop_text_lines(
+                                &mut out,
+                                _measurer,
+                                &loop_text_style,
+                                text_x,
+                                text_y,
+                                Some(max_w),
+                                &label,
+                                true,
+                            );
+                            out.push_str("</g>");
+                        }
+                        SequenceBlock::Opt {
+                            raw_label,
+                            message_ids,
+                        } => {
+                            let mut min_y = f64::INFINITY;
+                            let mut max_y = f64::NEG_INFINITY;
+                            for msg_id in message_ids {
+                                if let Some((y0, y1)) =
+                                    msg_y_range(&edges_by_id, &msg_endpoints, msg_id)
+                                {
+                                    min_y = min_y.min(y0);
+                                    max_y = max_y.max(y1);
+                                }
+                            }
+                            if !min_y.is_finite() || !max_y.is_finite() {
+                                continue;
+                            }
+
+                            let (frame_x1, frame_x2, _min_left) = frame_x_from_message_ids(
+                                message_ids.iter(),
+                                &msg_endpoints,
+                                &actor_nodes_by_id,
+                                &edges_by_id,
+                            )
+                            .unwrap_or((_frame_x1, _frame_x2, f64::INFINITY));
+
+                            let frame_y1 = min_y - 40.0;
+                            let frame_y2 = max_y + 10.0;
+
+                            out.push_str(r#"<g>"#);
+                            let _ = write!(
+                                &mut out,
+                                r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y1}" class="loopLine"/>"#,
+                                x1 = fmt(frame_x1),
+                                x2 = fmt(frame_x2),
+                                y1 = fmt(frame_y1)
+                            );
+                            let _ = write!(
+                                &mut out,
+                                r#"<line x1="{x2}" y1="{y1}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
+                                x2 = fmt(frame_x2),
+                                y1 = fmt(frame_y1),
+                                y2 = fmt(frame_y2)
+                            );
+                            let _ = write!(
+                                &mut out,
+                                r#"<line x1="{x1}" y1="{y2}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
+                                x1 = fmt(frame_x1),
+                                x2 = fmt(frame_x2),
+                                y2 = fmt(frame_y2)
+                            );
+                            let _ = write!(
+                                &mut out,
+                                r#"<line x1="{x1}" y1="{y1}" x2="{x1}" y2="{y2}" class="loopLine"/>"#,
+                                x1 = fmt(frame_x1),
+                                y1 = fmt(frame_y1),
+                                y2 = fmt(frame_y2)
+                            );
+                            let x1 = frame_x1;
+                            let y1 = frame_y1;
+                            let x2 = x1 + 50.0;
+                            let y2 = y1 + 13.0;
+                            let y3 = y1 + 20.0;
+                            let x3 = x2 - 8.4;
+                            let _ = write!(
+                                &mut out,
+                                r#"<polygon points="{x1},{y1} {x2},{y1} {x2},{y2} {x3},{y3} {x1},{y3}" class="labelBox"/>"#,
+                                x1 = fmt(x1),
+                                y1 = fmt(y1),
+                                x2 = fmt(x2),
+                                y2 = fmt(y2),
+                                x3 = fmt(x3),
+                                y3 = fmt(y3)
+                            );
+                            let label_cx = (x1 + 25.0).round();
+                            let label_cy = y1 + 13.0;
+                            let _ = write!(
+                                &mut out,
+                                r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="font-size: 16px; font-weight: 400;">opt</text>"#,
+                                x = fmt(label_cx),
+                                y = fmt(label_cy)
+                            );
+                            let label_box_right = frame_x1 + 50.0;
+                            let text_x = (label_box_right + frame_x2) / 2.0;
+                            let text_y = frame_y1 + 18.0;
+                            let label = display_block_label(raw_label, true)
+                                .unwrap_or_else(|| "\u{200B}".to_string());
+                            let max_w = (frame_x2 - label_box_right).max(0.0);
+                            write_loop_text_lines(
+                                &mut out,
+                                _measurer,
+                                &loop_text_style,
+                                text_x,
+                                text_y,
+                                Some(max_w),
+                                &label,
+                                true,
+                            );
+                            out.push_str("</g>");
+                        }
+                        SequenceBlock::Break {
+                            raw_label,
+                            message_ids,
+                        } => {
+                            let mut min_y = f64::INFINITY;
+                            let mut max_y = f64::NEG_INFINITY;
+                            for msg_id in message_ids {
+                                if let Some((y0, y1)) =
+                                    msg_y_range(&edges_by_id, &msg_endpoints, msg_id)
+                                {
+                                    min_y = min_y.min(y0);
+                                    max_y = max_y.max(y1);
+                                }
+                            }
+                            if !min_y.is_finite() || !max_y.is_finite() {
+                                continue;
+                            }
+
+                            let (frame_x1, frame_x2, _min_left) = frame_x_from_message_ids(
+                                message_ids.iter(),
+                                &msg_endpoints,
+                                &actor_nodes_by_id,
+                                &edges_by_id,
+                            )
+                            .unwrap_or((_frame_x1, _frame_x2, f64::INFINITY));
+
+                            let frame_y1 = min_y - 93.0;
+                            let frame_y2 = max_y + 10.0;
+
+                            out.push_str(r#"<g>"#);
+                            let _ = write!(
+                                &mut out,
+                                r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y1}" class="loopLine"/>"#,
+                                x1 = fmt(frame_x1),
+                                x2 = fmt(frame_x2),
+                                y1 = fmt(frame_y1)
+                            );
+                            let _ = write!(
+                                &mut out,
+                                r#"<line x1="{x2}" y1="{y1}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
+                                x2 = fmt(frame_x2),
+                                y1 = fmt(frame_y1),
+                                y2 = fmt(frame_y2)
+                            );
+                            let _ = write!(
+                                &mut out,
+                                r#"<line x1="{x1}" y1="{y2}" x2="{x2}" y2="{y2}" class="loopLine"/>"#,
+                                x1 = fmt(frame_x1),
+                                x2 = fmt(frame_x2),
+                                y2 = fmt(frame_y2)
+                            );
+                            let _ = write!(
+                                &mut out,
+                                r#"<line x1="{x1}" y1="{y1}" x2="{x1}" y2="{y2}" class="loopLine"/>"#,
+                                x1 = fmt(frame_x1),
+                                y1 = fmt(frame_y1),
+                                y2 = fmt(frame_y2)
+                            );
+                            let x1 = frame_x1;
+                            let y1 = frame_y1;
+                            let x2 = x1 + 50.0;
+                            let y2 = y1 + 13.0;
+                            let y3 = y1 + 20.0;
+                            let x3 = x2 - 8.4;
+                            let _ = write!(
+                                &mut out,
+                                r#"<polygon points="{x1},{y1} {x2},{y1} {x2},{y2} {x3},{y3} {x1},{y3}" class="labelBox"/>"#,
+                                x1 = fmt(x1),
+                                y1 = fmt(y1),
+                                x2 = fmt(x2),
+                                y2 = fmt(y2),
+                                x3 = fmt(x3),
+                                y3 = fmt(y3)
+                            );
+                            let label_cx = (x1 + 25.0).round();
                             let label_cy = y1 + 13.0;
                             let _ = write!(
                                 &mut out,
@@ -2584,9 +2629,10 @@ pub fn render_sequence_diagram_svg(
                             let max_w = (frame_x2 - label_box_right).max(0.0);
                             write_loop_text_lines(
                                 &mut out,
+                                _measurer,
+                                &loop_text_style,
                                 text_x,
                                 text_y,
-                                actor_label_font_size,
                                 Some(max_w),
                                 &label,
                                 true,
@@ -2602,9 +2648,11 @@ pub fn render_sequence_diagram_svg(
                             let mut max_y = f64::NEG_INFINITY;
                             for sec in sections {
                                 for msg_id in &sec.message_ids {
-                                    if let Some(y) = msg_line_y(&edges_by_id, msg_id) {
-                                        min_y = min_y.min(y);
-                                        max_y = max_y.max(y);
+                                    if let Some((y0, y1)) =
+                                        msg_y_range(&edges_by_id, &msg_endpoints, msg_id)
+                                    {
+                                        min_y = min_y.min(y0);
+                                        max_y = max_y.max(y1);
                                     }
                                 }
                             }
@@ -2616,6 +2664,7 @@ pub fn render_sequence_diagram_svg(
                                 sections.iter().flat_map(|s| s.message_ids.iter()),
                                 &msg_endpoints,
                                 &actor_nodes_by_id,
+                                &edges_by_id,
                             )
                             .unwrap_or((_frame_x1, _frame_x2, f64::INFINITY));
                             if sections.len() > 1 && min_left.is_finite() {
@@ -2665,8 +2714,10 @@ pub fn render_sequence_diagram_svg(
                             for sec in sections {
                                 let mut sec_max_y = f64::NEG_INFINITY;
                                 for msg_id in &sec.message_ids {
-                                    if let Some(y) = msg_line_y(&edges_by_id, msg_id) {
-                                        sec_max_y = sec_max_y.max(y);
+                                    if let Some((_y0, y1)) =
+                                        msg_y_range(&edges_by_id, &msg_endpoints, msg_id)
+                                    {
+                                        sec_max_y = sec_max_y.max(y1);
                                     }
                                 }
                                 if !sec_max_y.is_finite() {
@@ -2708,7 +2759,7 @@ pub fn render_sequence_diagram_svg(
                                 x3 = fmt(x3),
                                 y3 = fmt(y3)
                             );
-                            let label_cx = x1 + 25.0;
+                            let label_cx = (x1 + 25.0).round();
                             let label_cy = y1 + 13.0;
                             let _ = write!(
                                 &mut out,
@@ -2731,9 +2782,10 @@ pub fn render_sequence_diagram_svg(
                                     let max_w = (frame_x2 - label_box_right).max(0.0);
                                     write_loop_text_lines(
                                         &mut out,
+                                        _measurer,
+                                        &loop_text_style,
                                         main_text_x,
                                         y,
-                                        actor_label_font_size,
                                         Some(max_w),
                                         &label_text,
                                         true,
@@ -2743,9 +2795,10 @@ pub fn render_sequence_diagram_svg(
                                 let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
                                 write_loop_text_lines(
                                     &mut out,
+                                    _measurer,
+                                    &loop_text_style,
                                     center_text_x,
                                     y,
-                                    actor_label_font_size,
                                     None,
                                     &label_text,
                                     false,

@@ -582,6 +582,20 @@ pub fn layout_sequence_diagram(
                     messages,
                 }) = stack.pop()
                 {
+                    let loop_has_self_message = messages.iter().any(|msg_id| {
+                        let Some(msg) = msg_by_id.get(msg_id.as_str()).copied() else {
+                            return false;
+                        };
+                        msg.from
+                            .as_deref()
+                            .is_some_and(|from| Some(from) == msg.to.as_deref())
+                    });
+                    let loop_end_step = if loop_has_self_message {
+                        40.0
+                    } else {
+                        block_end_step
+                    };
+
                     if let Some(w) = block_frame_width(
                         &messages,
                         &msg_by_id,
@@ -608,8 +622,9 @@ pub fn layout_sequence_diagram(
                     } else {
                         directive_steps.insert(start_id, block_base_step);
                     }
+
+                    directive_steps.insert(msg.id.clone(), loop_end_step);
                 }
-                directive_steps.insert(msg.id.clone(), block_end_step);
             }
             // opt start/end
             15 => stack.push(BlockStackEntry::Opt {
