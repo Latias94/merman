@@ -108,6 +108,23 @@ fn normalize_numeric_tokens_mode(s: &str, decimals: u32, mode: DomMode) -> Strin
     }
 }
 
+fn normalize_attr_whitespace_strict(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut prev_space = true;
+    for ch in s.chars() {
+        if ch.is_whitespace() {
+            if !prev_space {
+                out.push(' ');
+                prev_space = true;
+            }
+        } else {
+            out.push(ch);
+            prev_space = false;
+        }
+    }
+    out.trim().to_string()
+}
+
 fn is_identifier_like_attr(key: &str) -> bool {
     matches!(
         key,
@@ -239,6 +256,10 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
         for a in n.attributes() {
             let key = a.name().to_string();
             let mut val = a.value().to_string();
+
+            if mode == DomMode::Strict && matches!(key.as_str(), "d" | "points" | "transform") {
+                val = normalize_attr_whitespace_strict(&val);
+            }
 
             // `data-points` is a base64-encoded JSON payload (Mermaid uses `btoa(JSON.stringify(...))`).
             // In strict mode we want stable, precision-controlled DOM comparisons, so we normalize the
