@@ -1614,22 +1614,44 @@ pub fn render_sequence_diagram_svg(
         Some(e.points.first()?.y)
     }
 
-    fn msg_y_range(
+    fn msg_y_range_with_self_extra(
         edges_by_id: &std::collections::HashMap<&str, &crate::model::LayoutEdge>,
         msg_endpoints: &std::collections::HashMap<&str, (&str, &str)>,
         msg_id: &str,
+        self_extra_y: f64,
     ) -> Option<(f64, f64)> {
-        // Self messages (`A -> A`) are drawn as a loop curve that consumes additional vertical
-        // space beyond the message line y coordinate. Account for that when sizing block frames.
-        const SELF_MESSAGE_EXTRA_Y: f64 = 60.0;
         let y = msg_line_y(edges_by_id, msg_id)?;
         let extra = msg_endpoints
             .get(msg_id)
             .copied()
             .filter(|(from, to)| from == to)
-            .map(|_| SELF_MESSAGE_EXTRA_Y)
+            .map(|_| self_extra_y)
             .unwrap_or(0.0);
         Some((y, y + extra))
+    }
+
+    fn msg_y_range_for_frame(
+        edges_by_id: &std::collections::HashMap<&str, &crate::model::LayoutEdge>,
+        msg_endpoints: &std::collections::HashMap<&str, (&str, &str)>,
+        msg_id: &str,
+    ) -> Option<(f64, f64)> {
+        // Mermaid's `boundMessage(...)` self-message branch expands the inserted bounds by 60px
+        // below `lineStartY` (see the `+ 30 + totalOffset` bottom coordinate, where `totalOffset`
+        // already includes a `+30` bump).
+        const SELF_MESSAGE_EXTRA_Y: f64 = 60.0;
+        msg_y_range_with_self_extra(edges_by_id, msg_endpoints, msg_id, SELF_MESSAGE_EXTRA_Y)
+    }
+
+    fn msg_y_range_for_separators(
+        edges_by_id: &std::collections::HashMap<&str, &crate::model::LayoutEdge>,
+        msg_endpoints: &std::collections::HashMap<&str, (&str, &str)>,
+        msg_id: &str,
+    ) -> Option<(f64, f64)> {
+        // The self-message loop curve itself extends ~30px below the message line.
+        // Mermaid's dashed section separators follow the curve geometry, not the full `bounds.insert(...)`
+        // envelope used for frame sizing.
+        const SELF_MESSAGE_EXTRA_Y: f64 = 30.0;
+        msg_y_range_with_self_extra(edges_by_id, msg_endpoints, msg_id, SELF_MESSAGE_EXTRA_Y)
     }
 
     // Mermaid renders block frames (`alt`, `loop`, ...) as `<g>` elements before message lines.
@@ -1998,8 +2020,14 @@ pub fn render_sequence_diagram_svg(
             nodes_by_id: &std::collections::HashMap<&str, &LayoutNode>,
             msg_endpoints: &std::collections::HashMap<&str, (&str, &str)>,
             item_id: &str,
+            is_separator: bool,
         ) -> Option<(f64, f64)> {
-            if let Some((y0, y1)) = msg_y_range(edges_by_id, msg_endpoints, item_id) {
+            let msg_range = if is_separator {
+                msg_y_range_for_separators(edges_by_id, msg_endpoints, item_id)
+            } else {
+                msg_y_range_for_frame(edges_by_id, msg_endpoints, item_id)
+            };
+            if let Some((y0, y1)) = msg_range {
                 return Some((y0, y1));
             }
             let note_node_id = format!("note-{item_id}");
@@ -2062,6 +2090,7 @@ pub fn render_sequence_diagram_svg(
                                         &nodes_by_id,
                                         &msg_endpoints,
                                         msg_id,
+                                        false,
                                     ) {
                                         min_y = min_y.min(y0);
                                         max_y = max_y.max(y1);
@@ -2130,6 +2159,7 @@ pub fn render_sequence_diagram_svg(
                                         &nodes_by_id,
                                         &msg_endpoints,
                                         msg_id,
+                                        true,
                                     ) {
                                         sec_max_y = sec_max_y.max(y1);
                                     }
@@ -2236,6 +2266,7 @@ pub fn render_sequence_diagram_svg(
                                         &nodes_by_id,
                                         &msg_endpoints,
                                         msg_id,
+                                        false,
                                     ) {
                                         min_y = min_y.min(y0);
                                         max_y = max_y.max(y1);
@@ -2302,6 +2333,7 @@ pub fn render_sequence_diagram_svg(
                                         &nodes_by_id,
                                         &msg_endpoints,
                                         msg_id,
+                                        true,
                                     ) {
                                         sec_max_y = sec_max_y.max(y1);
                                     }
@@ -2400,9 +2432,13 @@ pub fn render_sequence_diagram_svg(
                             let mut min_y = f64::INFINITY;
                             let mut max_y = f64::NEG_INFINITY;
                             for msg_id in message_ids {
-                                if let Some((y0, y1)) =
-                                    item_y_range(&edges_by_id, &nodes_by_id, &msg_endpoints, msg_id)
-                                {
+                                if let Some((y0, y1)) = item_y_range(
+                                    &edges_by_id,
+                                    &nodes_by_id,
+                                    &msg_endpoints,
+                                    msg_id,
+                                    false,
+                                ) {
                                     min_y = min_y.min(y0);
                                     max_y = max_y.max(y1);
                                 }
@@ -2503,9 +2539,13 @@ pub fn render_sequence_diagram_svg(
                             let mut min_y = f64::INFINITY;
                             let mut max_y = f64::NEG_INFINITY;
                             for msg_id in message_ids {
-                                if let Some((y0, y1)) =
-                                    item_y_range(&edges_by_id, &nodes_by_id, &msg_endpoints, msg_id)
-                                {
+                                if let Some((y0, y1)) = item_y_range(
+                                    &edges_by_id,
+                                    &nodes_by_id,
+                                    &msg_endpoints,
+                                    msg_id,
+                                    false,
+                                ) {
                                     min_y = min_y.min(y0);
                                     max_y = max_y.max(y1);
                                 }
@@ -2604,9 +2644,13 @@ pub fn render_sequence_diagram_svg(
                             let mut min_y = f64::INFINITY;
                             let mut max_y = f64::NEG_INFINITY;
                             for msg_id in message_ids {
-                                if let Some((y0, y1)) =
-                                    item_y_range(&edges_by_id, &nodes_by_id, &msg_endpoints, msg_id)
-                                {
+                                if let Some((y0, y1)) = item_y_range(
+                                    &edges_by_id,
+                                    &nodes_by_id,
+                                    &msg_endpoints,
+                                    msg_id,
+                                    false,
+                                ) {
                                     min_y = min_y.min(y0);
                                     max_y = max_y.max(y1);
                                 }
@@ -2712,6 +2756,7 @@ pub fn render_sequence_diagram_svg(
                                         &nodes_by_id,
                                         &msg_endpoints,
                                         msg_id,
+                                        false,
                                     ) {
                                         min_y = min_y.min(y0);
                                         max_y = max_y.max(y1);
@@ -2782,6 +2827,7 @@ pub fn render_sequence_diagram_svg(
                                         &nodes_by_id,
                                         &msg_endpoints,
                                         msg_id,
+                                        true,
                                     ) {
                                         sec_max_y = sec_max_y.max(y1);
                                     }

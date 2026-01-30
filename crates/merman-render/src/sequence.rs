@@ -410,6 +410,22 @@ pub fn layout_sequence_diagram(
         msg_by_id.insert(msg.id.as_str(), msg);
     }
 
+    fn is_self_message_id(
+        msg_id: &str,
+        msg_by_id: &std::collections::HashMap<&str, &SequenceMessage>,
+    ) -> bool {
+        let Some(msg) = msg_by_id.get(msg_id).copied() else {
+            return false;
+        };
+        // Notes can use `from==to` for `rightOf`/`leftOf`; do not treat them as self-messages.
+        if msg.message_type == 2 {
+            return false;
+        }
+        msg.from
+            .as_deref()
+            .is_some_and(|from| Some(from) == msg.to.as_deref())
+    }
+
     fn message_span_x(
         msg: &SequenceMessage,
         actor_index: &std::collections::HashMap<&str, usize>,
@@ -582,14 +598,9 @@ pub fn layout_sequence_diagram(
                     messages,
                 }) = stack.pop()
                 {
-                    let loop_has_self_message = messages.iter().any(|msg_id| {
-                        let Some(msg) = msg_by_id.get(msg_id.as_str()).copied() else {
-                            return false;
-                        };
-                        msg.from
-                            .as_deref()
-                            .is_some_and(|from| Some(from) == msg.to.as_deref())
-                    });
+                    let loop_has_self_message = messages
+                        .iter()
+                        .any(|msg_id| is_self_message_id(msg_id.as_str(), &msg_by_id));
                     let loop_end_step = if loop_has_self_message {
                         40.0
                     } else {
@@ -633,12 +644,17 @@ pub fn layout_sequence_diagram(
                 messages: Vec::new(),
             }),
             16 => {
+                let mut end_step = block_end_step;
                 if let Some(BlockStackEntry::Opt {
                     start_id,
                     raw_label,
                     messages,
                 }) = stack.pop()
                 {
+                    let has_self = messages
+                        .iter()
+                        .any(|msg_id| is_self_message_id(msg_id.as_str(), &msg_by_id));
+                    end_step = if has_self { 40.0 } else { block_end_step };
                     if let Some(w) = block_frame_width(
                         &messages,
                         &msg_by_id,
@@ -666,7 +682,7 @@ pub fn layout_sequence_diagram(
                         directive_steps.insert(start_id, block_base_step);
                     }
                 }
-                directive_steps.insert(msg.id.clone(), block_end_step);
+                directive_steps.insert(msg.id.clone(), end_step);
             }
             // break start/end
             30 => stack.push(BlockStackEntry::Break {
@@ -675,12 +691,17 @@ pub fn layout_sequence_diagram(
                 messages: Vec::new(),
             }),
             31 => {
+                let mut end_step = block_end_step;
                 if let Some(BlockStackEntry::Break {
                     start_id,
                     raw_label,
                     messages,
                 }) = stack.pop()
                 {
+                    let has_self = messages
+                        .iter()
+                        .any(|msg_id| is_self_message_id(msg_id.as_str(), &msg_by_id));
+                    end_step = if has_self { 40.0 } else { block_end_step };
                     if let Some(w) = block_frame_width(
                         &messages,
                         &msg_by_id,
@@ -708,7 +729,7 @@ pub fn layout_sequence_diagram(
                         directive_steps.insert(start_id, block_base_step);
                     }
                 }
-                directive_steps.insert(msg.id.clone(), block_end_step);
+                directive_steps.insert(msg.id.clone(), end_step);
             }
             // alt start/else/end
             12 => stack.push(BlockStackEntry::Alt {
@@ -726,11 +747,17 @@ pub fn layout_sequence_diagram(
                 }
             }
             14 => {
+                let mut end_step = block_end_step;
                 if let Some(BlockStackEntry::Alt {
                     section_directives,
                     sections,
                 }) = stack.pop()
                 {
+                    let has_self = sections
+                        .iter()
+                        .flatten()
+                        .any(|msg_id| is_self_message_id(msg_id.as_str(), &msg_by_id));
+                    end_step = if has_self { 40.0 } else { block_end_step };
                     let mut message_ids: Vec<String> = Vec::new();
                     for sec in &sections {
                         message_ids.extend(sec.iter().cloned());
@@ -770,7 +797,7 @@ pub fn layout_sequence_diagram(
                         }
                     }
                 }
-                directive_steps.insert(msg.id.clone(), block_end_step);
+                directive_steps.insert(msg.id.clone(), end_step);
             }
             // par start/and/end
             19 | 32 => stack.push(BlockStackEntry::Par {
@@ -788,11 +815,17 @@ pub fn layout_sequence_diagram(
                 }
             }
             21 => {
+                let mut end_step = block_end_step;
                 if let Some(BlockStackEntry::Par {
                     section_directives,
                     sections,
                 }) = stack.pop()
                 {
+                    let has_self = sections
+                        .iter()
+                        .flatten()
+                        .any(|msg_id| is_self_message_id(msg_id.as_str(), &msg_by_id));
+                    end_step = if has_self { 40.0 } else { block_end_step };
                     let mut message_ids: Vec<String> = Vec::new();
                     for sec in &sections {
                         message_ids.extend(sec.iter().cloned());
@@ -832,7 +865,7 @@ pub fn layout_sequence_diagram(
                         }
                     }
                 }
-                directive_steps.insert(msg.id.clone(), block_end_step);
+                directive_steps.insert(msg.id.clone(), end_step);
             }
             // critical start/option/end
             27 => stack.push(BlockStackEntry::Critical {
@@ -850,11 +883,17 @@ pub fn layout_sequence_diagram(
                 }
             }
             29 => {
+                let mut end_step = block_end_step;
                 if let Some(BlockStackEntry::Critical {
                     section_directives,
                     sections,
                 }) = stack.pop()
                 {
+                    let has_self = sections
+                        .iter()
+                        .flatten()
+                        .any(|msg_id| is_self_message_id(msg_id.as_str(), &msg_by_id));
+                    end_step = if has_self { 40.0 } else { block_end_step };
                     let mut message_ids: Vec<String> = Vec::new();
                     for sec in &sections {
                         message_ids.extend(sec.iter().cloned());
@@ -894,7 +933,7 @@ pub fn layout_sequence_diagram(
                         }
                     }
                 }
-                directive_steps.insert(msg.id.clone(), block_end_step);
+                directive_steps.insert(msg.id.clone(), end_step);
             }
             _ => {
                 // If this is a "real" message edge, attach it to all active block scopes so block
@@ -1287,6 +1326,9 @@ pub fn layout_sequence_diagram(
             edges_by_id: &HashMap<&str, &LayoutEdge>,
             msg_endpoints: &HashMap<&str, (&str, &str)>,
         ) -> Option<(f64, f64)> {
+            // Mermaid's self-message branch expands bounds by 60px below the message line y
+            // coordinate (see the `+ 30 + totalOffset` bottom coordinate, where `totalOffset`
+            // already includes a `+30` bump).
             const SELF_MESSAGE_EXTRA_Y: f64 = 60.0;
             let edge_id = format!("msg-{item_id}");
             if let Some(e) = edges_by_id.get(edge_id.as_str()).copied() {
