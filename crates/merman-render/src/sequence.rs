@@ -166,30 +166,49 @@ pub fn layout_sequence_diagram(
     let box_text_margin = config_f64(seq_cfg, &["boxTextMargin"]).unwrap_or(5.0);
     let label_box_height = config_f64(seq_cfg, &["labelBoxHeight"]).unwrap_or(20.0);
 
-    let message_font_family = config_string(seq_cfg, &["messageFontFamily"])
-        .or_else(|| config_string(effective_config, &["fontFamily"]));
-    let message_font_size = config_f64(seq_cfg, &["messageFontSize"])
-        .or_else(|| config_f64(effective_config, &["fontSize"]))
+    // Mermaid's `sequenceRenderer.setConf(...)` overrides per-sequence font settings whenever the
+    // global `fontFamily` / `fontSize` / `fontWeight` are present (defaults are always present).
+    let global_font_family = config_string(effective_config, &["fontFamily"]);
+    let global_font_size = config_f64(effective_config, &["fontSize"]);
+    let global_font_weight = config_string(effective_config, &["fontWeight"]);
+
+    let message_font_family =
+        global_font_family.clone().or_else(|| config_string(seq_cfg, &["messageFontFamily"]));
+    let message_font_size = global_font_size
+        .or_else(|| config_f64(seq_cfg, &["messageFontSize"]))
         .unwrap_or(16.0);
-    let message_font_weight = config_string(seq_cfg, &["messageFontWeight"])
-        .or_else(|| config_string(effective_config, &["fontWeight"]));
+    let message_font_weight =
+        global_font_weight.clone().or_else(|| config_string(seq_cfg, &["messageFontWeight"]));
 
-    let actor_font_family = config_string(seq_cfg, &["actorFontFamily"])
-        .or_else(|| config_string(effective_config, &["fontFamily"]));
-    let actor_font_size = config_f64(seq_cfg, &["actorFontSize"]).unwrap_or(14.0);
-    let actor_font_weight = config_string(seq_cfg, &["actorFontWeight"])
-        .or_else(|| config_string(effective_config, &["fontWeight"]));
+    let actor_font_family =
+        global_font_family.clone().or_else(|| config_string(seq_cfg, &["actorFontFamily"]));
+    let actor_font_size = global_font_size
+        .or_else(|| config_f64(seq_cfg, &["actorFontSize"]))
+        .unwrap_or(16.0);
+    let actor_font_weight =
+        global_font_weight.clone().or_else(|| config_string(seq_cfg, &["actorFontWeight"]));
 
-    // Mermaid measures SVG text widths using actual font metrics (default: trebuchet).
-    // Our deterministic headless measurer underestimates some glyph widths for this font, which
-    // makes participant spacing too tight and cascades into block widths (e.g. `rect`) and note
-    // placements. Apply a small, sequence-specific correction factor for message text widths.
-    let message_width_scale = 1.316;
+    // Upstream sequence uses `calculateTextDimensions(...).width` (SVG `getBBox`) when computing
+    // message widths for spacing. Keep this scale at 1.0 and handle any residual differences via
+    // the SVG-backed `TextMeasurer` implementation.
+    let message_width_scale = 1.0;
 
     let actor_text_style = TextStyle {
         font_family: actor_font_family,
         font_size: actor_font_size,
         font_weight: actor_font_weight,
+    };
+    let note_font_family =
+        global_font_family.clone().or_else(|| config_string(seq_cfg, &["noteFontFamily"]));
+    let note_font_size = global_font_size
+        .or_else(|| config_f64(seq_cfg, &["noteFontSize"]))
+        .unwrap_or(16.0);
+    let note_font_weight =
+        global_font_weight.clone().or_else(|| config_string(seq_cfg, &["noteFontWeight"]));
+    let note_text_style = TextStyle {
+        font_family: note_font_family,
+        font_size: note_font_size,
+        font_weight: note_font_weight,
     };
     let msg_text_style = TextStyle {
         font_family: message_font_family,
@@ -210,56 +229,116 @@ pub fn layout_sequence_diagram(
             message: format!("missing actor {id}"),
         })?;
         let (w0, _h0) = measure_svg_like_with_html_br(measurer, &a.description, &actor_text_style);
-        let w = (w0 + 2.0 * wrap_padding).max(actor_width_min);
+        let w0 = w0.round();
+        let w = (w0 + 2.0 * wrap_padding).max(actor_width_min).round();
         actor_widths.push(w.max(1.0));
     }
 
-    // Determine center-to-center gaps between adjacent actors, accounting for message label widths.
-    let mut gaps: Vec<f64> = Vec::with_capacity(model.actor_order.len().saturating_sub(1));
-    for i in 0..model.actor_order.len().saturating_sub(1) {
-        let w0 = actor_widths[i];
-        let w1 = actor_widths[i + 1];
-        let base_gap = (w0 / 2.0) + (w1 / 2.0) + actor_margin;
-
-        let left = model.actor_order[i].as_str();
-        let right = model.actor_order[i + 1].as_str();
-
-        let mut max_label_w: f64 = 0.0;
-        for msg in &model.messages {
-            let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
-                continue;
-            };
-            if msg.message_type == 2 {
-                // Notes do not affect participant spacing in Mermaid.
-                continue;
-            }
-            let touches_pair = (from == left && to == right) || (from == right && to == left);
-            if !touches_pair {
-                continue;
-            }
-            let text = msg.message.as_str().unwrap_or_default();
-            if text.is_empty() {
-                continue;
-            }
-            let (w, _h) = measure_svg_like_with_html_br(measurer, text, &msg_text_style);
-            max_label_w = max_label_w.max(w * message_width_scale);
-        }
-
-        let required_gap = (max_label_w + 2.0 * wrap_padding).max(base_gap).round();
-        gaps.push(required_gap);
+    // Determine the per-actor margins using Mermaid's `getMaxMessageWidthPerActor(...)` rules,
+    // then compute actor x positions from those margins (see upstream `boundActorData`).
+    let mut actor_index: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for (i, id) in model.actor_order.iter().enumerate() {
+        actor_index.insert(id.as_str(), i);
     }
 
-    // Compute actor centers (top and bottom boxes share the same x).
+    let mut actor_to_message_width: Vec<f64> = vec![0.0; model.actor_order.len()];
+    for msg in &model.messages {
+        let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
+            continue;
+        };
+        let Some(&from_idx) = actor_index.get(from) else {
+            continue;
+        };
+        let Some(&to_idx) = actor_index.get(to) else {
+            continue;
+        };
+
+        let placement = msg.placement;
+        // If this is the first actor, and the note is left of it, no need to calculate the margin.
+        if placement == Some(0) && to_idx == 0 {
+            continue;
+        }
+        // If this is the last actor, and the note is right of it, no need to calculate the margin.
+        if placement == Some(1) && to_idx + 1 == model.actor_order.len() {
+            continue;
+        }
+
+        let is_note = placement.is_some();
+        let is_message = !is_note;
+        let style = if is_note { &note_text_style } else { &msg_text_style };
+        let text = msg.message.as_str().unwrap_or_default();
+        if text.is_empty() {
+            continue;
+        }
+
+        let (w0, _h0) = measure_svg_like_with_html_br(measurer, text, style);
+        let w0 = (w0 * message_width_scale).round();
+        let message_w = (w0 + 2.0 * wrap_padding).round().max(0.0);
+
+        let prev_idx = if to_idx > 0 { Some(to_idx - 1) } else { None };
+        let next_idx = if to_idx + 1 < model.actor_order.len() {
+            Some(to_idx + 1)
+        } else {
+            None
+        };
+
+        if is_message && next_idx.is_some_and(|n| n == from_idx) {
+            actor_to_message_width[to_idx] = actor_to_message_width[to_idx].max(message_w);
+        } else if is_message && prev_idx.is_some_and(|p| p == from_idx) {
+            actor_to_message_width[from_idx] = actor_to_message_width[from_idx].max(message_w);
+        } else if is_message && from_idx == to_idx {
+            let half = message_w / 2.0;
+            actor_to_message_width[from_idx] = actor_to_message_width[from_idx].max(half);
+            actor_to_message_width[to_idx] = actor_to_message_width[to_idx].max(half);
+        } else if placement == Some(1) {
+            // RIGHTOF
+            actor_to_message_width[from_idx] = actor_to_message_width[from_idx].max(message_w);
+        } else if placement == Some(0) {
+            // LEFTOF
+            if let Some(p) = prev_idx {
+                actor_to_message_width[p] = actor_to_message_width[p].max(message_w);
+            }
+        } else if placement == Some(2) {
+            // OVER
+            if let Some(p) = prev_idx {
+                actor_to_message_width[p] = actor_to_message_width[p].max(message_w / 2.0);
+            }
+            if next_idx.is_some() {
+                actor_to_message_width[from_idx] =
+                    actor_to_message_width[from_idx].max(message_w / 2.0);
+            }
+        }
+    }
+
+    let mut actor_margins: Vec<f64> = vec![actor_margin; model.actor_order.len()];
+    for i in 0..model.actor_order.len() {
+        let msg_w = actor_to_message_width[i];
+        if msg_w <= 0.0 {
+            continue;
+        }
+        let w0 = actor_widths[i];
+        let actor_w = if i + 1 < model.actor_order.len() {
+            let w1 = actor_widths[i + 1];
+            msg_w + actor_margin - (w0 / 2.0) - (w1 / 2.0)
+        } else {
+            msg_w + actor_margin - (w0 / 2.0)
+        };
+        actor_margins[i] = actor_w.max(actor_margin);
+    }
+
+    let mut actor_left_x: Vec<f64> = Vec::with_capacity(model.actor_order.len());
+    let mut prev_width = 0.0;
+    let mut prev_margin = 0.0;
+    for i in 0..model.actor_order.len() {
+        let x = prev_width + prev_margin;
+        actor_left_x.push(x);
+        prev_width += actor_widths[i] + prev_margin;
+        prev_margin = actor_margins[i];
+    }
+
     let mut actor_centers_x: Vec<f64> = Vec::with_capacity(model.actor_order.len());
-    let left_edge = 0.0;
-    actor_centers_x.push(left_edge + actor_widths[0] / 2.0);
-    for i in 1..model.actor_order.len() {
-        let prev = actor_centers_x[i - 1];
-        let gap = gaps
-            .get(i - 1)
-            .copied()
-            .unwrap_or(actor_width_min + actor_margin);
-        actor_centers_x.push(prev + gap);
+    for i in 0..model.actor_order.len() {
+        actor_centers_x.push(actor_left_x[i] + actor_widths[i] / 2.0);
     }
 
     let message_step = message_margin + (message_font_size / 2.0) + bottom_margin_adj;
@@ -292,10 +371,6 @@ pub fn layout_sequence_diagram(
     }
 
     // Message edges.
-    let mut actor_index: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
-    for (i, id) in model.actor_order.iter().enumerate() {
-        actor_index.insert(id.as_str(), i);
-    }
 
     fn bracketize(s: &str) -> String {
         let t = s.trim();
