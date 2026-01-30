@@ -23,6 +23,11 @@ pub fn replace_fontawesome_icons(input: &str) -> String {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WrapMode {
     SvgLike,
+    /// SVG `<text>` behaves as a single shaping run (no whitespace-to-`<tspan>` tokenization).
+    ///
+    /// Mermaid uses this behavior in some diagrams (e.g. sequence message labels), where the
+    /// resulting `getBBox()` width differs measurably from per-word `<tspan>` tokenization.
+    SvgLikeSingleRun,
     HtmlLike,
 }
 
@@ -1653,6 +1658,29 @@ impl VendoredFontMetricsTextMeasurer {
         (l + r).max(0.0)
     }
 
+    fn line_svg_bbox_width_single_run_px(
+        table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
+        text: &str,
+        font_size: f64,
+    ) -> f64 {
+        let t = text.trim_end();
+        if !t.is_empty() {
+            if let Some((left_em, right_em)) =
+                crate::generated::svg_overrides_sequence_11_12_2::lookup_svg_override_em(
+                    table.font_key,
+                    t,
+                )
+            {
+                let left = Self::quantize_svg_bbox_px_nearest((left_em * font_size).max(0.0));
+                let right = Self::quantize_svg_bbox_px_nearest((right_em * font_size).max(0.0));
+                return (left + right).max(0.0);
+            }
+        }
+
+        let (l, r) = Self::line_svg_bbox_extents_px_single_run(table, text, font_size);
+        (l + r).max(0.0)
+    }
+
     fn split_token_to_svg_bbox_width_px(
         table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
         tok: &str,
@@ -1717,9 +1745,15 @@ impl VendoredFontMetricsTextMeasurer {
         text: &str,
         max_width_px: Option<f64>,
         font_size: f64,
+        tokenize_whitespace: bool,
     ) -> Vec<String> {
         const EPS_PX: f64 = 0.125;
         let max_width_px = max_width_px.filter(|w| w.is_finite() && *w > 0.0);
+        let width_fn = if tokenize_whitespace {
+            Self::line_svg_bbox_width_px
+        } else {
+            Self::line_svg_bbox_width_single_run_px
+        };
 
         let mut lines = Vec::new();
         for line in DeterministicTextMeasurer::normalized_text_lines(text) {
@@ -1741,7 +1775,7 @@ impl VendoredFontMetricsTextMeasurer {
 
                 let candidate = format!("{cur}{tok}");
                 let candidate_trimmed = candidate.trim_end();
-                if Self::line_svg_bbox_width_px(table, candidate_trimmed, font_size) <= w + EPS_PX {
+                if width_fn(table, candidate_trimmed, font_size) <= w + EPS_PX {
                     cur = candidate;
                     continue;
                 }
@@ -1757,7 +1791,7 @@ impl VendoredFontMetricsTextMeasurer {
                     continue;
                 }
 
-                if Self::line_svg_bbox_width_px(table, tok.as_str(), font_size) <= w + EPS_PX {
+                if width_fn(table, tok.as_str(), font_size) <= w + EPS_PX {
                     cur = tok;
                     continue;
                 }
@@ -2051,7 +2085,7 @@ fn vendored_measure_wrapped_impl(
     let font_size = style.font_size.max(1.0);
     let max_width = max_width.filter(|w| w.is_finite() && *w > 0.0);
     let line_height_factor = match wrap_mode {
-        WrapMode::SvgLike => 1.1,
+        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => 1.1,
         WrapMode::HtmlLike => 1.5,
     };
 
@@ -2138,7 +2172,10 @@ fn vendored_measure_wrapped_impl(
             wrap_mode,
         ),
         WrapMode::SvgLike => VendoredFontMetricsTextMeasurer::wrap_text_lines_svg_bbox_px(
-            table, text, max_width, font_size,
+            table, text, max_width, font_size, true,
+        ),
+        WrapMode::SvgLikeSingleRun => VendoredFontMetricsTextMeasurer::wrap_text_lines_svg_bbox_px(
+            table, text, max_width, font_size, false,
         ),
     };
 
@@ -2175,6 +2212,15 @@ fn vendored_measure_wrapped_impl(
                 ));
             }
         }
+        WrapMode::SvgLikeSingleRun => {
+            for line in &lines {
+                width = width.max(
+                    VendoredFontMetricsTextMeasurer::line_svg_bbox_width_single_run_px(
+                        table, line, font_size,
+                    ),
+                );
+            }
+        }
     }
 
     // Mermaid HTML labels use `max-width` and can visually overflow for long words, but their
@@ -2198,7 +2244,7 @@ fn vendored_measure_wrapped_impl(
 
     let height = match wrap_mode {
         WrapMode::HtmlLike => lines.len() as f64 * font_size * line_height_factor,
-        WrapMode::SvgLike => {
+        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => {
             if lines.is_empty() {
                 0.0
             } else {
@@ -2339,14 +2385,14 @@ impl TextMeasurer for DeterministicTextMeasurer {
         let uses_heuristic_widths = self.char_width_factor == 0.0;
         let char_width_factor = if uses_heuristic_widths {
             match wrap_mode {
-                WrapMode::SvgLike => 0.6,
+                WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => 0.6,
                 WrapMode::HtmlLike => 0.5,
             }
         } else {
             self.char_width_factor
         };
         let default_line_height_factor = match wrap_mode {
-            WrapMode::SvgLike => 1.1,
+            WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => 1.1,
             WrapMode::HtmlLike => 1.5,
         };
         let line_height_factor = if self.line_height_factor == 0.0 {
@@ -2357,7 +2403,7 @@ impl TextMeasurer for DeterministicTextMeasurer {
 
         let font_size = style.font_size.max(1.0);
         let max_width = max_width.filter(|w| w.is_finite() && *w > 0.0);
-        let break_long_words = wrap_mode == WrapMode::SvgLike;
+        let break_long_words = matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun);
 
         let raw_lines = Self::normalized_text_lines(text);
         let mut raw_width: f64 = 0.0;

@@ -101,7 +101,7 @@ fn measure_svg_like_with_html_br(
     let lines = split_html_br_lines(text);
     let default_line_height = (style.font_size.max(1.0) * 1.1).max(1.0);
     if lines.len() <= 1 {
-        let metrics = measurer.measure_wrapped(text, style, None, WrapMode::SvgLike);
+        let metrics = measurer.measure_wrapped(text, style, None, WrapMode::SvgLikeSingleRun);
         return (
             metrics.width.max(0.0),
             metrics.height.max(default_line_height),
@@ -110,7 +110,7 @@ fn measure_svg_like_with_html_br(
     let mut max_w: f64 = 0.0;
     let mut line_h: f64 = 0.0;
     for line in &lines {
-        let metrics = measurer.measure_wrapped(line, style, None, WrapMode::SvgLike);
+        let metrics = measurer.measure_wrapped(line, style, None, WrapMode::SvgLikeSingleRun);
         max_w = max_w.max(metrics.width.max(0.0));
         line_h = line_h.max(metrics.height.max(default_line_height));
     }
@@ -172,21 +172,25 @@ pub fn layout_sequence_diagram(
     let global_font_size = config_f64(effective_config, &["fontSize"]);
     let global_font_weight = config_string(effective_config, &["fontWeight"]);
 
-    let message_font_family =
-        global_font_family.clone().or_else(|| config_string(seq_cfg, &["messageFontFamily"]));
+    let message_font_family = global_font_family
+        .clone()
+        .or_else(|| config_string(seq_cfg, &["messageFontFamily"]));
     let message_font_size = global_font_size
         .or_else(|| config_f64(seq_cfg, &["messageFontSize"]))
         .unwrap_or(16.0);
-    let message_font_weight =
-        global_font_weight.clone().or_else(|| config_string(seq_cfg, &["messageFontWeight"]));
+    let message_font_weight = global_font_weight
+        .clone()
+        .or_else(|| config_string(seq_cfg, &["messageFontWeight"]));
 
-    let actor_font_family =
-        global_font_family.clone().or_else(|| config_string(seq_cfg, &["actorFontFamily"]));
+    let actor_font_family = global_font_family
+        .clone()
+        .or_else(|| config_string(seq_cfg, &["actorFontFamily"]));
     let actor_font_size = global_font_size
         .or_else(|| config_f64(seq_cfg, &["actorFontSize"]))
         .unwrap_or(16.0);
-    let actor_font_weight =
-        global_font_weight.clone().or_else(|| config_string(seq_cfg, &["actorFontWeight"]));
+    let actor_font_weight = global_font_weight
+        .clone()
+        .or_else(|| config_string(seq_cfg, &["actorFontWeight"]));
 
     // Upstream sequence uses `calculateTextDimensions(...).width` (SVG `getBBox`) when computing
     // message widths for spacing. Keep this scale at 1.0 and handle any residual differences via
@@ -198,13 +202,15 @@ pub fn layout_sequence_diagram(
         font_size: actor_font_size,
         font_weight: actor_font_weight,
     };
-    let note_font_family =
-        global_font_family.clone().or_else(|| config_string(seq_cfg, &["noteFontFamily"]));
+    let note_font_family = global_font_family
+        .clone()
+        .or_else(|| config_string(seq_cfg, &["noteFontFamily"]));
     let note_font_size = global_font_size
         .or_else(|| config_f64(seq_cfg, &["noteFontSize"]))
         .unwrap_or(16.0);
-    let note_font_weight =
-        global_font_weight.clone().or_else(|| config_string(seq_cfg, &["noteFontWeight"]));
+    let note_font_weight = global_font_weight
+        .clone()
+        .or_else(|| config_string(seq_cfg, &["noteFontWeight"]));
     let note_text_style = TextStyle {
         font_family: note_font_family,
         font_size: note_font_size,
@@ -265,7 +271,11 @@ pub fn layout_sequence_diagram(
 
         let is_note = placement.is_some();
         let is_message = !is_note;
-        let style = if is_note { &note_text_style } else { &msg_text_style };
+        let style = if is_note {
+            &note_text_style
+        } else {
+            &msg_text_style
+        };
         let text = msg.message.as_str().unwrap_or_default();
         if text.is_empty() {
             continue;
@@ -591,7 +601,7 @@ pub fn layout_sequence_diagram(
                             &label,
                             &msg_text_style,
                             Some(w),
-                            WrapMode::SvgLike,
+                            WrapMode::SvgLikeSingleRun,
                         );
                         let extra =
                             (metrics.line_count.saturating_sub(1) as f64) * block_extra_per_line;
@@ -633,7 +643,7 @@ pub fn layout_sequence_diagram(
                             &label,
                             &msg_text_style,
                             Some(w),
-                            WrapMode::SvgLike,
+                            WrapMode::SvgLikeSingleRun,
                         );
                         let extra =
                             (metrics.line_count.saturating_sub(1) as f64) * block_extra_per_line;
@@ -675,7 +685,7 @@ pub fn layout_sequence_diagram(
                             &label,
                             &msg_text_style,
                             Some(w),
-                            WrapMode::SvgLike,
+                            WrapMode::SvgLikeSingleRun,
                         );
                         let extra =
                             (metrics.line_count.saturating_sub(1) as f64) * block_extra_per_line;
@@ -734,7 +744,7 @@ pub fn layout_sequence_diagram(
                                 &label,
                                 &msg_text_style,
                                 Some(w),
-                                WrapMode::SvgLike,
+                                WrapMode::SvgLikeSingleRun,
                             );
                             let extra = (metrics.line_count.saturating_sub(1) as f64)
                                 * block_extra_per_line;
@@ -796,7 +806,7 @@ pub fn layout_sequence_diagram(
                                 &label,
                                 &msg_text_style,
                                 Some(w),
-                                WrapMode::SvgLike,
+                                WrapMode::SvgLikeSingleRun,
                             );
                             let extra = (metrics.line_count.saturating_sub(1) as f64)
                                 * block_extra_per_line;
@@ -858,7 +868,7 @@ pub fn layout_sequence_diagram(
                                 &label,
                                 &msg_text_style,
                                 Some(w),
-                                WrapMode::SvgLike,
+                                WrapMode::SvgLikeSingleRun,
                             );
                             let extra = (metrics.line_count.saturating_sub(1) as f64)
                                 * block_extra_per_line;
@@ -913,7 +923,9 @@ pub fn layout_sequence_diagram(
     let rect_step_start = 20.0;
     let rect_step_end = 10.0;
     let note_gap = 10.0;
-    let note_text_pad_total = message_font_size * 1.3375; // 16px -> 21.4px, yielding 39px total for 1 line.
+    // Mermaid note boxes use 10px vertical padding on both sides (20px total), on top of the
+    // SVG `getBBox().height` of the note text.
+    let note_text_pad_total = 20.0;
     let note_top_offset = message_step - note_gap;
 
     let mut cursor_y = actor_height + message_step;
@@ -1020,9 +1032,9 @@ pub fn layout_sequence_diagram(
             };
 
             let text = msg.message.as_str().unwrap_or_default();
-            let (_w, h) = measure_svg_like_with_html_br(measurer, text, &msg_text_style);
-            let note_h = (h + note_text_pad_total).max(1.0);
-            let note_y = cursor_y - note_top_offset;
+            let (_w, h) = measure_svg_like_with_html_br(measurer, text, &note_text_style);
+            let note_h = (h + note_text_pad_total).round().max(1.0);
+            let note_y = (cursor_y - note_top_offset).round();
 
             nodes.push(LayoutNode {
                 id: format!("note-{}", msg.id),
@@ -1055,15 +1067,28 @@ pub fn layout_sequence_diagram(
         let to_x = actor_centers_x[ti];
         let sign = if to_x >= from_x { 1.0 } else { -1.0 };
 
-        // These small offsets match Mermaid's default arrow rendering (marker-end).
-        let x1 = from_x + sign * 1.0;
+        // These small offsets match Mermaid's sequence arrow rendering in SVG.
+        // - Most arrows (incl. `->>`, `-->>`, `-x`, `-)`) start at `+1` and end at `-4`.
+        // - Open arrows (`->`, `-->`) end closer to the target lifeline (`-1`) because no marker
+        //   is drawn.
+        // - Bidirectional arrows (`<<->>`, `<<-->>`) use a larger start offset (`+4`) to account
+        //   for the start marker.
+        let (start_dx, end_dx) = match msg.message_type {
+            // Bidirectional: marker-start + marker-end.
+            33 | 34 => (4.0, 4.0),
+            // Open arrows: no marker-end.
+            5 | 6 => (1.0, 1.0),
+            // Default: marker-end present.
+            _ => (1.0, 4.0),
+        };
+        let x1 = from_x + sign * start_dx;
         let is_self = from == to;
         let x2 = if is_self {
             // Mermaid uses `startx === stopx` to render self-messages as a `<path>` (curved or
             // right-angled). Keep start/stop identical in layout so SVG can emit the correct DOM.
             x1
         } else {
-            to_x - sign * 4.0
+            to_x - sign * end_dx
         };
         let y = cursor_y;
 
@@ -1072,16 +1097,16 @@ pub fn layout_sequence_diagram(
             // Mermaid renders an (empty) message text node even when the label is empty (e.g.
             // trailing colon `Alice->Bob:`). Keep a placeholder label to preserve DOM structure.
             Some(LayoutLabel {
-                x: (x1 + x2) / 2.0,
-                y: y - msg_label_offset,
+                x: ((x1 + x2) / 2.0).round(),
+                y: (y - msg_label_offset).round(),
                 width: 1.0,
                 height: message_font_size.max(1.0),
             })
         } else {
             let (w, h) = measure_svg_like_with_html_br(measurer, text, &msg_text_style);
             Some(LayoutLabel {
-                x: (x1 + x2) / 2.0,
-                y: y - msg_label_offset,
+                x: ((x1 + x2) / 2.0).round(),
+                y: (y - msg_label_offset).round(),
                 width: (w * message_width_scale).max(1.0),
                 height: h.max(1.0),
             })

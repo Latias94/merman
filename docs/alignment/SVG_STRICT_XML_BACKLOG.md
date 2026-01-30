@@ -17,11 +17,11 @@ Notes:
 
 ## Current status (as of 2026-01-30)
 
-Total strict mismatches: **209**
+Total strict mismatches: **197**
 
 Mismatch counts by diagram:
 
-- `sequence`: 38
+- `sequence`: 26
 - `state`: 36
 - `architecture`: 25
 - `block`: 22
@@ -53,6 +53,16 @@ Recently resolved:
   match Mermaid@11.12.2 upstream fixtures.
 - When text metrics change, some layout goldens may need regeneration via
   `cargo run -p xtask -- update-layout-snapshots --filter <fixture>`.
+
+### Sequence notes
+
+- Sequence strict XML parity is particularly sensitive to `calculateTextDimensions(...)` width for
+  message labels (it affects `actor.margin` and thus most x coordinates).
+- `xtask gen-svg-overrides --mode sequence` infers upstream `calculateTextDimensions.width` for
+  message labels by rendering a minimal 2-participant diagram under Puppeteer headless shell and
+  inverting Mermaid's `actor.margin` formula.
+  - IMPORTANT: the diagram source must use real newlines (`\n`) in the Mermaid definition; joining
+    lines with a literal `\\n` changes Mermaid parsing and yields a different layout baseline.
 
 ## Workflow
 

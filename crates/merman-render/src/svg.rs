@@ -3208,7 +3208,11 @@ fn sequence_css(diagram_id: &str) -> String {
         r#"#{} text.actor>tspan{{fill:black;stroke:none;}}"#,
         id
     );
-    let _ = write!(&mut out, r#"#{} .actor-line{{stroke:{};}}"#, id, actor_border);
+    let _ = write!(
+        &mut out,
+        r#"#{} .actor-line{{stroke:{};}}"#,
+        id, actor_border
+    );
     let _ = write!(
         &mut out,
         r#"#{} .innerArc{{stroke-width:1.5;stroke-dasharray:none;}}"#,
@@ -3276,11 +3280,7 @@ fn sequence_css(diagram_id: &str) -> String {
         r#"#{} .activation0{{fill:#f4f4f4;stroke:#666;}}#{} .activation1{{fill:#f4f4f4;stroke:#666;}}#{} .activation2{{fill:#f4f4f4;stroke:#666;}}"#,
         id, id, id
     );
-    let _ = write!(
-        &mut out,
-        r#"#{} .actorPopupMenu{{position:absolute;}}"#,
-        id
-    );
+    let _ = write!(&mut out, r#"#{} .actorPopupMenu{{position:absolute;}}"#, id);
     let _ = write!(
         &mut out,
         r#"#{} .actorPopupMenuPanel{{position:absolute;fill:{};box-shadow:0px 8px 16px 0px rgba(0,0,0,0.2);filter:drop-shadow(3px 5px 2px rgb(0 0 0 / 0.4));}}"#,
