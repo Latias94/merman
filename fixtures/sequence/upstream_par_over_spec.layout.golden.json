@@ -22,23 +22,23 @@
         {
           "id": "note-2",
           "x": -25.0,
-          "y": 183.5,
+          "y": 183.0,
           "width": 150.0,
-          "height": 39.0,
+          "height": 38.0,
           "is_cluster": false
         },
         {
           "id": "note-3",
           "x": 375.0,
-          "y": 232.5,
+          "y": 231.0,
           "width": 150.0,
-          "height": 39.0,
+          "height": 38.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-Alice",
           "x": 75.0,
-          "y": 314.5,
+          "y": 312.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -46,7 +46,7 @@
         {
           "id": "actor-bottom-Bob",
           "x": 275.0,
-          "y": 314.5,
+          "y": 312.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -70,7 +70,7 @@
             }
           ],
           "label": {
-            "x": 173.5,
+            "x": 174.0,
             "y": 125.0,
             "width": 50.88,
             "height": 17.6
@@ -96,7 +96,7 @@
             },
             {
               "x": 75.0,
-              "y": 282.0
+              "y": 280.0
             }
           ],
           "label": null,
@@ -121,7 +121,7 @@
             },
             {
               "x": 275.0,
-              "y": 282.0
+              "y": 280.0
             }
           ],
           "label": null,
@@ -139,7 +139,7 @@
         "min_x": -150.0,
         "min_y": -10.0,
         "max_x": 500.0,
-        "max_y": 358.0
+        "max_y": 356.0
       }
     }
   }

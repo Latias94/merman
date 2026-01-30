@@ -30,39 +30,39 @@
         {
           "id": "note-0",
           "x": -25.0,
-          "y": 94.5,
+          "y": 94.0,
           "width": 150.0,
-          "height": 39.0,
+          "height": 38.0,
           "is_cluster": false
         },
         {
           "id": "note-1",
           "x": 375.0,
-          "y": 143.5,
+          "y": 142.0,
           "width": 150.0,
-          "height": 39.0,
+          "height": 38.0,
           "is_cluster": false
         },
         {
           "id": "note-2",
           "x": 475.0,
-          "y": 192.5,
+          "y": 190.0,
           "width": 150.0,
-          "height": 39.0,
+          "height": 38.0,
           "is_cluster": false
         },
         {
           "id": "note-3",
           "x": 175.0,
-          "y": 241.5,
+          "y": 238.0,
           "width": 250.0,
-          "height": 39.0,
+          "height": 38.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-Alice",
           "x": 75.0,
-          "y": 357.5,
+          "y": 353.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -70,7 +70,7 @@
         {
           "id": "actor-bottom-Bob",
           "x": 275.0,
-          "y": 357.5,
+          "y": 353.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -78,7 +78,7 @@
         {
           "id": "actor-bottom-Carl",
           "x": 475.0,
-          "y": 357.5,
+          "y": 353.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -94,16 +94,16 @@
           "points": [
             {
               "x": 76.0,
-              "y": 305.0
+              "y": 301.0
             },
             {
-              "x": 271.0,
-              "y": 305.0
+              "x": 274.0,
+              "y": 301.0
             }
           ],
           "label": {
-            "x": 173.5,
-            "y": 276.0,
+            "x": 175.0,
+            "y": 272.0,
             "width": 53.76,
             "height": 17.6
           },
@@ -128,7 +128,7 @@
             },
             {
               "x": 75.0,
-              "y": 325.0
+              "y": 321.0
             }
           ],
           "label": null,
@@ -153,7 +153,7 @@
             },
             {
               "x": 275.0,
-              "y": 325.0
+              "y": 321.0
             }
           ],
           "label": null,
@@ -178,7 +178,7 @@
             },
             {
               "x": 475.0,
-              "y": 325.0
+              "y": 321.0
             }
           ],
           "label": null,
@@ -196,7 +196,7 @@
         "min_x": -150.0,
         "min_y": -10.0,
         "max_x": 600.0,
-        "max_y": 401.0
+        "max_y": 397.0
       }
     }
   }
