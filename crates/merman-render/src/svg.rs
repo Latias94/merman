@@ -530,6 +530,11 @@ pub fn render_sequence_diagram_svg(
     let seq_cfg = effective_config
         .get("sequence")
         .unwrap_or(&serde_json::Value::Null);
+    let diagram_margin_x = seq_cfg
+        .get("diagramMarginX")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(50.0)
+        .max(0.0);
     let actor_height = seq_cfg
         .get("height")
         .and_then(|v| v.as_f64())
@@ -3253,7 +3258,9 @@ pub fn render_sequence_diagram_svg(
 
     if let Some(title) = model.title.as_deref() {
         // Mermaid sequence titles are currently emitted as a plain `<text>` node.
-        let title_x = vb_min_x + (vb_w / 2.0);
+        // Mermaid positions the title using the inner (content) box width:
+        // `x = (box.stopx - box.startx) / 2 - 2 * diagramMarginX`.
+        let title_x = ((vb_w - 2.0 * diagram_margin_x) / 2.0) - 2.0 * diagram_margin_x;
         let _ = write!(
             &mut out,
             r#"<text x="{x}" y="-25">{text}</text>"#,

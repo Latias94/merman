@@ -17,11 +17,11 @@ Notes:
 
 ## Current status (as of 2026-01-30)
 
-Total strict mismatches: **187**
+Total strict mismatches: **184**
 
 Total fixtures compared: **468**
 
-Strict matches: **281 / 468 (60.04%)**
+Strict matches: **284 / 468 (60.68%)**
 
 Mismatch counts by diagram:
 
@@ -43,7 +43,7 @@ Mismatch counts by diagram:
 - `radar`: 0
 - `requirement`: 0
 - `sankey`: 0
-- `sequence`: 16
+- `sequence`: 13
 - `state`: 36
 - `timeline`: 0
 - `treemap`: 0
@@ -57,7 +57,7 @@ Recently resolved:
 - `journey`: 0 (was 8)
 - `requirement`: 0 (was 9)
 - `timeline`: 0 (was 1)
-- `sequence`: 18 (was 25)
+- `sequence`: 13 (was 25)
 
 ### Flowchart notes
 

@@ -1691,9 +1691,13 @@ pub fn layout_sequence_diagram(
         content_max_y = content_max_y.max(max_y);
     }
 
+    // Mermaid (11.12.2) expands the viewBox vertically when a sequence title is present.
+    // See `sequenceRenderer.ts`: `extraVertForTitle = title ? 40 : 0`.
+    let extra_vert_for_title = if model.title.is_some() { 40.0 } else { 0.0 };
+
     let bounds = Some(Bounds {
         min_x: content_min_x - diagram_margin_x,
-        min_y: content_min_y - diagram_margin_y,
+        min_y: content_min_y - diagram_margin_y - extra_vert_for_title,
         max_x: content_max_x + diagram_margin_x,
         max_y: content_max_y + diagram_margin_y + bottom_margin_adj,
     });
