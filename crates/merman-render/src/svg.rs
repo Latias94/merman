@@ -535,6 +535,11 @@ pub fn render_sequence_diagram_svg(
         .and_then(|v| v.as_f64())
         .unwrap_or(50.0)
         .max(0.0);
+    let box_margin = seq_cfg
+        .get("boxMargin")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(10.0)
+        .max(0.0);
     let actor_height = seq_cfg
         .get("height")
         .and_then(|v| v.as_f64())
@@ -711,10 +716,28 @@ pub fn render_sequence_diagram_svg(
 
     // Mermaid renders "box" frames as root-level `<g><rect class="rect"/>...</g>` nodes before actors.
     // Mermaid renders boxes "behind" other elements; multiple boxes end up reversed in DOM order.
+    let has_box_titles = model
+        .boxes
+        .iter()
+        .any(|b| b.name.as_deref().is_some_and(|s| !s.trim().is_empty()));
+    let max_box_title_height = if has_box_titles {
+        // Mermaid uses `utils.calculateTextDimensions(...).height` for box titles.
+        // With 16px fonts this ends up as 17px, and is used for the actor `starty` bump.
+        let line_h = (actor_label_font_size * (17.0 / 16.0)).max(1.0);
+        model
+            .boxes
+            .iter()
+            .filter_map(|b| b.name.as_deref())
+            .map(|s| s.split("<br>").count().max(1) as f64 * line_h)
+            .fold(0.0, f64::max)
+    } else {
+        0.0
+    };
+
     for b in model.boxes.iter().rev() {
-        const PAD_X: f64 = 25.0;
-        const PAD_TOP: f64 = 32.0;
-        const PAD_BOTTOM: f64 = 20.0;
+        let pad_x = (box_margin * 2.0 + box_text_margin).max(0.0);
+        let pad_top = (box_margin + box_text_margin + max_box_title_height).max(0.0);
+        let pad_bottom = (box_margin * 2.0).max(0.0);
 
         let mut min_x = f64::INFINITY;
         let mut max_x = f64::NEG_INFINITY;
@@ -748,10 +771,10 @@ pub fn render_sequence_diagram_svg(
             continue;
         }
 
-        let x = min_x - PAD_X;
-        let w = (max_x - min_x) + PAD_X * 2.0;
-        let y = min_top_y - PAD_TOP;
-        let h = (max_bottom_y - min_top_y) + PAD_TOP + PAD_BOTTOM;
+        let x = min_x - pad_x;
+        let w = (max_x - min_x) + pad_x * 2.0;
+        let y = min_top_y - pad_top;
+        let h = (max_bottom_y - min_top_y) + pad_top + pad_bottom;
 
         out.push_str("<g>");
         let _ = write!(
@@ -765,7 +788,10 @@ pub fn render_sequence_diagram_svg(
         );
         if let Some(name) = b.name.as_deref() {
             let cx = x + (w / 2.0);
-            let text_y = y + 18.5;
+            // Mermaid's `drawBox(...)` places the title at `box.y + boxTextMargin + textMaxHeight/2`.
+            // In upstream, `box.y` is the `verticalPos` passed to `addActorRenderingData`, i.e. 0.
+            let box_y = min_top_y - (box_margin + max_box_title_height);
+            let text_y = box_y + box_text_margin + max_box_title_height / 2.0;
             let _ = write!(
                 &mut out,
                 r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="text" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{x}" dy="0">{text}</tspan></text>"#,

@@ -5,80 +5,80 @@
       "nodes": [
         {
           "id": "actor-top-a",
-          "x": 75.0,
-          "y": 32.5,
+          "x": 80.0,
+          "y": 59.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
         },
         {
           "id": "actor-top-b",
-          "x": 275.0,
-          "y": 32.5,
+          "x": 280.0,
+          "y": 59.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
         },
         {
           "id": "actor-top-c",
-          "x": 475.0,
-          "y": 32.5,
+          "x": 500.0,
+          "y": 59.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
         },
         {
           "id": "actor-top-d",
-          "x": 675.0,
-          "y": 32.5,
+          "x": 720.0,
+          "y": 59.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
         },
         {
           "id": "actor-top-e",
-          "x": 875.0,
-          "y": 32.5,
+          "x": 940.0,
+          "y": 59.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-a",
-          "x": 75.0,
-          "y": 117.5,
+          "x": 80.0,
+          "y": 144.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-b",
-          "x": 275.0,
-          "y": 117.5,
+          "x": 280.0,
+          "y": 144.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-c",
-          "x": 475.0,
-          "y": 117.5,
+          "x": 500.0,
+          "y": 144.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-d",
-          "x": 675.0,
-          "y": 117.5,
+          "x": 720.0,
+          "y": 144.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-e",
-          "x": 875.0,
-          "y": 117.5,
+          "x": 940.0,
+          "y": 144.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -93,12 +93,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 75.0,
-              "y": 65.0
+              "x": 80.0,
+              "y": 92.0
             },
             {
-              "x": 75.0,
-              "y": 85.0
+              "x": 80.0,
+              "y": 112.0
             }
           ],
           "label": null,
@@ -118,12 +118,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 275.0,
-              "y": 65.0
+              "x": 280.0,
+              "y": 92.0
             },
             {
-              "x": 275.0,
-              "y": 85.0
+              "x": 280.0,
+              "y": 112.0
             }
           ],
           "label": null,
@@ -143,12 +143,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 475.0,
-              "y": 65.0
+              "x": 500.0,
+              "y": 92.0
             },
             {
-              "x": 475.0,
-              "y": 85.0
+              "x": 500.0,
+              "y": 112.0
             }
           ],
           "label": null,
@@ -168,12 +168,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 675.0,
-              "y": 65.0
+              "x": 720.0,
+              "y": 92.0
             },
             {
-              "x": 675.0,
-              "y": 85.0
+              "x": 720.0,
+              "y": 112.0
             }
           ],
           "label": null,
@@ -193,12 +193,12 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 875.0,
-              "y": 65.0
+              "x": 940.0,
+              "y": 92.0
             },
             {
-              "x": 875.0,
-              "y": 85.0
+              "x": 940.0,
+              "y": 112.0
             }
           ],
           "label": null,
@@ -215,8 +215,8 @@
       "bounds": {
         "min_x": -50.0,
         "min_y": -10.0,
-        "max_x": 1000.0,
-        "max_y": 161.0
+        "max_x": 1070.0,
+        "max_y": 198.0
       }
     }
   }

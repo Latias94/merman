@@ -32,10 +32,23 @@ struct SequenceMessage {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+struct SequenceBox {
+    #[serde(rename = "actorKeys")]
+    actor_keys: Vec<String>,
+    #[allow(dead_code)]
+    fill: String,
+    name: Option<String>,
+    #[allow(dead_code)]
+    wrap: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 struct SequenceModel {
     #[serde(rename = "actorOrder")]
     actor_order: Vec<String>,
     actors: std::collections::BTreeMap<String, SequenceActor>,
+    #[serde(default)]
+    boxes: Vec<SequenceBox>,
     messages: Vec<SequenceMessage>,
     title: Option<String>,
     #[serde(rename = "createdActors", default)]
@@ -234,6 +247,34 @@ pub fn layout_sequence_diagram(
         font_weight: message_font_weight,
     };
 
+    let has_boxes = !model.boxes.is_empty();
+    let has_box_titles = model
+        .boxes
+        .iter()
+        .any(|b| b.name.as_deref().is_some_and(|s| !s.trim().is_empty()));
+
+    // Mermaid uses `utils.calculateTextDimensions(...).height` for box titles and stores the max
+    // across boxes in `box.textMaxHeight` (used for bumping actor `starty` when any title exists).
+    //
+    // In Mermaid 11.12.2 with 16px fonts, this height comes out as 17px (not the larger SVG
+    // `getBBox()` height used elsewhere). Keep this model-level constant to match upstream DOM.
+    fn mermaid_text_dimensions_height_px(font_size: f64) -> f64 {
+        // 16px -> 17px in upstream.
+        (font_size.max(1.0) * (17.0 / 16.0)).max(1.0)
+    }
+
+    let max_box_title_height = if has_box_titles {
+        let line_h = mermaid_text_dimensions_height_px(message_font_size);
+        model
+            .boxes
+            .iter()
+            .filter_map(|b| b.name.as_deref())
+            .map(|s| split_html_br_lines(s).len().max(1) as f64 * line_h)
+            .fold(0.0, f64::max)
+    } else {
+        0.0
+    };
+
     if model.actor_order.is_empty() {
         return Err(Error::InvalidModel {
             message: "sequence model has no actorOrder".to_string(),
@@ -347,11 +388,80 @@ pub fn layout_sequence_diagram(
         actor_margins[i] = actor_w.max(actor_margin);
     }
 
+    // Mermaid's `calculateActorMargins(...)` computes per-box `box.margin` based on total actor
+    // widths/margins and the box title width. For totalWidth, Mermaid only counts `actor.margin`
+    // if it was set (actors without messages have `margin === undefined` until render-time).
+    let mut box_margins: Vec<f64> = vec![box_text_margin; model.boxes.len()];
+    for (box_idx, b) in model.boxes.iter().enumerate() {
+        let mut total_width = 0.0;
+        for actor_key in &b.actor_keys {
+            let Some(&i) = actor_index.get(actor_key.as_str()) else {
+                continue;
+            };
+            let actor_margin_for_box = if actor_to_message_width[i] > 0.0 {
+                actor_margins[i]
+            } else {
+                0.0
+            };
+            total_width += actor_widths[i] + actor_margin_for_box;
+        }
+
+        total_width += box_margin * 8.0;
+        total_width -= 2.0 * box_text_margin;
+
+        let Some(name) = b.name.as_deref().filter(|s| !s.trim().is_empty()) else {
+            continue;
+        };
+
+        let (text_w, _text_h) = measure_svg_like_with_html_br(measurer, name, &msg_text_style);
+        let min_width = total_width.max(text_w + 2.0 * wrap_padding);
+        if total_width < min_width {
+            box_margins[box_idx] += (min_width - total_width) / 2.0;
+        }
+    }
+
+    // Actors start lower when boxes exist, to make room for box headers.
+    let mut actor_top_offset_y = 0.0;
+    if has_boxes {
+        actor_top_offset_y += box_margin;
+        if has_box_titles {
+            actor_top_offset_y += max_box_title_height;
+        }
+    }
+
+    // Assign each actor to at most one box (Mermaid's db assigns a single `actor.box` reference).
+    let mut actor_box: Vec<Option<usize>> = vec![None; model.actor_order.len()];
+    for (box_idx, b) in model.boxes.iter().enumerate() {
+        for actor_key in &b.actor_keys {
+            let Some(&i) = actor_index.get(actor_key.as_str()) else {
+                continue;
+            };
+            actor_box[i] = Some(box_idx);
+        }
+    }
+
     let mut actor_left_x: Vec<f64> = Vec::with_capacity(model.actor_order.len());
     let mut prev_width = 0.0;
     let mut prev_margin = 0.0;
+    let mut prev_box: Option<usize> = None;
     for i in 0..model.actor_order.len() {
         let w = actor_widths[i];
+        let cur_box = actor_box[i];
+
+        // end of box
+        if prev_box.is_some() && prev_box != cur_box {
+            if let Some(prev) = prev_box {
+                prev_margin += box_margin + box_margins[prev];
+            }
+        }
+
+        // new box
+        if cur_box.is_some() && cur_box != prev_box {
+            if let Some(bi) = cur_box {
+                prev_margin += box_margins[bi];
+            }
+        }
+
         // Mermaid widens the margin before a created actor by `actor.width / 2`.
         if model.created_actors.contains_key(&model.actor_order[i]) {
             prev_margin += w / 2.0;
@@ -360,6 +470,7 @@ pub fn layout_sequence_diagram(
         actor_left_x.push(x);
         prev_width += w + prev_margin;
         prev_margin = actor_margins[i];
+        prev_box = cur_box;
     }
 
     let mut actor_centers_x: Vec<f64> = Vec::with_capacity(model.actor_order.len());
@@ -386,7 +497,7 @@ pub fn layout_sequence_diagram(
             .map(|a| a.actor_type.as_str())
             .unwrap_or("participant");
         let visual_h = sequence_actor_visual_height(actor_type, actor_height, label_box_height);
-        let top_y = visual_h / 2.0;
+        let top_y = actor_top_offset_y + visual_h / 2.0;
         nodes.push(LayoutNode {
             id: format!("actor-top-{id}"),
             x: cx,
@@ -1037,7 +1148,7 @@ pub fn layout_sequence_diagram(
     let note_text_pad_total = 20.0;
     let note_top_offset = message_step - note_gap;
 
-    let mut cursor_y = actor_height + message_step;
+    let mut cursor_y = actor_top_offset_y + actor_height + message_step;
     let mut rect_stack: Vec<RectOpen> = Vec::new();
     let activation_width = config_f64(seq_cfg, &["activationWidth"])
         .unwrap_or(10.0)
@@ -1493,7 +1604,7 @@ pub fn layout_sequence_diagram(
         let top_center_y = created_actor_top_center_y
             .get(id)
             .copied()
-            .unwrap_or(visual_h / 2.0);
+            .unwrap_or(actor_top_offset_y + visual_h / 2.0);
         let top_left_y = top_center_y - visual_h / 2.0;
         let lifeline_start_y =
             top_left_y + sequence_actor_lifeline_start_y(actor_type, actor_height, box_text_margin);
@@ -1924,11 +2035,72 @@ pub fn layout_sequence_diagram(
     // See `sequenceRenderer.ts`: `extraVertForTitle = title ? 40 : 0`.
     let extra_vert_for_title = if model.title.is_some() { 40.0 } else { 0.0 };
 
+    // Mermaid's sequence renderer sets the viewBox y origin to `-(diagramMarginY + extraVertForTitle)`
+    // regardless of diagram contents.
+    let vb_min_y = -(diagram_margin_y + extra_vert_for_title);
+
+    // Mermaid's sequence renderer uses a bounds box with `starty = 0` and computes `height` from
+    // `stopy - starty`. Our headless layout models message spacing in content coordinates, but for
+    // viewBox parity we must follow the upstream formula.
+    //
+    // When boxes exist, Mermaid's bounds logic ends up extending the vertical bounds by `boxMargin`
+    // (diagramMarginY covers the remaining box padding), so include it here.
+    let mut bounds_box_stopy = (content_max_y + bottom_margin_adj).max(0.0);
+    if has_boxes {
+        bounds_box_stopy += box_margin;
+    }
+
+    // Mermaid's bounds box includes the per-box inner margins (`box.margin`) when boxes exist.
+    // Approximate this by extending actor bounds by their enclosing box margin.
+    let mut bounds_box_startx = content_min_x;
+    let mut bounds_box_stopx = content_max_x;
+    for i in 0..model.actor_order.len() {
+        let left = actor_left_x[i];
+        let right = left + actor_widths[i];
+        if let Some(bi) = actor_box[i] {
+            let m = box_margins[bi];
+            bounds_box_startx = bounds_box_startx.min(left - m);
+            bounds_box_stopx = bounds_box_stopx.max(right + m);
+        } else {
+            bounds_box_startx = bounds_box_startx.min(left);
+            bounds_box_stopx = bounds_box_stopx.max(right);
+        }
+    }
+
+    // Mermaid's self-message bounds insert expands horizontally by `dx = max(textWidth/2, conf.width/2)`,
+    // where `conf.width` is the configured actor width (150 by default). This can increase `box.stopx`
+    // by ~1px due to `from_x + 1` rounding behavior in message geometry, affecting viewBox width.
+    for msg in &model.messages {
+        let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
+            continue;
+        };
+        if from != to {
+            continue;
+        }
+        // Notes can use `from==to` for `rightOf`/`leftOf`; ignore them here.
+        if msg.message_type == 2 {
+            continue;
+        }
+        let Some(&i) = actor_index.get(from) else {
+            continue;
+        };
+        let center_x = actor_centers_x[i] + 1.0;
+        let text = msg.message.as_str().unwrap_or_default();
+        let (text_w, _text_h) = if text.is_empty() {
+            (1.0, 1.0)
+        } else {
+            measure_svg_like_with_html_br(measurer, text, &msg_text_style)
+        };
+        let dx = (text_w.max(1.0) / 2.0).max(actor_width_min / 2.0);
+        bounds_box_startx = bounds_box_startx.min(center_x - dx);
+        bounds_box_stopx = bounds_box_stopx.max(center_x + dx);
+    }
+
     let bounds = Some(Bounds {
-        min_x: content_min_x - diagram_margin_x,
-        min_y: content_min_y - diagram_margin_y - extra_vert_for_title,
-        max_x: content_max_x + diagram_margin_x,
-        max_y: content_max_y + diagram_margin_y + bottom_margin_adj,
+        min_x: bounds_box_startx - diagram_margin_x,
+        min_y: vb_min_y,
+        max_x: bounds_box_stopx + diagram_margin_x,
+        max_y: bounds_box_stopy + diagram_margin_y,
     });
 
     Ok(SequenceDiagramLayout {
