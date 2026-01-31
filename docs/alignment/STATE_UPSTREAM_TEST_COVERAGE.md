@@ -98,3 +98,4 @@ Source: `repo-ref/mermaid/docs/syntax/stateDiagram.md`
 
 - choice nodes (`state <id> <<choice>>`): `fixtures/state/upstream_stateDiagram_v2_choice_spec.mmd`
 - nested composite states (multiple layers): `fixtures/state/upstream_stateDiagram_v2_composite_layers_docs.mmd`
+- transitions between composite states: `fixtures/state/upstream_stateDiagram_v2_composite_state_transitions_docs.mmd`

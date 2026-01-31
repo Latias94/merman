@@ -1,0 +1,18 @@
+stateDiagram-v2
+    %% Source: repo-ref/mermaid/packages/mermaid/src/docs/syntax/stateDiagram.md (transitions between composite states)
+    [*] --> First
+    First --> Second
+    First --> Third
+
+    state First {
+        [*] --> fir
+        fir --> [*]
+    }
+    state Second {
+        [*] --> sec
+        sec --> [*]
+    }
+    state Third {
+        [*] --> thi
+        thi --> [*]
+    }
