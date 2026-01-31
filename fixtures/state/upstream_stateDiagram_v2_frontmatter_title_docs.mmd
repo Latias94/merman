@@ -1,0 +1,13 @@
+---
+title: Simple sample
+---
+stateDiagram-v2
+    %% Source: repo-ref/mermaid/packages/mermaid/src/docs/syntax/stateDiagram.md (frontmatter title example)
+    [*] --> Still
+    Still --> [*]
+
+    Still --> Moving
+    Moving --> Still
+    Moving --> Crash
+    Crash --> [*]
+

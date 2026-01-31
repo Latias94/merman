@@ -102,3 +102,4 @@ Source: `repo-ref/mermaid/packages/mermaid/src/docs/syntax/stateDiagram.md`
 - `:::` operator (inline class application): `fixtures/state/upstream_stateDiagram_triple_colon_operator_docs.mmd`
 - spaces in state names (`id: description` + later references): `fixtures/state/upstream_stateDiagram_spaces_in_state_names_docs.mmd`
 - `classDef` + `class` statements big example: `fixtures/state/upstream_stateDiagram_docs_classdef_and_class_statements.mmd`
+- frontmatter title (`---\\ntitle: ...\\n---`): `fixtures/state/upstream_stateDiagram_v2_frontmatter_title_docs.mmd`
