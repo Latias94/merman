@@ -15,13 +15,13 @@ Notes:
 - Strict canonicalization keeps identifier-like attributes byte-for-byte (e.g. `id="flowchart-A-0"` is not rewritten).
 - Strict canonicalization preserves mixed-content text segments (e.g. `foo<br />bar` keeps the `bar` tail text).
 
-## Current status (as of 2026-01-30)
+## Current status (as of 2026-01-31)
 
-Total strict mismatches: **184**
+Total strict mismatches: **180**
 
 Total fixtures compared: **468**
 
-Strict matches: **284 / 468 (60.68%)**
+Strict matches: **288 / 468 (61.54%)**
 
 Mismatch counts by diagram:
 
@@ -43,7 +43,7 @@ Mismatch counts by diagram:
 - `radar`: 0
 - `requirement`: 0
 - `sankey`: 0
-- `sequence`: 13
+- `sequence`: 9
 - `state`: 36
 - `timeline`: 0
 - `treemap`: 0
@@ -57,7 +57,7 @@ Recently resolved:
 - `journey`: 0 (was 8)
 - `requirement`: 0 (was 9)
 - `timeline`: 0 (was 1)
-- `sequence`: 13 (was 25)
+- `sequence`: 9 (was 25)
 
 ### Flowchart notes
 

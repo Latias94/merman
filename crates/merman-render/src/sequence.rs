@@ -38,6 +38,10 @@ struct SequenceModel {
     actors: std::collections::BTreeMap<String, SequenceActor>,
     messages: Vec<SequenceMessage>,
     title: Option<String>,
+    #[serde(rename = "createdActors", default)]
+    created_actors: std::collections::BTreeMap<String, usize>,
+    #[serde(rename = "destroyedActors", default)]
+    destroyed_actors: std::collections::BTreeMap<String, usize>,
 }
 
 fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
@@ -139,7 +143,7 @@ fn sequence_actor_lifeline_start_y(
 ) -> f64 {
     match actor_type {
         // Hard-coded in Mermaid's sequence svgDraw.js for these actor types.
-        "boundary" => 80.0,
+        "actor" | "boundary" => 80.0,
         "control" | "entity" => 75.0,
         // For database, Mermaid starts the lifeline slightly below the actor box.
         "database" => base_height + 2.0 * box_text_margin,
@@ -339,9 +343,14 @@ pub fn layout_sequence_diagram(
     let mut prev_width = 0.0;
     let mut prev_margin = 0.0;
     for i in 0..model.actor_order.len() {
+        let w = actor_widths[i];
+        // Mermaid widens the margin before a created actor by `actor.width / 2`.
+        if model.created_actors.contains_key(&model.actor_order[i]) {
+            prev_margin += w / 2.0;
+        }
         let x = prev_width + prev_margin;
         actor_left_x.push(x);
-        prev_width += actor_widths[i] + prev_margin;
+        prev_width += w + prev_margin;
         prev_margin = actor_margins[i];
     }
 
@@ -358,7 +367,8 @@ pub fn layout_sequence_diagram(
     let clusters: Vec<LayoutCluster> = Vec::new();
 
     // Actor boxes: Mermaid renders both a "top" and "bottom" actor box.
-    // The bottom boxes start after all messages are placed.
+    // The bottom boxes start after all messages are placed. Created actors will have their `y`
+    // adjusted later once we know the creation message position.
     for (idx, id) in model.actor_order.iter().enumerate() {
         let w = actor_widths[idx];
         let cx = actor_centers_x[idx];
@@ -989,7 +999,37 @@ pub fn layout_sequence_diagram(
     let mut activation_stacks: std::collections::BTreeMap<&str, Vec<f64>> =
         std::collections::BTreeMap::new();
 
-    for msg in &model.messages {
+    // Mermaid adjusts created/destroyed actors while processing messages:
+    // - created actor: `starty = lineStartY - actor.height/2`
+    // - destroyed actor: `stopy = lineStartY - actor.height/2`
+    // It also bumps the cursor by `actor.height/2` to avoid overlaps.
+    let mut created_actor_top_center_y: std::collections::BTreeMap<String, f64> =
+        std::collections::BTreeMap::new();
+    let mut destroyed_actor_bottom_top_y: std::collections::BTreeMap<String, f64> =
+        std::collections::BTreeMap::new();
+
+    let actor_visual_height_for_id = |actor_id: &str| -> f64 {
+        model
+            .actors
+            .get(actor_id)
+            .map(|a| a.actor_type.as_str())
+            .map(|t| sequence_actor_visual_height(t, actor_height, label_box_height))
+            .unwrap_or(actor_height.max(1.0))
+    };
+    let actor_is_type_width_limited = |actor_id: &str| -> bool {
+        model
+            .actors
+            .get(actor_id)
+            .map(|a| {
+                matches!(
+                    a.actor_type.as_str(),
+                    "actor" | "control" | "entity" | "database"
+                )
+            })
+            .unwrap_or(false)
+    };
+
+    for (msg_idx, msg) in model.messages.iter().enumerate() {
         match msg.message_type {
             // ACTIVE_START
             17 => {
@@ -1193,6 +1233,57 @@ pub fn layout_sequence_diagram(
             }
         }
 
+        if !is_self {
+            // Mermaid adjusts creating/destroying messages so arrowheads land outside the actor box.
+            const ACTOR_TYPE_WIDTH_HALF: f64 = 18.0;
+            if model
+                .created_actors
+                .get(to)
+                .is_some_and(|&idx| idx == msg_idx)
+            {
+                let adjustment = if actor_is_type_width_limited(to) {
+                    ACTOR_TYPE_WIDTH_HALF + 3.0
+                } else {
+                    actor_widths[ti] / 2.0 + 3.0
+                };
+                if to_x < from_x {
+                    stopx += adjustment;
+                } else {
+                    stopx -= adjustment;
+                }
+            } else if model
+                .destroyed_actors
+                .get(from)
+                .is_some_and(|&idx| idx == msg_idx)
+            {
+                let adjustment = if actor_is_type_width_limited(from) {
+                    ACTOR_TYPE_WIDTH_HALF
+                } else {
+                    actor_widths[fi] / 2.0
+                };
+                if from_x < to_x {
+                    startx += adjustment;
+                } else {
+                    startx -= adjustment;
+                }
+            } else if model
+                .destroyed_actors
+                .get(to)
+                .is_some_and(|&idx| idx == msg_idx)
+            {
+                let adjustment = if actor_is_type_width_limited(to) {
+                    ACTOR_TYPE_WIDTH_HALF + 3.0
+                } else {
+                    actor_widths[ti] / 2.0 + 3.0
+                };
+                if to_x < from_x {
+                    stopx += adjustment;
+                } else {
+                    stopx -= adjustment;
+                }
+            }
+        }
+
         let x1 = startx;
         let x2 = stopx;
         let y = cursor_y;
@@ -1247,10 +1338,48 @@ pub fn layout_sequence_diagram(
             // Mermaid adds extra vertical space for self-messages to accommodate the loop curve.
             cursor_y += 30.0;
         }
+
+        // Apply Mermaid's created/destroyed actor y adjustments and spacing bumps.
+        if model
+            .created_actors
+            .get(to)
+            .is_some_and(|&idx| idx == msg_idx)
+        {
+            let h = actor_visual_height_for_id(to);
+            created_actor_top_center_y.insert(to.to_string(), y);
+            cursor_y += h / 2.0;
+        } else if model
+            .destroyed_actors
+            .get(from)
+            .is_some_and(|&idx| idx == msg_idx)
+        {
+            let h = actor_visual_height_for_id(from);
+            destroyed_actor_bottom_top_y.insert(from.to_string(), y - h / 2.0);
+            cursor_y += h / 2.0;
+        } else if model
+            .destroyed_actors
+            .get(to)
+            .is_some_and(|&idx| idx == msg_idx)
+        {
+            let h = actor_visual_height_for_id(to);
+            destroyed_actor_bottom_top_y.insert(to.to_string(), y - h / 2.0);
+            cursor_y += h / 2.0;
+        }
     }
 
     let bottom_margin = message_margin - message_font_size + bottom_margin_adj;
     let bottom_box_top_y = (cursor_y - message_step) + bottom_margin;
+
+    // Apply created-actor `starty` overrides now that we know the creation message y.
+    for n in nodes.iter_mut() {
+        let Some(actor_id) = n.id.strip_prefix("actor-top-") else {
+            continue;
+        };
+        if let Some(y) = created_actor_top_center_y.get(actor_id).copied() {
+            n.y = y;
+        }
+    }
+
     for (idx, id) in model.actor_order.iter().enumerate() {
         let w = actor_widths[idx];
         let cx = actor_centers_x[idx];
@@ -1260,14 +1389,26 @@ pub fn layout_sequence_diagram(
             .map(|a| a.actor_type.as_str())
             .unwrap_or("participant");
         let visual_h = sequence_actor_visual_height(actor_type, actor_height, label_box_height);
+        let bottom_top_y = destroyed_actor_bottom_top_y
+            .get(id)
+            .copied()
+            .unwrap_or(bottom_box_top_y);
         nodes.push(LayoutNode {
             id: format!("actor-bottom-{id}"),
             x: cx,
-            y: bottom_box_top_y + visual_h / 2.0,
+            y: bottom_top_y + visual_h / 2.0,
             width: w,
             height: visual_h,
             is_cluster: false,
         });
+
+        let top_center_y = created_actor_top_center_y
+            .get(id)
+            .copied()
+            .unwrap_or(visual_h / 2.0);
+        let top_left_y = top_center_y - visual_h / 2.0;
+        let lifeline_start_y =
+            top_left_y + sequence_actor_lifeline_start_y(actor_type, actor_height, box_text_margin);
 
         edges.push(LayoutEdge {
             id: format!("lifeline-{id}"),
@@ -1278,11 +1419,11 @@ pub fn layout_sequence_diagram(
             points: vec![
                 LayoutPoint {
                     x: cx,
-                    y: sequence_actor_lifeline_start_y(actor_type, actor_height, box_text_margin),
+                    y: lifeline_start_y,
                 },
                 LayoutPoint {
                     x: cx,
-                    y: bottom_box_top_y,
+                    y: bottom_top_y,
                 },
             ],
             label: None,
