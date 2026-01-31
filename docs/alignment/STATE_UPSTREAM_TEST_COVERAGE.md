@@ -94,8 +94,10 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/state/stateDiagram-v2.sp
 
 ## `repo-ref/mermaid/packages/mermaid/src/docs/syntax/stateDiagram.md`
 
-Source: `repo-ref/mermaid/docs/syntax/stateDiagram.md`
+Source: `repo-ref/mermaid/packages/mermaid/src/docs/syntax/stateDiagram.md`
 
 - choice nodes (`state <id> <<choice>>`): `fixtures/state/upstream_stateDiagram_v2_choice_spec.mmd`
 - nested composite states (multiple layers): `fixtures/state/upstream_stateDiagram_v2_composite_layers_docs.mmd`
 - transitions between composite states: `fixtures/state/upstream_stateDiagram_v2_composite_state_transitions_docs.mmd`
+- `:::` operator (inline class application): `fixtures/state/upstream_stateDiagram_triple_colon_operator_docs.mmd`
+- spaces in state names (`id: description` + later references): `fixtures/state/upstream_stateDiagram_spaces_in_state_names_docs.mmd`
