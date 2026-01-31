@@ -4,6 +4,14 @@ use crate::{Error, Result};
 use serde::Deserialize;
 use serde_json::Value;
 
+fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
+    let mut cur = cfg;
+    for k in path {
+        cur = cur.get(*k)?;
+    }
+    cur.as_f64().or_else(|| cur.as_i64().map(|v| v as f64))
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct ArchitectureNodeModel {
     id: String,
@@ -34,8 +42,9 @@ struct ArchitectureModel {
 fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
     let mut pts: Vec<(f64, f64)> = Vec::new();
     for n in nodes {
-        pts.push((n.x - n.width / 2.0, n.y - n.height / 2.0));
-        pts.push((n.x + n.width / 2.0, n.y + n.height / 2.0));
+        // Architecture renderer uses top-left anchored `translate(x, y)` for nodes.
+        pts.push((n.x, n.y));
+        pts.push((n.x + n.width, n.y + n.height));
     }
     for e in edges {
         for p in &e.points {
@@ -47,17 +56,20 @@ fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> 
 
 pub fn layout_architecture_diagram(
     model: &Value,
-    _effective_config: &Value,
+    effective_config: &Value,
     _text_measurer: &dyn TextMeasurer,
 ) -> Result<ArchitectureDiagramLayout> {
     let model: ArchitectureModel = serde_json::from_value(model.clone())?;
 
+    let icon_size = config_f64(effective_config, &["architecture", "iconSize"]).unwrap_or(80.0);
+    let icon_size = icon_size.max(1.0);
+    let half_icon = icon_size / 2.0;
+
     let mut nodes: Vec<LayoutNode> = Vec::new();
     for (idx, n) in model.nodes.iter().enumerate() {
         let (width, height) = match n.node_type.as_str() {
-            "service" => (85.0, 80.0),
-            "junction" => (20.0, 20.0),
-            "group" => (120.0, 80.0),
+            "service" => (icon_size, icon_size),
+            "junction" => (icon_size, icon_size),
             other => {
                 return Err(Error::InvalidModel {
                     message: format!("unsupported architecture node type: {other}"),
@@ -94,21 +106,24 @@ pub fn layout_architecture_diagram(
             });
         };
 
-        let icon_size = 80.0;
-        let half = icon_size / 2.0;
-
-        fn endpoint(x: f64, y: f64, dir: Option<&str>, half: f64) -> (f64, f64) {
+        fn endpoint(
+            x: f64,
+            y: f64,
+            dir: Option<&str>,
+            icon_size: f64,
+            half_icon: f64,
+        ) -> (f64, f64) {
             match dir.unwrap_or("") {
-                "L" => (x - half, y),
-                "R" => (x + half, y),
-                "T" => (x, y - half),
-                "B" => (x, y + half),
-                _ => (x, y),
+                "L" => (x, y + half_icon),
+                "R" => (x + icon_size, y + half_icon),
+                "T" => (x + half_icon, y),
+                "B" => (x + half_icon, y + icon_size),
+                _ => (x + half_icon, y + half_icon),
             }
         }
 
-        let (sx, sy) = endpoint(a.x, a.y, e.lhs_dir.as_deref(), half);
-        let (tx, ty) = endpoint(b.x, b.y, e.rhs_dir.as_deref(), half);
+        let (sx, sy) = endpoint(a.x, a.y, e.lhs_dir.as_deref(), icon_size, half_icon);
+        let (tx, ty) = endpoint(b.x, b.y, e.rhs_dir.as_deref(), icon_size, half_icon);
         let mid = LayoutPoint {
             x: (sx + tx) / 2.0,
             y: (sy + ty) / 2.0,

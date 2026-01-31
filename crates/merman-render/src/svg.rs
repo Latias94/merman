@@ -10594,7 +10594,7 @@ pub fn render_mindmap_diagram_svg(
 pub fn render_architecture_diagram_svg(
     layout: &ArchitectureDiagramLayout,
     semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
+    effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     fn arch_icon_body(name: &str) -> &'static str {
@@ -10712,11 +10712,12 @@ pub fn render_architecture_diagram_svg(
         title: &str,
         icon_size_px: f64,
         title_width_px: f64,
+        font_size_px: f64,
     ) {
         let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
         let style = crate::text::TextStyle {
             font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-            font_size: 16.0,
+            font_size: font_size_px,
             font_weight: None,
         };
         let lines = wrap_svg_words_to_lines(title, title_width_px, &measurer, &style);
@@ -10749,6 +10750,8 @@ pub fn render_architecture_diagram_svg(
     #[serde(rename_all = "camelCase")]
     struct ArchitectureJunction {
         id: String,
+        #[serde(default, rename = "in")]
+        in_group: Option<String>,
     }
 
     #[derive(Debug, Clone, Deserialize)]
@@ -10803,6 +10806,19 @@ pub fn render_architecture_diagram_svg(
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("architecture");
     let diagram_id_esc = escape_xml(diagram_id);
+
+    let icon_size_px = config_f64(effective_config, &["architecture", "iconSize"]).unwrap_or(80.0);
+    let icon_size_px = icon_size_px.max(1.0);
+    let half_icon = icon_size_px / 2.0;
+    let padding_px = config_f64(effective_config, &["architecture", "padding"]).unwrap_or(40.0);
+    let padding_px = padding_px.max(0.0);
+    let font_size_px = config_f64(effective_config, &["architecture", "fontSize"]).unwrap_or(16.0);
+    let font_size_px = font_size_px.max(1.0);
+    let use_max_width = effective_config
+        .get("architecture")
+        .and_then(|v| v.get("useMaxWidth"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
 
     let mut node_xy: std::collections::BTreeMap<String, (f64, f64)> =
         std::collections::BTreeMap::new();
@@ -10899,40 +10915,444 @@ pub fn render_architecture_diagram_svg(
         format!("{prefix}_{from}_{to}_{counter}")
     }
 
+    fn extend_bounds(bounds: &mut Option<Bounds>, other: Bounds) {
+        let b = bounds.get_or_insert(other.clone());
+        b.min_x = b.min_x.min(other.min_x);
+        b.min_y = b.min_y.min(other.min_y);
+        b.max_x = b.max_x.max(other.max_x);
+        b.max_y = b.max_y.max(other.max_y);
+    }
+
+    fn bounds_from_rect(x: f64, y: f64, w: f64, h: f64) -> Bounds {
+        Bounds {
+            min_x: x,
+            min_y: y,
+            max_x: x + w,
+            max_y: y + h,
+        }
+    }
+
+    // Mermaid Architecture uses `setupGraphViewbox()` which expands the viewBox based on the
+    // SVG's `getBBox()` plus `architecture.padding`. We approximate the effective `getBBox()` by
+    // computing a conservative bounds over the elements we emit.
+    let mut content_bounds: Option<Bounds> = None;
+
+    // Services + junctions.
+    let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+    let text_style = crate::text::TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: font_size_px,
+        font_weight: None,
+    };
+
+    let mut service_bounds: std::collections::BTreeMap<String, Bounds> =
+        std::collections::BTreeMap::new();
+    for svc in &model.services {
+        let (x, y) = node_xy.get(&svc.id).copied().unwrap_or((0.0, 0.0));
+        let mut b = bounds_from_rect(x, y, icon_size_px, icon_size_px);
+        if let Some(title) = svc
+            .title
+            .as_deref()
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+        {
+            let lines = wrap_svg_words_to_lines(title, icon_size_px * 1.5, &measurer, &text_style);
+            let mut bbox_w = 0.0f64;
+            for line in &lines {
+                let m = measurer.measure_wrapped(line, &text_style, None, WrapMode::SvgLike);
+                bbox_w = bbox_w.max(m.width);
+            }
+            let bbox_h = (lines.len().max(1) as f64) * font_size_px * 1.1875;
+
+            // `write_architecture_service_title` uses `transform="translate(iconSize/2, iconSize)"`
+            // and `text y="-10.1"`. Approximate the bbox relative to the service's top-left.
+            let cx = x + icon_size_px / 2.0;
+            let text_top = y + icon_size_px - 10.1;
+            let text_left = cx - bbox_w / 2.0;
+            let text_right = cx + bbox_w / 2.0;
+            let text_bottom = text_top + bbox_h;
+            b = Bounds {
+                min_x: b.min_x.min(text_left),
+                min_y: b.min_y.min(text_top),
+                max_x: b.max_x.max(text_right),
+                max_y: b.max_y.max(text_bottom),
+            };
+        }
+        service_bounds.insert(svc.id.clone(), b.clone());
+        extend_bounds(&mut content_bounds, b);
+    }
+
+    let mut junction_bounds: std::collections::BTreeMap<String, Bounds> =
+        std::collections::BTreeMap::new();
+    for junction in &model.junctions {
+        let (x, y) = node_xy.get(&junction.id).copied().unwrap_or((0.0, 0.0));
+        let b = bounds_from_rect(x, y, icon_size_px, icon_size_px);
+        junction_bounds.insert(junction.id.clone(), b.clone());
+        extend_bounds(&mut content_bounds, b);
+    }
+
+    // Groups (outer rects, including nested groups).
+    let mut groups_by_id: std::collections::BTreeMap<String, ArchitectureGroup> =
+        std::collections::BTreeMap::new();
+    for g in &model.groups {
+        groups_by_id.insert(g.id.clone(), g.clone());
+    }
+
+    let mut child_groups: std::collections::BTreeMap<String, Vec<String>> =
+        std::collections::BTreeMap::new();
+    for g in &model.groups {
+        if let Some(parent) = g.in_group.as_deref() {
+            child_groups
+                .entry(parent.to_string())
+                .or_default()
+                .push(g.id.clone());
+        }
+    }
+    for v in child_groups.values_mut() {
+        v.sort();
+    }
+
+    let mut services_in_group: std::collections::BTreeMap<String, Vec<String>> =
+        std::collections::BTreeMap::new();
+    for svc in &model.services {
+        if let Some(parent) = svc.in_group.as_deref() {
+            services_in_group
+                .entry(parent.to_string())
+                .or_default()
+                .push(svc.id.clone());
+        }
+    }
+    for v in services_in_group.values_mut() {
+        v.sort();
+    }
+
+    let mut junctions_in_group: std::collections::BTreeMap<String, Vec<String>> =
+        std::collections::BTreeMap::new();
+    for junction in &model.junctions {
+        if let Some(parent) = junction.in_group.as_deref() {
+            junctions_in_group
+                .entry(parent.to_string())
+                .or_default()
+                .push(junction.id.clone());
+        }
+    }
+    for v in junctions_in_group.values_mut() {
+        v.sort();
+    }
+
+    #[derive(Clone)]
+    struct GroupRect {
+        id: String,
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+        icon: Option<String>,
+        title: Option<String>,
+    }
+
+    fn compute_group_rects(
+        group_id: &str,
+        icon_size_px: f64,
+        services_in_group: &std::collections::BTreeMap<String, Vec<String>>,
+        junctions_in_group: &std::collections::BTreeMap<String, Vec<String>>,
+        child_groups: &std::collections::BTreeMap<String, Vec<String>>,
+        service_bounds: &std::collections::BTreeMap<String, Bounds>,
+        junction_bounds: &std::collections::BTreeMap<String, Bounds>,
+        group_rects: &mut std::collections::BTreeMap<String, Bounds>,
+        visiting: &mut std::collections::BTreeSet<String>,
+    ) -> Option<Bounds> {
+        if let Some(b) = group_rects.get(group_id) {
+            return Some(b.clone());
+        }
+        if visiting.contains(group_id) {
+            return None;
+        }
+        visiting.insert(group_id.to_string());
+
+        let mut content: Option<Bounds> = None;
+        if let Some(svcs) = services_in_group.get(group_id) {
+            for id in svcs {
+                if let Some(b) = service_bounds.get(id) {
+                    let mut tmp = content;
+                    extend_bounds(&mut tmp, b.clone());
+                    content = tmp;
+                }
+            }
+        }
+        if let Some(junctions) = junctions_in_group.get(group_id) {
+            for id in junctions {
+                if let Some(b) = junction_bounds.get(id) {
+                    let mut tmp = content;
+                    extend_bounds(&mut tmp, b.clone());
+                    content = tmp;
+                }
+            }
+        }
+        if let Some(children) = child_groups.get(group_id) {
+            for child in children {
+                if let Some(b) = compute_group_rects(
+                    child,
+                    icon_size_px,
+                    services_in_group,
+                    junctions_in_group,
+                    child_groups,
+                    service_bounds,
+                    junction_bounds,
+                    group_rects,
+                    visiting,
+                ) {
+                    let mut tmp = content;
+                    extend_bounds(&mut tmp, b);
+                    content = tmp;
+                }
+            }
+        }
+
+        let pad = icon_size_px / 2.0 + 2.5;
+        let b = if let Some(content) = content {
+            Bounds {
+                min_x: content.min_x - pad,
+                min_y: content.min_y - pad,
+                max_x: content.max_x + pad,
+                max_y: content.max_y + pad,
+            }
+        } else {
+            // Empty group: match Mermaid's "no children" fallback sizing behavior.
+            Bounds {
+                min_x: 0.0,
+                min_y: 0.0,
+                max_x: icon_size_px.max(1.0),
+                max_y: icon_size_px.max(1.0),
+            }
+        };
+
+        group_rects.insert(group_id.to_string(), b.clone());
+        visiting.remove(group_id);
+        Some(b)
+    }
+
+    let mut group_rect_bounds: std::collections::BTreeMap<String, Bounds> =
+        std::collections::BTreeMap::new();
+    let mut visiting: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for g in &model.groups {
+        let _ = compute_group_rects(
+            &g.id,
+            icon_size_px,
+            &services_in_group,
+            &junctions_in_group,
+            &child_groups,
+            &service_bounds,
+            &junction_bounds,
+            &mut group_rect_bounds,
+            &mut visiting,
+        );
+    }
+
+    let mut group_rects: Vec<GroupRect> = Vec::new();
+    for g in &model.groups {
+        if let Some(b) = group_rect_bounds.get(&g.id) {
+            group_rects.push(GroupRect {
+                id: g.id.clone(),
+                x: b.min_x,
+                y: b.min_y,
+                w: (b.max_x - b.min_x).max(1.0),
+                h: (b.max_y - b.min_y).max(1.0),
+                icon: g.icon.clone(),
+                title: g.title.clone(),
+            });
+            extend_bounds(&mut content_bounds, b.clone());
+        }
+    }
+
+    // Edges (including conservative label bounds).
+    if !model.edges.is_empty() {
+        let arrow_size = icon_size_px / 6.0;
+        let half_arrow_size = arrow_size / 2.0;
+        for edge in &model.edges {
+            let (sx, sy) = node_xy.get(&edge.lhs_id).copied().unwrap_or((0.0, 0.0));
+            let (tx, ty) = node_xy.get(&edge.rhs_id).copied().unwrap_or((0.0, 0.0));
+
+            let (start_x, start_y) = match edge.lhs_dir.as_str() {
+                "L" => (sx, sy + half_icon),
+                "R" => (sx + icon_size_px, sy + half_icon),
+                "T" => (sx + half_icon, sy),
+                "B" => (sx + half_icon, sy + icon_size_px),
+                _ => (sx + half_icon, sy + half_icon),
+            };
+            let (end_x, end_y) = match edge.rhs_dir.as_str() {
+                "L" => (tx, ty + half_icon),
+                "R" => (tx + icon_size_px, ty + half_icon),
+                "T" => (tx + half_icon, ty),
+                "B" => (tx + half_icon, ty + icon_size_px),
+                _ => (tx + half_icon, ty + half_icon),
+            };
+
+            let mid_x = (start_x + end_x) / 2.0;
+            let mid_y = (start_y + end_y) / 2.0;
+
+            extend_bounds(
+                &mut content_bounds,
+                Bounds::from_points(vec![(start_x, start_y), (mid_x, mid_y), (end_x, end_y)])
+                    .unwrap_or(Bounds {
+                        min_x: start_x,
+                        min_y: start_y,
+                        max_x: end_x,
+                        max_y: end_y,
+                    }),
+            );
+
+            if edge.lhs_into == Some(true) {
+                let x_shift = if is_arch_dir_x(edge.lhs_dir.as_str()) {
+                    arrow_shift(edge.lhs_dir.as_str(), start_x, arrow_size)
+                } else {
+                    start_x - half_arrow_size
+                };
+                let y_shift = if is_arch_dir_y(edge.lhs_dir.as_str()) {
+                    arrow_shift(edge.lhs_dir.as_str(), start_y, arrow_size)
+                } else {
+                    start_y - half_arrow_size
+                };
+                extend_bounds(
+                    &mut content_bounds,
+                    bounds_from_rect(x_shift, y_shift, arrow_size, arrow_size),
+                );
+            }
+
+            if edge.rhs_into == Some(true) {
+                let x_shift = if is_arch_dir_x(edge.rhs_dir.as_str()) {
+                    arrow_shift(edge.rhs_dir.as_str(), end_x, arrow_size)
+                } else {
+                    end_x - half_arrow_size
+                };
+                let y_shift = if is_arch_dir_y(edge.rhs_dir.as_str()) {
+                    arrow_shift(edge.rhs_dir.as_str(), end_y, arrow_size)
+                } else {
+                    end_y - half_arrow_size
+                };
+                extend_bounds(
+                    &mut content_bounds,
+                    bounds_from_rect(x_shift, y_shift, arrow_size, arrow_size),
+                );
+            }
+
+            if let Some(label) = edge
+                .title
+                .as_deref()
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+            {
+                let axis = match (
+                    is_arch_dir_x(edge.lhs_dir.as_str()),
+                    is_arch_dir_x(edge.rhs_dir.as_str()),
+                ) {
+                    (true, true) => "X",
+                    (false, false) => "Y",
+                    _ => "XY",
+                };
+
+                let wrap_width = match axis {
+                    "X" => (start_x - end_x).abs(),
+                    "Y" => (start_y - end_y).abs() / 1.5,
+                    _ => (start_x - end_x).abs() / 2.0,
+                };
+                let wrap_width = if wrap_width.is_finite() && wrap_width > 0.0 {
+                    wrap_width
+                } else {
+                    200.0
+                };
+                let lines = wrap_svg_words_to_lines(label, wrap_width, &measurer, &text_style);
+
+                let mut bbox_w = 0.0f64;
+                for line in &lines {
+                    let m = measurer.measure_wrapped(line, &text_style, None, WrapMode::SvgLike);
+                    bbox_w = bbox_w.max(m.width);
+                }
+                let bbox_h = (lines.len().max(1) as f64) * font_size_px * 1.1875;
+
+                // Conservative AABB for rotated labels (90°/45° variants).
+                let side = (bbox_w + bbox_h).max(1.0);
+                extend_bounds(
+                    &mut content_bounds,
+                    bounds_from_rect(mid_x - side / 2.0, mid_y - side / 2.0, side, side),
+                );
+            }
+        }
+    }
+
+    let (vb_min_x, vb_min_y, vb_w, vb_h, max_width_style) = if model.services.is_empty()
+        && model.junctions.is_empty()
+        && model.groups.is_empty()
+        && model.edges.is_empty()
+    {
+        (
+            -half_icon,
+            -half_icon,
+            icon_size_px,
+            icon_size_px,
+            fmt_max_width_px(icon_size_px),
+        )
+    } else {
+        let b = content_bounds.unwrap_or(Bounds {
+            min_x: 0.0,
+            min_y: 0.0,
+            max_x: icon_size_px,
+            max_y: icon_size_px,
+        });
+        let vb_min_x = b.min_x - padding_px;
+        let vb_min_y = b.min_y - padding_px;
+        let vb_w = (b.max_x - b.min_x) + padding_px * 2.0;
+        let vb_h = (b.max_y - b.min_y) + padding_px * 2.0;
+        (
+            vb_min_x,
+            vb_min_y,
+            vb_w,
+            vb_h,
+            fmt_max_width_px(vb_w.max(1.0)),
+        )
+    };
+
     let mut out = String::new();
     let _ = write!(
         &mut out,
-        r#"<svg id="{id}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: 80px; background-color: white;" viewBox="-40 -40 80 80" role="graphics-document document" aria-roledescription="architecture"{aria}>{a11y}<style></style><g/><g class="architecture-edges">"#,
+        r#"<svg id="{id}" {w_attr} xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="{style}" viewBox="{vx} {vy} {vw} {vh}" role="graphics-document document" aria-roledescription="architecture"{aria}>{a11y}<style></style><g/><g class="architecture-edges">"#,
         id = diagram_id_esc,
+        w_attr = if use_max_width { r#"width="100%""# } else { "" },
+        style = if use_max_width {
+            format!("max-width: {max_width_style}px; background-color: white;")
+        } else {
+            "background-color: white;".to_string()
+        },
+        vx = fmt(vb_min_x),
+        vy = fmt(vb_min_y),
+        vw = fmt(vb_w.max(1.0)),
+        vh = fmt(vb_h.max(1.0)),
         aria = aria_attrs,
         a11y = a11y_nodes
     );
-
-    let icon_size_px = 80.0;
 
     // Edges (DOM structure parity; geometry values are layout-dependent and normalized in parity mode).
     if !model.edges.is_empty() {
         let arrow_size = icon_size_px / 6.0;
         let half_arrow_size = arrow_size / 2.0;
-        let half_icon = icon_size_px / 2.0;
 
         for edge in &model.edges {
             let (sx, sy) = node_xy.get(&edge.lhs_id).copied().unwrap_or((0.0, 0.0));
             let (tx, ty) = node_xy.get(&edge.rhs_id).copied().unwrap_or((0.0, 0.0));
 
             let (start_x, start_y) = match edge.lhs_dir.as_str() {
-                "L" => (sx - half_icon, sy),
-                "R" => (sx + half_icon, sy),
-                "T" => (sx, sy - half_icon),
-                "B" => (sx, sy + half_icon),
-                _ => (sx, sy),
+                "L" => (sx, sy + half_icon),
+                "R" => (sx + icon_size_px, sy + half_icon),
+                "T" => (sx + half_icon, sy),
+                "B" => (sx + half_icon, sy + icon_size_px),
+                _ => (sx + half_icon, sy + half_icon),
             };
             let (end_x, end_y) = match edge.rhs_dir.as_str() {
-                "L" => (tx - half_icon, ty),
-                "R" => (tx + half_icon, ty),
-                "T" => (tx, ty - half_icon),
-                "B" => (tx, ty + half_icon),
-                _ => (tx, ty),
+                "L" => (tx, ty + half_icon),
+                "R" => (tx + icon_size_px, ty + half_icon),
+                "T" => (tx + half_icon, ty),
+                "B" => (tx + half_icon, ty + icon_size_px),
+                _ => (tx + half_icon, ty + half_icon),
             };
 
             let mid_x = (start_x + end_x) / 2.0;
@@ -11010,7 +11430,7 @@ pub fn render_architecture_diagram_svg(
                 let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
                 let style = crate::text::TextStyle {
                     font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-                    font_size: 16.0,
+                    font_size: font_size_px,
                     font_weight: None,
                 };
 
@@ -11123,7 +11543,13 @@ pub fn render_architecture_diagram_svg(
                 .filter(|t| !t.is_empty())
             {
                 // Mermaid uses `width = iconSize * 1.5` for service titles.
-                write_architecture_service_title(&mut out, title, icon_size_px, icon_size_px * 1.5);
+                write_architecture_service_title(
+                    &mut out,
+                    title,
+                    icon_size_px,
+                    icon_size_px * 1.5,
+                    font_size_px,
+                );
             }
 
             out.push_str("<g>");
@@ -11185,42 +11611,12 @@ pub fn render_architecture_diagram_svg(
     } else {
         out.push_str(r#"<g class="architecture-groups">"#);
 
-        for grp in &model.groups {
+        for grp in &group_rects {
             let id_esc = escape_xml(&grp.id);
-
-            let mut min_x: Option<f64> = None;
-            let mut min_y: Option<f64> = None;
-            let mut max_x: Option<f64> = None;
-            let mut max_y: Option<f64> = None;
-            for svc in &model.services {
-                if svc.in_group.as_deref() != Some(&grp.id) {
-                    continue;
-                }
-                let Some((x, y)) = node_xy.get(&svc.id).copied() else {
-                    continue;
-                };
-                let left = x;
-                let top = y;
-                let right = x + icon_size_px;
-                let bottom = y + icon_size_px;
-
-                min_x = Some(min_x.map_or(left, |v| v.min(left)));
-                min_y = Some(min_y.map_or(top, |v| v.min(top)));
-                max_x = Some(max_x.map_or(right, |v| v.max(right)));
-                max_y = Some(max_y.map_or(bottom, |v| v.max(bottom)));
-            }
-
-            let pad = icon_size_px / 2.0 + 2.5;
-            let x = min_x.map(|v| v - pad).unwrap_or(0.0);
-            let y = min_y.map(|v| v - pad).unwrap_or(0.0);
-            let w = max_x
-                .zip(min_x)
-                .map(|(a, b)| (a - b) + pad * 2.0)
-                .unwrap_or(icon_size_px);
-            let h = max_y
-                .zip(min_y)
-                .map(|(a, b)| (a - b) + pad * 2.0)
-                .unwrap_or(icon_size_px);
+            let x = grp.x;
+            let y = grp.y;
+            let w = grp.w;
+            let h = grp.h;
 
             let _ = write!(
                 &mut out,

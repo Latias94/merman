@@ -63,6 +63,9 @@ for the current fixture set (diagram subtree parity).
 As of 2026-01-31, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports DOM mismatches
 only in these diagrams (root SVG parity): state=36, architecture=20, block=22, class=15, gitgraph=14, mindmap=11,
 pie=11, c4=10, er=1, timeline=1.
+Recent progress: architecture Stage B now computes root `viewBox`/`max-width` from emitted element bounds and honors
+`architecture.padding`/`iconSize`/`fontSize`, fixing previously clipped non-empty Architecture SVG outputs. Root parity
+still depends on matching upstream Cytoscape/FCoSE layout behavior.
 Recent progress: `xychart` headless layout and Stage B parity renderer exist and are validated against
 upstream SVG baselines via `xtask compare-xychart-svgs` (DOM parity mode).
 Recent progress: flowchart Stage B now matches upstream SVG DOM for the current fixture set in parity mode

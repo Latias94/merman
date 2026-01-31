@@ -12,6 +12,9 @@ minimum fixture set. It complements:
 
 - The Architecture SVG compare passes for the non-parser-only fixture set:
   - `cargo run -p xtask -- compare-architecture-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- Stage B now derives the root SVG `viewBox` and `max-width` from the rendered element bounds
+  (Mermaid-like `setupGraphViewbox()` behavior) and honors `architecture.{padding,iconSize,fontSize}`.
+  Header-only diagrams continue to render the `80x80` fallback viewBox.
 - Most real-world Architecture inputs are still `*_parser_only_` fixtures, meaning they only assert
   semantic output (`*.golden.json`) and are excluded from:
   - layout snapshots (`*.layout.golden.json`)
