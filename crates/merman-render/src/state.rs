@@ -529,7 +529,9 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
         n.height = bounds.height().max(1.0);
     }
 
-    dugong::layout(&mut prepared.graph);
+    // State diagrams use Mermaid's unified dagre renderer, so we want the more complete
+    // Dagre-ish pipeline here (edge label proxies, BK positioning, etc).
+    dugong::layout_dagreish(&mut prepared.graph);
 
     for id in prepared.graph.node_ids() {
         let Some(n) = prepared.graph.node(&id) else {

@@ -12549,13 +12549,20 @@ pub fn render_state_diagram_v2_svg(
             max_x: 100.0,
             max_y: 100.0,
         });
-    let diagram_padding = config_f64(effective_config, &["state", "diagramPadding"])
-        .unwrap_or(0.0)
-        .max(0.0);
-    let vb_min_x = (bounds.min_x - diagram_padding).min(bounds.max_x);
-    let vb_min_y = (bounds.min_y - diagram_padding).min(bounds.max_y);
-    let vb_w = (bounds.max_x - bounds.min_x + diagram_padding * 2.0).max(1.0);
-    let vb_h = (bounds.max_y - bounds.min_y + diagram_padding * 2.0).max(1.0);
+    // Mermaid state diagram (v2/v3 unified renderer) uses `setupViewPortForSVG(svg, padding=8, ...)`
+    // which:
+    // - measures the rendered `<svg>.getBBox()` (content bbox)
+    // - sets `viewBox = (bbox.x - 8, bbox.y - 8, bbox.width + 16, bbox.height + 16)`
+    // - sets `max-width: (bbox.width + 16)px` when `useMaxWidth=true`
+    //
+    // Our renderer doesn't have a browser DOM `getBBox()`, so we use the computed layout bounds,
+    // but we keep Mermaid's coordinate convention by shifting all rendered geometry by +8px
+    // (see `origin_x/origin_y` below).
+    let viewport_padding = 8.0;
+    let vb_min_x = bounds.min_x;
+    let vb_min_y = bounds.min_y;
+    let vb_w = (bounds.max_x - bounds.min_x + viewport_padding * 2.0).max(1.0);
+    let vb_h = (bounds.max_y - bounds.min_y + viewport_padding * 2.0).max(1.0);
 
     let has_acc_title = model
         .acc_title
@@ -12729,7 +12736,9 @@ pub fn render_state_diagram_v2_svg(
 
     ctx.nested_roots = compute_state_nested_roots(&ctx);
 
-    render_state_root(&mut out, &ctx, None, 0.0, 0.0);
+    let origin_x = bounds.min_x - viewport_padding;
+    let origin_y = bounds.min_y - viewport_padding;
+    render_state_root(&mut out, &ctx, None, origin_x, origin_y);
 
     out.push_str("</g></svg>\n");
     Ok(out)
@@ -12856,7 +12865,9 @@ fn state_css(
             .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
             .unwrap_or_else(|| "\"trebuchet ms\",verdana,arial,sans-serif".to_string());
         ff = ff.replace(", ", ",").replace(",\t", ",");
-        ff
+        // Mermaid's default config value sometimes includes a trailing `;` in `fontFamily`
+        // (e.g. `"trebuchet ms", verdana, arial, sans-serif;`). Mermaid's emitted CSS does not.
+        ff.trim().trim_end_matches(';').to_string()
     }
 
     fn normalize_decl(s: &str) -> Option<(String, String)> {
