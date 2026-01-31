@@ -1,5 +1,5 @@
 use futures::executor::block_on;
-use merman::{Engine, ParseOptions};
+use merman::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::text::{
     DeterministicTextMeasurer, TextMeasurer, VendoredFontMetricsTextMeasurer,
@@ -79,6 +79,7 @@ struct Args {
     pretty: bool,
     with_meta: bool,
     suppress_errors: bool,
+    hand_drawn_seed: Option<u64>,
     text_measurer: TextMeasurerKind,
     viewport_width: f64,
     viewport_height: f64,
@@ -107,7 +108,7 @@ USAGE:\n\
   merman-cli [parse] [--pretty] [--meta] [--suppress-errors] [<path>|-]\n\
   merman-cli detect [<path>|-]\n\
   merman-cli layout [--pretty] [--text-measurer deterministic|vendored] [--viewport-width <w>] [--viewport-height <h>] [--suppress-errors] [<path>|-]\n\
-  merman-cli render [--text-measurer deterministic|vendored] [--viewport-width <w>] [--viewport-height <h>] [--id <diagram-id>] [--out <path>] [--suppress-errors] [<path>|-]\n\
+  merman-cli render [--text-measurer deterministic|vendored] [--viewport-width <w>] [--viewport-height <h>] [--id <diagram-id>] [--out <path>] [--hand-drawn-seed <n>] [--suppress-errors] [<path>|-]\n\
 \n\
 NOTES:\n\
   - If <path> is omitted or '-', input is read from stdin.\n\
@@ -168,6 +169,13 @@ fn parse_args(argv: &[String]) -> Result<Args, CliError> {
                     return Err(CliError::Usage(usage()));
                 };
                 args.out = Some(out.clone());
+            }
+            "--hand-drawn-seed" => {
+                let Some(seed) = it.next() else {
+                    return Err(CliError::Usage(usage()));
+                };
+                args.hand_drawn_seed =
+                    Some(seed.parse::<u64>().map_err(|_| CliError::Usage(usage()))?);
             }
             "--" => {
                 if let Some(rest) = it.next() {
@@ -235,7 +243,12 @@ fn write_text(text: &str, out: Option<&str>) -> Result<(), CliError> {
 
 fn run(args: Args) -> Result<(), CliError> {
     let text = read_input(args.input.as_deref())?;
-    let engine = Engine::new();
+    let mut engine = Engine::new();
+    if let Some(seed) = args.hand_drawn_seed {
+        let mut cfg = MermaidConfig::empty_object();
+        cfg.set_value("handDrawnSeed", serde_json::json!(seed));
+        engine = engine.with_site_config(cfg);
+    }
     let options = ParseOptions {
         suppress_errors: args.suppress_errors,
     };

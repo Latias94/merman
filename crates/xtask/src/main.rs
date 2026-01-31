@@ -76,6 +76,7 @@ fn print_help(topic: Option<&str>) {
     println!("  check-upstream-svgs");
     println!("  compare-all-svgs");
     println!("  compare-svg-xml");
+    println!("  canon-svg-xml");
     println!();
     println!("Per-diagram SVG compare commands:");
     println!("  compare-er-svgs");
@@ -177,6 +178,7 @@ fn main() -> Result<(), XtaskError> {
         "compare-xychart-svgs" => compare_xychart_svgs(args.collect()),
         "compare-all-svgs" => compare_all_svgs(args.collect()),
         "compare-svg-xml" => compare_svg_xml(args.collect()),
+        "canon-svg-xml" => canon_svg_xml(args.collect()),
         other => Err(XtaskError::UnknownCommand(other.to_string())),
     }
 }
@@ -1947,6 +1949,46 @@ fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     println!("wrote report: {}", report_path.display());
+    Ok(())
+}
+
+fn canon_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
+    let mut in_path: Option<PathBuf> = None;
+    let mut dom_mode: Option<String> = None;
+    let mut dom_decimals: Option<u32> = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--in" => {
+                i += 1;
+                in_path = args.get(i).map(PathBuf::from);
+            }
+            "--dom-mode" => {
+                i += 1;
+                dom_mode = args.get(i).map(|s| s.trim().to_string());
+            }
+            "--dom-decimals" | "--xml-decimals" => {
+                i += 1;
+                dom_decimals = args.get(i).and_then(|s| s.trim().parse::<u32>().ok());
+            }
+            "--help" | "-h" => return Err(XtaskError::Usage),
+            _ => return Err(XtaskError::Usage),
+        }
+        i += 1;
+    }
+
+    let in_path = in_path.ok_or(XtaskError::Usage)?;
+    let svg = fs::read_to_string(&in_path).map_err(|source| XtaskError::ReadFile {
+        path: in_path.display().to_string(),
+        source,
+    })?;
+    let mode = svgdom::DomMode::parse(dom_mode.as_deref().unwrap_or("strict"));
+    let decimals = dom_decimals.unwrap_or(3);
+
+    let xml =
+        svgdom::canonical_xml(&svg, mode, decimals).map_err(|e| XtaskError::SvgCompareFailed(e))?;
+    print!("{xml}");
     Ok(())
 }
 
