@@ -9030,7 +9030,11 @@ fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
         )));
     }
 
-    let engine = merman::Engine::new();
+    // Pin `handDrawnSeed` so Rough.js-dependent output is deterministic and comparable to
+    // `fixtures/upstream-svgs/**` (generated with Mermaid config `handDrawnSeed: 1`).
+    let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
+        serde_json::json!({ "handDrawnSeed": 1 }),
+    ));
     let mut failures = Vec::new();
 
     fn ms_to_local_iso(ms: i64) -> Option<String> {
@@ -15956,7 +15960,12 @@ fn compare_state_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let layout_opts = merman_render::LayoutOptions::default();
+        let layout_opts = merman_render::LayoutOptions {
+            text_measurer: std::sync::Arc::new(
+                merman_render::text::VendoredFontMetricsTextMeasurer::default(),
+            ),
+            ..Default::default()
+        };
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,
             Err(err) => {

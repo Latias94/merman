@@ -23,6 +23,8 @@ pub fn lookup_state_node_label_width_px(font_size_px: f64, text: &str) -> Option
     }
 
     match text {
+        // fixtures/upstream-svgs/state/basic.svg
+        "Idle" => Some(26.8125),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_spec.svg
         "State2" => Some(45.90625),
         _ => None,

@@ -203,7 +203,7 @@ fn state_layout_composite_and_dividers_contain_children() {
 }
 
 #[test]
-fn state_layout_merges_self_loop_edges() {
+fn state_layout_expands_self_loop_edges() {
     let path = workspace_root()
         .join("fixtures")
         .join("state")
@@ -220,14 +220,27 @@ fn state_layout_merges_self_loop_edges() {
         panic!("expected StateDiagramV2 layout");
     };
 
-    assert_eq!(layout.edges.len(), 2);
-    let self_loop = layout
+    // Mermaid expands self-loop edges into 3 helper edges: `*-cyclic-special-{1,mid,2}`.
+    let self_loop_1 = layout
         .edges
         .iter()
-        .find(|e| e.id == "edge1")
-        .expect("edge1");
-    assert_eq!(self_loop.from, "Active");
-    assert_eq!(self_loop.to, "Active");
-    assert!(self_loop.points.len() >= 2);
-    assert!(self_loop.label.is_some());
+        .find(|e| e.id == "Active-cyclic-special-1")
+        .expect("Active-cyclic-special-1");
+    let self_loop_mid = layout
+        .edges
+        .iter()
+        .find(|e| e.id == "Active-cyclic-special-mid")
+        .expect("Active-cyclic-special-mid");
+    let self_loop_2 = layout
+        .edges
+        .iter()
+        .find(|e| e.id == "Active-cyclic-special-2")
+        .expect("Active-cyclic-special-2");
+
+    for e in [self_loop_1, self_loop_mid, self_loop_2] {
+        assert_eq!(e.from, "Active");
+        assert_eq!(e.to, "Active");
+        assert!(e.points.len() >= 2);
+    }
+    assert!(self_loop_mid.label.is_some());
 }

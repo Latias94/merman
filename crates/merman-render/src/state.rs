@@ -243,8 +243,6 @@ fn edge_label_metrics(
     if label.trim().is_empty() {
         return (0.0, 0.0);
     }
-    // Mermaid uses `createText(...)` for edge labels without specifying `width`, which defaults to
-    // 200.
     let mut metrics = measurer.measure_wrapped(label, text_style, Some(200.0), wrap_mode);
     // For SVG edge labels, `createText(..., addSvgBackground=true)` adds a background rect with a
     // 2px padding.
@@ -1060,6 +1058,9 @@ pub fn layout_state_diagram_v2(
         }
 
         let node_id = e.start.clone();
+        let id1 = format!("{node_id}-cyclic-special-1");
+        let idm = format!("{node_id}-cyclic-special-mid");
+        let id2 = format!("{node_id}-cyclic-special-2");
         let special1 = format!("{node_id}---{id}---1", id = e.id);
         let special2 = format!("{node_id}---{id}---2", id = e.id);
 
@@ -1088,33 +1089,21 @@ pub fn layout_state_diagram_v2(
         edge1.width = 0.0;
         edge1.height = 0.0;
         set_extras_i32(&mut edge1.extras, "segment", 0);
+        set_extras_string(&mut edge1.extras, "originalId", &id1);
 
         let mut edge_mid = base.clone();
         set_extras_i32(&mut edge_mid.extras, "segment", 1);
+        set_extras_string(&mut edge_mid.extras, "originalId", &idm);
 
         let mut edge2 = base.clone();
         edge2.width = 0.0;
         edge2.height = 0.0;
         set_extras_i32(&mut edge2.extras, "segment", 2);
+        set_extras_string(&mut edge2.extras, "originalId", &id2);
 
-        g.set_edge_named(
-            node_id.clone(),
-            special1.clone(),
-            Some(format!("{}-cyclic-special-0", e.id)),
-            Some(edge1),
-        );
-        g.set_edge_named(
-            special1,
-            special2.clone(),
-            Some(format!("{}-cyclic-special-1", e.id)),
-            Some(edge_mid),
-        );
-        g.set_edge_named(
-            special2,
-            node_id,
-            Some(format!("{}-cyclic-special-2", e.id)),
-            Some(edge2),
-        );
+        g.set_edge_named(node_id.clone(), special1.clone(), Some(id1), Some(edge1));
+        g.set_edge_named(special1, special2.clone(), Some(idm), Some(edge_mid));
+        g.set_edge_named(special2, node_id, Some(id2), Some(edge2));
     }
 
     let mut prepared = prepare_graph(g, &cluster_dir, 0)?;
@@ -1246,6 +1235,376 @@ pub fn layout_state_diagram_v2(
             })
             .collect(),
     );
+
+    // Mermaid adjusts the first/last edge points by intersecting the polyline with the node's
+    // rendered shape. For rounded state nodes, Mermaid uses a polygon intersection that relies on
+    // the legacy `intersect-line.js` rounding behavior (producing systematic half-pixel offsets).
+    // Our layout engine emits continuous intersections; post-process endpoints to match upstream.
+    {
+        #[derive(Debug, Clone, Copy)]
+        struct Point {
+            x: f64,
+            y: f64,
+        }
+
+        fn same_sign(a: f64, b: f64) -> bool {
+            a * b > 0.0
+        }
+
+        fn mermaid_intersect_line(p1: Point, p2: Point, q1: Point, q2: Point) -> Option<Point> {
+            // Port of Mermaid@11.12.2 `intersect-line.js` (Graphics Gems II).
+            let a1 = p2.y - p1.y;
+            let b1 = p1.x - p2.x;
+            let c1 = p2.x * p1.y - p1.x * p2.y;
+
+            let r3 = a1 * q1.x + b1 * q1.y + c1;
+            let r4 = a1 * q2.x + b1 * q2.y + c1;
+            if r3 != 0.0 && r4 != 0.0 && same_sign(r3, r4) {
+                return None;
+            }
+
+            let a2 = q2.y - q1.y;
+            let b2 = q1.x - q2.x;
+            let c2 = q2.x * q1.y - q1.x * q2.y;
+
+            let r1 = a2 * p1.x + b2 * p1.y + c2;
+            let r2 = a2 * p2.x + b2 * p2.y + c2;
+            let epsilon = 1e-6;
+            if r1.abs() < epsilon && r2.abs() < epsilon && same_sign(r1, r2) {
+                return None;
+            }
+
+            let denom = a1 * b2 - a2 * b1;
+            if denom == 0.0 {
+                return None;
+            }
+
+            let offset = (denom / 2.0).abs();
+
+            let mut num = b1 * c2 - b2 * c1;
+            let x = if num < 0.0 {
+                (num - offset) / denom
+            } else {
+                (num + offset) / denom
+            };
+
+            num = a2 * c1 - a1 * c2;
+            let y = if num < 0.0 {
+                (num - offset) / denom
+            } else {
+                (num + offset) / denom
+            };
+
+            Some(Point { x, y })
+        }
+
+        fn mermaid_arc_points(
+            x1: f64,
+            y1: f64,
+            x2: f64,
+            y2: f64,
+            rx: f64,
+            ry: f64,
+            clockwise: bool,
+        ) -> Vec<Point> {
+            // Port of Mermaid@11.12.2 `roundedRect.ts` `generateArcPoints(...)` (20 points).
+            let num_points = 20usize;
+            let mid_x = (x1 + x2) / 2.0;
+            let mid_y = (y1 + y2) / 2.0;
+            let ang = (y2 - y1).atan2(x2 - x1);
+            let dx = (x2 - x1) / 2.0;
+            let dy = (y2 - y1) / 2.0;
+            let tx = dx / rx;
+            let ty = dy / ry;
+            let dist = (tx * tx + ty * ty).sqrt();
+            if dist > 1.0 {
+                return Vec::new();
+            }
+            let scaled_center_dist = (1.0 - dist * dist).sqrt();
+            let center_x =
+                mid_x + scaled_center_dist * ry * ang.sin() * if clockwise { -1.0 } else { 1.0 };
+            let center_y =
+                mid_y - scaled_center_dist * rx * ang.cos() * if clockwise { -1.0 } else { 1.0 };
+
+            let start_angle = ((y1 - center_y) / ry).atan2((x1 - center_x) / rx);
+            let end_angle = ((y2 - center_y) / ry).atan2((x2 - center_x) / rx);
+
+            let mut angle_range = end_angle - start_angle;
+            if clockwise && angle_range < 0.0 {
+                angle_range += std::f64::consts::TAU;
+            }
+            if !clockwise && angle_range > 0.0 {
+                angle_range -= std::f64::consts::TAU;
+            }
+
+            let mut out = Vec::with_capacity(num_points);
+            for i in 0..num_points {
+                let t = i as f64 / (num_points - 1) as f64;
+                let a = start_angle + t * angle_range;
+                out.push(Point {
+                    x: center_x + rx * a.cos(),
+                    y: center_y + ry * a.sin(),
+                });
+            }
+            out
+        }
+
+        fn mermaid_rounded_rect_points(w: f64, h: f64) -> Vec<Point> {
+            // Port of Mermaid@11.12.2 `roundedRect.ts` geometry (taper+arc polygon).
+            let radius = 5.0;
+            let taper = 5.0;
+
+            let mut points: Vec<Point> = Vec::new();
+            points.push(Point {
+                x: -w / 2.0 + taper,
+                y: -h / 2.0,
+            });
+            points.push(Point {
+                x: w / 2.0 - taper,
+                y: -h / 2.0,
+            });
+            points.extend(mermaid_arc_points(
+                w / 2.0 - taper,
+                -h / 2.0,
+                w / 2.0,
+                -h / 2.0 + taper,
+                radius,
+                radius,
+                true,
+            ));
+
+            points.push(Point {
+                x: w / 2.0,
+                y: -h / 2.0 + taper,
+            });
+            points.push(Point {
+                x: w / 2.0,
+                y: h / 2.0 - taper,
+            });
+            points.extend(mermaid_arc_points(
+                w / 2.0,
+                h / 2.0 - taper,
+                w / 2.0 - taper,
+                h / 2.0,
+                radius,
+                radius,
+                true,
+            ));
+
+            points.push(Point {
+                x: w / 2.0 - taper,
+                y: h / 2.0,
+            });
+            points.push(Point {
+                x: -w / 2.0 + taper,
+                y: h / 2.0,
+            });
+            points.extend(mermaid_arc_points(
+                -w / 2.0 + taper,
+                h / 2.0,
+                -w / 2.0,
+                h / 2.0 - taper,
+                radius,
+                radius,
+                true,
+            ));
+
+            points.push(Point {
+                x: -w / 2.0,
+                y: h / 2.0 - taper,
+            });
+            points.push(Point {
+                x: -w / 2.0,
+                y: -h / 2.0 + taper,
+            });
+            points.extend(mermaid_arc_points(
+                -w / 2.0,
+                -h / 2.0 + taper,
+                -w / 2.0 + taper,
+                -h / 2.0,
+                radius,
+                radius,
+                true,
+            ));
+
+            points
+        }
+
+        fn mermaid_intersect_polygon(
+            node: Point,
+            w: f64,
+            h: f64,
+            poly: &[Point],
+            point: Point,
+        ) -> Point {
+            if poly.is_empty() {
+                return node;
+            }
+
+            let mut min_x = f64::INFINITY;
+            let mut min_y = f64::INFINITY;
+            for p in poly {
+                min_x = min_x.min(p.x);
+                min_y = min_y.min(p.y);
+            }
+
+            let left = node.x - w / 2.0 - min_x;
+            let top = node.y - h / 2.0 - min_y;
+
+            let mut intersections: Vec<Point> = Vec::new();
+            for i in 0..poly.len() {
+                let p1 = poly[i];
+                let p2 = poly[if i + 1 < poly.len() { i + 1 } else { 0 }];
+                let q1 = Point {
+                    x: left + p1.x,
+                    y: top + p1.y,
+                };
+                let q2 = Point {
+                    x: left + p2.x,
+                    y: top + p2.y,
+                };
+                if let Some(hit) = mermaid_intersect_line(node, point, q1, q2) {
+                    intersections.push(hit);
+                }
+            }
+
+            if intersections.is_empty() {
+                return node;
+            }
+
+            intersections.sort_by(|a, b| {
+                let da = ((a.x - point.x).powi(2) + (a.y - point.y).powi(2)).sqrt();
+                let db = ((b.x - point.x).powi(2) + (b.y - point.y).powi(2)).sqrt();
+                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+            });
+
+            intersections[0]
+        }
+
+        fn mermaid_intersect_circle(node: Point, r: f64, point: Point) -> Point {
+            // Port of Mermaid@11.12.2 `intersect-ellipse.js`.
+            let cx = node.x;
+            let cy = node.y;
+            let px = cx - point.x;
+            let py = cy - point.y;
+            let det = (r * r * py * py + r * r * px * px).sqrt();
+            if det == 0.0 {
+                return node;
+            }
+            let mut dx = ((r * r * px) / det).abs();
+            if point.x < cx {
+                dx = -dx;
+            }
+            let mut dy = ((r * r * py) / det).abs();
+            if point.y < cy {
+                dy = -dy;
+            }
+            Point {
+                x: cx + dx,
+                y: cy + dy,
+            }
+        }
+
+        let layout_nodes: HashMap<&str, &LayoutNode> =
+            out_nodes.iter().map(|n| (n.id.as_str(), n)).collect();
+        let semantic_nodes: HashMap<&str, &StateNode> =
+            model.nodes.iter().map(|n| (n.id.as_str(), n)).collect();
+
+        for e in &mut out_edges {
+            if e.points.len() < 2 {
+                continue;
+            }
+            if e.from == e.to {
+                continue;
+            }
+            let Some(start_ln) = layout_nodes.get(e.from.as_str()).copied() else {
+                continue;
+            };
+            let Some(end_ln) = layout_nodes.get(e.to.as_str()).copied() else {
+                continue;
+            };
+            let Some(start_sn) = semantic_nodes.get(e.from.as_str()).copied() else {
+                continue;
+            };
+            let Some(end_sn) = semantic_nodes.get(e.to.as_str()).copied() else {
+                continue;
+            };
+
+            let start_target = if e.points.len() >= 3 {
+                e.points[1].clone()
+            } else {
+                e.points.last().unwrap().clone()
+            };
+            let end_target = if e.points.len() >= 3 {
+                e.points[e.points.len() - 2].clone()
+            } else {
+                e.points[0].clone()
+            };
+
+            let start_center = Point {
+                x: start_ln.x,
+                y: start_ln.y,
+            };
+            let end_center = Point {
+                x: end_ln.x,
+                y: end_ln.y,
+            };
+
+            let start_target = Point {
+                x: start_target.x,
+                y: start_target.y,
+            };
+            let end_target = Point {
+                x: end_target.x,
+                y: end_target.y,
+            };
+
+            let start_hit = match start_sn.shape.as_str() {
+                "stateStart" | "stateEnd" => {
+                    mermaid_intersect_circle(start_center, 7.0, start_target)
+                }
+                // `rect` with rx/ry becomes `roundedRect` in Mermaid.
+                "rect" if start_sn.rx.unwrap_or(0.0) > 0.0 && start_sn.ry.unwrap_or(0.0) > 0.0 => {
+                    let poly = mermaid_rounded_rect_points(
+                        start_ln.width.max(1.0),
+                        start_ln.height.max(1.0),
+                    );
+                    mermaid_intersect_polygon(
+                        start_center,
+                        start_ln.width.max(1.0),
+                        start_ln.height.max(1.0),
+                        &poly,
+                        start_target,
+                    )
+                }
+                _ => start_center,
+            };
+            let end_hit = match end_sn.shape.as_str() {
+                "stateStart" | "stateEnd" => mermaid_intersect_circle(end_center, 7.0, end_target),
+                "rect" if end_sn.rx.unwrap_or(0.0) > 0.0 && end_sn.ry.unwrap_or(0.0) > 0.0 => {
+                    let poly =
+                        mermaid_rounded_rect_points(end_ln.width.max(1.0), end_ln.height.max(1.0));
+                    mermaid_intersect_polygon(
+                        end_center,
+                        end_ln.width.max(1.0),
+                        end_ln.height.max(1.0),
+                        &poly,
+                        end_target,
+                    )
+                }
+                _ => end_center,
+            };
+
+            if let Some(p0) = e.points.first_mut() {
+                p0.x = start_hit.x;
+                p0.y = start_hit.y;
+            }
+            if let Some(pn) = e.points.last_mut() {
+                pn.x = end_hit.x;
+                pn.y = end_hit.y;
+            }
+        }
+    }
     out_edges.sort_by(|a, b| a.id.cmp(&b.id));
 
     let bounds = {

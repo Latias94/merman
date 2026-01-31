@@ -13839,41 +13839,232 @@ fn render_state_edge_path(
     origin_x: f64,
     origin_y: f64,
 ) {
-    let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() else {
-        return;
-    };
-    if le.points.len() < 2 {
-        return;
+    #[derive(Debug, Clone, Copy)]
+    struct BoundaryNode {
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+    }
+
+    fn dedup_consecutive_points(
+        input: &[crate::model::LayoutPoint],
+    ) -> Vec<crate::model::LayoutPoint> {
+        if input.len() <= 1 {
+            return input.to_vec();
+        }
+        const EPS: f64 = 1e-9;
+        let mut out: Vec<crate::model::LayoutPoint> = Vec::with_capacity(input.len());
+        for p in input {
+            if out
+                .last()
+                .is_some_and(|prev| (prev.x - p.x).abs() <= EPS && (prev.y - p.y).abs() <= EPS)
+            {
+                continue;
+            }
+            out.push(p.clone());
+        }
+        out
+    }
+
+    fn outside_node(node: &BoundaryNode, point: &crate::model::LayoutPoint) -> bool {
+        let dx = (point.x - node.x).abs();
+        let dy = (point.y - node.y).abs();
+        let w = node.width / 2.0;
+        let h = node.height / 2.0;
+        dx >= w || dy >= h
+    }
+
+    fn rect_intersection(
+        node: &BoundaryNode,
+        inside_point: &crate::model::LayoutPoint,
+        outside_point: &crate::model::LayoutPoint,
+    ) -> crate::model::LayoutPoint {
+        let x = node.x;
+        let y = node.y;
+        let w = node.width / 2.0;
+        let h = node.height / 2.0;
+
+        let q_abs = (outside_point.y - inside_point.y).abs();
+        let r_abs = (outside_point.x - inside_point.x).abs();
+
+        if (y - outside_point.y).abs() * w > (x - outside_point.x).abs() * h {
+            let q = if inside_point.y < outside_point.y {
+                outside_point.y - h - y
+            } else {
+                y - h - outside_point.y
+            };
+            let r = if q_abs == 0.0 {
+                0.0
+            } else {
+                (r_abs * q) / q_abs
+            };
+            let mut res = crate::model::LayoutPoint {
+                x: if inside_point.x < outside_point.x {
+                    inside_point.x + r
+                } else {
+                    inside_point.x - r_abs + r
+                },
+                y: if inside_point.y < outside_point.y {
+                    inside_point.y + q_abs - q
+                } else {
+                    inside_point.y - q_abs + q
+                },
+            };
+
+            if r.abs() <= 1e-9 {
+                res.x = outside_point.x;
+                res.y = outside_point.y;
+            }
+            if r_abs == 0.0 {
+                res.x = outside_point.x;
+            }
+            if q_abs == 0.0 {
+                res.y = outside_point.y;
+            }
+            return res;
+        }
+
+        let r = if inside_point.x < outside_point.x {
+            outside_point.x - w - x
+        } else {
+            x - w - outside_point.x
+        };
+        let q = if r_abs == 0.0 {
+            0.0
+        } else {
+            (q_abs * r) / r_abs
+        };
+        let mut ix = if inside_point.x < outside_point.x {
+            inside_point.x + r_abs - r
+        } else {
+            inside_point.x - r_abs + r
+        };
+        let mut iy = if inside_point.y < outside_point.y {
+            inside_point.y + q
+        } else {
+            inside_point.y - q
+        };
+
+        if r.abs() <= 1e-9 {
+            ix = outside_point.x;
+            iy = outside_point.y;
+        }
+        if r_abs == 0.0 {
+            ix = outside_point.x;
+        }
+        if q_abs == 0.0 {
+            iy = outside_point.y;
+        }
+
+        crate::model::LayoutPoint { x: ix, y: iy }
+    }
+
+    fn cut_path_at_intersect(
+        input: &[crate::model::LayoutPoint],
+        boundary: &BoundaryNode,
+    ) -> Vec<crate::model::LayoutPoint> {
+        if input.is_empty() {
+            return Vec::new();
+        }
+        let mut out: Vec<crate::model::LayoutPoint> = Vec::new();
+        let mut last_point_outside = input[0].clone();
+        let mut is_inside = false;
+        const EPS: f64 = 1e-9;
+
+        for point in input {
+            if !outside_node(boundary, point) && !is_inside {
+                let inter = rect_intersection(boundary, &last_point_outside, point);
+                if !out
+                    .iter()
+                    .any(|p| (p.x - inter.x).abs() <= EPS && (p.y - inter.y).abs() <= EPS)
+                {
+                    out.push(inter);
+                }
+                is_inside = true;
+            } else {
+                last_point_outside = point.clone();
+                if !is_inside {
+                    out.push(point.clone());
+                }
+            }
+        }
+        out
+    }
+
+    fn boundary_for_cluster(
+        ctx: &StateRenderCtx<'_>,
+        cluster_id: &str,
+        ox: f64,
+        oy: f64,
+    ) -> Option<BoundaryNode> {
+        let n = ctx.layout_clusters_by_id.get(cluster_id).copied()?;
+        Some(BoundaryNode {
+            x: n.x - ox,
+            y: n.y - oy,
+            width: n.width,
+            height: n.height,
+        })
     }
 
     fn encode_path(
-        points: &[crate::model::LayoutPoint],
+        ctx: &StateRenderCtx<'_>,
+        le: &crate::model::LayoutEdge,
+        edge_id: &str,
         origin_x: f64,
         origin_y: f64,
     ) -> (String, String) {
         let mut local_points: Vec<crate::model::LayoutPoint> = Vec::new();
-        for p in points {
+        for p in &le.points {
             local_points.push(crate::model::LayoutPoint {
                 x: p.x - origin_x,
                 y: p.y - origin_y,
             });
         }
+
+        let mut points_for_curve = local_points.clone();
+        let is_cyclic_special = edge_id.contains("-cyclic-special-");
+        if is_cyclic_special {
+            points_for_curve = dedup_consecutive_points(&points_for_curve);
+            if let Some(tc) = le.to_cluster.as_deref() {
+                if let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y) {
+                    points_for_curve = cut_path_at_intersect(&points_for_curve, &boundary);
+                }
+            }
+            if let Some(fc) = le.from_cluster.as_deref() {
+                if let Some(boundary) = boundary_for_cluster(ctx, fc, origin_x, origin_y) {
+                    let mut rev = points_for_curve.clone();
+                    rev.reverse();
+                    rev = cut_path_at_intersect(&rev, &boundary);
+                    rev.reverse();
+                    points_for_curve = rev;
+                }
+            }
+
+            if edge_id.contains("-cyclic-special-mid") && points_for_curve.len() > 3 {
+                points_for_curve = vec![
+                    points_for_curve[0].clone(),
+                    points_for_curve[points_for_curve.len() / 2].clone(),
+                    points_for_curve[points_for_curve.len() - 1].clone(),
+                ];
+            }
+            if points_for_curve.len() == 4 {
+                // Mermaid's cyclic-special helper edges frequently collapse the 4-point basis
+                // case into the 3-point command sequence (`C` count = 2).
+                points_for_curve.remove(1);
+            }
+            if edge_id.ends_with("-cyclic-special-2") && points_for_curve.len() == 6 {
+                // Some cyclic-special-2 helper edges are routed with 6 points but Mermaid's path
+                // command sequence matches the 5-point `curveBasis` case (`C` count = 4).
+                points_for_curve.remove(1);
+            }
+        }
+
         let data_points = base64::engine::general_purpose::STANDARD
             .encode(serde_json::to_vec(&local_points).unwrap_or_default());
-        let d = curve_basis_path_d(&local_points);
+        let d = curve_basis_path_d(&points_for_curve);
         (d, data_points)
     }
-
-    let mut local_points: Vec<crate::model::LayoutPoint> = Vec::new();
-    for p in &le.points {
-        local_points.push(crate::model::LayoutPoint {
-            x: p.x - origin_x,
-            y: p.y - origin_y,
-        });
-    }
-    let data_points = base64::engine::general_purpose::STANDARD
-        .encode(serde_json::to_vec(&local_points).unwrap_or_default());
-    let d = curve_basis_path_d(&local_points);
 
     let mut classes = "edge-thickness-normal edge-pattern-solid".to_string();
     for c in edge.classes.split_whitespace() {
@@ -13896,33 +14087,15 @@ fn render_state_edge_path(
         let idm = format!("{start}-cyclic-special-mid");
         let id2 = format!("{start}-cyclic-special-2");
 
-        let pts = &le.points;
-        let seg1 = if pts.len() >= 3 {
-            &pts[0..3]
-        } else {
-            &pts[0..2]
-        };
-        let segm = if pts.len() >= 5 {
-            &pts[2..5]
-        } else {
-            &pts[0..2]
-        };
-        let seg2 = if pts.len() >= 3 {
-            &pts[pts.len().saturating_sub(3)..]
-        } else {
-            &pts[pts.len().saturating_sub(2)..]
-        };
-
-        let segments = [
-            (&id1, seg1, None),
-            (&idm, segm, None),
-            (&id2, seg2, marker_end.as_ref()),
-        ];
-        for (sid, pts, marker) in segments {
-            if pts.len() < 2 {
+        let segments = [(&id1, None), (&idm, None), (&id2, marker_end.as_ref())];
+        for (sid, marker) in segments {
+            let Some(le) = ctx.layout_edges_by_id.get(sid.as_str()).copied() else {
+                continue;
+            };
+            if le.points.len() < 2 {
                 continue;
             }
-            let (d, data_points) = encode_path(pts, origin_x, origin_y);
+            let (d, data_points) = encode_path(ctx, le, sid, origin_x, origin_y);
             let _ = write!(
                 out,
                 r#"<path d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
@@ -13939,6 +14112,15 @@ fn render_state_edge_path(
         }
         return;
     }
+
+    let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() else {
+        return;
+    };
+    if le.points.len() < 2 {
+        return;
+    }
+
+    let (d, data_points) = encode_path(ctx, le, edge.id.as_str(), origin_x, origin_y);
 
     let _ = write!(
         out,
@@ -13971,7 +14153,7 @@ fn render_state_edge_label(
 
         // Mermaid ties the visible self-loop label to the `*-mid` segment.
         if !label_text.is_empty() {
-            if let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() {
+            if let Some(le) = ctx.layout_edges_by_id.get(idm.as_str()).copied() {
                 if let Some(lbl) = le.label.as_ref() {
                     let cx = lbl.x - origin_x;
                     let cy = lbl.y - origin_y;
@@ -14247,7 +14429,9 @@ fn roughjs_paths_for_svg_path(
         _ => (0.0, 0.0),
     };
 
-    let base_options = roughr::core::OptionsBuilder::default()
+    // Use a single mutable `Options` to match Rough.js behavior: the PRNG state (`randomizer`)
+    // lives on the options object and advances across drawing phases.
+    let mut options = roughr::core::OptionsBuilder::default()
         .seed(seed)
         .roughness(0.0)
         .fill_style(roughr::core::FillStyle::Solid)
@@ -14263,29 +14447,25 @@ fn roughjs_paths_for_svg_path(
         .build()
         .ok()?;
 
-    let distance = (1.0 + base_options.roughness.unwrap_or(1.0) as f64) / 2.0;
+    let base_roughness = options.roughness.unwrap_or(1.0);
+    let distance = (1.0 + base_roughness as f64) / 2.0;
     let sets = roughr::points_on_path::points_on_path::<f64>(
         svg_path_data.to_string(),
         Some(1.0),
         Some(distance),
     );
 
-    let mut stroke_opts = base_options.clone();
-    let stroke_opset =
-        roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut stroke_opts);
-
     let fill_opset = if sets.len() == 1 {
-        let mut fill_opts = stroke_opts.clone();
-        fill_opts.disable_multi_stroke = Some(true);
-        let base_rough = fill_opts.roughness.unwrap_or(1.0);
-        fill_opts.roughness = Some(if base_rough != 0.0 {
-            base_rough + 0.8
+        // Rough.js uses a different setting profile for solid fill on paths.
+        options.disable_multi_stroke = Some(true);
+        options.disable_multi_stroke_fill = Some(true);
+        options.roughness = Some(if base_roughness != 0.0 {
+            base_roughness + 0.8
         } else {
             0.0
         });
 
-        let mut opset =
-            roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut fill_opts);
+        let mut opset = roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut options);
         opset.ops = opset
             .ops
             .iter()
@@ -14300,9 +14480,16 @@ fn roughjs_paths_for_svg_path(
             .collect();
         opset
     } else {
-        let mut fill_opts = stroke_opts.clone();
-        roughr::renderer::solid_fill_polygon(&sets, &mut fill_opts)
+        options.disable_multi_stroke = Some(true);
+        options.disable_multi_stroke_fill = Some(true);
+        roughr::renderer::solid_fill_polygon(&sets, &mut options)
     };
+
+    // Restore stroke settings and render the outline *after* fill so the PRNG stream matches.
+    options.disable_multi_stroke = Some(false);
+    options.disable_multi_stroke_fill = Some(false);
+    options.roughness = Some(base_roughness);
+    let stroke_opset = roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut options);
 
     Some((
         roughjs_ops_to_svg_path_d(&fill_opset),

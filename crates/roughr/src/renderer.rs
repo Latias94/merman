@@ -238,8 +238,7 @@ pub fn generate_ellipse_params<F: Float + Trig + FromPrimitive>(
     o: &mut Options,
 ) -> EllipseParams<F> {
     let psq: F = Float::sqrt(
-        _c::<F>(f32::PI())
-            * _c(2.0)
+        _cc::<F>(std::f64::consts::PI * 2.0)
             * Float::sqrt(
                 (Float::powi(width / _c(2.0), 2) + Float::powi(height / _c(2.0), 2)) / _c(2.0),
             ),
@@ -248,7 +247,7 @@ pub fn generate_ellipse_params<F: Float + Trig + FromPrimitive>(
         _c(o.curve_step_count.unwrap_or(1.0)),
         _c::<F>(o.curve_step_count.unwrap_or(1.0) / Float::sqrt(200.0)) * psq,
     ));
-    let increment: F = (_c::<F>(f32::PI()) * _c(2.0)) / step_count;
+    let increment: F = _cc::<F>(std::f64::consts::PI * 2.0) / step_count;
     let mut rx = Float::abs(width / _c(2.0));
     let mut ry = Float::abs(height / _c(2.0));
     let curve_fit_randomness: F = _c::<F>(1.0) - _c(o.curve_fitting.unwrap_or(0.0));
@@ -763,7 +762,7 @@ pub(crate) fn _compute_ellipse_points<F: Float + Trig + FromPrimitive>(
         ));
 
         let mut angle = _c(0.0);
-        while angle <= _c(f32::PI() * 2.0) {
+        while angle <= _cc::<F>(std::f64::consts::PI * 2.0) {
             let p = Point2D::new(cx + rx * Float::cos(angle), cy + ry * Float::sin(angle));
             core_points.push(p);
             all_points.push(p);
@@ -787,7 +786,7 @@ pub(crate) fn _compute_ellipse_points<F: Float + Trig + FromPrimitive>(
                 + cy
                 + _c::<F>(0.9) * ry * Float::sin(rad_offset - increment),
         ));
-        let end_angle = _c::<F>(f32::PI()) * _c(2.0) + rad_offset - _c(0.01);
+        let end_angle = _cc::<F>(std::f64::consts::PI * 2.0) + rad_offset - _c(0.01);
         let mut angle = rad_offset;
         while angle < end_angle {
             let p = Point2D::new(
@@ -802,10 +801,14 @@ pub(crate) fn _compute_ellipse_points<F: Float + Trig + FromPrimitive>(
         all_points.push(Point2D::new(
             _offset_opt(offset, o, None)
                 + cx
-                + rx * Float::cos(rad_offset + _c::<F>(f32::PI()) * _c(2.0) + overlap * _c(0.5)),
+                + rx * Float::cos(
+                    rad_offset + _cc::<F>(std::f64::consts::PI * 2.0) + overlap * _c(0.5),
+                ),
             _offset_opt(offset, o, None)
                 + cy
-                + ry * Float::sin(rad_offset + _c::<F>(f32::PI()) * _c(2.0) + overlap * _c(0.5)),
+                + ry * Float::sin(
+                    rad_offset + _cc::<F>(std::f64::consts::PI * 2.0) + overlap * _c(0.5),
+                ),
         ));
         all_points.push(Point2D::new(
             _offset_opt(offset, o, None)
