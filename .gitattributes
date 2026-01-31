@@ -9,6 +9,7 @@
 *.md  text eol=lf
 *.json text eol=lf
 *.svg text eol=lf
+*.svgfrag text eol=lf
 *.xml text eol=lf
 *.mmd text eol=lf
 *.yml text eol=lf
