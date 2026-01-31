@@ -64,6 +64,41 @@ fn render_sequence_svg_from_fixture(fixture: &str) -> String {
 }
 
 #[test]
+fn sequence_note_width_expands_for_literal_br_backslash_t_in_vendored_mode() {
+    let path = workspace_root()
+        .join("fixtures")
+        .join("sequence")
+        .join("html_br_variants_and_wrap.mmd");
+    let text = std::fs::read_to_string(&path).expect("fixture");
+
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions {
+        text_measurer: std::sync::Arc::new(
+            merman_render::text::VendoredFontMetricsTextMeasurer::default(),
+        ),
+        ..LayoutOptions::default()
+    };
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
+        panic!("expected SequenceDiagram layout");
+    };
+
+    let note = layout
+        .nodes
+        .iter()
+        .find(|n| n.id == "note-7")
+        .expect("expected note-7 layout node");
+
+    // Mermaid@11.12.2 widens the note box to fit the literal `<br \\t/>` markup, yielding a 152px
+    // note width in strict SVG XML baselines.
+    assert_eq!(note.width, 152.0);
+}
+
+#[test]
 fn sequence_alt_multiple_elses_separators_touch_frame_edges() {
     let svg = render_sequence_svg_from_fixture("upstream_alt_multiple_elses_spec.mmd");
 

@@ -1082,6 +1082,23 @@ mod tests {
         assert_eq!(m.height, 24.0);
         assert_eq!(m.line_count, 1);
     }
+
+    #[test]
+    fn sequence_svg_overrides_keep_literal_br_with_backslash_t_single_line() {
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let style = TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif;".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+        };
+
+        // Mermaid `lineBreakRegex` should not treat this as a `<br>` break because `\\t` is a
+        // literal backslash + `t`, not whitespace.
+        let text = "multiline<br \\t/>text";
+        let m = measurer.measure_wrapped(text, &style, None, WrapMode::SvgLikeSingleRun);
+        assert_eq!(m.line_count, 1);
+        assert_eq!(m.width, 132.0);
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1095,16 +1112,25 @@ impl DeterministicTextMeasurer {
         let mut out = String::with_capacity(text.len());
         let mut i = 0usize;
         while i < text.len() {
-            if text[i..].starts_with("<br") {
-                let next = text[i + 3..].chars().next();
-                let is_valid = match next {
-                    None => true,
-                    Some(ch) => ch.is_whitespace() || ch == '/' || ch == '>',
-                };
-                if is_valid {
-                    if let Some(rel_end) = text[i..].find('>') {
-                        i += rel_end + 1;
+            // Mirror Mermaid's `lineBreakRegex = /<br\\s*\\/?>/gi` behavior:
+            // - allow ASCII whitespace between `br` and the optional `/` or `>`
+            // - do NOT accept extra characters (e.g. `<br \\t/>` should *not* count as a break)
+            if text[i..].starts_with('<') {
+                let bytes = text.as_bytes();
+                if i + 3 < bytes.len()
+                    && matches!(bytes[i + 1], b'b' | b'B')
+                    && matches!(bytes[i + 2], b'r' | b'R')
+                {
+                    let mut j = i + 3;
+                    while j < bytes.len() && matches!(bytes[j], b' ' | b'\t' | b'\r' | b'\n') {
+                        j += 1;
+                    }
+                    if j < bytes.len() && bytes[j] == b'/' {
+                        j += 1;
+                    }
+                    if j < bytes.len() && bytes[j] == b'>' {
                         out.push('\n');
+                        i = j + 1;
                         continue;
                     }
                 }

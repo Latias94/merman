@@ -106,17 +106,24 @@ fn measure_svg_like_with_html_br(
     let default_line_height = (style.font_size.max(1.0) * 1.1).max(1.0);
     if lines.len() <= 1 {
         let metrics = measurer.measure_wrapped(text, style, None, WrapMode::SvgLikeSingleRun);
-        return (
-            metrics.width.max(0.0),
-            metrics.height.max(default_line_height),
-        );
+        let h = if metrics.height > 0.0 {
+            metrics.height
+        } else {
+            default_line_height
+        };
+        return (metrics.width.max(0.0), h.max(0.0));
     }
     let mut max_w: f64 = 0.0;
     let mut line_h: f64 = 0.0;
     for line in &lines {
         let metrics = measurer.measure_wrapped(line, style, None, WrapMode::SvgLikeSingleRun);
         max_w = max_w.max(metrics.width.max(0.0));
-        line_h = line_h.max(metrics.height.max(default_line_height));
+        let h = if metrics.height > 0.0 {
+            metrics.height
+        } else {
+            default_line_height
+        };
+        line_h = line_h.max(h.max(0.0));
     }
     (
         max_w,
@@ -1179,7 +1186,7 @@ pub fn layout_sequence_diagram(
             let tx = actor_centers_x[ti];
 
             let placement = msg.placement.unwrap_or(2);
-            let (note_x, note_w) = match placement {
+            let (note_x, mut note_w) = match placement {
                 // leftOf
                 0 => (fx - 25.0 - note_width_single, note_width_single),
                 // rightOf
@@ -1198,7 +1205,24 @@ pub fn layout_sequence_diagram(
             };
 
             let text = msg.message.as_str().unwrap_or_default();
-            let (_w, h) = measure_svg_like_with_html_br(measurer, text, &note_text_style);
+            let (text_w, h) = measure_svg_like_with_html_br(measurer, text, &note_text_style);
+
+            // Mermaid's `buildNoteModel(...)` widens the note box when the text would overflow the
+            // configured default width. This is observable in strict SVG XML baselines when the
+            // note contains literal `<br ...>` markup that is *not* treated as a line break.
+            let padded_w = (text_w + note_text_pad_total).round().max(1.0);
+            match placement {
+                // leftOf / rightOf notes clamp width to fit label text.
+                0 | 1 => {
+                    note_w = note_w.max(padded_w);
+                }
+                // over: only clamp when the note is over a single actor (`from == to`).
+                _ => {
+                    if (fx - tx).abs() < 0.0001 {
+                        note_w = note_w.max(padded_w);
+                    }
+                }
+            }
             let note_h = (h + note_text_pad_total).round().max(1.0);
             let note_y = (cursor_y - note_top_offset).round();
 
@@ -1335,7 +1359,16 @@ pub fn layout_sequence_diagram(
             let line_y = (cursor_y - (message_step - box_margin)).round();
             (line_y, cursor_y, box_margin)
         } else {
-            (cursor_y, cursor_y, message_step)
+            // Mermaid's `boundMessage(...)` uses `common.splitBreaks(message)` to derive a
+            // `lines` count and adjusts the message line y-position and cursor increment by the
+            // per-line height. This only kicks in for explicit `<br>` breaks (not `wrap:`).
+            let lines = split_html_br_lines(text).len().max(1);
+            // Mermaid's `calculateTextDimensions(...).height` is consistently ~2px smaller per
+            // line than the rendered `drawText(...)` getBBox, so use a bbox-like per-line height
+            // for the cursor math here.
+            let bbox_line_h = (message_font_size + bottom_margin_adj).max(0.0);
+            let extra = (lines.saturating_sub(1) as f64) * bbox_line_h;
+            ((cursor_y + extra).round(), cursor_y, message_step + extra)
         };
 
         let x1 = startx;
