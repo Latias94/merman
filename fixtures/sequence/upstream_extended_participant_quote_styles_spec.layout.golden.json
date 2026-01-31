@@ -6,97 +6,97 @@
         {
           "id": "actor-top-Alice",
           "x": 75.0,
-          "y": 32.5,
+          "y": 28.75,
           "width": 150.0,
-          "height": 65.0,
+          "height": 57.5,
           "is_cluster": false
         },
         {
           "id": "actor-top-Bob",
           "x": 275.0,
-          "y": 32.5,
+          "y": 28.75,
           "width": 150.0,
-          "height": 65.0,
+          "height": 57.5,
           "is_cluster": false
         },
         {
           "id": "actor-top-Carl",
           "x": 475.0,
-          "y": 32.5,
+          "y": 28.75,
           "width": 150.0,
-          "height": 65.0,
+          "height": 57.5,
           "is_cluster": false
         },
         {
           "id": "actor-top-David",
           "x": 675.0,
-          "y": 32.5,
+          "y": 28.75,
           "width": 150.0,
-          "height": 65.0,
+          "height": 57.5,
           "is_cluster": false
         },
         {
           "id": "actor-top-Eve",
           "x": 875.0,
-          "y": 32.5,
+          "y": 28.75,
           "width": 150.0,
-          "height": 65.0,
+          "height": 57.5,
           "is_cluster": false
         },
         {
           "id": "actor-top-Favela",
           "x": 1075.0,
-          "y": 32.5,
+          "y": 28.75,
           "width": 150.0,
-          "height": 65.0,
+          "height": 57.5,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-Alice",
           "x": 75.0,
-          "y": 205.5,
+          "y": 201.75,
           "width": 150.0,
-          "height": 65.0,
+          "height": 57.5,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-Bob",
           "x": 275.0,
-          "y": 205.5,
+          "y": 201.75,
           "width": 150.0,
-          "height": 65.0,
+          "height": 57.5,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-Carl",
           "x": 475.0,
-          "y": 205.5,
+          "y": 201.75,
           "width": 150.0,
-          "height": 65.0,
+          "height": 57.5,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-David",
           "x": 675.0,
-          "y": 205.5,
+          "y": 201.75,
           "width": 150.0,
-          "height": 65.0,
+          "height": 57.5,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-Eve",
           "x": 875.0,
-          "y": 205.5,
+          "y": 201.75,
           "width": 150.0,
-          "height": 65.0,
+          "height": 57.5,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-Favela",
           "x": 1075.0,
-          "y": 205.5,
+          "y": 201.75,
           "width": 150.0,
-          "height": 65.0,
+          "height": 57.5,
           "is_cluster": false
         }
       ],
@@ -317,7 +317,7 @@
         "min_x": -50.0,
         "min_y": -10.0,
         "max_x": 1200.0,
-        "max_y": 249.0
+        "max_y": 241.5
       }
     }
   }

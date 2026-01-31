@@ -144,11 +144,19 @@ fn measure_svg_like_with_html_br(
     )
 }
 
-fn sequence_actor_visual_height(actor_type: &str, base_height: f64, label_box_height: f64) -> f64 {
+fn sequence_actor_visual_height(
+    actor_type: &str,
+    base_width: f64,
+    base_height: f64,
+    label_box_height: f64,
+) -> f64 {
     match actor_type {
         // Mermaid (11.12.2) derives these from the actor-type glyph bbox + label box height.
         // These heights are used by the footer actor rendering and affect the final SVG viewBox.
         "boundary" => (60.0 + label_box_height).max(1.0),
+        // Mermaid's database actor updates the actor height after the top render.
+        // The footer render uses that updated height: ≈ width/4 + labelBoxHeight.
+        "database" => ((base_width / 4.0) + label_box_height).max(1.0),
         "entity" => (36.0 + label_box_height).max(1.0),
         // Control uses an extra label-box height in Mermaid.
         "control" => (36.0 + 2.0 * label_box_height).max(1.0),
@@ -496,7 +504,7 @@ pub fn layout_sequence_diagram(
             .get(id)
             .map(|a| a.actor_type.as_str())
             .unwrap_or("participant");
-        let visual_h = sequence_actor_visual_height(actor_type, actor_height, label_box_height);
+        let visual_h = sequence_actor_visual_height(actor_type, w, actor_height, label_box_height);
         let top_y = actor_top_offset_y + visual_h / 2.0;
         nodes.push(LayoutNode {
             id: format!("actor-top-{id}"),
@@ -1166,11 +1174,16 @@ pub fn layout_sequence_diagram(
         std::collections::BTreeMap::new();
 
     let actor_visual_height_for_id = |actor_id: &str| -> f64 {
+        let w = actor_index
+            .get(actor_id)
+            .copied()
+            .and_then(|idx| actor_widths.get(idx).copied())
+            .unwrap_or(actor_width_min);
         model
             .actors
             .get(actor_id)
             .map(|a| a.actor_type.as_str())
-            .map(|t| sequence_actor_visual_height(t, actor_height, label_box_height))
+            .map(|t| sequence_actor_visual_height(t, w, actor_height, label_box_height))
             .unwrap_or(actor_height.max(1.0))
     };
     let actor_is_type_width_limited = |actor_id: &str| -> bool {
@@ -1587,7 +1600,7 @@ pub fn layout_sequence_diagram(
             .get(id)
             .map(|a| a.actor_type.as_str())
             .unwrap_or("participant");
-        let visual_h = sequence_actor_visual_height(actor_type, actor_height, label_box_height);
+        let visual_h = sequence_actor_visual_height(actor_type, w, actor_height, label_box_height);
         let bottom_top_y = destroyed_actor_bottom_top_y
             .get(id)
             .copied()

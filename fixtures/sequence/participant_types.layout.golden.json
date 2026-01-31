@@ -30,9 +30,9 @@
         {
           "id": "actor-top-D",
           "x": 675.0,
-          "y": 32.5,
+          "y": 28.75,
           "width": 150.0,
-          "height": 65.0,
+          "height": 57.5,
           "is_cluster": false
         },
         {
@@ -78,9 +78,9 @@
         {
           "id": "actor-bottom-D",
           "x": 675.0,
-          "y": 191.5,
+          "y": 187.75,
           "width": 150.0,
-          "height": 65.0,
+          "height": 57.5,
           "is_cluster": false
         },
         {

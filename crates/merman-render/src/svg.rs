@@ -2147,7 +2147,23 @@ pub fn render_sequence_diagram_svg(
                             {
                                 (79.0 - label_box_height).max(0.0)
                             } else {
-                                79.0
+                                // When the critical label wraps, Mermaid increases the header height so the
+                                // frame starts higher (see upstream `adjustLoopHeightForWrap(...)`).
+                                let base = 79.0;
+                                let label_box_right = frame_x1 + 50.0;
+                                let max_w = (frame_x2 - label_box_right).max(0.0);
+                                let label = display_block_label(&sections[0].raw_label, true)
+                                    .unwrap_or_else(|| "\u{200B}".to_string());
+                                let wrapped = wrap_svg_text_lines(
+                                    &label,
+                                    _measurer,
+                                    &loop_text_style,
+                                    Some(max_w),
+                                );
+                                let extra_lines = wrapped.len().saturating_sub(1) as f64;
+                                let extra_per_line =
+                                    (loop_text_style.font_size * 1.1875 - box_text_margin).max(0.0);
+                                base + extra_lines * extra_per_line
                             };
                             let frame_y1 = min_y - header_offset;
                             let frame_y2 = max_y + 10.0;
@@ -2842,8 +2858,27 @@ pub fn render_sequence_diagram_svg(
                                 .is_some_and(|s| s.raw_label.trim().is_empty())
                             {
                                 (79.0 - label_box_height).max(0.0)
-                            } else {
+                            } else if sections.len() > 1 {
+                                // Mermaid does not apply the wrap height adjustment for multi-section
+                                // `critical` blocks (those with one or more `option` sections).
                                 79.0
+                            } else {
+                                // Mermaid's `adjustLoopHeightForWrap(...)` expands the header height when the
+                                // section label wraps to multiple lines. This affects the frame's top y.
+                                let label_text = display_block_label(&sections[0].raw_label, true)
+                                    .unwrap_or_else(|| "\u{200B}".to_string());
+                                let label_box_right = frame_x1 + 50.0;
+                                let max_w = (frame_x2 - label_box_right).max(0.0);
+                                let wrapped = wrap_svg_text_lines(
+                                    &label_text,
+                                    _measurer,
+                                    &loop_text_style,
+                                    Some(max_w),
+                                );
+                                let extra_lines = wrapped.len().saturating_sub(1) as f64;
+                                let extra_per_line =
+                                    (loop_text_style.font_size * 1.1875 - box_text_margin).max(0.0);
+                                79.0 + extra_lines * extra_per_line
                             };
                             let frame_y1 = min_y - header_offset;
                             let frame_y2 = max_y + 10.0;
