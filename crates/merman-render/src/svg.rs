@@ -12559,10 +12559,66 @@ pub fn render_state_diagram_v2_svg(
     // but we keep Mermaid's coordinate convention by shifting all rendered geometry by +8px
     // (see `origin_x/origin_y` below).
     let viewport_padding = 8.0;
-    let vb_min_x = bounds.min_x;
-    let vb_min_y = bounds.min_y;
-    let vb_w = (bounds.max_x - bounds.min_x + viewport_padding * 2.0).max(1.0);
-    let vb_h = (bounds.max_y - bounds.min_y + viewport_padding * 2.0).max(1.0);
+    let base_vb_min_x = bounds.min_x;
+    let base_vb_min_y = bounds.min_y;
+    let base_vb_w = (bounds.max_x - bounds.min_x + viewport_padding * 2.0).max(1.0);
+    let base_vb_h = (bounds.max_y - bounds.min_y + viewport_padding * 2.0).max(1.0);
+
+    let mut vb_min_x = base_vb_min_x;
+    let mut vb_min_y = base_vb_min_y;
+    let mut vb_w = base_vb_w;
+    let mut vb_h = base_vb_h;
+
+    let diagram_title = diagram_title
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let title_top_margin = config_f64(effective_config, &["state", "titleTopMargin"])
+        .unwrap_or(25.0)
+        .max(0.0);
+    let mut title_anchor: Option<(f64, f64)> = None;
+    if let Some(title) = diagram_title.as_deref() {
+        // Mermaid inserts the title based on the current content bbox center:
+        // `x = bounds.x + bounds.width/2`, `y = -titleTopMargin`.
+        let content_min_x = base_vb_min_x + viewport_padding;
+        let content_max_x = base_vb_min_x + base_vb_w - viewport_padding;
+        let content_min_y = base_vb_min_y + viewport_padding;
+        let content_max_y = base_vb_min_y + base_vb_h - viewport_padding;
+
+        let title_x = content_min_x + (content_max_x - content_min_x) / 2.0;
+        let title_y = -title_top_margin;
+        title_anchor = Some((title_x, title_y));
+
+        let mut title_style = crate::state::state_text_style(effective_config);
+        title_style.font_size = 18.0;
+        let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, &title_style);
+
+        // Mermaid uses SVG `getBBox()` which returns bbox y-extents relative to the baseline.
+        // Approximate that with a stable ascent/descent split.
+        let (ascent_em, descent_em) = if title_style
+            .font_family
+            .as_deref()
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .contains("courier")
+        {
+            (0.8333333333333334, 0.25)
+        } else {
+            (0.9444444444, 0.262)
+        };
+        let ascent = 18.0 * ascent_em;
+        let descent = 18.0 * descent_em;
+
+        let bbox_min_x = content_min_x.min(title_x - title_left);
+        let bbox_max_x = content_max_x.max(title_x + title_right);
+        let bbox_min_y = content_min_y.min(title_y - ascent);
+        let bbox_max_y = content_max_y.max(title_y + descent);
+
+        vb_min_x = bbox_min_x - viewport_padding;
+        vb_min_y = bbox_min_y - viewport_padding;
+        vb_w = (bbox_max_x - bbox_min_x + viewport_padding * 2.0).max(1.0);
+        vb_h = (bbox_max_y - bbox_min_y + viewport_padding * 2.0).max(1.0);
+    }
 
     let has_acc_title = model
         .acc_title
@@ -12680,7 +12736,7 @@ pub fn render_state_diagram_v2_svg(
 
     let mut ctx = StateRenderCtx {
         diagram_id: diagram_id.to_string(),
-        diagram_title: diagram_title.map(|s| s.to_string()),
+        diagram_title: diagram_title.clone(),
         hand_drawn_seed: effective_config
             .get("handDrawnSeed")
             .and_then(|v| v.as_u64())
@@ -12749,7 +12805,17 @@ pub fn render_state_diagram_v2_svg(
     let origin_y = bounds.min_y - viewport_padding;
     render_state_root(&mut out, &ctx, None, origin_x, origin_y);
 
-    out.push_str("</g></svg>\n");
+    out.push_str("</g>");
+    if let (Some(title), Some((title_x, title_y))) = (diagram_title.as_deref(), title_anchor) {
+        let _ = write!(
+            &mut out,
+            r#"<text text-anchor="middle" x="{}" y="{}" class="statediagramTitleText">{}</text>"#,
+            fmt(title_x),
+            fmt(title_y),
+            escape_xml(title)
+        );
+    }
+    out.push_str("</svg>\n");
     Ok(out)
 }
 
@@ -12805,6 +12871,8 @@ struct StateSvgLink {
 #[derive(Debug, Clone, Deserialize)]
 struct StateSvgNode {
     pub id: String,
+    #[serde(default, rename = "labelStyle")]
+    pub label_style: String,
     #[serde(default)]
     pub label: Option<serde_json::Value>,
     #[serde(default)]
@@ -12817,6 +12885,10 @@ struct StateSvgNode {
     pub parent_id: Option<String>,
     #[serde(default, rename = "cssClasses")]
     pub css_classes: String,
+    #[serde(default, rename = "cssCompiledStyles")]
+    pub css_compiled_styles: Vec<String>,
+    #[serde(default, rename = "cssStyles")]
+    pub css_styles: Vec<String>,
     pub shape: String,
 }
 
@@ -13256,6 +13328,85 @@ fn state_node_label_text(n: &StateSvgNode) -> String {
         .as_ref()
         .map(state_value_to_label_text)
         .unwrap_or_else(|| n.id.clone())
+}
+
+#[derive(Debug, Clone, Copy)]
+struct StateInlineDecl<'a> {
+    key: &'a str,
+    val: &'a str,
+}
+
+fn state_parse_inline_decl(raw: &str) -> Option<StateInlineDecl<'_>> {
+    let raw = raw.trim().trim_end_matches(';').trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let (k, v) = raw.split_once(':')?;
+    let key = k.trim();
+    let val = v.trim();
+    if key.is_empty() || val.is_empty() {
+        return None;
+    }
+    Some(StateInlineDecl { key, val })
+}
+
+fn state_is_text_style_key(key: &str) -> bool {
+    let k = key.trim().to_ascii_lowercase();
+    k == "color" || k.starts_with("font-") || k.starts_with("text-")
+}
+
+fn state_compact_style_attr(decls: &[StateInlineDecl<'_>]) -> String {
+    let mut out = String::new();
+    for (idx, d) in decls.iter().enumerate() {
+        if idx > 0 {
+            out.push(';');
+        }
+        out.push_str(d.key.trim());
+        out.push(':');
+        out.push_str(d.val.trim());
+        if !d.val.to_ascii_lowercase().contains("!important") {
+            out.push_str(" !important");
+        }
+    }
+    out
+}
+
+fn state_div_style_prefix(decls: &[StateInlineDecl<'_>]) -> String {
+    let mut out = String::new();
+    for d in decls {
+        out.push_str(d.key.trim());
+        out.push_str(": ");
+        out.push_str(d.val.trim());
+        if !d.val.to_ascii_lowercase().contains("!important") {
+            out.push_str(" !important");
+        }
+        out.push_str("; ");
+    }
+    out
+}
+
+fn state_node_label_html_with_style(raw: &str, span_style: Option<&str>) -> String {
+    let style_attr = span_style
+        .filter(|s| !s.is_empty())
+        .map(|s| format!(r#" style="{}""#, escape_attr(s)))
+        .unwrap_or_default();
+    format!(
+        r#"<span{} class="nodeLabel">{}</span>"#,
+        style_attr,
+        html_paragraph_with_br(raw)
+    )
+}
+
+fn state_node_label_inline_html_with_style(raw: &str, span_style: Option<&str>) -> String {
+    let style_attr = span_style
+        .filter(|s| !s.is_empty())
+        .map(|s| format!(r#" style="{}""#, escape_attr(s)))
+        .unwrap_or_default();
+    format!(
+        r#"<span{} class="nodeLabel">{}</span>"#,
+        style_attr,
+        html_inline_with_br(raw)
+    )
 }
 
 fn html_paragraph_with_br(raw: &str) -> String {
@@ -14593,6 +14744,37 @@ fn render_state_node_svg(
         format!("node {}", node.css_classes.trim())
     };
 
+    let mut shape_decls: Vec<StateInlineDecl<'_>> = Vec::new();
+    let mut text_decls: Vec<StateInlineDecl<'_>> = Vec::new();
+    let mut fill_override: Option<&str> = None;
+    let mut stroke_override: Option<&str> = None;
+    let mut stroke_width_override: Option<f64> = None;
+    for raw in &node.css_compiled_styles {
+        let Some(d) = state_parse_inline_decl(raw) else {
+            continue;
+        };
+        if d.key.trim().eq_ignore_ascii_case("fill") {
+            fill_override = Some(d.val.trim());
+        }
+        if d.key.trim().eq_ignore_ascii_case("stroke") {
+            stroke_override = Some(d.val.trim());
+        }
+        if d.key.trim().eq_ignore_ascii_case("stroke-width") {
+            let val = d.val.trim().trim_end_matches("px").trim();
+            if let Ok(v) = val.parse::<f64>() {
+                stroke_width_override = Some(v);
+            }
+        }
+        if state_is_text_style_key(d.key) {
+            text_decls.push(d);
+        } else {
+            shape_decls.push(d);
+        }
+    }
+    let shape_style_attr = state_compact_style_attr(&shape_decls);
+    let text_style_attr = state_compact_style_attr(&text_decls);
+    let div_style_prefix = state_div_style_prefix(&text_decls);
+
     match node.shape.as_str() {
         "stateStart" => {
             let _ = write!(
@@ -14811,6 +14993,10 @@ fn render_state_node_svg(
             };
             let link_close = if link_open.is_empty() { "" } else { "</a>" };
 
+            let fill_attr = fill_override.unwrap_or("#ECECFF");
+            let stroke_attr = stroke_override.unwrap_or("#9370DB");
+            let stroke_width_attr = stroke_width_override.unwrap_or(1.3).max(0.0);
+
             let (fill_d, stroke_d) = roughjs_paths_for_svg_path(
                 &mermaid_rounded_rect_path_data(w, h),
                 "#ECECFF",
@@ -14821,20 +15007,53 @@ fn render_state_node_svg(
             )
             .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
 
+            let label_group_style = if text_style_attr.is_empty() {
+                String::new()
+            } else {
+                escape_attr(&text_style_attr)
+            };
+            let label_span_style = if text_style_attr.is_empty() {
+                None
+            } else {
+                Some(text_style_attr.as_str())
+            };
+            let label_html = state_node_label_html_with_style(&label, label_span_style);
+
+            let div_style = if metrics.line_count > 1 {
+                format!(
+                    r#"{}display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: {}px;"#,
+                    div_style_prefix,
+                    fmt(lw),
+                )
+            } else {
+                format!(
+                    r#"{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"#,
+                    div_style_prefix
+                )
+            };
+            let shape_style_escaped = escape_attr(&shape_style_attr);
+
             out.push_str(&format!(
-                r##"<g class="{}" id="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="#ECECFF" style=""/><path d="{}" stroke="#9370DB" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>{}<g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">{}</div></foreignObject></g>{}</g>"##,
+                r##"<g class="{}" id="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g>{}<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g>{}</g>"##,
                 escape_attr(&node_class),
                 escape_attr(&node.dom_id),
                 fmt(cx),
                 fmt(cy),
                 fill_d,
+                escape_attr(fill_attr),
+                shape_style_escaped,
                 stroke_d,
+                escape_attr(stroke_attr),
+                fmt(stroke_width_attr),
+                shape_style_escaped,
                 link_open,
+                label_group_style,
                 fmt(-lw / 2.0),
                 fmt(-lh / 2.0),
                 fmt(lw),
                 fmt(lh),
-                state_node_label_html(&label),
+                div_style,
+                label_html,
                 link_close
             ));
         }
