@@ -34,6 +34,7 @@ impl Default for Generator {
 }
 
 impl Generator {
+    #[allow(dead_code)]
     fn new(options: Options) -> Self {
         Generator {
             default_options: options,

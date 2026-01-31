@@ -31,6 +31,7 @@ impl<F: Float + FromPrimitive + Trig> std::fmt::Display for EdgeEntry<F> {
 }
 
 struct ActiveEdgeEntry<F: Float + FromPrimitive + Trig> {
+    #[allow(dead_code)]
     pub(crate) s: F,
     pub(crate) edge: EdgeEntry<F>,
 }

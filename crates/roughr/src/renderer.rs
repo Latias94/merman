@@ -1042,9 +1042,9 @@ pub fn svg_path<F>(path: String, o: &mut Options) -> OpSet<F>
 where
     F: Float + FromPrimitive + Trig,
 {
-    let mut ops = vec![];
-    let mut first = Point2D::new(_c::<F>(0.0), _c::<F>(0.0));
-    let mut current = Point2D::new(_c::<F>(0.0), _c::<F>(0.0));
+    let ops = vec![];
+    let first = Point2D::new(_c::<F>(0.0), _c::<F>(0.0));
+    let current = Point2D::new(_c::<F>(0.0), _c::<F>(0.0));
     let path_parser = PathParser::from(path.as_ref());
     let path_segments: Vec<PathSegment> = path_parser.flatten().collect();
     let normalized_segments = normalize(absolutize(path_segments.iter()));
@@ -1056,9 +1056,9 @@ pub fn svg_segments<F>(path_segments: Vec<PathSegment>, o: &mut Options) -> OpSe
 where
     F: Float + FromPrimitive + Trig,
 {
-    let mut ops = vec![];
-    let mut first = Point2D::new(_c::<F>(0.0), _c::<F>(0.0));
-    let mut current = Point2D::new(_c::<F>(0.0), _c::<F>(0.0));
+    let ops = vec![];
+    let first = Point2D::new(_c::<F>(0.0), _c::<F>(0.0));
+    let current = Point2D::new(_c::<F>(0.0), _c::<F>(0.0));
     let normalized_segments = normalize(absolutize(path_segments.iter()));
 
     opset_from_path(o, ops, first, current, normalized_segments)
