@@ -58,9 +58,11 @@ Legend:
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
 the dashed separators now use the exact same x-coordinates as the frame edges to match upstream SVG and
 avoid sub-pixel gaps at the frame border.
-As of 2026-01-31, `xtask compare-state-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 17 failing
-state fixtures (layout is in place; remaining gaps are mostly edge path `d` differences and a small set of
-DOM insertion/structure mismatches).
+As of 2026-01-31, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
+for the current fixture set (diagram subtree parity).
+As of 2026-01-31, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports DOM mismatches
+only in these diagrams (root SVG parity): state=36, architecture=20, block=22, class=15, gitgraph=14, mindmap=11,
+pie=11, c4=10, er=1, timeline=1.
 Recent progress: `xychart` headless layout and Stage B parity renderer exist and are validated against
 upstream SVG baselines via `xtask compare-xychart-svgs` (DOM parity mode).
 Recent progress: flowchart Stage B now matches upstream SVG DOM for the current fixture set in parity mode
@@ -118,8 +120,8 @@ mismatches.
 As of 2026-01-29, `xtask compare-svg-xml --diagram requirement --dom-mode strict --dom-decimals 3` reports 0
 requirement mismatches (for the pinned Mermaid@11.12.2 upstream baselines).
 As of 2026-01-29, `xtask compare-svg-xml --diagram gantt --dom-mode strict --dom-decimals 3` reports 0 gantt mismatches.
-As of 2026-01-31, `xtask compare-svg-xml` reports 175 total strict XML mismatches (state=36, architecture=25, block=22,
-class=16, kanban=15, gitgraph=14, mindmap=11, pie=11, xychart=11, c4=10, sequence=4).
+As of 2026-01-31, `xtask compare-svg-xml --dom-mode strict --dom-decimals 3` reports 178 total strict XML mismatches
+(state=43, architecture=25, block=22, class=16, kanban=15, gitgraph=14, mindmap=11, pie=11, xychart=11, c4=10).
 Strict XML 0-mismatch diagrams: er, flowchart, gantt, info, journey, packet, quadrantchart, radar, requirement, sankey,
 timeline, treemap.
 See `docs/alignment/FLOWCHART_SVG_STRICT_XML_GAPS.md` for a workflow to debug float-level `data-points` drift when
