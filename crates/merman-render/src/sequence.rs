@@ -1356,7 +1356,7 @@ pub fn layout_sequence_diagram(
             // Our cursor model uses `message_step` (a typical 1-line height) as the baseline.
             // Shift the line up and only advance by `boxMargin` to match the upstream footer actor
             // placement and overall viewBox height.
-            let line_y = (cursor_y - (message_step - box_margin)).round();
+            let line_y = cursor_y - (message_step - box_margin);
             (line_y, cursor_y, box_margin)
         } else {
             // Mermaid's `boundMessage(...)` uses `common.splitBreaks(message)` to derive a
@@ -1368,7 +1368,7 @@ pub fn layout_sequence_diagram(
             // for the cursor math here.
             let bbox_line_h = (message_font_size + bottom_margin_adj).max(0.0);
             let extra = (lines.saturating_sub(1) as f64) * bbox_line_h;
-            ((cursor_y + extra).round(), cursor_y, message_step + extra)
+            (cursor_y + extra, cursor_y, message_step + extra)
         };
 
         let x1 = startx;
