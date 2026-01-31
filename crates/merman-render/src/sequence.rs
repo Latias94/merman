@@ -410,7 +410,18 @@ pub fn layout_sequence_diagram(
     // Mermaid advances the "cursor" for sequence blocks (loop/alt/opt/par/break/critical) even
     // though these directives are not message edges. The cursor increment depends on the wrapped
     // block label height; precompute these increments per directive message id.
-    let block_base_step = message_step + bottom_margin_adj;
+    // `adjustLoopHeightForWrap(...)` advances the Mermaid bounds cursor by:
+    // - `preMargin` (either `boxMargin` or `boxMargin + boxTextMargin`)
+    // - plus `heightAdjust`, where `heightAdjust` is:
+    //   - `postMargin` when the block label is empty
+    //   - `postMargin + max(labelTextHeight, labelBoxHeight)` when the label is present
+    //
+    // For the common 1-line label case, this reduces to:
+    //   preMargin + postMargin + labelBoxHeight
+    //
+    // We model this as a base step and subtract `labelBoxHeight` for empty labels.
+    let block_base_step = (2.0 * box_margin + box_text_margin + label_box_height).max(0.0);
+    let block_base_step_empty = (block_base_step - label_box_height).max(0.0);
     let line_step = message_font_size * 1.1875;
     let block_extra_per_line = (line_step - box_text_margin).max(0.0);
     let block_end_step = 10.0;
@@ -618,7 +629,9 @@ pub fn layout_sequence_diagram(
                         block_end_step
                     };
 
-                    if let Some(w) = block_frame_width(
+                    if raw_label.trim().is_empty() {
+                        directive_steps.insert(start_id, block_base_step_empty);
+                    } else if let Some(w) = block_frame_width(
                         &messages,
                         &msg_by_id,
                         &actor_index,
@@ -666,7 +679,9 @@ pub fn layout_sequence_diagram(
                         .iter()
                         .any(|msg_id| is_self_message_id(msg_id.as_str(), &msg_by_id));
                     end_step = if has_self { 40.0 } else { block_end_step };
-                    if let Some(w) = block_frame_width(
+                    if raw_label.trim().is_empty() {
+                        directive_steps.insert(start_id, block_base_step_empty);
+                    } else if let Some(w) = block_frame_width(
                         &messages,
                         &msg_by_id,
                         &actor_index,
@@ -713,7 +728,9 @@ pub fn layout_sequence_diagram(
                         .iter()
                         .any(|msg_id| is_self_message_id(msg_id.as_str(), &msg_by_id));
                     end_step = if has_self { 40.0 } else { block_end_step };
-                    if let Some(w) = block_frame_width(
+                    if raw_label.trim().is_empty() {
+                        directive_steps.insert(start_id, block_base_step_empty);
+                    } else if let Some(w) = block_frame_width(
                         &messages,
                         &msg_by_id,
                         &actor_index,
@@ -787,11 +804,13 @@ pub fn layout_sequence_diagram(
                         message_width_scale,
                     ) {
                         for (idx, (id, raw)) in section_directives.into_iter().enumerate() {
-                            let label = if raw.trim().is_empty() && idx != 0 {
-                                "\u{200B}".to_string()
-                            } else {
-                                block_label_text(&raw)
-                            };
+                            let is_empty = raw.trim().is_empty();
+                            if is_empty {
+                                directive_steps.insert(id, block_base_step_empty);
+                                continue;
+                            }
+                            let _ = idx;
+                            let label = block_label_text(&raw);
                             let metrics = measurer.measure_wrapped(
                                 &label,
                                 &msg_text_style,
@@ -803,8 +822,13 @@ pub fn layout_sequence_diagram(
                             directive_steps.insert(id, block_base_step + extra);
                         }
                     } else {
-                        for (id, _raw) in section_directives {
-                            directive_steps.insert(id, block_base_step);
+                        for (id, raw) in section_directives {
+                            let step = if raw.trim().is_empty() {
+                                block_base_step_empty
+                            } else {
+                                block_base_step
+                            };
+                            directive_steps.insert(id, step);
                         }
                     }
                 }
@@ -855,11 +879,13 @@ pub fn layout_sequence_diagram(
                         message_width_scale,
                     ) {
                         for (idx, (id, raw)) in section_directives.into_iter().enumerate() {
-                            let label = if raw.trim().is_empty() && idx != 0 {
-                                "\u{200B}".to_string()
-                            } else {
-                                block_label_text(&raw)
-                            };
+                            let is_empty = raw.trim().is_empty();
+                            if is_empty {
+                                directive_steps.insert(id, block_base_step_empty);
+                                continue;
+                            }
+                            let _ = idx;
+                            let label = block_label_text(&raw);
                             let metrics = measurer.measure_wrapped(
                                 &label,
                                 &msg_text_style,
@@ -871,8 +897,13 @@ pub fn layout_sequence_diagram(
                             directive_steps.insert(id, block_base_step + extra);
                         }
                     } else {
-                        for (id, _raw) in section_directives {
-                            directive_steps.insert(id, block_base_step);
+                        for (id, raw) in section_directives {
+                            let step = if raw.trim().is_empty() {
+                                block_base_step_empty
+                            } else {
+                                block_base_step
+                            };
+                            directive_steps.insert(id, step);
                         }
                     }
                 }
@@ -923,11 +954,13 @@ pub fn layout_sequence_diagram(
                         message_width_scale,
                     ) {
                         for (idx, (id, raw)) in section_directives.into_iter().enumerate() {
-                            let label = if raw.trim().is_empty() && idx != 0 {
-                                "\u{200B}".to_string()
-                            } else {
-                                block_label_text(&raw)
-                            };
+                            let is_empty = raw.trim().is_empty();
+                            if is_empty {
+                                directive_steps.insert(id, block_base_step_empty);
+                                continue;
+                            }
+                            let _ = idx;
+                            let label = block_label_text(&raw);
                             let metrics = measurer.measure_wrapped(
                                 &label,
                                 &msg_text_style,
@@ -939,8 +972,13 @@ pub fn layout_sequence_diagram(
                             directive_steps.insert(id, block_base_step + extra);
                         }
                     } else {
-                        for (id, _raw) in section_directives {
-                            directive_steps.insert(id, block_base_step);
+                        for (id, raw) in section_directives {
+                            let step = if raw.trim().is_empty() {
+                                block_base_step_empty
+                            } else {
+                                block_base_step
+                            };
+                            directive_steps.insert(id, step);
                         }
                     }
                 }

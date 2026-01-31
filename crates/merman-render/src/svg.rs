@@ -2115,7 +2115,15 @@ pub fn render_sequence_diagram_svg(
                             )
                             .unwrap_or((_frame_x1, _frame_x2, f64::INFINITY));
 
-                            let frame_y1 = min_y - 79.0;
+                            let header_offset = if sections
+                                .first()
+                                .is_some_and(|s| s.raw_label.trim().is_empty())
+                            {
+                                (79.0 - label_box_height).max(0.0)
+                            } else {
+                                79.0
+                            };
+                            let frame_y1 = min_y - header_offset;
                             let frame_y2 = max_y + 10.0;
 
                             out.push_str(r#"<g>"#);
@@ -2291,7 +2299,15 @@ pub fn render_sequence_diagram_svg(
                             )
                             .unwrap_or((_frame_x1, _frame_x2, f64::INFINITY));
 
-                            let frame_y1 = min_y - 79.0;
+                            let header_offset = if sections
+                                .first()
+                                .is_some_and(|s| s.raw_label.trim().is_empty())
+                            {
+                                (79.0 - label_box_height).max(0.0)
+                            } else {
+                                79.0
+                            };
+                            let frame_y1 = min_y - header_offset;
                             let frame_y2 = max_y + 10.0;
 
                             out.push_str(r#"<g>"#);
@@ -2463,7 +2479,12 @@ pub fn render_sequence_diagram_svg(
 
                             // Mermaid draws the loop frame far enough above the first message line to
                             // leave room for the header label box + label text.
-                            let frame_y1 = min_y - 79.0;
+                            let header_offset = if raw_label.trim().is_empty() {
+                                (79.0 - label_box_height).max(0.0)
+                            } else {
+                                79.0
+                            };
+                            let frame_y1 = min_y - header_offset;
                             let frame_y2 = max_y + 10.0;
 
                             out.push_str(r#"<g>"#);
@@ -2568,7 +2589,12 @@ pub fn render_sequence_diagram_svg(
                             )
                             .unwrap_or((_frame_x1, _frame_x2, f64::INFINITY));
 
-                            let frame_y1 = min_y - 40.0;
+                            let header_offset = if raw_label.trim().is_empty() {
+                                (79.0 - label_box_height).max(0.0)
+                            } else {
+                                79.0
+                            };
+                            let frame_y1 = min_y - header_offset;
                             let frame_y2 = max_y + 10.0;
 
                             out.push_str(r#"<g>"#);
@@ -2785,7 +2811,15 @@ pub fn render_sequence_diagram_svg(
                                 frame_x1 = frame_x1.min(min_left - 9.0);
                             }
 
-                            let frame_y1 = min_y - 79.0;
+                            let header_offset = if sections
+                                .first()
+                                .is_some_and(|s| s.raw_label.trim().is_empty())
+                            {
+                                (79.0 - label_box_height).max(0.0)
+                            } else {
+                                79.0
+                            };
+                            let frame_y1 = min_y - header_offset;
                             let frame_y2 = max_y + 10.0;
 
                             out.push_str(r#"<g>"#);
