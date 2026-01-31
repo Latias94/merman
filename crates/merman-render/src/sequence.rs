@@ -162,6 +162,7 @@ pub fn layout_sequence_diagram(
     let diagram_margin_x = config_f64(seq_cfg, &["diagramMarginX"]).unwrap_or(50.0);
     let diagram_margin_y = config_f64(seq_cfg, &["diagramMarginY"]).unwrap_or(10.0);
     let bottom_margin_adj = config_f64(seq_cfg, &["bottomMarginAdj"]).unwrap_or(1.0);
+    let box_margin = config_f64(seq_cfg, &["boxMargin"]).unwrap_or(10.0);
     let actor_margin = config_f64(seq_cfg, &["actorMargin"]).unwrap_or(50.0);
     let actor_width_min = config_f64(seq_cfg, &["width"]).unwrap_or(150.0);
     let actor_height = config_f64(seq_cfg, &["height"]).unwrap_or(65.0);
@@ -1284,17 +1285,30 @@ pub fn layout_sequence_diagram(
             }
         }
 
+        let text = msg.message.as_str().unwrap_or_default();
+        let (line_y, label_base_y, cursor_step) = if text.is_empty() {
+            // Mermaid's `boundMessage(...)` uses the measured text bbox height. For empty labels
+            // (trailing colon `Alice->Bob:`) the bbox height becomes 0, collapsing the extra
+            // vertical offset and producing a much earlier message line.
+            //
+            // Our cursor model uses `message_step` (a typical 1-line height) as the baseline.
+            // Shift the line up and only advance by `boxMargin` to match the upstream footer actor
+            // placement and overall viewBox height.
+            let line_y = (cursor_y - (message_step - box_margin)).round();
+            (line_y, cursor_y, box_margin)
+        } else {
+            (cursor_y, cursor_y, message_step)
+        };
+
         let x1 = startx;
         let x2 = stopx;
-        let y = cursor_y;
 
-        let text = msg.message.as_str().unwrap_or_default();
         let label = if text.is_empty() {
             // Mermaid renders an (empty) message text node even when the label is empty (e.g.
             // trailing colon `Alice->Bob:`). Keep a placeholder label to preserve DOM structure.
             Some(LayoutLabel {
                 x: ((x1 + x2) / 2.0).round(),
-                y: (y - msg_label_offset).round(),
+                y: (label_base_y - msg_label_offset).round(),
                 width: 1.0,
                 height: message_font_size.max(1.0),
             })
@@ -1302,7 +1316,7 @@ pub fn layout_sequence_diagram(
             let (w, h) = measure_svg_like_with_html_br(measurer, text, &msg_text_style);
             Some(LayoutLabel {
                 x: ((x1 + x2) / 2.0).round(),
-                y: (y - msg_label_offset).round(),
+                y: (label_base_y - msg_label_offset).round(),
                 width: (w * message_width_scale).max(1.0),
                 height: h.max(1.0),
             })
@@ -1314,7 +1328,10 @@ pub fn layout_sequence_diagram(
             to: to.to_string(),
             from_cluster: None,
             to_cluster: None,
-            points: vec![LayoutPoint { x: x1, y }, LayoutPoint { x: x2, y }],
+            points: vec![
+                LayoutPoint { x: x1, y: line_y },
+                LayoutPoint { x: x2, y: line_y },
+            ],
             label,
             start_label_left: None,
             start_label_right: None,
@@ -1330,10 +1347,10 @@ pub fn layout_sequence_diagram(
             let rx = from_x.max(to_x) + 11.0;
             open.min_x = open.min_x.min(lx);
             open.max_x = open.max_x.max(rx);
-            open.max_y = open.max_y.max(y);
+            open.max_y = open.max_y.max(line_y);
         }
 
-        cursor_y += message_step;
+        cursor_y += cursor_step;
         if is_self {
             // Mermaid adds extra vertical space for self-messages to accommodate the loop curve.
             cursor_y += 30.0;
@@ -1346,7 +1363,7 @@ pub fn layout_sequence_diagram(
             .is_some_and(|&idx| idx == msg_idx)
         {
             let h = actor_visual_height_for_id(to);
-            created_actor_top_center_y.insert(to.to_string(), y);
+            created_actor_top_center_y.insert(to.to_string(), line_y);
             cursor_y += h / 2.0;
         } else if model
             .destroyed_actors
@@ -1354,7 +1371,7 @@ pub fn layout_sequence_diagram(
             .is_some_and(|&idx| idx == msg_idx)
         {
             let h = actor_visual_height_for_id(from);
-            destroyed_actor_bottom_top_y.insert(from.to_string(), y - h / 2.0);
+            destroyed_actor_bottom_top_y.insert(from.to_string(), line_y - h / 2.0);
             cursor_y += h / 2.0;
         } else if model
             .destroyed_actors
@@ -1362,7 +1379,7 @@ pub fn layout_sequence_diagram(
             .is_some_and(|&idx| idx == msg_idx)
         {
             let h = actor_visual_height_for_id(to);
-            destroyed_actor_bottom_top_y.insert(to.to_string(), y - h / 2.0);
+            destroyed_actor_bottom_top_y.insert(to.to_string(), line_y - h / 2.0);
             cursor_y += h / 2.0;
         }
     }

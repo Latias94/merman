@@ -2981,6 +2981,7 @@ pub fn render_sequence_diagram_svg(
             let lines = split_html_br_lines(text);
             for (i, line) in lines.into_iter().enumerate() {
                 let y = lbl.y + (i as f64) * line_step;
+                let line = if line.is_empty() { "\u{200B}" } else { line };
                 let _ = write!(
                     &mut out,
                     r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: {fs}px; font-weight: 400;">{text}</text>"#,
