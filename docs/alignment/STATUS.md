@@ -58,6 +58,9 @@ Legend:
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
 the dashed separators now use the exact same x-coordinates as the frame edges to match upstream SVG and
 avoid sub-pixel gaps at the frame border.
+As of 2026-01-31, `xtask compare-state-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 17 failing
+state fixtures (layout is in place; remaining gaps are mostly edge path `d` differences and a small set of
+DOM insertion/structure mismatches).
 Recent progress: `xychart` headless layout and Stage B parity renderer exist and are validated against
 upstream SVG baselines via `xtask compare-xychart-svgs` (DOM parity mode).
 Recent progress: flowchart Stage B now matches upstream SVG DOM for the current fixture set in parity mode

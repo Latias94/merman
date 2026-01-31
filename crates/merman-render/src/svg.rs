@@ -12673,6 +12673,11 @@ pub fn render_state_diagram_v2_svg(
         }
     }
 
+    // Mermaid's state diagram DOM insertion order follows the order of `StateDB.getData().nodes`
+    // (see `dataFetcher.ts` + dagre renderer `graph.nodes()` iteration). Our semantic model's
+    // `nodes` already preserves that first-seen insertion order, so use it directly.
+    let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id.as_str()).collect();
+
     let mut ctx = StateRenderCtx {
         diagram_id: diagram_id.to_string(),
         diagram_title: diagram_title.map(|s| s.to_string()),
@@ -12680,6 +12685,10 @@ pub fn render_state_diagram_v2_svg(
             .get("handDrawnSeed")
             .and_then(|v| v.as_u64())
             .unwrap_or(0),
+        state_padding: config_f64(effective_config, &["state", "padding"])
+            .unwrap_or(8.0)
+            .max(0.0),
+        node_order,
         nodes_by_id,
         layout_nodes_by_id,
         layout_edges_by_id,
@@ -12831,6 +12840,8 @@ struct StateRenderCtx<'a> {
     #[allow(dead_code)]
     diagram_title: Option<String>,
     hand_drawn_seed: u64,
+    state_padding: f64,
+    node_order: Vec<&'a str>,
     nodes_by_id: std::collections::HashMap<&'a str, &'a StateSvgNode>,
     layout_nodes_by_id: std::collections::HashMap<&'a str, &'a LayoutNode>,
     layout_edges_by_id: std::collections::HashMap<&'a str, &'a crate::model::LayoutEdge>,
@@ -13554,10 +13565,11 @@ fn render_state_root(
         render_state_cluster(out, ctx, root_id, origin_x, origin_y);
     }
 
-    let mut cluster_ids: Vec<&str> = ctx.layout_clusters_by_id.keys().copied().collect();
-    cluster_ids.sort_unstable();
-    for &cluster_id in &cluster_ids {
+    for &cluster_id in &ctx.node_order {
         if root == Some(cluster_id) {
+            continue;
+        }
+        if !ctx.layout_clusters_by_id.contains_key(cluster_id) {
             continue;
         }
         if state_is_hidden(ctx, cluster_id) {
@@ -13578,7 +13590,10 @@ fn render_state_root(
         render_state_cluster(out, ctx, cluster_id, origin_x, origin_y);
     }
 
-    for cluster_id in cluster_ids {
+    for &cluster_id in &ctx.node_order {
+        if !ctx.layout_clusters_by_id.contains_key(cluster_id) {
+            continue;
+        }
         let Some(cluster) = ctx.layout_clusters_by_id.get(cluster_id).copied() else {
             continue;
         };
@@ -13665,41 +13680,38 @@ fn render_state_root(
     // nodes (leaf nodes + nested roots)
     out.push_str(r#"<g class="nodes">"#);
     let mut nested: Vec<&str> = Vec::new();
-    for (id, n) in ctx.nodes_by_id.iter() {
+    for &id in &ctx.node_order {
+        let Some(n) = ctx.nodes_by_id.get(id).copied() else {
+            continue;
+        };
         if state_is_hidden(ctx, id) {
             continue;
         }
         if n.is_group && n.shape != "noteGroup" {
-            if ctx.nested_roots.contains(*id) && state_insertion_context(ctx, id) == root {
-                nested.push(*id);
+            if ctx.nested_roots.contains(id) && state_insertion_context(ctx, id) == root {
+                nested.push(id);
             }
         }
     }
 
     if ctx.include_nodes {
-        let mut leaf_ids: Vec<&str> = ctx
-            .layout_nodes_by_id
-            .iter()
-            .filter_map(|(id, n)| {
-                if state_is_hidden(ctx, id) {
-                    return None;
-                }
-                if n.is_cluster {
-                    return None;
-                }
-                if state_leaf_context(ctx, id) != root {
-                    return None;
-                }
-                Some(*id)
-            })
-            .collect();
-        leaf_ids.sort_unstable();
-        for id in leaf_ids {
+        for &id in &ctx.node_order {
+            let Some(n) = ctx.layout_nodes_by_id.get(id).copied() else {
+                continue;
+            };
+            if state_is_hidden(ctx, id) {
+                continue;
+            }
+            if n.is_cluster {
+                continue;
+            }
+            if state_leaf_context(ctx, id) != root {
+                continue;
+            }
             render_state_node_svg(out, ctx, id, origin_x, origin_y);
         }
     }
 
-    nested.sort_unstable();
     for child_root in nested {
         render_state_root(out, ctx, Some(child_root), origin_x, origin_y);
     }
@@ -14483,15 +14495,42 @@ fn render_state_node_svg(
                 .as_ref()
                 .map(|v| v.join("\n"))
                 .unwrap_or_default();
+            // Mermaid renders `rectWithTitle` labels as HTML `<span>` (nowrap) with
+            // `padding-right: 1px` and no explicit `line-height`, so their measured height matches
+            // SVG `getBBox()` (19px at 16px font size) rather than the 1.5em HTML `<p>` height.
             let title_metrics =
                 ctx.measurer
-                    .measure_wrapped(&title, &ctx.text_style, None, WrapMode::HtmlLike);
+                    .measure_wrapped(&title, &ctx.text_style, None, WrapMode::SvgLike);
             let desc_metrics =
                 ctx.measurer
-                    .measure_wrapped(&desc, &ctx.text_style, None, WrapMode::HtmlLike);
+                    .measure_wrapped(&desc, &ctx.text_style, None, WrapMode::SvgLike);
+
+            let padding = ctx.state_padding;
+            let half_pad = (padding / 2.0).max(0.0);
+            let top_pad = (half_pad - 1.0).max(0.0);
+            let gap = half_pad + 5.0;
+
+            // Mirror `padding-right: 1px` in upstream HTML.
+            let title_w = crate::generated::state_text_overrides_11_12_2::lookup_rect_with_title_span_width_px(
+                ctx.text_style.font_size,
+                title.trim(),
+            )
+            .unwrap_or_else(|| title_metrics.width.max(0.0) + 1.0);
+            let title_h = title_metrics.height.max(0.0);
+            let desc_w = crate::generated::state_text_overrides_11_12_2::lookup_rect_with_title_span_width_px(
+                ctx.text_style.font_size,
+                desc.trim(),
+            )
+            .unwrap_or_else(|| desc_metrics.width.max(0.0) + 1.0);
+            let desc_h = desc_metrics.height.max(0.0);
+            let inner_w = (w - padding).max(0.0);
+            let title_x = ((inner_w - title_w) / 2.0).max(0.0);
+            let desc_x = ((inner_w - desc_w) / 2.0).max(0.0);
+            let desc_y = title_h + gap;
+            let divider_y = -h / 2.0 + top_pad + title_h + 1.0;
             let _ = write!(
                 out,
-                r#"<g class="{}" id="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="" x="{}" y="{}" width="{}" height="{}"/><line class="divider" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="" transform="translate({}, {})"><foreignObject width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;">{}</div></foreignObject><foreignObject width="{}" height="{}" transform="translate( 0, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;">{}</div></foreignObject></g></g>"#,
+                r#"<g class="{}" id="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="" x="{}" y="{}" width="{}" height="{}"/><line class="divider" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="" transform="translate({}, {})"><foreignObject width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;">{}</div></foreignObject><foreignObject width="{}" height="{}" transform="translate( {}, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;">{}</div></foreignObject></g></g>"#,
                 escape_attr(&node_class),
                 escape_attr(&node.dom_id),
                 fmt(cx),
@@ -14502,28 +14541,37 @@ fn render_state_node_svg(
                 fmt(h),
                 fmt(-w / 2.0),
                 fmt(w / 2.0),
-                fmt(0.0),
-                fmt(0.0),
-                fmt(-w / 2.0),
-                fmt(-h / 2.0),
-                fmt(title_metrics.width.max(0.0)),
-                fmt(title_metrics.height.max(0.0)),
-                fmt((w - title_metrics.width.max(0.0)) / 2.0),
+                fmt(divider_y),
+                fmt(divider_y),
+                fmt(-w / 2.0 + half_pad),
+                fmt(-h / 2.0 + top_pad),
+                fmt(title_w),
+                fmt(title_h),
+                fmt(title_x),
                 state_node_label_inline_html(&title),
-                fmt(desc_metrics.width.max(0.0)),
-                fmt(desc_metrics.height.max(0.0)),
-                fmt(title_metrics.height.max(0.0) + 9.0),
+                fmt(desc_w),
+                fmt(desc_h),
+                fmt(desc_x),
+                fmt(desc_y),
                 state_node_label_inline_html(&desc)
             );
         }
         _ => {
             let label = state_node_label_text(node);
-            let metrics = ctx.measurer.measure_wrapped(
+            let mut metrics = ctx.measurer.measure_wrapped(
                 &label,
                 &ctx.text_style,
                 Some(200.0),
                 WrapMode::HtmlLike,
             );
+            if let Some(w) =
+                crate::generated::state_text_overrides_11_12_2::lookup_state_node_label_width_px(
+                    ctx.text_style.font_size,
+                    label.trim(),
+                )
+            {
+                metrics.width = w;
+            }
             let lw = metrics.width.max(0.0);
             let lh = metrics.height.max(0.0);
 

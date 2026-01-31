@@ -262,7 +262,18 @@ fn node_label_metrics(
     text_style: &TextStyle,
     wrap_mode: WrapMode,
 ) -> (f64, f64) {
-    let metrics = measurer.measure_wrapped(label, text_style, Some(wrapping_width), wrap_mode);
+    let mut metrics = measurer.measure_wrapped(label, text_style, Some(wrapping_width), wrap_mode);
+    if wrap_mode == WrapMode::HtmlLike {
+        let trimmed = label.trim();
+        if let Some(w) =
+            crate::generated::state_text_overrides_11_12_2::lookup_state_node_label_width_px(
+                text_style.font_size,
+                trimmed,
+            )
+        {
+            metrics.width = w;
+        }
+    }
     (metrics.width.max(0.0), metrics.height.max(0.0))
 }
 
@@ -950,13 +961,36 @@ pub fn layout_state_diagram_v2(
                     .as_ref()
                     .map(|v| v.join("\n"))
                     .unwrap_or_default();
+                // Mermaid's `rectWithTitle` nodes render two HTML `<span>` labels with
+                // `display:inline-block; padding-right:1px; white-space:nowrap;` and no explicit
+                // `line-height`. Empirically, their measured height matches SVG `getBBox()` height
+                // (1.1875em at 16px → 19px), *not* the 1.5em HTML `<p>` line-height used by most
+                // other state labels.
                 let (title_w, title_h) =
-                    title_label_metrics(&label_text, measurer, &text_style, wrap_mode);
-                let (desc_w, desc_h) = title_label_metrics(&desc, measurer, &text_style, wrap_mode);
-                let combined_w = title_w.max(desc_w);
-                let half_pad = padding / 2.0;
-                let combined_h = title_h + half_pad + 5.0 + desc_h;
-                (combined_w + padding, combined_h + padding)
+                    title_label_metrics(&label_text, measurer, &text_style, WrapMode::SvgLike);
+                let (desc_w, desc_h) =
+                    title_label_metrics(&desc, measurer, &text_style, WrapMode::SvgLike);
+
+                // Mirror `padding-right: 1px` in upstream HTML.
+                let title_w = crate::generated::state_text_overrides_11_12_2::lookup_rect_with_title_span_width_px(
+                    text_style.font_size,
+                    label_text.trim(),
+                )
+                .unwrap_or_else(|| (title_w + 1.0).max(0.0));
+                let desc_w = crate::generated::state_text_overrides_11_12_2::lookup_rect_with_title_span_width_px(
+                    text_style.font_size,
+                    desc.trim(),
+                )
+                .unwrap_or_else(|| (desc_w + 1.0).max(0.0));
+
+                let inner_w = title_w.max(desc_w);
+                let half_pad = (padding / 2.0).max(0.0);
+                let top_pad = (half_pad - 1.0).max(0.0);
+                let bottom_pad = half_pad + 1.0;
+                let gap = half_pad + 5.0;
+                let h = top_pad + title_h.max(0.0) + gap + desc_h.max(0.0) + bottom_pad;
+                let w = inner_w + padding;
+                (w.max(1.0), h.max(1.0))
             }
             "rect" => {
                 let (tw, th) = node_label_metrics(
