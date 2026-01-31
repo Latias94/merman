@@ -29,6 +29,7 @@ fn lookup_in_trebuchetms_verdana_arial_sans_serif() -> Option<&'static [(&'stati
 static SVG_OVERRIDES_TREBUCHETMS_VERDANA_ARIAL_SANS_SERIF: &[(&'static str, f64, f64)] = &[
     ("-:<>,", 0.0, 2.0),
     (":-)", 0.0, 0.9375),
+    ("Alice-in-Wonderland", 0.0, 8.625),
     ("Are you OK?", 0.0, 5.4375),
     ("Book something", 0.0, 6.625),
     ("Bye", 0.0, 1.6875),
