@@ -14407,6 +14407,15 @@ fn mermaid_rounded_rect_path_data(w: f64, h: f64) -> String {
     mermaid_create_path_from_points(&points)
 }
 
+fn mermaid_choice_diamond_path_data(w: f64, h: f64) -> String {
+    let mut points: Vec<(f64, f64)> = Vec::with_capacity(4);
+    points.push((0.0, h / 2.0));
+    points.push((w / 2.0, 0.0));
+    points.push((0.0, -h / 2.0));
+    points.push((-w / 2.0, 0.0));
+    mermaid_create_path_from_points(&points)
+}
+
 fn roughjs_paths_for_svg_path(
     svg_path_data: &str,
     fill: &str,
@@ -14626,6 +14635,28 @@ fn render_state_node_svg(
             let _ = write!(
                 out,
                 r##"<g class="{}" id="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="#333333" style=""/><path d="{}" stroke="#333333" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g></g>"##,
+                escape_attr(&node_class),
+                escape_attr(&node.dom_id),
+                fmt(cx),
+                fmt(cy),
+                fill_d,
+                stroke_d
+            );
+        }
+        "choice" => {
+            let (fill_d, stroke_d) = roughjs_paths_for_svg_path(
+                &mermaid_choice_diamond_path_data(w, h),
+                "#ECECFF",
+                "#9370DB",
+                1.3,
+                "0 0",
+                ctx.hand_drawn_seed,
+            )
+            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+
+            let _ = write!(
+                out,
+                r##"<g class="{}" id="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="#ECECFF" style=""/><path d="{}" stroke="#9370DB" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g></g>"##,
                 escape_attr(&node_class),
                 escape_attr(&node.dom_id),
                 fmt(cx),
