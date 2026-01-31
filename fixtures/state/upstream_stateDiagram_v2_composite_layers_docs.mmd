@@ -1,0 +1,17 @@
+stateDiagram-v2
+    %% Source: repo-ref/mermaid/packages/mermaid/src/docs/syntax/stateDiagram.md (You can do this in several layers)
+    [*] --> First
+
+    state First {
+        [*] --> Second
+
+        state Second {
+            [*] --> second
+            second --> Third
+
+            state Third {
+                [*] --> third
+                third --> [*]
+            }
+        }
+    }

@@ -92,8 +92,9 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/state/stateDiagram-v2.sp
 - default diagram direction when unspecified: `fixtures/state/upstream_stateDiagram_direction_default_spec.mmd`
 - explicit diagram direction (`direction LR`): `fixtures/state/upstream_stateDiagram_direction_lr_spec.mmd`
 
-## `repo-ref/mermaid/docs/syntax/stateDiagram.md`
+## `repo-ref/mermaid/packages/mermaid/src/docs/syntax/stateDiagram.md`
 
 Source: `repo-ref/mermaid/docs/syntax/stateDiagram.md`
 
 - choice nodes (`state <id> <<choice>>`): `fixtures/state/upstream_stateDiagram_v2_choice_spec.mmd`
+- nested composite states (multiple layers): `fixtures/state/upstream_stateDiagram_v2_composite_layers_docs.mmd`
