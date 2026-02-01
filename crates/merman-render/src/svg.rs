@@ -14983,8 +14983,8 @@ fn render_state_cluster(
 
     let left = cluster.x - cluster.width / 2.0;
     let top = cluster.y - cluster.height / 2.0;
-    let x = left - origin_x + 8.0;
-    let y = top - origin_y + 8.0;
+    let x = left - origin_x;
+    let y = top - origin_y;
 
     if shape == "divider" {
         let _ = write!(
