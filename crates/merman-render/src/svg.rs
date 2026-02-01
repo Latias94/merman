@@ -13301,7 +13301,50 @@ pub fn render_state_diagram_v2_svg(
     Ok(out)
 }
 
+#[derive(Debug, Clone)]
+pub struct SvgEmittedBoundsContributor {
+    pub tag: String,
+    pub id: Option<String>,
+    pub class: Option<String>,
+    pub bounds: Bounds,
+}
+
+#[derive(Debug, Clone)]
+pub struct SvgEmittedBoundsDebug {
+    pub bounds: Bounds,
+    pub min_x: Option<SvgEmittedBoundsContributor>,
+    pub min_y: Option<SvgEmittedBoundsContributor>,
+    pub max_x: Option<SvgEmittedBoundsContributor>,
+    pub max_y: Option<SvgEmittedBoundsContributor>,
+}
+
+#[doc(hidden)]
+pub fn debug_svg_emitted_bounds(svg: &str) -> Option<SvgEmittedBoundsDebug> {
+    let mut dbg = SvgEmittedBoundsDebug {
+        bounds: Bounds {
+            min_x: 0.0,
+            min_y: 0.0,
+            max_x: 0.0,
+            max_y: 0.0,
+        },
+        min_x: None,
+        min_y: None,
+        max_x: None,
+        max_y: None,
+    };
+    let b = svg_emitted_bounds_from_svg_inner(svg, Some(&mut dbg))?;
+    dbg.bounds = b;
+    Some(dbg)
+}
+
 fn svg_emitted_bounds_from_svg(svg: &str) -> Option<Bounds> {
+    svg_emitted_bounds_from_svg_inner(svg, None)
+}
+
+fn svg_emitted_bounds_from_svg_inner(
+    svg: &str,
+    mut dbg: Option<&mut SvgEmittedBoundsDebug>,
+) -> Option<Bounds> {
     fn parse_f64(raw: &str) -> Option<f64> {
         let s = raw.trim().trim_end_matches("px").trim();
         s.parse::<f64>().ok()
@@ -13348,6 +13391,58 @@ fn svg_emitted_bounds_from_svg(svg: &str) -> Option<Bounds> {
                 max_x,
                 max_y,
             });
+        }
+    }
+
+    fn maybe_record_dbg(
+        dbg: &mut Option<&mut SvgEmittedBoundsDebug>,
+        tag: &str,
+        attrs: &str,
+        b: Bounds,
+    ) {
+        let Some(dbg) = dbg.as_deref_mut() else {
+            return;
+        };
+        let id = attr_value(attrs, "id").map(|s| s.to_string());
+        let class = attr_value(attrs, "class").map(|s| s.to_string());
+        let c = SvgEmittedBoundsContributor {
+            tag: tag.to_string(),
+            id,
+            class,
+            bounds: b.clone(),
+        };
+
+        if dbg
+            .min_x
+            .as_ref()
+            .map(|cur| b.min_x < cur.bounds.min_x)
+            .unwrap_or(true)
+        {
+            dbg.min_x = Some(c.clone());
+        }
+        if dbg
+            .min_y
+            .as_ref()
+            .map(|cur| b.min_y < cur.bounds.min_y)
+            .unwrap_or(true)
+        {
+            dbg.min_y = Some(c.clone());
+        }
+        if dbg
+            .max_x
+            .as_ref()
+            .map(|cur| b.max_x > cur.bounds.max_x)
+            .unwrap_or(true)
+        {
+            dbg.max_x = Some(c.clone());
+        }
+        if dbg
+            .max_y
+            .as_ref()
+            .map(|cur| b.max_y > cur.bounds.max_y)
+            .unwrap_or(true)
+        {
+            dbg.max_y = Some(c);
         }
     }
 
@@ -13511,12 +13606,38 @@ fn svg_emitted_bounds_from_svg(svg: &str) -> Option<Bounds> {
                     let h = attr_value(attrs, "height")
                         .and_then(parse_f64)
                         .unwrap_or(0.0);
+                    if w != 0.0 || h != 0.0 {
+                        maybe_record_dbg(
+                            &mut dbg,
+                            tag,
+                            attrs,
+                            Bounds {
+                                min_x: x,
+                                min_y: y,
+                                max_x: x + w,
+                                max_y: y + h,
+                            },
+                        );
+                    }
                     include_xywh(&mut bounds, x, y, w, h);
                 }
                 "circle" => {
                     let cx = attr_value(attrs, "cx").and_then(parse_f64).unwrap_or(0.0) + eff_tx;
                     let cy = attr_value(attrs, "cy").and_then(parse_f64).unwrap_or(0.0) + eff_ty;
                     let r = attr_value(attrs, "r").and_then(parse_f64).unwrap_or(0.0);
+                    if r != 0.0 {
+                        maybe_record_dbg(
+                            &mut dbg,
+                            tag,
+                            attrs,
+                            Bounds {
+                                min_x: cx - r,
+                                min_y: cy - r,
+                                max_x: cx + r,
+                                max_y: cy + r,
+                            },
+                        );
+                    }
                     include_rect(&mut bounds, cx - r, cy - r, cx + r, cy + r);
                 }
                 "ellipse" => {
@@ -13524,6 +13645,19 @@ fn svg_emitted_bounds_from_svg(svg: &str) -> Option<Bounds> {
                     let cy = attr_value(attrs, "cy").and_then(parse_f64).unwrap_or(0.0) + eff_ty;
                     let rx = attr_value(attrs, "rx").and_then(parse_f64).unwrap_or(0.0);
                     let ry = attr_value(attrs, "ry").and_then(parse_f64).unwrap_or(0.0);
+                    if rx != 0.0 || ry != 0.0 {
+                        maybe_record_dbg(
+                            &mut dbg,
+                            tag,
+                            attrs,
+                            Bounds {
+                                min_x: cx - rx,
+                                min_y: cy - ry,
+                                max_x: cx + rx,
+                                max_y: cy + ry,
+                            },
+                        );
+                    }
                     include_rect(&mut bounds, cx - rx, cy - ry, cx + rx, cy + ry);
                 }
                 "line" => {
@@ -13531,11 +13665,33 @@ fn svg_emitted_bounds_from_svg(svg: &str) -> Option<Bounds> {
                     let y1 = attr_value(attrs, "y1").and_then(parse_f64).unwrap_or(0.0) + eff_ty;
                     let x2 = attr_value(attrs, "x2").and_then(parse_f64).unwrap_or(0.0) + eff_tx;
                     let y2 = attr_value(attrs, "y2").and_then(parse_f64).unwrap_or(0.0) + eff_ty;
+                    maybe_record_dbg(
+                        &mut dbg,
+                        tag,
+                        attrs,
+                        Bounds {
+                            min_x: x1.min(x2),
+                            min_y: y1.min(y2),
+                            max_x: x1.max(x2),
+                            max_y: y1.max(y2),
+                        },
+                    );
                     include_rect(&mut bounds, x1.min(x2), y1.min(y2), x1.max(x2), y1.max(y2));
                 }
                 "path" => {
                     if let Some(d) = attr_value(attrs, "d") {
-                        include_path_d(&mut bounds, d, eff_tx, eff_ty);
+                        if let Some(pb) = svg_path_bounds_from_d(d) {
+                            let b0 = Bounds {
+                                min_x: pb.min_x + eff_tx,
+                                min_y: pb.min_y + eff_ty,
+                                max_x: pb.max_x + eff_tx,
+                                max_y: pb.max_y + eff_ty,
+                            };
+                            maybe_record_dbg(&mut dbg, tag, attrs, b0.clone());
+                            include_rect(&mut bounds, b0.min_x, b0.min_y, b0.max_x, b0.max_y);
+                        } else {
+                            include_path_d(&mut bounds, d, eff_tx, eff_ty);
+                        }
                     }
                 }
                 "polygon" | "polyline" => {
@@ -13552,6 +13708,19 @@ fn svg_emitted_bounds_from_svg(svg: &str) -> Option<Bounds> {
                     let h = attr_value(attrs, "height")
                         .and_then(parse_f64)
                         .unwrap_or(0.0);
+                    if w != 0.0 || h != 0.0 {
+                        maybe_record_dbg(
+                            &mut dbg,
+                            tag,
+                            attrs,
+                            Bounds {
+                                min_x: x,
+                                min_y: y,
+                                max_x: x + w,
+                                max_y: y + h,
+                            },
+                        );
+                    }
                     include_xywh(&mut bounds, x, y, w, h);
                 }
                 _ => {}
@@ -19723,6 +19892,8 @@ impl SvgPathBounds {
 }
 
 fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
+    use std::f64::consts::PI;
+
     fn skip_sep(bytes: &[u8], i: &mut usize) {
         while *i < bytes.len() {
             match bytes[*i] {
@@ -19762,10 +19933,28 @@ fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
         d[start..*i].parse::<f64>().ok()
     }
 
+    fn try_parse_number(d: &str, bytes: &[u8], i: &mut usize) -> Option<f64> {
+        let save = *i;
+        let v = parse_number(d, bytes, i);
+        if v.is_none() {
+            *i = save;
+        }
+        v
+    }
+
     fn parse_pair(d: &str, bytes: &[u8], i: &mut usize) -> Option<(f64, f64)> {
         let x = parse_number(d, bytes, i)?;
         let y = parse_number(d, bytes, i)?;
         Some((x, y))
+    }
+
+    fn try_parse_pair(d: &str, bytes: &[u8], i: &mut usize) -> Option<(f64, f64)> {
+        let save = *i;
+        let v = parse_pair(d, bytes, i);
+        if v.is_none() {
+            *i = save;
+        }
+        v
     }
 
     fn cubic_eval(p0: f64, p1: f64, p2: f64, p3: f64, t: f64) -> f64 {
@@ -19846,11 +20035,178 @@ fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
         include_extrema(b, y0, y1, y2, y3, false, x0, x1, x2, x3);
     }
 
+    fn quadratic_include_bounds(
+        b: &mut SvgPathBounds,
+        x0: f64,
+        y0: f64,
+        x1: f64,
+        y1: f64,
+        x2: f64,
+        y2: f64,
+    ) {
+        // Convert quadratic to cubic for extrema math:
+        // https://pomax.github.io/bezierinfo/#circles_cubic
+        let cx1 = x0 + (2.0 / 3.0) * (x1 - x0);
+        let cy1 = y0 + (2.0 / 3.0) * (y1 - y0);
+        let cx2 = x2 + (2.0 / 3.0) * (x1 - x2);
+        let cy2 = y2 + (2.0 / 3.0) * (y1 - y2);
+        cubic_include_bounds(b, x0, y0, cx1, cy1, cx2, cy2, x2, y2);
+    }
+
+    fn normalize_angle(mut a: f64) -> f64 {
+        let two_pi = 2.0 * PI;
+        a %= two_pi;
+        if a < 0.0 {
+            a += two_pi;
+        }
+        a
+    }
+
+    fn angle_between(theta: f64, start: f64, delta: f64) -> bool {
+        let two_pi = 2.0 * PI;
+        let eps = 1e-9;
+        let t = normalize_angle(theta - start);
+        if delta >= 0.0 {
+            t <= delta + eps
+        } else {
+            t >= two_pi + delta - eps
+        }
+    }
+
+    fn vec_angle(ux: f64, uy: f64, vx: f64, vy: f64) -> f64 {
+        let dot = ux * vx + uy * vy;
+        let det = ux * vy - uy * vx;
+        det.atan2(dot)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn arc_include_bounds(
+        b: &mut SvgPathBounds,
+        x0: f64,
+        y0: f64,
+        rx0: f64,
+        ry0: f64,
+        x_axis_rotation_deg: f64,
+        large_arc: bool,
+        sweep: bool,
+        x1: f64,
+        y1: f64,
+    ) {
+        // Per SVG 1.1 endpoint-to-center arc conversion.
+        // See: https://www.w3.org/TR/SVG/implnote.html#ArcImplementationNotes
+        if rx0.abs() < 1e-12 || ry0.abs() < 1e-12 {
+            b.include_point(x0, y0);
+            b.include_point(x1, y1);
+            return;
+        }
+
+        let phi = x_axis_rotation_deg.to_radians();
+        let (cos_phi, sin_phi) = (phi.cos(), phi.sin());
+        let mut rx = rx0.abs();
+        let mut ry = ry0.abs();
+
+        let dx2 = (x0 - x1) / 2.0;
+        let dy2 = (y0 - y1) / 2.0;
+
+        let x1p = cos_phi * dx2 + sin_phi * dy2;
+        let y1p = -sin_phi * dx2 + cos_phi * dy2;
+
+        let x1p2 = x1p * x1p;
+        let y1p2 = y1p * y1p;
+
+        // Ensure radii are large enough.
+        let lam = x1p2 / (rx * rx) + y1p2 / (ry * ry);
+        if lam > 1.0 {
+            let s = lam.sqrt();
+            rx *= s;
+            ry *= s;
+        }
+
+        let rx2 = rx * rx;
+        let ry2 = ry * ry;
+
+        let num = (rx2 * ry2) - (rx2 * y1p2) - (ry2 * x1p2);
+        let den = (rx2 * y1p2) + (ry2 * x1p2);
+        if den.abs() < 1e-24 {
+            b.include_point(x0, y0);
+            b.include_point(x1, y1);
+            return;
+        }
+        let mut sq = num / den;
+        if sq < 0.0 {
+            sq = 0.0;
+        }
+        let sign = if large_arc == sweep { -1.0 } else { 1.0 };
+        let coef = sign * sq.sqrt();
+
+        let cxp = coef * (rx * y1p) / ry;
+        let cyp = coef * (-ry * x1p) / rx;
+
+        let cx = cos_phi * cxp - sin_phi * cyp + (x0 + x1) / 2.0;
+        let cy = sin_phi * cxp + cos_phi * cyp + (y0 + y1) / 2.0;
+
+        let ux = (x1p - cxp) / rx;
+        let uy = (y1p - cyp) / ry;
+        let vx = (-x1p - cxp) / rx;
+        let vy = (-y1p - cyp) / ry;
+
+        let theta1 = vec_angle(1.0, 0.0, ux, uy);
+        let mut delta = vec_angle(ux, uy, vx, vy);
+
+        if !sweep && delta > 0.0 {
+            delta -= 2.0 * PI;
+        } else if sweep && delta < 0.0 {
+            delta += 2.0 * PI;
+        }
+
+        let start = theta1;
+        let end = theta1 + delta;
+
+        let arc_point = |theta: f64| -> (f64, f64) {
+            let (ct, st) = (theta.cos(), theta.sin());
+            let x = cx + rx * ct * cos_phi - ry * st * sin_phi;
+            let y = cy + rx * ct * sin_phi + ry * st * cos_phi;
+            (x, y)
+        };
+
+        b.include_point(x0, y0);
+        b.include_point(x1, y1);
+        let (sx, sy) = arc_point(start);
+        let (ex, ey) = arc_point(end);
+        b.include_point(sx, sy);
+        b.include_point(ex, ey);
+
+        // Extrema angles for rotated ellipse. See derivative analysis in many references.
+        // x extrema: tan(theta) = -(ry*sin(phi)) / (rx*cos(phi))
+        // y extrema: tan(theta) =  (ry*cos(phi)) / (rx*sin(phi))
+        let tx_base = (-ry * sin_phi).atan2(rx * cos_phi);
+        for k in 0..2 {
+            let t = tx_base + (k as f64) * PI;
+            if angle_between(t, start, delta) {
+                let (x, y) = arc_point(t);
+                b.include_point(x, y);
+            }
+        }
+
+        let ty_base = (ry * cos_phi).atan2(rx * sin_phi);
+        for k in 0..2 {
+            let t = ty_base + (k as f64) * PI;
+            if angle_between(t, start, delta) {
+                let (x, y) = arc_point(t);
+                b.include_point(x, y);
+            }
+        }
+    }
+
     let bytes = d.as_bytes();
     let mut i = 0usize;
     let mut cmd: u8 = 0;
     let mut cx = 0.0f64;
     let mut cy = 0.0f64;
+    let (mut sx, mut sy) = (0.0f64, 0.0f64);
+    let mut last_cubic_ctrl: Option<(f64, f64)> = None;
+    let mut last_quad_ctrl: Option<(f64, f64)> = None;
+    let mut prev_cmd: u8 = 0;
     let mut b: Option<SvgPathBounds> = None;
 
     while i < bytes.len() {
@@ -19866,45 +20222,287 @@ fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
             return None;
         }
 
-        match cmd {
+        let is_rel = cmd.is_ascii_lowercase();
+        let ucmd = cmd.to_ascii_uppercase();
+
+        fn ensure_bounds(b: &mut Option<SvgPathBounds>, x: f64, y: f64) -> &mut SvgPathBounds {
+            if b.is_none() {
+                *b = Some(SvgPathBounds {
+                    min_x: x,
+                    min_y: y,
+                    max_x: x,
+                    max_y: y,
+                });
+            }
+            b.as_mut().expect("just set")
+        }
+
+        match ucmd {
             b'M' => {
-                let (x, y) = parse_pair(d, bytes, &mut i)?;
+                // First pair is move-to; subsequent pairs are implicit line-to.
+                let (mut x, mut y) = parse_pair(d, bytes, &mut i)?;
+                if is_rel {
+                    x += cx;
+                    y += cy;
+                }
                 cx = x;
                 cy = y;
-                if let Some(ref mut cur) = b {
-                    cur.include_point(cx, cy);
-                } else {
-                    b = Some(SvgPathBounds {
-                        min_x: cx,
-                        min_y: cy,
-                        max_x: cx,
-                        max_y: cy,
-                    });
+                sx = x;
+                sy = y;
+                ensure_bounds(&mut b, cx, cy).include_point(cx, cy);
+                last_cubic_ctrl = None;
+                last_quad_ctrl = None;
+                prev_cmd = ucmd;
+
+                loop {
+                    let Some((mut nx, mut ny)) = try_parse_pair(d, bytes, &mut i) else {
+                        break;
+                    };
+                    if is_rel {
+                        nx += cx;
+                        ny += cy;
+                    }
+                    cx = nx;
+                    cy = ny;
+                    ensure_bounds(&mut b, cx, cy).include_point(cx, cy);
+                    prev_cmd = b'L';
                 }
-                // Subsequent pairs are treated as implicit `L`.
-                cmd = b'L';
+            }
+            b'Z' => {
+                // Close path: line to subpath start.
+                let cur = ensure_bounds(&mut b, cx, cy);
+                cur.include_point(cx, cy);
+                cur.include_point(sx, sy);
+                cx = sx;
+                cy = sy;
+                last_cubic_ctrl = None;
+                last_quad_ctrl = None;
+                prev_cmd = ucmd;
             }
             b'L' => {
-                let (x, y) = parse_pair(d, bytes, &mut i)?;
+                let (mut x, mut y) = parse_pair(d, bytes, &mut i)?;
+                if is_rel {
+                    x += cx;
+                    y += cy;
+                }
                 cx = x;
                 cy = y;
-                if let Some(ref mut cur) = b {
-                    cur.include_point(cx, cy);
-                } else {
-                    b = Some(SvgPathBounds {
-                        min_x: cx,
-                        min_y: cy,
-                        max_x: cx,
-                        max_y: cy,
-                    });
+                ensure_bounds(&mut b, cx, cy).include_point(cx, cy);
+                last_cubic_ctrl = None;
+                last_quad_ctrl = None;
+                prev_cmd = ucmd;
+
+                loop {
+                    let Some((mut nx, mut ny)) = try_parse_pair(d, bytes, &mut i) else {
+                        break;
+                    };
+                    if is_rel {
+                        nx += cx;
+                        ny += cy;
+                    }
+                    cx = nx;
+                    cy = ny;
+                    ensure_bounds(&mut b, cx, cy).include_point(cx, cy);
+                    prev_cmd = ucmd;
+                }
+            }
+            b'H' => {
+                let mut x = parse_number(d, bytes, &mut i)?;
+                if is_rel {
+                    x += cx;
+                }
+                cx = x;
+                ensure_bounds(&mut b, cx, cy).include_point(cx, cy);
+                last_cubic_ctrl = None;
+                last_quad_ctrl = None;
+                prev_cmd = ucmd;
+
+                loop {
+                    let Some(mut nx) = try_parse_number(d, bytes, &mut i) else {
+                        break;
+                    };
+                    if is_rel {
+                        nx += cx;
+                    }
+                    cx = nx;
+                    ensure_bounds(&mut b, cx, cy).include_point(cx, cy);
+                    prev_cmd = ucmd;
+                }
+            }
+            b'V' => {
+                let mut y = parse_number(d, bytes, &mut i)?;
+                if is_rel {
+                    y += cy;
+                }
+                cy = y;
+                ensure_bounds(&mut b, cx, cy).include_point(cx, cy);
+                last_cubic_ctrl = None;
+                last_quad_ctrl = None;
+                prev_cmd = ucmd;
+
+                loop {
+                    let Some(mut ny) = try_parse_number(d, bytes, &mut i) else {
+                        break;
+                    };
+                    if is_rel {
+                        ny += cy;
+                    }
+                    cy = ny;
+                    ensure_bounds(&mut b, cx, cy).include_point(cx, cy);
+                    prev_cmd = ucmd;
                 }
             }
             b'C' => {
-                let (x1, y1) = parse_pair(d, bytes, &mut i)?;
-                let (x2, y2) = parse_pair(d, bytes, &mut i)?;
-                let (x3, y3) = parse_pair(d, bytes, &mut i)?;
-                if let Some(ref mut cur) = b {
-                    cubic_include_bounds(cur, cx, cy, x1, y1, x2, y2, x3, y3);
+                let mut x1 = parse_number(d, bytes, &mut i)?;
+                let mut y1 = parse_number(d, bytes, &mut i)?;
+                let mut x2 = parse_number(d, bytes, &mut i)?;
+                let mut y2 = parse_number(d, bytes, &mut i)?;
+                let mut x3 = parse_number(d, bytes, &mut i)?;
+                let mut y3 = parse_number(d, bytes, &mut i)?;
+                if is_rel {
+                    x1 += cx;
+                    y1 += cy;
+                    x2 += cx;
+                    y2 += cy;
+                    x3 += cx;
+                    y3 += cy;
+                }
+                let cur = ensure_bounds(&mut b, cx, cy);
+                cubic_include_bounds(cur, cx, cy, x1, y1, x2, y2, x3, y3);
+                cx = x3;
+                cy = y3;
+                last_cubic_ctrl = Some((x2, y2));
+                last_quad_ctrl = None;
+                prev_cmd = ucmd;
+
+                loop {
+                    let save = i;
+                    let Some(mut nx1) = try_parse_number(d, bytes, &mut i) else {
+                        break;
+                    };
+                    let Some(mut ny1) = try_parse_number(d, bytes, &mut i) else {
+                        i = save;
+                        break;
+                    };
+                    let Some(mut nx2) = try_parse_number(d, bytes, &mut i) else {
+                        i = save;
+                        break;
+                    };
+                    let Some(mut ny2) = try_parse_number(d, bytes, &mut i) else {
+                        i = save;
+                        break;
+                    };
+                    let Some(mut nx3) = try_parse_number(d, bytes, &mut i) else {
+                        i = save;
+                        break;
+                    };
+                    let Some(mut ny3) = try_parse_number(d, bytes, &mut i) else {
+                        i = save;
+                        break;
+                    };
+                    if is_rel {
+                        nx1 += cx;
+                        ny1 += cy;
+                        nx2 += cx;
+                        ny2 += cy;
+                        nx3 += cx;
+                        ny3 += cy;
+                    }
+                    let cur = ensure_bounds(&mut b, cx, cy);
+                    cubic_include_bounds(cur, cx, cy, nx1, ny1, nx2, ny2, nx3, ny3);
+                    cx = nx3;
+                    cy = ny3;
+                    last_cubic_ctrl = Some((nx2, ny2));
+                    last_quad_ctrl = None;
+                    prev_cmd = ucmd;
+                }
+            }
+            b'S' => {
+                let (x1, y1) = if matches!(prev_cmd, b'C' | b'S') {
+                    if let Some((px, py)) = last_cubic_ctrl {
+                        (2.0 * cx - px, 2.0 * cy - py)
+                    } else {
+                        (cx, cy)
+                    }
+                } else {
+                    (cx, cy)
+                };
+
+                let mut x2 = parse_number(d, bytes, &mut i)?;
+                let mut y2 = parse_number(d, bytes, &mut i)?;
+                let mut x3 = parse_number(d, bytes, &mut i)?;
+                let mut y3 = parse_number(d, bytes, &mut i)?;
+                if is_rel {
+                    x2 += cx;
+                    y2 += cy;
+                    x3 += cx;
+                    y3 += cy;
+                }
+                let cur = ensure_bounds(&mut b, cx, cy);
+                cubic_include_bounds(cur, cx, cy, x1, y1, x2, y2, x3, y3);
+                cx = x3;
+                cy = y3;
+                last_cubic_ctrl = Some((x2, y2));
+                last_quad_ctrl = None;
+                prev_cmd = ucmd;
+            }
+            b'Q' => {
+                let mut x1 = parse_number(d, bytes, &mut i)?;
+                let mut y1 = parse_number(d, bytes, &mut i)?;
+                let mut x2 = parse_number(d, bytes, &mut i)?;
+                let mut y2 = parse_number(d, bytes, &mut i)?;
+                if is_rel {
+                    x1 += cx;
+                    y1 += cy;
+                    x2 += cx;
+                    y2 += cy;
+                }
+                let cur = ensure_bounds(&mut b, cx, cy);
+                quadratic_include_bounds(cur, cx, cy, x1, y1, x2, y2);
+                cx = x2;
+                cy = y2;
+                last_quad_ctrl = Some((x1, y1));
+                last_cubic_ctrl = None;
+                prev_cmd = ucmd;
+            }
+            b'T' => {
+                let (x1, y1) = if matches!(prev_cmd, b'Q' | b'T') {
+                    if let Some((qx, qy)) = last_quad_ctrl {
+                        (2.0 * cx - qx, 2.0 * cy - qy)
+                    } else {
+                        (cx, cy)
+                    }
+                } else {
+                    (cx, cy)
+                };
+                let (mut x2, mut y2) = parse_pair(d, bytes, &mut i)?;
+                if is_rel {
+                    x2 += cx;
+                    y2 += cy;
+                }
+                let cur = ensure_bounds(&mut b, cx, cy);
+                quadratic_include_bounds(cur, cx, cy, x1, y1, x2, y2);
+                cx = x2;
+                cy = y2;
+                last_quad_ctrl = Some((x1, y1));
+                last_cubic_ctrl = None;
+                prev_cmd = ucmd;
+            }
+            b'A' => {
+                let rx = parse_number(d, bytes, &mut i)?;
+                let ry = parse_number(d, bytes, &mut i)?;
+                let rot = parse_number(d, bytes, &mut i)?;
+                let laf = parse_number(d, bytes, &mut i)?;
+                let sf = parse_number(d, bytes, &mut i)?;
+                let (mut x1, mut y1) = parse_pair(d, bytes, &mut i)?;
+                if is_rel {
+                    x1 += cx;
+                    y1 += cy;
+                }
+                let large_arc = laf.abs() > 0.5;
+                let sweep = sf.abs() > 0.5;
+                if let Some(cur) = b.as_mut() {
+                    arc_include_bounds(cur, cx, cy, rx, ry, rot, large_arc, sweep, x1, y1);
                 } else {
                     let mut cur = SvgPathBounds {
                         min_x: cx,
@@ -19912,11 +20510,14 @@ fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
                         max_x: cx,
                         max_y: cy,
                     };
-                    cubic_include_bounds(&mut cur, cx, cy, x1, y1, x2, y2, x3, y3);
+                    arc_include_bounds(&mut cur, cx, cy, rx, ry, rot, large_arc, sweep, x1, y1);
                     b = Some(cur);
                 }
-                cx = x3;
-                cy = y3;
+                cx = x1;
+                cy = y1;
+                last_cubic_ctrl = None;
+                last_quad_ctrl = None;
+                prev_cmd = ucmd;
             }
             _ => return None,
         }
