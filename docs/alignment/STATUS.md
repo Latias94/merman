@@ -60,8 +60,8 @@ the dashed separators now use the exact same x-coordinates as the frame edges to
 avoid sub-pixel gaps at the frame border.
 As of 2026-02-01, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
 for the current fixture set (diagram subtree parity).
-As of 2026-02-01, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 101 DOM
-mismatches out of 475 upstream SVG baselines (78.7% passing). Current parity-root mismatches are concentrated in
+As of 2026-02-01, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 103 DOM
+mismatches out of 475 upstream SVG baselines (78.3% passing). Current parity-root mismatches are concentrated in
 7 diagrams:
 
 - Architecture: 20

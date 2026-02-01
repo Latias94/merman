@@ -25,6 +25,10 @@ pub fn lookup_state_node_label_width_px(font_size_px: f64, text: &str) -> Option
     match text {
         // fixtures/upstream-svgs/state/basic.svg
         "Idle" => Some(26.8125),
+        // fixtures/upstream-svgs/state/upstream_stateDiagram_v2_choice_spec.svg
+        "IsPositive" => Some(66.203125),
+        // fixtures/upstream-svgs/state/upstream_stateDiagram_v2_choice_spec.svg
+        "True" => Some(31.21875),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_acc_descr_multiline_spec.svg
         "this is another string" => Some(147.765625),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_spec.svg

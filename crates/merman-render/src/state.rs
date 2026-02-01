@@ -131,6 +131,60 @@ fn value_to_label_text(v: &Value) -> String {
     }
 }
 
+fn decode_html_entities_once(text: &str) -> std::borrow::Cow<'_, str> {
+    fn decode_html_entity(entity: &str) -> Option<char> {
+        match entity {
+            "nbsp" => Some(' '),
+            "lt" => Some('<'),
+            "gt" => Some('>'),
+            "amp" => Some('&'),
+            "quot" => Some('"'),
+            "apos" => Some('\''),
+            "#39" => Some('\''),
+            "equals" => Some('='),
+            _ => {
+                if let Some(hex) = entity
+                    .strip_prefix("#x")
+                    .or_else(|| entity.strip_prefix("#X"))
+                {
+                    u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
+                } else if let Some(dec) = entity.strip_prefix('#') {
+                    dec.parse::<u32>().ok().and_then(char::from_u32)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    if !text.contains('&') {
+        return std::borrow::Cow::Borrowed(text);
+    }
+
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0usize;
+    while let Some(rel) = text[i..].find('&') {
+        let amp = i + rel;
+        out.push_str(&text[i..amp]);
+        let tail = &text[amp + 1..];
+        if let Some(semi_rel) = tail.find(';') {
+            let semi = amp + 1 + semi_rel;
+            let entity = &text[amp + 1..semi];
+            if let Some(decoded) = decode_html_entity(entity) {
+                out.push(decoded);
+            } else {
+                out.push_str(&text[amp..=semi]);
+            }
+            i = semi + 1;
+            continue;
+        }
+        out.push('&');
+        i = amp + 1;
+    }
+    out.push_str(&text[i..]);
+    std::borrow::Cow::Owned(out)
+}
+
 pub(crate) fn state_text_style(effective_config: &Value) -> TextStyle {
     // Mermaid state diagram v2 uses HTML labels (foreignObject) by default, inheriting the global
     // `#id{font-size: ...}` rule (defaults to 16px). The 10px `g.stateGroup text{font-size:10px}`
@@ -244,7 +298,11 @@ fn edge_label_metrics(
     if label.trim().is_empty() {
         return (0.0, 0.0);
     }
-    let mut metrics = measurer.measure_wrapped(label, text_style, Some(200.0), wrap_mode);
+    // Mermaid stores sanitized labels that can contain HTML entities like `&lt;`. In the browser,
+    // those are decoded before layout/measurement, so decode them here to avoid skewing widths.
+    let decoded = decode_html_entities_once(label);
+    let mut metrics =
+        measurer.measure_wrapped(decoded.as_ref(), text_style, Some(200.0), wrap_mode);
     // For SVG edge labels, `createText(..., addSvgBackground=true)` adds a background rect with a
     // 2px padding.
     if wrap_mode == WrapMode::SvgLike {
@@ -261,9 +319,15 @@ fn node_label_metrics(
     text_style: &TextStyle,
     wrap_mode: WrapMode,
 ) -> (f64, f64) {
-    let mut metrics = measurer.measure_wrapped(label, text_style, Some(wrapping_width), wrap_mode);
+    let decoded = decode_html_entities_once(label);
+    let mut metrics = measurer.measure_wrapped(
+        decoded.as_ref(),
+        text_style,
+        Some(wrapping_width),
+        wrap_mode,
+    );
     if wrap_mode == WrapMode::HtmlLike {
-        let trimmed = label.trim();
+        let trimmed = decoded.as_ref().trim();
         if let Some(w) =
             crate::generated::state_text_overrides_11_12_2::lookup_state_node_label_width_px(
                 text_style.font_size,
@@ -284,7 +348,8 @@ fn title_label_metrics(
 ) -> (f64, f64) {
     // Mermaid state diagram cluster titles use `createLabel(...)` (nowrap) rather than
     // `createText(...)` (width constrained).
-    let metrics = measurer.measure_wrapped(label, text_style, None, wrap_mode);
+    let decoded = decode_html_entities_once(label);
+    let metrics = measurer.measure_wrapped(decoded.as_ref(), text_style, None, wrap_mode);
     (metrics.width.max(0.0), metrics.height.max(0.0))
 }
 
