@@ -60,8 +60,8 @@ the dashed separators now use the exact same x-coordinates as the frame edges to
 avoid sub-pixel gaps at the frame border.
 As of 2026-02-01, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
 for the current fixture set (diagram subtree parity).
-As of 2026-02-01, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 113 DOM
-mismatches out of 475 upstream SVG baselines (76.2% passing). Current parity-root mismatches are concentrated in
+As of 2026-02-01, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 111 DOM
+mismatches out of 475 upstream SVG baselines (76.6% passing). Current parity-root mismatches are concentrated in
 7 diagrams:
 
 - Architecture: 20
@@ -70,7 +70,7 @@ mismatches out of 475 upstream SVG baselines (76.2% passing). Current parity-roo
 - Mindmap: 11
 - Pie: 11
 - C4: 10
-- State: 33
+- State: 31
 
 Most parity-root deltas are root `<svg>` viewport attributes (`style` max-width / `viewBox`) and are therefore
 sensitive to upstream sizing policy, layout extents (including edge labels/groups), and floating-point rounding.
@@ -82,6 +82,9 @@ top-level graph and extracted cluster graphs.
 Recent progress (2026-02-01): state diagram dagre cluster extraction now matches Mermaid's `dagre-wrapper` more
 closely by extracting any disconnected cluster (not only root-level), and by injecting the parent cluster node into
 the extracted graph during the recursive layout pass so Dagre's compound border sizing yields Mermaid-like padding.
+Recent progress (2026-02-01): state diagram Stage B now computes origin translation (and therefore root `viewBox`)
+based on layout bounds *excluding* hidden floating-note nodes, matching Mermaid's behavior where these syntaxes are
+accepted by the parser but do not contribute to rendered output or viewport sizing.
 Recent progress: architecture Stage B now computes root `viewBox`/`max-width` from emitted element bounds and honors
 `architecture.padding`/`iconSize`/`fontSize`, fixing previously clipped non-empty Architecture SVG outputs. Root parity
 still depends on matching upstream Cytoscape/FCoSE layout behavior.

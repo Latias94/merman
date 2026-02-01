@@ -13019,15 +13019,113 @@ pub fn render_state_diagram_v2_svg(
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
 
+    let mut hidden_prefixes: Vec<String> = Vec::new();
+    for (id, st) in &model.states {
+        let Some(note) = st.note.as_ref() else {
+            continue;
+        };
+        if note.text.trim().is_empty() {
+            continue;
+        }
+        if note.position.is_none() {
+            hidden_prefixes.push(id.clone());
+        }
+    }
+
+    fn state_is_hidden_id(prefixes: &[String], id: &str) -> bool {
+        prefixes.iter().any(|p| {
+            if id == p {
+                return true;
+            }
+            id.strip_prefix(p)
+                .is_some_and(|rest| rest.starts_with("----"))
+        })
+    }
+
     // Keep the render-time origin aligned with the layout engine so all emitted coordinates stay
     // stable. The root viewport is computed separately from the emitted content bbox.
-    let layout_bounds = compute_layout_bounds(&layout.clusters, &layout.nodes, &layout.edges)
-        .unwrap_or(Bounds {
+    //
+    // IMPORTANT: Mermaid renders some legacy "floating note" syntaxes as no-ops. We model those
+    // nodes in headless layout to preserve parsing/snapshot fidelity, but they must not affect
+    // the origin translation or root viewBox/max-width sizing.
+    let layout_bounds = {
+        let mut b: Option<Bounds> = None;
+
+        let mut include_rect = |min_x: f64, min_y: f64, max_x: f64, max_y: f64| {
+            if let Some(ref mut cur) = b {
+                cur.min_x = cur.min_x.min(min_x);
+                cur.min_y = cur.min_y.min(min_y);
+                cur.max_x = cur.max_x.max(max_x);
+                cur.max_y = cur.max_y.max(max_y);
+            } else {
+                b = Some(Bounds {
+                    min_x,
+                    min_y,
+                    max_x,
+                    max_y,
+                });
+            }
+        };
+
+        for c in &layout.clusters {
+            if state_is_hidden_id(&hidden_prefixes, c.id.as_str()) {
+                continue;
+            }
+            let hw = c.width / 2.0;
+            let hh = c.height / 2.0;
+            include_rect(c.x - hw, c.y - hh, c.x + hw, c.y + hh);
+
+            let lhw = c.title_label.width / 2.0;
+            let lhh = c.title_label.height / 2.0;
+            include_rect(
+                c.title_label.x - lhw,
+                c.title_label.y - lhh,
+                c.title_label.x + lhw,
+                c.title_label.y + lhh,
+            );
+        }
+
+        for n in &layout.nodes {
+            if state_is_hidden_id(&hidden_prefixes, n.id.as_str()) {
+                continue;
+            }
+            let hw = n.width / 2.0;
+            let hh = n.height / 2.0;
+            include_rect(n.x - hw, n.y - hh, n.x + hw, n.y + hh);
+        }
+
+        for e in &layout.edges {
+            if state_is_hidden_id(&hidden_prefixes, e.id.as_str())
+                || state_is_hidden_id(&hidden_prefixes, e.from.as_str())
+                || state_is_hidden_id(&hidden_prefixes, e.to.as_str())
+            {
+                continue;
+            }
+            for p in &e.points {
+                include_rect(p.x, p.y, p.x, p.y);
+            }
+            for lbl in [
+                e.label.as_ref(),
+                e.start_label_left.as_ref(),
+                e.start_label_right.as_ref(),
+                e.end_label_left.as_ref(),
+                e.end_label_right.as_ref(),
+            ] {
+                if let Some(lbl) = lbl {
+                    let hw = lbl.width / 2.0;
+                    let hh = lbl.height / 2.0;
+                    include_rect(lbl.x - hw, lbl.y - hh, lbl.x + hw, lbl.y + hh);
+                }
+            }
+        }
+
+        b.unwrap_or(Bounds {
             min_x: 0.0,
             min_y: 0.0,
             max_x: 100.0,
             max_y: 100.0,
-        });
+        })
+    };
 
     // Mermaid uses `setupViewPortForSVG(svg, padding=8)`.
     let viewport_padding = 8.0;
@@ -13081,19 +13179,6 @@ pub fn render_state_diagram_v2_svg(
     for n in &model.nodes {
         if let Some(p) = n.parent_id.as_deref() {
             parent.insert(n.id.as_str(), p);
-        }
-    }
-
-    let mut hidden_prefixes: Vec<String> = Vec::new();
-    for (id, st) in &model.states {
-        let Some(note) = st.note.as_ref() else {
-            continue;
-        };
-        if note.text.trim().is_empty() {
-            continue;
-        }
-        if note.position.is_none() {
-            hidden_prefixes.push(id.clone());
         }
     }
 
