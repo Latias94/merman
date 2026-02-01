@@ -6,26 +6,26 @@
         {
           "id": "block1",
           "x": 29.44,
-          "y": -20.0,
+          "y": -16.8,
           "width": 58.88,
-          "height": 32.0,
+          "height": 25.6,
           "is_cluster": false
         },
         {
           "id": "block2",
           "x": 29.44,
-          "y": 20.0,
+          "y": 16.8,
           "width": 58.88,
-          "height": 32.0,
+          "height": 25.6,
           "is_cluster": false
         }
       ],
       "edges": [],
       "bounds": {
         "min_x": 0.0,
-        "min_y": -36.0,
+        "min_y": -29.6,
         "max_x": 58.88,
-        "max_y": 36.0
+        "max_y": 29.6
       }
     }
   }

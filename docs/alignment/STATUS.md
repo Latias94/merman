@@ -67,6 +67,8 @@ floating-point rounding.
 Recent progress: architecture Stage B now computes root `viewBox`/`max-width` from emitted element bounds and honors
 `architecture.padding`/`iconSize`/`fontSize`, fixing previously clipped non-empty Architecture SVG outputs. Root parity
 still depends on matching upstream Cytoscape/FCoSE layout behavior.
+Recent progress (2026-02-01): block diagram layout now models Mermaid’s mixed label metrics (HTML width + SVG bbox
+height) and the block Stage B renderer now emits root `viewBox`/`max-width` using Mermaid-like diagram padding.
 Recent progress: `xychart` headless layout and Stage B parity renderer exist and are validated against
 upstream SVG baselines via `xtask compare-xychart-svgs` (DOM parity mode).
 Recent progress: flowchart Stage B now matches upstream SVG DOM for the current fixture set in parity mode

@@ -106,12 +106,18 @@ fn to_sized_block(node: &BlockNode, padding: f64, measurer: &dyn TextMeasurer) -
     let mut width = 0.0;
     let mut height = 0.0;
     if node.block_type != "composite" && node.block_type != "space" && node.block_type != "group" {
-        let metrics =
+        // Mermaid's block diagram labels are rendered via a lightweight HTML foreignObject helper
+        // (`display: inline-block; white-space: nowrap;`):
+        // - width matches HTML `getBoundingClientRect()` (1/64px lattice in upstream SVG fixtures)
+        // - height matches SVG `<text>.getBBox().height` (≈1.1875em for the first line at 11.12.2)
+        let html_metrics =
             measurer.measure_wrapped(&node.label, &TextStyle::default(), None, WrapMode::HtmlLike);
+        let svg_metrics =
+            measurer.measure_wrapped(&node.label, &TextStyle::default(), None, WrapMode::SvgLike);
         // Mermaid's dagre wrapper uses `bbox + padding` (where padding is interpreted as the
         // full extra size, not per-side).
-        width = (metrics.width + padding).max(1.0);
-        height = (metrics.height + padding).max(1.0);
+        width = (html_metrics.width + padding).max(1.0);
+        height = (svg_metrics.height + padding).max(1.0);
     }
 
     let children = node

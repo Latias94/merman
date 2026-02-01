@@ -5896,7 +5896,7 @@ pub fn render_requirement_diagram_svg(
 pub fn render_block_diagram_svg(
     layout: &BlockDiagramLayout,
     semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
+    effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     fn decode_block_label_html(raw: &str) -> String {
@@ -6395,10 +6395,30 @@ pub fn render_block_diagram_svg(
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
 
+    let bounds = layout.bounds.clone().unwrap_or(Bounds {
+        min_x: 0.0,
+        min_y: 0.0,
+        max_x: 100.0,
+        max_y: 100.0,
+    });
+    let diagram_padding = config_f64(effective_config, &["block", "diagramPadding"])
+        .unwrap_or(5.0)
+        .max(0.0);
+
+    let vb_min_x = bounds.min_x - diagram_padding;
+    let vb_min_y = bounds.min_y - diagram_padding;
+    let vb_w = (bounds.max_x - bounds.min_x + diagram_padding * 2.0).max(1.0);
+    let vb_h = (bounds.max_y - bounds.min_y + diagram_padding * 2.0).max(1.0);
+
     let mut out = String::new();
     let _ = write!(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" role="graphics-document document" aria-roledescription="block">"#,
+        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{min_x} {min_y} {w} {h}" role="graphics-document document" aria-roledescription="block">"#,
+        max_w = fmt_max_width_px(vb_w.max(1.0)),
+        min_x = fmt(vb_min_x),
+        min_y = fmt(vb_min_y),
+        w = fmt(vb_w.max(1.0)),
+        h = fmt(vb_h.max(1.0)),
     );
     out.push_str(r#"<style></style><g/>"#);
 
@@ -16314,11 +16334,28 @@ pub fn render_class_diagram_v2_svg(
         .as_deref()
         .is_some_and(|s| !s.trim().is_empty());
 
+    let bounds = layout.bounds.clone().unwrap_or(Bounds {
+        min_x: 0.0,
+        min_y: 0.0,
+        max_x: 100.0,
+        max_y: 100.0,
+    });
+    let vb_min_x = bounds.min_x;
+    let vb_min_y = bounds.min_y;
+    let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
+    let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
+    let max_w_attr = fmt_max_width_px(vb_w.max(1.0));
+
     let mut out = String::new();
     let _ = write!(
         &mut out,
-        r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="classDiagram" role="graphics-document document" aria-roledescription="{}""#,
+        r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="classDiagram" style="max-width: {}px; background-color: white;" viewBox="{} {} {} {}" role="graphics-document document" aria-roledescription="{}""#,
         escape_xml(diagram_id),
+        max_w_attr,
+        fmt(vb_min_x),
+        fmt(vb_min_y),
+        fmt(vb_w.max(1.0)),
+        fmt(vb_h.max(1.0)),
         escape_attr(aria_roledescription)
     );
     if has_acc_title {

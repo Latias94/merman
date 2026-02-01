@@ -6,24 +6,24 @@
         {
           "id": "one",
           "x": 37.12,
-          "y": -20.0,
+          "y": -16.8,
           "width": 74.24,
-          "height": 32.0,
+          "height": 25.6,
           "is_cluster": false
         },
         {
           "id": "two",
           "x": 160.48,
-          "y": -20.0,
+          "y": -16.8,
           "width": 156.48,
-          "height": 32.0,
+          "height": 25.6,
           "is_cluster": false
         }
       ],
       "edges": [],
       "bounds": {
         "min_x": 0.0,
-        "min_y": -36.0,
+        "min_y": -29.6,
         "max_x": 238.72,
         "max_y": 0.0
       }
