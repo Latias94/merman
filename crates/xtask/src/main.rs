@@ -1992,6 +1992,15 @@ fn canon_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     Ok(())
 }
 
+fn svg_compare_layout_opts() -> merman_render::LayoutOptions {
+    merman_render::LayoutOptions {
+        text_measurer: std::sync::Arc::new(
+            merman_render::text::VendoredFontMetricsTextMeasurer::default(),
+        ),
+        ..Default::default()
+    }
+}
+
 fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut check_dom: bool = false;
     let mut dom_mode: Option<String> = None;
@@ -7330,7 +7339,7 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
         serde_json::json!({ "handDrawnSeed": 1 }),
     ));
-    let layout_opts = merman_render::LayoutOptions::default();
+    let layout_opts = svg_compare_layout_opts();
 
     let mut report = String::new();
     let _ = writeln!(&mut report, "# ER SVG Compare Report");
@@ -10101,7 +10110,7 @@ fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut report_root: bool = false;
     let mut dom_decimals: u32 = 3;
     let mut dom_mode: String = "parity".to_string();
-    let mut text_measurer: String = "deterministic".to_string();
+    let mut text_measurer: String = "vendored".to_string();
 
     let mut i = 0;
     while i < args.len() {
@@ -10927,7 +10936,7 @@ fn compare_info_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let layout_opts = merman_render::LayoutOptions::default();
+        let layout_opts = svg_compare_layout_opts();
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,
             Err(err) => {
@@ -11175,7 +11184,7 @@ fn compare_pie_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let layout_opts = merman_render::LayoutOptions::default();
+        let layout_opts = svg_compare_layout_opts();
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,
             Err(err) => {
@@ -11423,7 +11432,7 @@ fn compare_packet_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let layout_opts = merman_render::LayoutOptions::default();
+        let layout_opts = svg_compare_layout_opts();
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,
             Err(err) => {
@@ -11674,7 +11683,7 @@ fn compare_timeline_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let layout_opts = merman_render::LayoutOptions::default();
+        let layout_opts = svg_compare_layout_opts();
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,
             Err(err) => {
@@ -11924,7 +11933,7 @@ fn compare_journey_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let layout_opts = merman_render::LayoutOptions::default();
+        let layout_opts = svg_compare_layout_opts();
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,
             Err(err) => {
@@ -12132,7 +12141,7 @@ fn compare_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     })?;
 
     let engine = merman::Engine::new();
-    let layout_opts = merman_render::LayoutOptions::default();
+    let layout_opts = svg_compare_layout_opts();
 
     let mut report = String::new();
     let _ = writeln!(
@@ -12436,7 +12445,7 @@ fn compare_kanban_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let layout_opts = merman_render::LayoutOptions::default();
+        let layout_opts = svg_compare_layout_opts();
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,
             Err(err) => {
@@ -12687,7 +12696,7 @@ fn compare_gitgraph_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let layout_opts = merman_render::LayoutOptions::default();
+        let layout_opts = svg_compare_layout_opts();
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,
             Err(err) => {
@@ -12946,7 +12955,7 @@ fn compare_gantt_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let layout_opts = merman_render::LayoutOptions::default();
+        let layout_opts = svg_compare_layout_opts();
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,
             Err(err) => {
@@ -13326,7 +13335,7 @@ fn compare_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let layout_opts = merman_render::LayoutOptions::default();
+        let layout_opts = svg_compare_layout_opts();
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,
             Err(err) => {
@@ -13588,7 +13597,7 @@ fn compare_block_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let layout_opts = merman_render::LayoutOptions::default();
+        let layout_opts = svg_compare_layout_opts();
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,
             Err(err) => {
@@ -13854,7 +13863,7 @@ fn compare_radar_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let layout_opts = merman_render::LayoutOptions::default();
+        let layout_opts = svg_compare_layout_opts();
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,
             Err(err) => {
@@ -14122,7 +14131,7 @@ fn compare_treemap_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let layout_opts = merman_render::LayoutOptions::default();
+        let layout_opts = svg_compare_layout_opts();
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,
             Err(err) => {
@@ -14380,7 +14389,7 @@ fn compare_requirement_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
         let diagram_id: String = stem.to_string();
 
-        let layout_opts = merman_render::LayoutOptions::default();
+        let layout_opts = svg_compare_layout_opts();
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,
             Err(err) => {
@@ -14644,7 +14653,7 @@ fn compare_quadrantchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
         let diagram_id: String = stem.to_string();
 
-        let layout_opts = merman_render::LayoutOptions::default();
+        let layout_opts = svg_compare_layout_opts();
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,
             Err(err) => {
@@ -14914,7 +14923,7 @@ fn compare_xychart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let layout_opts = merman_render::LayoutOptions::default();
+        let layout_opts = svg_compare_layout_opts();
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,
             Err(err) => {
@@ -15188,7 +15197,7 @@ fn compare_mindmap_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let layout_opts = merman_render::LayoutOptions::default();
+        let layout_opts = svg_compare_layout_opts();
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,
             Err(err) => {
@@ -15462,7 +15471,7 @@ fn compare_sankey_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let layout_opts = merman_render::LayoutOptions::default();
+        let layout_opts = svg_compare_layout_opts();
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,
             Err(err) => {
@@ -15739,7 +15748,7 @@ fn compare_architecture_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let layout_opts = merman_render::LayoutOptions::default();
+        let layout_opts = svg_compare_layout_opts();
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,
             Err(err) => {
