@@ -439,11 +439,15 @@ fn prepare_graph(
         let dir = requested.unwrap_or_else(|| toggle_rank_dir(parent_dir));
         let nodesep = graph.graph().nodesep;
         let ranksep = graph.graph().ranksep + 25.0;
+        let marginx = graph.graph().marginx;
+        let marginy = graph.graph().marginy;
 
         let mut subgraph = extract_cluster_graph(&cluster_id, &mut graph)?;
         subgraph.graph_mut().rankdir = dir;
         subgraph.graph_mut().nodesep = nodesep;
         subgraph.graph_mut().ranksep = ranksep;
+        subgraph.graph_mut().marginx = marginx;
+        subgraph.graph_mut().marginy = marginy;
 
         let prepared = prepare_graph(subgraph, cluster_dir, depth + 1)?;
         extracted.insert(cluster_id, prepared);
@@ -904,6 +908,8 @@ pub fn layout_state_diagram_v2(
         rankdir: diagram_dir,
         nodesep,
         ranksep,
+        marginx: 8.0,
+        marginy: 8.0,
         // Mermaid state renderer explicitly selects the `tight-tree` ranker.
         ranker: Some("tight-tree".to_string()),
         ..Default::default()

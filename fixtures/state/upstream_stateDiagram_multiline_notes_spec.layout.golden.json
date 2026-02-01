@@ -5,24 +5,24 @@
       "nodes": [
         {
           "id": "State1",
-          "x": 68.4,
-          "y": 20.0,
+          "x": 76.4,
+          "y": 28.0,
           "width": 62.08,
           "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "State1----note-0",
-          "x": 68.4,
-          "y": 190.0,
+          "x": 76.4,
+          "y": 198.0,
           "width": 66.8,
           "height": 150.0,
           "is_cluster": false
         },
         {
           "id": "State1----parent",
-          "x": 68.4,
-          "y": 190.0,
+          "x": 76.4,
+          "y": 198.0,
           "width": 66.8,
           "height": 150.0,
           "is_cluster": true
@@ -37,20 +37,20 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 68.9,
-              "y": 40.5
+              "x": 76.9,
+              "y": 48.5
             },
             {
-              "x": 68.4,
-              "y": 65.0
+              "x": 76.4,
+              "y": 73.0
             },
             {
-              "x": 68.4,
-              "y": 90.0
+              "x": 76.4,
+              "y": 98.0
             },
             {
-              "x": 68.4,
-              "y": 190.0
+              "x": 76.4,
+              "y": 198.0
             }
           ],
           "label": null,
@@ -66,16 +66,16 @@
       "clusters": [
         {
           "id": "State1----parent",
-          "x": 68.4,
-          "y": 190.0,
+          "x": 76.4,
+          "y": 198.0,
           "width": 66.8,
           "height": 150.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "Line1<br>Line2<br/>Line3<br />Line4<br\t/>Line5",
           "title_label": {
-            "x": 68.4,
-            "y": 176.0,
+            "x": 76.4,
+            "y": 184.0,
             "width": 36.8,
             "height": 120.0
           },
@@ -87,10 +87,10 @@
         }
       ],
       "bounds": {
-        "min_x": 35.0,
-        "min_y": 0.0,
-        "max_x": 101.8,
-        "max_y": 265.0
+        "min_x": 43.0,
+        "min_y": 8.0,
+        "max_x": 109.8,
+        "max_y": 273.0
       }
     }
   }

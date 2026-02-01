@@ -5,8 +5,8 @@
       "nodes": [
         {
           "id": "state1",
-          "x": 81.04,
-          "y": 20.0,
+          "x": 89.04,
+          "y": 28.0,
           "width": 162.08,
           "height": 40.0,
           "is_cluster": false
@@ -15,10 +15,10 @@
       "edges": [],
       "clusters": [],
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 162.08,
-        "max_y": 40.0
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 170.08,
+        "max_y": 48.0
       }
     }
   }
