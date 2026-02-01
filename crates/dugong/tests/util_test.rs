@@ -386,18 +386,17 @@ fn util_build_layer_matrix_creates_a_matrix_based_on_rank_and_order_of_nodes_in_
 
 #[test]
 fn util_time_logs_timing_information() {
-    let mut buf = gag::BufferRedirect::stdout().unwrap();
-    util::time("foo", || {});
-    let mut output = String::new();
-    use std::io::Read;
-    buf.read_to_string(&mut output).unwrap();
+    let mut buf: Vec<u8> = Vec::new();
+    util::time_to_writer("foo", &mut buf, || {});
+    let output = String::from_utf8(buf).unwrap();
     assert!(output.starts_with("foo time: "));
     assert!(output.trim_end().ends_with("ms"));
 }
 
 #[test]
 fn util_time_returns_the_value_from_the_evaluated_function() {
-    let v = util::time("foo", || "bar");
+    let mut buf: Vec<u8> = Vec::new();
+    let v = util::time_to_writer("foo", &mut buf, || "bar");
     assert_eq!(v, "bar");
 }
 
