@@ -460,7 +460,9 @@ fn prepare_graph(
         }
         let parent_dir = graph.graph().rankdir;
         let requested = cluster_dir(&cluster_id).map(|d| rank_dir_from(&d));
-        let dir = requested.unwrap_or_else(|| toggle_rank_dir(parent_dir));
+        // Mermaid keeps nested state graphs in the same rank direction by default. Only apply
+        // a different direction when explicitly requested by the cluster itself.
+        let dir = requested.unwrap_or(parent_dir);
         let nodesep = graph.graph().nodesep;
         let ranksep = graph.graph().ranksep + 25.0;
         let marginx = graph.graph().marginx;
@@ -496,8 +498,6 @@ fn extract_cluster_graph(
 
     let mut descendants: Vec<String> = Vec::new();
     extract_descendants(graph, cluster_id, &mut descendants);
-    descendants.sort();
-    descendants.dedup();
 
     let moved_set: HashSet<String> = descendants.iter().cloned().collect();
 
@@ -845,8 +845,8 @@ pub fn layout_state_diagram_v2(
         ranksep,
         marginx: 8.0,
         marginy: 8.0,
-        // Mermaid state renderer explicitly selects the `tight-tree` ranker.
-        ranker: Some("tight-tree".to_string()),
+        // Mermaid `@11.12.2` dagre-wrapper renderer does not set `ranker`, so Dagre defaults to
+        // `network-simplex`.
         ..Default::default()
     });
 
