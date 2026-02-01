@@ -77,6 +77,7 @@ fn print_help(topic: Option<&str>) {
     println!("  compare-all-svgs");
     println!("  compare-svg-xml");
     println!("  canon-svg-xml");
+    println!("  debug-svg-bbox");
     println!();
     println!("Per-diagram SVG compare commands:");
     println!("  compare-er-svgs");
@@ -155,6 +156,7 @@ fn main() -> Result<(), XtaskError> {
         "debug-flowchart-svg-diff" => debug_flowchart_svg_diff(args.collect()),
         "debug-flowchart-data-points" => debug_flowchart_data_points(args.collect()),
         "debug-flowchart-edge-trace" => debug_flowchart_edge_trace(args.collect()),
+        "debug-svg-bbox" => debug_svg_bbox(args.collect()),
         "compare-sequence-svgs" => compare_sequence_svgs(args.collect()),
         "compare-class-svgs" => compare_class_svgs(args.collect()),
         "compare-state-svgs" => compare_state_svgs(args.collect()),
@@ -2185,6 +2187,79 @@ fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     } else {
         Err(XtaskError::SvgCompareFailed(failures.join("\n")))
     }
+}
+
+fn debug_svg_bbox(args: Vec<String>) -> Result<(), XtaskError> {
+    let mut svg_path: Option<PathBuf> = None;
+    let mut padding: f64 = 8.0;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--svg" => {
+                i += 1;
+                svg_path = args.get(i).map(PathBuf::from);
+            }
+            "--padding" => {
+                i += 1;
+                padding = args
+                    .get(i)
+                    .and_then(|s| s.parse::<f64>().ok())
+                    .unwrap_or(8.0);
+            }
+            "--help" | "-h" => return Err(XtaskError::Usage),
+            _ => return Err(XtaskError::Usage),
+        }
+        i += 1;
+    }
+
+    let svg_path = svg_path.ok_or(XtaskError::Usage)?;
+    let svg = fs::read_to_string(&svg_path).map_err(|source| XtaskError::ReadFile {
+        path: svg_path.display().to_string(),
+        source,
+    })?;
+
+    let dbg = merman_render::svg::debug_svg_emitted_bounds(&svg).ok_or_else(|| {
+        XtaskError::DebugSvgFailed(format!(
+            "failed to compute emitted bounds for {}",
+            svg_path.display()
+        ))
+    })?;
+
+    let b = dbg.bounds;
+    let vb_min_x = b.min_x - padding;
+    let vb_min_y = b.min_y - padding;
+    let vb_w = (b.max_x - b.min_x) + 2.0 * padding;
+    let vb_h = (b.max_y - b.min_y) + 2.0 * padding;
+
+    println!("svg: {}", svg_path.display());
+    println!(
+        "bounds: min=({:.6},{:.6}) max=({:.6},{:.6})",
+        b.min_x, b.min_y, b.max_x, b.max_y
+    );
+    println!(
+        "viewBox (padding={:.3}): {:.6} {:.6} {:.6} {:.6}",
+        padding, vb_min_x, vb_min_y, vb_w, vb_h
+    );
+    println!("style max-width: {:.6}px", vb_w);
+
+    fn print_contrib(label: &str, c: &Option<merman_render::svg::SvgEmittedBoundsContributor>) {
+        let Some(c) = c else {
+            println!("{label}: <none>");
+            return;
+        };
+        println!(
+            "{label}: <{} id={:?} class={:?}> bbox=({:.6},{:.6})-({:.6},{:.6})",
+            c.tag, c.id, c.class, c.bounds.min_x, c.bounds.min_y, c.bounds.max_x, c.bounds.max_y
+        );
+    }
+
+    print_contrib("min_x", &dbg.min_x);
+    print_contrib("min_y", &dbg.min_y);
+    print_contrib("max_x", &dbg.max_x);
+    print_contrib("max_y", &dbg.max_y);
+
+    Ok(())
 }
 
 fn gen_gantt_text_overrides(args: Vec<String>) -> Result<(), XtaskError> {

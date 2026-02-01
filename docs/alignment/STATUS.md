@@ -195,3 +195,4 @@ checks without losing the original Cypress strings.
   - ensures every fixture has a `.golden.json`
   - ensures coverage docs reference existing local paths
 - Full SVG parity sweep (aggregated): `cargo run -p xtask -- compare-all-svgs --check-dom --dom-decimals 3`
+- Debug viewport bounds for a single SVG: `cargo run -p xtask -- debug-svg-bbox --svg <path> --padding 8`
