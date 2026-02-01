@@ -13019,32 +13019,20 @@ pub fn render_state_diagram_v2_svg(
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
 
-    let bounds =
-        compute_layout_bounds(&layout.clusters, &layout.nodes, &layout.edges).unwrap_or(Bounds {
+    // Keep the render-time origin aligned with the layout engine so all emitted coordinates stay
+    // stable. The root viewport is computed separately from the emitted content bbox.
+    let layout_bounds = compute_layout_bounds(&layout.clusters, &layout.nodes, &layout.edges)
+        .unwrap_or(Bounds {
             min_x: 0.0,
             min_y: 0.0,
             max_x: 100.0,
             max_y: 100.0,
         });
-    // Mermaid state diagram (v2/v3 unified renderer) uses `setupViewPortForSVG(svg, padding=8, ...)`
-    // which:
-    // - measures the rendered `<svg>.getBBox()` (content bbox)
-    // - sets `viewBox = (bbox.x - 8, bbox.y - 8, bbox.width + 16, bbox.height + 16)`
-    // - sets `max-width: (bbox.width + 16)px` when `useMaxWidth=true`
-    //
-    // Our renderer doesn't have a browser DOM `getBBox()`, so we use the computed layout bounds,
-    // but we keep Mermaid's coordinate convention by shifting all rendered geometry by +8px
-    // (see `origin_x/origin_y` below).
-    let viewport_padding = 8.0;
-    let base_vb_min_x = bounds.min_x;
-    let base_vb_min_y = bounds.min_y;
-    let base_vb_w = (bounds.max_x - bounds.min_x + viewport_padding * 2.0).max(1.0);
-    let base_vb_h = (bounds.max_y - bounds.min_y + viewport_padding * 2.0).max(1.0);
 
-    let mut vb_min_x = base_vb_min_x;
-    let mut vb_min_y = base_vb_min_y;
-    let mut vb_w = base_vb_w;
-    let mut vb_h = base_vb_h;
+    // Mermaid uses `setupViewPortForSVG(svg, padding=8)`.
+    let viewport_padding = 8.0;
+    let origin_x = layout_bounds.min_x - viewport_padding;
+    let origin_y = layout_bounds.min_y - viewport_padding;
 
     let diagram_title = diagram_title
         .map(|s| s.trim())
@@ -13053,49 +13041,6 @@ pub fn render_state_diagram_v2_svg(
     let title_top_margin = config_f64(effective_config, &["state", "titleTopMargin"])
         .unwrap_or(25.0)
         .max(0.0);
-    let mut title_anchor: Option<(f64, f64)> = None;
-    if let Some(title) = diagram_title.as_deref() {
-        // Mermaid inserts the title based on the current content bbox center:
-        // `x = bounds.x + bounds.width/2`, `y = -titleTopMargin`.
-        let content_min_x = base_vb_min_x + viewport_padding;
-        let content_max_x = base_vb_min_x + base_vb_w - viewport_padding;
-        let content_min_y = base_vb_min_y + viewport_padding;
-        let content_max_y = base_vb_min_y + base_vb_h - viewport_padding;
-
-        let title_x = content_min_x + (content_max_x - content_min_x) / 2.0;
-        let title_y = -title_top_margin;
-        title_anchor = Some((title_x, title_y));
-
-        let mut title_style = crate::state::state_text_style(effective_config);
-        title_style.font_size = 18.0;
-        let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, &title_style);
-
-        // Mermaid uses SVG `getBBox()` which returns bbox y-extents relative to the baseline.
-        // Approximate that with a stable ascent/descent split.
-        let (ascent_em, descent_em) = if title_style
-            .font_family
-            .as_deref()
-            .unwrap_or_default()
-            .to_ascii_lowercase()
-            .contains("courier")
-        {
-            (0.8333333333333334, 0.25)
-        } else {
-            (0.9444444444, 0.262)
-        };
-        let ascent = 18.0 * ascent_em;
-        let descent = 18.0 * descent_em;
-
-        let bbox_min_x = content_min_x.min(title_x - title_left);
-        let bbox_max_x = content_max_x.max(title_x + title_right);
-        let bbox_min_y = content_min_y.min(title_y - ascent);
-        let bbox_max_y = content_max_y.max(title_y + descent);
-
-        vb_min_x = bbox_min_x - viewport_padding;
-        vb_min_y = bbox_min_y - viewport_padding;
-        vb_w = (bbox_max_x - bbox_min_x + viewport_padding * 2.0).max(1.0);
-        vb_h = (bbox_max_y - bbox_min_y + viewport_padding * 2.0).max(1.0);
-    }
 
     let has_acc_title = model
         .acc_title
@@ -13105,60 +13050,6 @@ pub fn render_state_diagram_v2_svg(
         .acc_descr
         .as_deref()
         .is_some_and(|s| !s.trim().is_empty());
-
-    let mut out = String::new();
-    let _ = write!(
-        &mut out,
-        r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="statediagram" style="max-width: {}px; background-color: white;" viewBox="{} {} {} {}" role="graphics-document document" aria-roledescription="stateDiagram""#,
-        escape_xml(diagram_id),
-        fmt(vb_w),
-        fmt(vb_min_x),
-        fmt(vb_min_y),
-        fmt(vb_w),
-        fmt(vb_h)
-    );
-    if has_acc_title {
-        let _ = write!(
-            &mut out,
-            r#" aria-labelledby="chart-title-{}""#,
-            escape_xml(diagram_id)
-        );
-    }
-    if has_acc_descr {
-        let _ = write!(
-            &mut out,
-            r#" aria-describedby="chart-desc-{}""#,
-            escape_xml(diagram_id)
-        );
-    }
-    out.push('>');
-
-    if has_acc_title {
-        let _ = write!(
-            &mut out,
-            r#"<title id="chart-title-{}">{}"#,
-            escape_xml(diagram_id),
-            escape_xml(model.acc_title.as_deref().unwrap_or_default())
-        );
-        out.push_str("</title>");
-    }
-    if has_acc_descr {
-        let _ = write!(
-            &mut out,
-            r#"<desc id="chart-desc-{}">{}"#,
-            escape_xml(diagram_id),
-            escape_xml(model.acc_descr.as_deref().unwrap_or_default())
-        );
-        out.push_str("</desc>");
-    }
-
-    // Mermaid emits a single `<style>` element with diagram-scoped CSS.
-    let css = state_css(diagram_id, &model, effective_config);
-    let _ = write!(&mut out, "<style>{}</style>", css);
-
-    // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
-    out.push_str("<g>");
-    state_markers(&mut out, diagram_id);
 
     let text_style = crate::state::state_text_style(effective_config);
 
@@ -13278,22 +13169,445 @@ pub fn render_state_diagram_v2_svg(
 
     ctx.nested_roots = compute_state_nested_roots(&ctx);
 
-    let origin_x = bounds.min_x - viewport_padding;
-    let origin_y = bounds.min_y - viewport_padding;
+    // Mermaid derives the final root viewport via `svg.getBBox()` (after rendering). We don't
+    // have a browser DOM, so approximate that by parsing the SVG we just emitted and unioning
+    // bboxes for the SVG elements we generate (`rect`/`path`/`circle`/`foreignObject`, etc).
+    const VIEWBOX_PLACEHOLDER: &str = "__MERMAID_VIEWBOX__";
+    const MAX_WIDTH_PLACEHOLDER: &str = "__MERMAID_MAX_WIDTH__";
+    const TITLE_PLACEHOLDER: &str = "__MERMAID_TITLE__";
+
+    let mut out = String::new();
+    let _ = write!(
+        &mut out,
+        r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="statediagram" style="max-width: {}px; background-color: white;" viewBox="{}" role="graphics-document document" aria-roledescription="stateDiagram""#,
+        escape_xml(diagram_id),
+        MAX_WIDTH_PLACEHOLDER,
+        VIEWBOX_PLACEHOLDER
+    );
+    if has_acc_title {
+        let _ = write!(
+            &mut out,
+            r#" aria-labelledby="chart-title-{}""#,
+            escape_xml(diagram_id)
+        );
+    }
+    if has_acc_descr {
+        let _ = write!(
+            &mut out,
+            r#" aria-describedby="chart-desc-{}""#,
+            escape_xml(diagram_id)
+        );
+    }
+    out.push('>');
+
+    if has_acc_title {
+        let _ = write!(
+            &mut out,
+            r#"<title id="chart-title-{}">{}"#,
+            escape_xml(diagram_id),
+            escape_xml(model.acc_title.as_deref().unwrap_or_default())
+        );
+        out.push_str("</title>");
+    }
+    if has_acc_descr {
+        let _ = write!(
+            &mut out,
+            r#"<desc id="chart-desc-{}">{}"#,
+            escape_xml(diagram_id),
+            escape_xml(model.acc_descr.as_deref().unwrap_or_default())
+        );
+        out.push_str("</desc>");
+    }
+
+    // Mermaid emits a single `<style>` element with diagram-scoped CSS.
+    let css = state_css(diagram_id, &model, effective_config);
+    let _ = write!(&mut out, "<style>{}</style>", css);
+
+    // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
+    out.push_str("<g>");
+    state_markers(&mut out, diagram_id);
+
     render_state_root(&mut out, &ctx, None, origin_x, origin_y);
 
     out.push_str("</g>");
-    if let (Some(title), Some((title_x, title_y))) = (diagram_title.as_deref(), title_anchor) {
-        let _ = write!(
-            &mut out,
+    let _ = write!(&mut out, "<!--{}-->", TITLE_PLACEHOLDER);
+    out.push_str("</svg>\n");
+
+    let mut content_bounds = svg_emitted_bounds_from_svg(&out).unwrap_or(Bounds {
+        min_x: 0.0,
+        min_y: 0.0,
+        max_x: 100.0,
+        max_y: 100.0,
+    });
+
+    let mut title_svg = String::new();
+    if let Some(title) = diagram_title.as_deref() {
+        // Mermaid centers the title using the pre-title content bbox:
+        // `x = bbox.x + bbox.width/2`, `y = -titleTopMargin`.
+        let title_x = (content_bounds.min_x + content_bounds.max_x) / 2.0;
+        let title_y = -title_top_margin;
+
+        let mut title_style = crate::state::state_text_style(effective_config);
+        title_style.font_size = 18.0;
+        let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, &title_style);
+
+        // Mermaid uses SVG `getBBox()` which returns bbox y-extents relative to the baseline.
+        // Approximate that with a stable ascent/descent split.
+        let (ascent_em, descent_em) = if title_style
+            .font_family
+            .as_deref()
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .contains("courier")
+        {
+            (0.8333333333333334, 0.25)
+        } else {
+            (0.9444444444, 0.262)
+        };
+        let ascent = 18.0 * ascent_em;
+        let descent = 18.0 * descent_em;
+
+        content_bounds.min_x = content_bounds.min_x.min(title_x - title_left);
+        content_bounds.max_x = content_bounds.max_x.max(title_x + title_right);
+        content_bounds.min_y = content_bounds.min_y.min(title_y - ascent);
+        content_bounds.max_y = content_bounds.max_y.max(title_y + descent);
+
+        title_svg = format!(
             r#"<text text-anchor="middle" x="{}" y="{}" class="statediagramTitleText">{}</text>"#,
             fmt(title_x),
             fmt(title_y),
             escape_xml(title)
         );
     }
-    out.push_str("</svg>\n");
+
+    let vb_min_x = content_bounds.min_x - viewport_padding;
+    let vb_min_y = content_bounds.min_y - viewport_padding;
+    let vb_w = ((content_bounds.max_x - content_bounds.min_x) + 2.0 * viewport_padding).max(1.0);
+    let vb_h = ((content_bounds.max_y - content_bounds.min_y) + 2.0 * viewport_padding).max(1.0);
+
+    let max_w_attr = fmt_max_width_px(vb_w.max(1.0));
+    let view_box_attr = format!(
+        "{} {} {} {}",
+        fmt(vb_min_x),
+        fmt(vb_min_y),
+        fmt(vb_w),
+        fmt(vb_h)
+    );
+
+    out = out.replacen(MAX_WIDTH_PLACEHOLDER, &max_w_attr, 1);
+    out = out.replacen(VIEWBOX_PLACEHOLDER, &view_box_attr, 1);
+    out = out.replacen(&format!("<!--{}-->", TITLE_PLACEHOLDER), &title_svg, 1);
+
     Ok(out)
+}
+
+fn svg_emitted_bounds_from_svg(svg: &str) -> Option<Bounds> {
+    fn parse_f64(raw: &str) -> Option<f64> {
+        let s = raw.trim().trim_end_matches("px").trim();
+        s.parse::<f64>().ok()
+    }
+
+    fn attr_value<'a>(attrs: &'a str, key: &str) -> Option<&'a str> {
+        // Assumes our generated SVG uses `key="value"` quoting.
+        let needle = format!(r#"{key}=""#);
+        let start = attrs.find(&needle)? + needle.len();
+        let rest = &attrs[start..];
+        let end = rest.find('"')?;
+        Some(&rest[..end])
+    }
+
+    fn parse_translate(transform: &str) -> Option<(f64, f64)> {
+        let t = transform.trim();
+        let start = t.find("translate(")? + "translate(".len();
+        let rest = &t[start..];
+        let end = rest.find(')')?;
+        let inner = &rest[..end];
+        let inner = inner.replace(',', " ");
+        let mut parts = inner.split_whitespace();
+        let x = parse_f64(parts.next()?)?;
+        let y = parts.next().and_then(parse_f64).unwrap_or(0.0);
+        Some((x, y))
+    }
+
+    fn include_rect(bounds: &mut Option<Bounds>, min_x: f64, min_y: f64, max_x: f64, max_y: f64) {
+        // Chromium's `getBBox()` does not seem to expand the effective bbox for empty/degenerate
+        // placeholder geometry (e.g. Mermaid's `<rect/>` stubs under label groups). Ignore
+        // point-like boxes to avoid skewing the root viewport.
+        if (max_x - min_x).abs() < 1e-9 && (max_y - min_y).abs() < 1e-9 {
+            return;
+        }
+        if let Some(cur) = bounds.as_mut() {
+            cur.min_x = cur.min_x.min(min_x);
+            cur.min_y = cur.min_y.min(min_y);
+            cur.max_x = cur.max_x.max(max_x);
+            cur.max_y = cur.max_y.max(max_y);
+        } else {
+            *bounds = Some(Bounds {
+                min_x,
+                min_y,
+                max_x,
+                max_y,
+            });
+        }
+    }
+
+    fn include_xywh(bounds: &mut Option<Bounds>, x: f64, y: f64, w: f64, h: f64) {
+        include_rect(bounds, x, y, x + w, y + h);
+    }
+
+    fn include_path_d(bounds: &mut Option<Bounds>, d: &str, dx: f64, dy: f64) {
+        if let Some(pb) = svg_path_bounds_from_d(d) {
+            include_rect(
+                bounds,
+                pb.min_x + dx,
+                pb.min_y + dy,
+                pb.max_x + dx,
+                pb.max_y + dy,
+            );
+        }
+    }
+
+    fn include_points(bounds: &mut Option<Bounds>, points: &str, dx: f64, dy: f64) {
+        let mut min_x = f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+        let mut have = false;
+
+        let buf = points.replace(',', " ");
+        let mut nums = buf.split_whitespace().filter_map(parse_f64);
+        loop {
+            let Some(x) = nums.next() else { break };
+            let Some(y) = nums.next() else { break };
+            have = true;
+            min_x = min_x.min(x);
+            min_y = min_y.min(y);
+            max_x = max_x.max(x);
+            max_y = max_y.max(y);
+        }
+        if have {
+            include_rect(bounds, min_x + dx, min_y + dy, max_x + dx, max_y + dy);
+        }
+    }
+
+    let mut bounds: Option<Bounds> = None;
+    let mut in_defs = false;
+    let mut translate_stack: Vec<(f64, f64)> = Vec::new();
+    let (mut cur_tx, mut cur_ty) = (0.0f64, 0.0f64);
+
+    let mut i = 0usize;
+    while i < svg.len() {
+        let Some(rel) = svg[i..].find('<') else {
+            break;
+        };
+        i += rel;
+
+        // Comments.
+        if svg[i..].starts_with("<!--") {
+            if let Some(end_rel) = svg[i + 4..].find("-->") {
+                i = i + 4 + end_rel + 3;
+                continue;
+            }
+            break;
+        }
+
+        // Processing instructions.
+        if svg[i..].starts_with("<?") {
+            if let Some(end_rel) = svg[i + 2..].find("?>") {
+                i = i + 2 + end_rel + 2;
+                continue;
+            }
+            break;
+        }
+
+        let close = svg[i..].starts_with("</");
+        let tag_start = if close { i + 2 } else { i + 1 };
+        let Some(tag_end_rel) =
+            svg[tag_start..].find(|c: char| c == '>' || c.is_whitespace() || c == '/')
+        else {
+            break;
+        };
+        let tag = &svg[tag_start..tag_start + tag_end_rel];
+
+        // Find end of tag.
+        let Some(gt_rel) = svg[tag_start + tag_end_rel..].find('>') else {
+            break;
+        };
+        let gt = tag_start + tag_end_rel + gt_rel;
+        let raw = &svg[i..=gt];
+        let self_closing = raw.ends_with("/>");
+
+        if close {
+            match tag {
+                "defs" => in_defs = false,
+                "g" => {
+                    if let Some((ptx, pty)) = translate_stack.pop() {
+                        cur_tx = ptx;
+                        cur_ty = pty;
+                    } else {
+                        cur_tx = 0.0;
+                        cur_ty = 0.0;
+                    }
+                }
+                _ => {}
+            }
+            i = gt + 1;
+            continue;
+        }
+
+        // Attributes substring (excluding `<tag` and trailing `>`/`/>`).
+        let attrs_start = tag_start + tag_end_rel;
+        let attrs_end = if self_closing {
+            gt.saturating_sub(1)
+        } else {
+            gt
+        };
+        let attrs = if attrs_start < attrs_end {
+            &svg[attrs_start..attrs_end]
+        } else {
+            ""
+        };
+
+        if tag == "defs" {
+            in_defs = true;
+        }
+
+        let (mut el_tx, mut el_ty) = (0.0f64, 0.0f64);
+        if let Some(t) = attr_value(attrs, "transform") {
+            if let Some((x, y)) = parse_translate(t) {
+                el_tx = x;
+                el_ty = y;
+            }
+        }
+        let eff_tx = cur_tx + el_tx;
+        let eff_ty = cur_ty + el_ty;
+
+        if tag == "g" {
+            translate_stack.push((cur_tx, cur_ty));
+            cur_tx = eff_tx;
+            cur_ty = eff_ty;
+            if self_closing {
+                // Balance a self-closing group.
+                if let Some((ptx, pty)) = translate_stack.pop() {
+                    cur_tx = ptx;
+                    cur_ty = pty;
+                } else {
+                    cur_tx = 0.0;
+                    cur_ty = 0.0;
+                }
+            }
+            i = gt + 1;
+            continue;
+        }
+
+        if !in_defs {
+            match tag {
+                "rect" => {
+                    let x = attr_value(attrs, "x").and_then(parse_f64).unwrap_or(0.0) + eff_tx;
+                    let y = attr_value(attrs, "y").and_then(parse_f64).unwrap_or(0.0) + eff_ty;
+                    let w = attr_value(attrs, "width")
+                        .and_then(parse_f64)
+                        .unwrap_or(0.0);
+                    let h = attr_value(attrs, "height")
+                        .and_then(parse_f64)
+                        .unwrap_or(0.0);
+                    include_xywh(&mut bounds, x, y, w, h);
+                }
+                "circle" => {
+                    let cx = attr_value(attrs, "cx").and_then(parse_f64).unwrap_or(0.0) + eff_tx;
+                    let cy = attr_value(attrs, "cy").and_then(parse_f64).unwrap_or(0.0) + eff_ty;
+                    let r = attr_value(attrs, "r").and_then(parse_f64).unwrap_or(0.0);
+                    include_rect(&mut bounds, cx - r, cy - r, cx + r, cy + r);
+                }
+                "ellipse" => {
+                    let cx = attr_value(attrs, "cx").and_then(parse_f64).unwrap_or(0.0) + eff_tx;
+                    let cy = attr_value(attrs, "cy").and_then(parse_f64).unwrap_or(0.0) + eff_ty;
+                    let rx = attr_value(attrs, "rx").and_then(parse_f64).unwrap_or(0.0);
+                    let ry = attr_value(attrs, "ry").and_then(parse_f64).unwrap_or(0.0);
+                    include_rect(&mut bounds, cx - rx, cy - ry, cx + rx, cy + ry);
+                }
+                "line" => {
+                    let x1 = attr_value(attrs, "x1").and_then(parse_f64).unwrap_or(0.0) + eff_tx;
+                    let y1 = attr_value(attrs, "y1").and_then(parse_f64).unwrap_or(0.0) + eff_ty;
+                    let x2 = attr_value(attrs, "x2").and_then(parse_f64).unwrap_or(0.0) + eff_tx;
+                    let y2 = attr_value(attrs, "y2").and_then(parse_f64).unwrap_or(0.0) + eff_ty;
+                    include_rect(&mut bounds, x1.min(x2), y1.min(y2), x1.max(x2), y1.max(y2));
+                }
+                "path" => {
+                    if let Some(d) = attr_value(attrs, "d") {
+                        include_path_d(&mut bounds, d, eff_tx, eff_ty);
+                    }
+                }
+                "polygon" | "polyline" => {
+                    if let Some(pts) = attr_value(attrs, "points") {
+                        include_points(&mut bounds, pts, eff_tx, eff_ty);
+                    }
+                }
+                "foreignObject" => {
+                    let x = attr_value(attrs, "x").and_then(parse_f64).unwrap_or(0.0) + eff_tx;
+                    let y = attr_value(attrs, "y").and_then(parse_f64).unwrap_or(0.0) + eff_ty;
+                    let w = attr_value(attrs, "width")
+                        .and_then(parse_f64)
+                        .unwrap_or(0.0);
+                    let h = attr_value(attrs, "height")
+                        .and_then(parse_f64)
+                        .unwrap_or(0.0);
+                    include_xywh(&mut bounds, x, y, w, h);
+                }
+                _ => {}
+            }
+        }
+
+        i = gt + 1;
+    }
+
+    bounds
+}
+
+#[cfg(test)]
+mod svg_bbox_tests {
+    use super::*;
+
+    fn parse_root_viewbox(svg: &str) -> Option<(f64, f64, f64, f64)> {
+        let start = svg.find("viewBox=\"")? + "viewBox=\"".len();
+        let rest = &svg[start..];
+        let end = rest.find('"')?;
+        let raw = &rest[..end];
+        let nums: Vec<f64> = raw
+            .split_whitespace()
+            .filter_map(|v| v.parse::<f64>().ok())
+            .collect();
+        if nums.len() != 4 {
+            return None;
+        }
+        Some((nums[0], nums[1], nums[2], nums[3]))
+    }
+
+    #[test]
+    fn svg_bbox_matches_upstream_state_concurrent_viewbox() {
+        let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
+            "../../fixtures/upstream-svgs/state/upstream_stateDiagram_concurrent_state_spec.svg",
+        );
+        let svg = std::fs::read_to_string(p).expect("read upstream state svg");
+
+        let (vb_x, vb_y, vb_w, vb_h) = parse_root_viewbox(&svg).expect("parse viewBox");
+        let b = svg_emitted_bounds_from_svg(&svg).expect("bbox");
+
+        let pad = 8.0;
+        let got_x = b.min_x - pad;
+        let got_y = b.min_y - pad;
+        let got_w = (b.max_x - b.min_x) + 2.0 * pad;
+        let got_h = (b.max_y - b.min_y) + 2.0 * pad;
+
+        fn close(a: f64, b: f64) -> bool {
+            (a - b).abs() <= 1e-6
+        }
+
+        assert!(close(got_x, vb_x), "viewBox x: got {got_x}, want {vb_x}");
+        assert!(close(got_y, vb_y), "viewBox y: got {got_y}, want {vb_y}");
+        assert!(close(got_w, vb_w), "viewBox w: got {got_w}, want {vb_w}");
+        assert!(close(got_h, vb_h), "viewBox h: got {got_h}, want {vb_h}");
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -14460,6 +14774,236 @@ fn render_state_cluster(
     );
 }
 
+#[derive(Debug, Clone, Copy)]
+struct StateEdgeBoundaryNode {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+fn state_edge_dedup_consecutive_points(
+    input: &[crate::model::LayoutPoint],
+) -> Vec<crate::model::LayoutPoint> {
+    if input.len() <= 1 {
+        return input.to_vec();
+    }
+    const EPS: f64 = 1e-9;
+    let mut out: Vec<crate::model::LayoutPoint> = Vec::with_capacity(input.len());
+    for p in input {
+        if out
+            .last()
+            .is_some_and(|prev| (prev.x - p.x).abs() <= EPS && (prev.y - p.y).abs() <= EPS)
+        {
+            continue;
+        }
+        out.push(p.clone());
+    }
+    out
+}
+
+fn state_edge_outside_node(
+    node: &StateEdgeBoundaryNode,
+    point: &crate::model::LayoutPoint,
+) -> bool {
+    let dx = (point.x - node.x).abs();
+    let dy = (point.y - node.y).abs();
+    let w = node.width / 2.0;
+    let h = node.height / 2.0;
+    dx >= w || dy >= h
+}
+
+fn state_edge_rect_intersection(
+    node: &StateEdgeBoundaryNode,
+    inside_point: &crate::model::LayoutPoint,
+    outside_point: &crate::model::LayoutPoint,
+) -> crate::model::LayoutPoint {
+    let x = node.x;
+    let y = node.y;
+    let w = node.width / 2.0;
+    let h = node.height / 2.0;
+
+    let q_abs = (outside_point.y - inside_point.y).abs();
+    let r_abs = (outside_point.x - inside_point.x).abs();
+
+    if (y - outside_point.y).abs() * w > (x - outside_point.x).abs() * h {
+        let q = if inside_point.y < outside_point.y {
+            outside_point.y - h - y
+        } else {
+            y - h - outside_point.y
+        };
+        let r = if q_abs == 0.0 {
+            0.0
+        } else {
+            (r_abs * q) / q_abs
+        };
+        let mut res = crate::model::LayoutPoint {
+            x: if inside_point.x < outside_point.x {
+                inside_point.x + r
+            } else {
+                inside_point.x - r_abs + r
+            },
+            y: if inside_point.y < outside_point.y {
+                inside_point.y + q_abs - q
+            } else {
+                inside_point.y - q_abs + q
+            },
+        };
+
+        if r.abs() <= 1e-9 {
+            res.x = outside_point.x;
+            res.y = outside_point.y;
+        }
+        if r_abs == 0.0 {
+            res.x = outside_point.x;
+        }
+        if q_abs == 0.0 {
+            res.y = outside_point.y;
+        }
+        return res;
+    }
+
+    let r = if inside_point.x < outside_point.x {
+        outside_point.x - w - x
+    } else {
+        x - w - outside_point.x
+    };
+    let q = if r_abs == 0.0 {
+        0.0
+    } else {
+        (q_abs * r) / r_abs
+    };
+    let mut ix = if inside_point.x < outside_point.x {
+        inside_point.x + r_abs - r
+    } else {
+        inside_point.x - r_abs + r
+    };
+    let mut iy = if inside_point.y < outside_point.y {
+        inside_point.y + q
+    } else {
+        inside_point.y - q
+    };
+
+    if r.abs() <= 1e-9 {
+        ix = outside_point.x;
+        iy = outside_point.y;
+    }
+    if r_abs == 0.0 {
+        ix = outside_point.x;
+    }
+    if q_abs == 0.0 {
+        iy = outside_point.y;
+    }
+
+    crate::model::LayoutPoint { x: ix, y: iy }
+}
+
+fn state_edge_cut_path_at_intersect(
+    input: &[crate::model::LayoutPoint],
+    boundary: &StateEdgeBoundaryNode,
+) -> Vec<crate::model::LayoutPoint> {
+    if input.is_empty() {
+        return Vec::new();
+    }
+    let mut out: Vec<crate::model::LayoutPoint> = Vec::new();
+    let mut last_point_outside = input[0].clone();
+    let mut is_inside = false;
+    const EPS: f64 = 1e-9;
+
+    for point in input {
+        if !state_edge_outside_node(boundary, point) && !is_inside {
+            let inter = state_edge_rect_intersection(boundary, &last_point_outside, point);
+            if !out
+                .iter()
+                .any(|p| (p.x - inter.x).abs() <= EPS && (p.y - inter.y).abs() <= EPS)
+            {
+                out.push(inter);
+            }
+            is_inside = true;
+        } else {
+            last_point_outside = point.clone();
+            if !is_inside {
+                out.push(point.clone());
+            }
+        }
+    }
+    out
+}
+
+fn state_edge_boundary_for_cluster(
+    ctx: &StateRenderCtx<'_>,
+    cluster_id: &str,
+    ox: f64,
+    oy: f64,
+) -> Option<StateEdgeBoundaryNode> {
+    let n = ctx.layout_clusters_by_id.get(cluster_id).copied()?;
+    Some(StateEdgeBoundaryNode {
+        x: n.x - ox,
+        y: n.y - oy,
+        width: n.width,
+        height: n.height,
+    })
+}
+
+fn state_edge_encode_path(
+    ctx: &StateRenderCtx<'_>,
+    le: &crate::model::LayoutEdge,
+    edge_id: &str,
+    origin_x: f64,
+    origin_y: f64,
+) -> (String, String) {
+    let mut local_points: Vec<crate::model::LayoutPoint> = Vec::new();
+    for p in &le.points {
+        local_points.push(crate::model::LayoutPoint {
+            x: p.x - origin_x,
+            y: p.y - origin_y,
+        });
+    }
+
+    let mut points_for_curve = local_points.clone();
+    let is_cyclic_special = edge_id.contains("-cyclic-special-");
+    if is_cyclic_special {
+        points_for_curve = state_edge_dedup_consecutive_points(&points_for_curve);
+        if let Some(tc) = le.to_cluster.as_deref() {
+            if let Some(boundary) = state_edge_boundary_for_cluster(ctx, tc, origin_x, origin_y) {
+                points_for_curve = state_edge_cut_path_at_intersect(&points_for_curve, &boundary);
+            }
+        }
+        if let Some(fc) = le.from_cluster.as_deref() {
+            if let Some(boundary) = state_edge_boundary_for_cluster(ctx, fc, origin_x, origin_y) {
+                let mut rev = points_for_curve.clone();
+                rev.reverse();
+                rev = state_edge_cut_path_at_intersect(&rev, &boundary);
+                rev.reverse();
+                points_for_curve = rev;
+            }
+        }
+
+        if edge_id.contains("-cyclic-special-mid") && points_for_curve.len() > 3 {
+            points_for_curve = vec![
+                points_for_curve[0].clone(),
+                points_for_curve[points_for_curve.len() / 2].clone(),
+                points_for_curve[points_for_curve.len() - 1].clone(),
+            ];
+        }
+        if points_for_curve.len() == 4 {
+            // Mermaid's cyclic-special helper edges frequently collapse the 4-point basis
+            // case into the 3-point command sequence (`C` count = 2).
+            points_for_curve.remove(1);
+        }
+        if edge_id.ends_with("-cyclic-special-2") && points_for_curve.len() == 6 {
+            // Some cyclic-special-2 helper edges are routed with 6 points but Mermaid's path
+            // command sequence matches the 5-point `curveBasis` case (`C` count = 4).
+            points_for_curve.remove(1);
+        }
+    }
+
+    let data_points = base64::engine::general_purpose::STANDARD
+        .encode(serde_json::to_vec(&local_points).unwrap_or_default());
+    let d = curve_basis_path_d(&points_for_curve);
+    (d, data_points)
+}
+
 fn render_state_edge_path(
     out: &mut String,
     ctx: &StateRenderCtx<'_>,
@@ -14467,233 +15011,6 @@ fn render_state_edge_path(
     origin_x: f64,
     origin_y: f64,
 ) {
-    #[derive(Debug, Clone, Copy)]
-    struct BoundaryNode {
-        x: f64,
-        y: f64,
-        width: f64,
-        height: f64,
-    }
-
-    fn dedup_consecutive_points(
-        input: &[crate::model::LayoutPoint],
-    ) -> Vec<crate::model::LayoutPoint> {
-        if input.len() <= 1 {
-            return input.to_vec();
-        }
-        const EPS: f64 = 1e-9;
-        let mut out: Vec<crate::model::LayoutPoint> = Vec::with_capacity(input.len());
-        for p in input {
-            if out
-                .last()
-                .is_some_and(|prev| (prev.x - p.x).abs() <= EPS && (prev.y - p.y).abs() <= EPS)
-            {
-                continue;
-            }
-            out.push(p.clone());
-        }
-        out
-    }
-
-    fn outside_node(node: &BoundaryNode, point: &crate::model::LayoutPoint) -> bool {
-        let dx = (point.x - node.x).abs();
-        let dy = (point.y - node.y).abs();
-        let w = node.width / 2.0;
-        let h = node.height / 2.0;
-        dx >= w || dy >= h
-    }
-
-    fn rect_intersection(
-        node: &BoundaryNode,
-        inside_point: &crate::model::LayoutPoint,
-        outside_point: &crate::model::LayoutPoint,
-    ) -> crate::model::LayoutPoint {
-        let x = node.x;
-        let y = node.y;
-        let w = node.width / 2.0;
-        let h = node.height / 2.0;
-
-        let q_abs = (outside_point.y - inside_point.y).abs();
-        let r_abs = (outside_point.x - inside_point.x).abs();
-
-        if (y - outside_point.y).abs() * w > (x - outside_point.x).abs() * h {
-            let q = if inside_point.y < outside_point.y {
-                outside_point.y - h - y
-            } else {
-                y - h - outside_point.y
-            };
-            let r = if q_abs == 0.0 {
-                0.0
-            } else {
-                (r_abs * q) / q_abs
-            };
-            let mut res = crate::model::LayoutPoint {
-                x: if inside_point.x < outside_point.x {
-                    inside_point.x + r
-                } else {
-                    inside_point.x - r_abs + r
-                },
-                y: if inside_point.y < outside_point.y {
-                    inside_point.y + q_abs - q
-                } else {
-                    inside_point.y - q_abs + q
-                },
-            };
-
-            if r.abs() <= 1e-9 {
-                res.x = outside_point.x;
-                res.y = outside_point.y;
-            }
-            if r_abs == 0.0 {
-                res.x = outside_point.x;
-            }
-            if q_abs == 0.0 {
-                res.y = outside_point.y;
-            }
-            return res;
-        }
-
-        let r = if inside_point.x < outside_point.x {
-            outside_point.x - w - x
-        } else {
-            x - w - outside_point.x
-        };
-        let q = if r_abs == 0.0 {
-            0.0
-        } else {
-            (q_abs * r) / r_abs
-        };
-        let mut ix = if inside_point.x < outside_point.x {
-            inside_point.x + r_abs - r
-        } else {
-            inside_point.x - r_abs + r
-        };
-        let mut iy = if inside_point.y < outside_point.y {
-            inside_point.y + q
-        } else {
-            inside_point.y - q
-        };
-
-        if r.abs() <= 1e-9 {
-            ix = outside_point.x;
-            iy = outside_point.y;
-        }
-        if r_abs == 0.0 {
-            ix = outside_point.x;
-        }
-        if q_abs == 0.0 {
-            iy = outside_point.y;
-        }
-
-        crate::model::LayoutPoint { x: ix, y: iy }
-    }
-
-    fn cut_path_at_intersect(
-        input: &[crate::model::LayoutPoint],
-        boundary: &BoundaryNode,
-    ) -> Vec<crate::model::LayoutPoint> {
-        if input.is_empty() {
-            return Vec::new();
-        }
-        let mut out: Vec<crate::model::LayoutPoint> = Vec::new();
-        let mut last_point_outside = input[0].clone();
-        let mut is_inside = false;
-        const EPS: f64 = 1e-9;
-
-        for point in input {
-            if !outside_node(boundary, point) && !is_inside {
-                let inter = rect_intersection(boundary, &last_point_outside, point);
-                if !out
-                    .iter()
-                    .any(|p| (p.x - inter.x).abs() <= EPS && (p.y - inter.y).abs() <= EPS)
-                {
-                    out.push(inter);
-                }
-                is_inside = true;
-            } else {
-                last_point_outside = point.clone();
-                if !is_inside {
-                    out.push(point.clone());
-                }
-            }
-        }
-        out
-    }
-
-    fn boundary_for_cluster(
-        ctx: &StateRenderCtx<'_>,
-        cluster_id: &str,
-        ox: f64,
-        oy: f64,
-    ) -> Option<BoundaryNode> {
-        let n = ctx.layout_clusters_by_id.get(cluster_id).copied()?;
-        Some(BoundaryNode {
-            x: n.x - ox,
-            y: n.y - oy,
-            width: n.width,
-            height: n.height,
-        })
-    }
-
-    fn encode_path(
-        ctx: &StateRenderCtx<'_>,
-        le: &crate::model::LayoutEdge,
-        edge_id: &str,
-        origin_x: f64,
-        origin_y: f64,
-    ) -> (String, String) {
-        let mut local_points: Vec<crate::model::LayoutPoint> = Vec::new();
-        for p in &le.points {
-            local_points.push(crate::model::LayoutPoint {
-                x: p.x - origin_x,
-                y: p.y - origin_y,
-            });
-        }
-
-        let mut points_for_curve = local_points.clone();
-        let is_cyclic_special = edge_id.contains("-cyclic-special-");
-        if is_cyclic_special {
-            points_for_curve = dedup_consecutive_points(&points_for_curve);
-            if let Some(tc) = le.to_cluster.as_deref() {
-                if let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y) {
-                    points_for_curve = cut_path_at_intersect(&points_for_curve, &boundary);
-                }
-            }
-            if let Some(fc) = le.from_cluster.as_deref() {
-                if let Some(boundary) = boundary_for_cluster(ctx, fc, origin_x, origin_y) {
-                    let mut rev = points_for_curve.clone();
-                    rev.reverse();
-                    rev = cut_path_at_intersect(&rev, &boundary);
-                    rev.reverse();
-                    points_for_curve = rev;
-                }
-            }
-
-            if edge_id.contains("-cyclic-special-mid") && points_for_curve.len() > 3 {
-                points_for_curve = vec![
-                    points_for_curve[0].clone(),
-                    points_for_curve[points_for_curve.len() / 2].clone(),
-                    points_for_curve[points_for_curve.len() - 1].clone(),
-                ];
-            }
-            if points_for_curve.len() == 4 {
-                // Mermaid's cyclic-special helper edges frequently collapse the 4-point basis
-                // case into the 3-point command sequence (`C` count = 2).
-                points_for_curve.remove(1);
-            }
-            if edge_id.ends_with("-cyclic-special-2") && points_for_curve.len() == 6 {
-                // Some cyclic-special-2 helper edges are routed with 6 points but Mermaid's path
-                // command sequence matches the 5-point `curveBasis` case (`C` count = 4).
-                points_for_curve.remove(1);
-            }
-        }
-
-        let data_points = base64::engine::general_purpose::STANDARD
-            .encode(serde_json::to_vec(&local_points).unwrap_or_default());
-        let d = curve_basis_path_d(&points_for_curve);
-        (d, data_points)
-    }
-
     let mut classes = "edge-thickness-normal edge-pattern-solid".to_string();
     for c in edge.classes.split_whitespace() {
         if c.trim().is_empty() {
@@ -14723,7 +15040,7 @@ fn render_state_edge_path(
             if le.points.len() < 2 {
                 continue;
             }
-            let (d, data_points) = encode_path(ctx, le, sid, origin_x, origin_y);
+            let (d, data_points) = state_edge_encode_path(ctx, le, sid, origin_x, origin_y);
             let _ = write!(
                 out,
                 r#"<path d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
@@ -14748,7 +15065,7 @@ fn render_state_edge_path(
         return;
     }
 
-    let (d, data_points) = encode_path(ctx, le, edge.id.as_str(), origin_x, origin_y);
+    let (d, data_points) = state_edge_encode_path(ctx, le, edge.id.as_str(), origin_x, origin_y);
 
     let _ = write!(
         out,

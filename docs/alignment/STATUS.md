@@ -60,20 +60,23 @@ the dashed separators now use the exact same x-coordinates as the frame edges to
 avoid sub-pixel gaps at the frame border.
 As of 2026-02-01, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
 for the current fixture set (diagram subtree parity).
-As of 2026-02-01, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 116 DOM
-mismatches out of 475 upstream SVG baselines (75.6% passing). Current parity-root mismatches are concentrated in
+As of 2026-02-01, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 113 DOM
+mismatches out of 475 upstream SVG baselines (76.2% passing). Current parity-root mismatches are concentrated in
 7 diagrams:
 
 - Architecture: 20
-- C4: 10
 - Class: 14
 - GitGraph: 14
 - Mindmap: 11
 - Pie: 11
-- State: 36
+- C4: 10
+- State: 33
 
 Most parity-root deltas are root `<svg>` viewport attributes (`style` max-width / `viewBox`) and are therefore
 sensitive to upstream sizing policy, layout extents (including edge labels/groups), and floating-point rounding.
+Recent progress (2026-02-01): state diagram Stage B now derives root `viewBox`/`max-width` by parsing the emitted
+SVG and approximating `svg.getBBox()` (ignoring degenerate placeholder boxes), fixing large viewport blow-ups (e.g.
+floating notes fixtures) and reducing parity-root state mismatches.
 Recent progress: architecture Stage B now computes root `viewBox`/`max-width` from emitted element bounds and honors
 `architecture.padding`/`iconSize`/`fontSize`, fixing previously clipped non-empty Architecture SVG outputs. Root parity
 still depends on matching upstream Cytoscape/FCoSE layout behavior.
