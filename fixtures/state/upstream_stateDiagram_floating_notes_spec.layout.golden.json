@@ -23,8 +23,8 @@
           "id": "N1----parent",
           "x": 130.48,
           "y": 150.0,
-          "width": 174.96,
-          "height": 54.0,
+          "width": 244.96,
+          "height": 104.0,
           "is_cluster": true
         },
         {
@@ -47,8 +47,8 @@
           "id": "N2----parent",
           "x": 395.44,
           "y": 150.0,
-          "width": 174.96,
-          "height": 54.0,
+          "width": 244.96,
+          "height": 104.0,
           "is_cluster": true
         },
         {
@@ -133,14 +133,14 @@
           "id": "N1----parent",
           "x": 130.48,
           "y": 150.0,
-          "width": 174.96,
-          "height": 54.0,
+          "width": 244.96,
+          "height": 104.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "This is a floating note",
           "title_label": {
             "x": 130.48,
-            "y": 136.0,
+            "y": 111.0,
             "width": 144.96,
             "height": 24.0
           },
@@ -154,14 +154,14 @@
           "id": "N2----parent",
           "x": 395.44,
           "y": 150.0,
-          "width": 174.96,
-          "height": 54.0,
+          "width": 244.96,
+          "height": 104.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "This is a floating note",
           "title_label": {
             "x": 395.44,
-            "y": 136.0,
+            "y": 111.0,
             "width": 144.96,
             "height": 24.0
           },
@@ -173,10 +173,10 @@
         }
       ],
       "bounds": {
-        "min_x": 26.56,
+        "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 482.92,
-        "max_y": 177.0
+        "max_x": 517.92,
+        "max_y": 202.0
       }
     }
   }

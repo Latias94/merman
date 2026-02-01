@@ -23,8 +23,8 @@
           "id": "Active----parent",
           "x": 176.76,
           "y": 72.0,
-          "width": 123.6,
-          "height": 78.0,
+          "width": 193.6,
+          "height": 128.0,
           "is_cluster": true
         },
         {
@@ -47,8 +47,8 @@
           "id": "Inactive----parent",
           "x": 107.36,
           "y": 442.0,
-          "width": 128.72,
-          "height": 102.0,
+          "width": 198.72,
+          "height": 152.0,
           "is_cluster": true
         },
         {
@@ -195,14 +195,14 @@
           "id": "Active----parent",
           "x": 176.76,
           "y": 72.0,
-          "width": 123.6,
-          "height": 78.0,
+          "width": 193.6,
+          "height": 128.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "this is a short<br/>note",
           "title_label": {
             "x": 176.76,
-            "y": 58.0,
+            "y": 33.0,
             "width": 93.6,
             "height": 48.0
           },
@@ -216,14 +216,14 @@
           "id": "Inactive----parent",
           "x": 107.36,
           "y": 442.0,
-          "width": 128.72,
-          "height": 102.0,
+          "width": 198.72,
+          "height": 152.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "A note can also\nbe defined on\nseveral lines",
           "title_label": {
             "x": 107.36,
-            "y": 428.0,
+            "y": 403.0,
             "width": 98.72,
             "height": 72.0
           },
@@ -235,10 +235,10 @@
         }
       ],
       "bounds": {
-        "min_x": 30.96,
-        "min_y": 33.0,
-        "max_x": 238.56,
-        "max_y": 493.0
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 273.56,
+        "max_y": 518.0
       }
     }
   }

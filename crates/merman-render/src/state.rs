@@ -149,6 +149,7 @@ pub(crate) fn state_text_style(effective_config: &Value) -> TextStyle {
 struct PreparedGraph {
     graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
     extracted: BTreeMap<String, PreparedGraph>,
+    root_cluster_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -334,11 +335,13 @@ fn prepare_graph(
     mut graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
     cluster_dir: &impl Fn(&str) -> Option<String>,
     depth: usize,
+    root_cluster_id: Option<String>,
 ) -> Result<PreparedGraph> {
     if depth > 10 {
         return Ok(PreparedGraph {
             graph,
             extracted: BTreeMap::new(),
+            root_cluster_id,
         });
     }
 
@@ -416,14 +419,16 @@ fn prepare_graph(
         graph.set_edge_named(v, w, key.name.clone(), Some(new_label));
     }
 
-    // Extract root clusters without external connections into subgraphs for recursive layout.
+    // Extract clusters without external connections into subgraphs for recursive layout.
+    //
+    // Mermaid@11.12.2 `dagre-wrapper` extractor does not require clusters to be root-level. It
+    // extracts any cluster node that has children and no external connections, then relies on the
+    // recursive render pass to (optionally) inject the cluster root node back into the subgraph
+    // for sizing/padding.
     let mut extracted: BTreeMap<String, PreparedGraph> = BTreeMap::new();
     let mut candidate_roots: Vec<String> = Vec::new();
     for id in graph.node_ids() {
         if graph.children(&id).is_empty() {
-            continue;
-        }
-        if graph.parent(&id).is_some() {
             continue;
         }
         if *external.get(&id).unwrap_or(&false) {
@@ -431,9 +436,28 @@ fn prepare_graph(
         }
         candidate_roots.push(id);
     }
-    candidate_roots.sort();
+    fn cluster_depth(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>, id: &str) -> usize {
+        let mut depth = 0usize;
+        let mut cur = id;
+        while let Some(parent) = g.parent(cur) {
+            depth += 1;
+            cur = parent;
+            if depth > 128 {
+                break;
+            }
+        }
+        depth
+    }
+    candidate_roots.sort_by(|a, b| {
+        cluster_depth(&graph, a)
+            .cmp(&cluster_depth(&graph, b))
+            .then(a.cmp(b))
+    });
 
     for cluster_id in candidate_roots {
+        if !graph.has_node(&cluster_id) || graph.children(&cluster_id).is_empty() {
+            continue;
+        }
         let parent_dir = graph.graph().rankdir;
         let requested = cluster_dir(&cluster_id).map(|d| rank_dir_from(&d));
         let dir = requested.unwrap_or_else(|| toggle_rank_dir(parent_dir));
@@ -449,11 +473,15 @@ fn prepare_graph(
         subgraph.graph_mut().marginx = marginx;
         subgraph.graph_mut().marginy = marginy;
 
-        let prepared = prepare_graph(subgraph, cluster_dir, depth + 1)?;
+        let prepared = prepare_graph(subgraph, cluster_dir, depth + 1, Some(cluster_id.clone()))?;
         extracted.insert(cluster_id, prepared);
     }
 
-    Ok(PreparedGraph { graph, extracted })
+    Ok(PreparedGraph {
+        graph,
+        extracted,
+        root_cluster_id,
+    })
 }
 
 fn extract_cluster_graph(
@@ -517,7 +545,38 @@ fn extract_cluster_graph(
     Ok(sub)
 }
 
+fn inject_root_cluster_node(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, root_id: &str) {
+    if !g.has_node(root_id) {
+        g.set_node(
+            root_id.to_string(),
+            NodeLabel {
+                width: 1.0,
+                height: 1.0,
+                ..Default::default()
+            },
+        );
+    }
+
+    let node_ids: Vec<String> = g.node_ids().into_iter().map(|s| s.to_string()).collect();
+    for v in node_ids {
+        if v == root_id {
+            continue;
+        }
+        if g.parent(&v).is_none() {
+            g.set_parent(v, root_id.to_string());
+        }
+    }
+}
+
 fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rect)> {
+    if let Some(root_id) = prepared.root_cluster_id.clone() {
+        // Mermaid’s dagre-wrapper recursive render pass injects the parent cluster node into the
+        // extracted graph and parents top-level nodes to it. This is required for Dagre’s
+        // compound border nodes to yield the same “outer padding” used by upstream when sizing
+        // clusterNode placeholders via `updateNodeBounds(...)`.
+        inject_root_cluster_node(&mut prepared.graph, &root_id);
+    }
+
     let mut fragments = LayoutFragments {
         nodes: HashMap::new(),
         edge_segments: Vec::new(),
@@ -745,130 +804,6 @@ fn merge_edge_segments(mut segments: Vec<EdgeSegment>) -> Vec<LayoutEdge> {
     }
 
     out
-}
-
-fn cluster_title_extra_y(title_height: f64) -> f64 {
-    // Mermaid's state `roundedWithTitle` uses `innerHeight = height - titleHeight - 6`.
-    title_height + 6.0
-}
-
-fn compute_cluster_rects(
-    nodes_by_id: &HashMap<String, &StateNode>,
-    leaf_rects: &HashMap<String, Rect>,
-    measurer: &dyn TextMeasurer,
-    text_style: &TextStyle,
-    wrap_mode: WrapMode,
-) -> Result<HashMap<String, Rect>> {
-    let mut cluster_rects: HashMap<String, Rect> = HashMap::new();
-    let mut visiting: HashSet<String> = HashSet::new();
-
-    fn compute(
-        id: &str,
-        nodes_by_id: &HashMap<String, &StateNode>,
-        leaf_rects: &HashMap<String, Rect>,
-        cluster_rects: &mut HashMap<String, Rect>,
-        visiting: &mut HashSet<String>,
-        measurer: &dyn TextMeasurer,
-        text_style: &TextStyle,
-        wrap_mode: WrapMode,
-    ) -> Result<Rect> {
-        if let Some(r) = cluster_rects.get(id).copied() {
-            return Ok(r);
-        }
-        if visiting.contains(id) {
-            return Err(Error::InvalidModel {
-                message: format!("cycle in cluster parenting at {id}"),
-            });
-        }
-        visiting.insert(id.to_string());
-
-        let node = nodes_by_id.get(id).ok_or_else(|| Error::InvalidModel {
-            message: format!("unknown cluster id: {id}"),
-        })?;
-        if !node.is_effective_group() {
-            return Err(Error::InvalidModel {
-                message: format!("node is not a cluster: {id}"),
-            });
-        }
-
-        let mut union: Option<Rect> = None;
-        for (cid, child) in nodes_by_id {
-            if child.parent_id.as_deref() != Some(id) {
-                continue;
-            }
-            let child_rect = if child.is_effective_group() {
-                compute(
-                    cid,
-                    nodes_by_id,
-                    leaf_rects,
-                    cluster_rects,
-                    visiting,
-                    measurer,
-                    text_style,
-                    wrap_mode,
-                )?
-            } else {
-                *leaf_rects.get(cid).ok_or_else(|| Error::InvalidModel {
-                    message: format!("missing leaf rect: {cid}"),
-                })?
-            };
-
-            if let Some(u) = union.as_mut() {
-                u.union(child_rect);
-            } else {
-                union = Some(child_rect);
-            }
-        }
-
-        let mut rect = union.ok_or_else(|| Error::InvalidModel {
-            message: format!("cluster has no members: {id}"),
-        })?;
-
-        let pad = node.padding.unwrap_or(8.0).max(0.0);
-        let shape = node.shape.as_str();
-
-        // Invisible grouping cluster for notes: keep tight bounds.
-        if shape != "noteGroup" {
-            rect.min_x -= pad;
-            rect.max_x += pad;
-            rect.min_y -= pad;
-            rect.max_y += pad;
-        }
-
-        if shape == "roundedWithTitle" {
-            let title = node
-                .label
-                .as_ref()
-                .map(value_to_label_text)
-                .unwrap_or_default();
-            if !title.trim().is_empty() {
-                let (_tw, th) = title_label_metrics(&title, measurer, text_style, wrap_mode);
-                rect.min_y -= cluster_title_extra_y(th);
-            }
-        }
-
-        visiting.remove(id);
-        cluster_rects.insert(id.to_string(), rect);
-        Ok(rect)
-    }
-
-    for (id, node) in nodes_by_id {
-        if !node.is_effective_group() {
-            continue;
-        }
-        let _ = compute(
-            id,
-            nodes_by_id,
-            leaf_rects,
-            &mut cluster_rects,
-            &mut visiting,
-            measurer,
-            text_style,
-            wrap_mode,
-        )?;
-    }
-
-    Ok(cluster_rects)
 }
 
 pub fn layout_state_diagram_v2(
@@ -1112,14 +1047,13 @@ pub fn layout_state_diagram_v2(
         g.set_edge_named(special2, node_id, Some(id2), Some(edge2));
     }
 
-    let mut prepared = prepare_graph(g, &cluster_dir, 0)?;
+    let mut prepared = prepare_graph(g, &cluster_dir, 0, None)?;
     let (fragments, _layout_bounds) = layout_prepared(&mut prepared)?;
 
     let semantic_ids: HashSet<&str> = model.nodes.iter().map(|n| n.id.as_str()).collect();
 
     // Build output nodes from semantic nodes only.
     let mut out_nodes: Vec<LayoutNode> = Vec::new();
-    let mut leaf_rects: HashMap<String, Rect> = HashMap::new();
     for n in &model.nodes {
         let Some(pos) = fragments.nodes.get(&n.id) else {
             return Err(Error::InvalidModel {
@@ -1136,26 +1070,20 @@ pub fn layout_state_diagram_v2(
                 height: pos.height,
                 is_cluster: false,
             });
-            leaf_rects.insert(
-                n.id.clone(),
-                Rect::from_center(pos.x, pos.y, pos.width, pos.height),
-            );
         }
     }
-
-    let cluster_rects =
-        compute_cluster_rects(&nodes_by_id, &leaf_rects, measurer, &text_style, wrap_mode)?;
 
     let mut clusters: Vec<LayoutCluster> = Vec::new();
     for n in &model.nodes {
         if !n.is_effective_group() {
             continue;
         }
-        let rect = *cluster_rects
-            .get(&n.id)
-            .ok_or_else(|| Error::InvalidModel {
-                message: format!("missing cluster rect: {}", n.id),
-            })?;
+        let Some(pos) = fragments.nodes.get(&n.id) else {
+            return Err(Error::InvalidModel {
+                message: format!("missing positioned cluster node: {}", n.id),
+            });
+        };
+        let rect = Rect::from_center(pos.x, pos.y, pos.width, pos.height);
         let (cx, cy) = rect.center();
 
         let title = n
