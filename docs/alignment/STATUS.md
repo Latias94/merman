@@ -60,8 +60,8 @@ the dashed separators now use the exact same x-coordinates as the frame edges to
 avoid sub-pixel gaps at the frame border.
 As of 2026-02-01, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
 for the current fixture set (diagram subtree parity).
-As of 2026-02-01, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 105 DOM
-mismatches out of 475 upstream SVG baselines (77.9% passing). Current parity-root mismatches are concentrated in
+As of 2026-02-01, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 101 DOM
+mismatches out of 475 upstream SVG baselines (78.7% passing). Current parity-root mismatches are concentrated in
 7 diagrams:
 
 - Architecture: 20
@@ -70,13 +70,13 @@ mismatches out of 475 upstream SVG baselines (77.9% passing). Current parity-roo
 - Mindmap: 11
 - Pie: 11
 - C4: 10
-- State: 25
+- State: 23
 
 Most parity-root deltas are root `<svg>` viewport attributes (`style` max-width / `viewBox`) and are therefore
 sensitive to upstream sizing policy, layout extents (including edge labels/groups), and floating-point rounding.
 Recent progress (2026-02-01): state diagram Stage B now derives root `viewBox`/`max-width` by parsing the emitted
-SVG and approximating `svg.getBBox()` (ignoring degenerate placeholder boxes), fixing large viewport blow-ups (e.g.
-floating notes fixtures) and reducing parity-root state mismatches.
+SVG and approximating `svg.getBBox()` (ignoring placeholder boxes like `0x0` and `0.1x0.1` rects), fixing large
+viewport blow-ups (e.g. floating notes fixtures) and reducing parity-root state mismatches.
 Recent progress (2026-02-01): state diagram dagre layout now uses Mermaid margins (`marginx/marginy=8`) for both the
 top-level graph and extracted cluster graphs.
 Recent progress (2026-02-01): state diagram dagre cluster extraction now matches Mermaid's `dagre-wrapper` more
