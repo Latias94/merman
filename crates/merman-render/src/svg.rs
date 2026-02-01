@@ -13459,9 +13459,14 @@ fn svg_emitted_bounds_from_svg_inner(
 
     fn include_rect(bounds: &mut Option<Bounds>, min_x: f64, min_y: f64, max_x: f64, max_y: f64) {
         // Chromium's `getBBox()` does not seem to expand the effective bbox for empty/degenerate
-        // placeholder geometry (e.g. Mermaid's `<rect/>` stubs under label groups). Ignore
-        // point-like boxes to avoid skewing the root viewport.
-        if (max_x - min_x).abs() < 1e-9 && (max_y - min_y).abs() < 1e-9 {
+        // placeholder geometry (e.g. Mermaid's `<rect/>` stubs under label groups).
+        //
+        // Mermaid also emits `<rect width="0.1" height="0.1"/>` under edge label groups; those
+        // placeholders should not affect the root viewport either, otherwise `max-width`/`viewBox`
+        // parity can diverge (notably for state diagrams).
+        let w = (max_x - min_x).abs();
+        let h = (max_y - min_y).abs();
+        if (w < 1e-9 && h < 1e-9) || (w <= 0.1 + 1e-9 && h <= 0.1 + 1e-9) {
             return;
         }
         if let Some(cur) = bounds.as_mut() {
@@ -16935,6 +16940,13 @@ pub fn render_class_diagram_v2_svg(
     // emit (using the exact same `d` strings we output for paths).
     let mut content_bounds: Option<Bounds> = None;
     fn include_rect(bounds: &mut Option<Bounds>, min_x: f64, min_y: f64, max_x: f64, max_y: f64) {
+        // Match Chromium's `getBBox()` behavior: ignore placeholder boxes that should not affect
+        // the measured diagram bounds.
+        let w = (max_x - min_x).abs();
+        let h = (max_y - min_y).abs();
+        if (w < 1e-9 && h < 1e-9) || (w <= 0.1 + 1e-9 && h <= 0.1 + 1e-9) {
+            return;
+        }
         if let Some(cur) = bounds.as_mut() {
             cur.min_x = cur.min_x.min(min_x);
             cur.min_y = cur.min_y.min(min_y);
