@@ -5,58 +5,58 @@
       "nodes": [
         {
           "id": "Admin",
-          "x": 72.0,
-          "y": 105.2,
-          "width": 210.4,
-          "height": 144.0,
+          "x": 75.0,
+          "y": 103.28,
+          "width": 206.56,
+          "height": 150.0,
           "is_cluster": false
         },
         {
           "id": "Company.Project",
-          "x": 293.76,
-          "y": 213.96,
-          "width": 359.12,
-          "height": 174.0,
+          "x": 302.76,
+          "y": 228.04,
+          "width": 350.24,
+          "height": 180.0,
           "is_cluster": true
         },
         {
           "id": "Company.Project",
           "x": 0.0,
           "y": 0.0,
-          "width": 1.0,
-          "height": 1.0,
+          "width": 143.76,
+          "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "Company.Project.Module",
-          "x": 72.0,
-          "y": 224.68,
-          "width": 240.4,
-          "height": 412.96,
+          "x": 75.0,
+          "y": 229.8,
+          "width": 236.56,
+          "height": 433.04,
           "is_cluster": true
         },
         {
           "id": "Company.Project.Module",
           "x": 0.0,
           "y": 0.0,
-          "width": 1.0,
-          "height": 1.0,
+          "width": 189.84,
+          "height": 54.0,
           "is_cluster": false
         },
         {
           "id": "GenericClass",
-          "x": 72.0,
-          "y": 344.16,
-          "width": 167.52,
-          "height": 144.0,
+          "x": 75.0,
+          "y": 356.32,
+          "width": 199.52,
+          "height": 150.0,
           "is_cluster": false
         },
         {
           "id": "User",
-          "x": 293.76,
-          "y": 213.96,
-          "width": 329.12,
-          "height": 144.0,
+          "x": 302.76,
+          "y": 228.04,
+          "width": 320.24,
+          "height": 150.0,
           "is_cluster": false
         }
       ],
@@ -69,21 +69,21 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 144.0,
-              "y": 105.2
+              "x": 150.0,
+              "y": 103.28
             },
             {
-              "x": 182.88,
-              "y": 159.58
+              "x": 188.88,
+              "y": 165.66
             },
             {
-              "x": 221.76,
-              "y": 213.96
+              "x": 227.76,
+              "y": 228.04
             }
           ],
           "label": {
-            "x": 182.88,
-            "y": 159.58,
+            "x": 188.88,
+            "y": 165.66,
             "width": 53.76,
             "height": 24.0
           },
@@ -99,16 +99,16 @@
       "clusters": [
         {
           "id": "Company.Project",
-          "x": 293.76,
-          "y": 213.96,
-          "width": 359.12,
-          "height": 174.0,
+          "x": 302.76,
+          "y": 228.04,
+          "width": 350.24,
+          "height": 180.0,
           "diff": -7.5,
           "offset_y": 16.5,
           "title": "Company.Project",
           "title_label": {
-            "x": 293.76,
-            "y": 138.96,
+            "x": 302.76,
+            "y": 150.04,
             "width": 113.76,
             "height": 24.0
           },
@@ -120,16 +120,16 @@
         },
         {
           "id": "Company.Project.Module",
-          "x": 72.0,
-          "y": 224.68,
-          "width": 240.4,
-          "height": 412.96,
+          "x": 75.0,
+          "y": 229.8,
+          "width": 236.56,
+          "height": 433.04,
           "diff": -7.5,
           "offset_y": 16.5,
           "title": "Company.Project.Module",
           "title_label": {
-            "x": 72.0,
-            "y": 30.2,
+            "x": 75.0,
+            "y": 25.28,
             "width": 159.84,
             "height": 24.0
           },
@@ -141,10 +141,10 @@
         }
       ],
       "bounds": {
-        "min_x": -48.2,
-        "min_y": -0.5,
-        "max_x": 473.32,
-        "max_y": 431.16
+        "min_x": -94.92,
+        "min_y": -27.0,
+        "max_x": 477.88,
+        "max_y": 446.32
       }
     }
   }

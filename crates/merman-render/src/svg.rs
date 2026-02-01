@@ -16313,14 +16313,17 @@ pub fn render_class_diagram_v2_svg(
         .unwrap_or(16.0)
         .max(1.0);
     let line_height = font_size * 1.5;
+    // Mermaid defaults `config.class.padding` to 12 (used for node sizing, not SVG viewport padding).
     let _class_padding = effective_config
         .get("class")
         .and_then(|v| v.get("padding"))
         .and_then(|v| v.as_f64())
-        .unwrap_or(5.0)
+        .unwrap_or(12.0)
         .max(0.0);
     let text_style = TextStyle {
-        font_family: None,
+        font_family: config_string(effective_config, &["fontFamily"])
+            .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
+            .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string())),
         font_size,
         font_weight: None,
     };
@@ -16334,28 +16337,74 @@ pub fn render_class_diagram_v2_svg(
         .as_deref()
         .is_some_and(|s| !s.trim().is_empty());
 
-    let bounds = layout.bounds.clone().unwrap_or(Bounds {
-        min_x: 0.0,
-        min_y: 0.0,
-        max_x: 100.0,
-        max_y: 100.0,
-    });
-    let vb_min_x = bounds.min_x;
-    let vb_min_y = bounds.min_y;
-    let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
-    let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
-    let max_w_attr = fmt_max_width_px(vb_w.max(1.0));
+    // Mermaid uses `setupGraphViewbox(..., conf.diagramPadding)` (v2) / `setupViewPortForSVG(..., 8)` (v3),
+    // both of which expand the root viewBox/max-width by 2 * padding around the rendered content bbox.
+    //
+    // Keep the config lookup compatible with Mermaid's classRenderer-v2 quirk that reads `flowchart ?? class`.
+    let conf = effective_config
+        .get("flowchart")
+        .or_else(|| effective_config.get("class"))
+        .unwrap_or(effective_config);
+    let viewport_padding = config_f64(conf, &["diagramPadding"])
+        .unwrap_or(8.0)
+        .max(0.0);
+    // Mermaid's classRenderer-v2 uses a Dagre wrapper configured with fixed `marginx/marginy=8`.
+    // Mermaid then calls `setupGraphViewbox(svg, padding=conf.diagramPadding)`, which computes a
+    // bbox from the rendered DOM. With Dagre margins enabled, that bbox starts at x/y=8; the
+    // viewBox is then set to `bbox.x - padding` / `bbox.y - padding`.
+    //
+    // Our headless layout is normalized (often min_x/min_y=0), so re-introduce the Dagre margin
+    // at render time to match upstream SVG coordinates and viewport sizing.
+    const GRAPH_MARGIN_PX: f64 = 8.0;
+    let content_tx = GRAPH_MARGIN_PX;
+    let content_ty = GRAPH_MARGIN_PX;
+
+    // Mermaid derives the final viewport using `svg.getBBox()` (after rendering). We don't have a
+    // browser DOM, so approximate the effective bbox by accumulating bounds for the elements we
+    // emit (using the exact same `d` strings we output for paths).
+    let mut content_bounds: Option<Bounds> = None;
+    fn include_rect(bounds: &mut Option<Bounds>, min_x: f64, min_y: f64, max_x: f64, max_y: f64) {
+        if let Some(cur) = bounds.as_mut() {
+            cur.min_x = cur.min_x.min(min_x);
+            cur.min_y = cur.min_y.min(min_y);
+            cur.max_x = cur.max_x.max(max_x);
+            cur.max_y = cur.max_y.max(max_y);
+        } else {
+            *bounds = Some(Bounds {
+                min_x,
+                min_y,
+                max_x,
+                max_y,
+            });
+        }
+    }
+
+    fn include_xywh(bounds: &mut Option<Bounds>, x: f64, y: f64, w: f64, h: f64) {
+        include_rect(bounds, x, y, x + w, y + h);
+    }
+
+    fn include_path_d(bounds: &mut Option<Bounds>, d: &str, dx: f64, dy: f64) {
+        if let Some(pb) = svg_path_bounds_from_d(d) {
+            include_rect(
+                bounds,
+                pb.min_x + dx,
+                pb.min_y + dy,
+                pb.max_x + dx,
+                pb.max_y + dy,
+            );
+        }
+    }
+
+    const VIEWBOX_PLACEHOLDER: &str = "__MERMAID_VIEWBOX__";
+    const MAX_WIDTH_PLACEHOLDER: &str = "__MERMAID_MAX_WIDTH__";
 
     let mut out = String::new();
     let _ = write!(
         &mut out,
-        r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="classDiagram" style="max-width: {}px; background-color: white;" viewBox="{} {} {} {}" role="graphics-document document" aria-roledescription="{}""#,
+        r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="classDiagram" style="max-width: {}px; background-color: white;" viewBox="{}" role="graphics-document document" aria-roledescription="{}""#,
         escape_xml(diagram_id),
-        max_w_attr,
-        fmt(vb_min_x),
-        fmt(vb_min_y),
-        fmt(vb_w.max(1.0)),
-        fmt(vb_h.max(1.0)),
+        MAX_WIDTH_PLACEHOLDER,
+        VIEWBOX_PLACEHOLDER,
         escape_attr(aria_roledescription)
     );
     if has_acc_title {
@@ -16430,19 +16479,29 @@ pub fn render_class_diagram_v2_svg(
     let mut clusters = layout.clusters.clone();
     clusters.sort_by(|a, b| a.id.cmp(&b.id));
     for c in &clusters {
-        let left = c.x - c.width / 2.0;
-        let top = c.y - c.height / 2.0;
+        let w = c.width.max(1.0);
+        let h = c.height.max(1.0);
+        let left = c.x - w / 2.0 + content_tx;
+        let top = c.y - h / 2.0 + content_ty;
+        include_xywh(&mut content_bounds, left, top, w, h);
+
+        let label_w = c.title_label.width.max(0.0);
+        let label_h = 24.0;
+        let label_x = left + (w - label_w) / 2.0;
+        let label_y = top;
+        include_xywh(&mut content_bounds, label_x, label_y, label_w, label_h);
+
         let _ = write!(
             &mut out,
             r#"<g class="cluster undefined" id="{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
             escape_attr(&c.id),
             fmt(left),
             fmt(top),
-            fmt(c.width.max(1.0)),
-            fmt(c.height.max(1.0)),
-            fmt(left + (c.width.max(1.0) - c.title_label.width.max(0.0)) / 2.0),
+            fmt(w),
+            fmt(h),
+            fmt(label_x),
             fmt(top),
-            fmt(c.title_label.width.max(0.0)),
+            fmt(label_w),
             escape_xml(&c.title)
         );
     }
@@ -16458,7 +16517,14 @@ pub fn render_class_diagram_v2_svg(
         }
 
         let dom_id = class_edge_dom_id(e, &relation_index_by_id);
-        let mut curve_points = e.points.clone();
+
+        let mut raw_points = e.points.clone();
+        for p in &mut raw_points {
+            p.x += content_tx;
+            p.y += content_ty;
+        }
+
+        let mut curve_points = raw_points.clone();
         if curve_points.len() == 2 {
             let a = &curve_points[0];
             let b = &curve_points[1];
@@ -16471,8 +16537,9 @@ pub fn render_class_diagram_v2_svg(
             );
         }
         let d = curve_basis_path_d(&curve_points);
+        include_path_d(&mut content_bounds, &d, 0.0, 0.0);
         let points_b64 = base64::engine::general_purpose::STANDARD
-            .encode(serde_json::to_vec(&e.points).unwrap_or_default());
+            .encode(serde_json::to_vec(&raw_points).unwrap_or_default());
 
         let mut class = String::from("edge-thickness-normal ");
         if e.id.starts_with("edgeNote") {
@@ -16542,11 +16609,18 @@ pub fn render_class_diagram_v2_svg(
                 escape_attr(&dom_id)
             );
         } else if let Some(lbl) = e.label.as_ref() {
+            include_xywh(
+                &mut content_bounds,
+                lbl.x + content_tx - lbl.width / 2.0,
+                lbl.y + content_ty - lbl.height / 2.0,
+                lbl.width.max(0.0),
+                lbl.height.max(0.0),
+            );
             let _ = write!(
                 &mut out,
                 r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
-                fmt(lbl.x),
-                fmt(lbl.y),
+                fmt(lbl.x + content_tx),
+                fmt(lbl.y + content_ty),
                 escape_attr(&dom_id),
                 fmt(-lbl.width / 2.0),
                 fmt(-lbl.height / 2.0),
@@ -16580,44 +16654,72 @@ pub fn render_class_diagram_v2_svg(
 
         if let Some(lbl) = e.start_label_left.as_ref() {
             if !start_text.trim().is_empty() {
+                include_xywh(
+                    &mut content_bounds,
+                    lbl.x + content_tx,
+                    lbl.y + content_ty,
+                    9.0,
+                    12.0,
+                );
                 let _ = write!(
                     &mut out,
                     r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
-                    fmt(lbl.x),
-                    fmt(lbl.y),
+                    fmt(lbl.x + content_tx),
+                    fmt(lbl.y + content_ty),
                     escape_xml(start_text.trim())
                 );
             }
         }
         if let Some(lbl) = e.start_label_right.as_ref() {
             if !start_text.trim().is_empty() {
+                include_xywh(
+                    &mut content_bounds,
+                    lbl.x + content_tx,
+                    lbl.y + content_ty,
+                    9.0,
+                    12.0,
+                );
                 let _ = write!(
                     &mut out,
                     r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
-                    fmt(lbl.x),
-                    fmt(lbl.y),
+                    fmt(lbl.x + content_tx),
+                    fmt(lbl.y + content_ty),
                     escape_xml(start_text.trim())
                 );
             }
         }
         if let Some(lbl) = e.end_label_left.as_ref() {
             if !end_text.trim().is_empty() {
+                include_xywh(
+                    &mut content_bounds,
+                    lbl.x + content_tx,
+                    lbl.y + content_ty,
+                    9.0,
+                    12.0,
+                );
                 let _ = write!(
                     &mut out,
                     r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"/><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g>"#,
-                    fmt(lbl.x),
-                    fmt(lbl.y),
+                    fmt(lbl.x + content_tx),
+                    fmt(lbl.y + content_ty),
                     escape_xml(end_text.trim())
                 );
             }
         }
         if let Some(lbl) = e.end_label_right.as_ref() {
             if !end_text.trim().is_empty() {
+                include_xywh(
+                    &mut content_bounds,
+                    lbl.x + content_tx,
+                    lbl.y + content_ty,
+                    9.0,
+                    12.0,
+                );
                 let _ = write!(
                     &mut out,
                     r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"/><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g>"#,
-                    fmt(lbl.x),
-                    fmt(lbl.y),
+                    fmt(lbl.x + content_tx),
+                    fmt(lbl.y + content_ty),
                     escape_xml(end_text.trim())
                 );
             }
@@ -16655,12 +16757,23 @@ pub fn render_class_diagram_v2_svg(
                 h,
                 class_rough_seed(diagram_id, &note.id),
             );
+            let node_tx = n.x + content_tx;
+            let node_ty = n.y + content_ty;
+            include_xywh(&mut content_bounds, node_tx + left, node_ty + top, w, h);
+            include_xywh(
+                &mut content_bounds,
+                node_tx + label_x,
+                node_ty + label_y,
+                fo_w,
+                fo_h,
+            );
+            include_path_d(&mut content_bounds, &note_stroke_d, node_tx, node_ty);
             let _ = write!(
                 &mut out,
                 r##"<g class="node undefined" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/></g><g class="label" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="text-align: center; white-space: nowrap; display: table-cell; line-height: 1.5; max-width: 200px;" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"##,
                 escape_attr(&note.id),
-                fmt(n.x),
-                fmt(n.y),
+                fmt(node_tx),
+                fmt(node_ty),
                 fmt(left),
                 fmt(top),
                 fmt(left + w),
@@ -16702,6 +16815,8 @@ pub fn render_class_diagram_v2_svg(
             .filter(|s| !s.is_empty());
         let include_href = link.is_some_and(|s| !s.to_ascii_lowercase().starts_with("javascript:"));
         let have_callback = node.have_callback;
+        let node_tx = n.x + content_tx;
+        let node_ty = n.y + content_ty;
 
         if let Some(link) = link {
             let _ = write!(
@@ -16717,8 +16832,8 @@ pub fn render_class_diagram_v2_svg(
                 } else {
                     String::new()
                 },
-                fmt(n.x),
-                fmt(n.y)
+                fmt(node_tx),
+                fmt(node_ty)
             );
         }
 
@@ -16735,8 +16850,8 @@ pub fn render_class_diagram_v2_svg(
             let _ = write!(
                 &mut out,
                 r#" transform="translate({}, {})""#,
-                fmt(n.x),
-                fmt(n.y)
+                fmt(node_tx),
+                fmt(node_ty)
             );
         }
         out.push('>');
@@ -16761,6 +16876,8 @@ pub fn render_class_diagram_v2_svg(
             escape_attr(node_fill)
         );
         let stroke_d = class_rough_rect_stroke_path(left, top, w, h, rough_seed);
+        include_xywh(&mut content_bounds, node_tx + left, node_ty + top, w, h);
+        include_path_d(&mut content_bounds, &stroke_d, node_tx, node_ty);
         let _ = write!(
             &mut out,
             r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
@@ -16946,6 +17063,7 @@ pub fn render_class_diagram_v2_svg(
         for y in [divider1_y, divider2_y] {
             out.push_str(r#"<g class="divider" style="">"#);
             let d = class_rough_line_double_path(left, y, left + w, y, rough_seed ^ 0x55);
+            include_path_d(&mut content_bounds, &d, node_tx, node_ty);
             let _ = write!(
                 &mut out,
                 r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
@@ -16966,6 +17084,28 @@ pub fn render_class_diagram_v2_svg(
     out.push_str("</g>"); // root
     out.push_str("</g>"); // wrapper
     out.push_str("</svg>");
+
+    let bounds = content_bounds.unwrap_or(Bounds {
+        min_x: 0.0,
+        min_y: 0.0,
+        max_x: 100.0,
+        max_y: 100.0,
+    });
+    let vb_min_x = bounds.min_x - viewport_padding;
+    let vb_min_y = bounds.min_y - viewport_padding;
+    let vb_w = ((bounds.max_x - bounds.min_x) + 2.0 * viewport_padding).max(1.0);
+    let vb_h = ((bounds.max_y - bounds.min_y) + 2.0 * viewport_padding).max(1.0);
+    let max_w_attr = fmt_max_width_px(vb_w.max(1.0));
+    let view_box_attr = format!(
+        "{} {} {} {}",
+        fmt(vb_min_x),
+        fmt(vb_min_y),
+        fmt(vb_w),
+        fmt(vb_h)
+    );
+
+    out = out.replacen(MAX_WIDTH_PLACEHOLDER, &max_w_attr, 1);
+    out = out.replacen(VIEWBOX_PLACEHOLDER, &view_box_attr, 1);
 
     Ok(out)
 }

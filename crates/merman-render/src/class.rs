@@ -766,7 +766,11 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
 }
 
 fn class_text_style(effective_config: &Value) -> TextStyle {
-    let font_family = config_string(effective_config, &["fontFamily"]);
+    // Mermaid defaults to `"trebuchet ms", verdana, arial, sans-serif`. Class diagram labels are
+    // rendered via HTML `<foreignObject>` and inherit the global font family.
+    let font_family = config_string(effective_config, &["fontFamily"])
+        .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
+        .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
     // Mermaid class diagram node labels inherit the global `fontSize` (via the root `#id{font-size}` rule)
     // and render via HTML labels (`foreignObject`). Prefer the global value for sizing/layout parity.
     let font_size = config_f64(effective_config, &["fontSize"])
@@ -785,69 +789,203 @@ fn class_box_dimensions(
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
     wrap_mode: WrapMode,
-    _padding: f64,
+    padding: f64,
     hide_empty_members_box: bool,
 ) -> (f64, f64) {
-    let font_size = text_style.font_size.max(1.0);
-    let line_height = font_size * 1.5;
+    // Mermaid class nodes are sized by rendering the label groups (`textHelper(...)`) and taking
+    // the resulting SVG bbox (`getBBox()`), then expanding by class padding (see upstream:
+    // `rendering-elements/shapes/classBox.ts` + `diagrams/class/shapeUtil.ts`).
+    //
+    // Emulate that sizing logic deterministically using the same text measurer.
+    let use_html_labels = matches!(wrap_mode, WrapMode::HtmlLike);
+    let padding = padding.max(0.0);
+    let gap = padding;
+    let text_padding = if use_html_labels { 0.0 } else { 3.0 };
 
-    let label_text = decode_entities_minimal(&node.text);
-    let mut max_w = measurer
-        .measure_wrapped(&label_text, text_style, None, wrap_mode)
-        .width;
+    fn measure_label(
+        measurer: &dyn TextMeasurer,
+        text: &str,
+        style: &TextStyle,
+        wrap_mode: WrapMode,
+    ) -> crate::text::TextMetrics {
+        measurer.measure_wrapped(text, style, None, wrap_mode)
+    }
 
-    for a in &node.annotations {
+    fn label_rect(m: crate::text::TextMetrics, y_offset: f64) -> Option<Rect> {
+        if !(m.width.is_finite() && m.height.is_finite()) {
+            return None;
+        }
+        let w = m.width.max(0.0);
+        let h = m.height.max(0.0);
+        if w <= 0.0 || h <= 0.0 {
+            return None;
+        }
+        let lines = m.line_count.max(1) as f64;
+        let y = y_offset - (h / (2.0 * lines));
+        Some(Rect {
+            min_x: 0.0,
+            min_y: y,
+            max_x: w,
+            max_y: y + h,
+        })
+    }
+
+    let mut label_style_bold = text_style.clone();
+    label_style_bold.font_weight = Some("bolder".to_string());
+
+    // Annotation group: Mermaid only renders the first annotation.
+    let mut annotation_rect: Option<Rect> = None;
+    let mut annotation_group_height = 0.0;
+    if let Some(a) = node.annotations.first() {
         let t = format!("\u{00AB}{}\u{00BB}", decode_entities_minimal(a.trim()));
-        let m = measurer.measure_wrapped(&t, text_style, None, wrap_mode);
-        max_w = max_w.max(m.width);
+        let m = measure_label(measurer, &t, text_style, wrap_mode);
+        annotation_rect = label_rect(m, 0.0);
+        if let Some(r) = annotation_rect {
+            annotation_group_height = r.height().max(0.0);
+        }
     }
 
-    for m in &node.members {
-        let t = decode_entities_minimal(m.display_text.trim());
-        let metrics = measurer.measure_wrapped(&t, text_style, None, wrap_mode);
-        max_w = max_w.max(metrics.width);
+    // Title label group (bold).
+    let mut title_text = decode_entities_minimal(&node.text);
+    if !use_html_labels && title_text.starts_with('\\') {
+        title_text = title_text.trim_start_matches('\\').to_string();
+    }
+    let title_metrics = measure_label(measurer, &title_text, &label_style_bold, wrap_mode);
+    let title_rect = label_rect(title_metrics, 0.0);
+    let title_group_height = title_rect.map(|r| r.height()).unwrap_or(0.0);
+
+    // Members group.
+    let mut members_rect: Option<Rect> = None;
+    {
+        let mut y_offset = 0.0;
+        for m in &node.members {
+            let mut t = decode_entities_minimal(m.display_text.trim());
+            if !use_html_labels && t.starts_with('\\') {
+                t = t.trim_start_matches('\\').to_string();
+            }
+            let metrics = measure_label(measurer, &t, text_style, wrap_mode);
+            if let Some(r) = label_rect(metrics, y_offset) {
+                if let Some(ref mut cur) = members_rect {
+                    cur.union(r);
+                } else {
+                    members_rect = Some(r);
+                }
+            }
+            y_offset += metrics.height.max(0.0) + text_padding;
+        }
+    }
+    let mut members_group_height = members_rect.map(|r| r.height()).unwrap_or(0.0);
+    if members_group_height <= 0.0 {
+        // Mermaid reserves half a gap when the members group is empty.
+        members_group_height = (gap / 2.0).max(0.0);
     }
 
-    for m in &node.methods {
-        let t = decode_entities_minimal(m.display_text.trim());
-        let metrics = measurer.measure_wrapped(&t, text_style, None, wrap_mode);
-        max_w = max_w.max(metrics.width);
+    // Methods group.
+    let mut methods_rect: Option<Rect> = None;
+    {
+        let mut y_offset = 0.0;
+        for m in &node.methods {
+            let mut t = decode_entities_minimal(m.display_text.trim());
+            if !use_html_labels && t.starts_with('\\') {
+                t = t.trim_start_matches('\\').to_string();
+            }
+            let metrics = measure_label(measurer, &t, text_style, wrap_mode);
+            if let Some(r) = label_rect(metrics, y_offset) {
+                if let Some(ref mut cur) = methods_rect {
+                    cur.union(r);
+                } else {
+                    methods_rect = Some(r);
+                }
+            }
+            y_offset += metrics.height.max(0.0) + text_padding;
+        }
     }
 
-    let has_members = !node.members.is_empty();
-    let has_methods = !node.methods.is_empty();
+    // Combine into the bbox returned by `textHelper(...)`.
+    let mut bbox_opt: Option<Rect> = None;
 
-    // Mermaid class node sizing is row-based (via HTML labels) with a fixed line-height of `1.5`.
-    // Use a deterministic, layout-friendly approximation matching upstream structure:
-    // - width: add one line-height of horizontal padding for title-only nodes, two for nodes with
-    //   members/methods compartments.
-    // - height: top padding = 0.5 line-height; bottom padding = 0 for title-only nodes, 0.5 otherwise.
-    let rect_w = if has_members || has_methods {
-        max_w + 2.0 * line_height
-    } else {
-        max_w + line_height
-    };
+    // annotation-group: centered horizontally (`translate(-w/2, 0)`).
+    if let Some(mut r) = annotation_rect {
+        let w = r.width();
+        r.min_x -= w / 2.0;
+        r.max_x -= w / 2.0;
+        bbox_opt = Some(if let Some(mut cur) = bbox_opt {
+            cur.union(r);
+            cur
+        } else {
+            r
+        });
+    }
 
-    let ann_rows = node.annotations.len();
-    let member_rows = if has_members { node.members.len() } else { 0 };
-    let method_rows = if has_methods { node.methods.len() } else { 0 };
-    let divider_rows = if hide_empty_members_box && !has_members && !has_methods {
-        0
-    } else {
-        2
-    };
-    let title_rows = 1;
-    let total_rows = ann_rows + title_rows + divider_rows + member_rows + method_rows;
+    // label-group: centered and shifted down by annotation height.
+    if let Some(mut r) = title_rect {
+        let w = r.width();
+        r.min_x -= w / 2.0;
+        r.max_x -= w / 2.0;
+        r.min_y += annotation_group_height;
+        r.max_y += annotation_group_height;
+        bbox_opt = Some(if let Some(mut cur) = bbox_opt {
+            cur.union(r);
+            cur
+        } else {
+            r
+        });
+    }
 
-    let top_pad = line_height / 2.0;
-    let bottom_pad = if member_rows == 0 && method_rows == 0 {
-        0.0
-    } else {
-        line_height / 2.0
-    };
-    let rect_h = top_pad + (total_rows as f64) * line_height + bottom_pad;
+    // members-group: left-aligned, shifted down by label height + gap*2.
+    if let Some(mut r) = members_rect {
+        let dy = annotation_group_height + title_group_height + gap * 2.0;
+        r.min_y += dy;
+        r.max_y += dy;
+        bbox_opt = Some(if let Some(mut cur) = bbox_opt {
+            cur.union(r);
+            cur
+        } else {
+            r
+        });
+    }
 
-    let mut rect_w = rect_w;
+    // methods-group: left-aligned, shifted down by label height + members height + gap*4.
+    if let Some(mut r) = methods_rect {
+        let dy = annotation_group_height + title_group_height + (members_group_height + gap * 4.0);
+        r.min_y += dy;
+        r.max_y += dy;
+        bbox_opt = Some(if let Some(mut cur) = bbox_opt {
+            cur.union(r);
+            cur
+        } else {
+            r
+        });
+    }
+
+    let bbox = bbox_opt.unwrap_or(Rect {
+        min_x: 0.0,
+        min_y: 0.0,
+        max_x: 0.0,
+        max_y: 0.0,
+    });
+    let w = bbox.width().max(0.0);
+    let mut h = bbox.height().max(0.0);
+
+    // Mermaid adjusts bbox height depending on which compartments exist.
+    if node.members.is_empty() && node.methods.is_empty() {
+        h += gap;
+    } else if !node.members.is_empty() && node.methods.is_empty() {
+        h += gap * 2.0;
+    }
+
+    let render_extra_box =
+        node.members.is_empty() && node.methods.is_empty() && !hide_empty_members_box;
+
+    // The Dagre node bounds come from the rectangle passed to `updateNodeBounds`.
+    let mut rect_w = w + 2.0 * padding;
+    let mut rect_h = h + 2.0 * padding;
+    if render_extra_box {
+        rect_h += padding * 2.0;
+    } else if node.members.is_empty() && node.methods.is_empty() {
+        rect_h -= padding;
+    }
+
     if node.r#type == "group" {
         rect_w = rect_w.max(500.0);
     }
@@ -923,7 +1061,8 @@ pub fn layout_class_diagram_v2(
         WrapMode::SvgLike
     };
 
-    let class_padding = config_f64(effective_config, &["class", "padding"]).unwrap_or(5.0);
+    // Mermaid defaults `config.class.padding` to 12.
+    let class_padding = config_f64(effective_config, &["class", "padding"]).unwrap_or(12.0);
     let namespace_padding = config_f64(effective_config, &["flowchart", "padding"]).unwrap_or(15.0);
     let hide_empty_members_box =
         config_bool(effective_config, &["class", "hideEmptyMembersBox"]).unwrap_or(false);
@@ -939,15 +1078,25 @@ pub fn layout_class_diagram_v2(
         rankdir: diagram_dir,
         nodesep,
         ranksep,
+        // Mermaid uses fixed graph margins in its Dagre wrapper for class diagrams.
+        marginx: 8.0,
+        marginy: 8.0,
         ..Default::default()
     });
 
     for (id, _ns) in &model.namespaces {
+        // Mermaid's dagre-wrapper assigns a concrete size to namespace nodes (cluster placeholders)
+        // based on the rendered label bbox plus padding. Doing the same here helps compound
+        // constraints match upstream (especially for LR layouts).
+        let title = id.clone();
+        let (tw, th) = label_metrics(&title, measurer, &text_style, wrap_mode_label);
+        let w = (tw + 2.0 * namespace_padding).max(1.0);
+        let h = (th + 2.0 * namespace_padding).max(1.0);
         g.set_node(
             id.clone(),
             NodeLabel {
-                width: 1.0,
-                height: 1.0,
+                width: w,
+                height: h,
                 ..Default::default()
             },
         );
@@ -991,10 +1140,17 @@ pub fn layout_class_diagram_v2(
     }
 
     if g.options().compound {
+        // Mermaid assigns parents based on the class' `parent` field (see upstream
+        // `addClasses(..., parent)` + `g.setParent(vertex.id, parent)`).
         for (_id, c) in &model.classes {
-            if let Some(p) = c.parent.as_ref() {
-                if model.namespaces.contains_key(p) {
-                    g.set_parent(c.id.clone(), p.clone());
+            if let Some(parent) = c
+                .parent
+                .as_ref()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                if model.namespaces.contains_key(parent) {
+                    g.set_parent(c.id.clone(), parent.to_string());
                 }
             }
         }
@@ -1155,30 +1311,6 @@ pub fn layout_class_diagram_v2(
         }
     }
 
-    let mut leaf_rects: HashMap<String, Rect> = HashMap::new();
-    for n in fragments.nodes.values() {
-        leaf_rects.insert(n.id.clone(), Rect::from_center(n.x, n.y, n.width, n.height));
-    }
-
-    let mut cluster_rects: HashMap<String, Rect> = HashMap::new();
-    for (id, ns) in &model.namespaces {
-        let mut rect_opt: Option<Rect> = None;
-        for class_id in &ns.class_ids {
-            if let Some(r) = leaf_rects.get(class_id).copied() {
-                if let Some(ref mut cur) = rect_opt {
-                    cur.union(r);
-                } else {
-                    rect_opt = Some(r);
-                }
-            }
-        }
-        let Some(mut rect) = rect_opt else {
-            continue;
-        };
-        rect.expand(namespace_padding);
-        cluster_rects.insert(id.clone(), rect);
-    }
-
     let title_margin_top = config_f64(
         effective_config,
         &["flowchart", "subGraphTitleMargin", "top"],
@@ -1191,14 +1323,28 @@ pub fn layout_class_diagram_v2(
     .unwrap_or(0.0);
 
     let mut clusters: Vec<LayoutCluster> = Vec::new();
-    let mut nodes: Vec<LayoutNode> = Vec::new();
+    let mut cluster_nodes: Vec<LayoutNode> = Vec::new();
+    for (id, ns) in &model.namespaces {
+        let mut rect_opt: Option<Rect> = None;
+        for class_id in &ns.class_ids {
+            if let Some(r) = node_rect_by_id.get(class_id).copied() {
+                if let Some(ref mut cur) = rect_opt {
+                    cur.union(r);
+                } else {
+                    rect_opt = Some(r);
+                }
+            }
+        }
+        let Some(mut rect) = rect_opt else {
+            continue;
+        };
+        rect.expand(namespace_padding);
+        let (cx, cy) = rect.center();
 
-    for (id, r) in &cluster_rects {
-        let (cx, cy) = r.center();
         let title = id.clone();
         let (tw, th) = label_metrics(&title, measurer, &text_style, wrap_mode_label);
 
-        let base_width = r.width();
+        let base_width = rect.width();
         let width = base_width.max(tw);
         let diff = if base_width <= tw {
             (tw - base_width) / 2.0 - namespace_padding / 2.0
@@ -1209,7 +1355,7 @@ pub fn layout_class_diagram_v2(
 
         let title_label = LayoutLabel {
             x: cx,
-            y: (cy - r.height() / 2.0) + title_margin_top + th / 2.0,
+            y: (cy - rect.height() / 2.0) + title_margin_top + th / 2.0,
             width: tw,
             height: th,
         };
@@ -1219,7 +1365,7 @@ pub fn layout_class_diagram_v2(
             x: cx,
             y: cy,
             width,
-            height: r.height(),
+            height: rect.height(),
             diff,
             offset_y,
             title: title.clone(),
@@ -1230,18 +1376,19 @@ pub fn layout_class_diagram_v2(
             title_margin_top,
             title_margin_bottom,
         });
-
-        nodes.push(LayoutNode {
+        cluster_nodes.push(LayoutNode {
             id: id.clone(),
             x: cx,
             y: cy,
             width,
-            height: r.height(),
+            height: rect.height(),
             is_cluster: true,
         });
     }
     clusters.sort_by(|a, b| a.id.cmp(&b.id));
 
+    let mut nodes: Vec<LayoutNode> = Vec::new();
+    nodes.extend(cluster_nodes);
     for n in fragments.nodes.values() {
         nodes.push(n.clone());
     }
