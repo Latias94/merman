@@ -58,12 +58,23 @@ Legend:
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
 the dashed separators now use the exact same x-coordinates as the frame edges to match upstream SVG and
 avoid sub-pixel gaps at the frame border.
-As of 2026-01-31, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
+As of 2026-02-01, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
 for the current fixture set (diagram subtree parity).
-As of 2026-01-31, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` still reports
-DOM mismatches across multiple diagrams. The mismatches are predominantly in root `<svg>` attributes
-(notably `style` `max-width: ...px` and `viewBox`), which are sensitive to viewBox sizing policy and
-floating-point rounding.
+As of 2026-02-01, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 117 DOM
+mismatches out of 475 upstream SVG baselines (75.4% passing). Current parity-root mismatches are concentrated in
+8 diagrams:
+
+- Architecture: 20
+- Block: 0
+- C4: 10
+- Class: 15
+- GitGraph: 14
+- Mindmap: 11
+- Pie: 11
+- State: 36
+
+Most parity-root deltas are root `<svg>` viewport attributes (`style` max-width / `viewBox`) and are therefore
+sensitive to upstream sizing policy, layout extents (including edge labels/groups), and floating-point rounding.
 Recent progress: architecture Stage B now computes root `viewBox`/`max-width` from emitted element bounds and honors
 `architecture.padding`/`iconSize`/`fontSize`, fixing previously clipped non-empty Architecture SVG outputs. Root parity
 still depends on matching upstream Cytoscape/FCoSE layout behavior.

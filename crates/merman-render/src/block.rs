@@ -99,31 +99,61 @@ fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
     json_f64(cur)
 }
 
-fn to_sized_block(node: &BlockNode, padding: f64, measurer: &dyn TextMeasurer) -> SizedBlock {
+fn to_sized_block(
+    node: &BlockNode,
+    padding: f64,
+    measurer: &dyn TextMeasurer,
+    text_style: &TextStyle,
+) -> SizedBlock {
     let columns = node.columns.unwrap_or(-1);
     let width_in_columns = node.width_in_columns.or(node.width).unwrap_or(1).max(1);
 
     let mut width = 0.0;
     let mut height = 0.0;
-    if node.block_type != "composite" && node.block_type != "space" && node.block_type != "group" {
-        // Mermaid's block diagram labels are rendered via a lightweight HTML foreignObject helper
-        // (`display: inline-block; white-space: nowrap;`):
-        // - width matches HTML `getBoundingClientRect()` (1/64px lattice in upstream SVG fixtures)
-        // - height matches SVG `<text>.getBBox().height` (≈1.1875em for the first line at 11.12.2)
-        let html_metrics =
-            measurer.measure_wrapped(&node.label, &TextStyle::default(), None, WrapMode::HtmlLike);
-        let svg_metrics =
-            measurer.measure_wrapped(&node.label, &TextStyle::default(), None, WrapMode::SvgLike);
-        // Mermaid's dagre wrapper uses `bbox + padding` (where padding is interpreted as the
-        // full extra size, not per-side).
-        width = (html_metrics.width + padding).max(1.0);
-        height = (svg_metrics.height + padding).max(1.0);
+
+    // Mermaid renders block diagram labels via `labelHelper(...)`, which decodes HTML entities
+    // and measures the resulting HTML content (`getBoundingClientRect()` for width/height).
+    //
+    // Block diagrams frequently use `&nbsp;` placeholders (notably for block arrows), so we must
+    // decode those before measuring; otherwise node widths drift drastically.
+    let label_decoded = node.label.replace("&nbsp;", "\u{00A0}");
+    let label_bbox_html =
+        measurer.measure_wrapped(&label_decoded, text_style, None, WrapMode::HtmlLike);
+    let label_bbox_svg =
+        measurer.measure_wrapped(&label_decoded, text_style, None, WrapMode::SvgLike);
+
+    match node.block_type.as_str() {
+        // Composite/group blocks can become wider than their children due to their label; Mermaid's
+        // `setBlockSizes` grows children to fit when computed width is smaller than the pre-sized
+        // label width.
+        "composite" | "group" => {
+            if !label_decoded.trim().is_empty() {
+                // Mermaid uses the measured label helper bbox width directly for composite/group
+                // nodes (no extra padding on top of the HTML bbox).
+                width = label_bbox_html.width.max(1.0);
+                height = (label_bbox_svg.height + padding).max(1.0);
+            }
+        }
+        // Mermaid's dagre wrapper uses a dedicated sizing rule for block arrows:
+        // `h = bbox.height + 2 * padding; w = bbox.width + h + padding`.
+        "block_arrow" => {
+            let h = (label_bbox_svg.height + 2.0 * padding).max(1.0);
+            let w = (label_bbox_html.width + h + padding).max(1.0);
+            width = w;
+            height = h;
+        }
+        // Regular blocks: `w = bbox.width + padding; h = bbox.height + padding`.
+        t if t != "space" => {
+            width = (label_bbox_html.width + padding).max(1.0);
+            height = (label_bbox_svg.height + padding).max(1.0);
+        }
+        _ => {}
     }
 
     let children = node
         .children
         .iter()
-        .map(|c| to_sized_block(c, padding, measurer))
+        .map(|c| to_sized_block(c, padding, measurer, text_style))
         .collect::<Vec<_>>();
 
     SizedBlock {
@@ -339,6 +369,25 @@ pub fn layout_block_diagram(
     let model: BlockDiagramModel = serde_json::from_value(semantic.clone())?;
 
     let padding = config_f64(effective_config, &["block", "padding"]).unwrap_or(8.0);
+    let text_style = crate::text::TextStyle {
+        font_family: effective_config
+            .get("fontFamily")
+            .and_then(|v| v.as_str())
+            .or_else(|| {
+                effective_config
+                    .get("themeVariables")
+                    .and_then(|tv| tv.get("fontFamily"))
+                    .and_then(|v| v.as_str())
+            })
+            .map(|s| s.to_string())
+            .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string())),
+        font_size: effective_config
+            .get("fontSize")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(16.0)
+            .max(1.0),
+        font_weight: None,
+    };
 
     let root = model
         .blocks_flat
@@ -348,7 +397,7 @@ pub fn layout_block_diagram(
             message: "missing block root composite".to_string(),
         })?;
 
-    let mut root = to_sized_block(root, padding, measurer);
+    let mut root = to_sized_block(root, padding, measurer, &text_style);
     set_block_sizes(&mut root, padding, 0.0, 0.0);
     layout_blocks(&mut root, padding);
 
