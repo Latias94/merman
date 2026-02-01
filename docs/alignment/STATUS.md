@@ -77,6 +77,8 @@ sensitive to upstream sizing policy, layout extents (including edge labels/group
 Recent progress (2026-02-01): state diagram Stage B now derives root `viewBox`/`max-width` by parsing the emitted
 SVG and approximating `svg.getBBox()` (ignoring degenerate placeholder boxes), fixing large viewport blow-ups (e.g.
 floating notes fixtures) and reducing parity-root state mismatches.
+Recent progress (2026-02-01): state diagram dagre layout now uses Mermaid margins (`marginx/marginy=8`) for both the
+top-level graph and extracted cluster graphs.
 Recent progress: architecture Stage B now computes root `viewBox`/`max-width` from emitted element bounds and honors
 `architecture.padding`/`iconSize`/`fontSize`, fixing previously clipped non-empty Architecture SVG outputs. Root parity
 still depends on matching upstream Cytoscape/FCoSE layout behavior.
