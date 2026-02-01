@@ -79,6 +79,9 @@ SVG and approximating `svg.getBBox()` (ignoring degenerate placeholder boxes), f
 floating notes fixtures) and reducing parity-root state mismatches.
 Recent progress (2026-02-01): state diagram dagre layout now uses Mermaid margins (`marginx/marginy=8`) for both the
 top-level graph and extracted cluster graphs.
+Recent progress (2026-02-01): state diagram dagre cluster extraction now matches Mermaid's `dagre-wrapper` more
+closely by extracting any disconnected cluster (not only root-level), and by injecting the parent cluster node into
+the extracted graph during the recursive layout pass so Dagre's compound border sizing yields Mermaid-like padding.
 Recent progress: architecture Stage B now computes root `viewBox`/`max-width` from emitted element bounds and honors
 `architecture.padding`/`iconSize`/`fontSize`, fixing previously clipped non-empty Architecture SVG outputs. Root parity
 still depends on matching upstream Cytoscape/FCoSE layout behavior.
