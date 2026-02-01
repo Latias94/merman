@@ -909,7 +909,7 @@ pub fn layout_class_diagram_v2(
     let nodesep = config_f64(conf, &["nodeSpacing"]).unwrap_or(50.0);
     let ranksep = config_f64(conf, &["rankSpacing"]).unwrap_or(50.0);
 
-    let global_html_labels = config_bool(effective_config, &["htmlLabels"]).unwrap_or(false);
+    let global_html_labels = config_bool(effective_config, &["htmlLabels"]).unwrap_or(true);
     let flowchart_html_labels =
         config_bool(effective_config, &["flowchart", "htmlLabels"]).unwrap_or(true);
     let wrap_mode_node = if global_html_labels {
