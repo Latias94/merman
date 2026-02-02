@@ -76,6 +76,7 @@ pub fn layout_architecture_diagram(
     model: &Value,
     effective_config: &Value,
     _text_measurer: &dyn TextMeasurer,
+    use_manatee_layout: bool,
 ) -> Result<ArchitectureDiagramLayout> {
     let model: ArchitectureModel = serde_json::from_value(model.clone())?;
 
@@ -332,6 +333,319 @@ pub fn layout_architecture_diagram(
             height: icon_size,
             is_cluster: false,
         });
+    }
+
+    if use_manatee_layout && !nodes.is_empty() {
+        // Build Mermaid-like FCoSE constraints from the BFS spatial maps.
+        //
+        // The full Mermaid renderer uses Cytoscape + FCoSE, which internally combines spectral
+        // initialization with a CoSE force-directed refinement step subject to the constraints.
+        //
+        // `manatee` contains our Rust port entry point; for now we feed it the deterministic BFS
+        // grid as initial positions so the subsequent refinement stays stable and fixture-friendly.
+        let mut node_group: std::collections::BTreeMap<&str, Option<&str>> =
+            std::collections::BTreeMap::new();
+        for n in &model.nodes {
+            node_group.insert(n.id.as_str(), n.in_group.as_deref());
+        }
+
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        enum GroupAlignment {
+            Horizontal,
+            Vertical,
+            Bend,
+        }
+
+        fn dir_alignment(a: Option<&str>, b: Option<&str>) -> GroupAlignment {
+            let (Some(a), Some(b)) = (a.and_then(Dir::parse), b.and_then(Dir::parse)) else {
+                return GroupAlignment::Bend;
+            };
+            if a.is_x() && !b.is_x() {
+                GroupAlignment::Bend
+            } else if !a.is_x() && b.is_x() {
+                GroupAlignment::Bend
+            } else if a.is_x() {
+                GroupAlignment::Horizontal
+            } else {
+                GroupAlignment::Vertical
+            }
+        }
+
+        // Track how groups connect (used when flattening alignment arrays across groups).
+        let mut group_alignments: std::collections::BTreeMap<
+            String,
+            std::collections::BTreeMap<String, GroupAlignment>,
+        > = std::collections::BTreeMap::new();
+        for e in &model.edges {
+            let Some(lhs_group) = node_group.get(e.lhs_id.as_str()).and_then(|v| *v) else {
+                continue;
+            };
+            let Some(rhs_group) = node_group.get(e.rhs_id.as_str()).and_then(|v| *v) else {
+                continue;
+            };
+            if lhs_group == rhs_group {
+                continue;
+            }
+            let alignment = dir_alignment(e.lhs_dir.as_deref(), e.rhs_dir.as_deref());
+            if alignment == GroupAlignment::Bend {
+                continue;
+            }
+            group_alignments
+                .entry(lhs_group.to_string())
+                .or_default()
+                .insert(rhs_group.to_string(), alignment);
+            group_alignments
+                .entry(rhs_group.to_string())
+                .or_default()
+                .insert(lhs_group.to_string(), alignment);
+        }
+
+        fn flatten_alignments(
+            alignment_obj: &std::collections::BTreeMap<
+                i32,
+                std::collections::BTreeMap<String, Vec<String>>,
+            >,
+            alignment_dir: GroupAlignment,
+            group_alignments: &std::collections::BTreeMap<
+                String,
+                std::collections::BTreeMap<String, GroupAlignment>,
+            >,
+        ) -> std::collections::BTreeMap<String, Vec<String>> {
+            let mut prev: std::collections::BTreeMap<String, Vec<String>> =
+                std::collections::BTreeMap::new();
+            for (dir, alignments) in alignment_obj {
+                let mut cnt = 0usize;
+                let mut arr: Vec<(String, Vec<String>)> = alignments
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                if arr.len() == 1 {
+                    prev.insert(dir.to_string(), arr.pop().unwrap().1);
+                    continue;
+                }
+                for i in 0..arr.len().saturating_sub(1) {
+                    for j in (i + 1)..arr.len() {
+                        let (a_group_id, a_node_ids) = &arr[i];
+                        let (b_group_id, b_node_ids) = &arr[j];
+                        let alignment = group_alignments
+                            .get(a_group_id)
+                            .and_then(|m| m.get(b_group_id))
+                            .copied();
+
+                        if alignment == Some(alignment_dir)
+                            || a_group_id == "default"
+                            || b_group_id == "default"
+                        {
+                            prev.entry(dir.to_string())
+                                .or_default()
+                                .extend(a_node_ids.iter().cloned());
+                            prev.entry(dir.to_string())
+                                .or_default()
+                                .extend(b_node_ids.iter().cloned());
+                        } else {
+                            let key_a = format!("{dir}-{cnt}");
+                            cnt += 1;
+                            prev.insert(key_a, a_node_ids.clone());
+                            let key_b = format!("{dir}-{cnt}");
+                            cnt += 1;
+                            prev.insert(key_b, b_node_ids.clone());
+                        }
+                    }
+                }
+            }
+            prev
+        }
+
+        // Build spatial maps in Mermaid's coordinate space (y-up), keyed by node id.
+        let spatial_maps: Vec<std::collections::BTreeMap<String, (i32, i32)>> = components.clone();
+
+        // AlignmentConstraint.
+        let mut horizontal_all: Vec<Vec<String>> = Vec::new();
+        let mut vertical_all: Vec<Vec<String>> = Vec::new();
+        for spatial_map in &spatial_maps {
+            let mut horizontal_alignments: std::collections::BTreeMap<
+                i32,
+                std::collections::BTreeMap<String, Vec<String>>,
+            > = std::collections::BTreeMap::new();
+            let mut vertical_alignments: std::collections::BTreeMap<
+                i32,
+                std::collections::BTreeMap<String, Vec<String>>,
+            > = std::collections::BTreeMap::new();
+
+            for (id, (x, y)) in spatial_map {
+                let node_group = node_group
+                    .get(id.as_str())
+                    .and_then(|v| *v)
+                    .unwrap_or("default")
+                    .to_string();
+
+                horizontal_alignments
+                    .entry(*y)
+                    .or_default()
+                    .entry(node_group.clone())
+                    .or_default()
+                    .push(id.clone());
+
+                vertical_alignments
+                    .entry(*x)
+                    .or_default()
+                    .entry(node_group)
+                    .or_default()
+                    .push(id.clone());
+            }
+
+            let horiz_map = flatten_alignments(
+                &horizontal_alignments,
+                GroupAlignment::Horizontal,
+                &group_alignments,
+            );
+            let vert_map = flatten_alignments(
+                &vertical_alignments,
+                GroupAlignment::Vertical,
+                &group_alignments,
+            );
+
+            for v in horiz_map.values() {
+                if v.len() > 1 {
+                    horizontal_all.push(v.clone());
+                }
+            }
+            for v in vert_map.values() {
+                if v.len() > 1 {
+                    vertical_all.push(v.clone());
+                }
+            }
+        }
+
+        // RelativePlacementConstraint (gap between borders).
+        let mut relative: Vec<manatee::RelativePlacementConstraint> = Vec::new();
+        for spatial_map in &spatial_maps {
+            let mut inv: std::collections::BTreeMap<(i32, i32), String> =
+                std::collections::BTreeMap::new();
+            for (id, (x, y)) in spatial_map {
+                inv.insert((*x, *y), id.clone());
+            }
+
+            let mut queue: std::collections::VecDeque<(i32, i32)> =
+                std::collections::VecDeque::new();
+            let mut visited: std::collections::BTreeSet<(i32, i32)> =
+                std::collections::BTreeSet::new();
+            queue.push_back((0, 0));
+
+            let dirs: [(&str, (i32, i32)); 4] =
+                [("L", (-1, 0)), ("R", (1, 0)), ("T", (0, 1)), ("B", (0, -1))];
+
+            while let Some(curr) = queue.pop_front() {
+                if visited.contains(&curr) {
+                    continue;
+                }
+                visited.insert(curr);
+                let Some(curr_id) = inv.get(&curr).cloned() else {
+                    continue;
+                };
+
+                for (dir, (dx, dy)) in dirs {
+                    let np = (curr.0 + dx, curr.1 + dy);
+                    let Some(new_id) = inv.get(&np).cloned() else {
+                        continue;
+                    };
+                    if visited.contains(&np) {
+                        continue;
+                    }
+                    queue.push_back(np);
+
+                    let gap = 1.5 * icon_size;
+                    match dir {
+                        "L" => relative.push(manatee::RelativePlacementConstraint {
+                            left: Some(new_id),
+                            right: Some(curr_id.clone()),
+                            top: None,
+                            bottom: None,
+                            gap,
+                        }),
+                        "R" => relative.push(manatee::RelativePlacementConstraint {
+                            left: Some(curr_id.clone()),
+                            right: Some(new_id),
+                            top: None,
+                            bottom: None,
+                            gap,
+                        }),
+                        "T" => relative.push(manatee::RelativePlacementConstraint {
+                            left: None,
+                            right: None,
+                            top: Some(new_id),
+                            bottom: Some(curr_id.clone()),
+                            gap,
+                        }),
+                        "B" => relative.push(manatee::RelativePlacementConstraint {
+                            left: None,
+                            right: None,
+                            top: Some(curr_id.clone()),
+                            bottom: Some(new_id),
+                            gap,
+                        }),
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        // Run `manatee` layout refinement.
+        let graph = manatee::Graph {
+            nodes: nodes
+                .iter()
+                .map(|n| manatee::Node {
+                    id: n.id.clone(),
+                    width: n.width,
+                    height: n.height,
+                    x: n.x + n.width / 2.0,
+                    y: n.y + n.height / 2.0,
+                })
+                .collect(),
+            edges: model
+                .edges
+                .iter()
+                .enumerate()
+                .map(|(idx, e)| {
+                    let lhs_g = node_group.get(e.lhs_id.as_str()).and_then(|v| *v);
+                    let rhs_g = node_group.get(e.rhs_id.as_str()).and_then(|v| *v);
+                    let same_parent = lhs_g == rhs_g;
+                    let ideal_length = if same_parent {
+                        1.5 * icon_size
+                    } else {
+                        0.5 * icon_size
+                    };
+                    manatee::Edge {
+                        id: format!("edge-{idx}"),
+                        source: e.lhs_id.clone(),
+                        target: e.rhs_id.clone(),
+                        ideal_length,
+                    }
+                })
+                .collect(),
+        };
+
+        let opts = manatee::FcoseOptions {
+            alignment_constraint: Some(manatee::AlignmentConstraint {
+                horizontal: horizontal_all,
+                vertical: vertical_all,
+            }),
+            relative_placement_constraint: relative,
+            ..Default::default()
+        };
+
+        let result = manatee::layout(&graph, manatee::Algorithm::Fcose(opts)).map_err(|e| {
+            Error::InvalidModel {
+                message: format!("manatee layout failed: {e}"),
+            }
+        })?;
+
+        for n in &mut nodes {
+            if let Some(p) = result.positions.get(n.id.as_str()) {
+                n.x = p.x - n.width / 2.0;
+                n.y = p.y - n.height / 2.0;
+            }
+        }
     }
 
     let mut node_by_id: std::collections::BTreeMap<String, LayoutNode> =

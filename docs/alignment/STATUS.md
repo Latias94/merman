@@ -70,6 +70,10 @@ mismatches out of 475 upstream SVG baselines (83.4% passing). Current parity-roo
 - Mindmap: 8
 - State: 23
 
+Recent progress (2026-02-02): started a Rust port scaffold of Cytoscape FCoSE in `manatee` (edge
+ideal lengths + alignment/relative constraints) and wired it into Architecture headless layout
+behind `LayoutOptions.use_manatee_layout` (used by `xtask compare-all-svgs`).
+
 Most parity-root deltas are root `<svg>` viewport attributes (`style` max-width / `viewBox`) and are therefore
 sensitive to upstream sizing policy, layout extents (including edge labels/groups), and floating-point rounding.
 Recent progress (2026-02-02): mindmap headless layout now follows Mermaid node sizing rules (shape/padding/wrapping)

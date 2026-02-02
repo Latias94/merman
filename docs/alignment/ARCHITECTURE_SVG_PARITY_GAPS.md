@@ -56,6 +56,11 @@ Missing pieces likely include:
   and places nodes on a grid (with a few centering heuristics). It is stable enough for layout
   snapshots, but it does not match upstream FCoSE coordinates and should be treated as a stepping
   stone only.
+- `merman-render` can optionally run a `manatee`-based refinement pass (FCoSE scaffold) when
+  `LayoutOptions.use_manatee_layout = true` (enabled by `xtask compare-all-svgs`), using
+  Mermaid-equivalent alignment/relative placement constraints derived from the BFS spatial maps.
+  This is intentionally *not* used for `*.layout.golden.json` snapshots yet (we keep the grid
+  scaffold as the stable baseline until the FCoSE port is closer to parity).
 - Deterministic placement strategy for nodes and groups matching the upstream CLI outputs (FCoSE),
   including the exact floating-point behavior and constraint handling.
 - Port-based edge routing (straight vs 90° “segments” behavior) and endpoint calculations.

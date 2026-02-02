@@ -89,6 +89,7 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
                 &parsed.model,
                 &meta.effective_config,
                 options.text_measurer.as_ref(),
+                options.use_manatee_layout,
             )?)
         }
         "requirement" => {
