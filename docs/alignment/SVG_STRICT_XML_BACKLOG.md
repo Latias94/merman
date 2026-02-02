@@ -15,19 +15,19 @@ Notes:
 - Strict canonicalization keeps identifier-like attributes byte-for-byte (e.g. `id="flowchart-A-0"` is not rewritten).
 - Strict canonicalization preserves mixed-content text segments (e.g. `foo<br />bar` keeps the `bar` tail text).
 
-## Current status (as of 2026-01-31)
+## Current status (as of 2026-02-02)
 
-Total strict mismatches: **178**
+Total strict mismatches: **175**
 
 Total fixtures compared: **475**
 
-Strict matches: **297 / 475 (62.53%)**
+Strict matches: **300 / 475 (63.16%)**
 
 Mismatch counts by diagram:
 
 - `architecture`: 25
 - `block`: 22
-- `c4`: 10
+- `c4`: 7
 - `class`: 16
 - `gitgraph`: 14
 - `kanban`: 15
