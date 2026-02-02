@@ -1,6 +1,6 @@
 use crate::Result;
 use crate::model::{Bounds, PieDiagramLayout, PieLegendItemLayout, PieSliceLayout};
-use crate::text::{TextMeasurer, TextStyle};
+use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -83,6 +83,42 @@ fn fmt_number(v: f64) -> String {
     if s == "-0" { "0".to_string() } else { s }
 }
 
+fn pie_legend_bbox_overhang_left_em(ch: char) -> f64 {
+    // Mermaid pie charts compute `longestTextWidth` via `legend.selectAll('text').nodes()
+    // .map(node => node.getBoundingClientRect().width)` (Mermaid@11.12.2). For some ASCII glyphs,
+    // Chromium's SVG text bbox extends beyond the advance width (e.g. trailing `t`/`r`, leading
+    // and trailing `_`).
+    //
+    // Our vendored measurer primarily models advance widths (close to `getComputedTextLength()`).
+    // Model the bbox delta with a small per-glyph overhang in `em` units so viewport sizing
+    // (`viewBox` / `max-width`) matches upstream baselines.
+    match ch {
+        // Leading underscore (observed in `__proto__`).
+        '_' => 0.061250573529411764,
+        _ => 0.0,
+    }
+}
+
+fn pie_legend_bbox_overhang_right_em(ch: char) -> f64 {
+    match ch {
+        // Trailing underscore (observed in `__proto__`).
+        '_' => 0.061250573529411764,
+        // Trailing `t` expands bbox in Chromium (`bat`).
+        't' => 0.014964441176470588,
+        // Trailing `r` expands bbox in Chromium (`constructor`).
+        'r' => 0.08091001764705883,
+        // Trailing `e` expands bbox in Chromium (`prototype`).
+        'e' => 0.042911305147058826,
+        // Trailing `s` expands bbox in Chromium (`dogs`/`rats`).
+        's' => 0.007008272058823529,
+        // Trailing `h` small bbox delta (`ash`).
+        'h' => 0.0009191176470588235,
+        // Trailing `]` small bbox delta (`bat [40]`).
+        ']' => 0.00045955882352941176,
+        _ => 0.0,
+    }
+}
+
 pub fn layout_pie_diagram(
     semantic: &serde_json::Value,
     _effective_config: &serde_json::Value,
@@ -91,14 +127,19 @@ pub fn layout_pie_diagram(
     let model: PieModel = serde_json::from_value(semantic.clone())?;
     let _ = (model.acc_title.as_deref(), model.acc_descr.as_deref());
 
+    // Mermaid@11.12.2 `packages/mermaid/src/diagrams/pie/pieRenderer.ts` constants.
+    let margin: f64 = 40.0;
+    let legend_rect_size: f64 = 18.0;
+    let legend_spacing: f64 = 4.0;
+
     let center_x: f64 = 225.0;
     let center_y: f64 = 225.0;
     let radius: f64 = 185.0;
     let outer_radius: f64 = 186.0;
     let label_radius: f64 = radius * 0.75;
-    let legend_x: f64 = 216.0;
-    let legend_step_y: f64 = 22.0;
-    let legend_start_y: f64 = -11.0 * (model.sections.len().max(1) as f64);
+    let legend_x: f64 = 12.0 * legend_rect_size;
+    let legend_step_y: f64 = legend_rect_size + legend_spacing;
+    let legend_start_y: f64 = -(legend_step_y * (model.sections.len().max(1) as f64)) / 2.0;
 
     let positive_sections: Vec<&PieSection> = model
         .sections
@@ -178,13 +219,29 @@ pub fn layout_pie_diagram(
         } else {
             sec.label.clone()
         };
-        let metrics = measurer.measure(&label, &legend_style);
-        max_legend_width = max_legend_width.max(metrics.width);
+        // Mermaid pie legend labels render as a single `<text>` run (no `<tspan>` tokenization).
+        // Mermaid measures the width via `getBoundingClientRect().width` (not `getBBox()`), but
+        // we approximate it with a single-run SVG measurement plus a small overhang correction.
+        let metrics =
+            measurer.measure_wrapped(&label, &legend_style, None, WrapMode::SvgLikeSingleRun);
+        let mut w = metrics.width.max(0.0);
+        let trimmed = label.trim_end();
+        if !trimmed.is_empty() {
+            let font_size = legend_style.font_size.max(1.0);
+            let first = trimmed.chars().next().unwrap_or(' ');
+            let last = trimmed.chars().last().unwrap_or(' ');
+            w += pie_legend_bbox_overhang_left_em(first) * font_size;
+            w += pie_legend_bbox_overhang_right_em(last) * font_size;
+        }
+        max_legend_width = max_legend_width.max(w);
     }
 
     let base_w: f64 = center_x * 2.0;
-    let legend_right = center_x + legend_x + 22.0 + max_legend_width + 50.0;
-    let width: f64 = base_w.max(legend_right).max(1.0);
+    // Mermaid computes:
+    //   totalWidth = pieWidth + MARGIN + LEGEND_RECT_SIZE + LEGEND_SPACING + longestTextWidth
+    // where `pieWidth == height == 450`.
+    let width: f64 =
+        (base_w + margin + legend_rect_size + legend_spacing + max_legend_width).max(1.0);
     let height: f64 = f64::max(center_y * 2.0, 1.0);
 
     Ok(PieDiagramLayout {

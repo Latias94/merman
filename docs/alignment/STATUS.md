@@ -60,15 +60,14 @@ the dashed separators now use the exact same x-coordinates as the frame edges to
 avoid sub-pixel gaps at the frame border.
 As of 2026-02-01, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
 for the current fixture set (diagram subtree parity).
-As of 2026-02-02, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 93 DOM
-mismatches out of 475 upstream SVG baselines (80.4% passing). Current parity-root mismatches are concentrated in
-6 diagrams:
+As of 2026-02-02, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 82 DOM
+mismatches out of 475 upstream SVG baselines (82.7% passing). Current parity-root mismatches are concentrated in
+5 diagrams:
 
 - Architecture: 20
 - Class: 14
 - GitGraph: 14
 - Mindmap: 11
-- Pie: 11
 - State: 23
 
 Most parity-root deltas are root `<svg>` viewport attributes (`style` max-width / `viewBox`) and are therefore
@@ -90,6 +89,9 @@ Recent progress (2026-02-02): state diagram label measurement now honors compile
 (weight/size/family/italic), improving classDef-styled label width parity.
 Recent progress (2026-02-02): C4 diagram Stage B now matches upstream root `viewBox` (DOM parity-root mode) by
 mirroring Mermaid's `calculateTextWidth/Height` sizing and the `techn` measurement quirk in `c4Renderer.js`.
+Recent progress (2026-02-02): pie Stage B now matches upstream root `viewBox` and root `style max-width` in
+DOM parity-root mode by mirroring Mermaid's legend width sizing (BCR-like) rather than `getComputedTextLength()`,
+including a small bbox overhang correction for a few glyph edge cases.
 Recent progress (2026-02-01): state diagram cluster rendering no longer double-applies the 8px dagre margin during
 SVG emission, aligning cluster frame placement with Mermaid and reducing parity-root mismatches.
 Recent progress: architecture Stage B now computes root `viewBox`/`max-width` from emitted element bounds and honors
