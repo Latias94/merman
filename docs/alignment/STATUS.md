@@ -85,9 +85,10 @@ top-level graph and extracted cluster graphs.
 Recent progress (2026-02-01): state diagram dagre cluster extraction now matches Mermaid's `dagre-wrapper` more
 closely by extracting any disconnected cluster (not only root-level), and by injecting the parent cluster node into
 the extracted graph during the recursive layout pass so Dagre's compound border sizing yields Mermaid-like padding.
-Recent progress (2026-02-01): state diagram Stage B now computes origin translation (and therefore root `viewBox`)
-based on layout bounds *excluding* hidden floating-note nodes, matching Mermaid's behavior where these syntaxes are
-accepted by the parser but do not contribute to rendered output or viewport sizing.
+Recent progress (2026-02-02): state diagram layout now excludes legacy floating-note syntaxes that Mermaid parses but
+does not render, so they no longer affect node/edge placement or root viewport sizing.
+Recent progress (2026-02-02): state diagram label measurement now honors compiled CSS font overrides
+(weight/size/family/italic), improving classDef-styled label width parity.
 Recent progress (2026-02-01): state diagram cluster rendering no longer double-applies the 8px dagre margin during
 SVG emission, aligning cluster frame placement with Mermaid and reducing parity-root mismatches.
 Recent progress: architecture Stage B now computes root `viewBox`/`max-width` from emitted element bounds and honors
