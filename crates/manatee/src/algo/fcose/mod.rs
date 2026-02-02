@@ -12,7 +12,7 @@ pub fn layout(graph: &Graph, opts: &FcoseOptions) -> Result<LayoutResult> {
     // original component center to avoid arbitrary global translations affecting viewBox parity.
     let orig_center = sim.bounding_box_center().unwrap_or((0.0, 0.0));
 
-    sim.run_spring_embedder(&constraints);
+    sim.run_spring_embedder(&constraints, opts.random_seed);
 
     let new_center = sim.bounding_box_center().unwrap_or((0.0, 0.0));
     sim.translate(orig_center.0 - new_center.0, orig_center.1 - new_center.1);
@@ -169,6 +169,8 @@ impl SimGraph {
     const DEFAULT_EDGE_LENGTH: f64 = 50.0;
     const DEFAULT_SPRING_STRENGTH: f64 = 0.45;
     const DEFAULT_REPULSION_STRENGTH: f64 = 4500.0;
+    const DEFAULT_GRAVITY_STRENGTH: f64 = 0.25; // cytoscape-fcose default `gravity`
+    const DEFAULT_GRAVITY_RANGE_FACTOR: f64 = 3.8; // cytoscape-fcose default `gravityRange`
 
     const MAX_ITERATIONS: usize = 2500;
     const CONVERGENCE_CHECK_PERIOD: usize = 100;
@@ -262,7 +264,7 @@ impl SimGraph {
         Some(((min_x + max_x) / 2.0, (min_y + max_y) / 2.0))
     }
 
-    fn run_spring_embedder(&mut self, constraints: &Constraints) {
+    fn run_spring_embedder(&mut self, constraints: &Constraints, random_seed: u64) {
         if self.nodes.is_empty() {
             return;
         }
@@ -276,6 +278,23 @@ impl SimGraph {
 
         let spring_constant = Self::DEFAULT_SPRING_STRENGTH;
         let repulsion_constant = Self::DEFAULT_REPULSION_STRENGTH;
+        let gravity_constant = Self::DEFAULT_GRAVITY_STRENGTH;
+
+        // CoSE-style repulsion cutoff (used by the FR-grid variant). This keeps far-away nodes from
+        // continually repelling and helps disconnected graphs remain compact.
+        let repulsion_range = 2.0 * ideal_edge_length_avg;
+
+        let apply_gravity = !self.is_connected();
+        let estimated_size = self.estimated_size();
+        let gravity_range = estimated_size * Self::DEFAULT_GRAVITY_RANGE_FACTOR;
+
+        // FCoSE randomizes initial node positions (spectral) when `randomize=true`. Our port is not
+        // yet spectral; for graphs without any edges we collapse nodes near the same start point
+        // (plus a tiny deterministic jitter) so overlap repulsion can expand them into a compact
+        // configuration, instead of preserving a pre-spread input grid.
+        if self.edges.is_empty() {
+            self.collapse_start_positions(ideal_edge_length_avg, random_seed);
+        }
 
         let n = self.nodes.len() as f64;
         let displacement_threshold_per_node = (3.0 * ideal_edge_length_avg) / 100.0;
@@ -360,6 +379,9 @@ impl SimGraph {
             // Repulsion forces (O(n^2)).
             for i in 0..self.nodes.len() {
                 for j in (i + 1)..self.nodes.len() {
+                    if !within_repulsion_range(&self.nodes[i], &self.nodes[j], repulsion_range) {
+                        continue;
+                    }
                     let (rfx, rfy) = calc_repulsion_force(
                         &self.nodes[i],
                         &self.nodes[j],
@@ -370,6 +392,22 @@ impl SimGraph {
                     self.nodes[i].repulsion_fy += rfy;
                     self.nodes[j].repulsion_fx -= rfx;
                     self.nodes[j].repulsion_fy -= rfy;
+                }
+            }
+
+            // Gravity forces (approx): apply only when the current distance exceeds the gravity
+            // range. In upstream `cose-base`, gravity is typically used for disconnected graphs.
+            if apply_gravity && gravity_range.is_finite() && gravity_range > 0.0 {
+                let (cx, cy) = self.bounding_box_center().unwrap_or((0.0, 0.0));
+                for n in &mut self.nodes {
+                    let dx = n.center_x() - cx;
+                    let dy = n.center_y() - cy;
+                    let abs_dx = dx.abs() + n.half_w();
+                    let abs_dy = dy.abs() + n.half_h();
+                    if abs_dx > gravity_range || abs_dy > gravity_range {
+                        n.spring_fx += -gravity_constant * dx;
+                        n.spring_fy += -gravity_constant * dy;
+                    }
                 }
             }
 
@@ -401,6 +439,61 @@ impl SimGraph {
             self.enforce_constraints(constraints);
 
             last_total_displacement = total_displacement;
+        }
+    }
+
+    fn is_connected(&self) -> bool {
+        if self.nodes.len() <= 1 {
+            return true;
+        }
+        if self.edges.is_empty() {
+            return false;
+        }
+        let mut adj: Vec<Vec<usize>> = vec![Vec::new(); self.nodes.len()];
+        for e in &self.edges {
+            adj[e.a].push(e.b);
+            adj[e.b].push(e.a);
+        }
+        let mut visited: Vec<bool> = vec![false; self.nodes.len()];
+        let mut stack: Vec<usize> = vec![0];
+        visited[0] = true;
+        while let Some(u) = stack.pop() {
+            for &v in &adj[u] {
+                if !visited[v] {
+                    visited[v] = true;
+                    stack.push(v);
+                }
+            }
+        }
+        visited.into_iter().all(|v| v)
+    }
+
+    fn estimated_size(&self) -> f64 {
+        // layout-base `LGraph.calcEstimatedSize()` for a flat graph:
+        // - each node estimated size is (w + h) / 2
+        // - graph estimated size is sum / sqrt(n)
+        let n = self.nodes.len() as f64;
+        if n <= 0.0 {
+            return 0.0;
+        }
+        let sum: f64 = self.nodes.iter().map(|n| (n.width + n.height) / 2.0).sum();
+        (sum / n.sqrt()).max(1.0)
+    }
+
+    fn collapse_start_positions(&mut self, scale: f64, random_seed: u64) {
+        if self.nodes.len() <= 2 {
+            return;
+        }
+        // Keep starts close to the origin (we relocate later).
+        let jitter = (0.01 * scale).max(0.01);
+        let mut rng = XorShift64Star::new(random_seed ^ 0x9E3779B97F4A7C15_u64);
+        for (idx, n) in self.nodes.iter_mut().enumerate() {
+            // Make the jitter stable per node order.
+            rng.mix_u64(idx as u64);
+            let jx = rng.next_f64_signed() * jitter;
+            let jy = rng.next_f64_signed() * jitter;
+            n.left = jx;
+            n.top = jy;
         }
     }
 
@@ -436,32 +529,68 @@ impl SimGraph {
         }
 
         // Relative placements.
-        // Note: Constraints are expressed in terms of node order + a `gap` between borders.
+        // Constraints are expressed in terms of node centers with a minimum `gap` (pixels).
         for r in &c.relative {
             if let (Some(left), Some(right)) = (r.left, r.right) {
-                let required = self.nodes[left].center_x()
-                    + self.nodes[left].half_w()
-                    + r.gap
-                    + self.nodes[right].half_w();
-                let actual = self.nodes[right].center_x();
-                if actual < required {
-                    let delta = required - actual;
-                    self.nodes[right].move_by(delta, 0.0);
+                let actual = self.nodes[right].center_x() - self.nodes[left].center_x();
+                if actual < r.gap {
+                    let delta = r.gap - actual;
+                    self.nodes[left].move_by(-delta / 2.0, 0.0);
+                    self.nodes[right].move_by(delta / 2.0, 0.0);
                 }
             }
             if let (Some(top), Some(bottom)) = (r.top, r.bottom) {
-                let required = self.nodes[top].center_y()
-                    + self.nodes[top].half_h()
-                    + r.gap
-                    + self.nodes[bottom].half_h();
-                let actual = self.nodes[bottom].center_y();
-                if actual < required {
-                    let delta = required - actual;
-                    self.nodes[bottom].move_by(0.0, delta);
+                let actual = self.nodes[bottom].center_y() - self.nodes[top].center_y();
+                if actual < r.gap {
+                    let delta = r.gap - actual;
+                    self.nodes[top].move_by(0.0, -delta / 2.0);
+                    self.nodes[bottom].move_by(0.0, delta / 2.0);
                 }
             }
         }
     }
+}
+
+#[derive(Debug, Clone)]
+struct XorShift64Star {
+    state: u64,
+}
+
+impl XorShift64Star {
+    fn new(seed: u64) -> Self {
+        Self { state: seed.max(1) }
+    }
+
+    fn mix_u64(&mut self, v: u64) {
+        // One-way mix to decorrelate node indices.
+        self.state ^= v.wrapping_mul(0x9E3779B97F4A7C15_u64);
+        let _ = self.next_u64();
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        let mut x = self.state;
+        x ^= x >> 12;
+        x ^= x << 25;
+        x ^= x >> 27;
+        self.state = x;
+        x.wrapping_mul(0x2545F4914F6CDD1D_u64)
+    }
+
+    fn next_f64_signed(&mut self) -> f64 {
+        // Map to [-1, 1] (exclusive).
+        let u = self.next_u64() >> 11;
+        let v = (u as f64) / ((1u64 << 53) as f64);
+        (v * 2.0) - 1.0
+    }
+}
+
+fn within_repulsion_range(a: &SimNode, b: &SimNode, repulsion_range: f64) -> bool {
+    if !repulsion_range.is_finite() || repulsion_range <= 0.0 {
+        return true;
+    }
+    let dx = (a.center_x() - b.center_x()).abs() - (a.half_w() + b.half_w());
+    let dy = (a.center_y() - b.center_y()).abs() - (a.half_h() + b.half_h());
+    dx <= repulsion_range && dy <= repulsion_range
 }
 
 fn rects_intersect(a: &SimNode, b: &SimNode) -> bool {
