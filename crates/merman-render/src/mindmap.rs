@@ -134,6 +134,27 @@ fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> 
     Bounds::from_points(pts)
 }
 
+fn shift_nodes_to_positive_bounds(nodes: &mut [LayoutNode], content_min: f64) {
+    if nodes.is_empty() {
+        return;
+    }
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    for n in nodes.iter() {
+        min_x = min_x.min(n.x - n.width / 2.0);
+        min_y = min_y.min(n.y - n.height / 2.0);
+    }
+    if !(min_x.is_finite() && min_y.is_finite()) {
+        return;
+    }
+    let dx = content_min - min_x;
+    let dy = content_min - min_y;
+    for n in nodes.iter_mut() {
+        n.x += dx;
+        n.y += dy;
+    }
+}
+
 pub fn layout_mindmap_diagram(
     model: &Value,
     effective_config: &Value,
@@ -206,6 +227,12 @@ pub fn layout_mindmap_diagram(
             }
         }
     }
+
+    // Mermaid's mindmap output uses a positive coordinate space where the content bbox starts at
+    // approximately (15, 15) before the 10px viewport padding is applied (viewBox starts at 5,5).
+    // This translation makes parity-root viewport comparisons stable even before the COSE port is
+    // fully implemented.
+    shift_nodes_to_positive_bounds(&mut nodes, 15.0);
 
     let mut node_pos: std::collections::BTreeMap<String, (f64, f64)> =
         std::collections::BTreeMap::new();
