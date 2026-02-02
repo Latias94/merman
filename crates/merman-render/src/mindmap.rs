@@ -197,8 +197,8 @@ pub fn layout_mindmap_diagram(
         };
         let result = manatee::layout(&graph, manatee::Algorithm::CoseBilkent(Default::default()))
             .map_err(|e| Error::InvalidModel {
-                message: format!("manatee layout failed: {e}"),
-            })?;
+            message: format!("manatee layout failed: {e}"),
+        })?;
         for n in &mut nodes {
             if let Some(p) = result.positions.get(n.id.as_str()) {
                 n.x = p.x;

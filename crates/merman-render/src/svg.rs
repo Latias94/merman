@@ -10442,11 +10442,32 @@ pub fn render_mindmap_diagram_svg(
         node_by_id.insert(n.id.clone(), n);
     }
 
+    let padding = 10.0;
+    let (vx, vy, vw, vh) = layout
+        .bounds
+        .as_ref()
+        .map(|b| {
+            let w = (b.max_x - b.min_x).max(0.0);
+            let h = (b.max_y - b.min_y).max(0.0);
+            (
+                b.min_x - padding,
+                b.min_y - padding,
+                w + 2.0 * padding,
+                h + 2.0 * padding,
+            )
+        })
+        .unwrap_or((0.0, 0.0, 100.0, 100.0));
+
     let mut out = String::new();
     let _ = write!(
         &mut out,
-        r#"<svg id="{id}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="mindmapDiagram" style="max-width: 100px; background-color: white;" viewBox="0 0 100 100" role="graphics-document document" aria-roledescription="mindmap">"#,
-        id = diagram_id_esc
+        r#"<svg id="{id}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="mindmapDiagram" style="max-width: {mw}px; background-color: white;" viewBox="{vx} {vy} {vw} {vh}" role="graphics-document document" aria-roledescription="mindmap">"#,
+        id = diagram_id_esc,
+        mw = fmt(vw),
+        vx = fmt(vx),
+        vy = fmt(vy),
+        vw = fmt(vw),
+        vh = fmt(vh),
     );
     out.push_str("<style></style>");
     out.push_str("<g>");
