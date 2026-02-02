@@ -29,6 +29,7 @@ deterministic Rust implementation of the same effective layout behavior.
   - `cytoscape-fcose@2.2.0`
   - `cytoscape-cose-bilkent@4.1.0`
   - Versions are taken from `repo-ref/mermaid/pnpm-lock.yaml` under the pinned Mermaid baseline.
+  - Upstream source repositories are tracked in `repo-ref/REPOS.lock.json` (no git submodules).
 - Implement them as a dedicated workspace crate:
   - `manatee`: reusable, headless graph layout engines (initially `fcose` and `cose-bilkent`).
 - Keep `merman-render` responsible for diagram-to-layout-data mapping:
@@ -75,4 +76,3 @@ deterministic Rust implementation of the same effective layout behavior.
   - Non-trivial engineering effort: force-directed layouts are complex and sensitive to ordering and
     numerics.
   - Requires ongoing maintenance when Mermaid updates its Cytoscape dependencies.
-
