@@ -17,6 +17,15 @@ checks in one shot and aggregates failures.
 - Skip some diagrams:
   - `cargo run -p xtask -- compare-all-svgs --check-dom --skip gantt --skip flowchart`
 
+## Outputs
+
+- Local SVGs are written under `target/compare/<diagram>/`.
+- Per-diagram reports are written under `target/compare/`.
+  - When `--dom-mode` is provided, reports are mode-suffixed to avoid overwriting across runs:
+    - `target/compare/<diagram>_report_<mode>.md` (e.g. `target/compare/state_report_parity_root.md`)
+  - When `--dom-mode` is omitted, per-diagram compare tasks use their default report paths
+    (typically `target/compare/<diagram>_report.md`).
+
 ## Flowchart-specific options
 
 `compare-all-svgs` forwards these only to the Flowchart compare task:
@@ -27,4 +36,3 @@ checks in one shot and aggregates failures.
 Example:
 
 - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --flowchart-text-measurer vendored --report-root`
-

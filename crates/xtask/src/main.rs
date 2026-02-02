@@ -2104,6 +2104,30 @@ fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         return Err(XtaskError::Usage);
     }
 
+    fn dom_mode_slug(mode: &str) -> String {
+        let mut out = String::new();
+        for ch in mode.trim().chars() {
+            if ch.is_ascii_alphanumeric() {
+                out.push(ch.to_ascii_lowercase());
+            } else {
+                out.push('_');
+            }
+        }
+        while out.contains("__") {
+            out = out.replace("__", "_");
+        }
+        out.trim_matches('_').to_string()
+    }
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+    let compare_dir = workspace_root.join("target").join("compare");
+    fs::create_dir_all(&compare_dir).map_err(|source| XtaskError::WriteFile {
+        path: compare_dir.display().to_string(),
+        source,
+    })?;
+
     fn common_compare_args(
         check_dom: bool,
         dom_mode: Option<&str>,
@@ -2140,6 +2164,22 @@ fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             dom_decimals,
             filter.as_deref(),
         );
+
+        // Avoid overwriting reports across multiple runs (e.g. `parity` then `parity-root`).
+        // When a dom mode is specified, we emit mode-suffixed reports:
+        // `target/compare/<diagram>_report_<mode>.md` (e.g. `state_report_parity_root.md`).
+        if let Some(ref mode) = dom_mode {
+            let mode = dom_mode_slug(mode);
+            if !mode.is_empty() {
+                cmd_args.push("--out".to_string());
+                cmd_args.push(
+                    compare_dir
+                        .join(format!("{diagram}_report_{mode}.md"))
+                        .display()
+                        .to_string(),
+                );
+            }
+        }
 
         if diagram == "flowchart" {
             if let Some(tm) = flowchart_text_measurer.as_deref() {
