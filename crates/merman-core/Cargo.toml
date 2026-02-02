@@ -10,6 +10,7 @@ default = ["large-features"]
 large-features = []
 
 [dependencies]
+euclid.workspace = true
 indexmap.workspace = true
 lalrpop-util.workspace = true
 logos.workspace = true

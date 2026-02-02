@@ -1098,6 +1098,7 @@ name = "merman-core"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "euclid",
  "futures",
  "indexmap",
  "lalrpop",

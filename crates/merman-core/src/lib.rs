@@ -8,6 +8,7 @@ pub mod diagram;
 pub mod diagrams;
 pub mod error;
 pub mod generated;
+pub mod geom;
 pub mod preprocess;
 pub mod sanitize;
 mod theme;
