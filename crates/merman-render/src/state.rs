@@ -1067,8 +1067,11 @@ pub fn layout_state_diagram_v2(
         let id1 = format!("{node_id}-cyclic-special-1");
         let idm = format!("{node_id}-cyclic-special-mid");
         let id2 = format!("{node_id}-cyclic-special-2");
-        let special1 = format!("{node_id}---{id}---1", id = e.id);
-        let special2 = format!("{node_id}---{id}---2", id = e.id);
+        // Mermaid uses fixed self-loop helper node ids (`${nodeId}---${nodeId}---{1|2}`), not
+        // per-edge ids. This means multiple self-loop transitions on the same node collide in the
+        // layout graph; match upstream behavior for parity.
+        let special1 = format!("{node_id}---{node_id}---1");
+        let special2 = format!("{node_id}---{node_id}---2");
 
         g.set_node(
             special1.clone(),
