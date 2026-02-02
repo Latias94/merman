@@ -5,7 +5,7 @@
       "nodes": [
         {
           "id": "plain",
-          "x": 0.0,
+          "x": -180.0,
           "y": 0.0,
           "width": 80.0,
           "height": 80.0,
@@ -14,15 +14,15 @@
         {
           "id": "with_icon",
           "x": 0.0,
-          "y": 120.0,
+          "y": 0.0,
           "width": 80.0,
           "height": 80.0,
           "is_cluster": false
         },
         {
           "id": "with_icon_text",
-          "x": 0.0,
-          "y": 240.0,
+          "x": 180.0,
+          "y": 0.0,
           "width": 80.0,
           "height": 80.0,
           "is_cluster": false
@@ -30,10 +30,10 @@
       ],
       "edges": [],
       "bounds": {
-        "min_x": 0.0,
+        "min_x": -180.0,
         "min_y": 0.0,
-        "max_x": 80.0,
-        "max_y": 320.0
+        "max_x": 260.0,
+        "max_y": 80.0
       }
     }
   }
