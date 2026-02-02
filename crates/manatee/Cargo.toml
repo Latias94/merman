@@ -5,5 +5,5 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+nalgebra.workspace = true
 thiserror.workspace = true
-
