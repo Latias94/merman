@@ -72,6 +72,9 @@ mismatches out of 475 upstream SVG baselines (82.7% passing). Current parity-roo
 
 Most parity-root deltas are root `<svg>` viewport attributes (`style` max-width / `viewBox`) and are therefore
 sensitive to upstream sizing policy, layout extents (including edge labels/groups), and floating-point rounding.
+Recent progress (2026-02-02): mindmap headless layout now follows Mermaid node sizing rules (shape/padding/wrapping)
+instead of a placeholder grid layout, and `xtask debug-mindmap-svg-positions` was added to compare upstream/local node
+coordinates; the remaining parity-root mindmap mismatches are currently dominated by root `<svg>` viewport sizing.
 Recent progress (2026-02-01): state diagram Stage B now derives root `viewBox`/`max-width` by parsing the emitted
 SVG and approximating `svg.getBBox()` (ignoring placeholder boxes like `0x0` and `0.1x0.1` rects), fixing large
 viewport blow-ups (e.g. floating notes fixtures) and reducing parity-root state mismatches.
