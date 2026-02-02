@@ -656,7 +656,9 @@ const strings = input.strings;
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
-const puppeteer = require('puppeteer');
+const { createRequire } = require('module');
+const requireFromCwd = createRequire(path.join(process.cwd(), 'package.json'));
+const puppeteer = requireFromCwd('puppeteer');
 
 const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 const browserExe = input.browser_exe || null;
@@ -8238,6 +8240,13 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     ) -> Result<(), XtaskError> {
         let fixtures_dir = workspace_root.join("fixtures").join(diagram);
         let out_dir = out_root.join(diagram);
+        let node_cwd = workspace_root.join("tools").join("mermaid-cli");
+        let use_seeded_renderer = diagram == "architecture";
+        let seeded_script = if use_seeded_renderer {
+            Some(ensure_seeded_upstream_svg_renderer_script(workspace_root)?)
+        } else {
+            None
+        };
 
         fn sanitize_svg_id(raw: &str) -> String {
             let mut out = String::with_capacity(raw.len());
@@ -8369,35 +8378,85 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             let out_path = out_dir.join(format!("{stem}.svg"));
             let svg_id = sanitize_svg_id(stem);
 
-            let mut cmd = Command::new(mmdc);
-            cmd.arg("-i")
-                .arg(&mmd_path)
-                .arg("-o")
-                .arg(&out_path)
-                .arg("-t")
-                .arg("default");
+            let status = if use_seeded_renderer {
+                use std::io::Write;
+                use std::process::Stdio;
 
-            // Stabilize Rough.js output across runs. Mermaid uses Rough.js for many "classic look"
-            // shapes too (often with `roughness: 0`), but the stroke control points still depend on
-            // `random()` via `divergePoint`. Pin `handDrawnSeed` for reproducible upstream SVG
-            // baselines.
-            let pinned_config = workspace_root
-                .join("tools")
-                .join("mermaid-cli")
-                .join("mermaid-config.json");
-            cmd.arg("-c").arg(pinned_config);
+                // Architecture layout relies on cytoscape-fcose, which uses `Math.random()` for
+                // spectral initialization. To keep upstream baselines reproducible, we render via
+                // a small puppeteer wrapper that seeds `Math.random()` deterministically.
+                let pinned_config = node_cwd.join("mermaid-config.json");
+                let seed: u64 = 1;
+                let output_abs = if out_path.is_absolute() {
+                    out_path.clone()
+                } else {
+                    workspace_root.join(&out_path)
+                };
 
-            // Gantt rendering depends on the page width (`parentElement.offsetWidth`). In a
-            // headless Rust context we default to the Mermaid fallback width (1200) when no DOM
-            // width is available. Use the same page width for upstream baselines so parity diffs
-            // remain meaningful.
-            if diagram == "gantt" {
-                cmd.arg("-w").arg("1200");
-            }
+                let input_json = serde_json::json!({
+                    "input_path": mmd_path.display().to_string(),
+                    "output_path": output_abs.display().to_string(),
+                    "config_path": pinned_config.display().to_string(),
+                    "theme": "default",
+                    "svg_id": svg_id,
+                    "seed": seed,
+                    "width": 800,
+                    "height": 600,
+                    "background_color": "white",
+                })
+                .to_string();
 
-            cmd.arg("--svgId").arg(svg_id);
+                let Some(script_path) = seeded_script.as_ref() else {
+                    return Err(XtaskError::UpstreamSvgFailed(
+                        "seeded renderer script not available".to_string(),
+                    ));
+                };
 
-            let status = cmd.status();
+                let mut cmd = Command::new("node");
+                cmd.arg(script_path)
+                    .current_dir(&node_cwd)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::inherit());
+                let mut child = cmd.spawn().map_err(|err| {
+                    XtaskError::UpstreamSvgFailed(format!(
+                        "failed to spawn seeded upstream svg renderer: {err}"
+                    ))
+                })?;
+                if let Some(mut stdin) = child.stdin.take() {
+                    let _ = stdin.write_all(input_json.as_bytes());
+                }
+                child.wait()
+            } else {
+                let mut cmd = Command::new(mmdc);
+                cmd.arg("-i")
+                    .arg(&mmd_path)
+                    .arg("-o")
+                    .arg(&out_path)
+                    .arg("-t")
+                    .arg("default");
+
+                // Stabilize Rough.js output across runs. Mermaid uses Rough.js for many "classic look"
+                // shapes too (often with `roughness: 0`), but the stroke control points still depend on
+                // `random()` via `divergePoint`. Pin `handDrawnSeed` for reproducible upstream SVG
+                // baselines.
+                let pinned_config = workspace_root
+                    .join("tools")
+                    .join("mermaid-cli")
+                    .join("mermaid-config.json");
+                cmd.arg("-c").arg(pinned_config);
+
+                // Gantt rendering depends on the page width (`parentElement.offsetWidth`). In a
+                // headless Rust context we default to the Mermaid fallback width (1200) when no DOM
+                // width is available. Use the same page width for upstream baselines so parity diffs
+                // remain meaningful.
+                if diagram == "gantt" {
+                    cmd.arg("-w").arg("1200");
+                }
+
+                cmd.arg("--svgId").arg(svg_id);
+                cmd.status()
+            };
 
             match status {
                 Ok(s) if s.success() => {}
@@ -8791,6 +8850,137 @@ fn find_mmdc(tools_root: &Path) -> Option<PathBuf> {
         }
     }
     None
+}
+
+fn ensure_seeded_upstream_svg_renderer_script(
+    workspace_root: &Path,
+) -> Result<PathBuf, XtaskError> {
+    const JS: &str = r#"
+const fs = require('fs');
+const path = require('path');
+const url = require('url');
+const { createRequire } = require('module');
+const requireFromCwd = createRequire(path.join(process.cwd(), 'package.json'));
+const puppeteer = requireFromCwd('puppeteer');
+
+const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+const inputPath = String(input.input_path || '');
+const outputPath = String(input.output_path || '');
+const configPath = String(input.config_path || '');
+const theme = String(input.theme || 'default');
+const svgId = String(input.svg_id || 'diagram');
+const seedStr = String((input.seed ?? 1));
+const width = Number(input.width || 800);
+const height = Number(input.height || 600);
+const backgroundColor = String(input.background_color || 'white');
+
+if (!inputPath || !outputPath || !configPath) {
+  console.error('missing required input/output/config path');
+  process.exit(2);
+}
+
+const cliRoot = process.cwd();
+const mermaidHtmlPath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermaid-cli', 'dist', 'index.html');
+const mermaidIifePath = path.join(cliRoot, 'node_modules', 'mermaid', 'dist', 'mermaid.js');
+
+(async () => {
+  const code = fs.readFileSync(inputPath, 'utf8');
+  const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+
+  const launchOpts = { headless: 'shell', args: ['--no-sandbox', '--disable-setuid-sandbox'] };
+  const browser = await puppeteer.launch(launchOpts);
+  const page = await browser.newPage();
+
+  await page.evaluateOnNewDocument((seedStr) => {
+    const mask64 = (1n << 64n) - 1n;
+    let state = (BigInt(seedStr) & mask64);
+    if (state === 0n) state = 1n;
+
+    function nextU64() {
+      let x = state;
+      x ^= (x >> 12n);
+      x ^= (x << 25n) & mask64;
+      x ^= (x >> 27n);
+      state = x;
+      return (x * 0x2545F4914F6CDD1Dn) & mask64;
+    }
+
+    function nextF64() {
+      const u = nextU64() >> 11n;
+      return Number(u) / 9007199254740992; // 2^53
+    }
+
+    Math.random = nextF64;
+
+    if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
+      const orig = globalThis.crypto.getRandomValues.bind(globalThis.crypto);
+      globalThis.crypto.getRandomValues = (arr) => {
+        if (!arr || typeof arr.length !== 'number') {
+          return orig(arr);
+        }
+        for (let i = 0; i < arr.length; i++) {
+          arr[i] = Math.floor(nextF64() * 256);
+        }
+        return arr;
+      };
+    }
+  }, seedStr);
+
+  await page.setViewport({ width: Math.max(1, width), height: Math.max(1, height), deviceScaleFactor: 1 });
+  await page.goto(url.pathToFileURL(mermaidHtmlPath).href);
+  await page.addScriptTag({ path: mermaidIifePath });
+
+  const svg = await page.evaluate(async ({ code, cfg, theme, svgId, width }) => {
+    const mermaid = globalThis.mermaid;
+    if (!mermaid) throw new Error('mermaid global not found');
+
+    mermaid.initialize(Object.assign({ startOnLoad: false, theme }, cfg));
+
+    const container = document.getElementById('container') || document.body;
+    container.innerHTML = '';
+    container.style.width = `${Math.max(1, Number(width) || 1)}px`;
+
+    const { svg } = await mermaid.render(svgId, code, container);
+    return svg;
+  }, { code, cfg, theme, svgId, width });
+
+  function ensureSvgBackgroundColor(svgText, bg) {
+    if (!bg) return svgText;
+    if (svgText.includes('background-color:')) return svgText;
+    const m = svgText.match(/<svg\b[^>]*\bstyle="([^"]*)"/);
+    if (m) {
+      const raw = m[1] || '';
+      let next = raw.trim();
+      if (next.length > 0 && !next.trim().endsWith(';')) {
+        next += ';';
+      }
+      next += ` background-color: ${bg};`;
+      return svgText.replace(m[0], m[0].replace(raw, next));
+    }
+    // Fallback: inject a style attr into the root <svg>.
+    return svgText.replace(/<svg\b/, `<svg style="background-color: ${bg};"`);
+  }
+
+  const svgWithBg = ensureSvgBackgroundColor(svg, backgroundColor);
+  fs.writeFileSync(outputPath, svgWithBg, 'utf8');
+  await browser.close();
+})().catch((err) => {
+  console.error(err && err.stack ? err.stack : String(err));
+  process.exit(1);
+});
+"#;
+
+    let dir = workspace_root.join("target").join("xtask-js");
+    fs::create_dir_all(&dir).map_err(|source| XtaskError::WriteFile {
+        path: dir.display().to_string(),
+        source,
+    })?;
+    let script_path = dir.join("seeded-upstream-svg-render.js");
+    fs::write(&script_path, JS).map_err(|source| XtaskError::WriteFile {
+        path: script_path.display().to_string(),
+        source,
+    })?;
+    Ok(script_path)
 }
 
 fn gen_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {

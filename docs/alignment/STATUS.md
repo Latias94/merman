@@ -82,6 +82,9 @@ deterministic.
 
 Most parity-root deltas are root `<svg>` viewport attributes (`style` max-width / `viewBox`) and are therefore
 sensitive to upstream sizing policy, layout extents (including edge labels/groups), and floating-point rounding.
+Recent progress (2026-02-02): Architecture upstream SVG baselines are now generated with a deterministic
+browser-side RNG seed (to remove `Math.random()` layout drift in Cytoscape FCoSE); see
+`docs/adr/0055-upstream-svg-determinism-for-cytoscape-layouts.md`.
 Recent progress (2026-02-02): mindmap headless layout now follows Mermaid node sizing rules (shape/padding/wrapping)
 instead of a placeholder grid layout, and `xtask debug-mindmap-svg-positions` was added to compare upstream/local node
 coordinates; the remaining parity-root mindmap mismatches are currently dominated by root `<svg>` viewport sizing.

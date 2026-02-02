@@ -254,6 +254,13 @@ Notes:
 - To force DOM comparison for all diagrams (useful when iterating on tooling):
   - `cargo run -p xtask -- check-upstream-svgs --diagram all --check-dom --dom-mode structure --dom-decimals 3`
 
+Determinism note:
+
+- Architecture diagrams use Cytoscape `fcose`, whose spectral initialization relies on
+  `Math.random()`. To keep baselines reproducible, `xtask gen-upstream-svgs --diagram architecture`
+  renders via a small Puppeteer wrapper that seeds browser-side randomness deterministically (while
+  still using the official Mermaid CLI bundle).
+
 ## Compare (ER)
 
 Generate a small report comparing upstream SVGs and the current Rust Stage-B ER SVG output:

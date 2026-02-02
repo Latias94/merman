@@ -107,6 +107,11 @@ Next:
   For `merman`, the parity target is the pinned upstream SVG baseline generated via the official
   Mermaid CLI at `@11.12.2`, so we should keep promotions incremental and backed by DOM parity checks.
 
+- Baseline determinism: Architecture uses Cytoscape `fcose`, whose spectral initialization relies on
+  `Math.random()`. `xtask gen-upstream-svgs --diagram architecture` seeds browser-side randomness
+  deterministically when generating upstream SVG baselines so they are reproducible across runs.
+  See `docs/adr/0055-upstream-svg-determinism-for-cytoscape-layouts.md`.
+
 - Some built-in Architecture icons include internal `id` attributes that can differ between Mermaid
   runs (e.g. `IconifyId...`). In parity mode, `xtask` normalizes those icon-internal IDs for DOM
   comparison to avoid flaky fixture updates.
