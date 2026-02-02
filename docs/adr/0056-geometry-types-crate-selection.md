@@ -28,6 +28,9 @@ Use `euclid` as the workspace-standard crate for **2D geometry primitives**:
 - Add `euclid` to `[workspace.dependencies]`.
 - Introduce `merman-core::geom` as the canonical place to re-export geometry type aliases:
   - `Point`, `Vector`, `Size`, `Rect`, `Transform`
+- Expose a min/max bounding-box helper `merman-core::geom::Box2` (a thin wrapper over
+  `euclid::Box2D`) for code that naturally operates on `min/max` extents (clusters, subgraphs, bbox
+  unions).
 - Prefer `f64` as the coordinate scalar to match Mermaid's JS `Number` behavior and to reduce
   parity drift due to rounding.
 
@@ -59,4 +62,3 @@ Keep `nalgebra` for **dense linear algebra** only (SVD/eigen/power iteration) as
 - Cons:
   - Requires gradual migration from ad-hoc structs to `merman-core::geom` aliases.
   - Adds a direct workspace dependency (though already effectively present via `roughr`).
-

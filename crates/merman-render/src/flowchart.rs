@@ -1475,55 +1475,7 @@ pub fn layout_flowchart_v2(
         dom_node_order_by_root.insert(id.clone(), cg.node_ids());
     }
 
-    #[derive(Debug, Clone, Copy)]
-    struct Rect {
-        min_x: f64,
-        min_y: f64,
-        max_x: f64,
-        max_y: f64,
-    }
-
-    impl Rect {
-        fn from_center(x: f64, y: f64, width: f64, height: f64) -> Self {
-            let hw = width / 2.0;
-            let hh = height / 2.0;
-            Self {
-                min_x: x - hw,
-                min_y: y - hh,
-                max_x: x + hw,
-                max_y: y + hh,
-            }
-        }
-
-        fn width(&self) -> f64 {
-            self.max_x - self.min_x
-        }
-
-        fn height(&self) -> f64 {
-            self.max_y - self.min_y
-        }
-
-        fn center(&self) -> (f64, f64) {
-            (
-                (self.min_x + self.max_x) / 2.0,
-                (self.min_y + self.max_y) / 2.0,
-            )
-        }
-
-        fn union(&mut self, other: Rect) {
-            self.min_x = self.min_x.min(other.min_x);
-            self.min_y = self.min_y.min(other.min_y);
-            self.max_x = self.max_x.max(other.max_x);
-            self.max_y = self.max_y.max(other.max_y);
-        }
-
-        fn translate(&mut self, dx: f64, dy: f64) {
-            self.min_x += dx;
-            self.max_x += dx;
-            self.min_y += dy;
-            self.max_y += dy;
-        }
-    }
+    type Rect = merman_core::geom::Box2;
 
     fn extracted_graph_bbox_rect(
         g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
@@ -2654,10 +2606,10 @@ pub fn layout_flowchart_v2(
         };
 
         // Expand to provide the cluster's internal padding.
-        rect.min_x -= cluster_padding;
-        rect.max_x += cluster_padding;
-        rect.min_y -= cluster_padding;
-        rect.max_y += cluster_padding;
+        rect.0.min.x -= cluster_padding;
+        rect.0.max.x += cluster_padding;
+        rect.0.min.y -= cluster_padding;
+        rect.0.max.y += cluster_padding;
 
         // Mermaid computes `node.diff` using the pre-widened layout node width, then may widen the
         // rect to fit the label bbox during rendering.
