@@ -1,16 +1,39 @@
 use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint, MindmapDiagramLayout};
+use crate::text::WrapMode;
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use serde::Deserialize;
 use serde_json::Value;
+
+fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
+    let mut v = cfg;
+    for p in path {
+        v = v.get(*p)?;
+    }
+    v.as_f64()
+}
+
+fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
+    let mut v = cfg;
+    for p in path {
+        v = v.get(*p)?;
+    }
+    v.as_str().map(|s| s.to_string())
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct MindmapNodeModel {
     id: String,
     label: String,
+    #[serde(default)]
+    shape: String,
+    #[serde(default)]
     level: i64,
+    #[serde(default)]
     padding: f64,
+    #[serde(default)]
+    width: f64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -28,6 +51,69 @@ struct MindmapModel {
     nodes: Vec<MindmapNodeModel>,
     #[serde(default)]
     edges: Vec<MindmapEdgeModel>,
+}
+
+fn mindmap_text_style(effective_config: &Value) -> TextStyle {
+    // Mermaid mindmap labels are rendered via HTML `<foreignObject>` and inherit the global font.
+    let font_family = config_string(effective_config, &["fontFamily"])
+        .or_else(|| config_string(effective_config, &["themeVariables", "fontFamily"]))
+        .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
+    let font_size = config_f64(effective_config, &["fontSize"])
+        .unwrap_or(16.0)
+        .max(1.0);
+    TextStyle {
+        font_family,
+        font_size,
+        font_weight: None,
+    }
+}
+
+fn mindmap_label_bbox_px(text: &str, measurer: &dyn TextMeasurer, style: &TextStyle) -> (f64, f64) {
+    // Mermaid mindmap uses HTML labels with `white-space: nowrap`, so we should not apply wrapping
+    // even if `mindmap.maxNodeWidth` is set.
+    let m = measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike);
+    (m.width.max(0.0), m.height.max(0.0))
+}
+
+fn mindmap_node_dimensions_px(
+    node: &MindmapNodeModel,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+) -> (f64, f64) {
+    let (bbox_w, bbox_h) = mindmap_label_bbox_px(&node.label, measurer, style);
+    let padding = node.padding.max(0.0);
+    let half_padding = padding / 2.0;
+
+    // Align with Mermaid shape sizing rules for mindmap nodes (via `labelHelper(...)` + shape
+    // handlers in `rendering-elements/shapes/*`).
+    match node.shape.as_str() {
+        // `defaultMindmapNode.ts`: w = bbox.width + 8 * halfPadding; h = bbox.height + 2 * halfPadding
+        "" | "defaultMindmapNode" => (bbox_w + 8.0 * half_padding, bbox_h + 2.0 * half_padding),
+        // `squareRect.ts` -> `drawRect.ts`: labelPaddingX = padding*2, labelPaddingY = padding
+        // totalW = bbox.width + 2*labelPaddingX = bbox.width + 4*padding
+        // totalH = bbox.height + 2*labelPaddingY = bbox.height + 2*padding
+        "rect" => (bbox_w + 4.0 * padding, bbox_h + 2.0 * padding),
+        // `roundedRect.ts`: w = bbox.width + 2*padding; h = bbox.height + 2*padding
+        "rounded" => (bbox_w + 2.0 * padding, bbox_h + 2.0 * padding),
+        // `mindmapCircle.ts` -> `circle.ts`: radius = bbox.width/2 + padding (mindmap passes full padding)
+        "mindmapCircle" => {
+            let d = bbox_w + 2.0 * padding;
+            (d, d)
+        }
+        // `cloud.ts`: w = bbox.width + 2*halfPadding; h = bbox.height + 2*halfPadding
+        "cloud" => (bbox_w + 2.0 * half_padding, bbox_h + 2.0 * half_padding),
+        // `bang.ts`: effectiveWidth = bbox.width + 10*halfPadding (min bbox+20 is always smaller here)
+        //           effectiveHeight = bbox.height + 8*halfPadding (min bbox+20 is always smaller here)
+        "bang" => (bbox_w + 10.0 * half_padding, bbox_h + 8.0 * half_padding),
+        // `hexagon.ts`: h = bbox.height + padding; w = bbox.width + 2.5*padding; then expands by +w/6
+        // due to `halfWidth = w/2 + m` where `m = (w/2)/6`.
+        "hexagon" => {
+            let w = bbox_w + 2.5 * padding;
+            let h = bbox_h + padding;
+            (w * (7.0 / 6.0), h)
+        }
+        _ => (bbox_w + 8.0 * half_padding, bbox_h + 2.0 * half_padding),
+    }
 }
 
 fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
@@ -50,10 +136,12 @@ fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> 
 
 pub fn layout_mindmap_diagram(
     model: &Value,
-    _effective_config: &Value,
+    effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
 ) -> Result<MindmapDiagramLayout> {
     let model: MindmapModel = serde_json::from_value(model.clone())?;
+
+    let text_style = mindmap_text_style(effective_config);
 
     let mut nodes: Vec<LayoutNode> = Vec::new();
     let mut id_order: Vec<(i64, String)> = model
@@ -66,28 +154,20 @@ pub fn layout_mindmap_diagram(
     let node_by_id: std::collections::BTreeMap<String, MindmapNodeModel> =
         model.nodes.into_iter().map(|n| (n.id.clone(), n)).collect();
 
-    let style = TextStyle {
-        font_family: None,
-        font_size: 16.0,
-        font_weight: None,
-    };
-
-    for (idx, (_num, id)) in id_order.iter().enumerate() {
+    for (_idx, (_num, id)) in id_order.iter().enumerate() {
         let Some(n) = node_by_id.get(id) else {
             continue;
         };
-        let depth = (n.level / 2).max(0) as f64;
-        let m = text_measurer.measure(&n.label, &style);
-
-        let width = (m.width + 2.0 * n.padding).max(1.0);
-        let height = (m.height + n.padding).max(1.0);
+        let (width, height) = mindmap_node_dimensions_px(n, text_measurer, &text_style);
 
         nodes.push(LayoutNode {
             id: n.id.clone(),
-            x: depth * 240.0,
-            y: idx as f64 * 80.0,
-            width,
-            height,
+            // Mermaid mindmap uses Cytoscape COSE-Bilkent and initializes node positions at (0,0).
+            // We keep that behavior so `manatee` can reproduce upstream placements deterministically.
+            x: 0.0,
+            y: 0.0,
+            width: width.max(1.0),
+            height: height.max(1.0),
             is_cluster: false,
         });
     }
