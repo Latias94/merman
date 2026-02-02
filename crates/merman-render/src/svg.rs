@@ -14830,15 +14830,26 @@ fn render_state_root(
     parent_origin_x: f64,
     parent_origin_y: f64,
 ) {
+    // Mermaid's dagre-wrapper uses a fixed graph margin (`marginx/marginy=8`). For nested state
+    // roots (extracted cluster graphs), Mermaid keeps the root cluster frame at x/y=8 in the
+    // nested coordinate space and compensates via the root group's `translate(...)`.
+    //
+    // If we anchor the nested origin at the cluster's top-left, the emitted cluster rect starts at
+    // (0,0) and the root group's transform drifts from upstream DOM. Shift the origin by the fixed
+    // margin so nested roots start at (8,8), matching Mermaid's SVG structure more closely.
+    const GRAPH_MARGIN_PX: f64 = 8.0;
+
     let (origin_x, origin_y, transform_attr) = if let Some(root_id) = root {
         if let Some(c) = ctx.layout_clusters_by_id.get(root_id).copied() {
             let left = c.x - c.width / 2.0;
             let top = c.y - c.height / 2.0;
-            let tx = left - parent_origin_x;
-            let ty = top - parent_origin_y;
+            let origin_x = left - GRAPH_MARGIN_PX;
+            let origin_y = top - GRAPH_MARGIN_PX;
+            let tx = origin_x - parent_origin_x;
+            let ty = origin_y - parent_origin_y;
             (
-                left,
-                top,
+                origin_x,
+                origin_y,
                 format!(r#" transform="translate({}, {})""#, fmt(tx), fmt(ty)),
             )
         } else {
