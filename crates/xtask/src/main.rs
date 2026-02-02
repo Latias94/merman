@@ -9,6 +9,7 @@ use std::sync::OnceLock;
 
 use regex::Regex;
 
+mod state_svgdump;
 mod svgdom;
 
 #[derive(Debug, thiserror::Error)]
@@ -78,6 +79,7 @@ fn print_help(topic: Option<&str>) {
     println!("  compare-svg-xml");
     println!("  canon-svg-xml");
     println!("  debug-svg-bbox");
+    println!("  analyze-state-fixture");
     println!();
     println!("Per-diagram SVG compare commands:");
     println!("  compare-er-svgs");
@@ -157,6 +159,7 @@ fn main() -> Result<(), XtaskError> {
         "debug-flowchart-data-points" => debug_flowchart_data_points(args.collect()),
         "debug-flowchart-edge-trace" => debug_flowchart_edge_trace(args.collect()),
         "debug-svg-bbox" => debug_svg_bbox(args.collect()),
+        "analyze-state-fixture" => state_svgdump::analyze_state_fixture(args.collect()),
         "compare-sequence-svgs" => compare_sequence_svgs(args.collect()),
         "compare-class-svgs" => compare_class_svgs(args.collect()),
         "compare-state-svgs" => compare_state_svgs(args.collect()),
