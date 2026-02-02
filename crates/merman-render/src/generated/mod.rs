@@ -4,5 +4,6 @@ pub mod c4_type_textlength_11_12_2;
 pub mod er_text_overrides_11_12_2;
 pub mod font_metrics_flowchart_11_12_2;
 pub mod gantt_text_overrides_11_12_2;
+pub mod mindmap_text_overrides_11_12_2;
 pub mod state_text_overrides_11_12_2;
 pub mod svg_overrides_sequence_11_12_2;

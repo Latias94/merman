@@ -147,6 +147,7 @@ fn main() -> Result<(), XtaskError> {
         "gen-font-metrics" => gen_font_metrics(args.collect()),
         "gen-svg-overrides" => gen_svg_overrides(args.collect()),
         "gen-er-text-overrides" => gen_er_text_overrides(args.collect()),
+        "gen-mindmap-text-overrides" => gen_mindmap_text_overrides(args.collect()),
         "gen-gantt-text-overrides" => gen_gantt_text_overrides(args.collect()),
         "measure-text" => measure_text(args.collect()),
         "gen-upstream-svgs" => gen_upstream_svgs(args.collect()),
@@ -2305,6 +2306,236 @@ fn debug_svg_bbox(args: Vec<String>) -> Result<(), XtaskError> {
     print_contrib("max_x", &dbg.max_x);
     print_contrib("max_y", &dbg.max_y);
 
+    Ok(())
+}
+
+fn gen_mindmap_text_overrides(args: Vec<String>) -> Result<(), XtaskError> {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+
+    let mut in_dir: Option<PathBuf> = None;
+    let mut out_path: Option<PathBuf> = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--in" => {
+                i += 1;
+                in_dir = args.get(i).map(PathBuf::from);
+            }
+            "--out" => {
+                i += 1;
+                out_path = args.get(i).map(PathBuf::from);
+            }
+            "--help" | "-h" => return Err(XtaskError::Usage),
+            _ => return Err(XtaskError::Usage),
+        }
+        i += 1;
+    }
+
+    let in_dir = in_dir.unwrap_or_else(|| {
+        workspace_root
+            .join("fixtures")
+            .join("upstream-svgs")
+            .join("mindmap")
+    });
+    let out_path = out_path.unwrap_or_else(|| {
+        workspace_root
+            .join("crates")
+            .join("merman-render")
+            .join("src")
+            .join("generated")
+            .join("mindmap_text_overrides_11_12_2.rs")
+    });
+
+    fn font_size_key(font_size: f64) -> u16 {
+        if !(font_size.is_finite() && font_size > 0.0) {
+            return 0;
+        }
+        let k = (font_size * 100.0).round();
+        if !(k.is_finite() && k >= 0.0 && k <= (u16::MAX as f64)) {
+            return 0;
+        }
+        k as u16
+    }
+
+    fn collapse_ws(s: &str) -> String {
+        let mut out = String::with_capacity(s.len());
+        let mut prev_space = true;
+        for ch in s.chars() {
+            if ch.is_whitespace() {
+                if !prev_space {
+                    out.push(' ');
+                    prev_space = true;
+                }
+            } else {
+                out.push(ch);
+                prev_space = false;
+            }
+        }
+        out.trim().to_string()
+    }
+
+    fn has_ancestor_class_token(node: roxmltree::Node<'_, '_>, token: &str) -> bool {
+        let mut cur = Some(node);
+        while let Some(n) = cur {
+            if n.is_element()
+                && n.attribute("class")
+                    .is_some_and(|c| c.split_whitespace().any(|t| t == token))
+            {
+                return true;
+            }
+            cur = n.parent();
+        }
+        false
+    }
+
+    fn parse_font_size_px_from_style(svg_text: &str) -> Option<f64> {
+        // Mermaid emits `font-size:16px` in the diagram-scoped stylesheet. Keep the parser small and
+        // conservative: pick the first `font-size:` occurrence and parse a number ending with `px`.
+        let key = "font-size:";
+        let idx = svg_text.find(key)?;
+        let rest = svg_text[idx + key.len()..].trim_start();
+        let mut num = String::new();
+        for ch in rest.chars() {
+            if ch.is_ascii_digit() || ch == '.' {
+                num.push(ch);
+            } else {
+                break;
+            }
+        }
+        if num.is_empty() {
+            return None;
+        }
+        let rest = &rest[num.len()..];
+        if !rest.trim_start().starts_with("px") {
+            return None;
+        }
+        num.parse::<f64>().ok()
+    }
+
+    let mut entries: BTreeMap<(u16, String), f64> = BTreeMap::new();
+    let mut seen_files: BTreeSet<String> = BTreeSet::new();
+
+    for dir_ent in std::fs::read_dir(&in_dir).map_err(|source| XtaskError::ReadFile {
+        path: in_dir.display().to_string(),
+        source,
+    })? {
+        let dir_ent = dir_ent.map_err(|source| XtaskError::ReadFile {
+            path: in_dir.display().to_string(),
+            source,
+        })?;
+        let path = dir_ent.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("svg") {
+            continue;
+        }
+        let fname = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or_default()
+            .to_string();
+        seen_files.insert(fname);
+
+        let svg = std::fs::read_to_string(&path).map_err(|source| XtaskError::ReadFile {
+            path: path.display().to_string(),
+            source,
+        })?;
+        let font_size = parse_font_size_px_from_style(&svg).unwrap_or(16.0);
+        let fs_key = font_size_key(font_size);
+        if fs_key == 0 {
+            continue;
+        }
+
+        let doc = roxmltree::Document::parse(&svg)
+            .map_err(|e| XtaskError::SvgCompareFailed(e.to_string()))?;
+
+        for fo in doc
+            .descendants()
+            .filter(|n| n.is_element() && n.tag_name().name() == "foreignObject")
+        {
+            // Only collect mindmap node labels, not edge labels (which are empty / width=0).
+            if !has_ancestor_class_token(fo, "node") {
+                continue;
+            }
+
+            let Some(width_attr) = fo.attribute("width") else {
+                continue;
+            };
+            let Ok(width_px) = width_attr.parse::<f64>() else {
+                continue;
+            };
+            if width_px <= 0.0 {
+                continue;
+            }
+
+            // Text is nested under `<p>` in mindmap SVGs.
+            let text = fo
+                .descendants()
+                .find(|n| n.is_element() && n.tag_name().name() == "p")
+                .and_then(|p| p.text())
+                .map(collapse_ws)
+                .unwrap_or_default();
+            if text.is_empty() {
+                continue;
+            }
+
+            entries.entry((fs_key, text)).or_insert(width_px);
+        }
+    }
+
+    let mut out = String::new();
+    out.push_str("// This file is generated by `xtask gen-mindmap-text-overrides`.\n//\n");
+    out.push_str("// Mermaid baseline: 11.12.2\n");
+    out.push_str("// Source: fixtures/upstream-svgs/mindmap/*.svg\n\n");
+
+    out.push_str("#[allow(dead_code)]\n");
+    out.push_str("fn font_size_key(font_size: f64) -> u16 {\n");
+    out.push_str(
+        "    if !(font_size.is_finite() && font_size > 0.0) {\n        return 0;\n    }\n",
+    );
+    out.push_str("    let k = (font_size * 100.0).round();\n");
+    out.push_str("    if !(k.is_finite() && k >= 0.0 && k <= (u16::MAX as f64)) {\n        return 0;\n    }\n");
+    out.push_str("    k as u16\n}\n\n");
+
+    out.push_str("static HTML_WIDTH_OVERRIDES_PX: &[(u16, &str, f64)] = &[\n");
+    for ((fs, text), w) in &entries {
+        let esc = text.replace('\\', "\\\\").replace('\"', "\\\"");
+        out.push_str(&format!("    ({fs}, \"{esc}\", {w}),\n"));
+    }
+    out.push_str("];\n\n");
+
+    out.push_str("pub fn lookup_html_width_px(font_size: f64, text: &str) -> Option<f64> {\n");
+    out.push_str("    let fs = font_size_key(font_size);\n");
+    out.push_str("    if fs == 0 || text.is_empty() {\n        return None;\n    }\n");
+    out.push_str("    let mut lo = 0usize;\n    let mut hi = HTML_WIDTH_OVERRIDES_PX.len();\n");
+    out.push_str("    while lo < hi {\n");
+    out.push_str("        let mid = (lo + hi) / 2;\n");
+    out.push_str("        let (k_fs, k_text, w) = HTML_WIDTH_OVERRIDES_PX[mid];\n");
+    out.push_str("        match k_fs.cmp(&fs) {\n");
+    out.push_str("            std::cmp::Ordering::Equal => match k_text.cmp(text) {\n");
+    out.push_str("                std::cmp::Ordering::Equal => return Some(w),\n");
+    out.push_str("                std::cmp::Ordering::Less => lo = mid + 1,\n");
+    out.push_str("                std::cmp::Ordering::Greater => hi = mid,\n");
+    out.push_str("            },\n");
+    out.push_str("            std::cmp::Ordering::Less => lo = mid + 1,\n");
+    out.push_str("            std::cmp::Ordering::Greater => hi = mid,\n");
+    out.push_str("        }\n");
+    out.push_str("    }\n");
+    out.push_str("    None\n}\n");
+
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
+            path: parent.display().to_string(),
+            source,
+        })?;
+    }
+    std::fs::write(&out_path, out).map_err(|source| XtaskError::WriteFile {
+        path: out_path.display().to_string(),
+        source,
+    })?;
     Ok(())
 }
 

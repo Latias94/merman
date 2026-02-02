@@ -2229,15 +2229,21 @@ fn vendored_measure_wrapped_impl(
         }
     };
 
-    let er_html_width_override_px = |line: &str| -> Option<f64> {
-        // ER strict DOM baselines in Mermaid's test fixtures record the final HTML label width
-        // via `getBoundingClientRect()` into `foreignObject width="..."` (1/64px lattice). For
-        // strict XML parity we treat those as source of truth when available.
-        if table.font_key == "trebuchetms,verdana,arial,sans-serif" {
-            crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(font_size, line)
-        } else {
-            None
+    let html_width_override_px = |line: &str| -> Option<f64> {
+        // Several Mermaid diagram baselines record the final HTML label width via
+        // `getBoundingClientRect()` into `foreignObject width="..."` (1/64px lattice). For
+        // strict XML parity and viewport calculations we treat those as the source of truth when
+        // available.
+        if table.font_key != "trebuchetms,verdana,arial,sans-serif" {
+            return None;
         }
+        crate::generated::er_text_overrides_11_12_2::lookup_html_width_px(font_size, line).or_else(
+            || {
+                crate::generated::mindmap_text_overrides_11_12_2::lookup_html_width_px(
+                    font_size, line,
+                )
+            },
+        )
     };
 
     // Mermaid HTML labels behave differently depending on whether the content "needs" wrapping:
@@ -2251,7 +2257,7 @@ fn vendored_measure_wrapped_impl(
     let raw_width_unscaled = if wrap_mode == WrapMode::HtmlLike {
         let mut raw_w: f64 = 0.0;
         for line in DeterministicTextMeasurer::normalized_text_lines(text) {
-            if let Some(w) = er_html_width_override_px(&line) {
+            if let Some(w) = html_width_override_px(&line) {
                 raw_w = raw_w.max(w);
                 continue;
             }
@@ -2302,7 +2308,7 @@ fn vendored_measure_wrapped_impl(
     match wrap_mode {
         WrapMode::HtmlLike => {
             for line in &lines {
-                if let Some(w) = er_html_width_override_px(line) {
+                if let Some(w) = html_width_override_px(line) {
                     width = width.max(w);
                     continue;
                 }
