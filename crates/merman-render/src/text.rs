@@ -333,6 +333,37 @@ fn flowchart_default_italic_delta_em(ch: char) -> f64 {
     }
 }
 
+pub fn mermaid_default_italic_width_delta_px(text: &str, style: &TextStyle) -> f64 {
+    // Mermaid HTML labels can apply `font-style: italic` via inline styles (e.g. classDef in state
+    // diagrams). Upstream measurement is DOM-backed, so the effective width differs from regular
+    // text runs even when `canvas.measureText`-based metrics are used elsewhere.
+    //
+    // We model this as a per-character delta in `em` space for the default Mermaid font stack.
+    // For bold+italic runs, the width delta is larger than regular italic; this matches observed
+    // upstream SVG baselines (e.g. state `classDef` styled labels).
+    if !is_flowchart_default_font(style) {
+        return 0.0;
+    }
+
+    let font_size = style.font_size.max(1.0);
+    let bold = style_requests_bold_font_weight(style);
+    let per_char_em = if bold { 1.0 / 64.0 } else { 1.0 / 128.0 };
+
+    let mut max_em: f64 = 0.0;
+    for line in text.lines() {
+        let mut em: f64 = 0.0;
+        for ch in line.chars() {
+            match ch {
+                'A'..='Z' | 'a'..='z' | '0'..='9' => em += per_char_em,
+                _ => {}
+            }
+        }
+        max_em = max_em.max(em);
+    }
+
+    (max_em * font_size).max(0.0)
+}
+
 pub fn measure_html_with_flowchart_bold_deltas(
     measurer: &dyn TextMeasurer,
     html: &str,

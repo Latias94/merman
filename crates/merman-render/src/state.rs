@@ -15,6 +15,8 @@ struct StateDiagramModel {
     pub direction: String,
     pub nodes: Vec<StateNode>,
     pub edges: Vec<StateEdge>,
+    #[serde(default)]
+    pub states: HashMap<String, StateDbState>,
 }
 
 fn default_dir() -> String {
@@ -31,6 +33,8 @@ struct StateNode {
     pub is_group: bool,
     #[serde(rename = "parentId")]
     pub parent_id: Option<String>,
+    #[serde(default, rename = "cssCompiledStyles")]
+    pub css_compiled_styles: Vec<String>,
     pub dir: Option<String>,
     pub padding: Option<f64>,
     pub rx: Option<f64>,
@@ -54,6 +58,20 @@ struct StateEdge {
     pub end: String,
     #[serde(default)]
     pub label: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+struct StateDbState {
+    #[serde(default)]
+    pub note: Option<StateDbNote>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+struct StateDbNote {
+    #[serde(default)]
+    pub position: Option<String>,
+    #[serde(default)]
+    pub text: String,
 }
 
 fn json_f64(v: &Value) -> Option<f64> {
@@ -315,26 +333,115 @@ fn edge_label_metrics(
 fn node_label_metrics(
     label: &str,
     wrapping_width: f64,
+    node_css_compiled_styles: &[String],
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
     wrap_mode: WrapMode,
 ) -> (f64, f64) {
+    fn parse_css_px_f64(v: &str) -> Option<f64> {
+        let t = v.trim();
+        let t = t.trim_end_matches(';').trim();
+        let t = t.trim_end_matches("!important").trim();
+        let t = t.trim_end_matches("px").trim();
+        t.parse::<f64>().ok()
+    }
+
+    fn parse_text_style_overrides(
+        node_css_compiled_styles: &[String],
+    ) -> (Option<String>, bool, Option<f64>, Option<String>) {
+        let mut weight: Option<String> = None;
+        let mut italic: bool = false;
+        let mut font_size_px: Option<f64> = None;
+        let mut font_family: Option<String> = None;
+
+        for raw in node_css_compiled_styles {
+            let raw = raw.trim().trim_end_matches(';').trim();
+            if raw.is_empty() {
+                continue;
+            }
+            let Some((k, v)) = raw.split_once(':') else {
+                continue;
+            };
+            let key = k.trim().to_ascii_lowercase();
+            let val = v.trim();
+            match key.as_str() {
+                "font-weight" => {
+                    let val = val.trim_end_matches("!important").trim();
+                    if !val.is_empty() {
+                        weight = Some(val.to_string());
+                    }
+                }
+                "font-style" => {
+                    let val = val
+                        .trim_end_matches("!important")
+                        .trim()
+                        .to_ascii_lowercase();
+                    if val.contains("italic") || val.contains("oblique") {
+                        italic = true;
+                    }
+                }
+                "font-size" => {
+                    if let Some(px) = parse_css_px_f64(val) {
+                        if px.is_finite() && px > 0.0 {
+                            font_size_px = Some(px);
+                        }
+                    }
+                }
+                "font-family" => {
+                    let val = val.trim_end_matches("!important").trim();
+                    if !val.is_empty() {
+                        font_family = Some(val.to_string());
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        (weight, italic, font_size_px, font_family)
+    }
+
     let decoded = decode_html_entities_once(label);
-    let mut metrics = measurer.measure_wrapped(
-        decoded.as_ref(),
-        text_style,
-        Some(wrapping_width),
-        wrap_mode,
-    );
+    let (weight, italic, font_size_px, font_family) =
+        parse_text_style_overrides(node_css_compiled_styles);
+    let mut style = text_style.clone();
+    if let Some(px) = font_size_px {
+        style.font_size = px;
+    }
+    if let Some(ff) = font_family {
+        style.font_family = Some(ff);
+    }
+    style.font_weight = weight;
+
+    let mut metrics =
+        measurer.measure_wrapped(decoded.as_ref(), &style, Some(wrapping_width), wrap_mode);
+
+    if italic && wrap_mode == WrapMode::HtmlLike {
+        metrics.width +=
+            crate::text::mermaid_default_italic_width_delta_px(decoded.as_ref(), &style);
+    }
+
     if wrap_mode == WrapMode::HtmlLike {
-        let trimmed = decoded.as_ref().trim();
-        if let Some(w) =
-            crate::generated::state_text_overrides_11_12_2::lookup_state_node_label_width_px(
-                text_style.font_size,
-                trimmed,
-            )
-        {
-            metrics.width = w;
+        let has_metrics_style = italic
+            || style
+                .font_weight
+                .as_deref()
+                .is_some_and(|s| !s.trim().is_empty())
+            || font_size_px.is_some()
+            || text_style
+                .font_family
+                .as_deref()
+                .zip(style.font_family.as_deref())
+                .is_some_and(|(a, b)| a.trim() != b.trim());
+        if !has_metrics_style {
+            let trimmed = decoded.as_ref().trim();
+            if let Some(w) =
+                crate::generated::state_text_overrides_11_12_2::lookup_state_node_label_width_px(
+                    style.font_size,
+                    trimmed,
+                )
+            {
+                metrics.width = w;
+            }
         }
     }
     (metrics.width.max(0.0), metrics.height.max(0.0))
@@ -877,6 +984,33 @@ pub fn layout_state_diagram_v2(
     measurer: &dyn TextMeasurer,
 ) -> Result<StateDiagramV2Layout> {
     let model: StateDiagramModel = serde_json::from_value(semantic.clone())?;
+
+    // Mermaid accepts some legacy "floating note" syntaxes in the parser but does not render them.
+    // Keep them in the semantic model/snapshots, but exclude them from layout so they do not shift
+    // visible nodes/edges (and therefore do not affect root viewBox/max-width parity).
+    let mut hidden_prefixes: Vec<String> = Vec::new();
+    for (id, st) in &model.states {
+        let Some(note) = st.note.as_ref() else {
+            continue;
+        };
+        if note.text.trim().is_empty() {
+            continue;
+        }
+        if note.position.is_none() {
+            hidden_prefixes.push(id.clone());
+        }
+    }
+
+    fn state_is_hidden_id(prefixes: &[String], id: &str) -> bool {
+        prefixes.iter().any(|p| {
+            if id == p {
+                return true;
+            }
+            id.strip_prefix(p)
+                .is_some_and(|rest| rest.starts_with("----"))
+        })
+    }
+
     let nodes_by_id: HashMap<String, &StateNode> =
         model.nodes.iter().map(|n| (n.id.clone(), n)).collect();
 
@@ -917,6 +1051,9 @@ pub fn layout_state_diagram_v2(
 
     // Pre-size nodes (leaf nodes only). Cluster nodes start with a tiny placeholder size.
     for n in &model.nodes {
+        if state_is_hidden_id(&hidden_prefixes, n.id.as_str()) {
+            continue;
+        }
         if n.is_effective_group() {
             g.set_node(
                 n.id.clone(),
@@ -953,6 +1090,7 @@ pub fn layout_state_diagram_v2(
                 let (tw, th) = node_label_metrics(
                     &label_text,
                     wrapping_width,
+                    &n.css_compiled_styles,
                     measurer,
                     &text_style,
                     wrap_mode,
@@ -1000,6 +1138,7 @@ pub fn layout_state_diagram_v2(
                 let (tw, th) = node_label_metrics(
                     &label_text,
                     wrapping_width,
+                    &n.css_compiled_styles,
                     measurer,
                     &text_style,
                     wrap_mode,
@@ -1029,7 +1168,13 @@ pub fn layout_state_diagram_v2(
 
     if g.options().compound {
         for n in &model.nodes {
+            if state_is_hidden_id(&hidden_prefixes, n.id.as_str()) {
+                continue;
+            }
             if let Some(p) = n.parent_id.as_ref() {
+                if state_is_hidden_id(&hidden_prefixes, p.as_str()) {
+                    continue;
+                }
                 g.set_parent(n.id.clone(), p.clone());
             }
         }
@@ -1038,6 +1183,12 @@ pub fn layout_state_diagram_v2(
     // Add edges. For self-loops, split into 3 edges with 2 tiny dummy nodes (Mermaid wrapper
     // behavior).
     for e in &model.edges {
+        if state_is_hidden_id(&hidden_prefixes, e.id.as_str())
+            || state_is_hidden_id(&hidden_prefixes, e.start.as_str())
+            || state_is_hidden_id(&hidden_prefixes, e.end.as_str())
+        {
+            continue;
+        }
         let (lw, lh) = edge_label_metrics(&e.label, measurer, &text_style, wrap_mode);
         let mut base = EdgeLabel {
             width: lw,
@@ -1118,11 +1269,19 @@ pub fn layout_state_diagram_v2(
     let mut prepared = prepare_graph(g, &cluster_dir, 0, None)?;
     let (fragments, _layout_bounds) = layout_prepared(&mut prepared)?;
 
-    let semantic_ids: HashSet<&str> = model.nodes.iter().map(|n| n.id.as_str()).collect();
+    let semantic_ids: HashSet<&str> = model
+        .nodes
+        .iter()
+        .filter(|n| !state_is_hidden_id(&hidden_prefixes, n.id.as_str()))
+        .map(|n| n.id.as_str())
+        .collect();
 
     // Build output nodes from semantic nodes only.
     let mut out_nodes: Vec<LayoutNode> = Vec::new();
     for n in &model.nodes {
+        if state_is_hidden_id(&hidden_prefixes, n.id.as_str()) {
+            continue;
+        }
         let Some(pos) = fragments.nodes.get(&n.id) else {
             return Err(Error::InvalidModel {
                 message: format!("missing positioned node: {}", n.id),
@@ -1143,6 +1302,9 @@ pub fn layout_state_diagram_v2(
 
     let mut clusters: Vec<LayoutCluster> = Vec::new();
     for n in &model.nodes {
+        if state_is_hidden_id(&hidden_prefixes, n.id.as_str()) {
+            continue;
+        }
         if !n.is_effective_group() {
             continue;
         }

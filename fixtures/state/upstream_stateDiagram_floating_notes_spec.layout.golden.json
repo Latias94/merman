@@ -4,179 +4,21 @@
     "StateDiagramV2": {
       "nodes": [
         {
-          "id": "N1",
-          "x": 130.48,
-          "y": 28.0,
-          "width": 34.56,
-          "height": 40.0,
-          "is_cluster": false
-        },
-        {
-          "id": "N1----note-0",
-          "x": 130.48,
-          "y": 150.0,
-          "width": 174.96,
-          "height": 54.0,
-          "is_cluster": false
-        },
-        {
-          "id": "N1----parent",
-          "x": 130.48,
-          "y": 150.0,
-          "width": 244.96,
-          "height": 104.0,
-          "is_cluster": true
-        },
-        {
-          "id": "N2",
-          "x": 395.44,
-          "y": 28.0,
-          "width": 34.56,
-          "height": 40.0,
-          "is_cluster": false
-        },
-        {
-          "id": "N2----note-1",
-          "x": 395.44,
-          "y": 150.0,
-          "width": 174.96,
-          "height": 54.0,
-          "is_cluster": false
-        },
-        {
-          "id": "N2----parent",
-          "x": 395.44,
-          "y": 150.0,
-          "width": 244.96,
-          "height": 104.0,
-          "is_cluster": true
-        },
-        {
           "id": "foo",
-          "x": 44.88,
+          "x": 26.32,
           "y": 28.0,
           "width": 36.64,
           "height": 40.0,
           "is_cluster": false
         }
       ],
-      "edges": [
-        {
-          "id": "N1-N1----note-0",
-          "from": "N1",
-          "to": "N1----note-0",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 130.98,
-              "y": 48.5
-            },
-            {
-              "x": 130.48,
-              "y": 73.0
-            },
-            {
-              "x": 130.48,
-              "y": 98.0
-            },
-            {
-              "x": 130.48,
-              "y": 150.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "N2-N2----note-1",
-          "from": "N2",
-          "to": "N2----note-1",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 395.94,
-              "y": 48.5
-            },
-            {
-              "x": 395.44,
-              "y": 73.0
-            },
-            {
-              "x": 395.44,
-              "y": 98.0
-            },
-            {
-              "x": 395.44,
-              "y": 150.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        }
-      ],
-      "clusters": [
-        {
-          "id": "N1----parent",
-          "x": 130.48,
-          "y": 150.0,
-          "width": 244.96,
-          "height": 104.0,
-          "diff": 0.0,
-          "offset_y": 0.0,
-          "title": "This is a floating note",
-          "title_label": {
-            "x": 130.48,
-            "y": 111.0,
-            "width": 144.96,
-            "height": 24.0
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 16.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
-        },
-        {
-          "id": "N2----parent",
-          "x": 395.44,
-          "y": 150.0,
-          "width": 244.96,
-          "height": 104.0,
-          "diff": 0.0,
-          "offset_y": 0.0,
-          "title": "This is a floating note",
-          "title_label": {
-            "x": 395.44,
-            "y": 111.0,
-            "width": 144.96,
-            "height": 24.0
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 16.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
-        }
-      ],
+      "edges": [],
+      "clusters": [],
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 517.92,
-        "max_y": 202.0
+        "max_x": 44.64,
+        "max_y": 48.0
       }
     }
   }

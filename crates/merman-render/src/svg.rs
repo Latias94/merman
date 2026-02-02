@@ -13032,105 +13032,15 @@ pub fn render_state_diagram_v2_svg(
         }
     }
 
-    fn state_is_hidden_id(prefixes: &[String], id: &str) -> bool {
-        prefixes.iter().any(|p| {
-            if id == p {
-                return true;
-            }
-            id.strip_prefix(p)
-                .is_some_and(|rest| rest.starts_with("----"))
-        })
-    }
-
-    // Keep the render-time origin aligned with the layout engine so all emitted coordinates stay
-    // stable. The root viewport is computed separately from the emitted content bbox.
+    // Mermaid computes the final root viewport from DOM `svg.getBBox()` plus a fixed padding
+    // (`setupViewPortForSVG(svg, padding=8)`). It does *not* pre-normalize the coordinate space by
+    // shifting the entire rendered graph to start at (0,0).
     //
-    // IMPORTANT: Mermaid renders some legacy "floating note" syntaxes as no-ops. We model those
-    // nodes in headless layout to preserve parsing/snapshot fidelity, but they must not affect
-    // the origin translation or root viewBox/max-width sizing.
-    let layout_bounds = {
-        let mut b: Option<Bounds> = None;
-
-        let mut include_rect = |min_x: f64, min_y: f64, max_x: f64, max_y: f64| {
-            if let Some(ref mut cur) = b {
-                cur.min_x = cur.min_x.min(min_x);
-                cur.min_y = cur.min_y.min(min_y);
-                cur.max_x = cur.max_x.max(max_x);
-                cur.max_y = cur.max_y.max(max_y);
-            } else {
-                b = Some(Bounds {
-                    min_x,
-                    min_y,
-                    max_x,
-                    max_y,
-                });
-            }
-        };
-
-        for c in &layout.clusters {
-            if state_is_hidden_id(&hidden_prefixes, c.id.as_str()) {
-                continue;
-            }
-            let hw = c.width / 2.0;
-            let hh = c.height / 2.0;
-            include_rect(c.x - hw, c.y - hh, c.x + hw, c.y + hh);
-
-            let lhw = c.title_label.width / 2.0;
-            let lhh = c.title_label.height / 2.0;
-            include_rect(
-                c.title_label.x - lhw,
-                c.title_label.y - lhh,
-                c.title_label.x + lhw,
-                c.title_label.y + lhh,
-            );
-        }
-
-        for n in &layout.nodes {
-            if state_is_hidden_id(&hidden_prefixes, n.id.as_str()) {
-                continue;
-            }
-            let hw = n.width / 2.0;
-            let hh = n.height / 2.0;
-            include_rect(n.x - hw, n.y - hh, n.x + hw, n.y + hh);
-        }
-
-        for e in &layout.edges {
-            if state_is_hidden_id(&hidden_prefixes, e.id.as_str())
-                || state_is_hidden_id(&hidden_prefixes, e.from.as_str())
-                || state_is_hidden_id(&hidden_prefixes, e.to.as_str())
-            {
-                continue;
-            }
-            for p in &e.points {
-                include_rect(p.x, p.y, p.x, p.y);
-            }
-            for lbl in [
-                e.label.as_ref(),
-                e.start_label_left.as_ref(),
-                e.start_label_right.as_ref(),
-                e.end_label_left.as_ref(),
-                e.end_label_right.as_ref(),
-            ] {
-                if let Some(lbl) = lbl {
-                    let hw = lbl.width / 2.0;
-                    let hh = lbl.height / 2.0;
-                    include_rect(lbl.x - hw, lbl.y - hh, lbl.x + hw, lbl.y + hh);
-                }
-            }
-        }
-
-        b.unwrap_or(Bounds {
-            min_x: 0.0,
-            min_y: 0.0,
-            max_x: 100.0,
-            max_y: 100.0,
-        })
-    };
-
-    // Mermaid uses `setupViewPortForSVG(svg, padding=8)`.
+    // Keep the top-level origin at (0,0) and derive `viewBox` / `max-width` later from the emitted
+    // SVG bounds approximation (see below).
     let viewport_padding = 8.0;
-    let origin_x = layout_bounds.min_x - viewport_padding;
-    let origin_y = layout_bounds.min_y - viewport_padding;
+    let origin_x = 0.0;
+    let origin_y = 0.0;
 
     let diagram_title = diagram_title
         .map(|s| s.trim())
@@ -16116,19 +16026,76 @@ fn render_state_node_svg(
         }
         _ => {
             let label = state_node_label_text(node);
+
+            fn parse_css_px_f64(v: &str) -> Option<f64> {
+                let t = v.trim();
+                let t = t.trim_end_matches(';').trim();
+                let t = t.trim_end_matches("!important").trim();
+                let t = t.trim_end_matches("px").trim();
+                t.parse::<f64>().ok()
+            }
+
+            let mut measure_style = ctx.text_style.clone();
+            let mut has_metrics_style: bool = false;
+            let mut italic: bool = false;
+
+            for d in &text_decls {
+                let k = d.key.trim().to_ascii_lowercase();
+                let v = d.val.trim().trim_end_matches(';').trim();
+                let v_no_imp = v.trim_end_matches("!important").trim();
+                match k.as_str() {
+                    "font-weight" => {
+                        if !v_no_imp.is_empty() {
+                            measure_style.font_weight = Some(v_no_imp.to_string());
+                            has_metrics_style = true;
+                        }
+                    }
+                    "font-style" => {
+                        let lower = v_no_imp.to_ascii_lowercase();
+                        if lower.contains("italic") || lower.contains("oblique") {
+                            italic = true;
+                            has_metrics_style = true;
+                        }
+                    }
+                    "font-size" => {
+                        if let Some(px) = parse_css_px_f64(v_no_imp) {
+                            if px.is_finite() && px > 0.0 {
+                                measure_style.font_size = px;
+                                has_metrics_style = true;
+                            }
+                        }
+                    }
+                    "font-family" => {
+                        if !v_no_imp.is_empty() {
+                            measure_style.font_family = Some(v_no_imp.to_string());
+                            has_metrics_style = true;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
             let mut metrics = ctx.measurer.measure_wrapped(
                 &label,
-                &ctx.text_style,
+                &measure_style,
                 Some(200.0),
                 WrapMode::HtmlLike,
             );
-            if let Some(w) =
-                crate::generated::state_text_overrides_11_12_2::lookup_state_node_label_width_px(
-                    ctx.text_style.font_size,
-                    label.trim(),
-                )
-            {
-                metrics.width = w;
+
+            if italic {
+                metrics.width +=
+                    crate::text::mermaid_default_italic_width_delta_px(&label, &measure_style);
+            }
+
+            if !has_metrics_style {
+                if let Some(w) =
+                    crate::generated::state_text_overrides_11_12_2::lookup_state_node_label_width_px(
+                        measure_style.font_size,
+                        label.trim(),
+                    )
+                {
+                    metrics.width = w;
+                }
             }
             let lw = metrics.width.max(0.0);
             let lh = metrics.height.max(0.0);
