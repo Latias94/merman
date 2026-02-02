@@ -7,6 +7,7 @@ members = [
   "crates/merman-render",
   "crates/dugong",
   "crates/dugong-graphlib",
+  "crates/manatee",
   "crates/roughr",
   "crates/xtask",
 ]
