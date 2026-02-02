@@ -25,10 +25,33 @@ impl Default for CoseBilkentOptions {
 #[derive(Debug, Clone)]
 pub struct FcoseOptions {
     pub random_seed: u64,
+    pub alignment_constraint: Option<AlignmentConstraint>,
+    pub relative_placement_constraint: Vec<RelativePlacementConstraint>,
 }
 
 impl Default for FcoseOptions {
     fn default() -> Self {
-        Self { random_seed: 0 }
+        Self {
+            random_seed: 0,
+            alignment_constraint: None,
+            relative_placement_constraint: Vec::new(),
+        }
     }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct AlignmentConstraint {
+    /// Nodes in each inner vec share the same y coordinate (horizontal alignment).
+    pub horizontal: Vec<Vec<String>>,
+    /// Nodes in each inner vec share the same x coordinate (vertical alignment).
+    pub vertical: Vec<Vec<String>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RelativePlacementConstraint {
+    pub left: Option<String>,
+    pub right: Option<String>,
+    pub top: Option<String>,
+    pub bottom: Option<String>,
+    pub gap: f64,
 }

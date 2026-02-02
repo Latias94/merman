@@ -4,7 +4,9 @@ pub mod algo;
 pub mod error;
 pub mod graph;
 
-pub use algo::{Algorithm, CoseBilkentOptions, FcoseOptions};
+pub use algo::{
+    Algorithm, AlignmentConstraint, CoseBilkentOptions, FcoseOptions, RelativePlacementConstraint,
+};
 pub use error::{Error, Result};
 pub use graph::{Edge, Graph, LayoutResult, Node, Point};
 

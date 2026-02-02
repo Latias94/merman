@@ -39,6 +39,9 @@ pub struct Edge {
     pub id: String,
     pub source: String,
     pub target: String,
+    /// Optional ideal edge length (border-to-border) used by algorithms that model edge springs.
+    /// When unset or non-positive, the algorithm's default is used.
+    pub ideal_length: f64,
 }
 
 #[derive(Debug, Clone, Copy)]
