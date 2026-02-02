@@ -48,6 +48,7 @@ the pinned upstream SVG baselines.
 
 Missing pieces likely include:
 
+- A Rust port of the upstream Cytoscape layout stack (see `docs/adr/0053-cytoscape-layout-ports.md`).
 - Deterministic placement strategy for nodes and groups matching the upstream CLI outputs.
 - Port-based edge routing (straight vs 90° “segments” behavior) and endpoint calculations.
 - Group padding/title height rules affecting group bounds and edge endpoints.
