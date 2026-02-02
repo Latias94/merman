@@ -228,11 +228,15 @@ pub fn layout_mindmap_diagram(
         }
     }
 
-    // Mermaid's mindmap output uses a positive coordinate space where the content bbox starts at
-    // approximately (15, 15) before the 10px viewport padding is applied (viewBox starts at 5,5).
-    // This translation makes parity-root viewport comparisons stable even before the COSE port is
-    // fully implemented.
-    shift_nodes_to_positive_bounds(&mut nodes, 15.0);
+    // Mermaid's COSE-Bilkent post-layout normalizes to a positive coordinate space via
+    // `transform(0,0)` (layout-base), yielding a content bbox that starts around (15,15) before
+    // the 10px viewport padding is applied (viewBox starts at 5,5).
+    //
+    // When we do NOT use the manatee COSE port, keep a compatibility translation so parity-root
+    // viewport comparisons remain stable.
+    if !use_manatee_layout {
+        shift_nodes_to_positive_bounds(&mut nodes, 15.0);
+    }
 
     let mut node_pos: std::collections::BTreeMap<String, (f64, f64)> =
         std::collections::BTreeMap::new();
