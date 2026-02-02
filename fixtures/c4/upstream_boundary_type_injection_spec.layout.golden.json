@@ -6,10 +6,10 @@
         "min_x": 50.0,
         "min_y": 10.0,
         "max_x": 766.0,
-        "max_y": 690.4
+        "max_y": 689.0
       },
       "width": 816.0,
-      "height": 700.4,
+      "height": 699.0,
       "viewport_width": 800.0,
       "viewport_height": 600.0,
       "c4_type": "C4Container",
@@ -21,7 +21,7 @@
           "x": 100.0,
           "y": 66.0,
           "width": 616.0,
-          "height": 574.4,
+          "height": 573.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -30,15 +30,15 @@
           "label": {
             "text": "global",
             "y": 8.0,
-            "width": 36.48,
-            "height": 17.6,
+            "width": 36.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[global]",
-            "y": 30.6,
-            "width": 41.16,
-            "height": 15.4,
+            "y": 30.0,
+            "width": 41.0,
+            "height": 16.0,
             "line_count": 1.0
           },
           "descr": null
@@ -49,7 +49,7 @@
           "x": 150.0,
           "y": 122.0,
           "width": 516.0,
-          "height": 468.4,
+          "height": 467.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -58,15 +58,15 @@
           "label": {
             "text": "Enterprise",
             "y": 8.0,
-            "width": 69.12,
-            "height": 17.6,
+            "width": 69.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[ENTERPRISE]",
-            "y": 30.6,
-            "width": 89.04,
-            "height": 15.4,
+            "y": 30.0,
+            "width": 89.0,
+            "height": 16.0,
             "line_count": 1.0
           },
           "descr": null
@@ -77,7 +77,7 @@
           "x": 200.0,
           "y": 178.0,
           "width": 416.0,
-          "height": 362.4,
+          "height": 361.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -86,15 +86,15 @@
           "label": {
             "text": "System",
             "y": 8.0,
-            "width": 51.52,
-            "height": 17.6,
+            "width": 52.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[SYSTEM]",
-            "y": 30.6,
-            "width": 59.64,
-            "height": 15.4,
+            "y": 30.0,
+            "width": 60.0,
+            "height": 16.0,
             "line_count": 1.0
           },
           "descr": null
@@ -105,7 +105,7 @@
           "x": 250.0,
           "y": 234.0,
           "width": 316.0,
-          "height": 256.4,
+          "height": 255.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -114,15 +114,15 @@
           "label": {
             "text": "Container",
             "y": 8.0,
-            "width": 62.24,
-            "height": 17.6,
+            "width": 62.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[CONTAINER]",
-            "y": 30.6,
-            "width": 80.64,
-            "height": 15.4,
+            "y": 30.0,
+            "width": 81.0,
+            "height": 16.0,
             "line_count": 1.0
           },
           "descr": null
@@ -136,7 +136,7 @@
           "x": 300.0,
           "y": 334.0,
           "width": 216.0,
-          "height": 106.4,
+          "height": 105.0,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -153,23 +153,23 @@
           "label": {
             "text": "C1",
             "y": 38.0,
-            "width": 18.56,
-            "height": 17.6,
+            "width": 19.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": {
             "text": "[Tech]",
-            "y": 60.6,
-            "width": 35.7,
-            "height": 15.4,
+            "y": 60.0,
+            "width": 31.0,
+            "height": 14.0,
             "line_count": 1.0
           },
           "descr": {
             "text": "Desc",
-            "y": 96.0,
-            "width": 26.46,
-            "height": 15.4,
+            "y": 94.0,
+            "width": 26.0,
+            "height": 16.0,
             "line_count": 1.0
           }
         }

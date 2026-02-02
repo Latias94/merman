@@ -173,19 +173,14 @@ struct C4Conf {
 
 impl C4Conf {
     fn from_effective_config(effective_config: &Value) -> Self {
-        let global_font_family = config_string(effective_config, &["fontFamily"]);
-        let global_font_size = config_f64(effective_config, &["fontSize"]);
-        let global_font_weight = config_string(effective_config, &["fontWeight"]);
-
-        let message_font_family = global_font_family
-            .clone()
-            .or_else(|| config_string(effective_config, &["c4", "messageFontFamily"]));
-        let message_font_size = global_font_size
-            .or_else(|| config_f64(effective_config, &["c4", "messageFontSize"]))
-            .unwrap_or(12.0);
-        let message_font_weight = global_font_weight
-            .clone()
-            .or_else(|| config_string(effective_config, &["c4", "messageFontWeight"]));
+        // Mermaid's C4 renderer (`packages/mermaid/src/diagrams/c4/c4Renderer.js`) calls
+        // `setConf(diagObj.db.getConfig())`, where `getConfig()` yields the diagram config object
+        // (i.e. `config.c4`), not the global config root. As a result, top-level `fontFamily`,
+        // `fontSize`, and `fontWeight` do not override C4-specific font defaults.
+        let message_font_family = config_string(effective_config, &["c4", "messageFontFamily"]);
+        let message_font_size =
+            config_f64(effective_config, &["c4", "messageFontSize"]).unwrap_or(12.0);
+        let message_font_weight = config_string(effective_config, &["c4", "messageFontWeight"]);
 
         let boundary_font_family = config_string(effective_config, &["c4", "boundaryFontFamily"]);
         let boundary_font_size =
@@ -231,33 +226,13 @@ impl C4Conf {
     }
 
     fn c4_shape_font(&self, effective_config: &Value, type_c4_shape: &str) -> TextStyle {
-        let global_font_family = config_string(effective_config, &["fontFamily"]);
-        let global_font_size = config_f64(effective_config, &["fontSize"]);
-        let global_font_weight = config_string(effective_config, &["fontWeight"]);
-
-        let can_override = matches!(type_c4_shape, "person" | "system");
-
         let key_family = format!("{type_c4_shape}FontFamily");
         let key_size = format!("{type_c4_shape}FontSize");
         let key_weight = format!("{type_c4_shape}FontWeight");
 
-        let font_family = (if can_override {
-            global_font_family
-        } else {
-            None
-        })
-        .or_else(|| config_string(effective_config, &["c4", &key_family]));
-
-        let font_size = (if can_override { global_font_size } else { None })
-            .or_else(|| config_f64(effective_config, &["c4", &key_size]))
-            .unwrap_or(14.0);
-
-        let font_weight = (if can_override {
-            global_font_weight
-        } else {
-            None
-        })
-        .or_else(|| config_string(effective_config, &["c4", &key_weight]));
+        let font_family = config_string(effective_config, &["c4", &key_family]);
+        let font_size = config_f64(effective_config, &["c4", &key_size]).unwrap_or(14.0);
+        let font_weight = config_string(effective_config, &["c4", &key_weight]);
 
         TextStyle {
             font_family,
@@ -281,23 +256,55 @@ fn measure_c4_text(
     wrap: bool,
     text_limit_width: f64,
 ) -> TextMeasure {
+    // Mermaid's `calculateTextWidth/Height` (used by C4) draws SVG `<text>` nodes, calls
+    // `getBBox()`, and then applies `Math.round(...)` per line. To keep C4 layout + viewport
+    // parity with upstream SVG baselines, we mirror that integer rounding behavior here.
+    fn js_round_pos(v: f64) -> f64 {
+        if !(v.is_finite() && v >= 0.0) {
+            0.0
+        } else {
+            (v + 0.5).floor()
+        }
+    }
+
+    fn c4_svg_bbox_line_height_px(style: &TextStyle) -> f64 {
+        // C4 in Mermaid@11.12.2 uses `calculateTextDimensions(...).height`, which is measured via
+        // SVG `getBBox()` and rounded with `Math.round`. Upstream fixtures show stable, integer
+        // per-line heights for the default C4 fonts:
+        // - 12px -> 14px
+        // - 14px -> 16px
+        // - 16px -> 17px
+        //
+        // These do not match our generic deterministic SVG line-height approximation (`1.1em`),
+        // so we treat them as C4-specific constants to keep layout bounds and root viewBox parity.
+        let fs = js_round_pos(style.font_size.max(1.0));
+        if (fs - 12.0).abs() < 0.01 {
+            14.0
+        } else if (fs - 14.0).abs() < 0.01 {
+            16.0
+        } else if (fs - 16.0).abs() < 0.01 {
+            17.0
+        } else {
+            js_round_pos(style.font_size.max(1.0) * 1.1)
+        }
+    }
+
     if wrap {
         let m = measurer.measure_wrapped(text, style, Some(text_limit_width), WrapMode::SvgLike);
         return TextMeasure {
             width: text_limit_width,
-            height: m.height,
+            height: c4_svg_bbox_line_height_px(style) * m.line_count.max(1) as f64,
             line_count: m.line_count,
         };
     }
 
     let mut width: f64 = 0.0;
-    let mut height: f64 = 0.0;
     let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text);
     for line in &lines {
         let m = measurer.measure(line, style);
-        width = width.max(m.width);
-        height += m.height;
+        width = width.max(js_round_pos(m.width));
     }
+    let height = c4_svg_bbox_line_height_px(style) * lines.len().max(1) as f64;
     TextMeasure {
         width,
         height,
@@ -632,7 +639,19 @@ fn layout_c4_shape_array(
             ty_block = Some(block);
         } else if let Some(techn) = shape.techn.as_ref().filter(|t| !t.as_str().is_empty()) {
             let techn_text = format!("[{}]", techn.as_str());
-            let techn_conf = conf.c4_shape_font(effective_config, &techn_text);
+            // Mermaid@11.12.2 C4 renderer quirk: `techn` text is measured with
+            // `c4ShapeFont(conf, c4Shape.techn.text)`, where `c4Shape.techn.text` already contains
+            // the bracketed string (e.g. `[Rust]`). That key does not exist in the config object,
+            // so the downstream `calculateTextDimensions` falls back to its defaults
+            // (`fontSize=12`, `fontFamily='Arial'`).
+            //
+            // Upstream SVG baselines encode this behavior into shape heights and ultimately the
+            // root viewBox. Mirror it here for parity.
+            let techn_conf = TextStyle {
+                font_family: Some("Arial".to_string()),
+                font_size: 12.0,
+                font_weight: None,
+            };
             let m = measure_c4_text(
                 measurer,
                 &techn_text,

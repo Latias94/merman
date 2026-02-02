@@ -6,10 +6,10 @@
         "min_x": 50.0,
         "min_y": 10.0,
         "max_x": 782.0,
-        "max_y": 372.4
+        "max_y": 371.0
       },
       "width": 832.0,
-      "height": 382.4,
+      "height": 381.0,
       "viewport_width": 800.0,
       "viewport_height": 600.0,
       "c4_type": "C4Container",
@@ -21,7 +21,7 @@
           "x": 100.0,
           "y": 66.0,
           "width": 632.0,
-          "height": 256.4,
+          "height": 255.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -30,15 +30,15 @@
           "label": {
             "text": "global",
             "y": 8.0,
-            "width": 36.48,
-            "height": 17.6,
+            "width": 36.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[global]",
-            "y": 30.6,
-            "width": 41.16,
-            "height": 15.4,
+            "y": 30.0,
+            "width": 41.0,
+            "height": 16.0,
             "line_count": 1.0
           },
           "descr": null
@@ -52,7 +52,7 @@
           "x": 150.0,
           "y": 166.0,
           "width": 216.0,
-          "height": 106.4,
+          "height": 105.0,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -69,23 +69,23 @@
           "label": {
             "text": "C1",
             "y": 38.0,
-            "width": 18.56,
-            "height": 17.6,
+            "width": 19.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": {
             "text": "[Tech]",
-            "y": 60.6,
-            "width": 35.7,
-            "height": 15.4,
+            "y": 60.0,
+            "width": 31.0,
+            "height": 14.0,
             "line_count": 1.0
           },
           "descr": {
             "text": "Desc",
-            "y": 96.0,
-            "width": 26.46,
-            "height": 15.4,
+            "y": 94.0,
+            "width": 26.0,
+            "height": 16.0,
             "line_count": 1.0
           }
         },
@@ -96,7 +96,7 @@
           "x": 466.0,
           "y": 166.0,
           "width": 216.0,
-          "height": 106.4,
+          "height": 105.0,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -113,23 +113,23 @@
           "label": {
             "text": "C2",
             "y": 38.0,
-            "width": 18.56,
-            "height": 17.6,
+            "width": 19.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": {
             "text": "[Postgres]",
-            "y": 60.6,
-            "width": 59.78,
-            "height": 15.4,
+            "y": 60.0,
+            "width": 51.0,
+            "height": 14.0,
             "line_count": 1.0
           },
           "descr": {
             "text": "DB",
-            "y": 96.0,
-            "width": 16.8,
-            "height": 15.4,
+            "y": 94.0,
+            "width": 17.0,
+            "height": 16.0,
             "line_count": 1.0
           }
         }
@@ -141,19 +141,19 @@
           "rel_type": "rel",
           "start_point": {
             "x": 366.0,
-            "y": 232.751
+            "y": 231.873
           },
           "end_point": {
             "x": 466.0,
-            "y": 246.823
+            "y": 245.76
           },
           "offset_x": null,
           "offset_y": null,
           "label": {
             "text": "reads",
             "y": 0.0,
-            "width": 34.4,
-            "height": 17.6,
+            "width": 26.0,
+            "height": 14.0,
             "line_count": 1.0
           },
           "techn": null,

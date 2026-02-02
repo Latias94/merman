@@ -6,10 +6,10 @@
         "min_x": 50.0,
         "min_y": 10.0,
         "max_x": 782.0,
-        "max_y": 373.8
+        "max_y": 369.0
       },
       "width": 832.0,
-      "height": 383.8,
+      "height": 379.0,
       "viewport_width": 800.0,
       "viewport_height": 600.0,
       "c4_type": "C4Context",
@@ -21,7 +21,7 @@
           "x": 100.0,
           "y": 66.0,
           "width": 632.0,
-          "height": 257.8,
+          "height": 253.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -30,15 +30,15 @@
           "label": {
             "text": "global",
             "y": 8.0,
-            "width": 36.48,
-            "height": 17.6,
+            "width": 36.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[global]",
-            "y": 30.6,
-            "width": 41.16,
-            "height": 15.4,
+            "y": 30.0,
+            "width": 41.0,
+            "height": 16.0,
             "line_count": 1.0
           },
           "descr": null
@@ -52,25 +52,25 @@
           "x": 150.0,
           "y": 166.0,
           "width": 216.0,
-          "height": 107.8,
+          "height": 103.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
             "height": 48.0,
-            "y": 32.0
+            "y": 30.0
           },
           "type_block": {
             "text": "«person»",
             "y": 20.0,
-            "width": 52.92,
-            "height": 16.0,
+            "width": 45.36,
+            "height": 14.0,
             "line_count": 1.0
           },
           "label": {
             "text": "A",
-            "y": 88.0,
-            "width": 10.8,
-            "height": 19.8,
+            "y": 86.0,
+            "width": 10.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -84,25 +84,25 @@
           "x": 466.0,
           "y": 166.0,
           "width": 216.0,
-          "height": 107.8,
+          "height": 103.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
             "height": 48.0,
-            "y": 32.0
+            "y": 30.0
           },
           "type_block": {
             "text": "«person»",
             "y": 20.0,
-            "width": 52.92,
-            "height": 16.0,
+            "width": 45.36,
+            "height": 14.0,
             "line_count": 1.0
           },
           "label": {
             "text": "B",
-            "y": 88.0,
-            "width": 10.8,
-            "height": 19.8,
+            "y": 86.0,
+            "width": 10.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -117,33 +117,33 @@
           "rel_type": "rel_b",
           "start_point": {
             "x": 366.0,
-            "y": 233.629
+            "y": 230.618
           },
           "end_point": {
             "x": 466.0,
-            "y": 247.887
+            "y": 244.24
           },
           "offset_x": 10.0,
           "offset_y": 20.0,
           "label": {
             "text": "override",
             "y": 0.0,
-            "width": 52.64,
-            "height": 17.6,
+            "width": 39.0,
+            "height": 14.0,
             "line_count": 1.0
           },
           "techn": {
             "text": "tech2",
             "y": 0.0,
-            "width": 36.48,
-            "height": 17.6,
+            "width": 27.0,
+            "height": 14.0,
             "line_count": 1.0
           },
           "descr": {
             "text": "d2",
             "y": 0.0,
-            "width": 15.84,
-            "height": 17.6,
+            "width": 12.0,
+            "height": 14.0,
             "line_count": 1.0
           }
         }

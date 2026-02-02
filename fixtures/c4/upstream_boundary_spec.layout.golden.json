@@ -30,15 +30,15 @@
           "label": {
             "text": "global",
             "y": 8.0,
-            "width": 36.48,
-            "height": 17.6,
+            "width": 36.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[global]",
-            "y": 30.6,
-            "width": 41.16,
-            "height": 15.4,
+            "y": 30.0,
+            "width": 41.0,
+            "height": 16.0,
             "line_count": 1.0
           },
           "descr": null
@@ -58,15 +58,15 @@
           "label": {
             "text": "BankBoundary",
             "y": 8.0,
-            "width": 91.84,
-            "height": 17.6,
+            "width": 92.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[system]",
-            "y": 30.6,
-            "width": 51.94,
-            "height": 15.4,
+            "y": 30.0,
+            "width": 52.0,
+            "height": 16.0,
             "line_count": 1.0
           },
           "descr": null
@@ -87,14 +87,14 @@
             "text": "",
             "y": 8.0,
             "width": 0.0,
-            "height": 17.6,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[company]",
-            "y": 30.6,
-            "width": 57.96,
-            "height": 15.4,
+            "y": 30.0,
+            "width": 58.0,
+            "height": 16.0,
             "line_count": 1.0
           },
           "descr": null
@@ -115,14 +115,14 @@
             "text": "",
             "y": 8.0,
             "width": 0.0,
-            "height": 17.6,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[system]",
-            "y": 30.6,
-            "width": 51.94,
-            "height": 15.4,
+            "y": 30.0,
+            "width": 52.0,
+            "height": 16.0,
             "line_count": 1.0
           },
           "descr": null
@@ -143,14 +143,14 @@
             "text": "",
             "y": 8.0,
             "width": 0.0,
-            "height": 17.6,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[system]",
-            "y": 30.6,
-            "width": 51.94,
-            "height": 15.4,
+            "y": 30.0,
+            "width": 52.0,
+            "height": 16.0,
             "line_count": 1.0
           },
           "descr": null
@@ -174,15 +174,15 @@
           "type_block": {
             "text": "«system»",
             "y": 20.0,
-            "width": 59.5,
-            "height": 16.0,
+            "width": 51.0,
+            "height": 14.0,
             "line_count": 1.0
           },
           "label": {
             "text": "Internet Banking System",
-            "y": 40.0,
-            "width": 186.12,
-            "height": 19.8,
+            "y": 38.0,
+            "width": 165.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -206,15 +206,15 @@
           "type_block": {
             "text": "«system»",
             "y": 20.0,
-            "width": 59.5,
-            "height": 16.0,
+            "width": 51.0,
+            "height": 14.0,
             "line_count": 1.0
           },
           "label": {
             "text": "S1",
-            "y": 40.0,
-            "width": 20.88,
-            "height": 19.8,
+            "y": 38.0,
+            "width": 19.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -238,15 +238,15 @@
           "type_block": {
             "text": "«system»",
             "y": 20.0,
-            "width": 59.5,
-            "height": 16.0,
+            "width": 51.0,
+            "height": 14.0,
             "line_count": 1.0
           },
           "label": {
             "text": "S2",
-            "y": 40.0,
-            "width": 20.88,
-            "height": 19.8,
+            "y": 38.0,
+            "width": 19.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -270,15 +270,15 @@
           "type_block": {
             "text": "«system»",
             "y": 20.0,
-            "width": 59.5,
-            "height": 16.0,
+            "width": 51.0,
+            "height": 14.0,
             "line_count": 1.0
           },
           "label": {
             "text": "S3",
-            "y": 40.0,
-            "width": 20.88,
-            "height": 19.8,
+            "y": 38.0,
+            "width": 19.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": null,

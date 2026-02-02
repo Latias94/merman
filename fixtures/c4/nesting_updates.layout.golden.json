@@ -6,10 +6,10 @@
         "min_x": 50.0,
         "min_y": 10.0,
         "max_x": 666.0,
-        "max_y": 924.2
+        "max_y": 913.0
       },
       "width": 716.0,
-      "height": 934.2,
+      "height": 923.0,
       "viewport_width": 800.0,
       "viewport_height": 600.0,
       "c4_type": "C4Deployment",
@@ -21,7 +21,7 @@
           "x": 100.0,
           "y": 66.0,
           "width": 516.0,
-          "height": 808.2,
+          "height": 797.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -31,14 +31,14 @@
             "text": "global",
             "y": 8.0,
             "width": 800.0,
-            "height": 17.6,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[global]",
-            "y": 30.6,
+            "y": 30.0,
             "width": 800.0,
-            "height": 15.4,
+            "height": 16.0,
             "line_count": 1.0
           },
           "descr": null
@@ -49,7 +49,7 @@
           "x": 150.0,
           "y": 122.0,
           "width": 416.0,
-          "height": 702.2,
+          "height": 691.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -59,14 +59,14 @@
             "text": "Node 1",
             "y": 8.0,
             "width": 800.0,
-            "height": 17.6,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[node]",
-            "y": 30.6,
+            "y": 30.0,
             "width": 800.0,
-            "height": 15.4,
+            "height": 16.0,
             "line_count": 1.0
           },
           "descr": null
@@ -75,9 +75,9 @@
           "alias": "b1",
           "parent_boundary": "n1",
           "x": 200.0,
-          "y": 516.4,
+          "y": 510.0,
           "width": 316.0,
-          "height": 257.8,
+          "height": 253.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -87,14 +87,14 @@
             "text": "Boundary 1",
             "y": 8.0,
             "width": 800.0,
-            "height": 17.6,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[system]",
-            "y": 30.6,
+            "y": 30.0,
             "width": 800.0,
-            "height": 15.4,
+            "height": 16.0,
             "line_count": 1.0
           },
           "descr": null
@@ -106,27 +106,27 @@
           "parent_boundary": "b1",
           "type_c4_shape": "person",
           "x": 250.0,
-          "y": 616.4,
+          "y": 610.0,
           "width": 216.0,
-          "height": 107.8,
+          "height": 103.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
             "height": 48.0,
-            "y": 32.0
+            "y": 30.0
           },
           "type_block": {
             "text": "«person»",
             "y": 20.0,
-            "width": 52.92,
-            "height": 16.0,
+            "width": 45.36,
+            "height": 14.0,
             "line_count": 1.0
           },
           "label": {
             "text": "",
-            "y": 88.0,
+            "y": 86.0,
             "width": 176.0,
-            "height": 19.8,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -140,34 +140,34 @@
           "x": 200.0,
           "y": 222.0,
           "width": 216.0,
-          "height": 188.4,
+          "height": 182.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
             "height": 48.0,
-            "y": 80.0
+            "y": 78.0
           },
           "type_block": {
             "text": "«person»",
             "y": 20.0,
-            "width": 52.92,
-            "height": 16.0,
+            "width": 45.36,
+            "height": 14.0,
             "line_count": 1.0
           },
           "label": {
             "text": "P2",
-            "y": 136.0,
+            "y": 134.0,
             "width": 176.0,
-            "height": 19.8,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "D2",
-            "y": 175.8,
+            "y": 171.0,
             "width": 176.0,
-            "height": 17.6,
+            "height": 16.0,
             "line_count": 1.0
           }
         }
@@ -178,20 +178,20 @@
           "to": "p2",
           "rel_type": "rel_b",
           "start_point": {
-            "x": 368.414,
-            "y": 616.4
+            "x": 368.057,
+            "y": 610.0
           },
           "end_point": {
-            "x": 341.2,
-            "y": 410.4
+            "x": 340.714,
+            "y": 404.0
           },
           "offset_x": 10.0,
           "offset_y": 20.0,
           "label": {
             "text": "override",
             "y": 0.0,
-            "width": 52.64,
-            "height": 35.2,
+            "width": 39.48,
+            "height": 28.0,
             "line_count": 2.0
           },
           "techn": null,

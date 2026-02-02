@@ -5,11 +5,11 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 839.44,
-        "max_y": 1076.4
+        "max_x": 782.0,
+        "max_y": 1070.0
       },
-      "width": 889.44,
-      "height": 1086.4,
+      "width": 832.0,
+      "height": 1080.0,
       "viewport_width": 800.0,
       "viewport_height": 600.0,
       "c4_type": "C4Context",
@@ -20,8 +20,8 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 689.44,
-          "height": 960.4,
+          "width": 632.0,
+          "height": 954.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -30,15 +30,15 @@
           "label": {
             "text": "global",
             "y": 8.0,
-            "width": 36.48,
-            "height": 17.6,
+            "width": 36.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[global]",
-            "y": 30.6,
-            "width": 41.16,
-            "height": 15.4,
+            "y": 30.0,
+            "width": 41.0,
+            "height": 16.0,
             "line_count": 1.0
           },
           "descr": null
@@ -51,8 +51,8 @@
           "type_c4_shape": "system",
           "x": 150.0,
           "y": 166.0,
-          "width": 589.44,
-          "height": 92.4,
+          "width": 518.0,
+          "height": 86.0,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -62,24 +62,24 @@
           "type_block": {
             "text": "«system»",
             "y": 20.0,
-            "width": 59.5,
-            "height": 16.0,
+            "width": 51.0,
+            "height": 14.0,
             "line_count": 1.0
           },
           "label": {
             "text": "Internet Banking System",
-            "y": 40.0,
-            "width": 186.12,
-            "height": 19.8,
+            "y": 38.0,
+            "width": 165.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "Allows customers to view information about their bank accounts, and make payments.",
-            "y": 79.8,
-            "width": 569.44,
-            "height": 17.6,
+            "y": 75.0,
+            "width": 498.0,
+            "height": 16.0,
             "line_count": 1.0
           }
         },
@@ -88,7 +88,7 @@
           "parent_boundary": "global",
           "type_c4_shape": "system_db",
           "x": 150.0,
-          "y": 358.4,
+          "y": 352.0,
           "width": 216.0,
           "height": 86.0,
           "margin": 50.0,
@@ -108,16 +108,16 @@
             "text": "System DB",
             "y": 38.0,
             "width": 76.0,
-            "height": 17.6,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "Database system",
-            "y": 75.6,
-            "width": 97.86,
-            "height": 15.4,
+            "y": 75.0,
+            "width": 98.0,
+            "height": 16.0,
             "line_count": 1.0
           }
         },
@@ -126,7 +126,7 @@
           "parent_boundary": "global",
           "type_c4_shape": "system_queue",
           "x": 466.0,
-          "y": 358.4,
+          "y": 352.0,
           "width": 216.0,
           "height": 86.0,
           "margin": 50.0,
@@ -145,17 +145,17 @@
           "label": {
             "text": "System Queue",
             "y": 38.0,
-            "width": 93.92,
-            "height": 17.6,
+            "width": 94.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "Queue system",
-            "y": 75.6,
-            "width": 79.8,
-            "height": 15.4,
+            "y": 75.0,
+            "width": 80.0,
+            "height": 16.0,
             "line_count": 1.0
           }
         },
@@ -164,7 +164,7 @@
           "parent_boundary": "global",
           "type_c4_shape": "external_system",
           "x": 150.0,
-          "y": 544.4,
+          "y": 538.0,
           "width": 216.0,
           "height": 86.0,
           "margin": 50.0,
@@ -183,17 +183,17 @@
           "label": {
             "text": "External System",
             "y": 38.0,
-            "width": 112.16,
-            "height": 17.6,
+            "width": 112.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "External system",
-            "y": 75.6,
-            "width": 95.76,
-            "height": 15.4,
+            "y": 75.0,
+            "width": 96.0,
+            "height": 16.0,
             "line_count": 1.0
           }
         },
@@ -202,7 +202,7 @@
           "parent_boundary": "global",
           "type_c4_shape": "external_system_db",
           "x": 466.0,
-          "y": 544.4,
+          "y": 538.0,
           "width": 216.0,
           "height": 86.0,
           "margin": 50.0,
@@ -221,17 +221,17 @@
           "label": {
             "text": "External System DB",
             "y": 38.0,
-            "width": 136.64,
-            "height": 17.6,
+            "width": 137.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "External database system",
-            "y": 75.6,
-            "width": 148.54,
-            "height": 15.4,
+            "y": 75.0,
+            "width": 149.0,
+            "height": 16.0,
             "line_count": 1.0
           }
         },
@@ -240,7 +240,7 @@
           "parent_boundary": "global",
           "type_c4_shape": "external_system_queue",
           "x": 150.0,
-          "y": 730.4,
+          "y": 724.0,
           "width": 216.0,
           "height": 86.0,
           "margin": 50.0,
@@ -259,17 +259,17 @@
           "label": {
             "text": "External System Queue",
             "y": 38.0,
-            "width": 154.56,
-            "height": 17.6,
+            "width": 155.0,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": null,
           "descr": {
             "text": "External queue system",
-            "y": 75.6,
-            "width": 130.48,
-            "height": 15.4,
+            "y": 75.0,
+            "width": 130.0,
+            "height": 16.0,
             "line_count": 1.0
           }
         },
@@ -278,7 +278,7 @@
           "parent_boundary": "global",
           "type_c4_shape": "system",
           "x": 466.0,
-          "y": 730.4,
+          "y": 724.0,
           "width": 216.0,
           "height": 60.0,
           "margin": 50.0,
@@ -290,15 +290,15 @@
           "type_block": {
             "text": "«system»",
             "y": 20.0,
-            "width": 59.5,
-            "height": 16.0,
+            "width": 51.0,
+            "height": 14.0,
             "line_count": 1.0
           },
           "label": {
             "text": "",
-            "y": 40.0,
+            "y": 38.0,
             "width": 0.0,
-            "height": 19.8,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -310,7 +310,7 @@
           "parent_boundary": "global",
           "type_c4_shape": "system",
           "x": 150.0,
-          "y": 916.4,
+          "y": 910.0,
           "width": 216.0,
           "height": 60.0,
           "margin": 50.0,
@@ -322,15 +322,15 @@
           "type_block": {
             "text": "«system»",
             "y": 20.0,
-            "width": 59.5,
-            "height": 16.0,
+            "width": 51.0,
+            "height": 14.0,
             "line_count": 1.0
           },
           "label": {
             "text": "",
-            "y": 40.0,
+            "y": 38.0,
             "width": 0.0,
-            "height": 19.8,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -342,7 +342,7 @@
           "parent_boundary": "global",
           "type_c4_shape": "system",
           "x": 466.0,
-          "y": 916.4,
+          "y": 910.0,
           "width": 216.0,
           "height": 60.0,
           "margin": 50.0,
@@ -354,15 +354,15 @@
           "type_block": {
             "text": "«system»",
             "y": 20.0,
-            "width": 59.5,
-            "height": 16.0,
+            "width": 51.0,
+            "height": 14.0,
             "line_count": 1.0
           },
           "label": {
             "text": "",
-            "y": 40.0,
+            "y": 38.0,
             "width": 0.0,
-            "height": 19.8,
+            "height": 17.0,
             "line_count": 1.0
           },
           "ty": null,
