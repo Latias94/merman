@@ -33,12 +33,15 @@ A fixture is promoted from `*_parser_only_` to a “full” fixture when:
 
 ### Semantic → Layout Model Mapping
 
-- `crates/merman-render/src/architecture.rs` currently deserializes a simplified `{ nodes, edges }`
-  shape and does not consume the full semantic model (`services`, `junctions`, `groups`, `edges`).
-- To promote fixtures with groups/junctions/edges, the layout layer must map:
-  - `services[]` and `junctions[]` into layout nodes (with measured sizes)
-  - `groups[]` into layout clusters (bounds derived from children + padding + title/icon areas)
-  - `edges[]` into routed layout edges (including `{group}` boundary traversal and label placement)
+- `crates/merman-render/src/architecture.rs` now consumes Mermaid's semantic shape more directly:
+  - `nodes[]` (including per-node `edges[]` lists, used for BFS adjacency construction)
+  - `groups[]` (currently only used as a signal for header/centering heuristics)
+  - `edges[]` (global edge list used for deterministic output edge ordering)
+  - The `{group}` edge modifier fields `lhsGroup`/`rhsGroup` are boolean in the semantic model and
+    are accepted by the deserializer.
+- The mapping is still incomplete: layout does not yet model groups as compound nodes/clusters for
+  layout purposes (it only places leaf nodes and lets the Stage B renderer derive group rect bounds
+  from children).
 
 ### Headless Layout Parity
 
@@ -49,7 +52,12 @@ the pinned upstream SVG baselines.
 Missing pieces likely include:
 
 - A Rust port of the upstream Cytoscape layout stack (see `docs/adr/0053-cytoscape-layout-ports.md`).
-- Deterministic placement strategy for nodes and groups matching the upstream CLI outputs.
+- The current layout is a deterministic scaffold that reproduces Mermaid's BFS spatial-map topology
+  and places nodes on a grid (with a few centering heuristics). It is stable enough for layout
+  snapshots, but it does not match upstream FCoSE coordinates and should be treated as a stepping
+  stone only.
+- Deterministic placement strategy for nodes and groups matching the upstream CLI outputs (FCoSE),
+  including the exact floating-point behavior and constraint handling.
 - Port-based edge routing (straight vs 90° “segments” behavior) and endpoint calculations.
 - Group padding/title height rules affecting group bounds and edge endpoints.
 
