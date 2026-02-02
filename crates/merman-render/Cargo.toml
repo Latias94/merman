@@ -9,6 +9,7 @@ base64.workspace = true
 chrono.workspace = true
 dugong = { path = "../dugong" }
 indexmap.workspace = true
+manatee = { path = "../manatee" }
 merman-core = { path = "../merman-core" }
 pulldown-cmark.workspace = true
 regex.workspace = true

@@ -138,6 +138,7 @@ pub fn layout_mindmap_diagram(
     model: &Value,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
+    use_manatee_layout: bool,
 ) -> Result<MindmapDiagramLayout> {
     let model: MindmapModel = serde_json::from_value(model.clone())?;
 
@@ -170,6 +171,40 @@ pub fn layout_mindmap_diagram(
             height: height.max(1.0),
             is_cluster: false,
         });
+    }
+
+    if use_manatee_layout {
+        let graph = manatee::Graph {
+            nodes: nodes
+                .iter()
+                .map(|n| manatee::Node {
+                    id: n.id.clone(),
+                    width: n.width,
+                    height: n.height,
+                    x: n.x,
+                    y: n.y,
+                })
+                .collect(),
+            edges: model
+                .edges
+                .iter()
+                .map(|e| manatee::Edge {
+                    id: e.id.clone(),
+                    source: e.start.clone(),
+                    target: e.end.clone(),
+                })
+                .collect(),
+        };
+        let result = manatee::layout(&graph, manatee::Algorithm::CoseBilkent(Default::default()))
+            .map_err(|e| Error::InvalidModel {
+                message: format!("manatee layout failed: {e}"),
+            })?;
+        for n in &mut nodes {
+            if let Some(p) = result.positions.get(n.id.as_str()) {
+                n.x = p.x;
+                n.y = p.y;
+            }
+        }
     }
 
     let mut node_pos: std::collections::BTreeMap<String, (f64, f64)> =

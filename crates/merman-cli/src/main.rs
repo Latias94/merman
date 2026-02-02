@@ -292,6 +292,7 @@ fn run(args: Args) -> Result<(), CliError> {
                 text_measurer: Arc::clone(&measurer),
                 viewport_width: args.viewport_width,
                 viewport_height: args.viewport_height,
+                use_manatee_layout: false,
             };
             let layouted = merman_render::layout_parsed(&parsed, &layout_opts)?;
             write_json(&layouted, args.pretty)?;
@@ -307,6 +308,7 @@ fn run(args: Args) -> Result<(), CliError> {
                 text_measurer: Arc::clone(&measurer),
                 viewport_width: args.viewport_width,
                 viewport_height: args.viewport_height,
+                use_manatee_layout: false,
             };
             let layouted = merman_render::layout_parsed(&parsed, &layout_opts)?;
 

@@ -1011,6 +1011,7 @@ dependencies = [
  "dugong",
  "futures",
  "indexmap",
+ "manatee",
  "merman-core",
  "pulldown-cmark",
  "regex",

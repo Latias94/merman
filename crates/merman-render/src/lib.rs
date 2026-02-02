@@ -53,6 +53,9 @@ pub struct LayoutOptions {
     pub text_measurer: Arc<dyn TextMeasurer + Send + Sync>,
     pub viewport_width: f64,
     pub viewport_height: f64,
+    /// Enable experimental layout engines (e.g. Cytoscape COSE/FCoSE ports) for diagrams that
+    /// currently use placeholder layouts in merman.
+    pub use_manatee_layout: bool,
 }
 
 impl Default for LayoutOptions {
@@ -61,6 +64,7 @@ impl Default for LayoutOptions {
             text_measurer: Arc::new(DeterministicTextMeasurer::default()),
             viewport_width: 800.0,
             viewport_height: 600.0,
+            use_manatee_layout: false,
         }
     }
 }
@@ -192,6 +196,7 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
             &parsed.model,
             &meta.effective_config,
             options.text_measurer.as_ref(),
+            options.use_manatee_layout,
         )?),
         "sankey" => LayoutDiagram::SankeyDiagram(sankey::layout_sankey_diagram(
             &parsed.model,
