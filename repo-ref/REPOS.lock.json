@@ -25,6 +25,18 @@
       "ref": "v2.2.0",
       "commit": "78afcf96512a409abc903699277ad616c02dfad9"
     },
+    "cose-base": {
+      "path": "repo-ref/cose-base",
+      "url": "https://github.com/iVis-at-Bilkent/cose-base.git",
+      "ref": "v1.0.3",
+      "commit": "914bfe712991534af1d8b795d6f262687edc2563"
+    },
+    "layout-base": {
+      "path": "repo-ref/layout-base",
+      "url": "https://github.com/iVis-at-Bilkent/layout-base.git",
+      "ref": "v1.0.2",
+      "commit": "836898aa4a88e2794774997d7128b383108a3d5a"
+    },
     "dagre": {
       "path": "repo-ref/dagre",
       "url": "https://github.com/dagrejs/dagre.git",
