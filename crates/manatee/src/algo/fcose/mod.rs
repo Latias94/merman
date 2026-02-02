@@ -2,6 +2,8 @@ use crate::algo::FcoseOptions;
 use crate::error::Result;
 use crate::graph::{Graph, LayoutResult, Point};
 
+mod spectral;
+
 pub fn layout(graph: &Graph, opts: &FcoseOptions) -> Result<LayoutResult> {
     graph.validate()?;
 
@@ -276,6 +278,12 @@ impl SimGraph {
             (sum / (self.edges.len() as f64)).max(1.0)
         };
 
+        // FCoSE performs a spectral initialization when `randomize=true` (Mermaid defaults to
+        // `randomize: true`). The upstream JS implementation relies on `Math.random`; in Rust we
+        // make this explicit and deterministic via `random_seed`.
+        let spectral_applied =
+            spectral::apply_spectral_start_positions(&mut self.nodes, &self.edges, random_seed);
+
         let spring_constant = Self::DEFAULT_SPRING_STRENGTH;
         let repulsion_constant = Self::DEFAULT_REPULSION_STRENGTH;
         let gravity_constant = Self::DEFAULT_GRAVITY_STRENGTH;
@@ -288,11 +296,8 @@ impl SimGraph {
         let estimated_size = self.estimated_size();
         let gravity_range = estimated_size * Self::DEFAULT_GRAVITY_RANGE_FACTOR;
 
-        // FCoSE randomizes initial node positions (spectral) when `randomize=true`. Our port is not
-        // yet spectral; for graphs without any edges we collapse nodes near the same start point
-        // (plus a tiny deterministic jitter) so overlap repulsion can expand them into a compact
-        // configuration, instead of preserving a pre-spread input grid.
-        if self.edges.is_empty() {
+        // Fallback for degenerate cases where spectral is skipped (e.g. very small graphs).
+        if self.edges.is_empty() && !spectral_applied {
             self.collapse_start_positions(ideal_edge_length_avg, random_seed);
         }
 
@@ -581,6 +586,19 @@ impl XorShift64Star {
         let u = self.next_u64() >> 11;
         let v = (u as f64) / ((1u64 << 53) as f64);
         (v * 2.0) - 1.0
+    }
+
+    fn next_f64_unit(&mut self) -> f64 {
+        // Map to [0, 1) with 53 bits of precision.
+        let u = self.next_u64() >> 11;
+        (u as f64) / ((1u64 << 53) as f64)
+    }
+
+    fn next_usize(&mut self, upper: usize) -> usize {
+        if upper <= 1 {
+            return 0;
+        }
+        (self.next_u64() % (upper as u64)) as usize
     }
 }
 

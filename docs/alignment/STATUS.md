@@ -76,6 +76,9 @@ behind `LayoutOptions.use_manatee_layout` (used by `xtask compare-all-svgs`).
 Recent progress (2026-02-02): the `manatee` FCoSE scaffold now applies a CoSE-like repulsion cutoff,
 gravity gating (disconnected graphs), and a deterministic collapsed start state for edgeless graphs
 to avoid preserving input-grid degeneracy.
+Recent progress (2026-02-02): `manatee` FCoSE now includes the upstream spectral initialization
+(SVD + power iteration) and uses an explicit seed in place of `Math.random` to keep headless runs
+deterministic.
 
 Most parity-root deltas are root `<svg>` viewport attributes (`style` max-width / `viewBox`) and are therefore
 sensitive to upstream sizing policy, layout extents (including edge labels/groups), and floating-point rounding.
