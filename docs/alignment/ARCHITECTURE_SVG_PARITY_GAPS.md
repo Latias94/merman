@@ -61,6 +61,9 @@ Missing pieces likely include:
   Mermaid-equivalent alignment/relative placement constraints derived from the BFS spatial maps.
   This is intentionally *not* used for `*.layout.golden.json` snapshots yet (we keep the grid
   scaffold as the stable baseline until the FCoSE port is closer to parity).
+- The current `manatee` FCoSE port does not yet implement Mermaid's spectral initialization; for
+  edgeless graphs it starts from a collapsed deterministic seed state to avoid preserving the
+  BFS grid scaffold in a way that makes repulsion-only layouts degenerate (collinear).
 - Deterministic placement strategy for nodes and groups matching the upstream CLI outputs (FCoSE),
   including the exact floating-point behavior and constraint handling.
 - Port-based edge routing (straight vs 90° “segments” behavior) and endpoint calculations.
