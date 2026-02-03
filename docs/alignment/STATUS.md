@@ -76,6 +76,9 @@ placeholder rects to better match upstream `svg.getBBox()` behavior.
 Recent progress (2026-02-03): state node sizing now matches Mermaid's rounded `rect` padding behavior (rx/ry ->
 `roundedRect`), fixing a common `max-width`/x-offset drift in state diagram root parity.
 
+Recent progress (2026-02-03): `manatee` FCoSE now scales CoSE `minRepulsionDist` with the effective
+`idealEdgeLength` (avg / 10) when ideal edge lengths are configured, matching upstream Cytoscape behavior.
+
 Recent progress (2026-02-02): started a Rust port scaffold of Cytoscape FCoSE in `manatee` (edge
 ideal lengths + alignment/relative constraints) and wired it into Architecture headless layout
 behind `LayoutOptions.use_manatee_layout` (used by `xtask compare-all-svgs`).
