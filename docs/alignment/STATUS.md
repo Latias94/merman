@@ -60,15 +60,20 @@ the dashed separators now use the exact same x-coordinates as the frame edges to
 avoid sub-pixel gaps at the frame border.
 As of 2026-02-01, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
 for the current fixture set (diagram subtree parity).
-As of 2026-02-03, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 79 DOM
-mismatches out of 475 upstream SVG baselines (83.4% passing). Current parity-root mismatches are concentrated in
+As of 2026-02-03, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 78 DOM
+mismatches out of 475 upstream SVG baselines (83.6% passing). Current parity-root mismatches are concentrated in
 5 diagrams:
 
-- Architecture: 20
+- Architecture: 19
 - Class: 14
 - GitGraph: 14
 - Mindmap: 8
 - State: 23
+
+Recent progress (2026-02-03): headless `svg.getBBox()` approximation now performs attribute lookup on whole attribute
+names (e.g. ` d="..."`) rather than naive substring matching. This fixes a critical bug where searching for `d="..."`
+would accidentally match inside `id="..."` and cause `<path>` bounds to be skipped, cascading into incorrect root
+`viewBox` / `style max-width` in parity-root mode (e.g. `upstream_architecture_simple_service_spec`).
 
 Recent progress (2026-02-03): state layout now preserves Mermaid's hidden self-loop helper nodes
 (`${nodeId}---${nodeId}---{1|2}`), and the headless SVG viewport approximation now includes Mermaid's `0.1 x 0.1`

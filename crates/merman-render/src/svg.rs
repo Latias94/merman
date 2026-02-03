@@ -13404,12 +13404,30 @@ fn svg_emitted_bounds_from_svg_inner(
     }
 
     fn attr_value<'a>(attrs: &'a str, key: &str) -> Option<&'a str> {
-        // Assumes our generated SVG uses `key="value"` quoting.
+        // Assumes our generated SVG uses `key="value"` quoting and that attributes are separated
+        // by at least one whitespace character.
+        //
+        // Important: the naive `attrs.find(r#"{key}=""#)` is *not* safe for 1-letter keys like
+        // `d` because it can match inside other attribute names (e.g. `id="..."` contains `d="`).
+        // That would break path bbox parsing and, in turn, root viewBox parity.
         let needle = format!(r#"{key}=""#);
-        let start = attrs.find(&needle)? + needle.len();
-        let rest = &attrs[start..];
-        let end = rest.find('"')?;
-        Some(&rest[..end])
+        let bytes = attrs.as_bytes();
+        let mut from = 0usize;
+        while from < attrs.len() {
+            let Some(rel) = attrs[from..].find(&needle) else {
+                return None;
+            };
+            let pos = from + rel;
+            let ok_prefix = pos == 0 || bytes[pos.saturating_sub(1)].is_ascii_whitespace();
+            if ok_prefix {
+                let start = pos + needle.len();
+                let rest = &attrs[start..];
+                let end = rest.find('"')?;
+                return Some(&rest[..end]);
+            }
+            from = pos + 1;
+        }
+        None
     }
 
     fn parse_translate(transform: &str) -> Option<(f64, f64)> {
@@ -13834,6 +13852,35 @@ mod svg_bbox_tests {
         assert!(close(got_y, vb_y), "viewBox y: got {got_y}, want {vb_y}");
         assert!(close(got_w, vb_w), "viewBox w: got {got_w}, want {vb_w}");
         assert!(close(got_h, vb_h), "viewBox h: got {got_h}, want {vb_h}");
+    }
+
+    #[test]
+    fn svg_path_bounds_architecture_service_node_bkg_matches_mermaid_bbox() {
+        // Mermaid architecture service fallback background path (no icon / no iconText):
+        // `M0 ${iconSize} v${-iconSize} q0,-5 5,-5 h${iconSize} q5,0 5,5 v${iconSize} H0 Z`
+        //
+        // With iconSize=80, Chromium getBBox() yields:
+        //   x=0, y=-5, width=90, height=85
+        // which drives the root viewBox when padding=40:
+        //   viewBox="-40 -45 170 165"
+        let d = "M0 80 v-80 q0,-5 5,-5 h80 q5,0 5,5 v80 H0 Z";
+        let b = svg_path_bounds_from_d(d).expect("path bounds");
+        assert!((b.min_x - 0.0).abs() < 1e-9, "min_x: got {}", b.min_x);
+        assert!((b.min_y - (-5.0)).abs() < 1e-9, "min_y: got {}", b.min_y);
+        assert!((b.max_x - 90.0).abs() < 1e-9, "max_x: got {}", b.max_x);
+        assert!((b.max_y - 80.0).abs() < 1e-9, "max_y: got {}", b.max_y);
+    }
+
+    #[test]
+    fn svg_emitted_bounds_attr_lookup_d_does_not_match_id() {
+        // Regression test: naive attribute lookup for `d="..."` can match inside `id="..."`.
+        // That would cause `<path>` bboxes to be skipped, breaking root viewBox/max-width parity.
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><path class="node-bkg" id="node-db" d="M0 80 v-80 q0,-5 5,-5 h80 q5,0 5,5 v80 H0 Z"/></svg>"#;
+        let dbg = debug_svg_emitted_bounds(svg).expect("emitted bounds");
+        assert!((dbg.bounds.min_x - 0.0).abs() < 1e-9);
+        assert!((dbg.bounds.min_y - (-5.0)).abs() < 1e-9);
+        assert!((dbg.bounds.max_x - 90.0).abs() < 1e-9);
+        assert!((dbg.bounds.max_y - 80.0).abs() < 1e-9);
     }
 }
 
