@@ -21,7 +21,20 @@ This often manifests as:
 - root `viewBox` mismatch (usually width/height)
 - `debug-svg-bbox` showing min/max contributors as edge `<path>` elements (e.g. `id="edge1"`)
 
-### 2) Self-loop helper nodes / placeholders
+### 2) Rounded `rect` padding mismatch (rx/ry -> `roundedRect`)
+
+Mermaid's state diagram node sizing treats `rect` nodes with `rx/ry` (converted to a `roundedRect`)
+as having the full `state.padding` applied on the x-axis, i.e. **`pad_x = padding` per side**.
+
+If the Rust layout underestimates this padding (for example by using `padding/2 - 1` per side), it
+typically manifests as:
+
+- root `max-width` mismatch of exactly `10px` (missing `5px` per side)
+- node/edge x-coordinates shifted by `~5px` (Dagre keeps the left graph margin fixed)
+
+This is *not* a bbox parser bug; it's a node sizing mismatch feeding Dagre.
+
+### 3) Self-loop helper nodes / placeholders
 
 Mermaid's dagre wrapper expands self-loop transitions by injecting helper nodes
 `${nodeId}---${nodeId}---{1|2}` and extra `0.1 x 0.1` placeholder rects whose placement is derived
@@ -65,4 +78,3 @@ cargo run -p xtask -- debug-svg-data-points --svg fixtures/upstream-svgs/state/<
 
 If the points differ, the root cause is upstream dagre parity (dugong ordering/numerics or graph
 construction).
-

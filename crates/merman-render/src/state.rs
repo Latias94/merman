@@ -1112,11 +1112,7 @@ pub fn layout_state_diagram_v2(
                 );
                 // Mermaid converts `rect` into `roundedRect` when rx/ry is set.
                 let has_rounding = n.rx.unwrap_or(0.0) > 0.0 && n.ry.unwrap_or(0.0) > 0.0;
-                let pad_x = if has_rounding {
-                    (padding / 2.0 - 1.0).max(0.0)
-                } else {
-                    padding * 2.0
-                };
+                let pad_x = if has_rounding { padding } else { padding * 2.0 };
                 let pad_y = if has_rounding { padding } else { padding };
                 (tw + pad_x * 2.0, th + pad_y * 2.0)
             }
@@ -1952,11 +1948,7 @@ pub fn debug_build_state_diagram_v2_dagre_graph(
                     wrap_mode,
                 );
                 let has_rounding = n.rx.unwrap_or(0.0) > 0.0 && n.ry.unwrap_or(0.0) > 0.0;
-                let pad_x = if has_rounding {
-                    (padding / 2.0 - 1.0).max(0.0)
-                } else {
-                    padding * 2.0
-                };
+                let pad_x = if has_rounding { padding } else { padding * 2.0 };
                 let pad_y = if has_rounding { padding } else { padding };
                 (tw + pad_x * 2.0, th + pad_y * 2.0)
             }

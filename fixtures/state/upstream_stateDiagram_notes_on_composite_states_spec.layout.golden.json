@@ -7,7 +7,7 @@
           "id": "Configuring",
           "x": 158.0,
           "y": 357.5,
-          "width": 118.0,
+          "width": 128.0,
           "height": 40.0,
           "is_cluster": false
         },
@@ -15,7 +15,7 @@
           "id": "Idle",
           "x": 158.0,
           "y": 218.5,
-          "width": 67.44,
+          "width": 77.44,
           "height": 40.0,
           "is_cluster": false
         },
@@ -23,7 +23,7 @@
           "id": "NotShooting",
           "x": 158.0,
           "y": 243.5,
-          "width": 221.12,
+          "width": 226.12,
           "height": 343.0,
           "is_cluster": true
         },
@@ -226,7 +226,7 @@
           "id": "NotShooting",
           "x": 158.0,
           "y": 243.5,
-          "width": 221.12,
+          "width": 226.12,
           "height": 343.0,
           "diff": -8.0,
           "offset_y": 20.0,
