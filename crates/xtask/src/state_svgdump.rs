@@ -455,16 +455,27 @@ pub(crate) fn analyze_state_fixture(args: Vec<String>) -> Result<(), XtaskError>
     }
     let _ = writeln!(&mut report);
 
-    if let Some(root_id) = root_id.as_deref() {
-        let up_scope = find_scope_by_nested_root_id(&upstream_scopes, root_id);
-        let lo_scope = find_scope_by_nested_root_id(&local_scopes, root_id);
+    {
+        let (scope_label, up_scope, lo_scope) = if let Some(root_id) = root_id.as_deref() {
+            (
+                format!("Nested Scope: `{root_id}`"),
+                find_scope_by_nested_root_id(&upstream_scopes, root_id),
+                find_scope_by_nested_root_id(&local_scopes, root_id),
+            )
+        } else {
+            (
+                "Root Scope: (root)".to_string(),
+                upstream_scopes.get(0),
+                local_scopes.get(0),
+            )
+        };
 
-        let _ = writeln!(&mut report, "## Nested Scope: `{root_id}`\n");
+        let _ = writeln!(&mut report, "## {scope_label}\n");
 
         if up_scope.is_none() || lo_scope.is_none() {
             let _ = writeln!(
                 &mut report,
-                "- Missing nested scope: upstream={} local={}\n",
+                "- Missing scope: upstream={} local={}\n",
                 up_scope.is_some(),
                 lo_scope.is_some()
             );
