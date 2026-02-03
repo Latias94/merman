@@ -11321,56 +11321,55 @@ pub fn render_architecture_diagram_svg(
         }
     }
 
-    let (vb_min_x, vb_min_y, vb_w, vb_h, max_width_style) = if model.services.is_empty()
+    const VIEWBOX_PLACEHOLDER: &str = "__MERMAID_VIEWBOX__";
+    const MAX_WIDTH_PLACEHOLDER: &str = "__MERMAID_MAX_WIDTH__";
+
+    let is_empty = model.services.is_empty()
         && model.junctions.is_empty()
         && model.groups.is_empty()
-        && model.edges.is_empty()
-    {
-        (
-            -half_icon,
-            -half_icon,
-            icon_size_px,
-            icon_size_px,
-            fmt_max_width_px(icon_size_px),
-        )
-    } else {
-        let b = content_bounds.unwrap_or(Bounds {
-            min_x: 0.0,
-            min_y: 0.0,
-            max_x: icon_size_px,
-            max_y: icon_size_px,
-        });
-        let vb_min_x = b.min_x - padding_px;
-        let vb_min_y = b.min_y - padding_px;
-        let vb_w = (b.max_x - b.min_x) + padding_px * 2.0;
-        let vb_h = (b.max_y - b.min_y) + padding_px * 2.0;
-        (
-            vb_min_x,
-            vb_min_y,
-            vb_w,
-            vb_h,
-            fmt_max_width_px(vb_w.max(1.0)),
-        )
-    };
+        && model.edges.is_empty();
 
     let mut out = String::new();
-    let _ = write!(
-        &mut out,
-        r#"<svg id="{id}" {w_attr} xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="{style}" viewBox="{vx} {vy} {vw} {vh}" role="graphics-document document" aria-roledescription="architecture"{aria}>{a11y}<style></style><g/><g class="architecture-edges">"#,
-        id = diagram_id_esc,
-        w_attr = if use_max_width { r#"width="100%""# } else { "" },
-        style = if use_max_width {
-            format!("max-width: {max_width_style}px; background-color: white;")
-        } else {
-            "background-color: white;".to_string()
-        },
-        vx = fmt(vb_min_x),
-        vy = fmt(vb_min_y),
-        vw = fmt(vb_w.max(1.0)),
-        vh = fmt(vb_h.max(1.0)),
-        aria = aria_attrs,
-        a11y = a11y_nodes
-    );
+    if is_empty {
+        // Preserve Mermaid's "empty diagram" fallback sizing behavior (no getBBox-derived padding).
+        let vb_min_x = -half_icon;
+        let vb_min_y = -half_icon;
+        let vb_w = icon_size_px.max(1.0);
+        let vb_h = icon_size_px.max(1.0);
+        let max_width_style = fmt_max_width_px(vb_w);
+        let _ = write!(
+            &mut out,
+            r#"<svg id="{id}" {w_attr} xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="{style}" viewBox="{vx} {vy} {vw} {vh}" role="graphics-document document" aria-roledescription="architecture"{aria}>{a11y}<style></style><g/><g class="architecture-edges">"#,
+            id = diagram_id_esc,
+            w_attr = if use_max_width { r#"width="100%""# } else { "" },
+            style = if use_max_width {
+                format!("max-width: {max_width_style}px; background-color: white;")
+            } else {
+                "background-color: white;".to_string()
+            },
+            vx = fmt(vb_min_x),
+            vy = fmt(vb_min_y),
+            vw = fmt(vb_w),
+            vh = fmt(vb_h),
+            aria = aria_attrs,
+            a11y = a11y_nodes
+        );
+    } else {
+        let _ = write!(
+            &mut out,
+            r#"<svg id="{id}" {w_attr} xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="{style}" viewBox="{viewbox}" role="graphics-document document" aria-roledescription="architecture"{aria}>{a11y}<style></style><g/><g class="architecture-edges">"#,
+            id = diagram_id_esc,
+            w_attr = if use_max_width { r#"width="100%""# } else { "" },
+            style = if use_max_width {
+                format!("max-width: {MAX_WIDTH_PLACEHOLDER}px; background-color: white;")
+            } else {
+                "background-color: white;".to_string()
+            },
+            viewbox = VIEWBOX_PLACEHOLDER,
+            aria = aria_attrs,
+            a11y = a11y_nodes
+        );
+    }
 
     // Edges (DOM structure parity; geometry values are layout-dependent and normalized in parity mode).
     if !model.edges.is_empty() {
@@ -11706,6 +11705,37 @@ pub fn render_architecture_diagram_svg(
     }
 
     out.push_str("</svg>\n");
+
+    if !is_empty {
+        let b = svg_emitted_bounds_from_svg(&out).unwrap_or_else(|| {
+            content_bounds.unwrap_or(Bounds {
+                min_x: 0.0,
+                min_y: 0.0,
+                max_x: icon_size_px,
+                max_y: icon_size_px,
+            })
+        });
+
+        let vb_min_x = b.min_x - padding_px;
+        let vb_min_y = b.min_y - padding_px;
+        let vb_w = ((b.max_x - b.min_x) + 2.0 * padding_px).max(1.0);
+        let vb_h = ((b.max_y - b.min_y) + 2.0 * padding_px).max(1.0);
+
+        let view_box_attr = format!(
+            "{} {} {} {}",
+            fmt(vb_min_x),
+            fmt(vb_min_y),
+            fmt(vb_w),
+            fmt(vb_h)
+        );
+
+        out = out.replacen(VIEWBOX_PLACEHOLDER, &view_box_attr, 1);
+        if use_max_width {
+            let max_w_attr = fmt_max_width_px(vb_w);
+            out = out.replacen(MAX_WIDTH_PLACEHOLDER, &max_w_attr, 1);
+        }
+    }
+
     Ok(out)
 }
 
