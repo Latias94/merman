@@ -296,9 +296,14 @@ impl SimGraph {
         let repulsion_constant = Self::DEFAULT_REPULSION_STRENGTH;
         let gravity_constant = Self::DEFAULT_GRAVITY_STRENGTH;
 
-        // Cytoscape-fcose does not apply a hard repulsion cutoff; keeping it unbounded improves
-        // parity for small graphs where weak edges (low `edgeElasticity`) allow nodes to drift far.
-        let repulsion_range = f64::INFINITY;
+        // Match `cose-base` repulsion cutoff (`CoSELayout.calcRepulsionRange()`):
+        //
+        // `repulsionRange = 2 * (level + 1) * idealEdgeLength`
+        //
+        // Mermaid Architecture uses a flat graph (`level = 0`). Keeping repulsion unbounded tends
+        // to over-spread disconnected or sparse graphs (notably the "no edges" fixtures), which
+        // cascades into parity-root `viewBox` / `max-width` drift.
+        let repulsion_range = (2.0 * ideal_edge_length_avg).max(1.0);
 
         let apply_gravity = !self.is_connected();
         let estimated_size = self.estimated_size();
@@ -613,7 +618,53 @@ impl XorShift64Star {
         if upper <= 1 {
             return 0;
         }
-        (self.next_u64() % (upper as u64)) as usize
+        // Match the seeded upstream baselines which override `Math.random()` with a 53-bit float
+        // derived from `nextU64() >> 11`, then select indices via
+        // `Math.floor(Math.random() * upper)`.
+        //
+        // Using `% upper` introduces modulo bias and (more importantly for parity) can yield a
+        // different first sample pivot for small graphs (e.g. upper=3), which cascades into a
+        // different spectral embedding orientation.
+        let v = self.next_f64_unit();
+        let idx = (v * (upper as f64)).floor() as usize;
+        idx.min(upper - 1)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::XorShift64Star;
+
+    #[test]
+    fn xorshift64star_next_f64_unit_matches_seeded_upstream_baseline() {
+        // Mirrors the JS prelude in `xtask` used to generate deterministic upstream SVGs:
+        //
+        // - xorshift64* (same shift/multiply constants)
+        // - `Math.random = () => Number(nextU64() >> 11n) / 2^53`
+        let mut rng = XorShift64Star::new(1);
+        let expected = [
+            0.28083505005035947,
+            0.6711372530266764,
+            0.7258461452833668,
+            0.303529299965799,
+            0.056176763098259475,
+        ];
+        for (i, &e) in expected.iter().enumerate() {
+            let v = rng.next_f64_unit();
+            assert!(
+                (v - e).abs() < 1e-15,
+                "unexpected rng value at {i}: got {v}, expected {e}"
+            );
+        }
+    }
+
+    #[test]
+    fn xorshift64star_next_usize_matches_js_floor_random_times_upper() {
+        // For seed=1, the first `Math.random()` value is ~0.2808 so `floor(r * 3) == 0`.
+        // Using `% 3` on the underlying u64 yields `1`, which would diverge from the upstream
+        // spectral sampling path for small graphs.
+        let mut rng = XorShift64Star::new(1);
+        assert_eq!(rng.next_usize(3), 0);
     }
 }
 
