@@ -376,9 +376,9 @@ impl BoundsState {
         } else {
             self.next.stopx + rect.margin * 2.0
         };
-        let mut stopx = startx + rect.width;
+        let mut stopx = startx + rect.size.width;
         let starty = self.next.starty + rect.margin * 2.0;
-        let mut stopy = starty + rect.height;
+        let mut stopy = starty + rect.size.height;
 
         if startx >= self.data.width_limit
             || stopx >= self.data.width_limit
@@ -387,28 +387,28 @@ impl BoundsState {
             let startx2 = self.next.startx + rect.margin + conf.next_line_padding_x;
             let starty2 = self.next.stopy + rect.margin * 2.0;
 
-            stopx = startx2 + rect.width;
-            stopy = starty2 + rect.height;
+            stopx = startx2 + rect.size.width;
+            stopy = starty2 + rect.size.height;
 
             self.next.stopx = stopx;
             self.next.starty = self.next.stopy;
             self.next.stopy = stopy;
             self.next.cnt = 1;
 
-            rect.x = startx2;
-            rect.y = starty2;
+            rect.origin.x = startx2;
+            rect.origin.y = starty2;
         } else {
-            rect.x = startx;
-            rect.y = starty;
+            rect.origin.x = startx;
+            rect.origin.y = starty;
         }
 
-        Self::update_val_opt(&mut self.data.startx, rect.x, f64::min);
-        Self::update_val_opt(&mut self.data.starty, rect.y, f64::min);
+        Self::update_val_opt(&mut self.data.startx, rect.origin.x, f64::min);
+        Self::update_val_opt(&mut self.data.starty, rect.origin.y, f64::min);
         Self::update_val_opt(&mut self.data.stopx, stopx, f64::max);
         Self::update_val_opt(&mut self.data.stopy, stopy, f64::max);
 
-        Self::update_val(&mut self.next.startx, rect.x, f64::min);
-        Self::update_val(&mut self.next.starty, rect.y, f64::min);
+        Self::update_val(&mut self.next.startx, rect.origin.x, f64::min);
+        Self::update_val(&mut self.next.starty, rect.origin.y, f64::min);
         Self::update_val(&mut self.next.stopx, stopx, f64::max);
         Self::update_val(&mut self.next.stopy, stopy, f64::max);
     }
@@ -416,10 +416,8 @@ impl BoundsState {
 
 #[derive(Debug, Clone)]
 struct Rect {
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
+    origin: merman_core::geom::Point,
+    size: merman_core::geom::Size,
     margin: f64,
 }
 
@@ -435,24 +433,24 @@ fn has_sprite(v: &Option<Value>) -> bool {
 }
 
 fn intersect_point(from: &Rect, end_point: LayoutPoint) -> LayoutPoint {
-    let x1 = from.x;
-    let y1 = from.y;
+    let x1 = from.origin.x;
+    let y1 = from.origin.y;
     let x2 = end_point.x;
     let y2 = end_point.y;
 
-    let from_center_x = x1 + from.width / 2.0;
-    let from_center_y = y1 + from.height / 2.0;
+    let from_center_x = x1 + from.size.width / 2.0;
+    let from_center_y = y1 + from.size.height / 2.0;
 
     let dx = (x1 - x2).abs();
     let dy = (y1 - y2).abs();
     let tan_dyx = dy / dx;
-    let from_dyx = from.height / from.width;
+    let from_dyx = from.size.height / from.size.width;
 
     let mut return_point: Option<LayoutPoint> = None;
 
     if y1 == y2 && x1 < x2 {
         return_point = Some(LayoutPoint {
-            x: x1 + from.width,
+            x: x1 + from.size.width,
             y: from_center_y,
         });
     } else if y1 == y2 && x1 > x2 {
@@ -463,7 +461,7 @@ fn intersect_point(from: &Rect, end_point: LayoutPoint) -> LayoutPoint {
     } else if x1 == x2 && y1 < y2 {
         return_point = Some(LayoutPoint {
             x: from_center_x,
-            y: y1 + from.height,
+            y: y1 + from.size.height,
         });
     } else if x1 == x2 && y1 > y2 {
         return_point = Some(LayoutPoint {
@@ -476,35 +474,35 @@ fn intersect_point(from: &Rect, end_point: LayoutPoint) -> LayoutPoint {
         if from_dyx >= tan_dyx {
             return_point = Some(LayoutPoint {
                 x: x1,
-                y: from_center_y + (tan_dyx * from.width) / 2.0,
+                y: from_center_y + (tan_dyx * from.size.width) / 2.0,
             });
         } else {
             return_point = Some(LayoutPoint {
-                x: from_center_x - ((dx / dy) * from.height) / 2.0,
-                y: y1 + from.height,
+                x: from_center_x - ((dx / dy) * from.size.height) / 2.0,
+                y: y1 + from.size.height,
             });
         }
     } else if x1 < x2 && y1 < y2 {
         if from_dyx >= tan_dyx {
             return_point = Some(LayoutPoint {
-                x: x1 + from.width,
-                y: from_center_y + (tan_dyx * from.width) / 2.0,
+                x: x1 + from.size.width,
+                y: from_center_y + (tan_dyx * from.size.width) / 2.0,
             });
         } else {
             return_point = Some(LayoutPoint {
-                x: from_center_x + ((dx / dy) * from.height) / 2.0,
-                y: y1 + from.height,
+                x: from_center_x + ((dx / dy) * from.size.height) / 2.0,
+                y: y1 + from.size.height,
             });
         }
     } else if x1 < x2 && y1 > y2 {
         if from_dyx >= tan_dyx {
             return_point = Some(LayoutPoint {
-                x: x1 + from.width,
-                y: from_center_y - (tan_dyx * from.width) / 2.0,
+                x: x1 + from.size.width,
+                y: from_center_y - (tan_dyx * from.size.width) / 2.0,
             });
         } else {
             return_point = Some(LayoutPoint {
-                x: from_center_x + ((from.height / 2.0) * dx) / dy,
+                x: from_center_x + ((from.size.height / 2.0) * dx) / dy,
                 y: y1,
             });
         }
@@ -512,11 +510,11 @@ fn intersect_point(from: &Rect, end_point: LayoutPoint) -> LayoutPoint {
         if from_dyx >= tan_dyx {
             return_point = Some(LayoutPoint {
                 x: x1,
-                y: from_center_y - (from.width / 2.0) * tan_dyx,
+                y: from_center_y - (from.size.width / 2.0) * tan_dyx,
             });
         } else {
             return_point = Some(LayoutPoint {
-                x: from_center_x - ((from.height / 2.0) * dx) / dy,
+                x: from_center_x - ((from.size.height / 2.0) * dx) / dy,
                 y: y1,
             });
         }
@@ -530,14 +528,14 @@ fn intersect_point(from: &Rect, end_point: LayoutPoint) -> LayoutPoint {
 
 fn intersect_points(from: &Rect, to: &Rect) -> (LayoutPoint, LayoutPoint) {
     let end_intersect_point = LayoutPoint {
-        x: to.x + to.width / 2.0,
-        y: to.y + to.height / 2.0,
+        x: to.origin.x + to.size.width / 2.0,
+        y: to.origin.y + to.size.height / 2.0,
     };
     let start_point = intersect_point(from, end_intersect_point);
 
     let end_intersect_point = LayoutPoint {
-        x: from.x + from.width / 2.0,
-        y: from.y + from.height / 2.0,
+        x: from.origin.x + from.size.width / 2.0,
+        y: from.origin.y + from.size.height / 2.0,
     };
     let end_point = intersect_point(to, end_intersect_point);
 
@@ -704,10 +702,8 @@ fn layout_c4_shape_array(
         let margin = conf.c4_shape_margin;
 
         let mut rect = Rect {
-            x: 0.0,
-            y: 0.0,
-            width,
-            height,
+            origin: merman_core::geom::point(0.0, 0.0),
+            size: merman_core::geom::Size::new(width, height),
             margin,
         };
         current_bounds.insert_rect(&mut rect, c4_shape_in_row, conf);
@@ -718,10 +714,10 @@ fn layout_c4_shape_array(
                 alias: shape.alias.clone(),
                 parent_boundary: shape.parent_boundary.clone(),
                 type_c4_shape: type_c4_shape.clone(),
-                x: rect.x,
-                y: rect.y,
-                width: rect.width,
-                height: rect.height,
+                x: rect.origin.x,
+                y: rect.origin.y,
+                width: rect.size.width,
+                height: rect.size.height,
                 margin: rect.margin,
                 image,
                 type_block,
@@ -1026,10 +1022,8 @@ pub(crate) fn layout_c4_diagram(
         shape_rects.insert(
             s.alias.as_str(),
             Rect {
-                x: l.x,
-                y: l.y,
-                width: l.width,
-                height: l.height,
+                origin: merman_core::geom::point(l.x, l.y),
+                size: merman_core::geom::Size::new(l.width, l.height),
                 margin: l.margin,
             },
         );
