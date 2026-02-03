@@ -139,56 +139,7 @@ fn decode_entities_minimal(text: &str) -> String {
         .replace("&#39;", "'")
 }
 
-#[derive(Debug, Clone, Copy)]
-struct Rect {
-    min_x: f64,
-    min_y: f64,
-    max_x: f64,
-    max_y: f64,
-}
-
-impl Rect {
-    fn from_center(x: f64, y: f64, width: f64, height: f64) -> Self {
-        let hw = width / 2.0;
-        let hh = height / 2.0;
-        Self {
-            min_x: x - hw,
-            min_y: y - hh,
-            max_x: x + hw,
-            max_y: y + hh,
-        }
-    }
-
-    fn width(&self) -> f64 {
-        self.max_x - self.min_x
-    }
-
-    fn height(&self) -> f64 {
-        self.max_y - self.min_y
-    }
-
-    fn center(&self) -> (f64, f64) {
-        (
-            (self.min_x + self.max_x) / 2.0,
-            (self.min_y + self.max_y) / 2.0,
-        )
-    }
-
-    fn union(&mut self, other: Rect) {
-        self.min_x = self.min_x.min(other.min_x);
-        self.min_y = self.min_y.min(other.min_y);
-        self.max_x = self.max_x.max(other.max_x);
-        self.max_y = self.max_y.max(other.max_y);
-    }
-
-    fn expand(&mut self, pad: f64) {
-        let p = pad.max(0.0);
-        self.min_x -= p;
-        self.min_y -= p;
-        self.max_x += p;
-        self.max_y += p;
-    }
-}
+type Rect = merman_core::geom::Box2;
 
 struct PreparedGraph {
     graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
@@ -450,7 +401,10 @@ enum TerminalPos {
 }
 
 fn point_inside_rect(rect: Rect, x: f64, y: f64, eps: f64) -> bool {
-    x > rect.min_x + eps && x < rect.max_x - eps && y > rect.min_y + eps && y < rect.max_y - eps
+    x > rect.min_x() + eps
+        && x < rect.max_x() - eps
+        && y > rect.min_y() + eps
+        && y < rect.max_y() - eps
 }
 
 fn nudge_point_outside_rect(mut x: f64, mut y: f64, rect: Rect) -> (f64, f64) {
@@ -473,14 +427,14 @@ fn nudge_point_outside_rect(mut x: f64, mut y: f64, rect: Rect) -> (f64, f64) {
 
     let mut t_exit = f64::INFINITY;
     if dx > 1e-9 {
-        t_exit = t_exit.min((rect.max_x - x) / dx);
+        t_exit = t_exit.min((rect.max_x() - x) / dx);
     } else if dx < -1e-9 {
-        t_exit = t_exit.min((rect.min_x - x) / dx);
+        t_exit = t_exit.min((rect.min_x() - x) / dx);
     }
     if dy > 1e-9 {
-        t_exit = t_exit.min((rect.max_y - y) / dy);
+        t_exit = t_exit.min((rect.max_y() - y) / dy);
     } else if dy < -1e-9 {
-        t_exit = t_exit.min((rect.min_y - y) / dy);
+        t_exit = t_exit.min((rect.min_y() - y) / dy);
     }
 
     if t_exit.is_finite() && t_exit >= 0.0 {
@@ -552,28 +506,32 @@ fn intersect_segment_with_rect(
 
     let mut candidates: Vec<(f64, LayoutPoint)> = Vec::new();
     let eps = 1e-9;
+    let min_x = rect.min_x();
+    let max_x = rect.max_x();
+    let min_y = rect.min_y();
+    let max_y = rect.max_y();
 
     if dx.abs() > eps {
-        for x_edge in [rect.min_x, rect.max_x] {
+        for x_edge in [min_x, max_x] {
             let t = (x_edge - p0.x) / dx;
             if t < -eps || t > 1.0 + eps {
                 continue;
             }
             let y = p0.y + t * dy;
-            if y + eps >= rect.min_y && y <= rect.max_y + eps {
+            if y + eps >= min_y && y <= max_y + eps {
                 candidates.push((t, LayoutPoint { x: x_edge, y }));
             }
         }
     }
 
     if dy.abs() > eps {
-        for y_edge in [rect.min_y, rect.max_y] {
+        for y_edge in [min_y, max_y] {
             let t = (y_edge - p0.y) / dy;
             if t < -eps || t > 1.0 + eps {
                 continue;
             }
             let x = p0.x + t * dx;
-            if x + eps >= rect.min_x && x <= rect.max_x + eps {
+            if x + eps >= min_x && x <= max_x + eps {
                 candidates.push((t, LayoutPoint { x, y: y_edge }));
             }
         }
@@ -735,8 +693,8 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
     let mut points: Vec<(f64, f64)> = Vec::new();
     for n in fragments.nodes.values() {
         let r = Rect::from_center(n.x, n.y, n.width, n.height);
-        points.push((r.min_x, r.min_y));
-        points.push((r.max_x, r.max_y));
+        points.push((r.min_x(), r.min_y()));
+        points.push((r.max_x(), r.max_y()));
     }
     for (e, _t) in &fragments.edges {
         for p in &e.points {
@@ -744,23 +702,13 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
         }
         if let Some(l) = &e.label {
             let r = Rect::from_center(l.x, l.y, l.width, l.height);
-            points.push((r.min_x, r.min_y));
-            points.push((r.max_x, r.max_y));
+            points.push((r.min_x(), r.min_y()));
+            points.push((r.max_x(), r.max_y()));
         }
     }
     let bounds = Bounds::from_points(points)
-        .map(|b| Rect {
-            min_x: b.min_x,
-            min_y: b.min_y,
-            max_x: b.max_x,
-            max_y: b.max_y,
-        })
-        .unwrap_or(Rect {
-            min_x: 0.0,
-            min_y: 0.0,
-            max_x: 0.0,
-            max_y: 0.0,
-        });
+        .map(|b| Rect::from_min_max(b.min_x, b.min_y, b.max_x, b.max_y))
+        .unwrap_or_else(|| Rect::from_min_max(0.0, 0.0, 0.0, 0.0));
 
     Ok((fragments, bounds))
 }
@@ -822,12 +770,7 @@ fn class_box_dimensions(
         }
         let lines = m.line_count.max(1) as f64;
         let y = y_offset - (h / (2.0 * lines));
-        Some(Rect {
-            min_x: 0.0,
-            min_y: y,
-            max_x: w,
-            max_y: y + h,
-        })
+        Some(Rect::from_min_max(0.0, y, w, y + h))
     }
 
     let mut label_style_bold = text_style.clone();
@@ -907,8 +850,7 @@ fn class_box_dimensions(
     // annotation-group: centered horizontally (`translate(-w/2, 0)`).
     if let Some(mut r) = annotation_rect {
         let w = r.width();
-        r.min_x -= w / 2.0;
-        r.max_x -= w / 2.0;
+        r.translate(-w / 2.0, 0.0);
         bbox_opt = Some(if let Some(mut cur) = bbox_opt {
             cur.union(r);
             cur
@@ -920,10 +862,7 @@ fn class_box_dimensions(
     // label-group: centered and shifted down by annotation height.
     if let Some(mut r) = title_rect {
         let w = r.width();
-        r.min_x -= w / 2.0;
-        r.max_x -= w / 2.0;
-        r.min_y += annotation_group_height;
-        r.max_y += annotation_group_height;
+        r.translate(-w / 2.0, annotation_group_height);
         bbox_opt = Some(if let Some(mut cur) = bbox_opt {
             cur.union(r);
             cur
@@ -935,8 +874,7 @@ fn class_box_dimensions(
     // members-group: left-aligned, shifted down by label height + gap*2.
     if let Some(mut r) = members_rect {
         let dy = annotation_group_height + title_group_height + gap * 2.0;
-        r.min_y += dy;
-        r.max_y += dy;
+        r.translate(0.0, dy);
         bbox_opt = Some(if let Some(mut cur) = bbox_opt {
             cur.union(r);
             cur
@@ -948,8 +886,7 @@ fn class_box_dimensions(
     // methods-group: left-aligned, shifted down by label height + members height + gap*4.
     if let Some(mut r) = methods_rect {
         let dy = annotation_group_height + title_group_height + (members_group_height + gap * 4.0);
-        r.min_y += dy;
-        r.max_y += dy;
+        r.translate(0.0, dy);
         bbox_opt = Some(if let Some(mut cur) = bbox_opt {
             cur.union(r);
             cur
@@ -958,12 +895,7 @@ fn class_box_dimensions(
         });
     }
 
-    let bbox = bbox_opt.unwrap_or(Rect {
-        min_x: 0.0,
-        min_y: 0.0,
-        max_x: 0.0,
-        max_y: 0.0,
-    });
+    let bbox = bbox_opt.unwrap_or_else(|| Rect::from_min_max(0.0, 0.0, 0.0, 0.0));
     let w = bbox.width().max(0.0);
     let mut h = bbox.height().max(0.0);
 
@@ -1338,7 +1270,7 @@ pub fn layout_class_diagram_v2(
         let Some(mut rect) = rect_opt else {
             continue;
         };
-        rect.expand(namespace_padding);
+        rect.pad(namespace_padding);
         let (cx, cy) = rect.center();
 
         let title = id.clone();
@@ -1416,22 +1348,22 @@ fn compute_bounds(
 
     for c in clusters {
         let r = Rect::from_center(c.x, c.y, c.width, c.height);
-        points.push((r.min_x, r.min_y));
-        points.push((r.max_x, r.max_y));
+        points.push((r.min_x(), r.min_y()));
+        points.push((r.max_x(), r.max_y()));
         let lr = Rect::from_center(
             c.title_label.x,
             c.title_label.y,
             c.title_label.width,
             c.title_label.height,
         );
-        points.push((lr.min_x, lr.min_y));
-        points.push((lr.max_x, lr.max_y));
+        points.push((lr.min_x(), lr.min_y()));
+        points.push((lr.max_x(), lr.max_y()));
     }
 
     for n in nodes {
         let r = Rect::from_center(n.x, n.y, n.width, n.height);
-        points.push((r.min_x, r.min_y));
-        points.push((r.max_x, r.max_y));
+        points.push((r.min_x(), r.min_y()));
+        points.push((r.max_x(), r.max_y()));
     }
 
     for e in edges {
@@ -1447,8 +1379,8 @@ fn compute_bounds(
         ] {
             if let Some(l) = lbl {
                 let r = Rect::from_center(l.x, l.y, l.width, l.height);
-                points.push((r.min_x, r.min_y));
-                points.push((r.max_x, r.max_y));
+                points.push((r.min_x(), r.min_y()));
+                points.push((r.max_x(), r.max_y()));
             }
         }
     }
