@@ -47,6 +47,13 @@ struct SimNode {
     spring_fy: f64,
     repulsion_fx: f64,
     repulsion_fy: f64,
+
+    // layout-base FR-grid repulsion caches a per-node "surrounding" list, refreshed periodically.
+    surrounding: Vec<usize>,
+    grid_start_x: i32,
+    grid_finish_x: i32,
+    grid_start_y: i32,
+    grid_finish_y: i32,
 }
 
 impl SimNode {
@@ -174,6 +181,7 @@ impl SimGraph {
     const DEFAULT_REPULSION_STRENGTH: f64 = 4500.0;
     const DEFAULT_GRAVITY_STRENGTH: f64 = 0.25; // cytoscape-fcose default `gravity`
     const DEFAULT_GRAVITY_RANGE_FACTOR: f64 = 3.8; // cytoscape-fcose default `gravityRange`
+    const GRID_CALCULATION_CHECK_PERIOD: usize = 10; // layout-base `FDLayoutConstants.GRID_CALCULATION_CHECK_PERIOD`
 
     const MAX_ITERATIONS: usize = 2500;
     const CONVERGENCE_CHECK_PERIOD: usize = 100;
@@ -196,6 +204,11 @@ impl SimGraph {
                 spring_fy: 0.0,
                 repulsion_fx: 0.0,
                 repulsion_fy: 0.0,
+                surrounding: Vec::new(),
+                grid_start_x: 0,
+                grid_finish_x: 0,
+                grid_start_y: 0,
+                grid_finish_y: 0,
             });
             id_to_idx.insert(n.id.clone(), idx);
         }
@@ -293,7 +306,6 @@ impl SimGraph {
         let spectral_applied =
             spectral::apply_spectral_start_positions(&mut self.nodes, &self.edges, random_seed);
 
-        let repulsion_constant = Self::DEFAULT_REPULSION_STRENGTH;
         let gravity_constant = Self::DEFAULT_GRAVITY_STRENGTH;
 
         // Match `cose-base` repulsion cutoff (`CoSELayout.calcRepulsionRange()`):
@@ -305,9 +317,12 @@ impl SimGraph {
         // cascades into parity-root `viewBox` / `max-width` drift.
         let repulsion_range = (2.0 * ideal_edge_length_avg).max(1.0);
 
-        let apply_gravity = !self.is_connected();
         let estimated_size = self.estimated_size();
         let gravity_range = estimated_size * Self::DEFAULT_GRAVITY_RANGE_FACTOR;
+
+        // layout-base uses the FR-grid repulsion variant by default, which caches each node's
+        // surrounding set and refreshes it every `GRID_CALCULATION_CHECK_PERIOD` iterations.
+        let mut repulsion_grid: Option<RepulsionGrid> = None;
 
         // Fallback for degenerate cases where spectral is skipped (e.g. very small graphs).
         if self.edges.is_empty() && !spectral_applied {
@@ -397,29 +412,71 @@ impl SimGraph {
                 self.nodes[b].spring_fy -= sfy;
             }
 
-            // Repulsion forces (O(n^2)).
-            for i in 0..self.nodes.len() {
-                for j in (i + 1)..self.nodes.len() {
-                    if !within_repulsion_range(&self.nodes[i], &self.nodes[j], repulsion_range) {
-                        continue;
+            // Repulsion forces (layout-base FR grid variant, with cached surrounding lists).
+            //
+            // Upstream refreshes the grid + surrounding lists when `totalIterations % 10 == 1`,
+            // then reuses those "stale" surrounding lists for the next 9 iterations.
+            let refresh_surrounding = (total_iterations % Self::GRID_CALCULATION_CHECK_PERIOD) == 1;
+            if refresh_surrounding {
+                repulsion_grid = RepulsionGrid::build(&self.nodes, repulsion_range);
+            }
+
+            if repulsion_range.is_finite() && repulsion_range > 0.0 {
+                let mut processed: Vec<bool> = vec![false; self.nodes.len()];
+                for i in 0..self.nodes.len() {
+                    if refresh_surrounding {
+                        if let Some(g) = &repulsion_grid {
+                            g.refresh_node_surrounding(
+                                i,
+                                &mut self.nodes,
+                                &processed,
+                                repulsion_range,
+                            );
+                        } else {
+                            self.nodes[i].surrounding.clear();
+                        }
                     }
-                    let (rfx, rfy) = calc_repulsion_force(
-                        &self.nodes[i],
-                        &self.nodes[j],
-                        repulsion_constant,
-                        min_repulsion_dist,
-                        ideal_edge_length_avg / 2.0,
-                    );
-                    self.nodes[i].repulsion_fx += rfx;
-                    self.nodes[i].repulsion_fy += rfy;
-                    self.nodes[j].repulsion_fx -= rfx;
-                    self.nodes[j].repulsion_fy -= rfy;
+
+                    let surrounding = self.nodes[i].surrounding.clone();
+                    for j in surrounding {
+                        if i == j {
+                            continue;
+                        }
+                        let (rfx, rfy) = calc_repulsion_force(
+                            &self.nodes[i],
+                            &self.nodes[j],
+                            min_repulsion_dist,
+                            ideal_edge_length_avg / 2.0,
+                        );
+                        self.nodes[i].repulsion_fx += rfx;
+                        self.nodes[i].repulsion_fy += rfy;
+                        self.nodes[j].repulsion_fx -= rfx;
+                        self.nodes[j].repulsion_fy -= rfy;
+                    }
+                    processed[i] = true;
+                }
+            } else {
+                // Fallback: unbounded repulsion (all pairs).
+                for i in 0..self.nodes.len() {
+                    for j in (i + 1)..self.nodes.len() {
+                        let (rfx, rfy) = calc_repulsion_force(
+                            &self.nodes[i],
+                            &self.nodes[j],
+                            min_repulsion_dist,
+                            ideal_edge_length_avg / 2.0,
+                        );
+                        self.nodes[i].repulsion_fx += rfx;
+                        self.nodes[i].repulsion_fy += rfy;
+                        self.nodes[j].repulsion_fx -= rfx;
+                        self.nodes[j].repulsion_fy -= rfy;
+                    }
                 }
             }
 
             // Gravity forces (approx): apply only when the current distance exceeds the gravity
-            // range. In upstream `cose-base`, gravity is typically used for disconnected graphs.
-            if apply_gravity && gravity_range.is_finite() && gravity_range > 0.0 {
+            // range. In upstream `cose-base` this runs every tick, but usually only affects nodes
+            // that drift far from the component center.
+            if gravity_range.is_finite() && gravity_range > 0.0 {
                 let (cx, cy) = self.bounding_box_center().unwrap_or((0.0, 0.0));
                 for n in &mut self.nodes {
                     let dx = n.center_x() - cx;
@@ -462,32 +519,6 @@ impl SimGraph {
 
             last_total_displacement = total_displacement;
         }
-    }
-
-    fn is_connected(&self) -> bool {
-        if self.nodes.len() <= 1 {
-            return true;
-        }
-        if self.edges.is_empty() {
-            return false;
-        }
-        let mut adj: Vec<Vec<usize>> = vec![Vec::new(); self.nodes.len()];
-        for e in &self.edges {
-            adj[e.a].push(e.b);
-            adj[e.b].push(e.a);
-        }
-        let mut visited: Vec<bool> = vec![false; self.nodes.len()];
-        let mut stack: Vec<usize> = vec![0];
-        visited[0] = true;
-        while let Some(u) = stack.pop() {
-            for &v in &adj[u] {
-                if !visited[v] {
-                    visited[v] = true;
-                    stack.push(v);
-                }
-            }
-        }
-        visited.into_iter().all(|v| v)
     }
 
     fn estimated_size(&self) -> f64 {
@@ -633,7 +664,26 @@ impl XorShift64Star {
 
 #[cfg(test)]
 mod tests {
-    use super::XorShift64Star;
+    use super::{RepulsionGrid, SimNode, XorShift64Star};
+
+    fn node_at(left: f64, top: f64, w: f64, h: f64) -> SimNode {
+        SimNode {
+            id: "n".to_string(),
+            width: w,
+            height: h,
+            left,
+            top,
+            spring_fx: 0.0,
+            spring_fy: 0.0,
+            repulsion_fx: 0.0,
+            repulsion_fy: 0.0,
+            surrounding: Vec::new(),
+            grid_start_x: 0,
+            grid_finish_x: 0,
+            grid_start_y: 0,
+            grid_finish_y: 0,
+        }
+    }
 
     #[test]
     fn xorshift64star_next_f64_unit_matches_seeded_upstream_baseline() {
@@ -666,15 +716,32 @@ mod tests {
         let mut rng = XorShift64Star::new(1);
         assert_eq!(rng.next_usize(3), 0);
     }
-}
 
-fn within_repulsion_range(a: &SimNode, b: &SimNode, repulsion_range: f64) -> bool {
-    if !repulsion_range.is_finite() || repulsion_range <= 0.0 {
-        return true;
+    #[test]
+    fn repulsion_grid_surrounding_excludes_processed_nodes() {
+        // Build a tiny 1D-ish layout:
+        //
+        // - node0 and node1 are exactly within range
+        // - node2 is far outside range
+        let repulsion_range = 10.0;
+        let mut nodes = vec![
+            node_at(0.0, 0.0, 10.0, 10.0),
+            node_at(20.0, 0.0, 10.0, 10.0),
+            node_at(200.0, 0.0, 10.0, 10.0),
+        ];
+        let grid = RepulsionGrid::build(&nodes, repulsion_range).expect("grid");
+
+        let mut processed = vec![false; nodes.len()];
+        grid.refresh_node_surrounding(0, &mut nodes, &processed, repulsion_range);
+        assert_eq!(nodes[0].surrounding, vec![1]);
+
+        processed[0] = true;
+        grid.refresh_node_surrounding(1, &mut nodes, &processed, repulsion_range);
+        assert!(
+            !nodes[1].surrounding.contains(&0),
+            "node1 should not include already-processed node0"
+        );
     }
-    let dx = (a.center_x() - b.center_x()).abs() - (a.half_w() + b.half_w());
-    let dy = (a.center_y() - b.center_y()).abs() - (a.half_h() + b.half_h());
-    dx <= repulsion_range && dy <= repulsion_range
 }
 
 fn rects_intersect(a: &SimNode, b: &SimNode) -> bool {
@@ -708,7 +775,6 @@ fn rect_clip_point_towards(a: &SimNode, b: &SimNode) -> (f64, f64) {
 fn calc_repulsion_force(
     a: &SimNode,
     b: &SimNode,
-    repulsion_constant: f64,
     min_repulsion_dist: f64,
     separation_buffer: f64,
 ) -> (f64, f64) {
@@ -742,10 +808,161 @@ fn calc_repulsion_force(
         if dist_sq == 0.0 || dist == 0.0 {
             return (0.0, 0.0);
         }
-        let repulsion_force = repulsion_constant / dist_sq;
+        // layout-base: `(nodeA.nodeRepulsion/2 + nodeB.nodeRepulsion/2) / dist^2`.
+        // FCoSE default `nodeRepulsion` is a constant 4500, so this collapses to 4500/dist^2.
+        let repulsion_force = SimGraph::DEFAULT_REPULSION_STRENGTH / dist_sq;
         let rfx = repulsion_force * dx / dist;
         let rfy = repulsion_force * dy / dist;
         (-rfx, -rfy)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct RepulsionGrid {
+    left: f64,
+    top: f64,
+    size_x: i32,
+    size_y: i32,
+    // Flat grid: cells[x * size_y + y] contains node indices.
+    cells: Vec<Vec<usize>>,
+}
+
+impl RepulsionGrid {
+    fn idx(&self, x: i32, y: i32) -> usize {
+        (x as usize) * (self.size_y as usize) + (y as usize)
+    }
+
+    fn cell(&self, x: i32, y: i32) -> &[usize] {
+        &self.cells[self.idx(x, y)]
+    }
+
+    fn build(nodes: &[SimNode], repulsion_range: f64) -> Option<Self> {
+        if nodes.is_empty() {
+            return None;
+        }
+        if !repulsion_range.is_finite() || repulsion_range <= 0.0 {
+            return None;
+        }
+
+        let mut min_x = f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+        for n in nodes {
+            min_x = min_x.min(n.left);
+            min_y = min_y.min(n.top);
+            max_x = max_x.max(n.right());
+            max_y = max_y.max(n.bottom());
+        }
+        if !(min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite()) {
+            return None;
+        }
+
+        let w = (max_x - min_x).max(1.0);
+        let h = (max_y - min_y).max(1.0);
+        let size_x = ((w / repulsion_range).floor() as i32 + 1).max(1);
+        let size_y = ((h / repulsion_range).floor() as i32 + 1).max(1);
+        let mut cells: Vec<Vec<usize>> = vec![Vec::new(); (size_x as usize) * (size_y as usize)];
+
+        // Mirror layout-base `addNodeToGrid`: push the node into every cell that intersects the
+        // node's rect, using top-left anchored coordinates.
+        for (idx, n) in nodes.iter().enumerate() {
+            let mut start_x = ((n.left - min_x) / repulsion_range).floor() as i32;
+            let mut finish_x = ((n.right() - min_x) / repulsion_range).floor() as i32;
+            let mut start_y = ((n.top - min_y) / repulsion_range).floor() as i32;
+            let mut finish_y = ((n.bottom() - min_y) / repulsion_range).floor() as i32;
+
+            start_x = start_x.clamp(0, size_x - 1);
+            finish_x = finish_x.clamp(0, size_x - 1);
+            start_y = start_y.clamp(0, size_y - 1);
+            finish_y = finish_y.clamp(0, size_y - 1);
+
+            for gx in start_x..=finish_x {
+                for gy in start_y..=finish_y {
+                    let cell_idx = (gx as usize) * (size_y as usize) + (gy as usize);
+                    cells[cell_idx].push(idx);
+                }
+            }
+        }
+
+        Some(Self {
+            left: min_x,
+            top: min_y,
+            size_x,
+            size_y,
+            cells,
+        })
+    }
+
+    fn refresh_node_surrounding(
+        &self,
+        node_idx: usize,
+        nodes: &mut [SimNode],
+        processed: &[bool],
+        repulsion_range: f64,
+    ) {
+        let (start_x, finish_x, start_y, finish_y) =
+            self.node_grid_coords(node_idx, nodes, repulsion_range);
+        nodes[node_idx].grid_start_x = start_x;
+        nodes[node_idx].grid_finish_x = finish_x;
+        nodes[node_idx].grid_start_y = start_y;
+        nodes[node_idx].grid_finish_y = finish_y;
+
+        let mut seen: Vec<bool> = vec![false; nodes.len()];
+        let mut surrounding: Vec<usize> = Vec::new();
+
+        for gx in (start_x - 1)..=(finish_x + 1) {
+            if gx < 0 || gx >= self.size_x {
+                continue;
+            }
+            for gy in (start_y - 1)..=(finish_y + 1) {
+                if gy < 0 || gy >= self.size_y {
+                    continue;
+                }
+                for &other in self.cell(gx, gy) {
+                    if other == node_idx {
+                        continue;
+                    }
+                    if processed.get(other).copied().unwrap_or(false) {
+                        continue;
+                    }
+                    if seen[other] {
+                        continue;
+                    }
+
+                    let dx = (nodes[node_idx].center_x() - nodes[other].center_x()).abs()
+                        - (nodes[node_idx].half_w() + nodes[other].half_w());
+                    let dy = (nodes[node_idx].center_y() - nodes[other].center_y()).abs()
+                        - (nodes[node_idx].half_h() + nodes[other].half_h());
+                    if dx <= repulsion_range && dy <= repulsion_range {
+                        seen[other] = true;
+                        surrounding.push(other);
+                    }
+                }
+            }
+        }
+
+        nodes[node_idx].surrounding = surrounding;
+    }
+
+    fn node_grid_coords(
+        &self,
+        node_idx: usize,
+        nodes: &[SimNode],
+        repulsion_range: f64,
+    ) -> (i32, i32, i32, i32) {
+        let n = &nodes[node_idx];
+        let mut start_x = ((n.left - self.left) / repulsion_range).floor() as i32;
+        let mut finish_x = ((n.right() - self.left) / repulsion_range).floor() as i32;
+        let mut start_y = ((n.top - self.top) / repulsion_range).floor() as i32;
+        let mut finish_y = ((n.bottom() - self.top) / repulsion_range).floor() as i32;
+
+        start_x = start_x.clamp(0, self.size_x - 1);
+        finish_x = finish_x.clamp(0, self.size_x - 1);
+        start_y = start_y.clamp(0, self.size_y - 1);
+        finish_y = finish_y.clamp(0, self.size_y - 1);
+
+        (start_x, finish_x, start_y, finish_y)
     }
 }
 

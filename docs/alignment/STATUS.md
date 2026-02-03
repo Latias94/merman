@@ -103,9 +103,10 @@ reduce severe `parity-root` root viewport drift for group-heavy fixtures.
 Recent progress (2026-02-02): started a Rust port scaffold of Cytoscape FCoSE in `manatee` (edge
 ideal lengths + alignment/relative constraints) and wired it into Architecture headless layout
 behind `LayoutOptions.use_manatee_layout` (used by `xtask compare-all-svgs`).
-Recent progress (2026-02-02): the `manatee` FCoSE scaffold now applies a CoSE-like repulsion cutoff,
-gravity gating (disconnected graphs), and a deterministic collapsed start state for edgeless graphs
-to avoid preserving input-grid degeneracy.
+Recent progress (2026-02-03): the `manatee` FCoSE scaffold now applies a CoSE-like repulsion cutoff,
+a layout-base-like FR-grid repulsion surrounding cache (refreshed every 10 iterations), and a
+range-limited gravity pass on every tick, plus a deterministic collapsed start state for edgeless
+graphs to avoid preserving input-grid degeneracy.
 Recent progress (2026-02-02): `manatee` FCoSE now includes the upstream spectral initialization
 (SVD + power iteration) and uses an explicit seed in place of `Math.random` to keep headless runs
 deterministic.
