@@ -20198,8 +20198,9 @@ fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
                 }
             } else {
                 let disc = qb * qb - 4.0 * qa * qc;
-                if disc >= 0.0 {
-                    let s = disc.sqrt();
+                let tol = 1e-12 * (qb * qb + (4.0 * qa * qc).abs() + 1.0);
+                if disc >= -tol {
+                    let s = disc.max(0.0).sqrt();
                     roots[0] = (-qb + s) / (2.0 * qa);
                     roots[1] = (-qb - s) / (2.0 * qa);
                     root_count = 2;
