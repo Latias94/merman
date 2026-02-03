@@ -380,7 +380,12 @@ impl SimGraph {
                     continue;
                 }
 
-                let spring_force = e.elasticity * (len - e.ideal_length.max(1.0));
+                // In Cytoscape CoSE/FCoSE, the spring force is scaled by the global spring constant
+                // (`DEFAULT_SPRING_STRENGTH`) and the per-edge `edgeElasticity` option (Mermaid
+                // Architecture sets this to `0.45` for same-parent edges and `0.001` for edges that
+                // cross a group boundary).
+                let spring_force =
+                    Self::DEFAULT_SPRING_STRENGTH * e.elasticity * (len - e.ideal_length.max(1.0));
                 let sfx = spring_force * (lx / len);
                 let sfy = spring_force * (ly / len);
                 self.nodes[a].spring_fx += sfx;
