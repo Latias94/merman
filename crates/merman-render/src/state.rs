@@ -1354,11 +1354,7 @@ pub fn layout_state_diagram_v2(
     // the legacy `intersect-line.js` rounding behavior (producing systematic half-pixel offsets).
     // Our layout engine emits continuous intersections; post-process endpoints to match upstream.
     {
-        #[derive(Debug, Clone, Copy)]
-        struct Point {
-            x: f64,
-            y: f64,
-        }
+        type Point = merman_core::geom::Point;
 
         fn same_sign(a: f64, b: f64) -> bool {
             a * b > 0.0
@@ -1408,7 +1404,7 @@ pub fn layout_state_diagram_v2(
                 (num + offset) / denom
             };
 
-            Some(Point { x, y })
+            Some(merman_core::geom::point(x, y))
         }
 
         fn mermaid_arc_points(
@@ -1454,10 +1450,10 @@ pub fn layout_state_diagram_v2(
             for i in 0..num_points {
                 let t = i as f64 / (num_points - 1) as f64;
                 let a = start_angle + t * angle_range;
-                out.push(Point {
-                    x: center_x + rx * a.cos(),
-                    y: center_y + ry * a.sin(),
-                });
+                out.push(merman_core::geom::point(
+                    center_x + rx * a.cos(),
+                    center_y + ry * a.sin(),
+                ));
             }
             out
         }
@@ -1468,14 +1464,8 @@ pub fn layout_state_diagram_v2(
             let taper = 5.0;
 
             let mut points: Vec<Point> = Vec::new();
-            points.push(Point {
-                x: -w / 2.0 + taper,
-                y: -h / 2.0,
-            });
-            points.push(Point {
-                x: w / 2.0 - taper,
-                y: -h / 2.0,
-            });
+            points.push(merman_core::geom::point(-w / 2.0 + taper, -h / 2.0));
+            points.push(merman_core::geom::point(w / 2.0 - taper, -h / 2.0));
             points.extend(mermaid_arc_points(
                 w / 2.0 - taper,
                 -h / 2.0,
@@ -1486,14 +1476,8 @@ pub fn layout_state_diagram_v2(
                 true,
             ));
 
-            points.push(Point {
-                x: w / 2.0,
-                y: -h / 2.0 + taper,
-            });
-            points.push(Point {
-                x: w / 2.0,
-                y: h / 2.0 - taper,
-            });
+            points.push(merman_core::geom::point(w / 2.0, -h / 2.0 + taper));
+            points.push(merman_core::geom::point(w / 2.0, h / 2.0 - taper));
             points.extend(mermaid_arc_points(
                 w / 2.0,
                 h / 2.0 - taper,
@@ -1504,14 +1488,8 @@ pub fn layout_state_diagram_v2(
                 true,
             ));
 
-            points.push(Point {
-                x: w / 2.0 - taper,
-                y: h / 2.0,
-            });
-            points.push(Point {
-                x: -w / 2.0 + taper,
-                y: h / 2.0,
-            });
+            points.push(merman_core::geom::point(w / 2.0 - taper, h / 2.0));
+            points.push(merman_core::geom::point(-w / 2.0 + taper, h / 2.0));
             points.extend(mermaid_arc_points(
                 -w / 2.0 + taper,
                 h / 2.0,
@@ -1522,14 +1500,8 @@ pub fn layout_state_diagram_v2(
                 true,
             ));
 
-            points.push(Point {
-                x: -w / 2.0,
-                y: h / 2.0 - taper,
-            });
-            points.push(Point {
-                x: -w / 2.0,
-                y: -h / 2.0 + taper,
-            });
+            points.push(merman_core::geom::point(-w / 2.0, h / 2.0 - taper));
+            points.push(merman_core::geom::point(-w / 2.0, -h / 2.0 + taper));
             points.extend(mermaid_arc_points(
                 -w / 2.0,
                 -h / 2.0 + taper,
@@ -1568,14 +1540,8 @@ pub fn layout_state_diagram_v2(
             for i in 0..poly.len() {
                 let p1 = poly[i];
                 let p2 = poly[if i + 1 < poly.len() { i + 1 } else { 0 }];
-                let q1 = Point {
-                    x: left + p1.x,
-                    y: top + p1.y,
-                };
-                let q2 = Point {
-                    x: left + p2.x,
-                    y: top + p2.y,
-                };
+                let q1 = merman_core::geom::point(left + p1.x, top + p1.y);
+                let q2 = merman_core::geom::point(left + p2.x, top + p2.y);
                 if let Some(hit) = mermaid_intersect_line(node, point, q1, q2) {
                     intersections.push(hit);
                 }
@@ -1612,10 +1578,7 @@ pub fn layout_state_diagram_v2(
             if point.y < cy {
                 dy = -dy;
             }
-            Point {
-                x: cx + dx,
-                y: cy + dy,
-            }
+            merman_core::geom::point(cx + dx, cy + dy)
         }
 
         let layout_nodes: HashMap<&str, &LayoutNode> =
@@ -1654,23 +1617,11 @@ pub fn layout_state_diagram_v2(
                 e.points[0].clone()
             };
 
-            let start_center = Point {
-                x: start_ln.x,
-                y: start_ln.y,
-            };
-            let end_center = Point {
-                x: end_ln.x,
-                y: end_ln.y,
-            };
+            let start_center = merman_core::geom::point(start_ln.x, start_ln.y);
+            let end_center = merman_core::geom::point(end_ln.x, end_ln.y);
 
-            let start_target = Point {
-                x: start_target.x,
-                y: start_target.y,
-            };
-            let end_target = Point {
-                x: end_target.x,
-                y: end_target.y,
-            };
+            let start_target = merman_core::geom::point(start_target.x, start_target.y);
+            let end_target = merman_core::geom::point(end_target.x, end_target.y);
 
             let start_hit = match start_sn.shape.as_str() {
                 "stateStart" | "stateEnd" => {
