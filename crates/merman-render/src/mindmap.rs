@@ -214,6 +214,7 @@ pub fn layout_mindmap_diagram(
                     source: e.start.clone(),
                     target: e.end.clone(),
                     ideal_length: 0.0,
+                    elasticity: 0.0,
                 })
                 .collect(),
         };

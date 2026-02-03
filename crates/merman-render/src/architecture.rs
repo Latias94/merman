@@ -615,11 +615,13 @@ pub fn layout_architecture_diagram(
                     } else {
                         0.5 * icon_size
                     };
+                    let elasticity = if same_parent { 0.45 } else { 0.001 };
                     manatee::Edge {
                         id: format!("edge-{idx}"),
                         source: e.lhs_id.clone(),
                         target: e.rhs_id.clone(),
                         ideal_length,
+                        elasticity,
                     }
                 })
                 .collect(),

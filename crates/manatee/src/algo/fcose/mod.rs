@@ -85,6 +85,7 @@ struct SimEdge {
     a: usize,
     b: usize,
     ideal_length: f64,
+    elasticity: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -225,10 +226,16 @@ impl SimGraph {
             } else {
                 Self::DEFAULT_EDGE_LENGTH
             };
+            let elasticity = if e.elasticity.is_finite() && e.elasticity > 0.0 {
+                e.elasticity
+            } else {
+                Self::DEFAULT_SPRING_STRENGTH
+            };
             edges.push(SimEdge {
                 a,
                 b,
                 ideal_length: ideal.max(1.0),
+                elasticity,
             });
         }
 
@@ -284,13 +291,12 @@ impl SimGraph {
         let spectral_applied =
             spectral::apply_spectral_start_positions(&mut self.nodes, &self.edges, random_seed);
 
-        let spring_constant = Self::DEFAULT_SPRING_STRENGTH;
         let repulsion_constant = Self::DEFAULT_REPULSION_STRENGTH;
         let gravity_constant = Self::DEFAULT_GRAVITY_STRENGTH;
 
-        // CoSE-style repulsion cutoff (used by the FR-grid variant). This keeps far-away nodes from
-        // continually repelling and helps disconnected graphs remain compact.
-        let repulsion_range = 2.0 * ideal_edge_length_avg;
+        // Cytoscape-fcose does not apply a hard repulsion cutoff; keeping it unbounded improves
+        // parity for small graphs where weak edges (low `edgeElasticity`) allow nodes to drift far.
+        let repulsion_range = f64::INFINITY;
 
         let apply_gravity = !self.is_connected();
         let estimated_size = self.estimated_size();
@@ -372,7 +378,7 @@ impl SimGraph {
                     continue;
                 }
 
-                let spring_force = spring_constant * (len - e.ideal_length.max(1.0));
+                let spring_force = e.elasticity * (len - e.ideal_length.max(1.0));
                 let sfx = spring_force * (lx / len);
                 let sfy = spring_force * (ly / len);
                 self.nodes[a].spring_fx += sfx;

@@ -42,6 +42,9 @@ pub struct Edge {
     /// Optional ideal edge length (border-to-border) used by algorithms that model edge springs.
     /// When unset or non-positive, the algorithm's default is used.
     pub ideal_length: f64,
+    /// Optional spring strength for this edge (Cytoscape FCoSE: `edgeElasticity`).
+    /// When unset or non-positive, the algorithm's default is used.
+    pub elasticity: f64,
 }
 
 #[derive(Debug, Clone, Copy)]
