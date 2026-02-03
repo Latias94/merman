@@ -1139,9 +1139,18 @@ pub fn layout_sequence_diagram(
     struct RectOpen {
         start_id: String,
         top_y: f64,
-        min_x: f64,
-        max_x: f64,
-        max_y: f64,
+        bounds: Option<merman_core::geom::Box2>,
+    }
+
+    impl RectOpen {
+        fn include_min_max(&mut self, min_x: f64, max_x: f64, max_y: f64) {
+            let r = merman_core::geom::Box2::from_min_max(min_x, self.top_y, max_x, max_y);
+            if let Some(ref mut cur) = self.bounds {
+                cur.union(r);
+            } else {
+                self.bounds = Some(r);
+            }
+        }
     }
 
     // Mermaid's sequence renderer advances a "cursor" even for non-message directives (notes,
@@ -1239,9 +1248,7 @@ pub fn layout_sequence_diagram(
                 rect_stack.push(RectOpen {
                     start_id: msg.id.clone(),
                     top_y: cursor_y - note_top_offset,
-                    min_x: f64::INFINITY,
-                    max_x: f64::NEG_INFINITY,
-                    max_y: f64::NEG_INFINITY,
+                    bounds: None,
                 });
                 cursor_y += rect_step_start;
                 continue;
@@ -1249,29 +1256,24 @@ pub fn layout_sequence_diagram(
             // rect end
             23 => {
                 if let Some(open) = rect_stack.pop() {
-                    let rect_left = if open.min_x.is_finite() {
-                        open.min_x
-                    } else {
+                    let rect_left = open.bounds.map(|b| b.min_x()).unwrap_or_else(|| {
                         actor_centers_x
                             .iter()
                             .copied()
                             .fold(f64::INFINITY, f64::min)
                             - 11.0
-                    };
-                    let rect_right = if open.max_x.is_finite() {
-                        open.max_x
-                    } else {
+                    });
+                    let rect_right = open.bounds.map(|b| b.max_x()).unwrap_or_else(|| {
                         actor_centers_x
                             .iter()
                             .copied()
                             .fold(f64::NEG_INFINITY, f64::max)
                             + 11.0
-                    };
-                    let rect_bottom = if open.max_y.is_finite() {
-                        open.max_y + 10.0
-                    } else {
-                        open.top_y + 10.0
-                    };
+                    });
+                    let rect_bottom = open
+                        .bounds
+                        .map(|b| b.max_y() + 10.0)
+                        .unwrap_or(open.top_y + 10.0);
                     let rect_w = (rect_right - rect_left).max(1.0);
                     let rect_h = (rect_bottom - open.top_y).max(1.0);
 
@@ -1285,9 +1287,7 @@ pub fn layout_sequence_diagram(
                     });
 
                     if let Some(parent) = rect_stack.last_mut() {
-                        parent.min_x = parent.min_x.min(rect_left - 10.0);
-                        parent.max_x = parent.max_x.max(rect_right + 10.0);
-                        parent.max_y = parent.max_y.max(rect_bottom);
+                        parent.include_min_max(rect_left - 10.0, rect_right + 10.0, rect_bottom);
                     }
                 }
                 cursor_y += rect_step_end;
@@ -1360,9 +1360,7 @@ pub fn layout_sequence_diagram(
             });
 
             for open in rect_stack.iter_mut() {
-                open.min_x = open.min_x.min(note_x - 10.0);
-                open.max_x = open.max_x.max(note_x + note_w + 10.0);
-                open.max_y = open.max_y.max(note_y + note_h);
+                open.include_min_max(note_x - 10.0, note_x + note_w + 10.0, note_y + note_h);
             }
 
             cursor_y += note_h + note_gap;
@@ -1540,9 +1538,7 @@ pub fn layout_sequence_diagram(
         for open in rect_stack.iter_mut() {
             let lx = from_x.min(to_x) - 11.0;
             let rx = from_x.max(to_x) + 11.0;
-            open.min_x = open.min_x.min(lx);
-            open.max_x = open.max_x.max(rx);
-            open.max_y = open.max_y.max(line_y);
+            open.include_min_max(lx, rx, line_y);
         }
 
         cursor_y += cursor_step;
