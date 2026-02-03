@@ -102,6 +102,13 @@ reduce severe `parity-root` root viewport drift for group-heavy fixtures.
 Recent progress (2026-02-03): Architecture top-level group separation now interprets `T/B` edge endpoints
 in SVG's y-down coordinate system, fixing the group order inversion observed in `docs_group_edges`.
 
+Recent progress (2026-02-03): `manatee` FCoSE now supports an explicit `defaultEdgeLength` knob (mirroring
+`layout-base`'s `DEFAULT_EDGE_LENGTH`) and uses it for repulsion/grid cutoffs and overlap separation buffers,
+which makes Architecture root viewport estimation less sensitive to cluster topology.
+Recent progress (2026-02-03): Architecture Stage B now approximates `layout-base`'s inter-graph ideal edge
+length adjustments (LCA depth factor + group-size-derived additive term) and adds extra separation for Mermaid
+`{group}` endpoints, improving `parity-root` deltas for group-heavy fixtures.
+
 Recent progress (2026-02-02): started a Rust port scaffold of Cytoscape FCoSE in `manatee` (edge
 ideal lengths + alignment/relative constraints) and wired it into Architecture headless layout
 behind `LayoutOptions.use_manatee_layout` (used by `xtask compare-all-svgs`).

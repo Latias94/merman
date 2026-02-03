@@ -14,7 +14,7 @@ pub fn layout(graph: &Graph, opts: &FcoseOptions) -> Result<LayoutResult> {
     // original component center to avoid arbitrary global translations affecting viewBox parity.
     let orig_center = sim.bounding_box_center().unwrap_or((0.0, 0.0));
 
-    sim.run_spring_embedder(&constraints, opts.random_seed);
+    sim.run_spring_embedder(&constraints, opts);
 
     let new_center = sim.bounding_box_center().unwrap_or((0.0, 0.0));
     sim.translate(orig_center.0 - new_center.0, orig_center.1 - new_center.1);
@@ -284,21 +284,33 @@ impl SimGraph {
         Some(((min_x + max_x) / 2.0, (min_y + max_y) / 2.0))
     }
 
-    fn run_spring_embedder(&mut self, constraints: &Constraints, random_seed: u64) {
+    fn run_spring_embedder(&mut self, constraints: &Constraints, opts: &FcoseOptions) {
         if self.nodes.is_empty() {
             return;
         }
 
-        let ideal_edge_length_avg = if self.edges.is_empty() {
-            Self::DEFAULT_EDGE_LENGTH
-        } else {
-            let sum: f64 = self.edges.iter().map(|e| e.ideal_length).sum();
-            (sum / (self.edges.len() as f64)).max(1.0)
-        };
+        let random_seed = opts.random_seed;
+
+        // layout-base/CoSE uses a *global* `DEFAULT_EDGE_LENGTH` for multiple heuristics (minimum
+        // repulsion distance, overlap separation buffer, repulsion grid range, convergence
+        // thresholds, etc.). In upstream Cytoscape FCoSE this value is derived from the
+        // `idealEdgeLength` option (before per-edge nesting/smart adjustments).
+        let default_edge_length = opts
+            .default_edge_length
+            .filter(|v| v.is_finite() && *v > 0.0)
+            .unwrap_or_else(|| {
+                if self.edges.is_empty() {
+                    Self::DEFAULT_EDGE_LENGTH
+                } else {
+                    let sum: f64 = self.edges.iter().map(|e| e.ideal_length).sum();
+                    (sum / (self.edges.len() as f64)).max(1.0)
+                }
+            });
+        let half_default_edge_length = default_edge_length / 2.0;
         // CoSE updates `MIN_REPULSION_DIST` based on the effective `DEFAULT_EDGE_LENGTH` when
         // `idealEdgeLength` is set. For Mermaid Architecture this is always set (as a function),
         // so we scale the minimum repulsion distance with the average ideal length.
-        let min_repulsion_dist = (ideal_edge_length_avg / 10.0).max(0.0005);
+        let min_repulsion_dist = (default_edge_length / 10.0).max(0.0005);
 
         // FCoSE performs a spectral initialization when `randomize=true` (Mermaid defaults to
         // `randomize: true`). The upstream JS implementation relies on `Math.random`; in Rust we
@@ -312,10 +324,10 @@ impl SimGraph {
         //
         // `repulsionRange = 2 * (level + 1) * idealEdgeLength`
         //
-        // Mermaid Architecture uses a flat graph (`level = 0`). Keeping repulsion unbounded tends
-        // to over-spread disconnected or sparse graphs (notably the "no edges" fixtures), which
-        // cascades into parity-root `viewBox` / `max-width` drift.
-        let repulsion_range = (2.0 * ideal_edge_length_avg).max(1.0);
+        // `cose-base` initializes `level=0`, so this collapses to `2 * DEFAULT_EDGE_LENGTH`.
+        // Keeping repulsion unbounded tends to over-spread disconnected or sparse graphs (notably
+        // the "no edges" fixtures), which cascades into parity-root `viewBox` / `max-width` drift.
+        let repulsion_range = (2.0 * default_edge_length).max(1.0);
 
         let estimated_size = self.estimated_size();
         let gravity_range = estimated_size * Self::DEFAULT_GRAVITY_RANGE_FACTOR;
@@ -326,11 +338,11 @@ impl SimGraph {
 
         // Fallback for degenerate cases where spectral is skipped (e.g. very small graphs).
         if self.edges.is_empty() && !spectral_applied {
-            self.collapse_start_positions(ideal_edge_length_avg, random_seed);
+            self.collapse_start_positions(default_edge_length, random_seed);
         }
 
         let n = self.nodes.len() as f64;
-        let displacement_threshold_per_node = (3.0 * ideal_edge_length_avg) / 100.0;
+        let displacement_threshold_per_node = (3.0 * default_edge_length) / 100.0;
         let total_displacement_threshold = displacement_threshold_per_node * n;
 
         let initial_cooling_factor = 1.0;
@@ -446,7 +458,7 @@ impl SimGraph {
                             &self.nodes[i],
                             &self.nodes[j],
                             min_repulsion_dist,
-                            ideal_edge_length_avg / 2.0,
+                            half_default_edge_length,
                         );
                         self.nodes[i].repulsion_fx += rfx;
                         self.nodes[i].repulsion_fy += rfy;
@@ -463,7 +475,7 @@ impl SimGraph {
                             &self.nodes[i],
                             &self.nodes[j],
                             min_repulsion_dist,
-                            ideal_edge_length_avg / 2.0,
+                            half_default_edge_length,
                         );
                         self.nodes[i].repulsion_fx += rfx;
                         self.nodes[i].repulsion_fy += rfy;

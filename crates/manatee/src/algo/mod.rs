@@ -25,6 +25,14 @@ impl Default for CoseBilkentOptions {
 #[derive(Debug, Clone)]
 pub struct FcoseOptions {
     pub random_seed: u64,
+    /// Override for layout-base/CoSE `DEFAULT_EDGE_LENGTH` (used for repulsion/grid range, overlap
+    /// separation buffer, and convergence thresholds).
+    ///
+    /// In upstream Cytoscape FCoSE, `DEFAULT_EDGE_LENGTH` is derived from the `idealEdgeLength`
+    /// option (before inter-graph nesting/smart adjustments), then used by layout-base constants
+    /// such as `MIN_REPULSION_DIST` and the FR-grid cell size. Keeping this value aligned is
+    /// important for parity with Mermaid-generated SVG baselines.
+    pub default_edge_length: Option<f64>,
     pub alignment_constraint: Option<AlignmentConstraint>,
     pub relative_placement_constraint: Vec<RelativePlacementConstraint>,
 }
@@ -33,6 +41,7 @@ impl Default for FcoseOptions {
     fn default() -> Self {
         Self {
             random_seed: 0,
+            default_edge_length: None,
             alignment_constraint: None,
             relative_placement_constraint: Vec::new(),
         }

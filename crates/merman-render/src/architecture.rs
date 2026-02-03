@@ -591,6 +591,221 @@ pub fn layout_architecture_diagram(
         }
 
         // Run `manatee` layout refinement.
+        // Ports of layout-base/CoSE constants used by Cytoscape FCoSE.
+        const SIMPLE_NODE_SIZE: f64 = 40.0; // layout-base `LayoutConstants.SIMPLE_NODE_SIZE`
+        const NESTING_FACTOR: f64 = 0.1; // cytoscape-fcose default `nestingFactor`
+
+        let mut group_parent_map: std::collections::BTreeMap<&str, &str> =
+            std::collections::BTreeMap::new();
+        for g in &model.groups {
+            if let Some(parent) = g.in_group.as_deref() {
+                group_parent_map.insert(g.id.as_str(), parent);
+            }
+        }
+
+        fn group_chain<'a>(
+            mut g: &'a str,
+            group_parent_map: &std::collections::BTreeMap<&'a str, &'a str>,
+        ) -> Vec<&'a str> {
+            let mut out: Vec<&'a str> = Vec::new();
+            out.push(g);
+            while let Some(p) = group_parent_map.get(g).copied() {
+                g = p;
+                out.push(g);
+            }
+            out.reverse();
+            out
+        }
+
+        let mut node_chain: std::collections::BTreeMap<&str, Vec<&str>> =
+            std::collections::BTreeMap::new();
+        for n in &model.nodes {
+            let chain = n
+                .in_group
+                .as_deref()
+                .map(|g| group_chain(g, &group_parent_map))
+                .unwrap_or_default();
+            node_chain.insert(n.id.as_str(), chain);
+        }
+
+        #[derive(Debug, Clone, Copy)]
+        enum Child<'a> {
+            Node(&'a str),
+            Group(&'a str),
+        }
+
+        let mut group_children: std::collections::BTreeMap<&str, Vec<Child<'_>>> =
+            std::collections::BTreeMap::new();
+        for g in &model.groups {
+            group_children.entry(g.id.as_str()).or_default();
+        }
+        for g in &model.groups {
+            if let Some(parent) = g.in_group.as_deref() {
+                group_children
+                    .entry(parent)
+                    .or_default()
+                    .push(Child::Group(g.id.as_str()));
+            }
+        }
+        for n in &model.nodes {
+            if let Some(parent) = n.in_group.as_deref() {
+                group_children
+                    .entry(parent)
+                    .or_default()
+                    .push(Child::Node(n.id.as_str()));
+            }
+        }
+
+        let mut group_estimated_size: std::collections::BTreeMap<&str, f64> =
+            std::collections::BTreeMap::new();
+        fn estimated_size_of_group<'a>(
+            g: &'a str,
+            icon_size: f64,
+            group_children: &std::collections::BTreeMap<&'a str, Vec<Child<'a>>>,
+            memo: &mut std::collections::BTreeMap<&'a str, f64>,
+        ) -> f64 {
+            if let Some(v) = memo.get(g).copied() {
+                return v;
+            }
+            let children = group_children.get(g).map(|v| v.as_slice()).unwrap_or(&[]);
+            if children.is_empty() {
+                // layout-base `LayoutConstants.EMPTY_COMPOUND_NODE_SIZE`
+                memo.insert(g, SIMPLE_NODE_SIZE);
+                return SIMPLE_NODE_SIZE;
+            }
+
+            let mut sum = 0.0f64;
+            let mut cnt = 0.0f64;
+            for c in children {
+                let s = match c {
+                    Child::Node(_) => icon_size,
+                    Child::Group(id) => {
+                        estimated_size_of_group(id, icon_size, group_children, memo)
+                    }
+                };
+                sum += s;
+                cnt += 1.0;
+            }
+            let out = if cnt > 0.0 {
+                sum / cnt.sqrt()
+            } else {
+                SIMPLE_NODE_SIZE
+            };
+            memo.insert(g, out);
+            out
+        }
+        for g in &model.groups {
+            let _ = estimated_size_of_group(
+                g.id.as_str(),
+                icon_size,
+                &group_children,
+                &mut group_estimated_size,
+            );
+        }
+
+        let mut edge_seen: std::collections::BTreeSet<(String, String)> =
+            std::collections::BTreeSet::new();
+        let mut edges: Vec<manatee::Edge> = Vec::new();
+        let mut default_edge_length_sum = 0.0f64;
+        let mut default_edge_length_cnt = 0.0f64;
+
+        for e in &model.edges {
+            let (u, v) = if e.lhs_id <= e.rhs_id {
+                (e.lhs_id.clone(), e.rhs_id.clone())
+            } else {
+                (e.rhs_id.clone(), e.lhs_id.clone())
+            };
+            if !edge_seen.insert((u, v)) {
+                continue;
+            }
+
+            let lhs_g = node_group.get(e.lhs_id.as_str()).and_then(|v| *v);
+            let rhs_g = node_group.get(e.rhs_id.as_str()).and_then(|v| *v);
+            let same_parent = lhs_g == rhs_g;
+
+            let base_ideal_length = if same_parent {
+                1.5 * icon_size
+            } else {
+                0.5 * icon_size
+            };
+            default_edge_length_sum += base_ideal_length;
+            default_edge_length_cnt += 1.0;
+
+            // Mimic layout-base `FDLayout.calcIdealEdgeLengths()` adjustments for inter-graph edges:
+            //
+            // - smart ideal edge length: add estimated sizes of the LCA-level endpoints
+            // - nesting factor: scale with inclusion tree depth delta
+            let ideal_length = if same_parent {
+                base_ideal_length
+            } else {
+                let chain_a = node_chain
+                    .get(e.lhs_id.as_str())
+                    .map(|v| v.as_slice())
+                    .unwrap_or(&[]);
+                let chain_b = node_chain
+                    .get(e.rhs_id.as_str())
+                    .map(|v| v.as_slice())
+                    .unwrap_or(&[]);
+
+                let common_len = chain_a
+                    .iter()
+                    .zip(chain_b.iter())
+                    .take_while(|(a, b)| a == b)
+                    .count();
+
+                // `edge.getSourceInLca()` / `edge.getTargetInLca()` equivalents.
+                let source_in_lca = if chain_a.len() == common_len {
+                    e.lhs_id.as_str()
+                } else {
+                    chain_a[common_len]
+                };
+                let target_in_lca = if chain_b.len() == common_len {
+                    e.rhs_id.as_str()
+                } else {
+                    chain_b[common_len]
+                };
+
+                let est = |id: &str| -> f64 {
+                    if group_estimated_size.contains_key(id) {
+                        group_estimated_size
+                            .get(id)
+                            .copied()
+                            .unwrap_or(SIMPLE_NODE_SIZE)
+                    } else {
+                        // Leaf nodes are uniform `icon_size x icon_size` for Architecture.
+                        icon_size
+                    }
+                };
+
+                let size_a = est(source_in_lca);
+                let size_b = est(target_in_lca);
+                let smart_add = size_a + size_b - (2.0 * SIMPLE_NODE_SIZE);
+
+                let node_depth_a = chain_a.len() + 1; // root graph nodes start at depth=1
+                let node_depth_b = chain_b.len() + 1;
+                let lca_depth = if common_len == 0 { 1 } else { common_len };
+                let depth_delta = (node_depth_a + node_depth_b).saturating_sub(2 * lca_depth);
+                let nesting_add = base_ideal_length * NESTING_FACTOR * (depth_delta as f64);
+
+                base_ideal_length + smart_add + nesting_add
+            };
+
+            let elasticity = if same_parent { 0.45 } else { 0.001 };
+            edges.push(manatee::Edge {
+                id: format!("edge-{}", edges.len()),
+                source: e.lhs_id.clone(),
+                target: e.rhs_id.clone(),
+                ideal_length,
+                elasticity,
+            });
+        }
+
+        let default_edge_length = if default_edge_length_cnt > 0.0 {
+            default_edge_length_sum / default_edge_length_cnt
+        } else {
+            50.0
+        };
+
         let graph = manatee::Graph {
             nodes: nodes
                 .iter()
@@ -602,29 +817,7 @@ pub fn layout_architecture_diagram(
                     y: n.y + n.height / 2.0,
                 })
                 .collect(),
-            edges: model
-                .edges
-                .iter()
-                .enumerate()
-                .map(|(idx, e)| {
-                    let lhs_g = node_group.get(e.lhs_id.as_str()).and_then(|v| *v);
-                    let rhs_g = node_group.get(e.rhs_id.as_str()).and_then(|v| *v);
-                    let same_parent = lhs_g == rhs_g;
-                    let ideal_length = if same_parent {
-                        1.5 * icon_size
-                    } else {
-                        0.5 * icon_size
-                    };
-                    let elasticity = if same_parent { 0.45 } else { 0.001 };
-                    manatee::Edge {
-                        id: format!("edge-{idx}"),
-                        source: e.lhs_id.clone(),
-                        target: e.rhs_id.clone(),
-                        ideal_length,
-                        elasticity,
-                    }
-                })
-                .collect(),
+            edges,
         };
 
         let opts = manatee::FcoseOptions {
@@ -633,6 +826,7 @@ pub fn layout_architecture_diagram(
                 vertical: vertical_all,
             }),
             relative_placement_constraint: relative,
+            default_edge_length: Some(default_edge_length),
             // Mermaid@11.12.2 Architecture layout uses Cytoscape FCoSE with a spectral
             // initialization that depends on `Math.random()`. Our upstream SVG baselines are
             // generated with a deterministic RNG seed (see ADR-0055), so we must use the same
@@ -698,8 +892,16 @@ pub fn layout_architecture_diagram(
 
             #[derive(Debug, Clone)]
             enum GroupRel {
-                LeftOf { left: String, right: String },
-                Above { top: String, bottom: String },
+                LeftOf {
+                    left: String,
+                    right: String,
+                    gap: f64,
+                },
+                Above {
+                    top: String,
+                    bottom: String,
+                    gap: f64,
+                },
             }
 
             let mut rels: Vec<GroupRel> = Vec::new();
@@ -714,16 +916,27 @@ pub fn layout_architecture_diagram(
                     continue;
                 }
 
+                // Base gap matches Mermaid's node-level relative placement constraints.
+                // For `{group}` edges, we add Mermaid's Architecture group padding so the
+                // top-level group separation approximates Cytoscape's compound bounds.
+                let group_edge_extra_gap = icon_size / 2.0 + 2.5;
+                let mut gap = 1.5 * icon_size;
+                if e.lhs_group.unwrap_or(false) || e.rhs_group.unwrap_or(false) {
+                    gap += group_edge_extra_gap;
+                }
+
                 let lhs_dir = e.lhs_dir.as_deref().unwrap_or("");
                 let rhs_dir = e.rhs_dir.as_deref().unwrap_or("");
                 match (lhs_dir, rhs_dir) {
                     ("R", "L") => rels.push(GroupRel::LeftOf {
                         left: lhs_g.to_string(),
                         right: rhs_g.to_string(),
+                        gap,
                     }),
                     ("L", "R") => rels.push(GroupRel::LeftOf {
                         left: rhs_g.to_string(),
                         right: lhs_g.to_string(),
+                        gap,
                     }),
                     // Vertical adjacency in SVG y-down coordinates:
                     //
@@ -734,10 +947,12 @@ pub fn layout_architecture_diagram(
                     ("T", "B") => rels.push(GroupRel::Above {
                         top: rhs_g.to_string(),
                         bottom: lhs_g.to_string(),
+                        gap,
                     }),
                     ("B", "T") => rels.push(GroupRel::Above {
                         top: lhs_g.to_string(),
                         bottom: rhs_g.to_string(),
+                        gap,
                     }),
                     _ => {}
                 }
@@ -809,14 +1024,12 @@ pub fn layout_architecture_diagram(
                 }
             }
 
-            // Use the same gap as Mermaid's node-level relative placement constraints.
-            let gap = 1.5 * icon_size;
             let max_iters = 32usize;
             for _ in 0..max_iters {
                 let mut changed = false;
                 for rel in &rels {
                     match rel {
-                        GroupRel::LeftOf { left, right } => {
+                        GroupRel::LeftOf { left, right, gap } => {
                             let Some(a) = group_bbox(nodes, left, &node_root_group) else {
                                 continue;
                             };
@@ -830,7 +1043,7 @@ pub fn layout_architecture_diagram(
                                 changed = true;
                             }
                         }
-                        GroupRel::Above { top, bottom } => {
+                        GroupRel::Above { top, bottom, gap } => {
                             let Some(a) = group_bbox(nodes, top, &node_root_group) else {
                                 continue;
                             };
