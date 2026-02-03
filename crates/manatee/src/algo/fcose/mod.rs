@@ -178,8 +178,6 @@ impl SimGraph {
     const MAX_ITERATIONS: usize = 2500;
     const CONVERGENCE_CHECK_PERIOD: usize = 100;
     const MAX_NODE_DISPLACEMENT: f64 = 300.0;
-    const MIN_REPULSION_DIST: f64 = Self::DEFAULT_EDGE_LENGTH / 10.0;
-
     fn from_graph(graph: &Graph) -> Self {
         let mut nodes: Vec<SimNode> = Vec::with_capacity(graph.nodes.len());
         let mut id_to_idx: std::collections::BTreeMap<String, usize> =
@@ -284,6 +282,10 @@ impl SimGraph {
             let sum: f64 = self.edges.iter().map(|e| e.ideal_length).sum();
             (sum / (self.edges.len() as f64)).max(1.0)
         };
+        // CoSE updates `MIN_REPULSION_DIST` based on the effective `DEFAULT_EDGE_LENGTH` when
+        // `idealEdgeLength` is set. For Mermaid Architecture this is always set (as a function),
+        // so we scale the minimum repulsion distance with the average ideal length.
+        let min_repulsion_dist = (ideal_edge_length_avg / 10.0).max(0.0005);
 
         // FCoSE performs a spectral initialization when `randomize=true` (Mermaid defaults to
         // `randomize: true`). The upstream JS implementation relies on `Math.random`; in Rust we
@@ -397,6 +399,7 @@ impl SimGraph {
                         &self.nodes[i],
                         &self.nodes[j],
                         repulsion_constant,
+                        min_repulsion_dist,
                         ideal_edge_length_avg / 2.0,
                     );
                     self.nodes[i].repulsion_fx += rfx;
@@ -652,6 +655,7 @@ fn calc_repulsion_force(
     a: &SimNode,
     b: &SimNode,
     repulsion_constant: f64,
+    min_repulsion_dist: f64,
     separation_buffer: f64,
 ) -> (f64, f64) {
     if rects_intersect(a, b) {
@@ -672,11 +676,11 @@ fn calc_repulsion_force(
             dy = 0.0;
         }
 
-        if dx.abs() < SimGraph::MIN_REPULSION_DIST {
-            dx = dx.signum() * SimGraph::MIN_REPULSION_DIST;
+        if dx.abs() < min_repulsion_dist {
+            dx = dx.signum() * min_repulsion_dist;
         }
-        if dy.abs() < SimGraph::MIN_REPULSION_DIST {
-            dy = dy.signum() * SimGraph::MIN_REPULSION_DIST;
+        if dy.abs() < min_repulsion_dist {
+            dy = dy.signum() * min_repulsion_dist;
         }
 
         let dist_sq = dx * dx + dy * dy;
