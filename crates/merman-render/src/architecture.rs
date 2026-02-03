@@ -725,13 +725,19 @@ pub fn layout_architecture_diagram(
                         left: rhs_g.to_string(),
                         right: lhs_g.to_string(),
                     }),
+                    // Vertical adjacency in SVG y-down coordinates:
+                    //
+                    // - `lhs:T -- rhs:B` means lhs is *below* rhs (lhs connects from its top to
+                    //   rhs's bottom), so rhs is above lhs.
+                    // - `lhs:B -- rhs:T` means lhs is *above* rhs (lhs connects from its bottom to
+                    //   rhs's top), so lhs is above rhs.
                     ("T", "B") => rels.push(GroupRel::Above {
-                        top: lhs_g.to_string(),
-                        bottom: rhs_g.to_string(),
-                    }),
-                    ("B", "T") => rels.push(GroupRel::Above {
                         top: rhs_g.to_string(),
                         bottom: lhs_g.to_string(),
+                    }),
+                    ("B", "T") => rels.push(GroupRel::Above {
+                        top: lhs_g.to_string(),
+                        bottom: rhs_g.to_string(),
                     }),
                     _ => {}
                 }
