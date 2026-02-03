@@ -12,6 +12,10 @@ pub type Transform = euclid::Transform2D<f64, Unit, Unit>;
 pub struct Box2(pub euclid::Box2D<f64, Unit>);
 
 impl Box2 {
+    pub fn from_min_max(min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Self {
+        Self(euclid::Box2D::new(point(min_x, min_y), point(max_x, max_y)))
+    }
+
     pub fn from_center(x: f64, y: f64, width: f64, height: f64) -> Self {
         let hw = width / 2.0;
         let hh = height / 2.0;
@@ -27,6 +31,22 @@ impl Box2 {
 
     pub fn height(&self) -> f64 {
         self.0.max.y - self.0.min.y
+    }
+
+    pub fn min_x(&self) -> f64 {
+        self.0.min.x
+    }
+
+    pub fn min_y(&self) -> f64 {
+        self.0.min.y
+    }
+
+    pub fn max_x(&self) -> f64 {
+        self.0.max.x
+    }
+
+    pub fn max_y(&self) -> f64 {
+        self.0.max.y
     }
 
     pub fn center(&self) -> (f64, f64) {
@@ -52,6 +72,13 @@ impl Box2 {
     pub fn translate(&mut self, dx: f64, dy: f64) {
         let d = vector(dx, dy);
         self.0 = euclid::Box2D::new(self.0.min + d, self.0.max + d);
+    }
+
+    pub fn pad(&mut self, padding: f64) {
+        self.0.min.x -= padding;
+        self.0.min.y -= padding;
+        self.0.max.x += padding;
+        self.0.max.y += padding;
     }
 }
 

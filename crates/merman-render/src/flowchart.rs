@@ -2606,10 +2606,7 @@ pub fn layout_flowchart_v2(
         };
 
         // Expand to provide the cluster's internal padding.
-        rect.0.min.x -= cluster_padding;
-        rect.0.max.x += cluster_padding;
-        rect.0.min.y -= cluster_padding;
-        rect.0.max.y += cluster_padding;
+        rect.pad(cluster_padding);
 
         // Mermaid computes `node.diff` using the pre-widened layout node width, then may widen the
         // rect to fit the label bbox during rendering.

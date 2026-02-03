@@ -224,48 +224,7 @@ struct PreparedGraph {
     root_cluster_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct Rect {
-    min_x: f64,
-    min_y: f64,
-    max_x: f64,
-    max_y: f64,
-}
-
-impl Rect {
-    fn from_center(x: f64, y: f64, width: f64, height: f64) -> Self {
-        let hw = width / 2.0;
-        let hh = height / 2.0;
-        Self {
-            min_x: x - hw,
-            min_y: y - hh,
-            max_x: x + hw,
-            max_y: y + hh,
-        }
-    }
-
-    fn width(&self) -> f64 {
-        self.max_x - self.min_x
-    }
-
-    fn height(&self) -> f64 {
-        self.max_y - self.min_y
-    }
-
-    fn center(&self) -> (f64, f64) {
-        (
-            (self.min_x + self.max_x) / 2.0,
-            (self.min_y + self.max_y) / 2.0,
-        )
-    }
-
-    fn union(&mut self, other: Rect) {
-        self.min_x = self.min_x.min(other.min_x);
-        self.min_y = self.min_y.min(other.min_y);
-        self.max_x = self.max_x.max(other.max_x);
-        self.max_y = self.max_y.max(other.max_y);
-    }
-}
+type Rect = merman_core::geom::Box2;
 
 #[derive(Debug, Clone)]
 struct EdgeSegment {
@@ -878,8 +837,8 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
     let mut points: Vec<(f64, f64)> = Vec::new();
     for n in fragments.nodes.values() {
         let r = Rect::from_center(n.x, n.y, n.width, n.height);
-        points.push((r.min_x, r.min_y));
-        points.push((r.max_x, r.max_y));
+        points.push((r.min_x(), r.min_y()));
+        points.push((r.max_x(), r.max_y()));
     }
     for e in &fragments.edge_segments {
         for p in &e.points {
@@ -887,23 +846,13 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
         }
         if let Some(l) = &e.label {
             let r = Rect::from_center(l.x, l.y, l.width, l.height);
-            points.push((r.min_x, r.min_y));
-            points.push((r.max_x, r.max_y));
+            points.push((r.min_x(), r.min_y()));
+            points.push((r.max_x(), r.max_y()));
         }
     }
     let bounds = Bounds::from_points(points)
-        .map(|b| Rect {
-            min_x: b.min_x,
-            min_y: b.min_y,
-            max_x: b.max_x,
-            max_y: b.max_y,
-        })
-        .unwrap_or(Rect {
-            min_x: 0.0,
-            min_y: 0.0,
-            max_x: 0.0,
-            max_y: 0.0,
-        });
+        .map(|b| Rect::from_min_max(b.min_x, b.min_y, b.max_x, b.max_y))
+        .unwrap_or_else(|| Rect::from_min_max(0.0, 0.0, 0.0, 0.0));
 
     Ok((fragments, bounds))
 }
@@ -1331,7 +1280,7 @@ pub fn layout_state_diagram_v2(
         let title_top_adjust = if html_labels { 0.0 } else { 3.0 };
         let title_label = LayoutLabel {
             x: cx,
-            y: rect.min_y + 1.0 - title_top_adjust + th / 2.0,
+            y: rect.min_y() + 1.0 - title_top_adjust + th / 2.0,
             width: tw,
             height: th,
         };
@@ -1775,8 +1724,8 @@ pub fn layout_state_diagram_v2(
         let mut points: Vec<(f64, f64)> = Vec::new();
         for n in &out_nodes {
             let r = Rect::from_center(n.x, n.y, n.width, n.height);
-            points.push((r.min_x, r.min_y));
-            points.push((r.max_x, r.max_y));
+            points.push((r.min_x(), r.min_y()));
+            points.push((r.max_x(), r.max_y()));
         }
         for e in &out_edges {
             for p in &e.points {
@@ -1784,8 +1733,8 @@ pub fn layout_state_diagram_v2(
             }
             if let Some(l) = &e.label {
                 let r = Rect::from_center(l.x, l.y, l.width, l.height);
-                points.push((r.min_x, r.min_y));
-                points.push((r.max_x, r.max_y));
+                points.push((r.min_x(), r.min_y()));
+                points.push((r.max_x(), r.max_y()));
             }
         }
         Bounds::from_points(points)
