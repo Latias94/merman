@@ -107,6 +107,10 @@ Recent progress (2026-02-03): the `manatee` FCoSE scaffold now applies a CoSE-li
 a layout-base-like FR-grid repulsion surrounding cache (refreshed every 10 iterations), and a
 range-limited gravity pass on every tick, plus a deterministic collapsed start state for edgeless
 graphs to avoid preserving input-grid degeneracy.
+Recent progress (2026-02-03): `manatee` FCoSE now applies Mermaid/Cose-base constraints by updating
+per-node displacements (a relaxed constraint handling approach) rather than hard-projecting node
+positions after each tick. This significantly reduces over-separation in constrained layouts and
+brings Architecture `max-width` closer to upstream for several fixtures (e.g. `cypress_split_directioning_normalized`).
 Recent progress (2026-02-02): `manatee` FCoSE now includes the upstream spectral initialization
 (SVD + power iteration) and uses an explicit seed in place of `Math.random` to keep headless runs
 deterministic.

@@ -490,21 +490,29 @@ impl SimGraph {
                 }
             }
 
-            // Move nodes.
-            for n in &mut self.nodes {
-                let dx = cooling_factor * (n.spring_fx + n.repulsion_fx);
-                let dy = cooling_factor * (n.spring_fy + n.repulsion_fy);
-
-                let mut mdx = dx;
-                let mut mdy = dy;
-                let max_d = cooling_factor * Self::MAX_NODE_DISPLACEMENT;
+            // Move nodes (with constraints applied to displacements).
+            //
+            // Upstream `cose-base` computes displacements from forces, then applies constraint
+            // handling that *updates those displacements* (rather than hard-projecting node
+            // positions after the move). Hard projection tends to over-separate constrained nodes
+            // and can noticeably inflate root viewBox/max-width in parity-root mode.
+            let max_d = cooling_factor * Self::MAX_NODE_DISPLACEMENT;
+            let mut disps: Vec<(f64, f64)> = Vec::with_capacity(self.nodes.len());
+            for n in &self.nodes {
+                let mut mdx = cooling_factor * (n.spring_fx + n.repulsion_fx);
+                let mut mdy = cooling_factor * (n.spring_fy + n.repulsion_fy);
                 if mdx.abs() > max_d {
                     mdx = max_d * mdx.signum();
                 }
                 if mdy.abs() > max_d {
                     mdy = max_d * mdy.signum();
                 }
+                disps.push((mdx, mdy));
+            }
 
+            apply_constraints_to_displacements(&self.nodes, constraints, &mut disps, max_d);
+
+            for (n, (mdx, mdy)) in self.nodes.iter_mut().zip(disps) {
                 n.move_by(mdx, mdy);
                 total_displacement += mdx.abs() + mdy.abs();
 
@@ -513,9 +521,6 @@ impl SimGraph {
                 n.repulsion_fx = 0.0;
                 n.repulsion_fy = 0.0;
             }
-
-            // Constraint projection (approximation): keep alignments exact and maintain required gaps.
-            self.enforce_constraints(constraints);
 
             last_total_displacement = total_displacement;
         }
@@ -549,59 +554,89 @@ impl SimGraph {
             n.top = jy;
         }
     }
+}
 
-    fn enforce_constraints(&mut self, c: &Constraints) {
-        // Alignments.
-        for group in &c.align_horizontal {
-            let mut sum = 0.0;
-            let mut cnt = 0.0;
+fn apply_constraints_to_displacements(
+    nodes: &[SimNode],
+    c: &Constraints,
+    disps: &mut [(f64, f64)],
+    max_d: f64,
+) {
+    // Alignments: enforce exact alignment by adjusting displacements to a shared target line.
+    for group in &c.align_horizontal {
+        if group.len() <= 1 {
+            continue;
+        }
+        let mut sum = 0.0;
+        let mut cnt = 0.0;
+        for &idx in group {
+            sum += nodes[idx].center_y() + disps[idx].1;
+            cnt += 1.0;
+        }
+        if cnt > 0.0 {
+            let target = sum / cnt;
             for &idx in group {
-                sum += self.nodes[idx].center_y();
-                cnt += 1.0;
-            }
-            if cnt > 0.0 {
-                let y = sum / cnt;
-                for &idx in group {
-                    self.nodes[idx].top = y - self.nodes[idx].half_h();
-                }
+                disps[idx].1 += target - (nodes[idx].center_y() + disps[idx].1);
             }
         }
-        for group in &c.align_vertical {
-            let mut sum = 0.0;
-            let mut cnt = 0.0;
+    }
+    for group in &c.align_vertical {
+        if group.len() <= 1 {
+            continue;
+        }
+        let mut sum = 0.0;
+        let mut cnt = 0.0;
+        for &idx in group {
+            sum += nodes[idx].center_x() + disps[idx].0;
+            cnt += 1.0;
+        }
+        if cnt > 0.0 {
+            let target = sum / cnt;
             for &idx in group {
-                sum += self.nodes[idx].center_x();
-                cnt += 1.0;
-            }
-            if cnt > 0.0 {
-                let x = sum / cnt;
-                for &idx in group {
-                    self.nodes[idx].left = x - self.nodes[idx].half_w();
-                }
+                disps[idx].0 += target - (nodes[idx].center_x() + disps[idx].0);
             }
         }
+    }
 
-        // Relative placements.
-        // Constraints are expressed as a minimum `gap` (pixels) between node borders (like the
-        // upstream CoSE constraint model). This is important for parity because Mermaid's
-        // Architecture uses `gap = 1.5 * iconSize`, which is intended to be spacing *between*
-        // 80x80 icons rather than center-to-center distance.
+    // Relative placements: iteratively relax displacements to satisfy minimum center gaps.
+    // This is a small, deterministic approximation of `cose-base` constraint handling.
+    for _ in 0..4 {
+        let mut changed = false;
         for r in &c.relative {
             if let (Some(left), Some(right)) = (r.left, r.right) {
-                let actual = self.nodes[right].left - self.nodes[left].right();
-                if actual < r.gap {
-                    let delta = r.gap - actual;
-                    self.nodes[left].move_by(-delta / 2.0, 0.0);
-                    self.nodes[right].move_by(delta / 2.0, 0.0);
+                let new_gap = (nodes[right].center_x() + disps[right].0)
+                    - (nodes[left].center_x() + disps[left].0);
+                if new_gap < r.gap {
+                    let delta = r.gap - new_gap;
+                    disps[left].0 -= delta / 2.0;
+                    disps[right].0 += delta / 2.0;
+                    changed = true;
                 }
             }
             if let (Some(top), Some(bottom)) = (r.top, r.bottom) {
-                let actual = self.nodes[bottom].top - self.nodes[top].bottom();
-                if actual < r.gap {
-                    let delta = r.gap - actual;
-                    self.nodes[top].move_by(0.0, -delta / 2.0);
-                    self.nodes[bottom].move_by(0.0, delta / 2.0);
+                let new_gap = (nodes[bottom].center_y() + disps[bottom].1)
+                    - (nodes[top].center_y() + disps[top].1);
+                if new_gap < r.gap {
+                    let delta = r.gap - new_gap;
+                    disps[top].1 -= delta / 2.0;
+                    disps[bottom].1 += delta / 2.0;
+                    changed = true;
                 }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+
+    // Re-apply per-axis displacement caps (matching the upstream `calculateDisplacement` clamp).
+    if max_d.is_finite() && max_d > 0.0 {
+        for (dx, dy) in disps {
+            if dx.abs() > max_d {
+                *dx = max_d * dx.signum();
+            }
+            if dy.abs() > max_d {
+                *dy = max_d * dy.signum();
             }
         }
     }
@@ -741,6 +776,33 @@ mod tests {
             !nodes[1].surrounding.contains(&0),
             "node1 should not include already-processed node0"
         );
+    }
+
+    #[test]
+    fn relative_placement_gap_is_center_to_center() {
+        use super::{Constraints, RelConstraint, apply_constraints_to_displacements};
+
+        let nodes = vec![
+            node_at(0.0, 0.0, 10.0, 10.0),  // center_x = 5
+            node_at(20.0, 0.0, 10.0, 10.0), // center_x = 25
+        ];
+        let mut disps = vec![(0.0, 0.0); nodes.len()];
+
+        let c = Constraints {
+            align_horizontal: Vec::new(),
+            align_vertical: Vec::new(),
+            relative: vec![RelConstraint {
+                left: Some(0),
+                right: Some(1),
+                top: None,
+                bottom: None,
+                gap: 50.0,
+            }],
+        };
+
+        apply_constraints_to_displacements(&nodes, &c, &mut disps, 1e9);
+        let gap = (nodes[1].center_x() + disps[1].0) - (nodes[0].center_x() + disps[0].0);
+        assert!((gap - 50.0).abs() < 1e-9, "gap: got {gap}");
     }
 }
 
