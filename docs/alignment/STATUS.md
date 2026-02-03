@@ -60,7 +60,7 @@ the dashed separators now use the exact same x-coordinates as the frame edges to
 avoid sub-pixel gaps at the frame border.
 As of 2026-02-01, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
 for the current fixture set (diagram subtree parity).
-As of 2026-02-02, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 79 DOM
+As of 2026-02-03, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 79 DOM
 mismatches out of 475 upstream SVG baselines (83.4% passing). Current parity-root mismatches are concentrated in
 5 diagrams:
 
@@ -73,6 +73,8 @@ mismatches out of 475 upstream SVG baselines (83.4% passing). Current parity-roo
 Recent progress (2026-02-03): state layout now preserves Mermaid's hidden self-loop helper nodes
 (`${nodeId}---${nodeId}---{1|2}`), and the headless SVG viewport approximation now includes Mermaid's `0.1 x 0.1`
 placeholder rects to better match upstream `svg.getBBox()` behavior.
+Recent progress (2026-02-03): state node sizing now matches Mermaid's rounded `rect` padding behavior (rx/ry ->
+`roundedRect`), fixing a common `max-width`/x-offset drift in state diagram root parity.
 
 Recent progress (2026-02-02): started a Rust port scaffold of Cytoscape FCoSE in `manatee` (edge
 ideal lengths + alignment/relative constraints) and wired it into Architecture headless layout
