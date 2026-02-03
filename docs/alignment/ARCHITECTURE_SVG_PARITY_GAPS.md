@@ -61,6 +61,10 @@ Missing pieces likely include:
   Mermaid-equivalent alignment/relative placement constraints derived from the BFS spatial maps.
   This is intentionally *not* used for `*.layout.golden.json` snapshots yet (we keep the grid
   scaffold as the stable baseline until the FCoSE port is closer to parity).
+- Stage B applies an additional deterministic post-pass for **top-level group separation** based on
+  inter-group edge directions (e.g. `groupA:R -- L:groupB` implies `groupA` is left of `groupB`).
+  This approximates Cytoscape compound node behavior and reduces severe root viewport drift in
+  `parity-root` mode, without introducing group nodes into the layout snapshot model.
 - The `manatee` FCoSE port now includes a spectral initialization (SVD + power iteration) matching
   the upstream `cytoscape-fcose` pipeline. Randomness is made explicit via a seed to keep headless
   outputs deterministic for tests.

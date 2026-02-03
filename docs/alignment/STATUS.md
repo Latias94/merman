@@ -79,6 +79,10 @@ Recent progress (2026-02-03): state node sizing now matches Mermaid's rounded `r
 Recent progress (2026-02-03): `manatee` FCoSE now scales CoSE `minRepulsionDist` with the effective
 `idealEdgeLength` (avg / 10) when ideal edge lengths are configured, matching upstream Cytoscape behavior.
 
+Recent progress (2026-02-03): Architecture Stage B now applies a deterministic top-level group separation
+post-pass (derived from inter-group edge directions) to approximate Cytoscape compound node spacing and
+reduce severe `parity-root` root viewport drift for group-heavy fixtures.
+
 Recent progress (2026-02-02): started a Rust port scaffold of Cytoscape FCoSE in `manatee` (edge
 ideal lengths + alignment/relative constraints) and wired it into Architecture headless layout
 behind `LayoutOptions.use_manatee_layout` (used by `xtask compare-all-svgs`).

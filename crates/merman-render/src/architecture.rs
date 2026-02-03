@@ -633,6 +633,11 @@ pub fn layout_architecture_diagram(
                 vertical: vertical_all,
             }),
             relative_placement_constraint: relative,
+            // Mermaid@11.12.2 Architecture layout uses Cytoscape FCoSE with a spectral
+            // initialization that depends on `Math.random()`. Our upstream SVG baselines are
+            // generated with a deterministic RNG seed (see ADR-0055), so we must use the same
+            // seed here to match those baselines.
+            random_seed: 1,
             ..Default::default()
         };
 
@@ -648,6 +653,200 @@ pub fn layout_architecture_diagram(
                 n.y = p.y - n.height / 2.0;
             }
         }
+
+        // Approximate Cytoscape compound node behavior for Architecture groups:
+        //
+        // Mermaid uses Cytoscape FCoSE with compound nodes (groups). Without explicit compound node
+        // mechanics, leaf nodes from different groups can collapse into the same coordinate frame,
+        // which then dominates `parity-root` viewport mismatches.
+        //
+        // Here we apply a deterministic post-pass that enforces *top-level* group separation based
+        // on inter-group edge directions (e.g. `groupA:R -- L:groupB` implies `groupA` is left of
+        // `groupB`). We move the entire groups (all descendant nodes) together to preserve each
+        // group's internal relative placements.
+        fn resolve_top_level_group_separation(
+            nodes: &mut [LayoutNode],
+            model: &ArchitectureModel,
+            icon_size: f64,
+        ) {
+            let mut group_parent: std::collections::BTreeMap<&str, &str> =
+                std::collections::BTreeMap::new();
+            for g in &model.groups {
+                if let Some(parent) = g.in_group.as_deref() {
+                    group_parent.insert(g.id.as_str(), parent);
+                }
+            }
+
+            fn root_group<'a>(
+                mut g: &'a str,
+                group_parent: &std::collections::BTreeMap<&'a str, &'a str>,
+            ) -> &'a str {
+                while let Some(p) = group_parent.get(g).copied() {
+                    g = p;
+                }
+                g
+            }
+
+            let mut node_root_group: std::collections::BTreeMap<&str, &str> =
+                std::collections::BTreeMap::new();
+            for n in &model.nodes {
+                if let Some(g) = n.in_group.as_deref() {
+                    let root = root_group(g, &group_parent);
+                    node_root_group.insert(n.id.as_str(), root);
+                }
+            }
+
+            #[derive(Debug, Clone)]
+            enum GroupRel {
+                LeftOf { left: String, right: String },
+                Above { top: String, bottom: String },
+            }
+
+            let mut rels: Vec<GroupRel> = Vec::new();
+            for e in &model.edges {
+                let Some(lhs_g) = node_root_group.get(e.lhs_id.as_str()).copied() else {
+                    continue;
+                };
+                let Some(rhs_g) = node_root_group.get(e.rhs_id.as_str()).copied() else {
+                    continue;
+                };
+                if lhs_g == rhs_g {
+                    continue;
+                }
+
+                let lhs_dir = e.lhs_dir.as_deref().unwrap_or("");
+                let rhs_dir = e.rhs_dir.as_deref().unwrap_or("");
+                match (lhs_dir, rhs_dir) {
+                    ("R", "L") => rels.push(GroupRel::LeftOf {
+                        left: lhs_g.to_string(),
+                        right: rhs_g.to_string(),
+                    }),
+                    ("L", "R") => rels.push(GroupRel::LeftOf {
+                        left: rhs_g.to_string(),
+                        right: lhs_g.to_string(),
+                    }),
+                    ("T", "B") => rels.push(GroupRel::Above {
+                        top: lhs_g.to_string(),
+                        bottom: rhs_g.to_string(),
+                    }),
+                    ("B", "T") => rels.push(GroupRel::Above {
+                        top: rhs_g.to_string(),
+                        bottom: lhs_g.to_string(),
+                    }),
+                    _ => {}
+                }
+            }
+
+            rels.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
+            rels.dedup_by(|a, b| format!("{a:?}") == format!("{b:?}"));
+
+            #[derive(Debug, Clone, Copy)]
+            struct BBox {
+                min_x: f64,
+                min_y: f64,
+                max_x: f64,
+                max_y: f64,
+            }
+
+            fn group_bbox(
+                nodes: &[LayoutNode],
+                group: &str,
+                node_root_group: &std::collections::BTreeMap<&str, &str>,
+            ) -> Option<BBox> {
+                let mut min_x = f64::INFINITY;
+                let mut min_y = f64::INFINITY;
+                let mut max_x = f64::NEG_INFINITY;
+                let mut max_y = f64::NEG_INFINITY;
+                let mut any = false;
+                for n in nodes {
+                    let Some(g) = node_root_group.get(n.id.as_str()).copied() else {
+                        continue;
+                    };
+                    if g != group {
+                        continue;
+                    }
+                    any = true;
+                    min_x = min_x.min(n.x);
+                    min_y = min_y.min(n.y);
+                    max_x = max_x.max(n.x + n.width);
+                    max_y = max_y.max(n.y + n.height);
+                }
+                if !any {
+                    return None;
+                }
+                Some(BBox {
+                    min_x,
+                    min_y,
+                    max_x,
+                    max_y,
+                })
+            }
+
+            fn translate_group(
+                nodes: &mut [LayoutNode],
+                group: &str,
+                node_root_group: &std::collections::BTreeMap<&str, &str>,
+                dx: f64,
+                dy: f64,
+            ) {
+                if dx == 0.0 && dy == 0.0 {
+                    return;
+                }
+                for n in nodes {
+                    let Some(g) = node_root_group.get(n.id.as_str()).copied() else {
+                        continue;
+                    };
+                    if g == group {
+                        n.x += dx;
+                        n.y += dy;
+                    }
+                }
+            }
+
+            // Use the same gap as Mermaid's node-level relative placement constraints.
+            let gap = 1.5 * icon_size;
+            let max_iters = 32usize;
+            for _ in 0..max_iters {
+                let mut changed = false;
+                for rel in &rels {
+                    match rel {
+                        GroupRel::LeftOf { left, right } => {
+                            let Some(a) = group_bbox(nodes, left, &node_root_group) else {
+                                continue;
+                            };
+                            let Some(b) = group_bbox(nodes, right, &node_root_group) else {
+                                continue;
+                            };
+                            let need = (a.max_x + gap) - b.min_x;
+                            if need > 1e-6 {
+                                translate_group(nodes, left, &node_root_group, -need / 2.0, 0.0);
+                                translate_group(nodes, right, &node_root_group, need / 2.0, 0.0);
+                                changed = true;
+                            }
+                        }
+                        GroupRel::Above { top, bottom } => {
+                            let Some(a) = group_bbox(nodes, top, &node_root_group) else {
+                                continue;
+                            };
+                            let Some(b) = group_bbox(nodes, bottom, &node_root_group) else {
+                                continue;
+                            };
+                            let need = (a.max_y + gap) - b.min_y;
+                            if need > 1e-6 {
+                                translate_group(nodes, top, &node_root_group, 0.0, -need / 2.0);
+                                translate_group(nodes, bottom, &node_root_group, 0.0, need / 2.0);
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+                if !changed {
+                    break;
+                }
+            }
+        }
+
+        resolve_top_level_group_separation(&mut nodes, &model, icon_size);
     }
 
     let mut node_by_id: std::collections::BTreeMap<String, LayoutNode> =
