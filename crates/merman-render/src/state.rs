@@ -774,15 +774,20 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
         let from_cluster = get_extras_string(&e.extras, "fromCluster");
         let to_cluster = get_extras_string(&e.extras, "toCluster");
 
-        let label = if e.width > 0.0 && e.height > 0.0 {
-            Some(LayoutLabel {
-                x: e.x.unwrap_or(0.0),
-                y: e.y.unwrap_or(0.0),
-                width: e.width,
-                height: e.height,
-            })
-        } else {
-            None
+        // Mermaid's dagre wrapper emits "edgeLabel" placeholder groups even when the visible
+        // label is empty. Dagre still assigns an `(x, y)` label position for those edges, and the
+        // placeholders can affect the root `svg.getBBox()` (and therefore `viewBox/max-width`).
+        //
+        // Preserve the label center even when `width/height` are 0 so downstream renderers can
+        // place the placeholders like upstream.
+        let label = match (e.x, e.y) {
+            (Some(x), Some(y)) => Some(LayoutLabel {
+                x,
+                y,
+                width: e.width.max(0.0),
+                height: e.height.max(0.0),
+            }),
+            _ => None,
         };
 
         let points = e
@@ -1247,6 +1252,40 @@ pub fn layout_state_diagram_v2(
                 is_cluster: false,
             });
         }
+    }
+
+    // Preserve Mermaid's hidden self-loop helper nodes (`${nodeId}---${nodeId}---{1|2}`).
+    //
+    // These nodes are not part of the semantic model and are not rendered as visible nodes, but
+    // Mermaid's SVG output uses their positioned bounding boxes to place `0.1 x 0.1` placeholder
+    // rects which can affect `svg.getBBox()` and therefore the root `viewBox/max-width`.
+    let mut helper_ids: HashSet<String> = HashSet::new();
+    for e in &model.edges {
+        if state_is_hidden_id(&hidden_prefixes, e.id.as_str())
+            || state_is_hidden_id(&hidden_prefixes, e.start.as_str())
+            || state_is_hidden_id(&hidden_prefixes, e.end.as_str())
+        {
+            continue;
+        }
+        if e.start != e.end {
+            continue;
+        }
+        let node_id = e.start.as_str();
+        helper_ids.insert(format!("{node_id}---{node_id}---1"));
+        helper_ids.insert(format!("{node_id}---{node_id}---2"));
+    }
+    for id in helper_ids {
+        let Some(pos) = fragments.nodes.get(&id) else {
+            continue;
+        };
+        out_nodes.push(LayoutNode {
+            id,
+            x: pos.x,
+            y: pos.y,
+            width: pos.width,
+            height: pos.height,
+            is_cluster: false,
+        });
     }
 
     let mut clusters: Vec<LayoutCluster> = Vec::new();

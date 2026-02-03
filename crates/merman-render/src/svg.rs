@@ -13389,15 +13389,15 @@ fn svg_emitted_bounds_from_svg_inner(
     }
 
     fn include_rect(bounds: &mut Option<Bounds>, min_x: f64, min_y: f64, max_x: f64, max_y: f64) {
-        // Chromium's `getBBox()` does not seem to expand the effective bbox for empty/degenerate
-        // placeholder geometry (e.g. Mermaid's `<rect/>` stubs under label groups).
+        // Chromium's `getBBox()` does not expand the effective bbox for empty/degenerate placeholder
+        // geometry (e.g. Mermaid's `<rect/>` stubs under label groups).
         //
-        // Mermaid also emits `<rect width="0.1" height="0.1"/>` under edge label groups; those
-        // placeholders should not affect the root viewport either, otherwise `max-width`/`viewBox`
-        // parity can diverge (notably for state diagrams).
+        // Note: Mermaid frequently emits `0.1 x 0.1` placeholder rects (e.g. under edge label
+        // groups). Those placeholders *can* influence the upstream root viewport, so we must
+        // include them for `viewBox/max-width` parity.
         let w = (max_x - min_x).abs();
         let h = (max_y - min_y).abs();
-        if (w < 1e-9 && h < 1e-9) || (w <= 0.1 + 1e-9 && h <= 0.1 + 1e-9) {
+        if w < 1e-9 && h < 1e-9 {
             return;
         }
         if let Some(cur) = bounds.as_mut() {
@@ -14973,14 +14973,16 @@ fn render_state_root(
             let id1 = format!("{start}---{start}---1");
             let id2 = format!("{start}---{start}---2");
 
-            let (cx, cy) = ctx
-                .layout_edges_by_id
-                .get(edge.id.as_str())
-                .and_then(|e| e.label.as_ref())
-                .map(|lbl| (lbl.x - origin_x, lbl.y - origin_y))
-                .unwrap_or((0.0, 0.0));
-
             for id in [id1, id2] {
+                let (cx, cy) = ctx
+                    .layout_nodes_by_id
+                    .get(id.as_str())
+                    .map(|n| {
+                        let x = (n.x - n.width / 2.0) - origin_x;
+                        let y = (n.y - n.height / 2.0) - origin_y;
+                        (x, y)
+                    })
+                    .unwrap_or((0.0, 0.0));
                 let _ = write!(
                     out,
                     r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0, 0)"><rect/><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 10px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g>"#,

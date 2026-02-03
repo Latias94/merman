@@ -79,6 +79,7 @@ fn print_help(topic: Option<&str>) {
     println!("  compare-svg-xml");
     println!("  canon-svg-xml");
     println!("  debug-svg-bbox");
+    println!("  debug-svg-data-points");
     println!("  analyze-state-fixture");
     println!("  debug-mindmap-svg-positions");
     println!();
@@ -162,6 +163,7 @@ fn main() -> Result<(), XtaskError> {
         "debug-flowchart-edge-trace" => debug_flowchart_edge_trace(args.collect()),
         "debug-mindmap-svg-positions" => debug_mindmap_svg_positions(args.collect()),
         "debug-svg-bbox" => debug_svg_bbox(args.collect()),
+        "debug-svg-data-points" => debug_svg_data_points(args.collect()),
         "analyze-state-fixture" => state_svgdump::analyze_state_fixture(args.collect()),
         "compare-sequence-svgs" => compare_sequence_svgs(args.collect()),
         "compare-class-svgs" => compare_class_svgs(args.collect()),
@@ -2307,6 +2309,128 @@ fn debug_svg_bbox(args: Vec<String>) -> Result<(), XtaskError> {
     print_contrib("min_y", &dbg.min_y);
     print_contrib("max_x", &dbg.max_x);
     print_contrib("max_y", &dbg.max_y);
+
+    Ok(())
+}
+
+fn debug_svg_data_points(args: Vec<String>) -> Result<(), XtaskError> {
+    #[derive(Debug, Clone, Copy, serde::Deserialize)]
+    struct Point {
+        x: f64,
+        y: f64,
+    }
+
+    use base64::Engine as _;
+
+    fn decode_points(svg: &str, element_id: &str) -> Result<Vec<Point>, XtaskError> {
+        let doc = roxmltree::Document::parse(svg)
+            .map_err(|e| XtaskError::SvgCompareFailed(format!("failed to parse svg xml: {e}")))?;
+        let node = doc
+            .descendants()
+            .find(|n| n.is_element() && n.attribute("id") == Some(element_id))
+            .ok_or_else(|| {
+                XtaskError::DebugSvgFailed(format!("missing element with id={element_id:?}"))
+            })?;
+        let b64 = node.attribute("data-points").ok_or_else(|| {
+            XtaskError::DebugSvgFailed(format!(
+                "element id={element_id:?} has no `data-points` attribute"
+            ))
+        })?;
+
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(b64.as_bytes())
+            .map_err(|e| XtaskError::DebugSvgFailed(format!("invalid base64 data-points: {e}")))?;
+        let pts: Vec<Point> = serde_json::from_slice(&bytes).map_err(|e| {
+            XtaskError::DebugSvgFailed(format!("invalid JSON data-points payload: {e}"))
+        })?;
+        Ok(pts)
+    }
+
+    let mut svg_path: Option<PathBuf> = None;
+    let mut other_svg_path: Option<PathBuf> = None;
+    let mut element_id: Option<String> = None;
+    let mut decimals: usize = 3;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--svg" => {
+                i += 1;
+                svg_path = args.get(i).map(PathBuf::from);
+            }
+            "--other" => {
+                i += 1;
+                other_svg_path = args.get(i).map(PathBuf::from);
+            }
+            "--id" => {
+                i += 1;
+                element_id = args.get(i).map(|s| s.to_string());
+            }
+            "--decimals" => {
+                i += 1;
+                decimals = args
+                    .get(i)
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .unwrap_or(3);
+            }
+            "--help" | "-h" => return Err(XtaskError::Usage),
+            _ => return Err(XtaskError::Usage),
+        }
+        i += 1;
+    }
+
+    let svg_path = svg_path.ok_or(XtaskError::Usage)?;
+    let element_id = element_id.ok_or(XtaskError::Usage)?;
+
+    let svg = fs::read_to_string(&svg_path).map_err(|source| XtaskError::ReadFile {
+        path: svg_path.display().to_string(),
+        source,
+    })?;
+    let points = decode_points(&svg, &element_id)?;
+
+    println!("svg: {}", svg_path.display());
+    println!("id: {element_id}");
+    println!("points: {}", points.len());
+    for (idx, p) in points.iter().enumerate() {
+        println!(
+            "  {idx:>3}: {x:.d$}, {y:.d$}",
+            x = p.x,
+            y = p.y,
+            d = decimals
+        );
+    }
+
+    let Some(other_svg_path) = other_svg_path else {
+        return Ok(());
+    };
+
+    let other_svg = fs::read_to_string(&other_svg_path).map_err(|source| XtaskError::ReadFile {
+        path: other_svg_path.display().to_string(),
+        source,
+    })?;
+    let other_points = decode_points(&other_svg, &element_id)?;
+
+    println!("\nother: {}", other_svg_path.display());
+    println!("points: {}", other_points.len());
+    if points.len() != other_points.len() {
+        return Err(XtaskError::DebugSvgFailed(format!(
+            "point count mismatch: {} vs {}",
+            points.len(),
+            other_points.len()
+        )));
+    }
+
+    println!("\ndelta (other - svg):");
+    for (idx, (a, b)) in points.iter().zip(other_points.iter()).enumerate() {
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        println!(
+            "  {idx:>3}: dx={dx:.d$} dy={dy:.d$}",
+            dx = dx,
+            dy = dy,
+            d = decimals
+        );
+    }
 
     Ok(())
 }

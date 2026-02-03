@@ -12,6 +12,22 @@
           "is_cluster": true
         },
         {
+          "id": "Active---Active---1",
+          "x": 56.203,
+          "y": 267.0,
+          "width": 10.0,
+          "height": 10.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Active---Active---2",
+          "x": 76.203,
+          "y": 351.0,
+          "width": 10.0,
+          "height": 10.0,
+          "is_cluster": false
+        },
+        {
           "id": "Idle",
           "x": 76.203,
           "y": 167.0,
@@ -203,7 +219,7 @@
         "min_x": 8.0,
         "min_y": 8.0,
         "max_x": 134.406,
-        "max_y": 346.0
+        "max_y": 356.0
       }
     }
   }

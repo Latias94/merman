@@ -36,6 +36,22 @@
           "is_cluster": true
         },
         {
+          "id": "State3---State3---1",
+          "x": 365.897,
+          "y": 862.8,
+          "width": 10.0,
+          "height": 10.0,
+          "is_cluster": false
+        },
+        {
+          "id": "State3---State3---2",
+          "x": 405.897,
+          "y": 948.8,
+          "width": 10.0,
+          "height": 10.0,
+          "is_cluster": false
+        },
+        {
           "id": "State3_start",
           "x": 374.277,
           "y": 344.5,
@@ -49,6 +65,22 @@
           "y": 461.4,
           "width": 168.52,
           "height": 69.8,
+          "is_cluster": false
+        },
+        {
+          "id": "long1---long1---1",
+          "x": 379.937,
+          "y": 615.3,
+          "width": 10.0,
+          "height": 10.0,
+          "is_cluster": false
+        },
+        {
+          "id": "long1---long1---2",
+          "x": 403.447,
+          "y": 739.3,
+          "width": 10.0,
+          "height": 10.0,
           "is_cluster": false
         },
         {
@@ -617,7 +649,7 @@
         "min_x": 8.0,
         "min_y": 8.0,
         "max_x": 493.537,
-        "max_y": 943.8
+        "max_y": 953.8
       }
     }
   }

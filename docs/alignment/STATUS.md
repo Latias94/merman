@@ -70,6 +70,10 @@ mismatches out of 475 upstream SVG baselines (83.4% passing). Current parity-roo
 - Mindmap: 8
 - State: 23
 
+Recent progress (2026-02-03): state layout now preserves Mermaid's hidden self-loop helper nodes
+(`${nodeId}---${nodeId}---{1|2}`), and the headless SVG viewport approximation now includes Mermaid's `0.1 x 0.1`
+placeholder rects to better match upstream `svg.getBBox()` behavior.
+
 Recent progress (2026-02-02): started a Rust port scaffold of Cytoscape FCoSE in `manatee` (edge
 ideal lengths + alignment/relative constraints) and wired it into Architecture headless layout
 behind `LayoutOptions.use_manatee_layout` (used by `xtask compare-all-svgs`).
