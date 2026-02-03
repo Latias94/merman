@@ -10998,10 +10998,12 @@ pub fn render_architecture_diagram_svg(
             .filter(|t| !t.is_empty())
         {
             let lines = wrap_svg_words_to_lines(title, icon_size_px * 1.5, &measurer, &text_style);
-            let mut bbox_w = 0.0f64;
+            let mut bbox_left = 0.0f64;
+            let mut bbox_right = 0.0f64;
             for line in &lines {
-                let m = measurer.measure_wrapped(line, &text_style, None, WrapMode::SvgLike);
-                bbox_w = bbox_w.max(m.width);
+                let (l, r) = measurer.measure_svg_text_bbox_x(line, &text_style);
+                bbox_left = bbox_left.max(l);
+                bbox_right = bbox_right.max(r);
             }
             let bbox_h = (lines.len().max(1) as f64) * font_size_px * 1.1875;
 
@@ -11016,8 +11018,8 @@ pub fn render_architecture_diagram_svg(
             // Empirically, treating the first line as starting ~1px above the icon bottom matches
             // Mermaid's group bounds better than using the raw `-10.1` offset.
             let text_top = y + icon_size_px - 1.0;
-            let text_left = cx - bbox_w / 2.0;
-            let text_right = cx + bbox_w / 2.0;
+            let text_left = cx - bbox_left;
+            let text_right = cx + bbox_right;
             let text_bottom = text_top + bbox_h;
             b = Bounds {
                 min_x: b.min_x.min(text_left),
@@ -11714,14 +11716,25 @@ pub fn render_architecture_diagram_svg(
     out.push_str("</svg>\n");
 
     if !is_empty {
-        let b = svg_emitted_bounds_from_svg(&out).unwrap_or_else(|| {
-            content_bounds.unwrap_or(Bounds {
-                min_x: 0.0,
-                min_y: 0.0,
-                max_x: icon_size_px,
-                max_y: icon_size_px,
-            })
+        let content_bounds_fallback = content_bounds.clone().unwrap_or(Bounds {
+            min_x: 0.0,
+            min_y: 0.0,
+            max_x: icon_size_px,
+            max_y: icon_size_px,
         });
+
+        let mut b = svg_emitted_bounds_from_svg(&out).unwrap_or(content_bounds_fallback);
+
+        // For Architecture, labels are rendered as `<text>` without explicit bbox geometry
+        // (Mermaid emits `<rect class="background"/>` without width/height). Our emitted SVG bbox
+        // pass therefore cannot see the label extents. Union our headless label bounds in so the
+        // root viewport better matches Mermaid `setupGraphViewbox(svg.getBBox() + padding)`.
+        if let Some(cb) = content_bounds {
+            b.min_x = b.min_x.min(cb.min_x);
+            b.min_y = b.min_y.min(cb.min_y);
+            b.max_x = b.max_x.max(cb.max_x);
+            b.max_y = b.max_y.max(cb.max_y);
+        }
 
         let vb_min_x = b.min_x - padding_px;
         let vb_min_y = b.min_y - padding_px;

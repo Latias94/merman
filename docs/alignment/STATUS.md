@@ -75,6 +75,9 @@ names (e.g. ` d="..."`) rather than naive substring matching. This fixes a criti
 would accidentally match inside `id="..."` and cause `<path>` bounds to be skipped, cascading into incorrect root
 `viewBox` / `style max-width` in parity-root mode (e.g. `upstream_architecture_simple_service_spec`).
 
+Recent progress (2026-02-03): Architecture root viewport estimation now unions headless service label bounds into the
+content bbox (labels are emitted as `<text>` without explicit geometry), per `docs/adr/0057-headless-svg-text-bbox.md`.
+
 Recent progress (2026-02-03): state layout now preserves Mermaid's hidden self-loop helper nodes
 (`${nodeId}---${nodeId}---{1|2}`), and the headless SVG viewport approximation now includes Mermaid's `0.1 x 0.1`
 placeholder rects to better match upstream `svg.getBBox()` behavior.
