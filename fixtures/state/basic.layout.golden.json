@@ -7,7 +7,7 @@
           "id": "Active",
           "x": 50.68,
           "y": 206.0,
-          "width": 57.6,
+          "width": 47.6,
           "height": 40.0,
           "is_cluster": false
         },
@@ -15,7 +15,7 @@
           "id": "Idle",
           "x": 50.68,
           "y": 92.0,
-          "width": 42.813,
+          "width": 32.813,
           "height": 40.0,
           "is_cluster": false
         },
