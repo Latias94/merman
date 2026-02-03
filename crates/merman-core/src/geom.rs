@@ -80,6 +80,10 @@ impl Box2 {
         self.0.max.x += padding;
         self.0.max.y += padding;
     }
+
+    pub fn contains_point(&self, x: f64, y: f64) -> bool {
+        x >= self.min_x() && x <= self.max_x() && y >= self.min_y() && y <= self.max_y()
+    }
 }
 
 pub fn point(x: f64, y: f64) -> Point {

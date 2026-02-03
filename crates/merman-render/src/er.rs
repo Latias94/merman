@@ -565,30 +565,7 @@ fn calc_label_position(points: &[LayoutPoint]) -> Option<(f64, f64)> {
     Some((points.last()?.x, points.last()?.y))
 }
 
-#[derive(Debug, Clone, Copy)]
-struct Rect {
-    min_x: f64,
-    min_y: f64,
-    max_x: f64,
-    max_y: f64,
-}
-
-impl Rect {
-    fn from_center(x: f64, y: f64, width: f64, height: f64) -> Self {
-        let hw = width / 2.0;
-        let hh = height / 2.0;
-        Self {
-            min_x: x - hw,
-            min_y: y - hh,
-            max_x: x + hw,
-            max_y: y + hh,
-        }
-    }
-
-    fn contains_point(&self, x: f64, y: f64) -> bool {
-        x >= self.min_x && x <= self.max_x && y >= self.min_y && y <= self.max_y
-    }
-}
+type Rect = merman_core::geom::Box2;
 
 fn intersect_segment_with_rect(
     p0: &LayoutPoint,
@@ -603,28 +580,32 @@ fn intersect_segment_with_rect(
 
     let mut candidates: Vec<(f64, LayoutPoint)> = Vec::new();
     let eps = 1e-9;
+    let min_x = rect.min_x();
+    let max_x = rect.max_x();
+    let min_y = rect.min_y();
+    let max_y = rect.max_y();
 
     if dx.abs() > eps {
-        for x_edge in [rect.min_x, rect.max_x] {
+        for x_edge in [min_x, max_x] {
             let t = (x_edge - p0.x) / dx;
             if t < -eps || t > 1.0 + eps {
                 continue;
             }
             let y = p0.y + t * dy;
-            if y + eps >= rect.min_y && y <= rect.max_y + eps {
+            if y + eps >= min_y && y <= max_y + eps {
                 candidates.push((t, LayoutPoint { x: x_edge, y }));
             }
         }
     }
 
     if dy.abs() > eps {
-        for y_edge in [rect.min_y, rect.max_y] {
+        for y_edge in [min_y, max_y] {
             let t = (y_edge - p0.y) / dy;
             if t < -eps || t > 1.0 + eps {
                 continue;
             }
             let x = p0.x + t * dx;
-            if x + eps >= rect.min_x && x <= rect.max_x + eps {
+            if x + eps >= min_x && x <= max_x + eps {
                 candidates.push((t, LayoutPoint { x, y: y_edge }));
             }
         }
