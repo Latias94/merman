@@ -10816,12 +10816,16 @@ pub fn render_architecture_diagram_svg(
         lhs_dir: String,
         #[serde(default, rename = "lhsInto")]
         lhs_into: Option<bool>,
+        #[serde(default, rename = "lhsGroup")]
+        lhs_group: Option<bool>,
         #[serde(rename = "rhsId")]
         rhs_id: String,
         #[serde(rename = "rhsDir")]
         rhs_dir: String,
         #[serde(default, rename = "rhsInto")]
         rhs_into: Option<bool>,
+        #[serde(default, rename = "rhsGroup")]
+        rhs_group: Option<bool>,
         #[serde(default)]
         title: Option<String>,
     }
@@ -11215,31 +11219,120 @@ pub fn render_architecture_diagram_svg(
         }
     }
 
+    // Compute Architecture edge polyline points in Mermaid-like coordinates.
+    //
+    // Upstream Mermaid uses Cytoscape endpoints/midpoint, then applies additional shifts for:
+    // - `{group}` modifiers (padding + 4, plus +18px on the bottom side to account for service labels)
+    // - junction endpoints (which are transparent 80x80 rects; edges snap to the center)
+    //
+    // We model this in Stage B so our headless `getBBox()` approximation can match `parity-root`
+    // `viewBox`/`max-width` baselines for group-heavy fixtures.
+    let group_edge_shift = padding_px + 4.0;
+    let group_edge_label_bottom_px = 18.0;
+    let is_junction = |id: &str| junction_bounds.contains_key(id);
+
+    let edge_points = |edge: &ArchitectureEdge| -> (f64, f64, f64, f64, f64, f64) {
+        let (sx, sy) = node_xy.get(&edge.lhs_id).copied().unwrap_or((0.0, 0.0));
+        let (tx, ty) = node_xy.get(&edge.rhs_id).copied().unwrap_or((0.0, 0.0));
+
+        // Raw endpoints (before group/junction shifts).
+        let (raw_start_x, raw_start_y) = match edge.lhs_dir.as_str() {
+            "L" => (sx, sy + half_icon),
+            "R" => (sx + icon_size_px, sy + half_icon),
+            "T" => (sx + half_icon, sy),
+            "B" => (sx + half_icon, sy + icon_size_px),
+            _ => (sx + half_icon, sy + half_icon),
+        };
+        let (raw_end_x, raw_end_y) = match edge.rhs_dir.as_str() {
+            "L" => (tx, ty + half_icon),
+            "R" => (tx + icon_size_px, ty + half_icon),
+            "T" => (tx + half_icon, ty),
+            "B" => (tx + half_icon, ty + icon_size_px),
+            _ => (tx + half_icon, ty + half_icon),
+        };
+
+        // Cytoscape midpoint is computed before Mermaid applies endpoint shifts.
+        let mid_x = (raw_start_x + raw_end_x) / 2.0;
+        let mid_y = (raw_start_y + raw_end_y) / 2.0;
+
+        let mut start_x = raw_start_x;
+        let mut start_y = raw_start_y;
+        let mut end_x = raw_end_x;
+        let mut end_y = raw_end_y;
+
+        let lhs_group = edge.lhs_group.unwrap_or(false);
+        if lhs_group {
+            if is_arch_dir_x(edge.lhs_dir.as_str()) {
+                start_x += if edge.lhs_dir == "L" {
+                    -group_edge_shift
+                } else {
+                    group_edge_shift
+                };
+            } else {
+                start_y += if edge.lhs_dir == "T" {
+                    -group_edge_shift
+                } else {
+                    group_edge_shift + group_edge_label_bottom_px
+                };
+            }
+        }
+        if !lhs_group && is_junction(edge.lhs_id.as_str()) {
+            if is_arch_dir_x(edge.lhs_dir.as_str()) {
+                start_x += if edge.lhs_dir == "L" {
+                    half_icon
+                } else {
+                    -half_icon
+                };
+            } else {
+                start_y += if edge.lhs_dir == "T" {
+                    half_icon
+                } else {
+                    -half_icon
+                };
+            }
+        }
+
+        let rhs_group = edge.rhs_group.unwrap_or(false);
+        if rhs_group {
+            if is_arch_dir_x(edge.rhs_dir.as_str()) {
+                end_x += if edge.rhs_dir == "L" {
+                    -group_edge_shift
+                } else {
+                    group_edge_shift
+                };
+            } else {
+                end_y += if edge.rhs_dir == "T" {
+                    -group_edge_shift
+                } else {
+                    group_edge_shift + group_edge_label_bottom_px
+                };
+            }
+        }
+        if !rhs_group && is_junction(edge.rhs_id.as_str()) {
+            if is_arch_dir_x(edge.rhs_dir.as_str()) {
+                end_x += if edge.rhs_dir == "L" {
+                    half_icon
+                } else {
+                    -half_icon
+                };
+            } else {
+                end_y += if edge.rhs_dir == "T" {
+                    half_icon
+                } else {
+                    -half_icon
+                };
+            }
+        }
+
+        (start_x, start_y, mid_x, mid_y, end_x, end_y)
+    };
+
     // Edges (including conservative label bounds).
     if !model.edges.is_empty() {
         let arrow_size = icon_size_px / 6.0;
         let half_arrow_size = arrow_size / 2.0;
         for edge in &model.edges {
-            let (sx, sy) = node_xy.get(&edge.lhs_id).copied().unwrap_or((0.0, 0.0));
-            let (tx, ty) = node_xy.get(&edge.rhs_id).copied().unwrap_or((0.0, 0.0));
-
-            let (start_x, start_y) = match edge.lhs_dir.as_str() {
-                "L" => (sx, sy + half_icon),
-                "R" => (sx + icon_size_px, sy + half_icon),
-                "T" => (sx + half_icon, sy),
-                "B" => (sx + half_icon, sy + icon_size_px),
-                _ => (sx + half_icon, sy + half_icon),
-            };
-            let (end_x, end_y) = match edge.rhs_dir.as_str() {
-                "L" => (tx, ty + half_icon),
-                "R" => (tx + icon_size_px, ty + half_icon),
-                "T" => (tx + half_icon, ty),
-                "B" => (tx + half_icon, ty + icon_size_px),
-                _ => (tx + half_icon, ty + half_icon),
-            };
-
-            let mid_x = (start_x + end_x) / 2.0;
-            let mid_y = (start_y + end_y) / 2.0;
+            let (start_x, start_y, mid_x, mid_y, end_x, end_y) = edge_points(edge);
 
             extend_bounds(
                 &mut content_bounds,
@@ -11386,26 +11479,7 @@ pub fn render_architecture_diagram_svg(
         let half_arrow_size = arrow_size / 2.0;
 
         for edge in &model.edges {
-            let (sx, sy) = node_xy.get(&edge.lhs_id).copied().unwrap_or((0.0, 0.0));
-            let (tx, ty) = node_xy.get(&edge.rhs_id).copied().unwrap_or((0.0, 0.0));
-
-            let (start_x, start_y) = match edge.lhs_dir.as_str() {
-                "L" => (sx, sy + half_icon),
-                "R" => (sx + icon_size_px, sy + half_icon),
-                "T" => (sx + half_icon, sy),
-                "B" => (sx + half_icon, sy + icon_size_px),
-                _ => (sx + half_icon, sy + half_icon),
-            };
-            let (end_x, end_y) = match edge.rhs_dir.as_str() {
-                "L" => (tx, ty + half_icon),
-                "R" => (tx + icon_size_px, ty + half_icon),
-                "T" => (tx + half_icon, ty),
-                "B" => (tx + half_icon, ty + icon_size_px),
-                _ => (tx + half_icon, ty + half_icon),
-            };
-
-            let mid_x = (start_x + end_x) / 2.0;
-            let mid_y = (start_y + end_y) / 2.0;
+            let (start_x, start_y, mid_x, mid_y, end_x, end_y) = edge_points(edge);
 
             out.push_str("<g>");
             let id = edge_id("L", &edge.lhs_id, &edge.rhs_id, 0);

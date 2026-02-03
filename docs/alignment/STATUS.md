@@ -83,6 +83,10 @@ Recent progress (2026-02-03): `manatee` FCoSE now matches `cose-base`'s repulsio
 selection for spectral sampling. This reduces `parity-root` viewport drift for sparse/disconnected Architecture
 fixtures (e.g. `upstream_architecture_docs_service_icon_text` max-width delta shrank from ~+50px to ~+8px).
 
+Recent progress (2026-02-03): Architecture Stage B edges now apply Mermaid's `{group}` and junction endpoint shifts
+(`padding + 4`, plus a `+18px` bottom-side label allowance), aligning both geometry and headless viewport estimation
+with `packages/mermaid/src/diagrams/architecture/svgDraw.ts` (notably `docs_group_edges`).
+
 Recent progress (2026-02-03): state layout now preserves Mermaid's hidden self-loop helper nodes
 (`${nodeId}---${nodeId}---{1|2}`), and the headless SVG viewport approximation now includes Mermaid's `0.1 x 0.1`
 placeholder rects to better match upstream `svg.getBBox()` behavior.
