@@ -114,10 +114,10 @@ struct Dimension {
     height: f64,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct Point {
-    x: f64,
-    y: f64,
+type Point = merman_core::geom::Point;
+
+fn pt(x: f64, y: f64) -> Point {
+    merman_core::geom::point(x, y)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1166,12 +1166,9 @@ pub(crate) fn layout_xychart_diagram(
         };
 
         y_axis.set_range((plot_x, plot_x + chart_width));
-        y_axis.set_bounding_box_xy(Point {
-            x: plot_x,
-            y: title_y_end,
-        });
+        y_axis.set_bounding_box_xy(pt(plot_x, title_y_end));
         x_axis.set_range((plot_y, plot_y + chart_height));
-        x_axis.set_bounding_box_xy(Point { x: 0.0, y: plot_y });
+        x_axis.set_bounding_box_xy(pt(0.0, plot_y));
         plot_rect
     } else {
         let plot_y = if show_chart_title { title_height } else { 0.0 };
@@ -1213,12 +1210,9 @@ pub(crate) fn layout_xychart_diagram(
         };
 
         x_axis.set_range((plot_x, plot_x + chart_width));
-        x_axis.set_bounding_box_xy(Point {
-            x: plot_x,
-            y: plot_y + chart_height,
-        });
+        x_axis.set_bounding_box_xy(pt(plot_x, plot_y + chart_height));
         y_axis.set_range((plot_y, plot_y + chart_height));
-        y_axis.set_bounding_box_xy(Point { x: 0.0, y: plot_y });
+        y_axis.set_bounding_box_xy(pt(0.0, plot_y));
         plot_rect
     };
 
