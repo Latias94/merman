@@ -68,6 +68,9 @@ Missing pieces likely include:
   including the exact floating-point behavior and constraint handling.
 - Port-based edge routing (straight vs 90° “segments” behavior) and endpoint calculations.
 - Group padding/title height rules affecting group bounds and edge endpoints.
+  - Upstream `svgDraw.ts` documents an extra `+18px` on the *bottom* side of group bounds due to
+    service label height (used when routing `{group}` edges). Our Stage B bounds estimator must
+    account for this label extension when deriving group rects and the root `viewBox`.
 
 ### Stage B SVG Parity Renderer
 

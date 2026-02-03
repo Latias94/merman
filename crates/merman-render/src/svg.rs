@@ -11005,10 +11005,17 @@ pub fn render_architecture_diagram_svg(
             }
             let bbox_h = (lines.len().max(1) as f64) * font_size_px * 1.1875;
 
-            // `write_architecture_service_title` uses `transform="translate(iconSize/2, iconSize)"`
-            // and `text y="-10.1"`. Approximate the bbox relative to the service's top-left.
+            // Mermaid places the service label in a `<g transform="translate(iconSize/2, iconSize)">`
+            // and uses SVG text with `y="-10.1"` + tspans. In practice, the rendered label extends
+            // the *bottom* of a group's effective bounds by ~18px for the default 16px font-size
+            // (see Mermaid `svgDraw.ts`: group edge shift comment).
+            //
+            // We approximate the bbox relative to the service's top-left. The important part for
+            // viewBox/group parity is the label's bottom extension beyond the icon.
             let cx = x + icon_size_px / 2.0;
-            let text_top = y + icon_size_px - 10.1;
+            // Empirically, treating the first line as starting ~1px above the icon bottom matches
+            // Mermaid's group bounds better than using the raw `-10.1` offset.
+            let text_top = y + icon_size_px - 1.0;
             let text_left = cx - bbox_w / 2.0;
             let text_right = cx + bbox_w / 2.0;
             let text_bottom = text_top + bbox_h;
