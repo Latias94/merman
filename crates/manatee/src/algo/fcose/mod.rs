@@ -540,10 +540,13 @@ impl SimGraph {
         }
 
         // Relative placements.
-        // Constraints are expressed in terms of node centers with a minimum `gap` (pixels).
+        // Constraints are expressed as a minimum `gap` (pixels) between node borders (like the
+        // upstream CoSE constraint model). This is important for parity because Mermaid's
+        // Architecture uses `gap = 1.5 * iconSize`, which is intended to be spacing *between*
+        // 80x80 icons rather than center-to-center distance.
         for r in &c.relative {
             if let (Some(left), Some(right)) = (r.left, r.right) {
-                let actual = self.nodes[right].center_x() - self.nodes[left].center_x();
+                let actual = self.nodes[right].left - self.nodes[left].right();
                 if actual < r.gap {
                     let delta = r.gap - actual;
                     self.nodes[left].move_by(-delta / 2.0, 0.0);
@@ -551,7 +554,7 @@ impl SimGraph {
                 }
             }
             if let (Some(top), Some(bottom)) = (r.top, r.bottom) {
-                let actual = self.nodes[bottom].center_y() - self.nodes[top].center_y();
+                let actual = self.nodes[bottom].top - self.nodes[top].bottom();
                 if actual < r.gap {
                     let delta = r.gap - actual;
                     self.nodes[top].move_by(0.0, -delta / 2.0);

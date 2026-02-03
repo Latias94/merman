@@ -71,6 +71,11 @@ Missing pieces likely include:
   - Upstream `svgDraw.ts` documents an extra `+18px` on the *bottom* side of group bounds due to
     service label height (used when routing `{group}` edges). Our Stage B bounds estimator must
     account for this label extension when deriving group rects and the root `viewBox`.
+- Relative placement constraint semantics:
+  - Mermaid uses FCoSE `relativePlacementConstraint` with `gap = 1.5 * iconSize`.
+  - In upstream CoSE, this `gap` behaves like a **border-to-border minimum spacing**, not a
+    center-to-center distance. Interpreting it incorrectly makes the layout too compact and shifts
+    group bounds/root `viewBox` (visible in fixtures like `*_group_edges*`).
 
 ### Stage B SVG Parity Renderer
 
