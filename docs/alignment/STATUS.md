@@ -84,6 +84,16 @@ dummy nodes into the transformed BFS graph). This improves determinism for spars
 Recent progress (2026-02-04): `manatee` now supports compound nodes (group parent metadata) and applies a small
 root-compound separation step in FCoSE to reduce Architecture group overlap.
 
+Recent progress (2026-02-04): `manatee` FCoSE now applies a `cose-base`-like pre-layout constraint handler
+(orthogonal Procrustes transform + vote-based reflection + position-space enforcement) and a closer port of
+`CoSELayout.updateDisplacements()` (relax-movement mode with deterministic shuffling). This fixes large orientation
+and constraint drift in Architecture parity-root runs.
+
+Recent progress (2026-02-04): Architecture's top-level group separation post-pass now measures group bounds using
+the same service label bbox model as Stage B `getBBox()` approximation (wrapped SVG text metrics + group padding),
+reducing under-separation for long labels and bringing `upstream_architecture_layout_reasonable_height` closer
+to upstream in `parity-root` mode (max-width ~1826px local vs ~1860px upstream).
+
 Recent progress (2026-02-03): headless `svg.getBBox()` approximation now performs attribute lookup on whole attribute
 names (e.g. ` d="..."`) rather than naive substring matching. This fixes a critical bug where searching for `d="..."`
 would accidentally match inside `id="..."` and cause `<path>` bounds to be skipped, cascading into incorrect root

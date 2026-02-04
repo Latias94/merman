@@ -20,6 +20,12 @@ struct ArchitectureNodeModel {
     node_type: String,
     #[serde(default)]
     edges: Vec<ArchitectureEdgeModel>,
+    #[serde(default)]
+    icon: Option<String>,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default, rename = "iconText")]
+    icon_text: Option<String>,
     #[serde(default, rename = "in")]
     in_group: Option<String>,
 }
@@ -967,11 +973,17 @@ pub fn layout_architecture_diagram(
             model: &ArchitectureModel,
             icon_size: f64,
             padding_px: f64,
+            font_size_px: f64,
         ) {
             let node_type: std::collections::BTreeMap<&str, &str> = model
                 .nodes
                 .iter()
                 .map(|n| (n.id.as_str(), n.node_type.as_str()))
+                .collect();
+            let node_title: std::collections::BTreeMap<&str, &str> = model
+                .nodes
+                .iter()
+                .filter_map(|n| n.title.as_deref().map(|t| (n.id.as_str(), t)))
                 .collect();
 
             let mut group_parent: std::collections::BTreeMap<&str, &str> =
@@ -1013,9 +1025,14 @@ pub fn layout_architecture_diagram(
                     bottom: String,
                     gap: f64,
                 },
+                AlignTop {
+                    a: String,
+                    b: String,
+                },
             }
 
             let mut rels: Vec<GroupRel> = Vec::new();
+            let mut left_of_pairs: Vec<(String, String)> = Vec::new();
             for e in &model.edges {
                 let Some(lhs_g) = node_root_group.get(e.lhs_id.as_str()).copied() else {
                     continue;
@@ -1027,14 +1044,21 @@ pub fn layout_architecture_diagram(
                     continue;
                 }
 
-                // Base gap matches Mermaid's node-level relative placement constraints.
-                // For `{group}` edges, we add Mermaid's Architecture group padding so the
-                // top-level group separation approximates Cytoscape's compound bounds.
-                let group_edge_extra_gap = padding_px + 2.5;
-                let mut gap = 1.5 * icon_size;
-                if e.lhs_group.unwrap_or(false) || e.rhs_group.unwrap_or(false) {
-                    gap += group_edge_extra_gap;
+                let is_group_edge = e.lhs_group.unwrap_or(false) || e.rhs_group.unwrap_or(false);
 
+                // For non-`{group}` edges, keep a larger separation so distinct root groups don't
+                // collapse without true compound support in `manatee`.
+                //
+                // For `{group}` edges, Mermaid shifts endpoints by `architecture.padding + 4` and
+                // (effectively) adds ~18px on the bottom side for service labels. Using a smaller
+                // base gap keeps stacked groups closer to upstream output (e.g. `docs_group_edges`).
+                let mut gap = if is_group_edge {
+                    padding_px + 4.0
+                } else {
+                    1.5 * icon_size
+                };
+
+                if is_group_edge {
                     // In Mermaid@11.12.2, junction-to-junction edges that also use `{group}`
                     // endpoints are particularly sensitive to compound node repulsion. Without
                     // true compound support in `manatee`, add an extra padding-derived gap so the
@@ -1054,16 +1078,22 @@ pub fn layout_architecture_diagram(
                 let lhs_dir = e.lhs_dir.as_deref().unwrap_or("");
                 let rhs_dir = e.rhs_dir.as_deref().unwrap_or("");
                 match (lhs_dir, rhs_dir) {
-                    ("R", "L") => rels.push(GroupRel::LeftOf {
-                        left: lhs_g.to_string(),
-                        right: rhs_g.to_string(),
-                        gap,
-                    }),
-                    ("L", "R") => rels.push(GroupRel::LeftOf {
-                        left: rhs_g.to_string(),
-                        right: lhs_g.to_string(),
-                        gap,
-                    }),
+                    ("R", "L") => {
+                        rels.push(GroupRel::LeftOf {
+                            left: lhs_g.to_string(),
+                            right: rhs_g.to_string(),
+                            gap,
+                        });
+                        left_of_pairs.push((lhs_g.to_string(), rhs_g.to_string()));
+                    }
+                    ("L", "R") => {
+                        rels.push(GroupRel::LeftOf {
+                            left: rhs_g.to_string(),
+                            right: lhs_g.to_string(),
+                            gap,
+                        });
+                        left_of_pairs.push((rhs_g.to_string(), lhs_g.to_string()));
+                    }
                     // Vertical adjacency in SVG y-down coordinates:
                     //
                     // - `lhs:T -- rhs:B` means lhs is *below* rhs (lhs connects from its top to
@@ -1073,15 +1103,40 @@ pub fn layout_architecture_diagram(
                     ("T", "B") => rels.push(GroupRel::Above {
                         top: rhs_g.to_string(),
                         bottom: lhs_g.to_string(),
-                        gap,
+                        gap: gap + if is_group_edge { 18.0 } else { 0.0 },
                     }),
                     ("B", "T") => rels.push(GroupRel::Above {
                         top: lhs_g.to_string(),
                         bottom: rhs_g.to_string(),
-                        gap,
+                        gap: gap + if is_group_edge { 18.0 } else { 0.0 },
                     }),
                     _ => {}
                 }
+            }
+
+            // When we only have a horizontal ordering signal (L/R), align the top edges of the
+            // involved root groups. This approximates the way Cytoscape compound nodes tend to
+            // keep sibling groups on the same baseline when they are arranged left-to-right.
+            //
+            // Do not add this helper constraint when an explicit vertical relation exists.
+            let mut has_above: std::collections::BTreeSet<(String, String)> =
+                std::collections::BTreeSet::new();
+            for r in &rels {
+                if let GroupRel::Above { top, bottom, .. } = r {
+                    has_above.insert((top.clone(), bottom.clone()));
+                    has_above.insert((bottom.clone(), top.clone()));
+                }
+            }
+            for (left, right) in left_of_pairs {
+                if has_above.contains(&(left.clone(), right.clone())) {
+                    continue;
+                }
+                let (a, b) = if left <= right {
+                    (left, right)
+                } else {
+                    (right, left)
+                };
+                rels.push(GroupRel::AlignTop { a, b });
             }
 
             rels.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
@@ -1099,7 +1154,46 @@ pub fn layout_architecture_diagram(
                 nodes: &[LayoutNode],
                 group: &str,
                 node_root_group: &std::collections::BTreeMap<&str, &str>,
+                node_type: &std::collections::BTreeMap<&str, &str>,
+                node_title: &std::collections::BTreeMap<&str, &str>,
+                icon_size: f64,
+                font_size_px: f64,
             ) -> Option<BBox> {
+                let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+                let text_style = crate::text::TextStyle {
+                    font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+                    font_size: font_size_px,
+                    font_weight: None,
+                };
+
+                fn wrap_svg_words_to_lines(
+                    text: &str,
+                    max_width_px: f64,
+                    measurer: &dyn crate::text::TextMeasurer,
+                    style: &crate::text::TextStyle,
+                ) -> Vec<String> {
+                    let mut out: Vec<String> = Vec::new();
+                    for raw_line in
+                        crate::text::DeterministicTextMeasurer::normalized_text_lines(text)
+                    {
+                        let tokens =
+                            crate::text::DeterministicTextMeasurer::split_line_to_words(&raw_line);
+                        let mut curr = String::new();
+                        for tok in tokens {
+                            let candidate = format!("{curr}{tok}");
+                            let w = measurer.measure(candidate.trim_end(), style).width;
+                            if curr.is_empty() || w <= max_width_px {
+                                curr = candidate;
+                            } else {
+                                out.push(curr.trim().to_string());
+                                curr = tok;
+                            }
+                        }
+                        out.push(curr.trim().to_string());
+                    }
+                    out
+                }
+
                 let mut min_x = f64::INFINITY;
                 let mut min_y = f64::INFINITY;
                 let mut max_x = f64::NEG_INFINITY;
@@ -1113,19 +1207,65 @@ pub fn layout_architecture_diagram(
                         continue;
                     }
                     any = true;
-                    min_x = min_x.min(n.x);
-                    min_y = min_y.min(n.y);
-                    max_x = max_x.max(n.x + n.width);
-                    max_y = max_y.max(n.y + n.height);
+
+                    // Match Architecture Stage B bounds used for group rect sizing:
+                    // icon rect + (optional) wrapped service label bbox.
+                    let mut nx1 = n.x;
+                    let mut ny1 = n.y;
+                    let mut nx2 = n.x + n.width;
+                    let mut ny2 = n.y + n.height;
+
+                    let is_service =
+                        node_type.get(n.id.as_str()).copied().unwrap_or("") == "service";
+                    if is_service {
+                        if let Some(title) = node_title
+                            .get(n.id.as_str())
+                            .copied()
+                            .map(str::trim)
+                            .filter(|t| !t.is_empty())
+                        {
+                            let lines = wrap_svg_words_to_lines(
+                                title,
+                                icon_size * 1.5,
+                                &measurer,
+                                &text_style,
+                            );
+                            let mut bbox_left = 0.0f64;
+                            let mut bbox_right = 0.0f64;
+                            for line in &lines {
+                                let (l, r) = measurer.measure_svg_text_bbox_x(line, &text_style);
+                                bbox_left = bbox_left.max(l);
+                                bbox_right = bbox_right.max(r);
+                            }
+                            let bbox_h = (lines.len().max(1) as f64) * font_size_px * 1.1875;
+
+                            let cx = n.x + icon_size / 2.0;
+                            let text_top = n.y + icon_size - 1.0;
+                            let text_left = cx - bbox_left;
+                            let text_right = cx + bbox_right;
+                            let text_bottom = text_top + bbox_h;
+
+                            nx1 = nx1.min(text_left);
+                            ny1 = ny1.min(text_top);
+                            nx2 = nx2.max(text_right);
+                            ny2 = ny2.max(text_bottom);
+                        }
+                    }
+
+                    min_x = min_x.min(nx1);
+                    min_y = min_y.min(ny1);
+                    max_x = max_x.max(nx2);
+                    max_y = max_y.max(ny2);
                 }
                 if !any {
                     return None;
                 }
+                let pad = (icon_size / 2.0) + 2.5;
                 Some(BBox {
-                    min_x,
-                    min_y,
-                    max_x,
-                    max_y,
+                    min_x: min_x - pad,
+                    min_y: min_y - pad,
+                    max_x: max_x + pad,
+                    max_y: max_y + pad,
                 })
             }
 
@@ -1156,10 +1296,26 @@ pub fn layout_architecture_diagram(
                 for rel in &rels {
                     match rel {
                         GroupRel::LeftOf { left, right, gap } => {
-                            let Some(a) = group_bbox(nodes, left, &node_root_group) else {
+                            let Some(a) = group_bbox(
+                                nodes,
+                                left,
+                                &node_root_group,
+                                &node_type,
+                                &node_title,
+                                icon_size,
+                                font_size_px,
+                            ) else {
                                 continue;
                             };
-                            let Some(b) = group_bbox(nodes, right, &node_root_group) else {
+                            let Some(b) = group_bbox(
+                                nodes,
+                                right,
+                                &node_root_group,
+                                &node_type,
+                                &node_title,
+                                icon_size,
+                                font_size_px,
+                            ) else {
                                 continue;
                             };
                             let need = (a.max_x + gap) - b.min_x;
@@ -1170,16 +1326,62 @@ pub fn layout_architecture_diagram(
                             }
                         }
                         GroupRel::Above { top, bottom, gap } => {
-                            let Some(a) = group_bbox(nodes, top, &node_root_group) else {
+                            let Some(a) = group_bbox(
+                                nodes,
+                                top,
+                                &node_root_group,
+                                &node_type,
+                                &node_title,
+                                icon_size,
+                                font_size_px,
+                            ) else {
                                 continue;
                             };
-                            let Some(b) = group_bbox(nodes, bottom, &node_root_group) else {
+                            let Some(b) = group_bbox(
+                                nodes,
+                                bottom,
+                                &node_root_group,
+                                &node_type,
+                                &node_title,
+                                icon_size,
+                                font_size_px,
+                            ) else {
                                 continue;
                             };
                             let need = (a.max_y + gap) - b.min_y;
                             if need > 1e-6 {
                                 translate_group(nodes, top, &node_root_group, 0.0, -need / 2.0);
                                 translate_group(nodes, bottom, &node_root_group, 0.0, need / 2.0);
+                                changed = true;
+                            }
+                        }
+                        GroupRel::AlignTop { a, b } => {
+                            let Some(ba) = group_bbox(
+                                nodes,
+                                a,
+                                &node_root_group,
+                                &node_type,
+                                &node_title,
+                                icon_size,
+                                font_size_px,
+                            ) else {
+                                continue;
+                            };
+                            let Some(bb) = group_bbox(
+                                nodes,
+                                b,
+                                &node_root_group,
+                                &node_type,
+                                &node_title,
+                                icon_size,
+                                font_size_px,
+                            ) else {
+                                continue;
+                            };
+                            let dy = ba.min_y - bb.min_y;
+                            if dy.abs() > 1e-6 {
+                                translate_group(nodes, a, &node_root_group, 0.0, -dy / 2.0);
+                                translate_group(nodes, b, &node_root_group, 0.0, dy / 2.0);
                                 changed = true;
                             }
                         }
@@ -1191,7 +1393,7 @@ pub fn layout_architecture_diagram(
             }
         }
 
-        resolve_top_level_group_separation(&mut nodes, &model, icon_size, padding_px);
+        resolve_top_level_group_separation(&mut nodes, &model, icon_size, padding_px, font_size_px);
     }
 
     let mut node_by_id: std::collections::BTreeMap<String, LayoutNode> =
