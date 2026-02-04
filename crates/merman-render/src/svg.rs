@@ -11413,11 +11413,24 @@ pub fn render_architecture_diagram_svg(
                 }
                 let bbox_h = (lines.len().max(1) as f64) * font_size_px * 1.1875;
 
-                // Conservative AABB for rotated labels (90°/45° variants).
-                let side = (bbox_w + bbox_h).max(1.0);
+                // AABB for rotated labels (90°/45° variants). Mermaid rotates Architecture edge
+                // labels depending on the edge direction; mimic Chromium `getBBox()`-like bounds
+                // by projecting the (w,h) label box into the axes.
+                let (aabb_w, aabb_h) = match axis {
+                    "X" => (bbox_w, bbox_h),
+                    "Y" => (bbox_h, bbox_w),
+                    _ => {
+                        // |cos(45°)| == |sin(45°)| == sqrt(1/2)
+                        let k = 0.7071067811865476_f64;
+                        let a = k * bbox_w + k * bbox_h;
+                        (a, a)
+                    }
+                };
+                let aabb_w = aabb_w.max(1.0);
+                let aabb_h = aabb_h.max(1.0);
                 extend_bounds(
                     &mut content_bounds,
-                    bounds_from_rect(mid_x - side / 2.0, mid_y - side / 2.0, side, side),
+                    bounds_from_rect(mid_x - aabb_w / 2.0, mid_y - aabb_h / 2.0, aabb_w, aabb_h),
                 );
             }
         }
@@ -13647,6 +13660,63 @@ fn svg_emitted_bounds_from_svg_inner(
         Some(t)
     }
 
+    fn parse_view_box(view_box: &str) -> Option<(f64, f64, f64, f64)> {
+        let buf = view_box.replace(',', " ");
+        let mut parts = buf.split_whitespace().filter_map(parse_f64);
+        let x = parts.next()?;
+        let y = parts.next()?;
+        let w = parts.next()?;
+        let h = parts.next()?;
+        if !(w.is_finite() && h.is_finite()) || w <= 0.0 || h <= 0.0 {
+            return None;
+        }
+        Some((x, y, w, h))
+    }
+
+    fn svg_viewport_transform(attrs: &str) -> SimpleTransform {
+        // Nested <svg> establishes a new viewport. Map its internal user coordinates into the
+        // parent coordinate system via x/y + viewBox scaling.
+        //
+        // Equivalent to: translate(x,y) * scale(width/vbw, height/vbh) * translate(-vbx, -vby)
+        // when viewBox is present. When viewBox is absent, treat it as a 1:1 user unit space.
+        let x = attr_value(attrs, "x").and_then(parse_f64).unwrap_or(0.0);
+        let y = attr_value(attrs, "y").and_then(parse_f64).unwrap_or(0.0);
+
+        let Some((vb_x, vb_y, vb_w, vb_h)) = attr_value(attrs, "viewBox").and_then(parse_view_box)
+        else {
+            return SimpleTransform {
+                sx: 1.0,
+                sy: 1.0,
+                tx: x,
+                ty: y,
+            };
+        };
+
+        let w = attr_value(attrs, "width")
+            .and_then(parse_f64)
+            .unwrap_or(vb_w);
+        let h = attr_value(attrs, "height")
+            .and_then(parse_f64)
+            .unwrap_or(vb_h);
+        if !(w.is_finite() && h.is_finite()) || w <= 0.0 || h <= 0.0 {
+            return SimpleTransform {
+                sx: 1.0,
+                sy: 1.0,
+                tx: x,
+                ty: y,
+            };
+        }
+
+        let sx = w / vb_w;
+        let sy = h / vb_h;
+        SimpleTransform {
+            sx,
+            sy,
+            tx: x - sx * vb_x,
+            ty: y - sy * vb_y,
+        }
+    }
+
     fn include_rect(bounds: &mut Option<Bounds>, min_x: f64, min_y: f64, max_x: f64, max_y: f64) {
         // Chromium's `getBBox()` does not expand the effective bbox for empty/degenerate placeholder
         // geometry (e.g. Mermaid's `<rect/>` stubs under label groups).
@@ -13771,6 +13841,8 @@ fn svg_emitted_bounds_from_svg_inner(
     let mut in_defs = false;
     let mut tf_stack: Vec<SimpleTransform> = Vec::new();
     let mut cur_tf = SimpleTransform::identity();
+    let mut seen_root_svg = false;
+    let mut nested_svg_depth = 0usize;
 
     let mut i = 0usize;
     while i < svg.len() {
@@ -13824,6 +13896,16 @@ fn svg_emitted_bounds_from_svg_inner(
                         cur_tf = SimpleTransform::identity();
                     }
                 }
+                "svg" => {
+                    if nested_svg_depth > 0 {
+                        nested_svg_depth -= 1;
+                        if let Some(prev) = tf_stack.pop() {
+                            cur_tf = prev;
+                        } else {
+                            cur_tf = SimpleTransform::identity();
+                        }
+                    }
+                }
                 _ => {}
             }
             i = gt + 1;
@@ -13861,6 +13943,29 @@ fn svg_emitted_bounds_from_svg_inner(
                     cur_tf = prev;
                 } else {
                     cur_tf = SimpleTransform::identity();
+                }
+            }
+            i = gt + 1;
+            continue;
+        }
+
+        if tag == "svg" {
+            if !seen_root_svg {
+                // Root <svg> defines the user coordinate system we are already parsing in; do not
+                // apply its viewBox mapping again.
+                seen_root_svg = true;
+            } else {
+                tf_stack.push(cur_tf);
+                nested_svg_depth += 1;
+                let vp_tf = svg_viewport_transform(attrs);
+                cur_tf = eff_tf.mul(vp_tf);
+                if self_closing {
+                    nested_svg_depth = nested_svg_depth.saturating_sub(1);
+                    if let Some(prev) = tf_stack.pop() {
+                        cur_tf = prev;
+                    } else {
+                        cur_tf = SimpleTransform::identity();
+                    }
                 }
             }
             i = gt + 1;

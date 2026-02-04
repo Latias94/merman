@@ -76,6 +76,8 @@ spaces) rather than `&#10;` entities, restoring 0-mismatch DOM parity for `upstr
 Recent progress (2026-02-04): the headless emitted-SVG bbox pass now understands simple axis-aligned transforms
 (`translate(...)`, `scale(...)`, and `matrix(a 0 0 d e f)`), improving the fidelity of our `svg.getBBox()` approximation
 used for root `viewBox` / `max-width` calculations.
+As of 2026-02-04, the bbox pass also treats nested `<svg>` viewports as axis-aligned transforms (x/y + viewBox scaling),
+which is required for icon-heavy diagrams that embed built-in SVG icons.
 
 Recent progress (2026-02-04): `manatee` FCoSE spectral preprocessing now mirrors cytoscape-fcose `aux.connectComponents(...)`
 more closely by connecting disconnected components both at the top level and within each compound scope (by inserting
