@@ -58,9 +58,9 @@ Legend:
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
 the dashed separators now use the exact same x-coordinates as the frame edges to match upstream SVG and
 avoid sub-pixel gaps at the frame border.
-As of 2026-02-01, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
+As of 2026-02-04, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
 for the current fixture set (diagram subtree parity).
-As of 2026-02-03, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 78 DOM
+As of 2026-02-04, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 78 DOM
 mismatches out of 475 upstream SVG baselines (83.6% passing). Current parity-root mismatches are concentrated in
 5 diagrams:
 
@@ -69,6 +69,12 @@ mismatches out of 475 upstream SVG baselines (83.6% passing). Current parity-roo
 - GitGraph: 14
 - Mindmap: 8
 - State: 23
+
+Recent progress (2026-02-04): Architecture XY edge label transforms now emit literal newlines (XML-normalized to
+spaces) rather than `&#10;` entities, restoring 0-mismatch DOM parity for `upstream_architecture_cypress_edge_labels_normalized`.
+
+Recent progress (2026-02-04): `manatee` now supports compound nodes (group parent metadata) and applies a small
+root-compound separation step in FCoSE to reduce Architecture group overlap.
 
 Recent progress (2026-02-03): headless `svg.getBBox()` approximation now performs attribute lookup on whole attribute
 names (e.g. ` d="..."`) rather than naive substring matching. This fixes a critical bug where searching for `d="..."`

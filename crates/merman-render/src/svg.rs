@@ -11611,7 +11611,7 @@ pub fn render_architecture_diagram_svg(
                         (
                             "auto",
                             format!(
-                                "translate({}, {})&#10;                translate({}, {})&#10;                rotate({}, 0, {})",
+                                "translate({}, {})\n                translate({}, {})\n                rotate({}, 0, {})",
                                 fmt(mid_x),
                                 fmt(mid_y - half_bbox_h),
                                 fmt(t2x),
