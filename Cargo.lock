@@ -1053,6 +1053,7 @@ dependencies = [
 name = "manatee"
 version = "0.1.0"
 dependencies = [
+ "indexmap",
  "nalgebra",
  "thiserror 2.0.18",
 ]

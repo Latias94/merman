@@ -16,13 +16,11 @@ pub(super) fn apply_spectral_start_positions(
     nodes: &mut [SimNode],
     edges: &[SimEdge],
     compound_parent: &std::collections::BTreeMap<String, Option<String>>,
-    random_seed: u64,
+    rng: &mut XorShift64Star,
 ) -> bool {
     if nodes.is_empty() {
         return false;
     }
-
-    let mut rng = XorShift64Star::new(random_seed);
 
     let n_real = nodes.len();
     let (adjacency, node_size) = build_transformed_adjacency(nodes, edges, compound_parent);
@@ -102,7 +100,7 @@ pub(super) fn apply_spectral_start_positions(
         None => return false,
     };
 
-    let (x_coords, y_coords) = match power_iteration(&mut rng, &c, &inv, DEFAULT_PI_TOL) {
+    let (x_coords, y_coords) = match power_iteration(rng, &c, &inv, DEFAULT_PI_TOL) {
         Some(v) => v,
         None => return false,
     };

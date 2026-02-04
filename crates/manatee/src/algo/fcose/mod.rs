@@ -1,6 +1,8 @@
 use crate::algo::FcoseOptions;
 use crate::error::Result;
-use crate::graph::{Graph, LayoutResult, Point};
+use crate::graph::{Anchor, Graph, LayoutResult, Point};
+use indexmap::{IndexMap, IndexSet};
+use nalgebra as na;
 
 mod spectral;
 
@@ -92,6 +94,8 @@ impl SimNode {
 struct SimEdge {
     a: usize,
     b: usize,
+    a_anchor: Option<Anchor>,
+    b_anchor: Option<Anchor>,
     ideal_length: f64,
     elasticity: f64,
 }
@@ -149,6 +153,337 @@ impl Constraints {
             align_horizontal,
             align_vertical,
             relative,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Axis {
+    Horizontal,
+    Vertical,
+}
+
+#[derive(Debug, Clone)]
+struct ConstraintRuntime {
+    horizontal: AxisConstraintRuntime,
+    vertical: AxisConstraintRuntime,
+}
+
+#[derive(Debug, Clone)]
+struct AxisConstraintRuntime {
+    node_count: usize,
+    dummy_to_nodes: Vec<Vec<usize>>,
+    node_to_dummy: Vec<Option<usize>>,
+    fixed_nodes: IndexSet<usize>,
+    nodes_in_relative: Vec<usize>,
+    rel_map: Vec<Vec<AxisRelAdj>>,
+    temp_pos: Vec<f64>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum AxisRelAdj {
+    Right { node: usize, gap: f64 },
+    Left { node: usize, gap: f64 },
+    Bottom { node: usize, gap: f64 },
+    Top { node: usize, gap: f64 },
+}
+
+impl ConstraintRuntime {
+    fn new(nodes: &[SimNode], c: &Constraints) -> Option<Self> {
+        if c.relative.is_empty() {
+            return None;
+        }
+        Some(Self {
+            horizontal: AxisConstraintRuntime::new_axis(
+                nodes,
+                &c.align_vertical,
+                &c.relative,
+                Axis::Horizontal,
+            ),
+            vertical: AxisConstraintRuntime::new_axis(
+                nodes,
+                &c.align_horizontal,
+                &c.relative,
+                Axis::Vertical,
+            ),
+        })
+    }
+
+    fn update_displacements(
+        &mut self,
+        nodes: &[SimNode],
+        c: &Constraints,
+        disps: &mut [(f64, f64)],
+        total_iterations: usize,
+        max_d: f64,
+        rng: &mut XorShift64Star,
+    ) {
+        // Fixed nodes (not currently exposed by our public API).
+        for &idx in &self.horizontal.fixed_nodes {
+            if idx < disps.len() {
+                disps[idx].0 = 0.0;
+            }
+        }
+        for &idx in &self.vertical.fixed_nodes {
+            if idx < disps.len() {
+                disps[idx].1 = 0.0;
+            }
+        }
+
+        // Alignments (match `cose-base` updateDisplacements): average displacements per group.
+        for group in &c.align_vertical {
+            if group.len() <= 1 {
+                continue;
+            }
+            let mut sum = 0.0;
+            for &idx in group {
+                sum += disps[idx].0;
+            }
+            let avg = sum / (group.len() as f64);
+            for &idx in group {
+                disps[idx].0 = avg;
+            }
+        }
+        for group in &c.align_horizontal {
+            if group.len() <= 1 {
+                continue;
+            }
+            let mut sum = 0.0;
+            for &idx in group {
+                sum += disps[idx].1;
+            }
+            let avg = sum / (group.len() as f64);
+            for &idx in group {
+                disps[idx].1 = avg;
+            }
+        }
+
+        // Relative placements (match `cose-base` relax-movement mode).
+        self.horizontal
+            .refresh_temp_positions(nodes, Axis::Horizontal);
+        self.vertical.refresh_temp_positions(nodes, Axis::Vertical);
+
+        if total_iterations % 10 == 0 {
+            self.horizontal.shuffle_tail_third(rng);
+            self.vertical.shuffle_tail_third(rng);
+        }
+
+        self.horizontal
+            .apply_relative_relaxation(disps, max_d, Axis::Horizontal);
+        self.vertical
+            .apply_relative_relaxation(disps, max_d, Axis::Vertical);
+
+        // Re-apply per-axis displacement caps (matching the upstream `calculateDisplacement` clamp).
+        if max_d.is_finite() && max_d > 0.0 {
+            for (dx, dy) in disps {
+                if dx.abs() > max_d {
+                    *dx = max_d * dx.signum();
+                }
+                if dy.abs() > max_d {
+                    *dy = max_d * dy.signum();
+                }
+            }
+        }
+    }
+}
+
+impl AxisConstraintRuntime {
+    fn new_axis(
+        nodes: &[SimNode],
+        axis_alignment_groups: &[Vec<usize>],
+        rel: &[RelConstraint],
+        axis: Axis,
+    ) -> Self {
+        let n = nodes.len();
+        let d = axis_alignment_groups.len();
+
+        let mut node_to_dummy: Vec<Option<usize>> = vec![None; n];
+        let mut dummy_to_nodes: Vec<Vec<usize>> = Vec::with_capacity(d);
+        for (i, group) in axis_alignment_groups.iter().enumerate() {
+            let dummy_key = n + i;
+            dummy_to_nodes.push(group.clone());
+            for &idx in group {
+                if idx < n {
+                    node_to_dummy[idx] = Some(dummy_key);
+                }
+            }
+        }
+
+        let key_count = n + d;
+        let mut rel_map: Vec<Vec<AxisRelAdj>> = vec![Vec::new(); key_count];
+        let mut nodes_in_relative_set: IndexSet<usize> = IndexSet::new();
+
+        for r in rel {
+            match axis {
+                Axis::Horizontal => {
+                    let (Some(left), Some(right)) = (r.left, r.right) else {
+                        continue;
+                    };
+                    let lk = node_to_dummy.get(left).copied().flatten().unwrap_or(left);
+                    let rk = node_to_dummy.get(right).copied().flatten().unwrap_or(right);
+                    nodes_in_relative_set.insert(lk);
+                    nodes_in_relative_set.insert(rk);
+                    rel_map[lk].push(AxisRelAdj::Right {
+                        node: rk,
+                        gap: r.gap,
+                    });
+                    rel_map[rk].push(AxisRelAdj::Left {
+                        node: lk,
+                        gap: r.gap,
+                    });
+                }
+                Axis::Vertical => {
+                    let (Some(top), Some(bottom)) = (r.top, r.bottom) else {
+                        continue;
+                    };
+                    let tk = node_to_dummy.get(top).copied().flatten().unwrap_or(top);
+                    let bk = node_to_dummy
+                        .get(bottom)
+                        .copied()
+                        .flatten()
+                        .unwrap_or(bottom);
+                    nodes_in_relative_set.insert(tk);
+                    nodes_in_relative_set.insert(bk);
+                    rel_map[tk].push(AxisRelAdj::Bottom {
+                        node: bk,
+                        gap: r.gap,
+                    });
+                    rel_map[bk].push(AxisRelAdj::Top {
+                        node: tk,
+                        gap: r.gap,
+                    });
+                }
+            }
+        }
+
+        let mut rt = Self {
+            node_count: n,
+            dummy_to_nodes,
+            node_to_dummy,
+            fixed_nodes: IndexSet::new(),
+            nodes_in_relative: nodes_in_relative_set.into_iter().collect(),
+            rel_map,
+            temp_pos: vec![0.0; key_count],
+        };
+        rt.refresh_temp_positions(nodes, axis);
+        rt
+    }
+
+    fn refresh_temp_positions(&mut self, nodes: &[SimNode], axis: Axis) {
+        let n = self.node_count;
+        for key in 0..self.temp_pos.len() {
+            let v = if key < n {
+                match axis {
+                    Axis::Horizontal => nodes[key].center_x(),
+                    Axis::Vertical => nodes[key].center_y(),
+                }
+            } else {
+                let dummy_idx = key - n;
+                let first = self.dummy_to_nodes[dummy_idx]
+                    .first()
+                    .copied()
+                    .unwrap_or(0)
+                    .min(n.saturating_sub(1));
+                match axis {
+                    Axis::Horizontal => nodes[first].center_x(),
+                    Axis::Vertical => nodes[first].center_y(),
+                }
+            };
+            self.temp_pos[key] = v;
+        }
+    }
+
+    fn shuffle_tail_third(&mut self, rng: &mut XorShift64Star) {
+        let len = self.nodes_in_relative.len();
+        if len <= 1 {
+            return;
+        }
+        let start = (2 * len) / 3;
+        for i in (start..len).rev() {
+            let j = rng.next_usize(i + 1);
+            self.nodes_in_relative.swap(i, j);
+        }
+    }
+
+    fn apply_relative_relaxation(&mut self, disps: &mut [(f64, f64)], max_d: f64, axis: Axis) {
+        let n = self.node_count;
+
+        for &key in &self.nodes_in_relative {
+            if self.fixed_nodes.contains(&key) {
+                continue;
+            }
+
+            let mut displacement = if key < n {
+                match axis {
+                    Axis::Horizontal => disps[key].0,
+                    Axis::Vertical => disps[key].1,
+                }
+            } else {
+                let dummy_idx = key - n;
+                let first = self.dummy_to_nodes[dummy_idx]
+                    .first()
+                    .copied()
+                    .unwrap_or(0)
+                    .min(n.saturating_sub(1));
+                match axis {
+                    Axis::Horizontal => disps[first].0,
+                    Axis::Vertical => disps[first].1,
+                }
+            };
+
+            for adj in &self.rel_map[key] {
+                match (*adj, axis) {
+                    (AxisRelAdj::Right { node, gap }, Axis::Horizontal) => {
+                        let diff = (self.temp_pos[node] - self.temp_pos[key]) - displacement;
+                        if diff < gap {
+                            displacement -= gap - diff;
+                        }
+                    }
+                    (AxisRelAdj::Left { node, gap }, Axis::Horizontal) => {
+                        let diff = (self.temp_pos[key] - self.temp_pos[node]) + displacement;
+                        if diff < gap {
+                            displacement += gap - diff;
+                        }
+                    }
+                    (AxisRelAdj::Bottom { node, gap }, Axis::Vertical) => {
+                        let diff = (self.temp_pos[node] - self.temp_pos[key]) - displacement;
+                        if diff < gap {
+                            displacement -= gap - diff;
+                        }
+                    }
+                    (AxisRelAdj::Top { node, gap }, Axis::Vertical) => {
+                        let diff = (self.temp_pos[key] - self.temp_pos[node]) + displacement;
+                        if diff < gap {
+                            displacement += gap - diff;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            if max_d.is_finite() && max_d > 0.0 && displacement.abs() > max_d {
+                displacement = max_d * displacement.signum();
+            }
+
+            self.temp_pos[key] = self.temp_pos[key] + displacement;
+
+            if key < n {
+                match axis {
+                    Axis::Horizontal => disps[key].0 = displacement,
+                    Axis::Vertical => disps[key].1 = displacement,
+                }
+            } else {
+                let dummy_idx = key - n;
+                for &idx in &self.dummy_to_nodes[dummy_idx] {
+                    if idx >= disps.len() {
+                        continue;
+                    }
+                    match axis {
+                        Axis::Horizontal => disps[idx].0 = displacement,
+                        Axis::Vertical => disps[idx].1 = displacement,
+                    }
+                }
+            }
         }
     }
 }
@@ -225,8 +560,6 @@ impl SimGraph {
             compound_parent.insert(c.id.clone(), c.parent.clone());
         }
 
-        let mut seen_pairs: std::collections::BTreeSet<(usize, usize)> =
-            std::collections::BTreeSet::new();
         let mut edges: Vec<SimEdge> = Vec::new();
         for e in &graph.edges {
             let Some(&a) = id_to_idx.get(e.source.as_str()) else {
@@ -238,11 +571,6 @@ impl SimGraph {
             if a == b {
                 continue;
             }
-            let (u, v) = if a < b { (a, b) } else { (b, a) };
-            if seen_pairs.contains(&(u, v)) {
-                continue;
-            }
-            seen_pairs.insert((u, v));
 
             let ideal = if e.ideal_length.is_finite() && e.ideal_length > 0.0 {
                 e.ideal_length
@@ -255,8 +583,10 @@ impl SimGraph {
                 Self::DEFAULT_SPRING_STRENGTH
             };
             edges.push(SimEdge {
-                a: u,
-                b: v,
+                a,
+                b,
+                a_anchor: e.source_anchor,
+                b_anchor: e.target_anchor,
                 ideal_length: ideal.max(1.0),
                 elasticity,
             });
@@ -303,6 +633,7 @@ impl SimGraph {
         }
 
         let random_seed = opts.random_seed;
+        let mut rng = XorShift64Star::new(random_seed);
 
         // layout-base/CoSE uses a *global* `DEFAULT_EDGE_LENGTH` for multiple heuristics (minimum
         // repulsion distance, overlap separation buffer, repulsion grid range, convergence
@@ -332,7 +663,7 @@ impl SimGraph {
             &mut self.nodes,
             &self.edges,
             &self.compound_parent,
-            random_seed,
+            &mut rng,
         );
 
         let gravity_constant = Self::DEFAULT_GRAVITY_STRENGTH;
@@ -376,8 +707,21 @@ impl SimGraph {
 
         // Fallback for degenerate cases where spectral is skipped (e.g. very small graphs).
         if self.edges.is_empty() && !spectral_applied {
-            self.collapse_start_positions(default_edge_length, random_seed);
+            self.collapse_start_positions(default_edge_length, &mut rng);
         }
+
+        // Upstream `cose-base` runs a dedicated constraint handler before the spring embedder.
+        // This can rotate/reflect the draft layout and enforce alignment/relative-placement
+        // constraints in position space, which strongly affects overall orientation and the
+        // parity-root root viewport.
+        if !(constraints.align_horizontal.is_empty()
+            && constraints.align_vertical.is_empty()
+            && constraints.relative.is_empty())
+        {
+            handle_constraints_pre_layout(&mut self.nodes, constraints);
+        }
+
+        let mut constraint_rt = ConstraintRuntime::new(&self.nodes, constraints);
 
         let n = self.nodes.len() as f64;
         let displacement_threshold_per_node = (3.0 * default_edge_length) / 100.0;
@@ -567,7 +911,18 @@ impl SimGraph {
                 disps.push((mdx, mdy));
             }
 
-            apply_constraints_to_displacements(&self.nodes, constraints, &mut disps, max_d);
+            if let Some(rt) = constraint_rt.as_mut() {
+                rt.update_displacements(
+                    &self.nodes,
+                    constraints,
+                    &mut disps,
+                    total_iterations,
+                    max_d,
+                    &mut rng,
+                );
+            } else {
+                apply_constraints_to_displacements(&self.nodes, constraints, &mut disps, max_d);
+            }
             apply_root_compound_overlap_separation_to_displacements(
                 &self.nodes,
                 &root_to_nodes,
@@ -603,20 +958,523 @@ impl SimGraph {
         (sum / n.sqrt()).max(1.0)
     }
 
-    fn collapse_start_positions(&mut self, scale: f64, random_seed: u64) {
+    fn collapse_start_positions(&mut self, scale: f64, rng: &mut XorShift64Star) {
         if self.nodes.len() <= 2 {
             return;
         }
         // Keep starts close to the origin (we relocate later).
         let jitter = (0.01 * scale).max(0.01);
-        let mut rng = XorShift64Star::new(random_seed ^ 0x9E3779B97F4A7C15_u64);
-        for (idx, n) in self.nodes.iter_mut().enumerate() {
-            // Make the jitter stable per node order.
-            rng.mix_u64(idx as u64);
+        for n in self.nodes.iter_mut() {
             let jx = rng.next_f64_signed() * jitter;
             let jy = rng.next_f64_signed() * jitter;
             n.left = jx;
             n.top = jy;
+        }
+    }
+}
+
+fn handle_constraints_pre_layout(nodes: &mut [SimNode], c: &Constraints) {
+    if nodes.is_empty() {
+        return;
+    }
+
+    let mut x: Vec<f64> = nodes.iter().map(|n| n.center_x()).collect();
+    let mut y: Vec<f64> = nodes.iter().map(|n| n.center_y()).collect();
+
+    // Match `cose-base` ConstraintHandler: rotate/reflect the draft layout using an orthogonal
+    // Procrustes transform derived from alignment constraints, then vote-based reflection for
+    // relative placement directionality.
+    if !c.align_vertical.is_empty() || !c.align_horizontal.is_empty() {
+        if let Some(t) = procrustes_transform_for_alignments(&x, &y, c) {
+            let tt = t.transpose();
+            for i in 0..x.len() {
+                let v = na::Vector2::new(x[i], y[i]);
+                let r = tt * v;
+                x[i] = r.x;
+                y[i] = r.y;
+            }
+            if !c.relative.is_empty() {
+                apply_reflection_for_relative_placement(&mut x, &mut y, &c.relative);
+            }
+        }
+    }
+
+    // Enforce alignment constraints in position space.
+    for group in &c.align_vertical {
+        if group.len() <= 1 {
+            continue;
+        }
+        let mut sum = 0.0;
+        for &idx in group {
+            sum += x[idx];
+        }
+        let target = sum / (group.len() as f64);
+        for &idx in group {
+            x[idx] = target;
+        }
+    }
+    for group in &c.align_horizontal {
+        if group.len() <= 1 {
+            continue;
+        }
+        let mut sum = 0.0;
+        for &idx in group {
+            sum += y[idx];
+        }
+        let target = sum / (group.len() as f64);
+        for &idx in group {
+            y[idx] = target;
+        }
+    }
+
+    // Enforce relative placement constraints in position space.
+    if !c.relative.is_empty() {
+        enforce_relative_placement(&mut x, &mut y, c);
+    }
+
+    for (i, n) in nodes.iter_mut().enumerate() {
+        n.left = x[i] - n.width / 2.0;
+        n.top = y[i] - n.height / 2.0;
+    }
+}
+
+fn procrustes_transform_for_alignments(
+    x: &[f64],
+    y: &[f64],
+    c: &Constraints,
+) -> Option<na::Matrix2<f64>> {
+    let mut source: Vec<na::Vector2<f64>> = Vec::new();
+    let mut target: Vec<na::Vector2<f64>> = Vec::new();
+
+    for group in &c.align_vertical {
+        if group.is_empty() {
+            continue;
+        }
+        let mut sum_x = 0.0;
+        for &idx in group {
+            sum_x += x[idx];
+        }
+        let x_pos = sum_x / (group.len() as f64);
+        for &idx in group {
+            source.push(na::Vector2::new(x[idx], y[idx]));
+            target.push(na::Vector2::new(x_pos, y[idx]));
+        }
+    }
+
+    for group in &c.align_horizontal {
+        if group.is_empty() {
+            continue;
+        }
+        let mut sum_y = 0.0;
+        for &idx in group {
+            sum_y += y[idx];
+        }
+        let y_pos = sum_y / (group.len() as f64);
+        for &idx in group {
+            source.push(na::Vector2::new(x[idx], y[idx]));
+            target.push(na::Vector2::new(x[idx], y_pos));
+        }
+    }
+
+    if source.len() <= 1 || target.len() != source.len() {
+        return None;
+    }
+
+    let mut mean_s = na::Vector2::new(0.0, 0.0);
+    let mut mean_t = na::Vector2::new(0.0, 0.0);
+    for (s, t) in source.iter().zip(target.iter()) {
+        mean_s += s;
+        mean_t += t;
+    }
+    let inv_n = 1.0 / (source.len() as f64);
+    mean_s *= inv_n;
+    mean_t *= inv_n;
+
+    // `ConstraintHandler` forms `tempMatrix = A'B` where A is target, B is source (mean-centered).
+    let mut m = na::Matrix2::zeros();
+    for (s, t) in source.iter().zip(target.iter()) {
+        let sc = s - mean_s;
+        let tc = t - mean_t;
+        m += tc * sc.transpose();
+    }
+
+    if !(m[(0, 0)].is_finite()
+        && m[(0, 1)].is_finite()
+        && m[(1, 0)].is_finite()
+        && m[(1, 1)].is_finite())
+    {
+        return None;
+    }
+
+    let svd = na::SVD::new(m, true, true);
+    let (Some(u), Some(vt)) = (svd.u, svd.v_t) else {
+        return None;
+    };
+    let v = vt.transpose();
+    Some(v * u.transpose())
+}
+
+fn apply_reflection_for_relative_placement(x: &mut [f64], y: &mut [f64], rel: &[RelConstraint]) {
+    let mut reflect_on_y = 0;
+    let mut not_reflect_on_y = 0;
+    let mut reflect_on_x = 0;
+    let mut not_reflect_on_x = 0;
+
+    for r in rel {
+        if let (Some(left), Some(right)) = (r.left, r.right) {
+            if x[left] - x[right] >= 0.0 {
+                reflect_on_y += 1;
+            } else {
+                not_reflect_on_y += 1;
+            }
+        } else if let (Some(top), Some(bottom)) = (r.top, r.bottom) {
+            if y[top] - y[bottom] >= 0.0 {
+                reflect_on_x += 1;
+            } else {
+                not_reflect_on_x += 1;
+            }
+        }
+    }
+
+    if reflect_on_y > not_reflect_on_y && reflect_on_x > not_reflect_on_x {
+        for i in 0..x.len() {
+            x[i] = -x[i];
+            y[i] = -y[i];
+        }
+    } else if reflect_on_y > not_reflect_on_y {
+        for v in x.iter_mut() {
+            *v = -*v;
+        }
+    } else if reflect_on_x > not_reflect_on_x {
+        for v in y.iter_mut() {
+            *v = -*v;
+        }
+    }
+}
+
+fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
+    #[derive(Debug, Clone, Copy)]
+    struct Neighbor {
+        id: usize,
+        gap: f64,
+    }
+
+    let n = x.len().min(y.len());
+    if n == 0 {
+        return;
+    }
+
+    // Dummy mappings for alignment constraints (per-axis, matching `ConstraintHandler`).
+    let mut dummy_to_nodes_for_vertical_alignment: Vec<Vec<usize>> = Vec::new();
+    let mut node_to_dummy_for_vertical_alignment: Vec<Option<usize>> = vec![None; n];
+    for (i, group) in c.align_vertical.iter().enumerate() {
+        let dummy = n + i;
+        dummy_to_nodes_for_vertical_alignment.push(group.clone());
+        for &idx in group {
+            if idx < n {
+                node_to_dummy_for_vertical_alignment[idx] = Some(dummy);
+            }
+        }
+    }
+    let mut dummy_pos_for_vertical_alignment: Vec<f64> = dummy_to_nodes_for_vertical_alignment
+        .iter()
+        .map(|g| x[*g.first().unwrap_or(&0)])
+        .collect();
+
+    let mut dummy_to_nodes_for_horizontal_alignment: Vec<Vec<usize>> = Vec::new();
+    let mut node_to_dummy_for_horizontal_alignment: Vec<Option<usize>> = vec![None; n];
+    for (i, group) in c.align_horizontal.iter().enumerate() {
+        let dummy = n + i;
+        dummy_to_nodes_for_horizontal_alignment.push(group.clone());
+        for &idx in group {
+            if idx < n {
+                node_to_dummy_for_horizontal_alignment[idx] = Some(dummy);
+            }
+        }
+    }
+    let mut dummy_pos_for_horizontal_alignment: Vec<f64> = dummy_to_nodes_for_horizontal_alignment
+        .iter()
+        .map(|g| y[*g.first().unwrap_or(&0)])
+        .collect();
+
+    fn ensure_key(map: &mut IndexMap<usize, Vec<Neighbor>>, key: usize) {
+        if !map.contains_key(&key) {
+            map.insert(key, Vec::new());
+        }
+    }
+
+    let mut dag_h: IndexMap<usize, Vec<Neighbor>> = IndexMap::new();
+    let mut dag_v: IndexMap<usize, Vec<Neighbor>> = IndexMap::new();
+    for r in &c.relative {
+        if let (Some(left), Some(right)) = (r.left, r.right) {
+            let src = node_to_dummy_for_vertical_alignment[left].unwrap_or(left);
+            let dst = node_to_dummy_for_vertical_alignment[right].unwrap_or(right);
+            ensure_key(&mut dag_h, src);
+            ensure_key(&mut dag_h, dst);
+            dag_h.get_mut(&src).unwrap().push(Neighbor {
+                id: dst,
+                gap: r.gap,
+            });
+        } else if let (Some(top), Some(bottom)) = (r.top, r.bottom) {
+            let src = node_to_dummy_for_horizontal_alignment[top].unwrap_or(top);
+            let dst = node_to_dummy_for_horizontal_alignment[bottom].unwrap_or(bottom);
+            ensure_key(&mut dag_v, src);
+            ensure_key(&mut dag_v, dst);
+            dag_v.get_mut(&src).unwrap().push(Neighbor {
+                id: dst,
+                gap: r.gap,
+            });
+        }
+    }
+
+    fn dag_to_undirected(dag: &IndexMap<usize, Vec<Neighbor>>) -> IndexMap<usize, Vec<Neighbor>> {
+        let mut u: IndexMap<usize, Vec<Neighbor>> = IndexMap::new();
+        for (&k, _) in dag.iter() {
+            u.insert(k, Vec::new());
+        }
+        for (&k, neigh) in dag.iter() {
+            for n in neigh {
+                u.get_mut(&k).unwrap().push(*n);
+                u.get_mut(&n.id)
+                    .unwrap()
+                    .push(Neighbor { id: k, gap: n.gap });
+            }
+        }
+        u
+    }
+
+    fn dag_to_reversed(dag: &IndexMap<usize, Vec<Neighbor>>) -> IndexMap<usize, Vec<Neighbor>> {
+        let mut r: IndexMap<usize, Vec<Neighbor>> = IndexMap::new();
+        for (&k, _) in dag.iter() {
+            r.insert(k, Vec::new());
+        }
+        for (&k, neigh) in dag.iter() {
+            for n in neigh {
+                r.get_mut(&n.id)
+                    .unwrap()
+                    .push(Neighbor { id: k, gap: n.gap });
+            }
+        }
+        r
+    }
+
+    fn find_components(undirected: &IndexMap<usize, Vec<Neighbor>>) -> Vec<Vec<usize>> {
+        use std::collections::{HashSet, VecDeque};
+        let mut visited: HashSet<usize> = HashSet::new();
+        let mut out: Vec<Vec<usize>> = Vec::new();
+        for (&k, _) in undirected.iter() {
+            if visited.contains(&k) {
+                continue;
+            }
+            let mut q: VecDeque<usize> = VecDeque::new();
+            let mut comp: Vec<usize> = Vec::new();
+            q.push_back(k);
+            visited.insert(k);
+            while let Some(cur) = q.pop_front() {
+                comp.push(cur);
+                for n in &undirected[&cur] {
+                    if visited.insert(n.id) {
+                        q.push_back(n.id);
+                    }
+                }
+            }
+            out.push(comp);
+        }
+        out
+    }
+
+    fn component_sources(
+        dag: &IndexMap<usize, Vec<Neighbor>>,
+        rev: &IndexMap<usize, Vec<Neighbor>>,
+    ) -> Vec<Vec<usize>> {
+        let undirected = dag_to_undirected(dag);
+        let comps = find_components(&undirected);
+        let mut out: Vec<Vec<usize>> = Vec::new();
+        for comp in comps {
+            let mut sources: Vec<usize> = Vec::new();
+            for node in comp {
+                if rev.get(&node).map_or(true, |v| v.is_empty()) {
+                    sources.push(node);
+                }
+            }
+            out.push(sources);
+        }
+        out
+    }
+
+    fn pos_before(key: usize, axis: Axis, n: usize, x: &[f64], y: &[f64], dummy: &[f64]) -> f64 {
+        if key < n {
+            match axis {
+                Axis::Horizontal => x[key],
+                Axis::Vertical => y[key],
+            }
+        } else {
+            dummy[key - n]
+        }
+    }
+
+    fn find_appropriate_positions(
+        dag: &IndexMap<usize, Vec<Neighbor>>,
+        axis: Axis,
+        n: usize,
+        x: &[f64],
+        y: &[f64],
+        dummy_pos: &[f64],
+        component_sources: &[Vec<usize>],
+    ) -> IndexMap<usize, f64> {
+        use std::collections::VecDeque;
+
+        let mut in_deg: IndexMap<usize, usize> = IndexMap::new();
+        for (&k, _) in dag.iter() {
+            in_deg.insert(k, 0);
+        }
+        for (&_k, neigh) in dag.iter() {
+            for n2 in neigh {
+                *in_deg.get_mut(&n2.id).unwrap() += 1;
+            }
+        }
+
+        let mut position: IndexMap<usize, f64> = IndexMap::new();
+        let mut past: IndexMap<usize, IndexSet<usize>> = IndexMap::new();
+        let mut q: VecDeque<usize> = VecDeque::new();
+
+        for (&k, &deg) in in_deg.iter() {
+            position.insert(k, f64::NEG_INFINITY);
+            if deg == 0 {
+                q.push_back(k);
+            }
+            past.insert(k, IndexSet::from([k]));
+        }
+
+        // Align sources of each component (enforcement path, empty fixed-node set).
+        for component in component_sources {
+            if component.is_empty() {
+                continue;
+            }
+            let mut sum = 0.0;
+            for &node in component {
+                sum += pos_before(node, axis, n, x, y, dummy_pos);
+            }
+            let avg = sum / (component.len() as f64);
+            for &node in component {
+                position.insert(node, avg);
+            }
+        }
+
+        while let Some(cur) = q.pop_front() {
+            let cur_pos = position[&cur];
+            for neigh in &dag[&cur] {
+                let want = cur_pos + neigh.gap;
+                if position[&neigh.id] < want {
+                    position.insert(neigh.id, want);
+                }
+                let deg = in_deg.get_mut(&neigh.id).unwrap();
+                *deg = deg.saturating_sub(1);
+                if *deg == 0 {
+                    q.push_back(neigh.id);
+                }
+                let mut merged: IndexSet<usize> = past[&cur].clone();
+                for v in past[&neigh.id].iter().copied() {
+                    merged.insert(v);
+                }
+                past.insert(neigh.id, merged);
+            }
+        }
+
+        // Readjust position after enforcement.
+        let mut sink_nodes: IndexSet<usize> = IndexSet::new();
+        for (&k, neigh) in dag.iter() {
+            if neigh.is_empty() {
+                sink_nodes.insert(k);
+            }
+        }
+
+        let mut components: Vec<IndexSet<usize>> = Vec::new();
+        for (&k, set) in past.iter() {
+            if !sink_nodes.contains(&k) || set.is_empty() {
+                continue;
+            }
+            let first = *set.iter().next().unwrap();
+            if let Some(idx) = components.iter().position(|c| c.contains(&first)) {
+                let mut merged = components[idx].clone();
+                for v in set.iter().copied() {
+                    merged.insert(v);
+                }
+                components[idx] = merged;
+            } else {
+                components.push(set.clone());
+            }
+        }
+
+        for comp in components {
+            let mut min_before = f64::INFINITY;
+            let mut max_before = f64::NEG_INFINITY;
+            let mut min_after = f64::INFINITY;
+            let mut max_after = f64::NEG_INFINITY;
+            for &node in comp.iter() {
+                let before = pos_before(node, axis, n, x, y, dummy_pos);
+                let after = position[&node];
+                min_before = min_before.min(before);
+                max_before = max_before.max(before);
+                min_after = min_after.min(after);
+                max_after = max_after.max(after);
+            }
+            let diff = ((min_before + max_before) / 2.0) - ((min_after + max_after) / 2.0);
+            for &node in comp.iter() {
+                position.insert(node, position[&node] + diff);
+            }
+        }
+
+        position
+    }
+
+    if !dag_h.is_empty() {
+        let rev = dag_to_reversed(&dag_h);
+        let sources = component_sources(&dag_h, &rev);
+        let pos = find_appropriate_positions(
+            &dag_h,
+            Axis::Horizontal,
+            n,
+            x,
+            y,
+            &dummy_pos_for_vertical_alignment,
+            &sources,
+        );
+        for (&key, &v) in pos.iter() {
+            if key < n {
+                x[key] = v;
+            } else {
+                let di = key - n;
+                for &idx in &dummy_to_nodes_for_vertical_alignment[di] {
+                    x[idx] = v;
+                }
+                dummy_pos_for_vertical_alignment[di] = v;
+            }
+        }
+    }
+
+    if !dag_v.is_empty() {
+        let rev = dag_to_reversed(&dag_v);
+        let sources = component_sources(&dag_v, &rev);
+        let pos = find_appropriate_positions(
+            &dag_v,
+            Axis::Vertical,
+            n,
+            x,
+            y,
+            &dummy_pos_for_horizontal_alignment,
+            &sources,
+        );
+        for (&key, &v) in pos.iter() {
+            if key < n {
+                y[key] = v;
+            } else {
+                let di = key - n;
+                for &idx in &dummy_to_nodes_for_horizontal_alignment[di] {
+                    y[idx] = v;
+                }
+                dummy_pos_for_horizontal_alignment[di] = v;
+            }
         }
     }
 }
