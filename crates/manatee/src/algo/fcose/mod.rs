@@ -37,6 +37,7 @@ pub fn layout(graph: &Graph, opts: &FcoseOptions) -> Result<LayoutResult> {
 #[derive(Debug, Clone)]
 struct SimNode {
     id: String,
+    parent: Option<String>,
     width: f64,
     height: f64,
     // Top-left anchored rectangle (layout-base `LNode.rect` style).
@@ -173,6 +174,7 @@ struct SimGraph {
     nodes: Vec<SimNode>,
     edges: Vec<SimEdge>,
     id_to_idx: std::collections::BTreeMap<String, usize>,
+    compound_parent: std::collections::BTreeMap<String, Option<String>>,
 }
 
 impl SimGraph {
@@ -196,6 +198,7 @@ impl SimGraph {
             let h = n.height.max(1.0);
             nodes.push(SimNode {
                 id: n.id.clone(),
+                parent: n.parent.clone(),
                 width: w,
                 height: h,
                 left: n.x - w / 2.0,
@@ -211,6 +214,12 @@ impl SimGraph {
                 grid_finish_y: 0,
             });
             id_to_idx.insert(n.id.clone(), idx);
+        }
+
+        let mut compound_parent: std::collections::BTreeMap<String, Option<String>> =
+            std::collections::BTreeMap::new();
+        for c in &graph.compounds {
+            compound_parent.insert(c.id.clone(), c.parent.clone());
         }
 
         let mut seen_pairs: std::collections::BTreeSet<(usize, usize)> =
@@ -254,6 +263,7 @@ impl SimGraph {
             nodes,
             edges,
             id_to_idx,
+            compound_parent,
         }
     }
 
@@ -335,6 +345,27 @@ impl SimGraph {
         // layout-base uses the FR-grid repulsion variant by default, which caches each node's
         // surrounding set and refreshes it every `GRID_CALCULATION_CHECK_PERIOD` iterations.
         let mut repulsion_grid: Option<RepulsionGrid> = None;
+
+        // Precompute root compound membership for each node.
+        let node_root_compound: Vec<Option<String>> = self
+            .nodes
+            .iter()
+            .map(|n| {
+                let mut cur = n.parent.as_deref()?;
+                while let Some(Some(p)) = self.compound_parent.get(cur) {
+                    cur = p.as_str();
+                }
+                Some(cur.to_string())
+            })
+            .collect();
+        let mut root_to_nodes: std::collections::BTreeMap<String, Vec<usize>> =
+            std::collections::BTreeMap::new();
+        for (idx, root) in node_root_compound.iter().enumerate() {
+            if let Some(r) = root {
+                root_to_nodes.entry(r.clone()).or_default().push(idx);
+            }
+        }
+        let compound_padding = opts.compound_padding.unwrap_or(0.0).max(0.0);
 
         // Fallback for degenerate cases where spectral is skipped (e.g. very small graphs).
         if self.edges.is_empty() && !spectral_applied {
@@ -523,6 +554,14 @@ impl SimGraph {
             }
 
             apply_constraints_to_displacements(&self.nodes, constraints, &mut disps, max_d);
+            apply_root_compound_overlap_separation_to_displacements(
+                &self.nodes,
+                &root_to_nodes,
+                compound_padding,
+                half_default_edge_length,
+                max_d,
+                &mut disps,
+            );
 
             for (n, (mdx, mdy)) in self.nodes.iter_mut().zip(disps) {
                 n.move_by(mdx, mdy);
@@ -564,6 +603,166 @@ impl SimGraph {
             let jy = rng.next_f64_signed() * jitter;
             n.left = jx;
             n.top = jy;
+        }
+    }
+}
+
+fn apply_root_compound_overlap_separation_to_displacements(
+    nodes: &[SimNode],
+    root_to_nodes: &std::collections::BTreeMap<String, Vec<usize>>,
+    padding: f64,
+    separation_buffer: f64,
+    max_d: f64,
+    disps: &mut [(f64, f64)],
+) {
+    if root_to_nodes.len() <= 1 {
+        return;
+    }
+    if nodes.is_empty() || disps.is_empty() {
+        return;
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct Rect {
+        left: f64,
+        top: f64,
+        width: f64,
+        height: f64,
+    }
+
+    fn rect_from_node_with_disp(n: &SimNode, dx: f64, dy: f64) -> Rect {
+        Rect {
+            left: n.left + dx,
+            top: n.top + dy,
+            width: n.width,
+            height: n.height,
+        }
+    }
+
+    fn rect_union(a: Rect, b: Rect) -> Rect {
+        let min_x = a.left.min(b.left);
+        let min_y = a.top.min(b.top);
+        let max_x = (a.left + a.width).max(b.left + b.width);
+        let max_y = (a.top + a.height).max(b.top + b.height);
+        Rect {
+            left: min_x,
+            top: min_y,
+            width: (max_x - min_x).max(0.0),
+            height: (max_y - min_y).max(0.0),
+        }
+    }
+
+    fn expand_rect(r: Rect, pad: f64) -> Rect {
+        Rect {
+            left: r.left - pad,
+            top: r.top - pad,
+            width: (r.width + 2.0 * pad).max(0.0),
+            height: (r.height + 2.0 * pad).max(0.0),
+        }
+    }
+
+    fn rects_intersect(a: Rect, b: Rect) -> bool {
+        a.left < b.left + b.width
+            && a.left + a.width > b.left
+            && a.top < b.top + b.height
+            && a.top + a.height > b.top
+    }
+
+    fn calc_separation_amount_rect(a: Rect, b: Rect, buffer: f64) -> (f64, f64) {
+        // Equivalent to `IGeometry.calcSeparationAmount(...)` for overlapping rectangles, with the
+        // same `DEFAULT_EDGE_LENGTH / 2` buffer used by layout-base.
+        //
+        // We compute the minimal translation vector to separate the rectangles, preferring the
+        // axis with smaller overlap.
+        let overlap_x1 = (a.left + a.width + buffer) - b.left;
+        let overlap_x2 = (b.left + b.width + buffer) - a.left;
+        let overlap_y1 = (a.top + a.height + buffer) - b.top;
+        let overlap_y2 = (b.top + b.height + buffer) - a.top;
+
+        let ox = if overlap_x1.abs() < overlap_x2.abs() {
+            overlap_x1
+        } else {
+            -overlap_x2
+        };
+        let oy = if overlap_y1.abs() < overlap_y2.abs() {
+            overlap_y1
+        } else {
+            -overlap_y2
+        };
+
+        if ox.abs() < oy.abs() {
+            (ox, 0.0)
+        } else {
+            (0.0, oy)
+        }
+    }
+
+    let mut rects: Vec<(String, Rect)> = Vec::with_capacity(root_to_nodes.len());
+    for (root, members) in root_to_nodes {
+        let mut any = false;
+        let mut bb = Rect {
+            left: 0.0,
+            top: 0.0,
+            width: 0.0,
+            height: 0.0,
+        };
+        for &idx in members {
+            if idx >= nodes.len() || idx >= disps.len() {
+                continue;
+            }
+            let r = rect_from_node_with_disp(&nodes[idx], disps[idx].0, disps[idx].1);
+            bb = if any { rect_union(bb, r) } else { r };
+            any = true;
+        }
+        if any {
+            rects.push((root.clone(), expand_rect(bb, padding)));
+        }
+    }
+    if rects.len() <= 1 {
+        return;
+    }
+
+    // Deterministic, gentle overlap separation: translate all descendants of each root compound.
+    // This approximates Cytoscape's compound repulsion without implementing full compound nodes.
+    let strength = 0.35;
+    for i in 0..rects.len() {
+        for j in (i + 1)..rects.len() {
+            let (ref a_id, a_rect) = rects[i];
+            let (ref b_id, b_rect) = rects[j];
+            if !rects_intersect(a_rect, b_rect) {
+                continue;
+            }
+            let (ox, oy) = calc_separation_amount_rect(a_rect, b_rect, separation_buffer);
+            if ox == 0.0 && oy == 0.0 {
+                continue;
+            }
+            let (dx_a, dy_a) = (-0.5 * ox * strength, -0.5 * oy * strength);
+            let (dx_b, dy_b) = (0.5 * ox * strength, 0.5 * oy * strength);
+
+            if let Some(members) = root_to_nodes.get(a_id) {
+                for &idx in members {
+                    disps[idx].0 += dx_a;
+                    disps[idx].1 += dy_a;
+                }
+            }
+            if let Some(members) = root_to_nodes.get(b_id) {
+                for &idx in members {
+                    disps[idx].0 += dx_b;
+                    disps[idx].1 += dy_b;
+                }
+            }
+        }
+    }
+
+    // Cap displacements after compound separation, matching the upstream displacement clamp.
+    if max_d.is_finite() && max_d > 0.0 {
+        for (dx, dy) in disps {
+            if dx.abs() > max_d {
+                *dx = max_d * dx.signum();
+            }
+            if dy.abs() > max_d {
+                *dy = max_d * dy.signum();
+            }
         }
     }
 }
@@ -716,6 +915,7 @@ mod tests {
     fn node_at(left: f64, top: f64, w: f64, h: f64) -> SimNode {
         SimNode {
             id: "n".to_string(),
+            parent: None,
             width: w,
             height: h,
             left,

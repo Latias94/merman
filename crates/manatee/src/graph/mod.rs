@@ -4,6 +4,8 @@ use crate::error::{Error, Result};
 pub struct Graph {
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
+    /// Optional compound node definitions (e.g. Mermaid Architecture groups).
+    pub compounds: Vec<Compound>,
 }
 
 impl Graph {
@@ -11,6 +13,31 @@ impl Graph {
         let mut node_exists: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
         for n in &self.nodes {
             node_exists.insert(n.id.as_str());
+        }
+
+        let mut compound_exists: std::collections::BTreeSet<&str> =
+            std::collections::BTreeSet::new();
+        for c in &self.compounds {
+            compound_exists.insert(c.id.as_str());
+        }
+
+        for n in &self.nodes {
+            if let Some(p) = n.parent.as_deref() {
+                if !compound_exists.contains(p) {
+                    return Err(Error::MissingEndpoint {
+                        edge_id: format!("node-parent:{}/{}", n.id, p),
+                    });
+                }
+            }
+        }
+        for c in &self.compounds {
+            if let Some(p) = c.parent.as_deref() {
+                if !compound_exists.contains(p) {
+                    return Err(Error::MissingEndpoint {
+                        edge_id: format!("compound-parent:{}/{}", c.id, p),
+                    });
+                }
+            }
         }
         for e in &self.edges {
             if !node_exists.contains(e.source.as_str()) || !node_exists.contains(e.target.as_str())
@@ -36,6 +63,12 @@ pub struct Node {
     /// Optional initial position (center), mirroring Cytoscape's `position` field.
     pub x: f64,
     pub y: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct Compound {
+    pub id: String,
+    pub parent: Option<String>,
 }
 
 #[derive(Debug, Clone)]

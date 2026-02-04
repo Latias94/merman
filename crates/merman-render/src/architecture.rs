@@ -898,6 +898,14 @@ pub fn layout_architecture_diagram(
                 })
                 .collect(),
             edges,
+            compounds: model
+                .groups
+                .iter()
+                .map(|g| manatee::Compound {
+                    id: g.id.clone(),
+                    parent: g.in_group.clone(),
+                })
+                .collect(),
         };
 
         let opts = manatee::FcoseOptions {
@@ -907,6 +915,7 @@ pub fn layout_architecture_diagram(
             }),
             relative_placement_constraint: relative,
             default_edge_length: Some(default_edge_length),
+            compound_padding: Some(padding_px),
             // Mermaid@11.12.2 Architecture layout uses Cytoscape FCoSE with a spectral
             // initialization that depends on `Math.random()`. Our upstream SVG baselines are
             // generated with a deterministic RNG seed (see ADR-0055), so we must use the same

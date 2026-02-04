@@ -35,6 +35,8 @@ pub struct FcoseOptions {
     pub default_edge_length: Option<f64>,
     pub alignment_constraint: Option<AlignmentConstraint>,
     pub relative_placement_constraint: Vec<RelativePlacementConstraint>,
+    /// Optional padding applied around compound (group) bounds when computing compound repulsion.
+    pub compound_padding: Option<f64>,
 }
 
 impl Default for FcoseOptions {
@@ -44,6 +46,7 @@ impl Default for FcoseOptions {
             default_edge_length: None,
             alignment_constraint: None,
             relative_placement_constraint: Vec::new(),
+            compound_padding: None,
         }
     }
 }

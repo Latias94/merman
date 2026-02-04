@@ -8,7 +8,7 @@ pub use algo::{
     Algorithm, AlignmentConstraint, CoseBilkentOptions, FcoseOptions, RelativePlacementConstraint,
 };
 pub use error::{Error, Result};
-pub use graph::{Edge, Graph, LayoutResult, Node, Point};
+pub use graph::{Compound, Edge, Graph, LayoutResult, Node, Point};
 
 /// Headless layout entry point.
 pub fn layout(graph: &Graph, algorithm: Algorithm) -> Result<LayoutResult> {

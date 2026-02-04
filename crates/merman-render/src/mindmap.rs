@@ -218,6 +218,7 @@ pub fn layout_mindmap_diagram(
                     elasticity: 0.0,
                 })
                 .collect(),
+            compounds: Vec::new(),
         };
         let result = manatee::layout(&graph, manatee::Algorithm::CoseBilkent(Default::default()))
             .map_err(|e| Error::InvalidModel {
