@@ -866,10 +866,25 @@ pub fn layout_architecture_diagram(
             };
 
             let elasticity = if same_parent { 0.45 } else { 0.001 };
+
+            let source_anchor = e.lhs_dir.as_deref().and_then(Dir::parse).map(|d| match d {
+                Dir::L => manatee::Anchor::Left,
+                Dir::R => manatee::Anchor::Right,
+                Dir::T => manatee::Anchor::Top,
+                Dir::B => manatee::Anchor::Bottom,
+            });
+            let target_anchor = e.rhs_dir.as_deref().and_then(Dir::parse).map(|d| match d {
+                Dir::L => manatee::Anchor::Left,
+                Dir::R => manatee::Anchor::Right,
+                Dir::T => manatee::Anchor::Top,
+                Dir::B => manatee::Anchor::Bottom,
+            });
             edges.push(manatee::Edge {
                 id: format!("edge-{}", edges.len()),
                 source: e.lhs_id.clone(),
                 target: e.rhs_id.clone(),
+                source_anchor,
+                target_anchor,
                 ideal_length,
                 elasticity,
             });
