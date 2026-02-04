@@ -7,11 +7,12 @@ pub fn layout(graph: &Graph, _opts: &CoseBilkentOptions) -> Result<LayoutResult>
 
     let mut sim = SimGraph::from_graph(graph);
 
-    // Minimal COSE-Bilkent port for flat graphs that are forests (trees).
+    // COSE-Bilkent port for flat graphs (as used by Mermaid mindmap via Cytoscape).
     // This follows the upstream `cose-base` control flow:
     // - `getFlatForest()` + `positionNodesRadially(...)`
+    // - `reduceTrees()` / `growTree()` scaffolding
+    // - spring embedder ticks
     // - `doPostLayout()` -> `transform(0,0)` to move the graph into positive coordinates
-    // Note: the force-directed spring embedder is not implemented yet.
     let forest = sim.get_flat_forest();
     if !forest.is_empty() {
         sim.position_nodes_radially(&forest);
@@ -19,6 +20,7 @@ pub fn layout(graph: &Graph, _opts: &CoseBilkentOptions) -> Result<LayoutResult>
         // Fallback: keep all nodes at their provided initial positions (typically (0,0)).
         // The full port will use `scatter()` / `positionNodesRandomly()` for non-forest graphs.
     }
+    sim.reduce_trees();
     sim.run_spring_embedder();
     sim.transform_to_origin();
 
@@ -47,6 +49,13 @@ struct SimNode {
     top: f64,
     // Incident edge indices in insertion order, matching `LNode.edges` order.
     edges: Vec<usize>,
+    active: bool,
+
+    // FR-grid indices (computed by `update_grid`), used by tree growth heuristics.
+    start_x: i32,
+    finish_x: i32,
+    start_y: i32,
+    finish_y: i32,
 
     // Forces (reset each iteration), matching `FDLayoutNode` / `CoSENode`.
     spring_fx: f64,
@@ -101,6 +110,7 @@ impl SimNode {
 struct SimEdge {
     a: usize,
     b: usize,
+    active: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -136,10 +146,19 @@ impl Bounds {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct PrunedNodeData {
+    node_idx: usize,
+    edge_idx: usize,
+    other_idx: usize,
+}
+
 #[derive(Debug)]
 struct SimGraph {
     nodes: Vec<SimNode>,
     edges: Vec<SimEdge>,
+    pruned_nodes_all: Vec<Vec<PrunedNodeData>>,
+    grid: Vec<Vec<Vec<usize>>>,
 }
 
 impl SimGraph {
@@ -147,6 +166,13 @@ impl SimGraph {
     const DEFAULT_COMPONENT_SEPERATION: f64 = 60.0; // upstream typo preserved
     const DEFAULT_EDGE_LENGTH: f64 = 50.0;
     const DEFAULT_RADIAL_SEPARATION: f64 = Self::DEFAULT_EDGE_LENGTH;
+
+    // `layout-base` `LayoutConstants.WORLD_CENTER_X/Y`.
+    const WORLD_CENTER_X: f64 = 1200.0;
+    const WORLD_CENTER_Y: f64 = 900.0;
+
+    // `layout-base` `FDLayoutConstants.DEFAULT_COOLING_FACTOR_INCREMENTAL`.
+    const DEFAULT_COOLING_FACTOR_INCREMENTAL: f64 = 0.3;
 
     const MAX_ITERATIONS: usize = 2500;
     const CONVERGENCE_CHECK_PERIOD: usize = 100;
@@ -169,6 +195,11 @@ impl SimGraph {
                 left: n.x - n.width.max(1.0) / 2.0,
                 top: n.y - n.height.max(1.0) / 2.0,
                 edges: Vec::new(),
+                active: true,
+                start_x: 0,
+                finish_x: 0,
+                start_y: 0,
+                finish_y: 0,
                 spring_fx: 0.0,
                 spring_fy: 0.0,
                 repulsion_fx: 0.0,
@@ -200,12 +231,17 @@ impl SimGraph {
             }
             seen_pairs.insert((u, v));
             let ei = edges.len();
-            edges.push(SimEdge { a, b });
+            edges.push(SimEdge { a, b, active: true });
             nodes[a].edges.push(ei);
             nodes[b].edges.push(ei);
         }
 
-        Self { nodes, edges }
+        Self {
+            nodes,
+            edges,
+            pruned_nodes_all: Vec::new(),
+            grid: Vec::new(),
+        }
     }
 
     fn edge_other_end(&self, edge_idx: usize, node_idx: usize) -> usize {
@@ -221,6 +257,9 @@ impl SimGraph {
     fn edges_between(&self, a: usize, b: usize) -> Vec<usize> {
         let mut out = Vec::new();
         for &ei in &self.nodes[a].edges {
+            if !self.edges[ei].active {
+                continue;
+            }
             if self.edge_other_end(ei, a) == b {
                 out.push(ei);
             }
@@ -231,7 +270,13 @@ impl SimGraph {
     fn neighbors_of(&self, node_idx: usize) -> Vec<usize> {
         let mut out = Vec::new();
         for &ei in &self.nodes[node_idx].edges {
-            out.push(self.edge_other_end(ei, node_idx));
+            if !self.edges[ei].active {
+                continue;
+            }
+            let other = self.edge_other_end(ei, node_idx);
+            if self.nodes[other].active {
+                out.push(other);
+            }
         }
         out
     }
@@ -242,7 +287,9 @@ impl SimGraph {
         let mut is_forest = true;
 
         // Root graph nodes in insertion order.
-        let all_nodes: Vec<usize> = (0..self.nodes.len()).collect();
+        let all_nodes: Vec<usize> = (0..self.nodes.len())
+            .filter(|&idx| self.nodes[idx].active)
+            .collect();
 
         // Graph is always flat in our current model (no compound nodes).
 
@@ -267,7 +314,13 @@ impl SimGraph {
 
                 // Traverse all neighbors of this node, in edge insertion order.
                 for &ei in &self.nodes[current_node].edges {
+                    if !self.edges[ei].active {
+                        continue;
+                    }
                     let current_neighbor = self.edge_other_end(ei, current_node);
+                    if !self.nodes[current_neighbor].active {
+                        continue;
+                    }
 
                     // If BFS is not growing from this neighbor.
                     if parents.get(&current_node).copied() != Some(current_neighbor) {
@@ -306,6 +359,283 @@ impl SimGraph {
         }
 
         flat_forest
+    }
+
+    fn active_degree(&self, node_idx: usize) -> usize {
+        if !self.nodes[node_idx].active {
+            return 0;
+        }
+        let mut d = 0usize;
+        for &ei in &self.nodes[node_idx].edges {
+            if !self.edges[ei].active {
+                continue;
+            }
+            let other = self.edge_other_end(ei, node_idx);
+            if self.nodes[other].active {
+                d += 1;
+            }
+        }
+        d
+    }
+
+    fn active_leaf_edge(&self, node_idx: usize) -> Option<usize> {
+        if self.active_degree(node_idx) != 1 {
+            return None;
+        }
+        for &ei in &self.nodes[node_idx].edges {
+            if !self.edges[ei].active {
+                continue;
+            }
+            let other = self.edge_other_end(ei, node_idx);
+            if self.nodes[other].active {
+                return Some(ei);
+            }
+        }
+        None
+    }
+
+    fn update_grid(&mut self, repulsion_range: f64) {
+        self.grid.clear();
+        if self.nodes.iter().all(|n| !n.active) {
+            return;
+        }
+
+        let mut left = f64::INFINITY;
+        let mut top = f64::INFINITY;
+        let mut right = f64::NEG_INFINITY;
+        let mut bottom = f64::NEG_INFINITY;
+        for n in &self.nodes {
+            if !n.active {
+                continue;
+            }
+            left = left.min(n.left);
+            top = top.min(n.top);
+            right = right.max(n.right());
+            bottom = bottom.max(n.bottom());
+        }
+        if !(left.is_finite() && top.is_finite() && right.is_finite() && bottom.is_finite()) {
+            return;
+        }
+
+        let size_x = ((right - left) / repulsion_range).ceil().max(1.0) as usize;
+        let size_y = ((bottom - top) / repulsion_range).ceil().max(1.0) as usize;
+        self.grid = vec![vec![Vec::new(); size_y]; size_x];
+
+        let clamp_x = |v: i32| v.clamp(0, (size_x as i32) - 1);
+        let clamp_y = |v: i32| v.clamp(0, (size_y as i32) - 1);
+
+        for (idx, n) in self.nodes.iter_mut().enumerate() {
+            if !n.active {
+                continue;
+            }
+            let start_x = ((n.left - left) / repulsion_range).floor() as i32;
+            let finish_x = ((n.right() - left) / repulsion_range).floor() as i32;
+            let start_y = ((n.top - top) / repulsion_range).floor() as i32;
+            let finish_y = ((n.bottom() - top) / repulsion_range).floor() as i32;
+
+            n.start_x = clamp_x(start_x);
+            n.finish_x = clamp_x(finish_x);
+            n.start_y = clamp_y(start_y);
+            n.finish_y = clamp_y(finish_y);
+
+            for gx in (n.start_x as usize)..=(n.finish_x as usize) {
+                for gy in (n.start_y as usize)..=(n.finish_y as usize) {
+                    self.grid[gx][gy].push(idx);
+                }
+            }
+        }
+    }
+
+    fn reduce_trees(&mut self) {
+        self.pruned_nodes_all.clear();
+
+        let mut contains_leaf = true;
+        while contains_leaf {
+            contains_leaf = false;
+            let mut candidates: Vec<PrunedNodeData> = Vec::new();
+
+            for idx in 0..self.nodes.len() {
+                if !self.nodes[idx].active {
+                    continue;
+                }
+                let Some(edge_idx) = self.active_leaf_edge(idx) else {
+                    continue;
+                };
+                let other_idx = self.edge_other_end(edge_idx, idx);
+                candidates.push(PrunedNodeData {
+                    node_idx: idx,
+                    edge_idx,
+                    other_idx,
+                });
+                contains_leaf = true;
+            }
+
+            if !contains_leaf {
+                break;
+            }
+
+            // Mirror upstream's "re-check degree before removal" behavior by pruning sequentially.
+            candidates.sort_by_key(|d| d.node_idx);
+            let mut pruned_in_step: Vec<PrunedNodeData> = Vec::new();
+            for cand in candidates {
+                if !self.nodes[cand.node_idx].active {
+                    continue;
+                }
+                if self.active_leaf_edge(cand.node_idx) != Some(cand.edge_idx) {
+                    continue;
+                }
+                self.nodes[cand.node_idx].active = false;
+                self.edges[cand.edge_idx].active = false;
+                pruned_in_step.push(cand);
+            }
+
+            if pruned_in_step.is_empty() {
+                break;
+            }
+            self.pruned_nodes_all.push(pruned_in_step);
+        }
+    }
+
+    fn place_pruned_node(
+        &mut self,
+        pruned_node: usize,
+        node_to_connect: usize,
+        repulsion_range: f64,
+    ) {
+        self.update_grid(repulsion_range);
+        if self.grid.is_empty() || self.grid[0].is_empty() {
+            return;
+        }
+
+        let start_grid_x = self.nodes[node_to_connect].start_x;
+        let finish_grid_x = self.nodes[node_to_connect].finish_x;
+        let start_grid_y = self.nodes[node_to_connect].start_y;
+        let finish_grid_y = self.nodes[node_to_connect].finish_y;
+
+        let mut control_regions = [0i32, 0i32, 0i32, 0i32]; // up, right, down, left
+
+        if start_grid_y > 0 {
+            let y0 = (start_grid_y - 1) as usize;
+            let y1 = start_grid_y as usize;
+            for x in (start_grid_x as usize)..=(finish_grid_x as usize) {
+                control_regions[0] +=
+                    (self.grid[x][y0].len() + self.grid[x][y1].len()).saturating_sub(1) as i32;
+            }
+        }
+        if (finish_grid_x as usize) + 1 < self.grid.len() {
+            let x0 = (finish_grid_x + 1) as usize;
+            let x1 = finish_grid_x as usize;
+            for y in (start_grid_y as usize)..=(finish_grid_y as usize) {
+                control_regions[1] +=
+                    (self.grid[x0][y].len() + self.grid[x1][y].len()).saturating_sub(1) as i32;
+            }
+        }
+        if (finish_grid_y as usize) + 1 < self.grid[0].len() {
+            let y0 = (finish_grid_y + 1) as usize;
+            let y1 = finish_grid_y as usize;
+            for x in (start_grid_x as usize)..=(finish_grid_x as usize) {
+                control_regions[2] +=
+                    (self.grid[x][y0].len() + self.grid[x][y1].len()).saturating_sub(1) as i32;
+            }
+        }
+        if start_grid_x > 0 {
+            let x0 = (start_grid_x - 1) as usize;
+            let x1 = start_grid_x as usize;
+            for y in (start_grid_y as usize)..=(finish_grid_y as usize) {
+                control_regions[3] +=
+                    (self.grid[x0][y].len() + self.grid[x1][y].len()).saturating_sub(1) as i32;
+            }
+        }
+
+        let mut min = i32::MAX;
+        let mut min_count = 0i32;
+        let mut min_index = 0usize;
+        for (idx, v) in control_regions.iter().enumerate() {
+            if *v < min {
+                min = *v;
+                min_count = 1;
+                min_index = idx;
+            } else if *v == min {
+                min_count += 1;
+            }
+        }
+
+        let choose_preferred = |cands: &[usize]| -> usize {
+            // Prefer `right`, then `left`, then `up`, then `down`.
+            for pref in [1usize, 3, 0, 2] {
+                if cands.contains(&pref) {
+                    return pref;
+                }
+            }
+            cands[0]
+        };
+
+        let grid_for_pruned = if min_count == 3 && min == 0 {
+            if control_regions[0] == 0 && control_regions[1] == 0 && control_regions[2] == 0 {
+                1
+            } else if control_regions[0] == 0 && control_regions[1] == 0 && control_regions[3] == 0
+            {
+                0
+            } else if control_regions[0] == 0 && control_regions[2] == 0 && control_regions[3] == 0
+            {
+                3
+            } else if control_regions[1] == 0 && control_regions[2] == 0 && control_regions[3] == 0
+            {
+                2
+            } else {
+                min_index
+            }
+        } else if min_count == 2 && min == 0 {
+            let mut cands: Vec<usize> = Vec::new();
+            for (idx, v) in control_regions.iter().enumerate() {
+                if *v == 0 {
+                    cands.push(idx);
+                }
+            }
+            choose_preferred(&cands)
+        } else if min_count == 4 && min == 0 {
+            choose_preferred(&[0, 1, 2, 3])
+        } else {
+            min_index
+        };
+
+        let cx = self.nodes[node_to_connect].center_x();
+        let cy = self.nodes[node_to_connect].center_y();
+        let cw = self.nodes[node_to_connect].half_w();
+        let ch = self.nodes[node_to_connect].half_h();
+        let pw = self.nodes[pruned_node].half_w();
+        let ph = self.nodes[pruned_node].half_h();
+        let l = Self::DEFAULT_EDGE_LENGTH;
+
+        match grid_for_pruned {
+            0 => self.nodes[pruned_node].set_center(cx, cy - ch - l - ph),
+            1 => self.nodes[pruned_node].set_center(cx + cw + l + pw, cy),
+            2 => self.nodes[pruned_node].set_center(cx, cy + ch + l + ph),
+            _ => self.nodes[pruned_node].set_center(cx - cw - l - pw, cy),
+        }
+    }
+
+    fn grow_tree_one_step(&mut self, repulsion_range: f64) {
+        let Some(step) = self.pruned_nodes_all.pop() else {
+            return;
+        };
+
+        for node_data in step {
+            let node_idx = node_data.node_idx;
+            let edge_idx = node_data.edge_idx;
+            let node_to_connect = if self.nodes[node_data.other_idx].active {
+                node_data.other_idx
+            } else {
+                let e = self.edges[edge_idx];
+                if self.nodes[e.a].active { e.a } else { e.b }
+            };
+
+            self.place_pruned_node(node_idx, node_to_connect, repulsion_range);
+            self.nodes[node_idx].active = true;
+            self.edges[edge_idx].active = true;
+        }
+
+        self.update_grid(repulsion_range);
     }
 
     /// Port of `layout-base` `Layout.findCenterOfTree(nodes)`.
@@ -523,10 +853,13 @@ impl SimGraph {
             current_x = (point.0 + Self::DEFAULT_COMPONENT_SEPERATION).floor();
         }
 
-        // Upstream `positionNodesRadially` applies a world-center translation here, but `doPostLayout()`
-        // later calls `transform(0,0)` which normalizes the graph to the origin. Relative coordinates
-        // are translation-invariant, so we skip the intermediate world-centering step.
-        let _ = point;
+        // Match upstream `positionNodesRadially` final world-centering pass (layout-base).
+        // This can affect floating-point drift and convergence in the subsequent spring embedder.
+        let dx = Self::WORLD_CENTER_X - point.0 / 2.0;
+        let dy = Self::WORLD_CENTER_Y - point.1 / 2.0;
+        for n in &mut self.nodes {
+            n.move_by(dx, dy);
+        }
     }
 
     fn run_spring_embedder(&mut self) {
@@ -540,31 +873,48 @@ impl SimGraph {
         let repulsion_constant = Self::DEFAULT_REPULSION_STRENGTH;
         let gravity_constant = Self::DEFAULT_GRAVITY_STRENGTH;
         let gravity_range_factor = Self::DEFAULT_GRAVITY_RANGE_FACTOR;
+        let repulsion_range = 2.0 * ideal_edge_length;
+        self.update_grid(repulsion_range);
 
-        let n = self.nodes.len() as f64;
+        let active_n = self.nodes.iter().filter(|n| n.active).count().max(1) as f64;
         let displacement_threshold_per_node = (3.0 * Self::DEFAULT_EDGE_LENGTH) / 100.0;
-        let total_displacement_threshold = displacement_threshold_per_node * n;
+        let total_displacement_threshold = displacement_threshold_per_node * active_n;
 
         // Non-incremental mode: coolingFactor starts at 1.0 for small graphs.
         let initial_cooling_factor = 1.0;
         let mut cooling_factor = initial_cooling_factor;
-        let max_iterations = Self::MAX_ITERATIONS.max((self.nodes.len() * 5) as usize);
+        let max_iterations = Self::MAX_ITERATIONS.max((active_n as usize * 5) as usize);
         let max_cooling_cycle = (max_iterations as f64) / (Self::CONVERGENCE_CHECK_PERIOD as f64);
         let final_temperature = (Self::CONVERGENCE_CHECK_PERIOD as f64) / (max_iterations as f64);
         let mut cooling_cycle = 0.0f64;
-        let cooling_adjuster = 1.0; // layoutQuality=proof leaves this at 1
+        // Mermaid (via `rendering-util/layout-algorithms/cose-bilkent/cytoscape-setup.ts`) uses
+        // `quality: 'proof'` for COSE-Bilkent.
+        let layout_quality = 2i32;
 
         let mut total_iterations = 0usize;
         let mut old_total_displacement = 0.0f64;
         let mut last_total_displacement = 0.0f64;
 
+        let mut is_tree_growing = false;
+        let mut is_growth_finished = false;
+        let mut grow_tree_iterations = 0usize;
+        let mut after_growth_iterations = 0usize;
+
         loop {
             total_iterations += 1;
-            if total_iterations == max_iterations {
-                break;
+
+            if total_iterations == max_iterations && !is_tree_growing && !is_growth_finished {
+                if !self.pruned_nodes_all.is_empty() {
+                    is_tree_growing = true;
+                } else {
+                    break;
+                }
             }
 
-            if total_iterations % Self::CONVERGENCE_CHECK_PERIOD == 0 {
+            if total_iterations % Self::CONVERGENCE_CHECK_PERIOD == 0
+                && !is_tree_growing
+                && !is_growth_finished
+            {
                 let oscilating = total_iterations > (max_iterations / 3)
                     && (last_total_displacement - old_total_displacement).abs() < 2.0;
                 let converged = last_total_displacement < total_displacement_threshold;
@@ -572,7 +922,11 @@ impl SimGraph {
                 old_total_displacement = last_total_displacement;
 
                 if converged || oscilating {
-                    break;
+                    if !self.pruned_nodes_all.is_empty() {
+                        is_tree_growing = true;
+                    } else {
+                        break;
+                    }
                 }
 
                 cooling_cycle += 1.0;
@@ -581,39 +935,78 @@ impl SimGraph {
                 let numerator = (100.0 * (initial_cooling_factor - final_temperature)).ln();
                 let denominator = max_cooling_cycle.ln().max(1e-9);
                 let power = numerator / denominator;
+                let cooling_adjuster = match layout_quality {
+                    0 => cooling_cycle,
+                    1 => cooling_cycle / 3.0,
+                    _ => 1.0,
+                };
                 let schedule = cooling_cycle.powf(power) / 100.0 * cooling_adjuster;
                 cooling_factor = (initial_cooling_factor - schedule).max(final_temperature);
+            }
+
+            if is_tree_growing {
+                if grow_tree_iterations % 10 == 0 {
+                    if !self.pruned_nodes_all.is_empty() {
+                        self.update_grid(repulsion_range);
+                        self.grow_tree_one_step(repulsion_range);
+                        self.update_grid(repulsion_range);
+                        cooling_factor = Self::DEFAULT_COOLING_FACTOR_INCREMENTAL;
+                    } else {
+                        is_tree_growing = false;
+                        is_growth_finished = true;
+                    }
+                }
+                grow_tree_iterations += 1;
+            }
+
+            if is_growth_finished {
+                let oscilating = total_iterations > (max_iterations / 3)
+                    && (last_total_displacement - old_total_displacement).abs() < 2.0;
+                let converged = last_total_displacement < total_displacement_threshold;
+                if converged || oscilating {
+                    break;
+                }
+
+                if after_growth_iterations % 10 == 0 {
+                    self.update_grid(repulsion_range);
+                }
+                cooling_factor = Self::DEFAULT_COOLING_FACTOR_INCREMENTAL
+                    * ((100.0 - (after_growth_iterations as f64)) / 100.0).max(0.0);
+                after_growth_iterations += 1;
             }
 
             let mut total_displacement = 0.0f64;
 
             // Spring forces
             for e in &self.edges {
+                if !e.active {
+                    continue;
+                }
                 let (a, b) = (e.a, e.b);
+                if !(self.nodes[a].active && self.nodes[b].active) {
+                    continue;
+                }
 
                 // Upstream `FDLayout.calcSpringForce` uses clipping points on the node rectangles
                 // (via `IGeometry.getIntersection`) so the "ideal edge length" applies between
                 // node borders rather than between node centers.
-                if rects_intersect(&self.nodes[a], &self.nodes[b]) {
+                let (target_x, target_y, source_x, source_y, overlapped) =
+                    rect_intersection_points(&self.nodes[b], &self.nodes[a]);
+                if overlapped {
                     continue;
                 }
-                let (ax, ay) = rect_clip_point_towards(&self.nodes[a], &self.nodes[b]);
-                let (bx, by) = rect_clip_point_towards(&self.nodes[b], &self.nodes[a]);
-                let mut lx = bx - ax;
-                let mut ly = by - ay;
+                let mut lx = target_x - source_x;
+                let mut ly = target_y - source_y;
 
-                if lx.abs() < 1e-9 {
-                    lx = 0.0;
-                }
-                if ly.abs() < 1e-9 {
-                    ly = 0.0;
-                }
+                // Mirror `LEdge.updateLength(...)` from `layout-base`: very small components are
+                // snapped to their sign (or 0 if the component is 0).
                 if lx.abs() < 1.0 {
                     lx = lx.signum();
                 }
                 if ly.abs() < 1.0 {
                     ly = ly.signum();
                 }
+
                 let len = (lx * lx + ly * ly).sqrt();
                 if len == 0.0 {
                     continue;
@@ -629,7 +1022,26 @@ impl SimGraph {
 
             // Repulsion forces (O(n^2); sufficient for current fixture sizes).
             for i in 0..self.nodes.len() {
+                if !self.nodes[i].active {
+                    continue;
+                }
                 for j in (i + 1)..self.nodes.len() {
+                    if !self.nodes[j].active {
+                        continue;
+                    }
+                    // Mirror the FR-grid variant's effective cutoff:
+                    // only compute repulsion for pairs that are within `repulsionRange` along both axes.
+                    //
+                    // `distanceX = abs(cxA-cxB) - (wA/2 + wB/2)` (same for Y).
+                    // (See `FDLayout.calculateRepulsionForceOfANode` in `layout-base`.)
+                    let a = &self.nodes[i];
+                    let b = &self.nodes[j];
+                    let dist_x = (a.center_x() - b.center_x()).abs() - (a.half_w() + b.half_w());
+                    let dist_y = (a.center_y() - b.center_y()).abs() - (a.half_h() + b.half_h());
+                    if dist_x > repulsion_range || dist_y > repulsion_range {
+                        continue;
+                    }
+
                     let (rfx, rfy) = self.calc_repulsion_force(i, j, repulsion_constant);
                     self.nodes[i].repulsion_fx += rfx;
                     self.nodes[i].repulsion_fy += rfy;
@@ -643,6 +1055,9 @@ impl SimGraph {
 
             // Move nodes
             for n in &mut self.nodes {
+                if !n.active {
+                    continue;
+                }
                 let dx = cooling_factor * (n.spring_fx + n.repulsion_fx + n.gravitation_fx);
                 let dy = cooling_factor * (n.spring_fy + n.repulsion_fy + n.gravitation_fy);
 
@@ -684,17 +1099,9 @@ impl SimGraph {
             (-0.5 * repulsion_fx, -0.5 * repulsion_fy)
         } else {
             // Use clipping points (approx) to account for node dimensions.
-            let (ax, ay) = rect_clip_point_towards(na, nb);
-            let (bx, by) = rect_clip_point_towards(nb, na);
+            let (ax, ay, bx, by, _overlapped) = rect_intersection_points(na, nb);
             let mut dx = bx - ax;
             let mut dy = by - ay;
-
-            if dx.abs() < 1e-9 {
-                dx = 0.0;
-            }
-            if dy.abs() < 1e-9 {
-                dy = 0.0;
-            }
 
             if dx.abs() < Self::MIN_REPULSION_DIST {
                 dx = dx.signum() * Self::MIN_REPULSION_DIST;
@@ -725,6 +1132,9 @@ impl SimGraph {
         let mut min_left = f64::INFINITY;
         let mut min_top = f64::INFINITY;
         for n in &self.nodes {
+            if !n.active {
+                continue;
+            }
             min_left = min_left.min(n.left);
             min_top = min_top.min(n.top);
         }
@@ -739,6 +1149,9 @@ impl SimGraph {
         let dx = -left_top_x;
         let dy = -left_top_y;
         for n in &mut self.nodes {
+            if !n.active {
+                continue;
+            }
             n.left += dx;
             n.top += dy;
         }
@@ -749,29 +1162,189 @@ fn rects_intersect(a: &SimNode, b: &SimNode) -> bool {
     a.left < b.right() && a.right() > b.left && a.top < b.bottom() && a.bottom() > b.top
 }
 
-fn rect_clip_point_towards(a: &SimNode, b: &SimNode) -> (f64, f64) {
-    let ax = a.center_x();
-    let ay = a.center_y();
-    let bx = b.center_x();
-    let by = b.center_y();
-    let dx = bx - ax;
-    let dy = by - ay;
+/// Port of `layout-base` `IGeometry.getIntersection2(rectA, rectB, result)`.
+///
+/// Returns `(ax, ay, bx, by, overlapped)` where `(ax,ay)` is rectA's clip point and `(bx,by)` is
+/// rectB's clip point on the line segment between their centers.
+fn rect_intersection_points(a: &SimNode, b: &SimNode) -> (f64, f64, f64, f64, bool) {
+    let p1x = a.center_x();
+    let p1y = a.center_y();
+    let p2x = b.center_x();
+    let p2y = b.center_y();
 
-    // If centers coincide, use the center (should be avoided by overlap handling).
-    if dx == 0.0 && dy == 0.0 {
-        return (ax, ay);
+    if rects_intersect(a, b) {
+        return (p1x, p1y, p2x, p2y, true);
     }
 
-    let mut t_x = f64::INFINITY;
-    let mut t_y = f64::INFINITY;
-    if dx != 0.0 {
-        t_x = (a.half_w() / dx.abs()).max(0.0);
+    let top_left_ax = a.left;
+    let top_left_ay = a.top;
+    let top_right_ax = a.right();
+    let bottom_left_ax = a.left;
+    let bottom_left_ay = a.bottom();
+    let bottom_right_ax = a.right();
+    let half_width_a = a.half_w();
+    let half_height_a = a.half_h();
+
+    let top_left_bx = b.left;
+    let top_left_by = b.top;
+    let top_right_bx = b.right();
+    let bottom_left_bx = b.left;
+    let bottom_left_by = b.bottom();
+    let bottom_right_bx = b.right();
+    let half_width_b = b.half_w();
+    let half_height_b = b.half_h();
+
+    // line is vertical
+    if p1x == p2x {
+        if p1y > p2y {
+            return (p1x, top_left_ay, p2x, bottom_left_by, false);
+        } else if p1y < p2y {
+            return (p1x, bottom_left_ay, p2x, top_left_by, false);
+        }
+        return (p1x, p1y, p2x, p2y, false);
     }
-    if dy != 0.0 {
-        t_y = (a.half_h() / dy.abs()).max(0.0);
+
+    // line is horizontal
+    if p1y == p2y {
+        if p1x > p2x {
+            return (top_left_ax, p1y, top_right_bx, p2y, false);
+        } else if p1x < p2x {
+            return (top_right_ax, p1y, top_left_bx, p2y, false);
+        }
+        return (p1x, p1y, p2x, p2y, false);
     }
-    let t = t_x.min(t_y);
-    (ax + t * dx, ay + t * dy)
+
+    let slope_a = a.height / a.width;
+    let slope_b = b.height / b.width;
+    let slope_prime = (p2y - p1y) / (p2x - p1x);
+
+    let mut ax = 0.0;
+    let mut ay = 0.0;
+    let mut bx = 0.0;
+    let mut by = 0.0;
+    let mut clip_point_a_found = false;
+    let mut clip_point_b_found = false;
+
+    // determine whether clipping point is the corner of nodeA
+    if (-slope_a) == slope_prime {
+        if p1x > p2x {
+            ax = bottom_left_ax;
+            ay = bottom_left_ay;
+            clip_point_a_found = true;
+        } else {
+            ax = top_right_ax;
+            ay = top_left_ay;
+            clip_point_a_found = true;
+        }
+    } else if slope_a == slope_prime {
+        if p1x > p2x {
+            ax = top_left_ax;
+            ay = top_left_ay;
+            clip_point_a_found = true;
+        } else {
+            ax = bottom_right_ax;
+            ay = bottom_left_ay;
+            clip_point_a_found = true;
+        }
+    }
+
+    // determine whether clipping point is the corner of nodeB
+    if (-slope_b) == slope_prime {
+        if p2x > p1x {
+            bx = bottom_left_bx;
+            by = bottom_left_by;
+            clip_point_b_found = true;
+        } else {
+            bx = top_right_bx;
+            by = top_left_by;
+            clip_point_b_found = true;
+        }
+    } else if slope_b == slope_prime {
+        if p2x > p1x {
+            bx = top_left_bx;
+            by = top_left_by;
+            clip_point_b_found = true;
+        } else {
+            bx = bottom_right_bx;
+            by = bottom_left_by;
+            clip_point_b_found = true;
+        }
+    }
+
+    if clip_point_a_found && clip_point_b_found {
+        return (ax, ay, bx, by, false);
+    }
+
+    let get_cardinal_direction = |slope: f64, slope_prime: f64, line: i32| -> i32 {
+        if slope > slope_prime {
+            line
+        } else {
+            1 + (line % 4)
+        }
+    };
+
+    let cardinal_direction_a: i32;
+    let cardinal_direction_b: i32;
+    if p1x > p2x {
+        if p1y > p2y {
+            cardinal_direction_a = get_cardinal_direction(slope_a, slope_prime, 4);
+            cardinal_direction_b = get_cardinal_direction(slope_b, slope_prime, 2);
+        } else {
+            cardinal_direction_a = get_cardinal_direction(-slope_a, slope_prime, 3);
+            cardinal_direction_b = get_cardinal_direction(-slope_b, slope_prime, 1);
+        }
+    } else if p1y > p2y {
+        cardinal_direction_a = get_cardinal_direction(-slope_a, slope_prime, 1);
+        cardinal_direction_b = get_cardinal_direction(-slope_b, slope_prime, 3);
+    } else {
+        cardinal_direction_a = get_cardinal_direction(slope_a, slope_prime, 2);
+        cardinal_direction_b = get_cardinal_direction(slope_b, slope_prime, 4);
+    }
+
+    // calculate clipping Point if it is not found before
+    if !clip_point_a_found {
+        match cardinal_direction_a {
+            1 => {
+                ay = top_left_ay;
+                ax = p1x + (-half_height_a) / slope_prime;
+            }
+            2 => {
+                ax = bottom_right_ax;
+                ay = p1y + half_width_a * slope_prime;
+            }
+            3 => {
+                ay = bottom_left_ay;
+                ax = p1x + half_height_a / slope_prime;
+            }
+            _ => {
+                ax = bottom_left_ax;
+                ay = p1y + (-half_width_a) * slope_prime;
+            }
+        }
+    }
+
+    if !clip_point_b_found {
+        match cardinal_direction_b {
+            1 => {
+                by = top_left_by;
+                bx = p2x + (-half_height_b) / slope_prime;
+            }
+            2 => {
+                bx = bottom_right_bx;
+                by = p2y + half_width_b * slope_prime;
+            }
+            3 => {
+                by = bottom_left_by;
+                bx = p2x + half_height_b / slope_prime;
+            }
+            _ => {
+                bx = bottom_left_bx;
+                by = p2y + (-half_width_b) * slope_prime;
+            }
+        }
+    }
+
+    (ax, ay, bx, by, false)
 }
 
 fn calc_separation_amount(a: &SimNode, b: &SimNode, separation_buffer: f64) -> (f64, f64) {
