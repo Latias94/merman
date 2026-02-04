@@ -77,6 +77,10 @@ Recent progress (2026-02-04): the headless emitted-SVG bbox pass now understands
 (`translate(...)`, `scale(...)`, and `matrix(a 0 0 d e f)`), improving the fidelity of our `svg.getBBox()` approximation
 used for root `viewBox` / `max-width` calculations.
 
+Recent progress (2026-02-04): `manatee` FCoSE spectral preprocessing now mirrors cytoscape-fcose `aux.connectComponents(...)`
+more closely by connecting disconnected components both at the top level and within each compound scope (by inserting
+dummy nodes into the transformed BFS graph). This improves determinism for sparse or compound-heavy graphs.
+
 Recent progress (2026-02-04): `manatee` now supports compound nodes (group parent metadata) and applies a small
 root-compound separation step in FCoSE to reduce Architecture group overlap.
 

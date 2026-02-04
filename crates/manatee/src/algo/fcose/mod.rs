@@ -183,11 +183,14 @@ impl SimGraph {
     const DEFAULT_REPULSION_STRENGTH: f64 = 4500.0;
     const DEFAULT_GRAVITY_STRENGTH: f64 = 0.25; // cytoscape-fcose default `gravity`
     const DEFAULT_GRAVITY_RANGE_FACTOR: f64 = 3.8; // cytoscape-fcose default `gravityRange`
+    const DEFAULT_COOLING_FACTOR_INCREMENTAL: f64 = 0.3; // layout-base `FDLayoutConstants.DEFAULT_COOLING_FACTOR_INCREMENTAL`
+    const FINAL_TEMPERATURE: f64 = 0.04; // cose-base `CoSELayout.initSpringEmbedder()`
     const GRID_CALCULATION_CHECK_PERIOD: usize = 10; // layout-base `FDLayoutConstants.GRID_CALCULATION_CHECK_PERIOD`
 
     const MAX_ITERATIONS: usize = 2500;
     const CONVERGENCE_CHECK_PERIOD: usize = 100;
     const MAX_NODE_DISPLACEMENT: f64 = 300.0;
+    const MAX_NODE_DISPLACEMENT_INCREMENTAL: f64 = 100.0; // layout-base `FDLayoutConstants.MAX_NODE_DISPLACEMENT_INCREMENTAL`
     fn from_graph(graph: &Graph) -> Self {
         let mut nodes: Vec<SimNode> = Vec::with_capacity(graph.nodes.len());
         let mut id_to_idx: std::collections::BTreeMap<String, usize> =
@@ -252,8 +255,8 @@ impl SimGraph {
                 Self::DEFAULT_SPRING_STRENGTH
             };
             edges.push(SimEdge {
-                a,
-                b,
+                a: u,
+                b: v,
                 ideal_length: ideal.max(1.0),
                 elasticity,
             });
@@ -325,8 +328,12 @@ impl SimGraph {
         // FCoSE performs a spectral initialization when `randomize=true` (Mermaid defaults to
         // `randomize: true`). The upstream JS implementation relies on `Math.random`; in Rust we
         // make this explicit and deterministic via `random_seed`.
-        let spectral_applied =
-            spectral::apply_spectral_start_positions(&mut self.nodes, &self.edges, random_seed);
+        let spectral_applied = spectral::apply_spectral_start_positions(
+            &mut self.nodes,
+            &self.edges,
+            &self.compound_parent,
+            random_seed,
+        );
 
         let gravity_constant = Self::DEFAULT_GRAVITY_STRENGTH;
 
@@ -376,11 +383,18 @@ impl SimGraph {
         let displacement_threshold_per_node = (3.0 * default_edge_length) / 100.0;
         let total_displacement_threshold = displacement_threshold_per_node * n;
 
-        let initial_cooling_factor = 1.0;
+        // cytoscape-fcose postprocessing (`cose.js`) forces CoSE incremental mode on by setting
+        // `LayoutConstants.DEFAULT_INCREMENTAL = true`. This means we start with the incremental
+        // cooling factor and max displacement values, even when `randomize=true`.
+        //
+        // This is a major contributor to parity-root `viewBox/max-width` stability for sparse
+        // graphs (notably the Architecture fixtures).
+        let initial_cooling_factor = Self::DEFAULT_COOLING_FACTOR_INCREMENTAL;
         let mut cooling_factor = initial_cooling_factor;
+        let max_node_displacement = Self::MAX_NODE_DISPLACEMENT_INCREMENTAL;
         let max_iterations = Self::MAX_ITERATIONS.max((self.nodes.len() * 5) as usize);
         let max_cooling_cycle = (max_iterations as f64) / (Self::CONVERGENCE_CHECK_PERIOD as f64);
-        let final_temperature = (Self::CONVERGENCE_CHECK_PERIOD as f64) / (max_iterations as f64);
+        let final_temperature = Self::FINAL_TEMPERATURE;
         let mut cooling_cycle = 0.0f64;
 
         let mut total_iterations = 0usize;
@@ -539,7 +553,7 @@ impl SimGraph {
             // handling that *updates those displacements* (rather than hard-projecting node
             // positions after the move). Hard projection tends to over-separate constrained nodes
             // and can noticeably inflate root viewBox/max-width in parity-root mode.
-            let max_d = cooling_factor * Self::MAX_NODE_DISPLACEMENT;
+            let max_d = cooling_factor * max_node_displacement;
             let mut disps: Vec<(f64, f64)> = Vec::with_capacity(self.nodes.len());
             for n in &self.nodes {
                 let mut mdx = cooling_factor * (n.spring_fx + n.repulsion_fx);

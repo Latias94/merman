@@ -15,6 +15,7 @@ const MAX_POWER_ITERATIONS: usize = 10_000;
 pub(super) fn apply_spectral_start_positions(
     nodes: &mut [SimNode],
     edges: &[SimEdge],
+    compound_parent: &std::collections::BTreeMap<String, Option<String>>,
     random_seed: u64,
 ) -> bool {
     if nodes.is_empty() {
@@ -24,7 +25,7 @@ pub(super) fn apply_spectral_start_positions(
     let mut rng = XorShift64Star::new(random_seed);
 
     let n_real = nodes.len();
-    let (adjacency, node_size) = build_transformed_adjacency(n_real, edges);
+    let (adjacency, node_size) = build_transformed_adjacency(nodes, edges, compound_parent);
     if node_size <= 1 {
         return false;
     }
@@ -119,7 +120,19 @@ pub(super) fn apply_spectral_start_positions(
     true
 }
 
-fn build_transformed_adjacency(n_real: usize, edges: &[SimEdge]) -> (Vec<Vec<usize>>, usize) {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum ElemKey {
+    Leaf(usize),
+    Compound(usize),
+}
+
+fn build_transformed_adjacency(
+    nodes: &[SimNode],
+    edges: &[SimEdge],
+    compound_parent: &std::collections::BTreeMap<String, Option<String>>,
+) -> (Vec<Vec<usize>>, usize) {
+    let n_real = nodes.len();
+
     let mut adjacency: Vec<Vec<usize>> = vec![Vec::new(); n_real];
     for e in edges {
         if e.a < n_real && e.b < n_real {
@@ -132,27 +145,170 @@ fn build_transformed_adjacency(n_real: usize, edges: &[SimEdge]) -> (Vec<Vec<usi
         neigh.dedup();
     }
 
-    let components = connected_components(&adjacency);
-    if components.len() <= 1 {
-        return (adjacency, n_real);
+    let leaf_deg: Vec<usize> = adjacency.iter().map(|v| v.len()).collect();
+
+    // Build a stable compound index so we can model auxiliary.connectComponents-like behavior in
+    // the transformed (leaf + dummy) graph used by spectral sampling.
+    let mut compound_ids: Vec<String> = compound_parent.keys().cloned().collect();
+    compound_ids.sort();
+    let mut compound_id_to_ix: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    for (ix, id) in compound_ids.iter().enumerate() {
+        compound_id_to_ix.insert(id.clone(), ix);
     }
 
-    // Mimic `aux.connectComponents(...)` by inserting a dummy node connected to one minimum-degree
-    // representative per component. This makes the transformed graph connected for BFS sampling.
-    let dummy_idx = adjacency.len();
-    adjacency.push(Vec::new());
-    for comp in components {
-        let mut best = comp[0];
-        let mut best_deg = adjacency[best].len();
-        for &v in &comp {
-            let deg = adjacency[v].len();
-            if deg < best_deg || (deg == best_deg && v < best) {
-                best = v;
+    let mut compound_parent_ix: Vec<Option<usize>> = vec![None; compound_ids.len()];
+    for (id, parent) in compound_parent {
+        let Some(&ix) = compound_id_to_ix.get(id.as_str()) else {
+            continue;
+        };
+        let parent_ix = parent
+            .as_deref()
+            .and_then(|p| compound_id_to_ix.get(p).copied());
+        compound_parent_ix[ix] = parent_ix;
+    }
+
+    let mut leaf_chain: Vec<Vec<usize>> = vec![Vec::new(); n_real];
+    let mut leaf_immediate_parent: Vec<Option<usize>> = vec![None; n_real];
+    let mut leaf_root_compound: Vec<Option<usize>> = vec![None; n_real];
+    for i in 0..n_real {
+        let mut cur = nodes[i].parent.as_deref();
+        while let Some(cid) = cur {
+            let Some(&cix) = compound_id_to_ix.get(cid) else {
+                break;
+            };
+            leaf_chain[i].push(cix);
+            cur = compound_parent.get(cid).and_then(|p| p.as_deref());
+        }
+        leaf_immediate_parent[i] = leaf_chain[i].first().copied();
+        leaf_root_compound[i] = leaf_chain[i].last().copied();
+    }
+
+    // Track which compounds are actually referenced by any node so we don't treat unrelated
+    // compound definitions as layout elements.
+    let mut compound_used: Vec<bool> = vec![false; compound_ids.len()];
+    for chain in &leaf_chain {
+        for &cix in chain {
+            compound_used[cix] = true;
+        }
+    }
+
+    let mut compound_desc_leaves: Vec<Vec<usize>> = vec![Vec::new(); compound_ids.len()];
+    for (leaf, chain) in leaf_chain.iter().enumerate() {
+        for &cix in chain {
+            compound_desc_leaves[cix].push(leaf);
+        }
+    }
+
+    let mut compound_repr_leaf: Vec<Option<usize>> = vec![None; compound_ids.len()];
+    for cix in 0..compound_ids.len() {
+        let desc = &compound_desc_leaves[cix];
+        if desc.is_empty() {
+            continue;
+        }
+        let mut best = desc[0];
+        let mut best_deg = leaf_deg[best];
+        for &leaf in desc {
+            let deg = leaf_deg[leaf];
+            if deg < best_deg || (deg == best_deg && leaf < best) {
+                best = leaf;
                 best_deg = deg;
             }
         }
-        adjacency[dummy_idx].push(best);
-        adjacency[best].push(dummy_idx);
+        compound_repr_leaf[cix] = Some(best);
+    }
+
+    let elem_degree = |e: ElemKey| -> usize {
+        match e {
+            ElemKey::Leaf(i) => leaf_deg.get(i).copied().unwrap_or(0),
+            // In upstream Cytoscape, compound nodes do not have direct incident edges.
+            ElemKey::Compound(_) => 0,
+        }
+    };
+
+    let elem_repr_leaf = |e: ElemKey| -> Option<usize> {
+        match e {
+            ElemKey::Leaf(i) => Some(i),
+            ElemKey::Compound(cix) => compound_repr_leaf.get(cix).copied().flatten(),
+        }
+    };
+
+    // Top-level connectComponents: connect root compounds (and any parentless leaves) via a dummy
+    // node so BFS sampling can traverse a connected transformed graph.
+    {
+        let mut top_level: Vec<ElemKey> = Vec::new();
+        for cix in 0..compound_ids.len() {
+            if !compound_used[cix] {
+                continue;
+            }
+            if compound_parent_ix[cix].is_none() {
+                top_level.push(ElemKey::Compound(cix));
+            }
+        }
+        for i in 0..n_real {
+            if leaf_immediate_parent[i].is_none() {
+                top_level.push(ElemKey::Leaf(i));
+            }
+        }
+        top_level.sort();
+        top_level.dedup();
+
+        add_dummy_for_scope(
+            &mut adjacency,
+            edges,
+            &top_level,
+            |leaf| {
+                Some(
+                    leaf_root_compound[leaf]
+                        .map(ElemKey::Compound)
+                        .unwrap_or(ElemKey::Leaf(leaf)),
+                )
+            },
+            &elem_degree,
+            &elem_repr_leaf,
+        );
+    }
+
+    // Compound-level connectComponents: mimic spectral.js' per-parent `connectComponents(...)` to
+    // avoid disconnected descendant subgraphs skewing the spectral initialization.
+    for scope_cix in 0..compound_ids.len() {
+        if !compound_used[scope_cix] {
+            continue;
+        }
+        if compound_desc_leaves[scope_cix].is_empty() {
+            continue;
+        }
+
+        let mut in_scope: Vec<bool> = vec![false; n_real];
+        for &leaf in &compound_desc_leaves[scope_cix] {
+            in_scope[leaf] = true;
+        }
+
+        let mut top_most: Vec<ElemKey> = Vec::new();
+        for &leaf in &compound_desc_leaves[scope_cix] {
+            let Some(t) =
+                map_leaf_to_scope_top_most(scope_cix, leaf, &leaf_immediate_parent, &leaf_chain)
+            else {
+                continue;
+            };
+            top_most.push(t);
+        }
+        top_most.sort();
+        top_most.dedup();
+
+        add_dummy_for_scope(
+            &mut adjacency,
+            edges,
+            &top_most,
+            |leaf| {
+                if !in_scope.get(leaf).copied().unwrap_or(false) {
+                    return None;
+                }
+                map_leaf_to_scope_top_most(scope_cix, leaf, &leaf_immediate_parent, &leaf_chain)
+            },
+            &elem_degree,
+            &elem_repr_leaf,
+        );
     }
 
     for neigh in &mut adjacency {
@@ -162,6 +318,106 @@ fn build_transformed_adjacency(n_real: usize, edges: &[SimEdge]) -> (Vec<Vec<usi
 
     let node_size = adjacency.len();
     (adjacency, node_size)
+}
+
+fn map_leaf_to_scope_top_most(
+    scope_cix: usize,
+    leaf: usize,
+    leaf_immediate_parent: &[Option<usize>],
+    leaf_chain: &[Vec<usize>],
+) -> Option<ElemKey> {
+    if leaf_immediate_parent.get(leaf).copied().flatten() == Some(scope_cix) {
+        return Some(ElemKey::Leaf(leaf));
+    }
+
+    let chain = leaf_chain.get(leaf)?;
+    let mut pos: Option<usize> = None;
+    for (i, &cix) in chain.iter().enumerate() {
+        if cix == scope_cix {
+            pos = Some(i);
+            break;
+        }
+    }
+    let pos = pos?;
+    if pos == 0 {
+        // Immediate parent handled above; treat as a direct leaf child.
+        return Some(ElemKey::Leaf(leaf));
+    }
+    Some(ElemKey::Compound(chain[pos - 1]))
+}
+
+fn add_dummy_for_scope(
+    transformed_adj: &mut Vec<Vec<usize>>,
+    edges: &[SimEdge],
+    top_most: &[ElemKey],
+    mut map_leaf_to_elem: impl FnMut(usize) -> Option<ElemKey>,
+    elem_degree: &impl Fn(ElemKey) -> usize,
+    elem_repr_leaf: &impl Fn(ElemKey) -> Option<usize>,
+) {
+    if top_most.len() <= 1 {
+        return;
+    }
+
+    let mut elem_to_idx: std::collections::BTreeMap<ElemKey, usize> =
+        std::collections::BTreeMap::new();
+    for (i, &e) in top_most.iter().enumerate() {
+        elem_to_idx.insert(e, i);
+    }
+
+    let mut elem_adj: Vec<Vec<usize>> = vec![Vec::new(); top_most.len()];
+    for e in edges {
+        let Some(a) = map_leaf_to_elem(e.a) else {
+            continue;
+        };
+        let Some(b) = map_leaf_to_elem(e.b) else {
+            continue;
+        };
+        if a == b {
+            continue;
+        }
+        let Some(&ia) = elem_to_idx.get(&a) else {
+            continue;
+        };
+        let Some(&ib) = elem_to_idx.get(&b) else {
+            continue;
+        };
+        elem_adj[ia].push(ib);
+        elem_adj[ib].push(ia);
+    }
+    for neigh in &mut elem_adj {
+        neigh.sort_unstable();
+        neigh.dedup();
+    }
+
+    let components = connected_components(&elem_adj);
+    if components.len() <= 1 {
+        return;
+    }
+
+    let dummy_idx = transformed_adj.len();
+    transformed_adj.push(Vec::new());
+
+    for comp in components {
+        let mut best = top_most[comp[0]];
+        let mut best_deg = elem_degree(best);
+        for &i in &comp {
+            let e = top_most[i];
+            let deg = elem_degree(e);
+            if deg < best_deg || (deg == best_deg && e < best) {
+                best = e;
+                best_deg = deg;
+            }
+        }
+
+        let Some(rep_leaf) = elem_repr_leaf(best) else {
+            continue;
+        };
+        if rep_leaf >= transformed_adj.len() {
+            continue;
+        }
+        transformed_adj[dummy_idx].push(rep_leaf);
+        transformed_adj[rep_leaf].push(dummy_idx);
+    }
 }
 
 fn connected_components(adjacency: &[Vec<usize>]) -> Vec<Vec<usize>> {
