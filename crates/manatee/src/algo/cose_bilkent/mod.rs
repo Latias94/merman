@@ -866,6 +866,11 @@ impl SimGraph {
             return;
         }
 
+        // Mermaid's Cytoscape COSE-Bilkent applies gravitational forces only when the graph is
+        // disconnected (`calculateNodesToApplyGravitationTo()` collects nodes from non-connected
+        // graphs). For a connected mindmap tree this list is empty, so gravity is a no-op.
+        let nodes_with_gravity = self.nodes_to_apply_gravitation();
+
         // These are instance fields in upstream `FDLayout`/`CoSELayout`.
         let ideal_edge_length = Self::DEFAULT_EDGE_LENGTH.max(10.0);
         let spring_constant = Self::DEFAULT_SPRING_STRENGTH;
@@ -1049,8 +1054,27 @@ impl SimGraph {
                 }
             }
 
-            // Gravitation is applied only to disconnected components upstream. Keep it as a no-op for now.
-            let _ = (gravity_constant, gravity_range_factor);
+            // Gravitation (only for disconnected graphs).
+            if !nodes_with_gravity.is_empty() {
+                if let Some((owner_center_x, owner_center_y, estimated_size)) =
+                    self.gravitation_context(gravity_range_factor)
+                {
+                    for &idx in &nodes_with_gravity {
+                        let n = &mut self.nodes[idx];
+                        if !n.active {
+                            continue;
+                        }
+                        let distance_x = n.center_x() - owner_center_x;
+                        let distance_y = n.center_y() - owner_center_y;
+                        let abs_distance_x = distance_x.abs() + n.width / 2.0;
+                        let abs_distance_y = distance_y.abs() + n.height / 2.0;
+                        if abs_distance_x > estimated_size || abs_distance_y > estimated_size {
+                            n.gravitation_fx = -gravity_constant * distance_x;
+                            n.gravitation_fy = -gravity_constant * distance_y;
+                        }
+                    }
+                }
+            }
 
             // Move nodes
             for n in &mut self.nodes {
@@ -1154,6 +1178,99 @@ impl SimGraph {
             n.left += dx;
             n.top += dy;
         }
+    }
+
+    fn nodes_to_apply_gravitation(&self) -> Vec<usize> {
+        // Port of COSE `calculateNodesToApplyGravitationTo()` for a flat graph: apply gravity to
+        // all nodes only if the graph is disconnected.
+        let mut first_active: Option<usize> = None;
+        for (i, n) in self.nodes.iter().enumerate() {
+            if n.active {
+                first_active = Some(i);
+                break;
+            }
+        }
+        let Some(start) = first_active else {
+            return Vec::new();
+        };
+
+        let mut stack: Vec<usize> = vec![start];
+        let mut seen: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+        seen.insert(start);
+
+        while let Some(u) = stack.pop() {
+            for &ei in &self.nodes[u].edges {
+                if !self.edges[ei].active {
+                    continue;
+                }
+                let v = self.edge_other_end(ei, u);
+                if !self.nodes[v].active {
+                    continue;
+                }
+                if seen.insert(v) {
+                    stack.push(v);
+                }
+            }
+        }
+
+        let active_count = self.nodes.iter().filter(|n| n.active).count();
+        if seen.len() == active_count {
+            Vec::new()
+        } else {
+            (0..self.nodes.len())
+                .filter(|&i| self.nodes[i].active)
+                .collect()
+        }
+    }
+
+    fn gravitation_context(&self, gravity_range_factor: f64) -> Option<(f64, f64, f64)> {
+        // Port of `FDLayout.calcGravitationalForce` context:
+        // - owner center = bbox center of the root graph
+        // - estimatedSize = root.estimatedSize * gravityRangeFactor
+        let mut min_left = f64::INFINITY;
+        let mut max_right = f64::NEG_INFINITY;
+        let mut min_top = f64::INFINITY;
+        let mut max_bottom = f64::NEG_INFINITY;
+
+        let mut size_sum = 0.0f64;
+        let mut active_n = 0usize;
+
+        for n in &self.nodes {
+            if !n.active {
+                continue;
+            }
+            active_n += 1;
+            min_left = min_left.min(n.left);
+            max_right = max_right.max(n.right());
+            min_top = min_top.min(n.top);
+            max_bottom = max_bottom.max(n.bottom());
+            size_sum += (n.width + n.height) / 2.0;
+        }
+
+        if active_n == 0
+            || !(min_left.is_finite()
+                && max_right.is_finite()
+                && min_top.is_finite()
+                && max_bottom.is_finite())
+        {
+            return None;
+        }
+
+        let owner_center_x = (max_right + min_left) / 2.0;
+        let owner_center_y = (max_bottom + min_top) / 2.0;
+
+        let estimated_size_base = if size_sum == 0.0 {
+            // `LayoutConstants.EMPTY_COMPOUND_NODE_SIZE`
+            40.0
+        } else {
+            size_sum / (active_n as f64).sqrt()
+        };
+        let estimated_size = estimated_size_base * gravity_range_factor;
+        if !estimated_size.is_finite() {
+            return None;
+        }
+
+        Some((owner_center_x, owner_center_y, estimated_size))
     }
 }
 
