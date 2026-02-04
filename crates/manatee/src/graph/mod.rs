@@ -27,6 +27,10 @@ impl Graph {
 #[derive(Debug, Clone)]
 pub struct Node {
     pub id: String,
+    /// Optional parent (compound node) id, mirroring Cytoscape's compound node model.
+    ///
+    /// This is currently used as structural metadata for higher-fidelity FCoSE parity work.
+    pub parent: Option<String>,
     pub width: f64,
     pub height: f64,
     /// Optional initial position (center), mirroring Cytoscape's `position` field.

@@ -112,6 +112,8 @@ Recent progress (2026-02-04): Architecture Stage B now infers missing junction `
 incident non-junction neighbors (unique group or untied top frequency) and derives `{group}` separation gaps
 from Mermaid's `architecture.padding` rather than icon size. A tuned extra gap is applied for junction↔junction
 edges that also use `{group}` endpoints to better approximate Cytoscape compound repulsion in parity-root mode.
+Recent progress (2026-02-04): `manatee::Node` now carries optional `parent` metadata (compound node id) as
+groundwork for a future compound-aware FCoSE port (see ADR-0058).
 
 Recent progress (2026-02-02): started a Rust port scaffold of Cytoscape FCoSE in `manatee` (edge
 ideal lengths + alignment/relative constraints) and wired it into Architecture headless layout

@@ -200,6 +200,7 @@ pub fn layout_mindmap_diagram(
                 .iter()
                 .map(|n| manatee::Node {
                     id: n.id.clone(),
+                    parent: None,
                     width: n.width,
                     height: n.height,
                     x: n.x,

@@ -886,6 +886,11 @@ pub fn layout_architecture_diagram(
                 .iter()
                 .map(|n| manatee::Node {
                     id: n.id.clone(),
+                    parent: node_group
+                        .get(n.id.as_str())
+                        .copied()
+                        .flatten()
+                        .map(|g| g.to_string()),
                     width: n.width,
                     height: n.height,
                     x: n.x + n.width / 2.0,
