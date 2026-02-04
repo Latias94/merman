@@ -124,6 +124,21 @@ Next:
   deterministically when generating upstream SVG baselines so they are reproducible across runs.
   See `docs/adr/0055-upstream-svg-determinism-for-cytoscape-layouts.md`.
 
+## Debugging Root Viewport Deltas (parity-root)
+
+When `--dom-mode parity-root` fails due to root `viewBox` / `style max-width` differences, use the
+delta debugger to pinpoint which elements drifted (services, junctions, group rects):
+
+```
+cargo run -p xtask -- debug-architecture-delta --fixture upstream_architecture_docs_group_edges
+```
+
+Outputs:
+
+- `target/debug/architecture-delta/<fixture>.upstream.svg`
+- `target/debug/architecture-delta/<fixture>.local.svg`
+- `target/debug/architecture-delta/<fixture>.md` (tabular per-element deltas)
+
 - Some built-in Architecture icons include internal `id` attributes that can differ between Mermaid
   runs (e.g. `IconifyId...`). In parity mode, `xtask` normalizes those icon-internal IDs for DOM
   comparison to avoid flaky fixture updates.
