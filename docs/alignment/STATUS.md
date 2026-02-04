@@ -73,6 +73,10 @@ mismatches out of 475 upstream SVG baselines (83.6% passing). Current parity-roo
 Recent progress (2026-02-04): Architecture XY edge label transforms now emit literal newlines (XML-normalized to
 spaces) rather than `&#10;` entities, restoring 0-mismatch DOM parity for `upstream_architecture_cypress_edge_labels_normalized`.
 
+Recent progress (2026-02-04): the headless emitted-SVG bbox pass now understands simple axis-aligned transforms
+(`translate(...)`, `scale(...)`, and `matrix(a 0 0 d e f)`), improving the fidelity of our `svg.getBBox()` approximation
+used for root `viewBox` / `max-width` calculations.
+
 Recent progress (2026-02-04): `manatee` now supports compound nodes (group parent metadata) and applies a small
 root-compound separation step in FCoSE to reduce Architecture group overlap.
 

@@ -13485,6 +13485,55 @@ fn svg_emitted_bounds_from_svg_inner(
     svg: &str,
     mut dbg: Option<&mut SvgEmittedBoundsDebug>,
 ) -> Option<Bounds> {
+    #[derive(Clone, Copy, Debug)]
+    struct SimpleTransform {
+        sx: f64,
+        sy: f64,
+        tx: f64,
+        ty: f64,
+    }
+
+    impl SimpleTransform {
+        fn identity() -> Self {
+            Self {
+                sx: 1.0,
+                sy: 1.0,
+                tx: 0.0,
+                ty: 0.0,
+            }
+        }
+
+        fn mul(self, rhs: Self) -> Self {
+            // Axis-aligned affine multiplication:
+            // [sx 0 tx]   [sx2 0 tx2]   [sx*sx2 0 sx*tx2+tx]
+            // [0 sy ty] * [0 sy2 ty2] = [0 sy*sy2 sy*ty2+ty]
+            // [0  0  1]   [0  0  1 ]    [0   0       1     ]
+            Self {
+                sx: self.sx * rhs.sx,
+                sy: self.sy * rhs.sy,
+                tx: self.sx * rhs.tx + self.tx,
+                ty: self.sy * rhs.ty + self.ty,
+            }
+        }
+
+        fn apply_point(self, x: f64, y: f64) -> (f64, f64) {
+            (self.sx * x + self.tx, self.sy * y + self.ty)
+        }
+
+        fn apply_bounds(self, b: Bounds) -> Bounds {
+            let (x0, y0) = self.apply_point(b.min_x, b.min_y);
+            let (x1, y1) = self.apply_point(b.min_x, b.max_y);
+            let (x2, y2) = self.apply_point(b.max_x, b.min_y);
+            let (x3, y3) = self.apply_point(b.max_x, b.max_y);
+            Bounds {
+                min_x: x0.min(x1).min(x2).min(x3),
+                min_y: y0.min(y1).min(y2).min(y3),
+                max_x: x0.max(x1).max(x2).max(x3),
+                max_y: y0.max(y1).max(y2).max(y3),
+            }
+        }
+    }
+
     fn parse_f64(raw: &str) -> Option<f64> {
         let s = raw.trim().trim_end_matches("px").trim();
         s.parse::<f64>().ok()
@@ -13517,17 +13566,85 @@ fn svg_emitted_bounds_from_svg_inner(
         None
     }
 
-    fn parse_translate(transform: &str) -> Option<(f64, f64)> {
-        let t = transform.trim();
-        let start = t.find("translate(")? + "translate(".len();
-        let rest = &t[start..];
-        let end = rest.find(')')?;
-        let inner = &rest[..end];
-        let inner = inner.replace(',', " ");
-        let mut parts = inner.split_whitespace();
-        let x = parse_f64(parts.next()?)?;
-        let y = parts.next().and_then(parse_f64).unwrap_or(0.0);
-        Some((x, y))
+    fn parse_transform(transform: &str) -> Option<SimpleTransform> {
+        // Minimal parser for Mermaid-emitted transforms used by root bbox computations.
+        // We only accept axis-aligned transforms (translate/scale/matrix with b=c=0) to avoid
+        // injecting systematic bbox drift for rotated/skewed elements.
+        let mut t = SimpleTransform::identity();
+        let mut s = transform.trim();
+
+        while !s.is_empty() {
+            let ws = s
+                .chars()
+                .take_while(|c| c.is_whitespace())
+                .map(|c| c.len_utf8())
+                .sum::<usize>();
+            s = &s[ws..];
+            if s.is_empty() {
+                break;
+            }
+
+            let Some(paren) = s.find('(') else {
+                break;
+            };
+            let name = s[..paren].trim();
+            let rest = &s[paren + 1..];
+            let Some(end) = rest.find(')') else {
+                break;
+            };
+            let inner = rest[..end].replace(',', " ");
+            let mut parts = inner.split_whitespace().filter_map(parse_f64);
+
+            let op = match name {
+                "translate" => {
+                    let x = parts.next().unwrap_or(0.0);
+                    let y = parts.next().unwrap_or(0.0);
+                    SimpleTransform {
+                        sx: 1.0,
+                        sy: 1.0,
+                        tx: x,
+                        ty: y,
+                    }
+                }
+                "scale" => {
+                    let sx = parts.next().unwrap_or(1.0);
+                    let sy = parts.next().unwrap_or(sx);
+                    SimpleTransform {
+                        sx,
+                        sy,
+                        tx: 0.0,
+                        ty: 0.0,
+                    }
+                }
+                "matrix" => {
+                    // matrix(a b c d e f)
+                    let a = parts.next().unwrap_or(1.0);
+                    let b = parts.next().unwrap_or(0.0);
+                    let c = parts.next().unwrap_or(0.0);
+                    let d = parts.next().unwrap_or(1.0);
+                    let e = parts.next().unwrap_or(0.0);
+                    let f = parts.next().unwrap_or(0.0);
+                    if b.abs() > 1e-9 || c.abs() > 1e-9 {
+                        return None;
+                    }
+                    SimpleTransform {
+                        sx: a,
+                        sy: d,
+                        tx: e,
+                        ty: f,
+                    }
+                }
+                _ => SimpleTransform::identity(),
+            };
+
+            // SVG transform lists apply right-to-left to points, which corresponds to multiplying
+            // matrices in the textual left-to-right order.
+            t = t.mul(op);
+
+            s = &rest[end + 1..];
+        }
+
+        Some(t)
     }
 
     fn include_rect(bounds: &mut Option<Bounds>, min_x: f64, min_y: f64, max_x: f64, max_y: f64) {
@@ -13609,23 +13726,19 @@ fn svg_emitted_bounds_from_svg_inner(
         }
     }
 
-    fn include_xywh(bounds: &mut Option<Bounds>, x: f64, y: f64, w: f64, h: f64) {
-        include_rect(bounds, x, y, x + w, y + h);
-    }
-
-    fn include_path_d(bounds: &mut Option<Bounds>, d: &str, dx: f64, dy: f64) {
+    fn include_path_d(bounds: &mut Option<Bounds>, d: &str, tf: SimpleTransform) {
         if let Some(pb) = svg_path_bounds_from_d(d) {
-            include_rect(
-                bounds,
-                pb.min_x + dx,
-                pb.min_y + dy,
-                pb.max_x + dx,
-                pb.max_y + dy,
-            );
+            let b = tf.apply_bounds(Bounds {
+                min_x: pb.min_x,
+                min_y: pb.min_y,
+                max_x: pb.max_x,
+                max_y: pb.max_y,
+            });
+            include_rect(bounds, b.min_x, b.min_y, b.max_x, b.max_y);
         }
     }
 
-    fn include_points(bounds: &mut Option<Bounds>, points: &str, dx: f64, dy: f64) {
+    fn include_points(bounds: &mut Option<Bounds>, points: &str, tf: SimpleTransform) {
         let mut min_x = f64::INFINITY;
         let mut min_y = f64::INFINITY;
         let mut max_x = f64::NEG_INFINITY;
@@ -13644,14 +13757,20 @@ fn svg_emitted_bounds_from_svg_inner(
             max_y = max_y.max(y);
         }
         if have {
-            include_rect(bounds, min_x + dx, min_y + dy, max_x + dx, max_y + dy);
+            let b = tf.apply_bounds(Bounds {
+                min_x,
+                min_y,
+                max_x,
+                max_y,
+            });
+            include_rect(bounds, b.min_x, b.min_y, b.max_x, b.max_y);
         }
     }
 
     let mut bounds: Option<Bounds> = None;
     let mut in_defs = false;
-    let mut translate_stack: Vec<(f64, f64)> = Vec::new();
-    let (mut cur_tx, mut cur_ty) = (0.0f64, 0.0f64);
+    let mut tf_stack: Vec<SimpleTransform> = Vec::new();
+    let mut cur_tf = SimpleTransform::identity();
 
     let mut i = 0usize;
     while i < svg.len() {
@@ -13699,12 +13818,10 @@ fn svg_emitted_bounds_from_svg_inner(
             match tag {
                 "defs" => in_defs = false,
                 "g" => {
-                    if let Some((ptx, pty)) = translate_stack.pop() {
-                        cur_tx = ptx;
-                        cur_ty = pty;
+                    if let Some(prev) = tf_stack.pop() {
+                        cur_tf = prev;
                     } else {
-                        cur_tx = 0.0;
-                        cur_ty = 0.0;
+                        cur_tf = SimpleTransform::identity();
                     }
                 }
                 _ => {}
@@ -13730,28 +13847,20 @@ fn svg_emitted_bounds_from_svg_inner(
             in_defs = true;
         }
 
-        let (mut el_tx, mut el_ty) = (0.0f64, 0.0f64);
-        if let Some(t) = attr_value(attrs, "transform") {
-            if let Some((x, y)) = parse_translate(t) {
-                el_tx = x;
-                el_ty = y;
-            }
-        }
-        let eff_tx = cur_tx + el_tx;
-        let eff_ty = cur_ty + el_ty;
+        let el_tf = attr_value(attrs, "transform")
+            .and_then(parse_transform)
+            .unwrap_or_else(SimpleTransform::identity);
+        let eff_tf = cur_tf.mul(el_tf);
 
         if tag == "g" {
-            translate_stack.push((cur_tx, cur_ty));
-            cur_tx = eff_tx;
-            cur_ty = eff_ty;
+            tf_stack.push(cur_tf);
+            cur_tf = eff_tf;
             if self_closing {
                 // Balance a self-closing group.
-                if let Some((ptx, pty)) = translate_stack.pop() {
-                    cur_tx = ptx;
-                    cur_ty = pty;
+                if let Some(prev) = tf_stack.pop() {
+                    cur_tf = prev;
                 } else {
-                    cur_tx = 0.0;
-                    cur_ty = 0.0;
+                    cur_tf = SimpleTransform::identity();
                 }
             }
             i = gt + 1;
@@ -13761,130 +13870,112 @@ fn svg_emitted_bounds_from_svg_inner(
         if !in_defs {
             match tag {
                 "rect" => {
-                    let x = attr_value(attrs, "x").and_then(parse_f64).unwrap_or(0.0) + eff_tx;
-                    let y = attr_value(attrs, "y").and_then(parse_f64).unwrap_or(0.0) + eff_ty;
+                    let x = attr_value(attrs, "x").and_then(parse_f64).unwrap_or(0.0);
+                    let y = attr_value(attrs, "y").and_then(parse_f64).unwrap_or(0.0);
                     let w = attr_value(attrs, "width")
                         .and_then(parse_f64)
                         .unwrap_or(0.0);
                     let h = attr_value(attrs, "height")
                         .and_then(parse_f64)
                         .unwrap_or(0.0);
+                    let b = eff_tf.apply_bounds(Bounds {
+                        min_x: x,
+                        min_y: y,
+                        max_x: x + w,
+                        max_y: y + h,
+                    });
                     if w != 0.0 || h != 0.0 {
-                        maybe_record_dbg(
-                            &mut dbg,
-                            tag,
-                            attrs,
-                            Bounds {
-                                min_x: x,
-                                min_y: y,
-                                max_x: x + w,
-                                max_y: y + h,
-                            },
-                        );
+                        maybe_record_dbg(&mut dbg, tag, attrs, b.clone());
                     }
-                    include_xywh(&mut bounds, x, y, w, h);
+                    include_rect(&mut bounds, b.min_x, b.min_y, b.max_x, b.max_y);
                 }
                 "circle" => {
-                    let cx = attr_value(attrs, "cx").and_then(parse_f64).unwrap_or(0.0) + eff_tx;
-                    let cy = attr_value(attrs, "cy").and_then(parse_f64).unwrap_or(0.0) + eff_ty;
+                    let cx = attr_value(attrs, "cx").and_then(parse_f64).unwrap_or(0.0);
+                    let cy = attr_value(attrs, "cy").and_then(parse_f64).unwrap_or(0.0);
                     let r = attr_value(attrs, "r").and_then(parse_f64).unwrap_or(0.0);
+                    let b = eff_tf.apply_bounds(Bounds {
+                        min_x: cx - r,
+                        min_y: cy - r,
+                        max_x: cx + r,
+                        max_y: cy + r,
+                    });
                     if r != 0.0 {
-                        maybe_record_dbg(
-                            &mut dbg,
-                            tag,
-                            attrs,
-                            Bounds {
-                                min_x: cx - r,
-                                min_y: cy - r,
-                                max_x: cx + r,
-                                max_y: cy + r,
-                            },
-                        );
+                        maybe_record_dbg(&mut dbg, tag, attrs, b.clone());
                     }
-                    include_rect(&mut bounds, cx - r, cy - r, cx + r, cy + r);
+                    include_rect(&mut bounds, b.min_x, b.min_y, b.max_x, b.max_y);
                 }
                 "ellipse" => {
-                    let cx = attr_value(attrs, "cx").and_then(parse_f64).unwrap_or(0.0) + eff_tx;
-                    let cy = attr_value(attrs, "cy").and_then(parse_f64).unwrap_or(0.0) + eff_ty;
+                    let cx = attr_value(attrs, "cx").and_then(parse_f64).unwrap_or(0.0);
+                    let cy = attr_value(attrs, "cy").and_then(parse_f64).unwrap_or(0.0);
                     let rx = attr_value(attrs, "rx").and_then(parse_f64).unwrap_or(0.0);
                     let ry = attr_value(attrs, "ry").and_then(parse_f64).unwrap_or(0.0);
+                    let b = eff_tf.apply_bounds(Bounds {
+                        min_x: cx - rx,
+                        min_y: cy - ry,
+                        max_x: cx + rx,
+                        max_y: cy + ry,
+                    });
                     if rx != 0.0 || ry != 0.0 {
-                        maybe_record_dbg(
-                            &mut dbg,
-                            tag,
-                            attrs,
-                            Bounds {
-                                min_x: cx - rx,
-                                min_y: cy - ry,
-                                max_x: cx + rx,
-                                max_y: cy + ry,
-                            },
-                        );
+                        maybe_record_dbg(&mut dbg, tag, attrs, b.clone());
                     }
-                    include_rect(&mut bounds, cx - rx, cy - ry, cx + rx, cy + ry);
+                    include_rect(&mut bounds, b.min_x, b.min_y, b.max_x, b.max_y);
                 }
                 "line" => {
-                    let x1 = attr_value(attrs, "x1").and_then(parse_f64).unwrap_or(0.0) + eff_tx;
-                    let y1 = attr_value(attrs, "y1").and_then(parse_f64).unwrap_or(0.0) + eff_ty;
-                    let x2 = attr_value(attrs, "x2").and_then(parse_f64).unwrap_or(0.0) + eff_tx;
-                    let y2 = attr_value(attrs, "y2").and_then(parse_f64).unwrap_or(0.0) + eff_ty;
-                    maybe_record_dbg(
-                        &mut dbg,
-                        tag,
-                        attrs,
-                        Bounds {
-                            min_x: x1.min(x2),
-                            min_y: y1.min(y2),
-                            max_x: x1.max(x2),
-                            max_y: y1.max(y2),
-                        },
-                    );
-                    include_rect(&mut bounds, x1.min(x2), y1.min(y2), x1.max(x2), y1.max(y2));
+                    let x1 = attr_value(attrs, "x1").and_then(parse_f64).unwrap_or(0.0);
+                    let y1 = attr_value(attrs, "y1").and_then(parse_f64).unwrap_or(0.0);
+                    let x2 = attr_value(attrs, "x2").and_then(parse_f64).unwrap_or(0.0);
+                    let y2 = attr_value(attrs, "y2").and_then(parse_f64).unwrap_or(0.0);
+                    let (tx1, ty1) = eff_tf.apply_point(x1, y1);
+                    let (tx2, ty2) = eff_tf.apply_point(x2, y2);
+                    let b = Bounds {
+                        min_x: tx1.min(tx2),
+                        min_y: ty1.min(ty2),
+                        max_x: tx1.max(tx2),
+                        max_y: ty1.max(ty2),
+                    };
+                    maybe_record_dbg(&mut dbg, tag, attrs, b.clone());
+                    include_rect(&mut bounds, b.min_x, b.min_y, b.max_x, b.max_y);
                 }
                 "path" => {
                     if let Some(d) = attr_value(attrs, "d") {
                         if let Some(pb) = svg_path_bounds_from_d(d) {
-                            let b0 = Bounds {
-                                min_x: pb.min_x + eff_tx,
-                                min_y: pb.min_y + eff_ty,
-                                max_x: pb.max_x + eff_tx,
-                                max_y: pb.max_y + eff_ty,
-                            };
+                            let b0 = eff_tf.apply_bounds(Bounds {
+                                min_x: pb.min_x,
+                                min_y: pb.min_y,
+                                max_x: pb.max_x,
+                                max_y: pb.max_y,
+                            });
                             maybe_record_dbg(&mut dbg, tag, attrs, b0.clone());
                             include_rect(&mut bounds, b0.min_x, b0.min_y, b0.max_x, b0.max_y);
                         } else {
-                            include_path_d(&mut bounds, d, eff_tx, eff_ty);
+                            include_path_d(&mut bounds, d, eff_tf);
                         }
                     }
                 }
                 "polygon" | "polyline" => {
                     if let Some(pts) = attr_value(attrs, "points") {
-                        include_points(&mut bounds, pts, eff_tx, eff_ty);
+                        include_points(&mut bounds, pts, eff_tf);
                     }
                 }
                 "foreignObject" => {
-                    let x = attr_value(attrs, "x").and_then(parse_f64).unwrap_or(0.0) + eff_tx;
-                    let y = attr_value(attrs, "y").and_then(parse_f64).unwrap_or(0.0) + eff_ty;
+                    let x = attr_value(attrs, "x").and_then(parse_f64).unwrap_or(0.0);
+                    let y = attr_value(attrs, "y").and_then(parse_f64).unwrap_or(0.0);
                     let w = attr_value(attrs, "width")
                         .and_then(parse_f64)
                         .unwrap_or(0.0);
                     let h = attr_value(attrs, "height")
                         .and_then(parse_f64)
                         .unwrap_or(0.0);
+                    let b = eff_tf.apply_bounds(Bounds {
+                        min_x: x,
+                        min_y: y,
+                        max_x: x + w,
+                        max_y: y + h,
+                    });
                     if w != 0.0 || h != 0.0 {
-                        maybe_record_dbg(
-                            &mut dbg,
-                            tag,
-                            attrs,
-                            Bounds {
-                                min_x: x,
-                                min_y: y,
-                                max_x: x + w,
-                                max_y: y + h,
-                            },
-                        );
+                        maybe_record_dbg(&mut dbg, tag, attrs, b.clone());
                     }
-                    include_xywh(&mut bounds, x, y, w, h);
+                    include_rect(&mut bounds, b.min_x, b.min_y, b.max_x, b.max_y);
                 }
                 _ => {}
             }
