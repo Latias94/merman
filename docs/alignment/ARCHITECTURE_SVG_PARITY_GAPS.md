@@ -139,6 +139,18 @@ Outputs:
 - `target/debug/architecture-delta/<fixture>.local.svg`
 - `target/debug/architecture-delta/<fixture>.md` (tabular per-element deltas)
 
+## Getting a Global Summary (All Fixtures)
+
+To get a quick, sortable overview of viewport and translation drift across *all* Architecture fixtures:
+
+```
+cargo run -p xtask -- summarize-architecture-deltas
+```
+
+This writes:
+
+- `target/debug/architecture-delta/architecture-delta-summary.md`
+
 - Some built-in Architecture icons include internal `id` attributes that can differ between Mermaid
   runs (e.g. `IconifyId...`). In parity mode, `xtask` normalizes those icon-internal IDs for DOM
   comparison to avoid flaky fixture updates.

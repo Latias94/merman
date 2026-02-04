@@ -81,6 +81,7 @@ fn print_help(topic: Option<&str>) {
     println!("  debug-svg-bbox");
     println!("  debug-svg-data-points");
     println!("  debug-architecture-delta");
+    println!("  summarize-architecture-deltas");
     println!("  compare-dagre-layout");
     println!("  analyze-state-fixture");
     println!("  debug-mindmap-svg-positions");
@@ -167,6 +168,7 @@ fn main() -> Result<(), XtaskError> {
         "debug-svg-bbox" => debug_svg_bbox(args.collect()),
         "debug-svg-data-points" => debug_svg_data_points(args.collect()),
         "debug-architecture-delta" => debug_architecture_delta(args.collect()),
+        "summarize-architecture-deltas" => summarize_architecture_deltas(args.collect()),
         "compare-dagre-layout" => compare_dagre_layout(args.collect()),
         "analyze-state-fixture" => state_svgdump::analyze_state_fixture(args.collect()),
         "compare-sequence-svgs" => compare_sequence_svgs(args.collect()),
@@ -2981,6 +2983,390 @@ fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskError> {
         up_groups.len().min(lo_groups.len())
     );
 
+    Ok(())
+}
+
+fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), XtaskError> {
+    let mut out_dir: Option<PathBuf> = None;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--out" => {
+                i += 1;
+                out_dir = args.get(i).map(PathBuf::from);
+            }
+            "--help" | "-h" => return Err(XtaskError::Usage),
+            _ => return Err(XtaskError::Usage),
+        }
+        i += 1;
+    }
+
+    fn parse_viewbox(v: &str) -> Option<(f64, f64, f64, f64)> {
+        let nums: Vec<f64> = v
+            .split_whitespace()
+            .filter_map(|s| s.trim().parse::<f64>().ok())
+            .collect();
+        if nums.len() != 4 {
+            return None;
+        }
+        Some((nums[0], nums[1], nums[2], nums[3]))
+    }
+
+    fn parse_translate(transform: &str) -> Option<(f64, f64)> {
+        let s = transform.trim();
+        let s = s.strip_prefix("translate(")?;
+        let s = s.strip_suffix(')')?;
+        let parts: Vec<&str> = s
+            .split(|c: char| c == ',' || c.is_whitespace())
+            .filter(|t: &&str| !t.trim().is_empty())
+            .collect();
+        let x = parts.get(0)?.trim().parse::<f64>().ok()?;
+        let y = parts
+            .get(1)
+            .copied()
+            .and_then(|v| v.trim().parse::<f64>().ok())?;
+        Some((x, y))
+    }
+
+    fn parse_max_width_px(style: &str) -> Option<f64> {
+        static RE: OnceLock<Regex> = OnceLock::new();
+        let re = RE.get_or_init(|| Regex::new(r#"max-width:\s*([0-9.]+)px"#).unwrap());
+        let cap = re.captures(style)?;
+        cap.get(1)?.as_str().trim().parse::<f64>().ok()
+    }
+
+    fn has_class_token(class: &str, token: &str) -> bool {
+        class.split_whitespace().any(|t| t == token)
+    }
+
+    fn sanitize_svg_id(stem: &str) -> String {
+        stem.chars()
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+                    ch
+                } else {
+                    '_'
+                }
+            })
+            .collect()
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct Pt {
+        x: f64,
+        y: f64,
+    }
+
+    fn extract_arch_summary(
+        svg: &str,
+    ) -> Result<
+        (
+            Option<(f64, f64, f64, f64)>,
+            Option<f64>,
+            BTreeMap<String, Pt>,
+            BTreeMap<String, Pt>,
+        ),
+        XtaskError,
+    > {
+        let doc = roxmltree::Document::parse(svg)
+            .map_err(|e| XtaskError::SvgCompareFailed(format!("failed to parse svg xml: {e}")))?;
+        let root = doc.root_element();
+        let viewbox = root.attribute("viewBox").and_then(parse_viewbox);
+        let max_width = root.attribute("style").and_then(parse_max_width_px);
+
+        let mut services: BTreeMap<String, Pt> = BTreeMap::new();
+        let mut junctions: BTreeMap<String, Pt> = BTreeMap::new();
+
+        for n in doc.descendants().filter(|n| n.is_element()) {
+            let tag = n.tag_name().name();
+            let Some(id) = n.attribute("id") else {
+                continue;
+            };
+
+            if tag == "g" && id.starts_with("service-") {
+                if n.attribute("class")
+                    .is_some_and(|c| has_class_token(c, "architecture-service"))
+                {
+                    if let Some((x, y)) = n.attribute("transform").and_then(parse_translate) {
+                        services.insert(id.to_string(), Pt { x, y });
+                    }
+                }
+            }
+
+            if tag == "g" && id.starts_with("junction-") {
+                if n.attribute("class")
+                    .is_some_and(|c| has_class_token(c, "architecture-junction"))
+                {
+                    if let Some((x, y)) = n.attribute("transform").and_then(parse_translate) {
+                        junctions.insert(id.to_string(), Pt { x, y });
+                    }
+                }
+            }
+        }
+
+        Ok((viewbox, max_width, services, junctions))
+    }
+
+    fn bbox_center_from_top_left_pts(pts: impl Iterator<Item = Pt>, size: f64) -> Option<Pt> {
+        let mut min_x = f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+
+        let mut any = false;
+        for p in pts {
+            any = true;
+            min_x = min_x.min(p.x);
+            min_y = min_y.min(p.y);
+            max_x = max_x.max(p.x + size);
+            max_y = max_y.max(p.y + size);
+        }
+        if !any {
+            return None;
+        }
+        Some(Pt {
+            x: (min_x + max_x) / 2.0,
+            y: (min_y + max_y) / 2.0,
+        })
+    }
+
+    fn mean_delta_by_id(up: &BTreeMap<String, Pt>, lo: &BTreeMap<String, Pt>) -> Option<Pt> {
+        let mut sum_x = 0.0;
+        let mut sum_y = 0.0;
+        let mut n = 0usize;
+        for (id, up_p) in up {
+            let Some(lo_p) = lo.get(id) else {
+                continue;
+            };
+            sum_x += lo_p.x - up_p.x;
+            sum_y += lo_p.y - up_p.y;
+            n += 1;
+        }
+        if n == 0 {
+            return None;
+        }
+        Some(Pt {
+            x: sum_x / (n as f64),
+            y: sum_y / (n as f64),
+        })
+    }
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+    let fixtures_dir = workspace_root.join("fixtures").join("architecture");
+    let upstream_dir = workspace_root
+        .join("fixtures")
+        .join("upstream-svgs")
+        .join("architecture");
+    let out_dir = out_dir.unwrap_or_else(|| {
+        workspace_root
+            .join("target")
+            .join("debug")
+            .join("architecture-delta")
+    });
+
+    fs::create_dir_all(&out_dir).map_err(|source| XtaskError::WriteFile {
+        path: out_dir.display().to_string(),
+        source,
+    })?;
+
+    let mut fixtures: Vec<PathBuf> = Vec::new();
+    let entries = fs::read_dir(&fixtures_dir).map_err(|e| {
+        XtaskError::SvgCompareFailed(format!(
+            "failed to list fixtures directory {}: {e}",
+            fixtures_dir.display()
+        ))
+    })?;
+    for entry in entries {
+        let entry = entry.map_err(|e| {
+            XtaskError::SvgCompareFailed(format!(
+                "failed to read fixtures directory {}: {e}",
+                fixtures_dir.display()
+            ))
+        })?;
+        let path = entry.path();
+        if path.is_file() && path.extension().is_some_and(|e| e == "mmd") {
+            fixtures.push(path);
+        }
+    }
+    fixtures.sort();
+
+    let engine = merman::Engine::new();
+    let layout_opts = svg_compare_layout_opts();
+
+    #[derive(Debug, Clone)]
+    struct Row {
+        stem: String,
+        up_vb: Option<(f64, f64, f64, f64)>,
+        lo_vb: Option<(f64, f64, f64, f64)>,
+        up_mw: Option<f64>,
+        lo_mw: Option<f64>,
+        service_center_dx: Option<f64>,
+        service_center_dy: Option<f64>,
+        service_mean_dx: Option<f64>,
+        service_mean_dy: Option<f64>,
+        junction_mean_dx: Option<f64>,
+        junction_mean_dy: Option<f64>,
+    }
+
+    let mut rows: Vec<Row> = Vec::new();
+
+    for mmd_path in fixtures {
+        let Some(stem) = mmd_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_string())
+        else {
+            continue;
+        };
+
+        let upstream_path = upstream_dir.join(format!("{stem}.svg"));
+        if !upstream_path.is_file() {
+            continue;
+        }
+
+        let upstream_svg =
+            fs::read_to_string(&upstream_path).map_err(|source| XtaskError::ReadFile {
+                path: upstream_path.display().to_string(),
+                source,
+            })?;
+
+        let text = fs::read_to_string(&mmd_path).map_err(|source| XtaskError::ReadFile {
+            path: mmd_path.display().to_string(),
+            source,
+        })?;
+
+        let parsed = futures::executor::block_on(
+            engine.parse_diagram(&text, merman::ParseOptions::default()),
+        )
+        .map_err(|e| {
+            XtaskError::SvgCompareFailed(format!("parse failed for {}: {e}", mmd_path.display()))
+        })?
+        .ok_or_else(|| {
+            XtaskError::SvgCompareFailed(format!("no diagram detected in {}", mmd_path.display()))
+        })?;
+
+        let layouted = merman_render::layout_parsed(&parsed, &layout_opts).map_err(|e| {
+            XtaskError::SvgCompareFailed(format!("layout failed for {}: {e}", mmd_path.display()))
+        })?;
+
+        let merman_render::model::LayoutDiagram::ArchitectureDiagram(layout) = &layouted.layout
+        else {
+            continue;
+        };
+
+        let svg_opts = merman_render::svg::SvgRenderOptions {
+            diagram_id: Some(sanitize_svg_id(&stem)),
+            ..Default::default()
+        };
+        let local_svg = merman_render::svg::render_architecture_diagram_svg(
+            layout,
+            &layouted.semantic,
+            &layouted.meta.effective_config,
+            &svg_opts,
+        )
+        .map_err(|e| {
+            XtaskError::SvgCompareFailed(format!("render failed for {}: {e}", mmd_path.display()))
+        })?;
+
+        let (up_vb, up_mw, up_services, up_junctions) = extract_arch_summary(&upstream_svg)?;
+        let (lo_vb, lo_mw, lo_services, lo_junctions) = extract_arch_summary(&local_svg)?;
+
+        let icon_size = 80.0;
+        let up_center = bbox_center_from_top_left_pts(up_services.values().copied(), icon_size);
+        let lo_center = bbox_center_from_top_left_pts(lo_services.values().copied(), icon_size);
+        let (service_center_dx, service_center_dy) = match (up_center, lo_center) {
+            (Some(up), Some(lo)) => (Some(lo.x - up.x), Some(lo.y - up.y)),
+            _ => (None, None),
+        };
+
+        let svc_mean = mean_delta_by_id(&up_services, &lo_services);
+        let junc_mean = mean_delta_by_id(&up_junctions, &lo_junctions);
+
+        rows.push(Row {
+            stem,
+            up_vb,
+            lo_vb,
+            up_mw,
+            lo_mw,
+            service_center_dx,
+            service_center_dy,
+            service_mean_dx: svc_mean.map(|p| p.x),
+            service_mean_dy: svc_mean.map(|p| p.y),
+            junction_mean_dx: junc_mean.map(|p| p.x),
+            junction_mean_dy: junc_mean.map(|p| p.y),
+        });
+    }
+
+    rows.sort_by(|a, b| a.stem.cmp(&b.stem));
+
+    let out_report = out_dir.join("architecture-delta-summary.md");
+    let mut md = String::new();
+    let _ = writeln!(&mut md, "# Architecture Delta Summary\n");
+    let _ = writeln!(
+        &mut md,
+        "Generated by `xtask summarize-architecture-deltas`.\n"
+    );
+    let _ = writeln!(
+        &mut md,
+        "| fixture | up viewBox | lo viewBox | up max-width | lo max-width | svc bbox center dx | svc bbox center dy | svc mean dx | svc mean dy | junc mean dx | junc mean dy |"
+    );
+    let _ = writeln!(
+        &mut md,
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|"
+    );
+
+    for r in rows {
+        let vb_up = r
+            .up_vb
+            .map(|v| format!("{:.3} {:.3} {:.3} {:.3}", v.0, v.1, v.2, v.3))
+            .unwrap_or_else(|| "<missing>".to_string());
+        let vb_lo = r
+            .lo_vb
+            .map(|v| format!("{:.3} {:.3} {:.3} {:.3}", v.0, v.1, v.2, v.3))
+            .unwrap_or_else(|| "<missing>".to_string());
+
+        let _ = writeln!(
+            &mut md,
+            "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` |",
+            r.stem,
+            vb_up,
+            vb_lo,
+            r.up_mw
+                .map(|v| format!("{:.3}", v))
+                .unwrap_or_else(|| "<missing>".to_string()),
+            r.lo_mw
+                .map(|v| format!("{:.3}", v))
+                .unwrap_or_else(|| "<missing>".to_string()),
+            r.service_center_dx
+                .map(|v| format!("{:.3}", v))
+                .unwrap_or_else(|| "<n/a>".to_string()),
+            r.service_center_dy
+                .map(|v| format!("{:.3}", v))
+                .unwrap_or_else(|| "<n/a>".to_string()),
+            r.service_mean_dx
+                .map(|v| format!("{:.3}", v))
+                .unwrap_or_else(|| "<n/a>".to_string()),
+            r.service_mean_dy
+                .map(|v| format!("{:.3}", v))
+                .unwrap_or_else(|| "<n/a>".to_string()),
+            r.junction_mean_dx
+                .map(|v| format!("{:.3}", v))
+                .unwrap_or_else(|| "<n/a>".to_string()),
+            r.junction_mean_dy
+                .map(|v| format!("{:.3}", v))
+                .unwrap_or_else(|| "<n/a>".to_string()),
+        );
+    }
+
+    fs::write(&out_report, &md).map_err(|source| XtaskError::WriteFile {
+        path: out_report.display().to_string(),
+        source,
+    })?;
+
+    println!("report: {}", out_report.display());
     Ok(())
 }
 
