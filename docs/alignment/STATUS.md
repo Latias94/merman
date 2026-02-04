@@ -74,8 +74,8 @@ Recent progress (2026-02-04): Architecture XY edge label transforms now emit lit
 spaces) rather than `&#10;` entities, restoring 0-mismatch DOM parity for `upstream_architecture_cypress_edge_labels_normalized`.
 
 Recent progress (2026-02-04): the headless emitted-SVG bbox pass now understands simple axis-aligned transforms
-(`translate(...)`, `scale(...)`, and `matrix(a 0 0 d e f)`), improving the fidelity of our `svg.getBBox()` approximation
-used for root `viewBox` / `max-width` calculations.
+(`translate(...)`, `scale(...)`, `rotate(...)`, `skewX(...)`, `skewY(...)`, and `matrix(a b c d e f)`), improving the
+fidelity of our `svg.getBBox()` approximation used for root `viewBox` / `max-width` calculations.
 As of 2026-02-04, the bbox pass also treats nested `<svg>` viewports as axis-aligned transforms (x/y + viewBox scaling),
 which is required for icon-heavy diagrams that embed built-in SVG icons.
 

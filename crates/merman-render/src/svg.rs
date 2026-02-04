@@ -9171,6 +9171,9 @@ pub fn render_gitgraph_diagram_svg(
     const THEME_COLOR_LIMIT: i64 = 8;
     const PX: f64 = 4.0;
     const PY: f64 = 2.0;
+    const VIEWBOX_PLACEHOLDER: &str = "__MERMAID_VIEWBOX__";
+    const MAX_WIDTH_PLACEHOLDER: &str = "__MERMAID_MAX_WIDTH__";
+    const VIEWBOX_PADDING_PX: f64 = 8.0;
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
@@ -9203,13 +9206,8 @@ pub fn render_gitgraph_diagram_svg(
     let mut out = String::new();
     let _ = write!(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{min_x} {min_y} {w} {h}" role="graphics-document document" aria-roledescription="gitGraph""#,
+        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {MAX_WIDTH_PLACEHOLDER}px; background-color: white;" viewBox="{VIEWBOX_PLACEHOLDER}" role="graphics-document document" aria-roledescription="gitGraph""#,
         diagram_id_esc = diagram_id_esc,
-        max_w = fmt(vb_w),
-        min_x = fmt(vb_min_x),
-        min_y = fmt(vb_min_y),
-        w = fmt(vb_w),
-        h = fmt(vb_h),
     );
 
     if acc_descr.is_some() {
@@ -9708,6 +9706,31 @@ pub fn render_gitgraph_diagram_svg(
     out.push_str("</g>");
 
     out.push_str("</svg>\n");
+
+    // GitGraph renders rotated commit labels (e.g. `rotate(-45, ...)`) that are not represented
+    // in the precomputed layout bounds. Mirror Mermaid's `setupGraphViewbox(svg.getBBox() + pad)`
+    // by computing a headless SVG bbox and patching the root viewBox/max-width.
+    let b = svg_emitted_bounds_from_svg(&out).unwrap_or(Bounds {
+        min_x: vb_min_x,
+        min_y: vb_min_y,
+        max_x: vb_min_x + vb_w,
+        max_y: vb_min_y + vb_h,
+    });
+
+    let vb_min_x = b.min_x - VIEWBOX_PADDING_PX;
+    let vb_min_y = b.min_y - VIEWBOX_PADDING_PX;
+    let vb_w = ((b.max_x - b.min_x) + 2.0 * VIEWBOX_PADDING_PX).max(1.0);
+    let vb_h = ((b.max_y - b.min_y) + 2.0 * VIEWBOX_PADDING_PX).max(1.0);
+    let view_box_attr = format!(
+        "{} {} {} {}",
+        fmt(vb_min_x),
+        fmt(vb_min_y),
+        fmt(vb_w),
+        fmt(vb_h)
+    );
+
+    out = out.replacen(VIEWBOX_PLACEHOLDER, &view_box_attr, 1);
+    out = out.replacen(MAX_WIDTH_PLACEHOLDER, &fmt_max_width_px(vb_w), 1);
     Ok(out)
 }
 
@@ -13499,38 +13522,52 @@ fn svg_emitted_bounds_from_svg_inner(
     mut dbg: Option<&mut SvgEmittedBoundsDebug>,
 ) -> Option<Bounds> {
     #[derive(Clone, Copy, Debug)]
-    struct SimpleTransform {
-        sx: f64,
-        sy: f64,
-        tx: f64,
-        ty: f64,
+    struct AffineTransform {
+        // SVG 2D affine matrix in the same form as `matrix(a b c d e f)`:
+        //   [a c e]
+        //   [b d f]
+        //   [0 0 1]
+        a: f64,
+        b: f64,
+        c: f64,
+        d: f64,
+        e: f64,
+        f: f64,
     }
 
-    impl SimpleTransform {
+    impl AffineTransform {
         fn identity() -> Self {
             Self {
-                sx: 1.0,
-                sy: 1.0,
-                tx: 0.0,
-                ty: 0.0,
+                a: 1.0,
+                b: 0.0,
+                c: 0.0,
+                d: 1.0,
+                e: 0.0,
+                f: 0.0,
             }
         }
 
         fn mul(self, rhs: Self) -> Self {
-            // Axis-aligned affine multiplication:
-            // [sx 0 tx]   [sx2 0 tx2]   [sx*sx2 0 sx*tx2+tx]
-            // [0 sy ty] * [0 sy2 ty2] = [0 sy*sy2 sy*ty2+ty]
-            // [0  0  1]   [0  0  1 ]    [0   0       1     ]
+            // Standard affine multiplication (column-vector convention).
+            //
+            // SVG transform lists apply right-to-left to points, which corresponds to multiplying
+            // matrices in the textual left-to-right order:
+            //   transform="A B" => M = A * B
             Self {
-                sx: self.sx * rhs.sx,
-                sy: self.sy * rhs.sy,
-                tx: self.sx * rhs.tx + self.tx,
-                ty: self.sy * rhs.ty + self.ty,
+                a: self.a * rhs.a + self.c * rhs.b,
+                b: self.b * rhs.a + self.d * rhs.b,
+                c: self.a * rhs.c + self.c * rhs.d,
+                d: self.b * rhs.c + self.d * rhs.d,
+                e: self.a * rhs.e + self.c * rhs.f + self.e,
+                f: self.b * rhs.e + self.d * rhs.f + self.f,
             }
         }
 
         fn apply_point(self, x: f64, y: f64) -> (f64, f64) {
-            (self.sx * x + self.tx, self.sy * y + self.ty)
+            (
+                self.a * x + self.c * y + self.e,
+                self.b * x + self.d * y + self.f,
+            )
         }
 
         fn apply_bounds(self, b: Bounds) -> Bounds {
@@ -13550,6 +13587,10 @@ fn svg_emitted_bounds_from_svg_inner(
     fn parse_f64(raw: &str) -> Option<f64> {
         let s = raw.trim().trim_end_matches("px").trim();
         s.parse::<f64>().ok()
+    }
+
+    fn deg_to_rad(deg: f64) -> f64 {
+        deg * std::f64::consts::PI / 180.0
     }
 
     fn attr_value<'a>(attrs: &'a str, key: &str) -> Option<&'a str> {
@@ -13579,11 +13620,11 @@ fn svg_emitted_bounds_from_svg_inner(
         None
     }
 
-    fn parse_transform(transform: &str) -> Option<SimpleTransform> {
-        // Minimal parser for Mermaid-emitted transforms used by root bbox computations.
-        // We only accept axis-aligned transforms (translate/scale/matrix with b=c=0) to avoid
-        // injecting systematic bbox drift for rotated/skewed elements.
-        let mut t = SimpleTransform::identity();
+    fn parse_transform(transform: &str) -> Option<AffineTransform> {
+        // Mermaid output routinely uses rotated elements (e.g. gitGraph commit labels,
+        // Architecture edge labels). For parity-root viewport computations we need to support
+        // a reasonably complete SVG transform subset.
+        let mut t = AffineTransform::identity();
         let mut s = transform.trim();
 
         while !s.is_empty() {
@@ -13612,21 +13653,89 @@ fn svg_emitted_bounds_from_svg_inner(
                 "translate" => {
                     let x = parts.next().unwrap_or(0.0);
                     let y = parts.next().unwrap_or(0.0);
-                    SimpleTransform {
-                        sx: 1.0,
-                        sy: 1.0,
-                        tx: x,
-                        ty: y,
+                    AffineTransform {
+                        a: 1.0,
+                        b: 0.0,
+                        c: 0.0,
+                        d: 1.0,
+                        e: x,
+                        f: y,
                     }
                 }
                 "scale" => {
                     let sx = parts.next().unwrap_or(1.0);
                     let sy = parts.next().unwrap_or(sx);
-                    SimpleTransform {
-                        sx,
-                        sy,
-                        tx: 0.0,
-                        ty: 0.0,
+                    AffineTransform {
+                        a: sx,
+                        b: 0.0,
+                        c: 0.0,
+                        d: sy,
+                        e: 0.0,
+                        f: 0.0,
+                    }
+                }
+                "rotate" => {
+                    let angle_deg = parts.next().unwrap_or(0.0);
+                    let cx = parts.next();
+                    let cy = parts.next();
+                    let rad = deg_to_rad(angle_deg);
+                    let cos = rad.cos();
+                    let sin = rad.sin();
+
+                    let rot = AffineTransform {
+                        a: cos,
+                        b: sin,
+                        c: -sin,
+                        d: cos,
+                        e: 0.0,
+                        f: 0.0,
+                    };
+
+                    match (cx, cy) {
+                        (Some(cx), Some(cy)) => {
+                            let t1 = AffineTransform {
+                                a: 1.0,
+                                b: 0.0,
+                                c: 0.0,
+                                d: 1.0,
+                                e: cx,
+                                f: cy,
+                            };
+                            let t2 = AffineTransform {
+                                a: 1.0,
+                                b: 0.0,
+                                c: 0.0,
+                                d: 1.0,
+                                e: -cx,
+                                f: -cy,
+                            };
+                            t1.mul(rot).mul(t2)
+                        }
+                        _ => rot,
+                    }
+                }
+                "skewX" | "skewx" => {
+                    let angle_deg = parts.next().unwrap_or(0.0);
+                    let k = deg_to_rad(angle_deg).tan();
+                    AffineTransform {
+                        a: 1.0,
+                        b: 0.0,
+                        c: k,
+                        d: 1.0,
+                        e: 0.0,
+                        f: 0.0,
+                    }
+                }
+                "skewY" | "skewy" => {
+                    let angle_deg = parts.next().unwrap_or(0.0);
+                    let k = deg_to_rad(angle_deg).tan();
+                    AffineTransform {
+                        a: 1.0,
+                        b: k,
+                        c: 0.0,
+                        d: 1.0,
+                        e: 0.0,
+                        f: 0.0,
                     }
                 }
                 "matrix" => {
@@ -13637,17 +13746,9 @@ fn svg_emitted_bounds_from_svg_inner(
                     let d = parts.next().unwrap_or(1.0);
                     let e = parts.next().unwrap_or(0.0);
                     let f = parts.next().unwrap_or(0.0);
-                    if b.abs() > 1e-9 || c.abs() > 1e-9 {
-                        return None;
-                    }
-                    SimpleTransform {
-                        sx: a,
-                        sy: d,
-                        tx: e,
-                        ty: f,
-                    }
+                    AffineTransform { a, b, c, d, e, f }
                 }
-                _ => SimpleTransform::identity(),
+                _ => AffineTransform::identity(),
             };
 
             // SVG transform lists apply right-to-left to points, which corresponds to multiplying
@@ -13673,7 +13774,7 @@ fn svg_emitted_bounds_from_svg_inner(
         Some((x, y, w, h))
     }
 
-    fn svg_viewport_transform(attrs: &str) -> SimpleTransform {
+    fn svg_viewport_transform(attrs: &str) -> AffineTransform {
         // Nested <svg> establishes a new viewport. Map its internal user coordinates into the
         // parent coordinate system via x/y + viewBox scaling.
         //
@@ -13684,11 +13785,13 @@ fn svg_emitted_bounds_from_svg_inner(
 
         let Some((vb_x, vb_y, vb_w, vb_h)) = attr_value(attrs, "viewBox").and_then(parse_view_box)
         else {
-            return SimpleTransform {
-                sx: 1.0,
-                sy: 1.0,
-                tx: x,
-                ty: y,
+            return AffineTransform {
+                a: 1.0,
+                b: 0.0,
+                c: 0.0,
+                d: 1.0,
+                e: x,
+                f: y,
             };
         };
 
@@ -13699,21 +13802,25 @@ fn svg_emitted_bounds_from_svg_inner(
             .and_then(parse_f64)
             .unwrap_or(vb_h);
         if !(w.is_finite() && h.is_finite()) || w <= 0.0 || h <= 0.0 {
-            return SimpleTransform {
-                sx: 1.0,
-                sy: 1.0,
-                tx: x,
-                ty: y,
+            return AffineTransform {
+                a: 1.0,
+                b: 0.0,
+                c: 0.0,
+                d: 1.0,
+                e: x,
+                f: y,
             };
         }
 
         let sx = w / vb_w;
         let sy = h / vb_h;
-        SimpleTransform {
-            sx,
-            sy,
-            tx: x - sx * vb_x,
-            ty: y - sy * vb_y,
+        AffineTransform {
+            a: sx,
+            b: 0.0,
+            c: 0.0,
+            d: sy,
+            e: x - sx * vb_x,
+            f: y - sy * vb_y,
         }
     }
 
@@ -13796,7 +13903,7 @@ fn svg_emitted_bounds_from_svg_inner(
         }
     }
 
-    fn include_path_d(bounds: &mut Option<Bounds>, d: &str, tf: SimpleTransform) {
+    fn include_path_d(bounds: &mut Option<Bounds>, d: &str, tf: AffineTransform) {
         if let Some(pb) = svg_path_bounds_from_d(d) {
             let b = tf.apply_bounds(Bounds {
                 min_x: pb.min_x,
@@ -13808,7 +13915,7 @@ fn svg_emitted_bounds_from_svg_inner(
         }
     }
 
-    fn include_points(bounds: &mut Option<Bounds>, points: &str, tf: SimpleTransform) {
+    fn include_points(bounds: &mut Option<Bounds>, points: &str, tf: AffineTransform) {
         let mut min_x = f64::INFINITY;
         let mut min_y = f64::INFINITY;
         let mut max_x = f64::NEG_INFINITY;
@@ -13839,8 +13946,8 @@ fn svg_emitted_bounds_from_svg_inner(
 
     let mut bounds: Option<Bounds> = None;
     let mut in_defs = false;
-    let mut tf_stack: Vec<SimpleTransform> = Vec::new();
-    let mut cur_tf = SimpleTransform::identity();
+    let mut tf_stack: Vec<AffineTransform> = Vec::new();
+    let mut cur_tf = AffineTransform::identity();
     let mut seen_root_svg = false;
     let mut nested_svg_depth = 0usize;
 
@@ -13893,7 +14000,7 @@ fn svg_emitted_bounds_from_svg_inner(
                     if let Some(prev) = tf_stack.pop() {
                         cur_tf = prev;
                     } else {
-                        cur_tf = SimpleTransform::identity();
+                        cur_tf = AffineTransform::identity();
                     }
                 }
                 "svg" => {
@@ -13902,7 +14009,7 @@ fn svg_emitted_bounds_from_svg_inner(
                         if let Some(prev) = tf_stack.pop() {
                             cur_tf = prev;
                         } else {
-                            cur_tf = SimpleTransform::identity();
+                            cur_tf = AffineTransform::identity();
                         }
                     }
                 }
@@ -13931,7 +14038,7 @@ fn svg_emitted_bounds_from_svg_inner(
 
         let el_tf = attr_value(attrs, "transform")
             .and_then(parse_transform)
-            .unwrap_or_else(SimpleTransform::identity);
+            .unwrap_or_else(AffineTransform::identity);
         let eff_tf = cur_tf.mul(el_tf);
 
         if tag == "g" {
@@ -13942,7 +14049,7 @@ fn svg_emitted_bounds_from_svg_inner(
                 if let Some(prev) = tf_stack.pop() {
                     cur_tf = prev;
                 } else {
-                    cur_tf = SimpleTransform::identity();
+                    cur_tf = AffineTransform::identity();
                 }
             }
             i = gt + 1;
@@ -13964,7 +14071,7 @@ fn svg_emitted_bounds_from_svg_inner(
                     if let Some(prev) = tf_stack.pop() {
                         cur_tf = prev;
                     } else {
-                        cur_tf = SimpleTransform::identity();
+                        cur_tf = AffineTransform::identity();
                     }
                 }
             }
@@ -14164,6 +14271,58 @@ mod svg_bbox_tests {
         assert!((dbg.bounds.min_y - (-5.0)).abs() < 1e-9);
         assert!((dbg.bounds.max_x - 90.0).abs() < 1e-9);
         assert!((dbg.bounds.max_y - 80.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn svg_emitted_bounds_supports_rotate_transform() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="10" height="20" transform="rotate(90)"/></svg>"#;
+        let dbg = debug_svg_emitted_bounds(svg).expect("emitted bounds");
+        assert!(
+            (dbg.bounds.min_x - (-20.0)).abs() < 1e-9,
+            "min_x: {}",
+            dbg.bounds.min_x
+        );
+        assert!(
+            (dbg.bounds.min_y - 0.0).abs() < 1e-9,
+            "min_y: {}",
+            dbg.bounds.min_y
+        );
+        assert!(
+            (dbg.bounds.max_x - 0.0).abs() < 1e-9,
+            "max_x: {}",
+            dbg.bounds.max_x
+        );
+        assert!(
+            (dbg.bounds.max_y - 10.0).abs() < 1e-9,
+            "max_y: {}",
+            dbg.bounds.max_y
+        );
+    }
+
+    #[test]
+    fn svg_emitted_bounds_supports_rotate_about_center() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="10" height="20" transform="rotate(90, 5, 10)"/></svg>"#;
+        let dbg = debug_svg_emitted_bounds(svg).expect("emitted bounds");
+        assert!(
+            (dbg.bounds.min_x - (-5.0)).abs() < 1e-9,
+            "min_x: {}",
+            dbg.bounds.min_x
+        );
+        assert!(
+            (dbg.bounds.min_y - 5.0).abs() < 1e-9,
+            "min_y: {}",
+            dbg.bounds.min_y
+        );
+        assert!(
+            (dbg.bounds.max_x - 15.0).abs() < 1e-9,
+            "max_x: {}",
+            dbg.bounds.max_x
+        );
+        assert!(
+            (dbg.bounds.max_y - 15.0).abs() < 1e-9,
+            "max_y: {}",
+            dbg.bounds.max_y
+        );
     }
 }
 
