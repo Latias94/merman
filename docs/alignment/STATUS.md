@@ -89,6 +89,11 @@ Recent progress (2026-02-04): `manatee` FCoSE now applies a `cose-base`-like pre
 `CoSELayout.updateDisplacements()` (relax-movement mode with deterministic shuffling). This fixes large orientation
 and constraint drift in Architecture parity-root runs.
 
+Recent progress (2026-02-04): `manatee` ConstraintHandler parity: when *only* relative-placement constraints are
+present (no alignments), we now match `cose-base` by using the dominant weakly-connected component to derive a
+relative-only Procrustes transform (plus reflection votes). This helps keep overall orientation stable for sparse
+graphs that rely on relative constraints but do not specify explicit alignments.
+
 Recent progress (2026-02-04): Architecture's top-level group separation post-pass now measures group bounds using
 the same service label bbox model as Stage B `getBBox()` approximation (wrapped SVG text metrics + group padding),
 reducing under-separation for long labels and bringing `upstream_architecture_layout_reasonable_height` closer

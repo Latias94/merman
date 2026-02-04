@@ -997,6 +997,13 @@ fn handle_constraints_pre_layout(nodes: &mut [SimNode], c: &Constraints) {
                 apply_reflection_for_relative_placement(&mut x, &mut y, &c.relative);
             }
         }
+    } else if !c.relative.is_empty() {
+        // `ConstraintHandler` also applies a relative-only transform when there are no alignment
+        // constraints: it finds the largest weakly-connected component in the relative-placement
+        // DAG and uses it to derive a Procrustes rotation (plus a reflection vote).
+        //
+        // This has an outsized effect on overall orientation and thus the parity-root viewport.
+        handle_relative_only_transform(&mut x, &mut y, &c.relative);
     }
 
     // Enforce alignment constraints in position space.
@@ -1038,6 +1045,212 @@ fn handle_constraints_pre_layout(nodes: &mut [SimNode], c: &Constraints) {
     }
 }
 
+fn handle_relative_only_transform(x: &mut [f64], y: &mut [f64], rel: &[RelConstraint]) {
+    use std::collections::{BTreeMap, BTreeSet, VecDeque};
+
+    #[derive(Debug, Clone, Copy)]
+    struct Edge {
+        id: usize,
+        gap: f64,
+    }
+
+    fn build_undirected(rel: &[RelConstraint]) -> BTreeMap<usize, Vec<usize>> {
+        let mut g: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        for r in rel {
+            let (a, b) = if let (Some(left), Some(right)) = (r.left, r.right) {
+                (left, right)
+            } else if let (Some(top), Some(bottom)) = (r.top, r.bottom) {
+                (top, bottom)
+            } else {
+                continue;
+            };
+            g.entry(a).or_default().push(b);
+            g.entry(b).or_default().push(a);
+        }
+        g
+    }
+
+    fn find_components(g: &BTreeMap<usize, Vec<usize>>) -> Vec<Vec<usize>> {
+        let mut visited: BTreeSet<usize> = BTreeSet::new();
+        let mut out: Vec<Vec<usize>> = Vec::new();
+        for &start in g.keys() {
+            if visited.contains(&start) {
+                continue;
+            }
+            let mut q: VecDeque<usize> = VecDeque::new();
+            let mut comp: Vec<usize> = Vec::new();
+            visited.insert(start);
+            q.push_back(start);
+            while let Some(cur) = q.pop_front() {
+                comp.push(cur);
+                if let Some(neigh) = g.get(&cur) {
+                    for &n in neigh {
+                        if visited.insert(n) {
+                            q.push_back(n);
+                        }
+                    }
+                }
+            }
+            out.push(comp);
+        }
+        out
+    }
+
+    fn build_axis_dag(
+        nodes: &[usize],
+        rel: &[RelConstraint],
+        axis: Axis,
+    ) -> (BTreeMap<usize, Vec<Edge>>, Vec<RelConstraint>) {
+        let in_set: BTreeSet<usize> = nodes.iter().copied().collect();
+        let mut dag: BTreeMap<usize, Vec<Edge>> = BTreeMap::new();
+        for &n in nodes {
+            dag.entry(n).or_default();
+        }
+
+        let mut component_constraints: Vec<RelConstraint> = Vec::new();
+        for r in rel {
+            match axis {
+                Axis::Horizontal => {
+                    if let (Some(left), Some(right)) = (r.left, r.right) {
+                        if in_set.contains(&left) && in_set.contains(&right) {
+                            dag.entry(left).or_default().push(Edge {
+                                id: right,
+                                gap: r.gap,
+                            });
+                            dag.entry(right).or_default();
+                            component_constraints.push(*r);
+                        }
+                    }
+                }
+                Axis::Vertical => {
+                    if let (Some(top), Some(bottom)) = (r.top, r.bottom) {
+                        if in_set.contains(&top) && in_set.contains(&bottom) {
+                            dag.entry(top).or_default().push(Edge {
+                                id: bottom,
+                                gap: r.gap,
+                            });
+                            dag.entry(bottom).or_default();
+                            component_constraints.push(*r);
+                        }
+                    }
+                }
+            }
+        }
+
+        (dag, component_constraints)
+    }
+
+    fn find_appropriate_positions(
+        graph: &BTreeMap<usize, Vec<Edge>>,
+        axis: Axis,
+        x: &[f64],
+        y: &[f64],
+    ) -> BTreeMap<usize, f64> {
+        let mut indeg: BTreeMap<usize, usize> = graph.keys().map(|&k| (k, 0)).collect();
+        for edges in graph.values() {
+            for e in edges {
+                *indeg.entry(e.id).or_insert(0) += 1;
+            }
+        }
+
+        let mut pos: BTreeMap<usize, f64> = BTreeMap::new();
+        let mut q: VecDeque<usize> = VecDeque::new();
+        for (&node, &d) in &indeg {
+            if d == 0 {
+                q.push_back(node);
+                pos.insert(
+                    node,
+                    match axis {
+                        Axis::Horizontal => x[node],
+                        Axis::Vertical => y[node],
+                    },
+                );
+            } else {
+                pos.insert(node, f64::NEG_INFINITY);
+            }
+        }
+
+        while let Some(cur) = q.pop_front() {
+            let cur_pos = *pos.get(&cur).unwrap_or(&f64::NEG_INFINITY);
+            if let Some(neigh) = graph.get(&cur) {
+                for e in neigh {
+                    let next_pos = cur_pos + e.gap;
+                    if pos.get(&e.id).copied().unwrap_or(f64::NEG_INFINITY) < next_pos {
+                        pos.insert(e.id, next_pos);
+                    }
+                    if let Some(v) = indeg.get_mut(&e.id) {
+                        *v = v.saturating_sub(1);
+                        if *v == 0 {
+                            q.push_back(e.id);
+                        }
+                    }
+                }
+            }
+        }
+
+        pos
+    }
+
+    let undirected = build_undirected(rel);
+    if undirected.is_empty() {
+        return;
+    }
+
+    let components = find_components(&undirected);
+    if components.is_empty() {
+        return;
+    }
+
+    let mut largest_idx = 0usize;
+    let mut largest_sz = 0usize;
+    for (i, c) in components.iter().enumerate() {
+        if c.len() > largest_sz {
+            largest_sz = c.len();
+            largest_idx = i;
+        }
+    }
+
+    let n = undirected.len();
+    if largest_sz * 2 < n {
+        apply_reflection_for_relative_placement(x, y, rel);
+        return;
+    }
+
+    let largest = &components[largest_idx];
+
+    // Apply reflection votes based only on edges inside the dominant component (upstream behavior).
+    let (_h, mut in_comp_constraints_h) = build_axis_dag(largest, rel, Axis::Horizontal);
+    let (_v, mut in_comp_constraints_v) = build_axis_dag(largest, rel, Axis::Vertical);
+    in_comp_constraints_h.append(&mut in_comp_constraints_v);
+    apply_reflection_for_relative_placement(x, y, &in_comp_constraints_h);
+
+    // Build axis DAGs and compute an "appropriate" coordinate per node using a topological
+    // relaxation similar to `findAppropriatePositionForRelativePlacement`.
+    let (dag_h, _constraints_h) = build_axis_dag(largest, rel, Axis::Horizontal);
+    let (dag_v, _constraints_v) = build_axis_dag(largest, rel, Axis::Vertical);
+    let pos_h = find_appropriate_positions(&dag_h, Axis::Horizontal, x, y);
+    let pos_v = find_appropriate_positions(&dag_v, Axis::Vertical, x, y);
+
+    let mut source: Vec<na::Vector2<f64>> = Vec::with_capacity(largest.len());
+    let mut target: Vec<na::Vector2<f64>> = Vec::with_capacity(largest.len());
+    for &idx in largest {
+        source.push(na::Vector2::new(x[idx], y[idx]));
+        let tx = pos_h.get(&idx).copied().unwrap_or(x[idx]);
+        let ty = pos_v.get(&idx).copied().unwrap_or(y[idx]);
+        target.push(na::Vector2::new(tx, ty));
+    }
+
+    if let Some(t) = procrustes_transform_from_pairs(&source, &target) {
+        let tt = t.transpose();
+        for i in 0..x.len().min(y.len()) {
+            let v = na::Vector2::new(x[i], y[i]);
+            let r = tt * v;
+            x[i] = r.x;
+            y[i] = r.y;
+        }
+    }
+}
+
 fn procrustes_transform_for_alignments(
     x: &[f64],
     y: &[f64],
@@ -1076,6 +1289,17 @@ fn procrustes_transform_for_alignments(
         }
     }
 
+    if source.len() <= 1 || target.len() != source.len() {
+        return None;
+    }
+
+    procrustes_transform_from_pairs(&source, &target)
+}
+
+fn procrustes_transform_from_pairs(
+    source: &[na::Vector2<f64>],
+    target: &[na::Vector2<f64>],
+) -> Option<na::Matrix2<f64>> {
     if source.len() <= 1 || target.len() != source.len() {
         return None;
     }
