@@ -10,7 +10,7 @@ pub fn layout(graph: &Graph, _opts: &CoseBilkentOptions) -> Result<LayoutResult>
     // COSE-Bilkent port for flat graphs (as used by Mermaid mindmap via Cytoscape).
     // This follows the upstream `cose-base` control flow:
     // - `getFlatForest()` + `positionNodesRadially(...)`
-    // - `reduceTrees()` / `growTree()` scaffolding
+    // - `reduceTrees()` / `growTree()` scaffolding (currently disabled until parity is verified)
     // - spring embedder ticks
     // - `doPostLayout()` -> `transform(0,0)` to move the graph into positive coordinates
     let forest = sim.get_flat_forest();
@@ -20,7 +20,6 @@ pub fn layout(graph: &Graph, _opts: &CoseBilkentOptions) -> Result<LayoutResult>
         // Fallback: keep all nodes at their provided initial positions (typically (0,0)).
         // The full port will use `scatter()` / `positionNodesRandomly()` for non-forest graphs.
     }
-    sim.reduce_trees();
     sim.run_spring_embedder();
     sim.transform_to_origin();
 
