@@ -169,6 +169,8 @@ browser-side RNG seed (to remove `Math.random()` layout drift in Cytoscape FCoSE
 Recent progress (2026-02-02): mindmap headless layout now follows Mermaid node sizing rules (shape/padding/wrapping)
 instead of a placeholder grid layout, and `xtask debug-mindmap-svg-positions` was added to compare upstream/local node
 coordinates; the remaining parity-root mindmap mismatches are currently dominated by root `<svg>` viewport sizing.
+Recent progress (2026-02-04): `manatee` COSE-Bilkent now applies the upstream gravitation pass for disconnected graphs
+(`calculateNodesToApplyGravitationTo`), keeping multi-component layouts from drifting too far apart.
 Recent progress (2026-02-01): state diagram Stage B now derives root `viewBox`/`max-width` by parsing the emitted
 SVG and approximating `svg.getBBox()` (ignoring placeholder boxes like `0x0` and `0.1x0.1` rects), fixing large
 viewport blow-ups (e.g. floating notes fixtures) and reducing parity-root state mismatches.
