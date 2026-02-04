@@ -349,6 +349,80 @@ pub fn layout_architecture_diagram(
             node_group.insert(n.id.as_str(), n.in_group.as_deref());
         }
 
+        // Mermaid Architecture junction nodes are "invisible" routing helpers. In the upstream
+        // Cytoscape model they live inside groups (compound nodes) when they are semantically
+        // attached to grouped services.
+        //
+        // Our semantic model does not always carry explicit `in_group` for junction nodes, so we
+        // infer it from incident non-junction neighbors:
+        // - pick the unique group if there is exactly one
+        // - otherwise pick the most frequent group (skip ties)
+        let junction_ids: std::collections::BTreeSet<&str> = model
+            .nodes
+            .iter()
+            .filter(|n| n.node_type == "junction")
+            .map(|n| n.id.as_str())
+            .collect();
+        if !junction_ids.is_empty() {
+            let mut neighbors: std::collections::BTreeMap<&str, Vec<&str>> =
+                std::collections::BTreeMap::new();
+            for e in &model.edges {
+                neighbors
+                    .entry(e.lhs_id.as_str())
+                    .or_default()
+                    .push(e.rhs_id.as_str());
+                neighbors
+                    .entry(e.rhs_id.as_str())
+                    .or_default()
+                    .push(e.lhs_id.as_str());
+            }
+
+            for j in &junction_ids {
+                if node_group.get(j).and_then(|v| *v).is_some() {
+                    continue;
+                }
+                let Some(neigh) = neighbors.get(j).map(|v| v.as_slice()) else {
+                    continue;
+                };
+
+                let mut counts: std::collections::BTreeMap<&str, usize> =
+                    std::collections::BTreeMap::new();
+                for &other in neigh {
+                    if junction_ids.contains(other) {
+                        continue;
+                    }
+                    let Some(g) = node_group.get(other).and_then(|v| *v) else {
+                        continue;
+                    };
+                    *counts.entry(g).or_insert(0) += 1;
+                }
+                if counts.is_empty() {
+                    continue;
+                }
+                let mut best_group: Option<&str> = None;
+                let mut best_count: usize = 0;
+                let mut tied = false;
+                for (g, c) in counts {
+                    match c.cmp(&best_count) {
+                        std::cmp::Ordering::Greater => {
+                            best_group = Some(g);
+                            best_count = c;
+                            tied = false;
+                        }
+                        std::cmp::Ordering::Equal => {
+                            tied = true;
+                        }
+                        std::cmp::Ordering::Less => {}
+                    }
+                }
+                if !tied {
+                    if let Some(g) = best_group {
+                        node_group.insert(j, Some(g));
+                    }
+                }
+            }
+        }
+
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         enum GroupAlignment {
             Horizontal,
@@ -620,9 +694,10 @@ pub fn layout_architecture_diagram(
         let mut node_chain: std::collections::BTreeMap<&str, Vec<&str>> =
             std::collections::BTreeMap::new();
         for n in &model.nodes {
-            let chain = n
-                .in_group
-                .as_deref()
+            let chain = node_group
+                .get(n.id.as_str())
+                .copied()
+                .flatten()
                 .map(|g| group_chain(g, &group_parent_map))
                 .unwrap_or_default();
             node_chain.insert(n.id.as_str(), chain);
@@ -648,7 +723,7 @@ pub fn layout_architecture_diagram(
             }
         }
         for n in &model.nodes {
-            if let Some(parent) = n.in_group.as_deref() {
+            if let Some(parent) = node_group.get(n.id.as_str()).copied().flatten() {
                 group_children
                     .entry(parent)
                     .or_default()
@@ -862,7 +937,14 @@ pub fn layout_architecture_diagram(
             nodes: &mut [LayoutNode],
             model: &ArchitectureModel,
             icon_size: f64,
+            padding_px: f64,
         ) {
+            let node_type: std::collections::BTreeMap<&str, &str> = model
+                .nodes
+                .iter()
+                .map(|n| (n.id.as_str(), n.node_type.as_str()))
+                .collect();
+
             let mut group_parent: std::collections::BTreeMap<&str, &str> =
                 std::collections::BTreeMap::new();
             for g in &model.groups {
@@ -919,10 +1001,25 @@ pub fn layout_architecture_diagram(
                 // Base gap matches Mermaid's node-level relative placement constraints.
                 // For `{group}` edges, we add Mermaid's Architecture group padding so the
                 // top-level group separation approximates Cytoscape's compound bounds.
-                let group_edge_extra_gap = icon_size / 2.0 + 2.5;
+                let group_edge_extra_gap = padding_px + 2.5;
                 let mut gap = 1.5 * icon_size;
                 if e.lhs_group.unwrap_or(false) || e.rhs_group.unwrap_or(false) {
                     gap += group_edge_extra_gap;
+
+                    // In Mermaid@11.12.2, junction-to-junction edges that also use `{group}`
+                    // endpoints are particularly sensitive to compound node repulsion. Without
+                    // true compound support in `manatee`, add an extra padding-derived gap so the
+                    // root viewport is closer in `parity-root` mode.
+                    let lhs_is_junction =
+                        node_type.get(e.lhs_id.as_str()).copied().unwrap_or("") == "junction";
+                    let rhs_is_junction =
+                        node_type.get(e.rhs_id.as_str()).copied().unwrap_or("") == "junction";
+                    if lhs_is_junction && rhs_is_junction {
+                        // Tuned for Mermaid@11.12.2 Architecture fixtures where junction-to-junction
+                        // edges with `{group}` endpoints dominate the root viewport (e.g.
+                        // `upstream_architecture_cypress_complex_junction_edges_normalized`).
+                        gap += 1.445 * padding_px;
+                    }
                 }
 
                 let lhs_dir = e.lhs_dir.as_deref().unwrap_or("");
@@ -1065,7 +1162,7 @@ pub fn layout_architecture_diagram(
             }
         }
 
-        resolve_top_level_group_separation(&mut nodes, &model, icon_size);
+        resolve_top_level_group_separation(&mut nodes, &model, icon_size, padding_px);
     }
 
     let mut node_by_id: std::collections::BTreeMap<String, LayoutNode> =

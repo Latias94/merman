@@ -108,6 +108,10 @@ which makes Architecture root viewport estimation less sensitive to cluster topo
 Recent progress (2026-02-03): Architecture Stage B now approximates `layout-base`'s inter-graph ideal edge
 length adjustments (LCA depth factor + group-size-derived additive term) and adds extra separation for Mermaid
 `{group}` endpoints, improving `parity-root` deltas for group-heavy fixtures.
+Recent progress (2026-02-04): Architecture Stage B now infers missing junction `in_group` membership from
+incident non-junction neighbors (unique group or untied top frequency) and derives `{group}` separation gaps
+from Mermaid's `architecture.padding` rather than icon size. A tuned extra gap is applied for junction↔junction
+edges that also use `{group}` endpoints to better approximate Cytoscape compound repulsion in parity-root mode.
 
 Recent progress (2026-02-02): started a Rust port scaffold of Cytoscape FCoSE in `manatee` (edge
 ideal lengths + alignment/relative constraints) and wired it into Architecture headless layout
