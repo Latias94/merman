@@ -48,9 +48,69 @@ function normalizeRankDir(v) {
   return t.toUpperCase();
 }
 
+function findCommonEdges(g, id1, id2) {
+  const edges = g.edges();
+  const edges1 = edges.filter((e) => e.v === id1 || e.w === id1);
+  const edges2 = edges.filter((e) => e.v === id2 || e.w === id2);
+  const edges1Prim = edges1.map((e) => ({ v: e.v === id1 ? id2 : e.v, w: e.w === id1 ? id1 : e.w }));
+  const edges2Prim = edges2.map((e) => ({ v: e.v, w: e.w }));
+  return edges1Prim.filter((eIn1) => edges2Prim.some((e) => eIn1.v === e.v && eIn1.w === e.w));
+}
+
+// Ported (minimal) from Mermaid's `findNonClusterChild`:
+// repo-ref/mermaid/packages/mermaid/src/rendering-util/layout-algorithms/dagre/mermaid-graphlib.js
+function findNonClusterChild(id, g, clusterId) {
+  const children = g.children(id) ?? [];
+  if (children.length < 1) return id;
+
+  let reserve = null;
+  for (const child of children) {
+    const leafId = findNonClusterChild(child, g, clusterId);
+    if (!leafId) continue;
+
+    const commonEdges = findCommonEdges(g, clusterId, leafId);
+    if (commonEdges.length > 0) {
+      reserve = leafId;
+    } else {
+      return leafId;
+    }
+  }
+
+  return reserve ?? id;
+}
+
+function normalizeClusterEdgeEndpoints(g) {
+  // Dagre's layout pipeline assumes edges never touch compound nodes (nodes with children).
+  // Mermaid enforces this via `adjustClustersAndEdges`. Here we apply a minimal, deterministic
+  // normalization so the harness can run and match Mermaid's expectations.
+  const nodes = g.nodes();
+  const clusters = new Set(nodes.filter((id) => (g.children(id) ?? []).length > 0));
+  if (clusters.size === 0) return;
+
+  const anchorByCluster = new Map();
+  for (const clusterId of clusters) {
+    anchorByCluster.set(clusterId, findNonClusterChild(clusterId, g, clusterId));
+  }
+
+  const edges = g.edges();
+  for (const e of edges) {
+    const v2 = clusters.has(e.v) ? anchorByCluster.get(e.v) : e.v;
+    const w2 = clusters.has(e.w) ? anchorByCluster.get(e.w) : e.w;
+    if (v2 === e.v && w2 === e.w) continue;
+
+    const label = g.edge(e);
+    g.removeEdge(e);
+    g.setEdge(v2, w2, label, e.name);
+  }
+}
+
 function buildGraph(input) {
   const options = input.options ?? { directed: true, multigraph: true, compound: true };
   const g = new Graph(options);
+  // Mermaid's dagre integration relies on node/edge labels being mutable objects.
+  // Graphlib's default label is `undefined`, which breaks dagre's rank assignment.
+  g.setDefaultNodeLabel(() => ({}));
+  g.setDefaultEdgeLabel(() => ({}));
 
   const graphLabel = { ...(input.graph ?? {}) };
   if (Object.prototype.hasOwnProperty.call(graphLabel, 'rankdir')) {
@@ -59,11 +119,17 @@ function buildGraph(input) {
   g.setGraph(graphLabel);
 
   const nodes = Array.isArray(input.nodes) ? input.nodes : [];
+  // Pass 1: create all nodes with labels first (avoid implicit undefined labels).
   for (const n of nodes) {
     const id = n?.id;
     if (typeof id !== 'string' || id.length === 0) continue;
     const label = { ...(n.label ?? {}) };
     g.setNode(id, label);
+  }
+  // Pass 2: set parents after all nodes exist.
+  for (const n of nodes) {
+    const id = n?.id;
+    if (typeof id !== 'string' || id.length === 0) continue;
     if (typeof n.parent === 'string' && n.parent.length > 0) {
       g.setParent(id, n.parent);
     }
@@ -119,6 +185,7 @@ async function main() {
   const input = JSON.parse(inputRaw);
 
   const g = buildGraph(input);
+  normalizeClusterEdgeEndpoints(g);
   dagreLayout(g);
 
   const out = snapshotGraph(g);
@@ -130,4 +197,3 @@ main().catch((err) => {
   console.error(String(err?.stack ?? err));
   process.exit(1);
 });
-
