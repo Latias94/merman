@@ -577,7 +577,13 @@ pub fn layout_gitgraph_diagram(
     let parallel_commits =
         cfg_bool(effective_config, &["gitGraph", "parallelCommits"]).unwrap_or(false);
 
-    let label_style = TextStyle::default();
+    // Upstream gitGraph uses SVG `getBBox()` probes for branch label widths while the
+    // `drawText(...)` nodes inherit Mermaid's default font stack.
+    let label_style = TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: 16.0,
+        font_weight: None,
+    };
 
     let mut branches: Vec<GitGraphBranchLayout> = Vec::new();
     let mut branch_pos: HashMap<String, f64> = HashMap::new();
@@ -585,6 +591,8 @@ pub fn layout_gitgraph_diagram(
     let mut pos = 0.0;
     for (i, b) in model.branches.iter().enumerate() {
         let metrics = measurer.measure(&b.name, &label_style);
+        let (l, r) = measurer.measure_svg_text_bbox_x(&b.name, &label_style);
+        let bbox_w = (l + r).max(0.0);
         branch_pos.insert(b.name.clone(), pos);
         branch_index.insert(b.name.clone(), i);
 
@@ -592,14 +600,14 @@ pub fn layout_gitgraph_diagram(
             name: b.name.clone(),
             index: i as i64,
             pos,
-            bbox_width: metrics.width.max(0.0),
+            bbox_width: bbox_w.max(0.0),
             bbox_height: metrics.height.max(0.0),
         });
 
         pos += 50.0
             + if rotate_commit_label { 40.0 } else { 0.0 }
             + if direction == "TB" || direction == "BT" {
-                metrics.width.max(0.0) / 2.0
+                bbox_w.max(0.0) / 2.0
             } else {
                 0.0
             };

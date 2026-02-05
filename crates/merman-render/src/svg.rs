@@ -210,6 +210,7 @@ pub fn render_layouted_svg(
             layout,
             &diagram.semantic,
             &diagram.meta.effective_config,
+            measurer,
             options,
         ),
         LayoutDiagram::GanttDiagram(layout) => render_gantt_diagram_svg(
@@ -9166,6 +9167,7 @@ pub fn render_gitgraph_diagram_svg(
     layout: &crate::model::GitGraphDiagramLayout,
     semantic: &serde_json::Value,
     _effective_config: &serde_json::Value,
+    measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     const THEME_COLOR_LIMIT: i64 = 8;
@@ -9514,9 +9516,8 @@ pub fn render_gitgraph_diagram_svg(
     }
     out.push_str("</g>");
 
-    let measurer = crate::text::DeterministicTextMeasurer::default();
     let commit_label_style = crate::text::TextStyle {
-        font_family: None,
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 10.0,
         font_weight: None,
     };
@@ -9528,7 +9529,8 @@ pub fn render_gitgraph_diagram_svg(
             && ((c.custom_id.unwrap_or(false) && c.commit_type == 3) || c.commit_type != 3);
         if show {
             let bbox = measurer.measure(&c.id, &commit_label_style);
-            let bbox_w = bbox.width.max(0.0);
+            let (l, r) = measurer.measure_svg_title_bbox_x(&c.id, &commit_label_style);
+            let bbox_w = (l + r).max(0.0);
             let bbox_h = bbox.height.max(0.0);
 
             let mut wrapper_transform: Option<String> = None;
@@ -9609,7 +9611,9 @@ pub fn render_gitgraph_diagram_svg(
             let mut elems: Vec<TagGeom> = Vec::new();
             for tag_value in &tag_values {
                 let bbox = measurer.measure(tag_value, &commit_label_style);
-                max_w = max_w.max(bbox.width.max(0.0));
+                let (l, r) = measurer.measure_svg_title_bbox_x(tag_value, &commit_label_style);
+                let bbox_w = (l + r).max(0.0);
+                max_w = max_w.max(bbox_w.max(0.0));
                 max_h = max_h.max(bbox.height.max(0.0));
                 elems.push(TagGeom { y_offset });
                 y_offset += 20.0;

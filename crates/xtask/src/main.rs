@@ -1572,8 +1572,11 @@ fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
+    // Mermaid gitGraph auto-generates commit ids using `Math.random()`. Upstream gitGraph SVGs in
+    // this repo are generated with a seeded upstream renderer, so keep the local side seeded too
+    // for meaningful strict XML comparisons.
     let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
-        serde_json::json!({ "handDrawnSeed": 1 }),
+        serde_json::json!({ "handDrawnSeed": 1, "gitGraph": { "seed": 1 } }),
     ));
     let layout_opts = merman_render::LayoutOptions {
         text_measurer: std::sync::Arc::clone(&measurer),
@@ -9723,7 +9726,7 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         let fixtures_dir = workspace_root.join("fixtures").join(diagram);
         let out_dir = out_root.join(diagram);
         let node_cwd = workspace_root.join("tools").join("mermaid-cli");
-        let use_seeded_renderer = diagram == "architecture";
+        let use_seeded_renderer = diagram == "architecture" || diagram == "gitgraph";
         let seeded_script = if use_seeded_renderer {
             Some(ensure_seeded_upstream_svg_renderer_script(workspace_root)?)
         } else {
@@ -13144,6 +13147,7 @@ fn compare_info_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     })?;
 
     let mode = svgdom::DomMode::parse(&dom_mode);
+
     let engine = merman::Engine::new();
 
     let mut report = String::new();
@@ -13392,7 +13396,13 @@ fn compare_pie_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     })?;
 
     let mode = svgdom::DomMode::parse(&dom_mode);
-    let engine = merman::Engine::new();
+
+    // Mermaid gitGraph auto-generates commit ids via `Math.random()`. Our upstream SVG baselines
+    // are generated with a seeded renderer to keep them reproducible, so mirror the same seed
+    // here to keep parity-root viewport comparisons meaningful.
+    let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
+        serde_json::json!({ "gitGraph": { "seed": 1 } }),
+    ));
 
     let mut report = String::new();
     let _ = writeln!(
@@ -14980,6 +14990,7 @@ fn compare_gitgraph_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             layout,
             &layouted.semantic,
             &layouted.meta.effective_config,
+            layout_opts.text_measurer.as_ref(),
             &svg_opts,
         ) {
             Ok(v) => v,

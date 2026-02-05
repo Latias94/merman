@@ -72,6 +72,50 @@ struct GitGraphDb {
     warnings: Vec<String>,
     acc_title: String,
     acc_descr: String,
+    prng: Option<XorShift64Star>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct XorShift64Star {
+    state: u64,
+}
+
+impl XorShift64Star {
+    fn new(seed: u64) -> Self {
+        let mut state = seed;
+        if state == 0 {
+            state = 1;
+        }
+        Self { state }
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        // Mirrors the seeded upstream renderer script used by `xtask gen-upstream-svgs`:
+        //   x ^= x >> 12; x ^= x << 25; x ^= x >> 27; return x * 0x2545F4914F6CDD1D (mod 2^64)
+        let mut x = self.state;
+        x ^= x >> 12;
+        x ^= x << 25;
+        x ^= x >> 27;
+        self.state = x;
+        x.wrapping_mul(0x2545F4914F6CDD1D)
+    }
+
+    fn next_hex_digit(&mut self) -> u8 {
+        // Seeded upstream uses `Math.floor(Math.random() * 16)` where `Math.random()` is derived
+        // from `next_u64() >> 11` (53 bits). This is equivalent to taking the top nibble of
+        // `next_u64()`.
+        ((self.next_u64() >> 60) & 0xF) as u8
+    }
+
+    fn make_random_hex(&mut self, len: usize) -> String {
+        const HEX: &[u8; 16] = b"0123456789abcdef";
+        let mut out = String::with_capacity(len);
+        for _ in 0..len {
+            let idx = self.next_hex_digit() as usize;
+            out.push(HEX[idx] as char);
+        }
+        out
+    }
 }
 
 impl GitGraphDb {
@@ -87,6 +131,23 @@ impl GitGraphDb {
         self.warnings.clear();
         self.acc_title.clear();
         self.acc_descr.clear();
+
+        // Mermaid gitGraph auto-generates commit ids using `utils.random({ length: 7 })`, which
+        // depends on `Math.random()`. For deterministic test runs (and for reproducible upstream
+        // SVG baselines), we allow injecting a seed.
+        //
+        // When unset, we keep Mermaid's non-deterministic behavior (random per run).
+        let seed = config_i64(config, "gitGraph.seed")
+            .and_then(|v| u64::try_from(v).ok())
+            .filter(|v| *v != 0);
+        self.prng = seed.map(XorShift64Star::new);
+        if let Some(prng) = self.prng.as_mut() {
+            // Mermaid's gitGraph commit ids are generated from `Math.random()`, but the render
+            // pipeline consumes one random value before the first auto-id is minted (e.g. via
+            // internal `generateId()` helpers). Burn one step so our seeded ids line up with the
+            // seeded upstream SVG baselines.
+            let _ = prng.next_u64();
+        }
 
         let main = config
             .get_str("gitGraph.mainBranchName")
@@ -106,8 +167,12 @@ impl GitGraphDb {
     }
 
     fn next_id(&mut self) -> String {
-        let hex = Uuid::new_v4().simple().to_string();
-        hex.chars().take(7).collect()
+        if let Some(prng) = self.prng.as_mut() {
+            prng.make_random_hex(7)
+        } else {
+            let hex = Uuid::new_v4().simple().to_string();
+            hex.chars().take(7).collect()
+        }
     }
 
     fn commit(&mut self, mut commit_db: CommitDb, config: &MermaidConfig) {
@@ -711,6 +776,7 @@ pub fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
         warnings: Vec::new(),
         acc_title: String::new(),
         acc_descr: String::new(),
+        prng: None,
     };
     db.clear(&meta.effective_config);
     if let Some(d) = direction {
@@ -897,6 +963,16 @@ mod tests {
         }
     }
 
+    fn parse_with_seed(text: &str, seed: i64) -> Value {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+            json!({ "gitGraph": { "seed": seed } }),
+        ));
+        block_on(engine.parse_diagram(text, ParseOptions::default()))
+            .unwrap()
+            .unwrap()
+            .model
+    }
+
     fn commit_ids(model: &Value) -> Vec<String> {
         model["commits"]
             .as_array()
@@ -914,6 +990,13 @@ mod tests {
         assert_eq!(model["currentBranch"].as_str().unwrap(), "main");
         assert_eq!(model["direction"].as_str().unwrap(), "LR");
         assert_eq!(model["branches"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn seeded_auto_commit_ids_match_upstream_seeded_baselines() {
+        let model = parse_with_seed("gitGraph:\ncommit\n", 1);
+        let ids = commit_ids(&model);
+        assert_eq!(ids, vec!["0-ab40cda".to_string()]);
     }
 
     #[test]
