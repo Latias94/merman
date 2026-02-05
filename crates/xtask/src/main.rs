@@ -3559,6 +3559,7 @@ fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> {
     let mut diagram: String = "state".to_string();
     let mut fixture: Option<String> = None;
     let mut out_dir: Option<PathBuf> = None;
+    let mut cluster: Option<String> = None;
 
     let mut i = 0;
     while i < args.len() {
@@ -3577,6 +3578,10 @@ fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> {
             "--out-dir" => {
                 i += 1;
                 out_dir = args.get(i).map(PathBuf::from);
+            }
+            "--cluster" => {
+                i += 1;
+                cluster = args.get(i).map(|s| s.to_string());
             }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -3630,6 +3635,57 @@ fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> {
         &measurer,
     )
     .map_err(|e| XtaskError::DebugSvgFailed(format!("build dagre graph failed: {e}")))?;
+
+    fn inject_root_cluster_node(
+        g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        root_id: &str,
+    ) -> Result<(), XtaskError> {
+        if !g.has_node(root_id) {
+            g.set_node(
+                root_id.to_string(),
+                NodeLabel {
+                    width: 1.0,
+                    height: 1.0,
+                    ..Default::default()
+                },
+            );
+        }
+
+        let node_ids: Vec<String> = g.node_ids().into_iter().collect();
+        for v in node_ids {
+            if v == root_id {
+                continue;
+            }
+            if g.parent(&v).is_none() {
+                g.set_parent(v, root_id.to_string());
+            }
+        }
+        Ok(())
+    }
+
+    if let Some(cluster_id) = cluster.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        let parent_label = g.graph().clone();
+        let mut parent = g;
+        let mut sub = merman_render::state::debug_extract_state_diagram_v2_cluster_graph(
+            &mut parent,
+            cluster_id,
+        )
+        .map_err(|e| XtaskError::DebugSvgFailed(format!("extract cluster graph failed: {e}")))?;
+
+        // Mirror `prepare_graph(...)` overrides for extracted state subgraphs.
+        sub.graph_mut().rankdir = parent_label.rankdir;
+        sub.graph_mut().nodesep = parent_label.nodesep;
+        sub.graph_mut().ranksep = parent_label.ranksep + 25.0;
+        sub.graph_mut().edgesep = parent_label.edgesep;
+        sub.graph_mut().marginx = parent_label.marginx;
+        sub.graph_mut().marginy = parent_label.marginy;
+        sub.graph_mut().align = parent_label.align;
+        sub.graph_mut().ranker = parent_label.ranker;
+        sub.graph_mut().acyclicer = parent_label.acyclicer;
+
+        inject_root_cluster_node(&mut sub, cluster_id)?;
+        g = sub;
+    }
 
     let input_path = out_dir.join(format!("{fixture}.input.json"));
     let js_path = out_dir.join(format!("{fixture}.js.json"));
