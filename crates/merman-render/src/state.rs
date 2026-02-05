@@ -382,6 +382,24 @@ fn node_label_metrics(
     }
 
     if wrap_mode == WrapMode::HtmlLike {
+        metrics.width += crate::text::mermaid_default_bold_width_delta_px(decoded.as_ref(), &style);
+    }
+
+    if wrap_mode == WrapMode::HtmlLike && wrapping_width.is_finite() && wrapping_width > 0.0 {
+        // Mermaid HTML labels are effectively clamped by CSS `max-width`. Any additional width
+        // adjustments (italic/bold deltas) must not exceed that wrapping width.
+        metrics.width = metrics.width.min(wrapping_width);
+    }
+
+    if wrap_mode == WrapMode::HtmlLike {
+        // Mermaid DOM measurements routinely land on a 1/64px lattice.
+        metrics.width = crate::text::round_to_1_64_px(metrics.width);
+        if wrapping_width.is_finite() && wrapping_width > 0.0 {
+            metrics.width = metrics.width.min(wrapping_width);
+        }
+    }
+
+    if wrap_mode == WrapMode::HtmlLike {
         let has_metrics_style = italic
             || style
                 .font_weight

@@ -7,7 +7,7 @@
           "id": "Configuring",
           "x": 231.52,
           "y": 299.5,
-          "width": 447.04,
+          "width": 447.039,
           "height": 583.0,
           "is_cluster": true
         },
@@ -23,7 +23,7 @@
           "id": "NewValuePreview",
           "x": 217.6,
           "y": 413.5,
-          "width": 132.08,
+          "width": 132.078,
           "height": 280.0,
           "is_cluster": true
         },
@@ -31,7 +31,7 @@
           "id": "NewValueSelection",
           "x": 217.6,
           "y": 154.5,
-          "width": 139.52,
+          "width": 139.516,
           "height": 40.0,
           "is_cluster": false
         },
@@ -39,7 +39,7 @@
           "id": "State1",
           "x": 217.6,
           "y": 343.5,
-          "width": 62.08,
+          "width": 62.078,
           "height": 40.0,
           "is_cluster": false
         },
@@ -166,7 +166,7 @@
               "y": 224.0
             },
             {
-              "x": 260.575,
+              "x": 260.574,
               "y": 175.0
             }
           ],
@@ -219,7 +219,7 @@
           "id": "Configuring",
           "x": 231.52,
           "y": 299.5,
-          "width": 447.04,
+          "width": 447.039,
           "height": 583.0,
           "diff": -8.0,
           "offset_y": 20.0,
@@ -240,7 +240,7 @@
           "id": "NewValuePreview",
           "x": 217.6,
           "y": 413.5,
-          "width": 132.08,
+          "width": 132.078,
           "height": 280.0,
           "diff": -8.0,
           "offset_y": 20.0,
@@ -261,7 +261,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 455.04,
+        "max_x": 455.039,
         "max_y": 591.0
       }
     }

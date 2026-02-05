@@ -7,7 +7,7 @@
           "id": "Configuring",
           "x": 266.52,
           "y": 691.5,
-          "width": 447.04,
+          "width": 447.039,
           "height": 708.0,
           "is_cluster": true
         },
@@ -31,7 +31,7 @@
           "id": "NewValuePreview",
           "x": 252.6,
           "y": 830.5,
-          "width": 132.08,
+          "width": 132.078,
           "height": 330.0,
           "is_cluster": true
         },
@@ -39,7 +39,7 @@
           "id": "NewValueSelection",
           "x": 252.6,
           "y": 521.5,
-          "width": 139.52,
+          "width": 139.516,
           "height": 40.0,
           "is_cluster": false
         },
@@ -47,7 +47,7 @@
           "id": "NotShooting",
           "x": 266.52,
           "y": 577.5,
-          "width": 517.04,
+          "width": 517.039,
           "height": 1011.0,
           "is_cluster": true
         },
@@ -63,7 +63,7 @@
           "id": "State1",
           "x": 252.6,
           "y": 748.0,
-          "width": 62.08,
+          "width": 62.078,
           "height": 40.0,
           "is_cluster": false
         },
@@ -151,7 +151,7 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 245.614,
+              "x": 245.613,
               "y": 233.204
             },
             {
@@ -189,7 +189,7 @@
               "y": 691.5
             },
             {
-              "x": 371.26,
+              "x": 371.259,
               "y": 288.0
             },
             {
@@ -198,7 +198,7 @@
             }
           ],
           "label": {
-            "x": 371.26,
+            "x": 371.259,
             "y": 288.0,
             "width": 58.08,
             "height": 24.0
@@ -248,7 +248,7 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 221.627,
+              "x": 221.626,
               "y": 542.0
             },
             {
@@ -377,7 +377,7 @@
           "id": "Configuring",
           "x": 266.52,
           "y": 691.5,
-          "width": 447.04,
+          "width": 447.039,
           "height": 708.0,
           "diff": -8.0,
           "offset_y": 20.0,
@@ -398,7 +398,7 @@
           "id": "NewValuePreview",
           "x": 252.6,
           "y": 830.5,
-          "width": 132.08,
+          "width": 132.078,
           "height": 330.0,
           "diff": -8.0,
           "offset_y": 20.0,
@@ -419,7 +419,7 @@
           "id": "NotShooting",
           "x": 266.52,
           "y": 577.5,
-          "width": 517.04,
+          "width": 517.039,
           "height": 1011.0,
           "diff": -8.0,
           "offset_y": 20.0,
@@ -440,7 +440,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 525.04,
+        "max_x": 525.039,
         "max_y": 1083.0
       }
     }

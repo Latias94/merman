@@ -5,25 +5,25 @@
       "nodes": [
         {
           "id": "State1",
-          "x": 76.4,
+          "x": 76.398,
           "y": 28.0,
-          "width": 62.08,
+          "width": 62.078,
           "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "State1----note-0",
-          "x": 76.4,
+          "x": 76.398,
           "y": 198.0,
-          "width": 66.8,
+          "width": 66.797,
           "height": 150.0,
           "is_cluster": false
         },
         {
           "id": "State1----parent",
-          "x": 76.4,
+          "x": 76.398,
           "y": 198.0,
-          "width": 136.8,
+          "width": 136.797,
           "height": 200.0,
           "is_cluster": true
         }
@@ -37,19 +37,19 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 76.9,
+              "x": 76.898,
               "y": 48.5
             },
             {
-              "x": 76.4,
+              "x": 76.398,
               "y": 73.0
             },
             {
-              "x": 76.4,
+              "x": 76.398,
               "y": 98.0
             },
             {
-              "x": 76.4,
+              "x": 76.398,
               "y": 198.0
             }
           ],
@@ -66,15 +66,15 @@
       "clusters": [
         {
           "id": "State1----parent",
-          "x": 76.4,
+          "x": 76.398,
           "y": 198.0,
-          "width": 136.8,
+          "width": 136.797,
           "height": 200.0,
           "diff": 0.0,
           "offset_y": 0.0,
           "title": "Line1<br>Line2<br/>Line3<br />Line4<br\t/>Line5",
           "title_label": {
-            "x": 76.4,
+            "x": 76.398,
             "y": 159.0,
             "width": 36.8,
             "height": 120.0
@@ -89,7 +89,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 144.8,
+        "max_x": 144.797,
         "max_y": 298.0
       }
     }

@@ -347,7 +347,15 @@ pub fn mermaid_default_italic_width_delta_px(text: &str, style: &TextStyle) -> f
 
     let font_size = style.font_size.max(1.0);
     let bold = style_requests_bold_font_weight(style);
-    let per_char_em = if bold { 1.0 / 64.0 } else { 1.0 / 128.0 };
+    let per_char_em = if bold {
+        // Bold+italic runs widen more than regular italic in Mermaid@11.12.2 fixtures.
+        1.0 / 64.0
+    } else {
+        // Derived from Mermaid@11.12.2 upstream SVG baselines for state diagram HTML labels:
+        // `"Moving"` in italic-only `classDef` is wider than regular text by `1.15625px` at 16px,
+        // i.e. `37/512 em` for 6 ASCII letters => `37/3072 em` per alnum glyph.
+        37.0 / 3072.0
+    };
 
     let mut max_em: f64 = 0.0;
     for line in text.lines() {
@@ -362,6 +370,36 @@ pub fn mermaid_default_italic_width_delta_px(text: &str, style: &TextStyle) -> f
     }
 
     (max_em * font_size).max(0.0)
+}
+
+pub fn mermaid_default_bold_width_delta_px(text: &str, style: &TextStyle) -> f64 {
+    // Mermaid HTML labels can apply `font-weight: bold` via inline styles (e.g. state `classDef`).
+    // Upstream measurement is DOM-backed, so bold runs have a measurable width delta relative to
+    // regular text that we must account for during layout.
+    if !is_flowchart_default_font(style) {
+        return 0.0;
+    }
+    if !style_requests_bold_font_weight(style) {
+        return 0.0;
+    }
+
+    let font_size = style.font_size.max(1.0);
+
+    let mut max_delta_px: f64 = 0.0;
+    for line in text.lines() {
+        let mut delta_px: f64 = 0.0;
+        let mut prev: Option<char> = None;
+        for ch in line.chars() {
+            if let Some(p) = prev {
+                delta_px += flowchart_default_bold_kern_delta_em(p, ch) * font_size;
+            }
+            delta_px += flowchart_default_bold_delta_em(ch) * font_size;
+            prev = Some(ch);
+        }
+        max_delta_px = max_delta_px.max(delta_px);
+    }
+
+    max_delta_px.max(0.0)
 }
 
 pub fn measure_html_with_flowchart_bold_deltas(
