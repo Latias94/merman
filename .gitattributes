@@ -20,6 +20,7 @@
 *.css text eol=lf
 *.html text eol=lf
 *.sh  text eol=lf
+*.mjs text eol=lf
 *.lock text eol=lf
 
 # Windows script formats

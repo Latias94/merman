@@ -69,6 +69,10 @@ mismatches out of 475 upstream SVG baselines (87.2% passing). Current parity-roo
 - Mindmap: 8
 - State: 20
 
+Recent progress (2026-02-05): state diagram cluster graph extraction now mirrors Mermaid more closely (edge ordering,
+compound-edge anchoring, and cyclic self-loop edge naming), and `xtask compare-dagre-layout` gained a `--cluster`
+option to isolate and validate nested cluster layouts against upstream Dagre.
+
 Recent progress (2026-02-04): Architecture XY edge label transforms now emit literal newlines (XML-normalized to
 spaces) rather than `&#10;` entities, restoring 0-mismatch DOM parity for `upstream_architecture_cypress_edge_labels_normalized`.
 

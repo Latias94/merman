@@ -41,6 +41,18 @@ Mermaid's dagre wrapper expands self-loop transitions by injecting helper nodes
 from those helper nodes. These placeholders can influence `svg.getBBox()` and therefore the root
 viewport.
 
+### 4) HTML label box model drift (`foreignObject` width/height differs)
+
+State diagram nodes use HTML labels (`foreignObject` + `<div>`). If our headless label measurer
+produces a different wrapped line count, line height, or vertical padding than the browser
+(upstream Mermaid), Dagre receives different node dimensions and the entire layout can drift.
+
+This typically manifests as:
+
+- `parity` mode has 0 mismatches, but `parity-root` has ~0.1–10px root `max-width` / `viewBox` deltas
+- `debug-svg-bbox` reports `max_x/max_y` contributors as cluster `<rect class="outer">` frames
+- inspecting the emitted SVG shows `foreignObject height` differs for long/wrapped labels
+
 ## Debug Workflow
 
 ### A) Identify the root viewport deltas
@@ -78,3 +90,16 @@ cargo run -p xtask -- debug-svg-data-points --svg fixtures/upstream-svgs/state/<
 
 If the points differ, the root cause is upstream dagre parity (dugong ordering/numerics or graph
 construction).
+
+### D) Validate Dagre parity for a nested cluster (JS vs Rust)
+
+If you suspect the drift is caused by the recursive cluster extraction pass (not Dagre itself),
+compare the Rust layout output with a JS Dagre run for the same extracted cluster graph:
+
+```sh
+cargo run -p xtask -- compare-dagre-layout --diagram state --fixture <fixture_name> --cluster <cluster_id>
+```
+
+If JS and Rust match (max deltas ~0), then the remaining root viewport mismatch is almost always
+driven by **input graph construction** (node/edge sizes, label measurement, insertion order) rather
+than the layout solver.
