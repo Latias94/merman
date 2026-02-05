@@ -458,7 +458,23 @@ fn title_label_metrics(
     // Mermaid state diagram cluster titles use `createLabel(...)` (nowrap) rather than
     // `createText(...)` (width constrained).
     let decoded = decode_html_entities_once(label);
-    let metrics = measurer.measure_wrapped(decoded.as_ref(), text_style, None, wrap_mode);
+    let mut metrics = measurer.measure_wrapped(decoded.as_ref(), text_style, None, wrap_mode);
+
+    if wrap_mode == WrapMode::HtmlLike {
+        // Mermaid DOM measurements routinely land on a 1/64px lattice.
+        metrics.width = crate::text::round_to_1_64_px(metrics.width);
+
+        let trimmed = decoded.as_ref().trim();
+        if let Some(w) =
+            crate::generated::state_text_overrides_11_12_2::lookup_state_cluster_title_width_px(
+                text_style.font_size,
+                trimmed,
+            )
+        {
+            metrics.width = w;
+        }
+    }
+
     (metrics.width.max(0.0), metrics.height.max(0.0))
 }
 

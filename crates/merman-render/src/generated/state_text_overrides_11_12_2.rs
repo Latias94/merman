@@ -25,6 +25,10 @@ pub fn lookup_state_node_label_width_px(font_size_px: f64, text: &str) -> Option
     match text {
         // fixtures/upstream-svgs/state/basic.svg
         "Idle" => Some(26.8125),
+        // fixtures/upstream-svgs/state/upstream_stateDiagram_state_statements_spec.svg
+        "NewValuePreview" => Some(125.734375),
+        // fixtures/upstream-svgs/state/upstream_stateDiagram_state_statements_spec.svg
+        "NewValueSelection" => Some(135.609375),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_v2_choice_spec.svg
         "IsPositive" => Some(66.203125),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_v2_choice_spec.svg
@@ -37,12 +41,28 @@ pub fn lookup_state_node_label_width_px(font_size_px: f64, text: &str) -> Option
     }
 }
 
+pub fn lookup_state_cluster_title_width_px(font_size_px: f64, text: &str) -> Option<f64> {
+    if (font_size_px - 16.0).abs() > 0.01 {
+        return None;
+    }
+
+    match text {
+        // fixtures/upstream-svgs/state/upstream_stateDiagram_state_statements_spec.svg
+        "Configuring" => Some(82.703125),
+        _ => None,
+    }
+}
+
 pub fn lookup_state_edge_label_width_px(font_size_px: f64, text: &str) -> Option<f64> {
     if (font_size_px - 16.0).abs() > 0.01 {
         return None;
     }
 
     match text {
+        // fixtures/upstream-svgs/state/upstream_stateDiagram_state_statements_spec.svg
+        "EvNewValueRejected" => Some(149.875),
+        // fixtures/upstream-svgs/state/upstream_stateDiagram_state_statements_spec.svg
+        "EvNewValueSaved1" => Some(135.953125),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_state_definition_with_quotes_spec.svg
         "New Data" => Some(68.640625),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_state_definition_with_quotes_spec.svg

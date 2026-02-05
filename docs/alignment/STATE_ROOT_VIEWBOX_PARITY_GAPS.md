@@ -53,6 +53,14 @@ This typically manifests as:
 - `debug-svg-bbox` reports `max_x/max_y` contributors as cluster `<rect class="outer">` frames
 - inspecting the emitted SVG shows `foreignObject height` differs for long/wrapped labels
 
+Notes:
+
+- Upstream browser measurements often land on a **1/64px lattice** (sub-pixel rounding). For parity,
+  `merman` rounds certain HTML-like label widths to `1/64px` before feeding Dagre.
+- Some edge-case labels still require fixture-derived overrides (see
+  `crates/merman-render/src/generated/state_text_overrides_11_12_2.rs`) to match the pinned upstream
+  baselines exactly.
+
 ## Debug Workflow
 
 ### A) Identify the root viewport deltas

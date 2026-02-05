@@ -376,7 +376,7 @@
           "title_label": {
             "x": 127.0,
             "y": 349.0,
-            "width": 77.6,
+            "width": 77.594,
             "height": 24.0
           },
           "requested_dir": "TB",
@@ -397,7 +397,7 @@
           "title_label": {
             "x": 948.281,
             "y": 349.0,
-            "width": 64.32,
+            "width": 64.313,
             "height": 24.0
           },
           "requested_dir": "TB",
@@ -418,7 +418,7 @@
           "title_label": {
             "x": 1139.523,
             "y": 21.0,
-            "width": 77.6,
+            "width": 77.594,
             "height": 24.0
           },
           "requested_dir": "TB",
