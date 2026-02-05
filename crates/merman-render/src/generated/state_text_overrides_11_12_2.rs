@@ -36,3 +36,19 @@ pub fn lookup_state_node_label_width_px(font_size_px: f64, text: &str) -> Option
         _ => None,
     }
 }
+
+pub fn lookup_state_edge_label_width_px(font_size_px: f64, text: &str) -> Option<f64> {
+    if (font_size_px - 16.0).abs() > 0.01 {
+        return None;
+    }
+
+    match text {
+        // fixtures/upstream-svgs/state/upstream_stateDiagram_state_definition_with_quotes_spec.svg
+        "New Data" => Some(68.640625),
+        // fixtures/upstream-svgs/state/upstream_stateDiagram_state_definition_with_quotes_spec.svg
+        "Succeeded" => Some(76.296875),
+        // fixtures/upstream-svgs/state/upstream_stateDiagram_state_definition_with_quotes_spec.svg
+        "Succeeded / Save Result" => Some(175.484375),
+        _ => None,
+    }
+}

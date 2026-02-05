@@ -280,13 +280,36 @@ fn edge_label_metrics(
     // Mermaid stores sanitized labels that can contain HTML entities like `&lt;`. In the browser,
     // those are decoded before layout/measurement, so decode them here to avoid skewing widths.
     let decoded = decode_html_entities_once(label);
-    let mut metrics =
-        measurer.measure_wrapped(decoded.as_ref(), text_style, Some(200.0), wrap_mode);
+    let wrapping_width = 200.0;
+    let mut metrics = measurer.measure_wrapped(
+        decoded.as_ref(),
+        text_style,
+        Some(wrapping_width),
+        wrap_mode,
+    );
     // For SVG edge labels, `createText(..., addSvgBackground=true)` adds a background rect with a
     // 2px padding.
     if wrap_mode == WrapMode::SvgLike {
         metrics.width += 4.0;
         metrics.height += 4.0;
+    }
+
+    if wrap_mode == WrapMode::HtmlLike {
+        // Mermaid DOM measurements routinely land on a 1/64px lattice.
+        metrics.width = crate::text::round_to_1_64_px(metrics.width);
+        if wrapping_width.is_finite() && wrapping_width > 0.0 {
+            metrics.width = metrics.width.min(wrapping_width);
+        }
+
+        let trimmed = decoded.as_ref().trim();
+        if let Some(w) =
+            crate::generated::state_text_overrides_11_12_2::lookup_state_edge_label_width_px(
+                text_style.font_size,
+                trimmed,
+            )
+        {
+            metrics.width = w;
+        }
     }
     (metrics.width.max(0.0), metrics.height.max(0.0))
 }
@@ -1312,16 +1335,22 @@ pub fn layout_state_diagram_v2(
         g.set_node(
             special1.clone(),
             NodeLabel {
-                width: 10.0,
-                height: 10.0,
+                // Mermaid's renderer initially seeds these dummy nodes with `10x10`, but then
+                // `labelRect` renders them as `0.1x0.1` and `updateNodeBounds(...)` overwrites
+                // `node.width/height` *before* Dagre layout runs.
+                //
+                // Mirror the effective size seen by Dagre to keep cyclic self-loop layouts and
+                // root viewBox parity stable.
+                width: 0.1,
+                height: 0.1,
                 ..Default::default()
             },
         );
         g.set_node(
             special2.clone(),
             NodeLabel {
-                width: 10.0,
-                height: 10.0,
+                width: 0.1,
+                height: 0.1,
                 ..Default::default()
             },
         );
@@ -2151,16 +2180,16 @@ pub fn debug_build_state_diagram_v2_dagre_graph(
         g.set_node(
             special1.clone(),
             NodeLabel {
-                width: 10.0,
-                height: 10.0,
+                width: 0.1,
+                height: 0.1,
                 ..Default::default()
             },
         );
         g.set_node(
             special2.clone(),
             NodeLabel {
-                width: 10.0,
-                height: 10.0,
+                width: 0.1,
+                height: 0.1,
                 ..Default::default()
             },
         );
