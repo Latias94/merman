@@ -8,7 +8,10 @@ This document tracks which upstream Mermaid GitGraph parser tests are covered in
 Rendering parity for the same fixture set is tracked separately via:
 
 - upstream SVG baselines under `fixtures/upstream-svgs/gitgraph/*.svg`
-- the DOM parity compare report: `cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- the DOM parity compare report:
+  - `cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode parity --dom-decimals 3`
+  - root viewport (`viewBox` / `style max-width`) parity:
+    - `cargo run -p xtask -- compare-gitgraph-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 
 Scope: Mermaid tag `@11.12.2`.
 

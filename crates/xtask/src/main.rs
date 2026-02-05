@@ -13396,13 +13396,7 @@ fn compare_pie_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     })?;
 
     let mode = svgdom::DomMode::parse(&dom_mode);
-
-    // Mermaid gitGraph auto-generates commit ids via `Math.random()`. Our upstream SVG baselines
-    // are generated with a seeded renderer to keep them reproducible, so mirror the same seed
-    // here to keep parity-root viewport comparisons meaningful.
-    let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
-        serde_json::json!({ "gitGraph": { "seed": 1 } }),
-    ));
+    let engine = merman::Engine::new();
 
     let mut report = String::new();
     let _ = writeln!(
@@ -14914,7 +14908,13 @@ fn compare_gitgraph_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     })?;
 
     let mode = svgdom::DomMode::parse(&dom_mode);
-    let engine = merman::Engine::new();
+
+    // Mermaid gitGraph auto-generates commit ids via `Math.random()`. Upstream gitGraph SVG
+    // baselines in this repo are generated with a seeded renderer, so keep the local side seeded
+    // too for meaningful parity-root comparisons (root viewBox/max-width depend on label widths).
+    let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
+        serde_json::json!({ "gitGraph": { "seed": 1 } }),
+    ));
 
     let mut report = String::new();
     let _ = writeln!(

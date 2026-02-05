@@ -963,6 +963,19 @@ pub trait TextMeasurer {
         (l + r).max(0.0)
     }
 
+    /// Measures the bbox height for Mermaid `drawSimpleText(...).getBBox().height`-style probes.
+    ///
+    /// Upstream Mermaid uses `<text>.getBBox()` for some diagrams (notably `gitGraph` commit/tag
+    /// labels). Those `<text>` nodes are not split into `<tspan>` runs, and empirically their
+    /// bbox height behaves closer to ~`1.1em` than the slightly taller first-line heuristic used
+    /// by `measure_wrapped(..., WrapMode::SvgLike)`.
+    ///
+    /// Default implementation falls back to `measure(...).height`.
+    fn measure_svg_simple_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        let m = self.measure(text, style);
+        m.height.max(0.0)
+    }
+
     fn measure_wrapped(
         &self,
         text: &str,
@@ -2474,6 +2487,17 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
         width
     }
 
+    fn measure_svg_simple_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        let t = text.trim_end();
+        if t.is_empty() {
+            return 0.0;
+        }
+        // Upstream gitGraph uses `<text>.getBBox().height` for commit/tag labels, and those values
+        // land on a tighter ~`1.1em` height compared to our wrapped SVG text heuristic.
+        let font_size = style.font_size.max(1.0);
+        (font_size * 1.1).max(0.0)
+    }
+
     fn measure_wrapped(
         &self,
         text: &str,
@@ -2581,6 +2605,14 @@ impl TextMeasurer for DeterministicTextMeasurer {
             height,
             line_count: lines.len(),
         }
+    }
+
+    fn measure_svg_simple_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        let t = text.trim_end();
+        if t.is_empty() {
+            return 0.0;
+        }
+        (style.font_size.max(1.0) * 1.1).max(0.0)
     }
 }
 

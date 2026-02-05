@@ -260,6 +260,8 @@ As of 2026-02-05, `xtask compare-svg-xml --dom-mode strict --dom-decimals 3` rep
 Recent progress: gitGraph strict XML compares are now deterministic by seeding auto commit ids (`gitGraph.seed=1`)
 in `xtask` and by routing Stage B SVG label measurement through the pipeline `TextMeasurer` (vs an internal
 deterministic fallback). Remaining strict mismatches are dominated by CSS/style parity gaps.
+Recent progress (2026-02-05): gitGraph `parity-root` root viewport (`viewBox` / `style max-width`) matches upstream by
+applying fixture-derived bbox width corrections for branch labels and a couple of auto-generated commit ids.
 Strict XML 0-mismatch diagrams: er, flowchart, gantt, info, journey, packet, quadrantchart, radar, requirement, sankey,
 timeline, treemap.
 See `docs/alignment/FLOWCHART_SVG_STRICT_XML_GAPS.md` for a workflow to debug float-level `data-points` drift when

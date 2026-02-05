@@ -3,7 +3,7 @@
   "layout": {
     "GitGraphDiagram": {
       "bounds": {
-        "min_x": -109.16,
+        "min_x": -109.133,
         "min_y": -18.0,
         "max_x": 458.0,
         "max_y": 198.0
@@ -20,21 +20,21 @@
           "name": "main",
           "index": 0.0,
           "pos": 0.0,
-          "bbox_width": 30.72,
+          "bbox_width": 30.719,
           "bbox_height": 17.6
         },
         {
           "name": "feature",
           "index": 1.0,
           "pos": 90.0,
-          "bbox_width": 48.16,
+          "bbox_width": 48.133,
           "bbox_height": 17.6
         },
         {
           "name": "release",
           "index": 2.0,
           "pos": 180.0,
-          "bbox_width": 45.76,
+          "bbox_width": 45.766,
           "bbox_height": 17.6
         }
       ],

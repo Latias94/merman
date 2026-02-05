@@ -3,7 +3,7 @@
   "layout": {
     "GitGraphDiagram": {
       "bounds": {
-        "min_x": -205.48,
+        "min_x": -205.453,
         "min_y": -18.0,
         "max_x": 158.0,
         "max_y": 1088.0
@@ -20,91 +20,91 @@
           "name": "main",
           "index": 0.0,
           "pos": 0.0,
-          "bbox_width": 30.72,
+          "bbox_width": 30.719,
           "bbox_height": 17.6
         },
         {
           "name": "branch",
           "index": 1.0,
           "pos": 90.0,
-          "bbox_width": 41.28,
+          "bbox_width": 41.281,
           "bbox_height": 17.6
         },
         {
           "name": "azAZ_-./test",
           "index": 2.0,
           "pos": 180.0,
-          "bbox_width": 80.8,
+          "bbox_width": 80.797,
           "bbox_height": 17.6
         },
         {
           "name": "1.0.1",
           "index": 3.0,
           "pos": 270.0,
-          "bbox_width": 35.84,
+          "bbox_width": 35.844,
           "bbox_height": 17.6
         },
         {
           "name": "branch01",
           "index": 4.0,
           "pos": 360.0,
-          "bbox_width": 59.2,
+          "bbox_width": 59.203,
           "bbox_height": 17.6
         },
         {
           "name": "checkout02",
           "index": 5.0,
           "pos": 450.0,
-          "bbox_width": 74.88,
+          "bbox_width": 74.875,
           "bbox_height": 17.6
         },
         {
           "name": "cherry-pick03",
           "index": 6.0,
           "pos": 540.0,
-          "bbox_width": 93.44,
+          "bbox_width": 93.438,
           "bbox_height": 17.6
         },
         {
           "name": "branch/example-branch",
           "index": 7.0,
           "pos": 630.0,
-          "bbox_width": 144.48,
+          "bbox_width": 144.453,
           "bbox_height": 17.6
         },
         {
           "name": "merge/test_merge",
           "index": 8.0,
           "pos": 720.0,
-          "bbox_width": 118.08,
+          "bbox_width": 118.078,
           "bbox_height": 17.6
         },
         {
           "name": "A",
           "index": 9.0,
           "pos": 810.0,
-          "bbox_width": 9.6,
+          "bbox_width": 9.594,
           "bbox_height": 17.6
         },
         {
           "name": "test3",
           "index": 10.0,
           "pos": 900.0,
-          "bbox_width": 36.48,
+          "bbox_width": 36.484,
           "bbox_height": 17.6
         },
         {
           "name": "test2",
           "index": 11.0,
           "pos": 990.0,
-          "bbox_width": 36.48,
+          "bbox_width": 36.484,
           "bbox_height": 17.6
         },
         {
           "name": "test1",
           "index": 12.0,
           "pos": 1080.0,
-          "bbox_width": 36.48,
+          "bbox_width": 36.484,
           "bbox_height": 17.6
         }
       ],

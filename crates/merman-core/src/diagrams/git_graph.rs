@@ -1000,6 +1000,16 @@ mod tests {
     }
 
     #[test]
+    fn seeded_auto_commit_ids_are_direction_invariant() {
+        let base = commit_ids(&parse_with_seed("gitGraph:\ncommit\n", 1));
+        let tb = commit_ids(&parse_with_seed("gitGraph TB:\ncommit\n", 1));
+        let bt = commit_ids(&parse_with_seed("gitGraph BT:\ncommit\n", 1));
+        assert_eq!(base, tb);
+        assert_eq!(base, bt);
+        assert_eq!(base, vec!["0-ab40cda".to_string()]);
+    }
+
+    #[test]
     fn should_handle_set_direction_tb_and_bt() {
         let model = parse("gitGraph TB:\ncommit\n");
         assert_eq!(model["direction"].as_str().unwrap(), "TB");
