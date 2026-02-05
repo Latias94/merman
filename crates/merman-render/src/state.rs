@@ -3,7 +3,7 @@ use crate::model::{
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
-use dugong::graphlib::{Graph, GraphOptions};
+use dugong::graphlib::{EdgeKey, Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use serde::Deserialize;
 use serde_json::Value;
@@ -456,6 +456,45 @@ fn is_descendant(descendants: &HashMap<String, HashSet<String>>, id: &str, ances
         .is_some_and(|set| set.contains(id))
 }
 
+fn find_common_edges(
+    graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    id1: &str,
+    id2: &str,
+) -> Vec<(String, String)> {
+    let edges1: Vec<(String, String)> = graph
+        .edge_keys()
+        .into_iter()
+        .filter(|e| e.v == id1 || e.w == id1)
+        .map(|e| (e.v, e.w))
+        .collect();
+    let edges2: Vec<(String, String)> = graph
+        .edge_keys()
+        .into_iter()
+        .filter(|e| e.v == id2 || e.w == id2)
+        .map(|e| (e.v, e.w))
+        .collect();
+
+    let edges1_prim: Vec<(String, String)> = edges1
+        .into_iter()
+        .map(|(v, w)| {
+            (
+                if v == id1 { id2.to_string() } else { v },
+                // Mermaid's `findCommonEdges(...)` has an asymmetry here: it maps the `w` side
+                // back to `id1` rather than `id2` (Mermaid@11.12.2).
+                if w == id1 { id1.to_string() } else { w },
+            )
+        })
+        .collect();
+
+    let mut out = Vec::new();
+    for e1 in edges1_prim {
+        if edges2.iter().any(|e2| *e2 == e1) {
+            out.push(e1);
+        }
+    }
+    out
+}
+
 fn find_non_cluster_child(
     graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     id: &str,
@@ -470,10 +509,8 @@ fn find_non_cluster_child(
         let Some(candidate) = find_non_cluster_child(graph, child, cluster_id) else {
             continue;
         };
-        let has_edge = graph.edge_keys().iter().any(|e| {
-            (e.v == cluster_id && e.w == candidate) || (e.v == candidate && e.w == cluster_id)
-        });
-        if has_edge {
+        let common_edges = find_common_edges(graph, cluster_id, &candidate);
+        if !common_edges.is_empty() {
             reserve = Some(candidate);
         } else {
             return Some(candidate);
@@ -530,13 +567,23 @@ fn prepare_graph(
         anchor.insert(id.clone(), a);
     }
 
-    // Adjust edges that point to cluster ids by rewriting them to anchor nodes.
+    // Adjust edges that touch cluster ids by rewriting them to anchor nodes.
+    //
+    // Match Mermaid `adjustClustersAndEdges(graph)`: edges incident on cluster nodes are removed
+    // and re-inserted even when their endpoints do not change. This affects edge insertion order
+    // and can change deterministic tie-breaking in Dagre's acyclic pass.
     let edge_keys = graph.edge_keys();
     for key in edge_keys {
         let mut from_cluster: Option<String> = None;
         let mut to_cluster: Option<String> = None;
         let mut v = key.v.clone();
         let mut w = key.w.clone();
+
+        let touches_cluster =
+            cluster_ids.iter().any(|c| c == &v) || cluster_ids.iter().any(|c| c == &w);
+        if !touches_cluster {
+            continue;
+        }
 
         if cluster_ids.iter().any(|c| c == &v) && *external.get(&v).unwrap_or(&false) {
             if let Some(a) = anchor.get(&v) {
@@ -549,10 +596,6 @@ fn prepare_graph(
                 to_cluster = Some(w.clone());
                 w = a.clone();
             }
-        }
-
-        if v == key.v && w == key.w {
-            continue;
         }
 
         let Some(old_label) = graph.edge_by_key(&key).cloned() else {
@@ -647,53 +690,95 @@ fn extract_cluster_graph(
         });
     }
 
+    // Mermaid's cluster extractor uses a somewhat surprising copy algorithm:
+    // - It walks leaf nodes in a deterministic-but-mutation-sensitive order.
+    // - For each leaf, it calls `graph.edges(node)` (Graphlib ignores the argument and returns
+    //   *all* edges), inserting edges opportunistically while the source graph is being mutated.
+    //
+    // This affects edge insertion order in the extracted graph and can change Dagre's cycle
+    // breaking tie-breakers (notably for cyclic-special self-loop expansions). Mirror that
+    // behavior for parity.
     let mut descendants: Vec<String> = Vec::new();
     extract_descendants(graph, cluster_id, &mut descendants);
+    let descendants_set: HashSet<String> = descendants.iter().cloned().collect();
 
-    let moved_set: HashSet<String> = descendants.iter().cloned().collect();
+    fn edge_in_cluster(ek: &EdgeKey, root_id: &str, descendants: &HashSet<String>) -> bool {
+        if ek.v == root_id || ek.w == root_id {
+            return false;
+        }
+        descendants.contains(&ek.v) || descendants.contains(&ek.w)
+    }
+
+    fn copy_cluster(
+        current_cluster_id: &str,
+        graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        new_graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        root_id: &str,
+        descendants_set: &HashSet<String>,
+    ) {
+        let mut nodes: Vec<String> = graph
+            .children(current_cluster_id)
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        if current_cluster_id != root_id {
+            nodes.push(current_cluster_id.to_string());
+        }
+
+        for node in nodes {
+            if !graph.has_node(&node) {
+                continue;
+            }
+
+            if !graph.children(&node).is_empty() {
+                copy_cluster(&node, graph, new_graph, root_id, descendants_set);
+            } else {
+                let data = graph.node(&node).cloned().unwrap_or_default();
+                new_graph.set_node(node.clone(), data);
+
+                if let Some(parent) = graph.parent(&node) {
+                    if parent != root_id {
+                        new_graph.set_parent(node.clone(), parent.to_string());
+                    }
+                }
+                if current_cluster_id != root_id && node != current_cluster_id {
+                    new_graph.set_parent(node.clone(), current_cluster_id.to_string());
+                }
+
+                // NOTE: Mermaid uses `graph.edges(node)` but Graphlib ignores the argument and
+                // returns all edges. Mirror that by iterating the full edge set each time.
+                let edge_keys = graph.edge_keys();
+                for ek in edge_keys {
+                    if !edge_in_cluster(&ek, root_id, descendants_set) {
+                        continue;
+                    }
+                    let Some(label) = graph.edge_by_key(&ek).cloned() else {
+                        continue;
+                    };
+                    new_graph.set_edge_named(ek.v, ek.w, ek.name, Some(label));
+                }
+            }
+
+            let _ = graph.remove_node(&node);
+        }
+    }
 
     let mut sub = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
         directed: true,
         multigraph: true,
         compound: true,
     });
-
-    // Copy node labels.
-    for id in &descendants {
-        let Some(label) = graph.node(id).cloned() else {
-            continue;
-        };
-        sub.set_node(id.clone(), label);
-    }
-
-    // Copy edges that are fully inside the cluster.
-    for key in graph.edge_keys() {
-        if moved_set.contains(&key.v) && moved_set.contains(&key.w) {
-            if let Some(label) = graph.edge_by_key(&key).cloned() {
-                sub.set_edge_named(key.v.clone(), key.w.clone(), key.name.clone(), Some(label));
-            }
-        }
-    }
-
-    // Copy compound relationships, excluding the cluster root itself.
-    for id in &descendants {
-        let Some(parent) = graph.parent(id) else {
-            continue;
-        };
-        if parent == cluster_id {
-            continue;
-        }
-        if moved_set.contains(parent) {
-            sub.set_parent(id.clone(), parent.to_string());
-        }
-    }
-
-    // Remove descendant nodes from the parent graph (also removes incident edges).
-    for id in &descendants {
-        let _ = graph.remove_node(id);
-    }
-
+    copy_cluster(cluster_id, graph, &mut sub, cluster_id, &descendants_set);
     Ok(sub)
+}
+
+/// Debug-only helper: extracts a cluster subgraph the same way `prepare_graph(...)` does.
+#[doc(hidden)]
+pub fn debug_extract_state_diagram_v2_cluster_graph(
+    graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    cluster_id: &str,
+) -> Result<Graph<NodeLabel, EdgeLabel, GraphLabel>> {
+    extract_cluster_graph(cluster_id, graph)
 }
 
 fn inject_root_cluster_node(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, root_id: &str) {
@@ -1261,14 +1346,22 @@ pub fn layout_state_diagram_v2(
         set_extras_i32(&mut edge2.extras, "segment", 2);
         set_extras_string(&mut edge2.extras, "originalId", &id2);
 
+        // Mermaid uses different edge *names* (graphlib multigraph keys) from the edge `.id`
+        // property for cyclic-special helper edges. This impacts edge iteration order and can
+        // affect Dagre's cycle-breaking tie-breakers. Match Mermaid@11.12.2 exactly, including
+        // the upstream typo in `-cyc<lic-special-2`.
+        let name1 = format!("{node_id}-cyclic-special-0");
+        let name_mid = format!("{node_id}-cyclic-special-1");
+        let name2 = format!("{node_id}-cyc<lic-special-2");
+
         g.set_edge_named(
             node_dagre_id.clone(),
             special1.clone(),
-            Some(id1),
+            Some(name1),
             Some(edge1),
         );
-        g.set_edge_named(special1, special2.clone(), Some(idm), Some(edge_mid));
-        g.set_edge_named(special2, node_dagre_id, Some(id2), Some(edge2));
+        g.set_edge_named(special1, special2.clone(), Some(name_mid), Some(edge_mid));
+        g.set_edge_named(special2, node_dagre_id, Some(name2), Some(edge2));
     }
 
     let mut prepared = prepare_graph(g, &cluster_dir, 0, None)?;
@@ -2092,14 +2185,20 @@ pub fn debug_build_state_diagram_v2_dagre_graph(
         set_extras_i32(&mut edge2.extras, "segment", 2);
         set_extras_string(&mut edge2.extras, "originalId", &id2);
 
+        // Match Mermaid@11.12.2 cyclic-special edge *names* (graphlib multigraph keys), including
+        // the upstream typo in `-cyc<lic-special-2`. Keep `.id` in extras unchanged for SVG ids.
+        let name1 = format!("{node_id}-cyclic-special-0");
+        let name_mid = format!("{node_id}-cyclic-special-1");
+        let name2 = format!("{node_id}-cyc<lic-special-2");
+
         g.set_edge_named(
             node_dagre_id.clone(),
             special1.clone(),
-            Some(id1),
+            Some(name1),
             Some(edge1),
         );
-        g.set_edge_named(special1, special2.clone(), Some(idm), Some(edge_mid));
-        g.set_edge_named(special2, node_dagre_id, Some(id2), Some(edge2));
+        g.set_edge_named(special1, special2.clone(), Some(name_mid), Some(edge_mid));
+        g.set_edge_named(special2, node_dagre_id, Some(name2), Some(edge2));
     }
 
     // Preserve requested cluster directions (used by `prepare_graph` for nested extracted graphs).
