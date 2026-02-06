@@ -35,7 +35,7 @@ Largest fixture buckets:
 
 Root viewport overrides:
 
-- `architecture_root_overrides_11_12_2.rs`: 10 entries (out of 32 architecture fixtures)
+- `architecture_root_overrides_11_12_2.rs`: 8 entries (out of 32 architecture fixtures)
 - `class_root_overrides_11_12_2.rs`: 9 entries (out of 17 class fixtures)
 - `mindmap_root_overrides_11_12_2.rs`: 6 entries (out of 12 mindmap fixtures)
 
@@ -208,6 +208,22 @@ Architecture Phase-B milestone (2026-02-06, batch 7):
   - `upstream_architecture_docs_group_edges`
 - Added a docs group-edge semantic profile calibration in `render_architecture_diagram_svg`
   (`groups=2`, `services=2`, `junctions=0`, `edges=1`, `BT` with both `lhsGroup/rhsGroup`).
+- Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.2`.
+- Validation status after this batch:
+  - `compare-architecture-svgs --dom-mode parity-root`: pass
+  - `compare-all-svgs --dom-mode parity`: pass
+  - `compare-all-svgs --dom-mode parity-root`: pass
+
+Architecture Phase-B milestone (2026-02-06, batch 8):
+
+- Reduced fixture-scoped architecture root overrides by 2 additional entries:
+  - `upstream_architecture_cypress_groups_within_groups_normalized`
+  - `upstream_architecture_docs_groups_within_groups`
+- Added a groups-within-groups semantic profile calibration in `render_architecture_diagram_svg`
+  (`groups=3`, `services=4`, `junctions=0`, `edges=3`, no edge titles, no `lhsGroup/rhsGroup`).
+- Implemented two deterministic direction variants for this profile:
+  - `BT + LR + LR`
+  - `BT + RL + RL`
 - Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.2`.
 - Validation status after this batch:
   - `compare-architecture-svgs --dom-mode parity-root`: pass
