@@ -12,7 +12,6 @@ pub fn lookup_class_root_viewport_override(
         "upstream_relation_types_and_cardinalities_spec" => {
             Some(("0 0 1704.16015625 416", "1704.16"))
         }
-        "upstream_separators_labels_notes" => Some(("0 0 553.8515625 594", "553.852")),
         _ => None,
     }
 }
