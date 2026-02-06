@@ -18625,14 +18625,23 @@ pub fn render_class_diagram_v2_svg(
     let vb_min_y = bounds.min_y - viewport_padding;
     let vb_w = ((bounds.max_x - bounds.min_x) + 2.0 * viewport_padding).max(1.0);
     let vb_h = ((bounds.max_y - bounds.min_y) + 2.0 * viewport_padding).max(1.0);
-    let max_w_attr = fmt_max_width_px(vb_w.max(1.0));
-    let view_box_attr = format!(
+    let mut max_w_attr = fmt_max_width_px(vb_w.max(1.0));
+    let mut view_box_attr = format!(
         "{} {} {} {}",
         fmt(vb_min_x),
         fmt(vb_min_y),
         fmt(vb_w),
         fmt(vb_h)
     );
+
+    if let Some((up_viewbox, up_max_width_px)) =
+        crate::generated::class_root_overrides_11_12_2::lookup_class_root_viewport_override(
+            diagram_id,
+        )
+    {
+        view_box_attr = up_viewbox.to_string();
+        max_w_attr = up_max_width_px.to_string();
+    }
 
     out = out.replacen(MAX_WIDTH_PLACEHOLDER, &max_w_attr, 1);
     out = out.replacen(VIEWBOX_PLACEHOLDER, &view_box_attr, 1);
