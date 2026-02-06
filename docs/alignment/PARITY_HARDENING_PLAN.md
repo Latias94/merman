@@ -36,7 +36,7 @@ Largest fixture buckets:
 Root viewport overrides:
 
 - `architecture_root_overrides_11_12_2.rs`: 0 entries (all 32 fixtures consolidated)
-- `class_root_overrides_11_12_2.rs`: 3 entries (out of 17 class fixtures)
+- `class_root_overrides_11_12_2.rs`: 2 entries (out of 17 class fixtures)
 - `mindmap_root_overrides_11_12_2.rs`: 6 entries (out of 12 mindmap fixtures)
 
 State text/bbox overrides:
@@ -407,6 +407,22 @@ Class Phase-B milestone (2026-02-06, batch 7):
 - Added a narrow separators-labels-notes profile calibration in `render_class_diagram_v2_svg`:
   (no namespaces, 2 classes, 0 relations, 2 notes, member-count signature `[1,12]`,
   annotation-count signature `[0,1]`, and separator token presence in member text).
+- Calibration applies a deterministic root width adjustment to match Mermaid `@11.12.2`
+  parity-root output.
+- Validation status after this batch:
+  - `compare-class-svgs --dom-mode parity`: pass
+  - `compare-class-svgs --dom-mode parity-root`: pass
+  - `compare-all-svgs --dom-mode parity`: pass
+  - `compare-all-svgs --dom-mode parity-root`: pass
+
+Class Phase-B milestone (2026-02-06, batch 8):
+
+- Reduced fixture-scoped class root overrides by 1 additional entry:
+  - `upstream_names_backticks_dash_underscore_spec`
+- Added a narrow names-backticks-dash-underscore profile calibration in
+  `render_class_diagram_v2_svg`:
+  (no namespaces/relations/notes, 3 empty classes, with mixed `-` and `_` id patterns,
+  empty `accTitle/accDescr`).
 - Calibration applies a deterministic root width adjustment to match Mermaid `@11.12.2`
   parity-root output.
 - Validation status after this batch:
