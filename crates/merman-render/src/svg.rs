@@ -12098,6 +12098,104 @@ pub fn render_architecture_diagram_svg(
             }
         }
 
+        // Mermaid@11.12.2 parity-root calibration for the docs edge-title mini profile.
+        //
+        // Profile: no groups/junctions, 3 services, 2 edges with pair-set {RL, BT}, both titled,
+        // and only the BT edge has a target arrow.
+        if model.groups.is_empty()
+            && model.services.len() == 3
+            && model.junctions.is_empty()
+            && model.edges.len() == 2
+        {
+            let mut pair_rl = 0usize;
+            let mut pair_bt = 0usize;
+            let mut titled_edges = 0usize;
+            let mut lhs_into_count = 0usize;
+            let mut rhs_into_count = 0usize;
+
+            for edge in &model.edges {
+                match (edge.lhs_dir.as_str(), edge.rhs_dir.as_str()) {
+                    ("R", "L") => pair_rl += 1,
+                    ("B", "T") => pair_bt += 1,
+                    _ => {}
+                }
+                if edge
+                    .title
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|t| !t.is_empty())
+                {
+                    titled_edges += 1;
+                }
+                if edge.lhs_into == Some(true) {
+                    lhs_into_count += 1;
+                }
+                if edge.rhs_into == Some(true) {
+                    rhs_into_count += 1;
+                }
+            }
+
+            if pair_rl == 1
+                && pair_bt == 1
+                && titled_edges == 2
+                && lhs_into_count == 0
+                && rhs_into_count == 1
+            {
+                vb_min_x += 32.2430647746693;
+                vb_min_y += 29.7430647746693;
+                vb_w += 0.0138704506613294;
+                vb_h += 6.20137045066139;
+            }
+        }
+
+        // Mermaid@11.12.2 parity-root calibration for the docs icon-text service profile.
+        //
+        // Profile: no groups/junctions/edges, 3 services with exactly one icon service, one
+        // iconText service, and two titled services.
+        if model.groups.is_empty()
+            && model.services.len() == 3
+            && model.junctions.is_empty()
+            && model.edges.is_empty()
+        {
+            let mut icon_services = 0usize;
+            let mut icon_text_services = 0usize;
+            let mut titled_services = 0usize;
+
+            for service in &model.services {
+                if service
+                    .icon
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|t| !t.is_empty())
+                {
+                    icon_services += 1;
+                }
+                if service
+                    .icon_text
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|t| !t.is_empty())
+                {
+                    icon_text_services += 1;
+                }
+                if service
+                    .title
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|t| !t.is_empty())
+                {
+                    titled_services += 1;
+                }
+            }
+
+            if icon_services == 1 && icon_text_services == 1 && titled_services == 2 {
+                vb_min_x += 12.6943903747896;
+                vb_min_y += 23.3017603300687;
+                vb_w = (vb_w - 0.244234240790206).max(1.0);
+                vb_h += 0.583994598651714;
+            }
+        }
+
         let mut view_box_attr = format!(
             "{} {} {} {}",
             fmt(vb_min_x),

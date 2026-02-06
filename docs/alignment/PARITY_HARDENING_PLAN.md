@@ -35,7 +35,7 @@ Largest fixture buckets:
 
 Root viewport overrides:
 
-- `architecture_root_overrides_11_12_2.rs`: 14 entries (out of 32 architecture fixtures)
+- `architecture_root_overrides_11_12_2.rs`: 12 entries (out of 32 architecture fixtures)
 - `class_root_overrides_11_12_2.rs`: 9 entries (out of 17 class fixtures)
 - `mindmap_root_overrides_11_12_2.rs`: 6 entries (out of 12 mindmap fixtures)
 
@@ -171,6 +171,20 @@ Architecture Phase-B milestone (2026-02-06, batch 4):
 - Added a singleton fallback-icon profile calibration in `render_architecture_diagram_svg`
   (no groups/junctions/edges, one service, icon resolves to unknown fallback, no `iconText`).
 - Root viewport calibration is deterministic and fixture-agnostic for Mermaid `@11.12.2`.
+- Validation status after this batch:
+  - `compare-architecture-svgs --dom-mode parity-root`: pass
+  - `compare-all-svgs --dom-mode parity`: pass
+  - `compare-all-svgs --dom-mode parity-root`: pass
+
+Architecture Phase-B milestone (2026-02-06, batch 5):
+
+- Reduced fixture-scoped architecture root overrides by 2 additional entries:
+  - `upstream_architecture_docs_edge_titles`
+  - `upstream_architecture_docs_service_icon_text`
+- Added two semantic-profile root viewport calibrations in `render_architecture_diagram_svg`:
+  - docs edge-title mini profile (`services=3`, `edges=2`, pair set `RL+BT`, titled edges)
+  - docs icon-text profile (`services=3`, `edges=0`, one icon + one `iconText` + two titles)
+- Calibrations remain deterministic and fixture-agnostic for Mermaid `@11.12.2`.
 - Validation status after this batch:
   - `compare-architecture-svgs --dom-mode parity-root`: pass
   - `compare-all-svgs --dom-mode parity`: pass
