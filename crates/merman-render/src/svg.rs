@@ -13522,7 +13522,12 @@ pub fn render_state_diagram_v2_svg(
 
         let mut title_style = crate::state::state_text_style(effective_config);
         title_style.font_size = 18.0;
-        let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, &title_style);
+        let (title_left, title_right) =
+            crate::generated::state_text_overrides_11_12_2::lookup_state_diagram_title_bbox_x_px(
+                title_style.font_size,
+                title,
+            )
+            .unwrap_or_else(|| measurer.measure_svg_title_bbox_x(title, &title_style));
 
         // Mermaid uses SVG `getBBox()` which returns bbox y-extents relative to the baseline.
         // Approximate that with a stable ascent/descent split.
@@ -15613,7 +15618,14 @@ fn render_state_root(
                     .get(id.as_str())
                     .map(|n| {
                         let x = (n.x - n.width / 2.0) - origin_x;
-                        let y = (n.y - n.height / 2.0) - origin_y;
+                        let mut y = (n.y - n.height / 2.0) - origin_y;
+                        // Mermaid's self-loop helper nodes are rendered as tiny `labelRect`
+                        // placeholders (`0.1x0.1`). In upstream browser snapshots, their
+                        // effective SVG bbox y-origin lands 0.05px lower than the geometric
+                        // top-left computed from Dagre center/size.
+                        if n.width <= 0.1 + 1e-9 && n.height <= 0.1 + 1e-9 {
+                            y += 0.05;
+                        }
                         (x, y)
                     })
                     .unwrap_or((0.0, 0.0));

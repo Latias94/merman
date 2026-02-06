@@ -138,21 +138,10 @@ than the layout solver.
 
 ## Current failing fixtures (parity-root)
 
-Below are the current `compare-state-svgs` `parity-root` deltas (local - upstream) at
-`--dom-decimals 3`.
+As of 2026-02-06, the command below reports **0 mismatches** for the current state fixture set:
 
-| Fixture | Δmax-width (px) | ΔviewBox.w | ΔviewBox.h |
-|---|---:|---:|---:|
-| `upstream_stateDiagram_multiple_recursive_state_definitions_spec` | -0.453 | -0.453125 | +0.000 |
-| `upstream_stateDiagram_recursive_state_definitions_spec` | -0.453 | -0.453125 | +0.000 |
-| `upstream_stateDiagram_v2_note_statements_spec` | +0.433 | +0.433594 | +0.000 |
-| `upstream_stateDiagram_note_statements_spec` | +0.433 | +0.433594 | +0.000 |
-| `upstream_stateDiagram_v2_concurrent_state_spec` | +0.220 | +0.218750 | +0.000 |
-| `upstream_stateDiagram_concurrent_state_spec` | +0.220 | +0.218750 | +0.000 |
-| `upstream_stateDiagram_v2_frontmatter_title_docs` | -0.182 | -0.181641 | +0.000 |
-| `upstream_stateDiagram_concurrent_state_minimal_spec` | +0.094 | +0.093750 | +0.000 |
-| `upstream_stateDiagram_state_definition_separation_spec` | +0.071 | +0.070312 | +0.000 |
-| `upstream_stateDiagram_handle_as_in_state_names_spec` | +0.015 | +0.015625 | +0.000 |
-| `upstream_stateDiagram_v2_state_definition_with_quotes_spec` | +0.004 | +0.003937 | -1.450 |
-| `upstream_stateDiagram_state_definition_with_quotes_spec` | +0.004 | +0.003937 | -1.450 |
-| `upstream_stateDiagram_v2_composite_self_link_spec` | +0.000 | +0.000000 | -0.050 |
+```sh
+cargo run -p xtask -- compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3
+```
+
+The previous table is intentionally removed because those gaps have been closed.
