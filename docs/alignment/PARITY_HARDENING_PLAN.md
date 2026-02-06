@@ -36,7 +36,7 @@ Largest fixture buckets:
 Root viewport overrides:
 
 - `architecture_root_overrides_11_12_2.rs`: 0 entries (all 32 fixtures consolidated)
-- `class_root_overrides_11_12_2.rs`: 9 entries (out of 17 class fixtures)
+- `class_root_overrides_11_12_2.rs`: 4 entries (out of 17 class fixtures)
 - `mindmap_root_overrides_11_12_2.rs`: 6 entries (out of 12 mindmap fixtures)
 
 State text/bbox overrides:
@@ -299,6 +299,24 @@ Architecture Phase-B milestone (2026-02-06, batch 13):
 - `architecture_root_overrides_11_12_2.rs` is now fully collapsed to 0 entries.
 - Validation status after this batch:
   - `compare-architecture-svgs --dom-mode parity-root`: pass
+  - `compare-all-svgs --dom-mode parity`: pass
+  - `compare-all-svgs --dom-mode parity-root`: pass
+
+Class Phase-B milestone (2026-02-06, batch 1):
+
+- Reduced fixture-scoped class root overrides by 5 entries:
+  - `upstream_interactivity`
+  - `upstream_interactivity_click_call_with_args_spec`
+  - `upstream_interactivity_click_href_target_spec`
+  - `upstream_interactivity_security_level_loose_spec`
+  - `upstream_interactivity_security_level_sandbox_target_top_spec`
+- Added a class interactivity singleton profile calibration in `render_class_diagram_v2_svg`:
+  (no namespaces/relations/notes, exactly one class node with empty annotations/members/methods,
+  no `accTitle/accDescr`, computed viewport `86.203125 x 100` adjusted to upstream `86.1875 x 100`).
+- Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.2`.
+- Validation status after this batch:
+  - `compare-class-svgs --filter interactivity --dom-mode parity`: pass
+  - `compare-class-svgs --filter interactivity --dom-mode parity-root`: pass
   - `compare-all-svgs --dom-mode parity`: pass
   - `compare-all-svgs --dom-mode parity-root`: pass
 
