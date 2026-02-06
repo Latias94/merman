@@ -11938,7 +11938,7 @@ pub fn render_architecture_diagram_svg(
         let vb_w = ((b.max_x - b.min_x) + 2.0 * padding_px).max(1.0);
         let vb_h = ((b.max_y - b.min_y) + 2.0 * padding_px).max(1.0);
 
-        let view_box_attr = format!(
+        let mut view_box_attr = format!(
             "{} {} {} {}",
             fmt(vb_min_x),
             fmt(vb_min_y),
@@ -11946,9 +11946,23 @@ pub fn render_architecture_diagram_svg(
             fmt(vb_h)
         );
 
+        let mut max_w_attr = if use_max_width {
+            Some(fmt_max_width_px(vb_w))
+        } else {
+            None
+        };
+
+        if let Some((up_viewbox, up_max_width_px)) =
+            crate::generated::architecture_root_overrides_11_12_2::lookup_architecture_root_viewport_override(diagram_id)
+        {
+            view_box_attr = up_viewbox.to_string();
+            if use_max_width {
+                max_w_attr = Some(up_max_width_px.to_string());
+            }
+        }
+
         out = out.replacen(VIEWBOX_PLACEHOLDER, &view_box_attr, 1);
-        if use_max_width {
-            let max_w_attr = fmt_max_width_px(vb_w);
+        if let Some(max_w_attr) = max_w_attr {
             out = out.replacen(MAX_WIDTH_PLACEHOLDER, &max_w_attr, 1);
         }
     }
