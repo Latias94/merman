@@ -36,7 +36,7 @@ Largest fixture buckets:
 Root viewport overrides:
 
 - `architecture_root_overrides_11_12_2.rs`: 0 entries (all 32 fixtures consolidated)
-- `class_root_overrides_11_12_2.rs`: 1 entry (out of 17 class fixtures)
+- `class_root_overrides_11_12_2.rs`: 0 entries (all 17 fixtures consolidated)
 - `mindmap_root_overrides_11_12_2.rs`: 6 entries (out of 12 mindmap fixtures)
 
 State text/bbox overrides:
@@ -446,6 +446,19 @@ Class Phase-B milestone (2026-02-06, batch 9):
   parity-root output.
 - Validation status after this batch:
   - `compare-class-svgs --filter upstream_namespaces_and_generics --dom-mode parity-root`: pass
+  - `compare-class-svgs --dom-mode parity`: pass
+  - `compare-class-svgs --dom-mode parity-root`: pass
+  - `compare-all-svgs --dom-mode parity`: pass
+  - `compare-all-svgs --dom-mode parity-root`: pass
+
+Class Phase-B milestone (2026-02-06, batch 10):
+
+- Removed the final fixture-scoped class root override entry:
+  - `upstream_relation_types_and_cardinalities_spec`
+- Current status: `class_root_overrides_11_12_2.rs` is now empty (0 entries),
+  and all class fixtures are consolidated without fixture-id viewport fallbacks.
+- Validation status after this batch:
+  - `compare-class-svgs --filter upstream_relation_types_and_cardinalities_spec --dom-mode parity-root`: pass
   - `compare-class-svgs --dom-mode parity`: pass
   - `compare-class-svgs --dom-mode parity-root`: pass
   - `compare-all-svgs --dom-mode parity`: pass
