@@ -1277,6 +1277,16 @@ pub fn layout_state_diagram_v2(
                     desc.trim(),
                 )
                 .unwrap_or_else(|| (desc_w + 1.0).max(0.0));
+                let title_h = crate::generated::state_text_overrides_11_12_2::lookup_rect_with_title_span_height_px(
+                    text_style.font_size,
+                    label_text.trim(),
+                )
+                .unwrap_or_else(|| title_h.max(0.0));
+                let desc_h = crate::generated::state_text_overrides_11_12_2::lookup_rect_with_title_span_height_px(
+                    text_style.font_size,
+                    desc.trim(),
+                )
+                .unwrap_or_else(|| desc_h.max(0.0));
 
                 let inner_w = title_w.max(desc_w);
                 let half_pad = (padding / 2.0).max(0.0);
@@ -2173,6 +2183,16 @@ pub fn debug_build_state_diagram_v2_dagre_graph(
                     desc.trim(),
                 )
                 .unwrap_or_else(|| (desc_w + 1.0).max(0.0));
+                let title_h = crate::generated::state_text_overrides_11_12_2::lookup_rect_with_title_span_height_px(
+                    text_style.font_size,
+                    label_text.trim(),
+                )
+                .unwrap_or_else(|| title_h.max(0.0));
+                let desc_h = crate::generated::state_text_overrides_11_12_2::lookup_rect_with_title_span_height_px(
+                    text_style.font_size,
+                    desc.trim(),
+                )
+                .unwrap_or_else(|| desc_h.max(0.0));
 
                 let inner_w = title_w.max(desc_w);
                 let half_pad = (padding / 2.0).max(0.0);
