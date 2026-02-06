@@ -94,7 +94,7 @@
       {
         "labelStyle": "",
         "shape": "noteGroup",
-        "label": "A note can also\n  be defined on\n  several lines",
+        "label": "A note can also\nbe defined on\nseveral lines",
         "cssClasses": "statediagram-state",
         "cssStyles": [],
         "cssCompiledStyles": [],
@@ -109,7 +109,7 @@
       {
         "labelStyle": "",
         "shape": "note",
-        "label": "A note can also\n  be defined on\n  several lines",
+        "label": "A note can also\nbe defined on\nseveral lines",
         "cssClasses": "statediagram-note",
         "cssStyles": [],
         "cssCompiledStyles": [],
@@ -225,7 +225,7 @@
         "doc": null,
         "note": {
           "position": "right of",
-          "text": "A note can also\n  be defined on\n  several lines"
+          "text": "A note can also\nbe defined on\nseveral lines"
         },
         "classes": [],
         "styles": [],

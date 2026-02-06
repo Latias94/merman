@@ -82,6 +82,26 @@ impl<'input> Lexer<'input> {
         }
     }
 
+    fn normalize_note_block_text(raw: &'input str) -> String {
+        // Mermaid's state diagram note blocks do not preserve leading indentation for each line.
+        // The upstream SVG baselines reflect line-wise trimming.
+        let lines: Vec<&str> = raw
+            .lines()
+            .map(|l| l.trim_end_matches('\r').trim())
+            .collect();
+
+        let mut start = 0usize;
+        let mut end = lines.len();
+        while start < end && lines[start].is_empty() {
+            start += 1;
+        }
+        while end > start && lines[end - 1].is_empty() {
+            end -= 1;
+        }
+
+        lines[start..end].join("\n")
+    }
+
     fn mode(&self) -> Mode {
         *self.modes.last().unwrap_or(&Mode::Default)
     }
@@ -406,7 +426,7 @@ impl<'input> Lexer<'input> {
                         message: "Unterminated note block; missing 'end note'".to_string(),
                     }));
                 };
-                let t = rest[..idx].trim().to_string();
+                let t = Self::normalize_note_block_text(&rest[..idx]);
                 self.pos += idx + "end note".len();
                 t
             };

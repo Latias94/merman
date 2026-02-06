@@ -4356,8 +4356,7 @@ end note"#,
         .unwrap()
         .unwrap();
         let note_text = res.model["states"]["A"]["note"]["text"].as_str().unwrap();
-        assert!(note_text.contains("line1"));
-        assert!(note_text.contains("line2"));
+        assert_eq!(note_text, "line1\nline2");
 
         let res = block_on(engine.parse_diagram(
             r#"stateDiagram
