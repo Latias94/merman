@@ -135,3 +135,29 @@ cargo run -p xtask -- compare-dagre-layout --diagram state --fixture <fixture_na
 If JS and Rust match (max deltas ~0), then the remaining root viewport mismatch is almost always
 driven by **input graph construction** (node/edge sizes, label measurement, insertion order) rather
 than the layout solver.
+
+## Current failing fixtures (parity-root)
+
+Below are the current `compare-state-svgs` `parity-root` deltas (local - upstream) at
+`--dom-decimals 3`.
+
+| Fixture | Δmax-width (px) | ΔviewBox.w | ΔviewBox.h |
+|---|---:|---:|---:|
+| `upstream_state_style_spec` | -5.156 | -5.15547 | -48 |
+| `upstream_stateDiagram_state_definition_with_quotes_spec` | +0.001 | +0.000592 | -1.45 |
+| `upstream_stateDiagram_v2_state_definition_with_quotes_spec` | +0.001 | +0.000592 | -1.45 |
+| `upstream_stateDiagram_v2_composite_self_link_spec` | +0 | +0.000006 | -0.05 |
+| `upstream_stateDiagram_v2_spec` | +0.907 | +0.907397 | +0 |
+| `upstream_stateDiagram_multiple_recursive_state_definitions_spec` | -0.445 | -0.445312 | +0 |
+| `upstream_stateDiagram_recursive_state_definitions_spec` | -0.445 | -0.445312 | +0 |
+| `upstream_stateDiagram_note_statements_spec` | +0.433 | +0.433594 | +0 |
+| `upstream_stateDiagram_v2_note_statements_spec` | +0.433 | +0.433594 | +0 |
+| `upstream_stateDiagram_concurrent_state_spec` | +0.22 | +0.21875 | +0 |
+| `upstream_stateDiagram_v2_concurrent_state_spec` | +0.22 | +0.21875 | +0 |
+| `upstream_stateDiagram_v2_frontmatter_title_docs` | -0.182 | -0.181641 | +0 |
+| `upstream_stateDiagram_concurrent_state_minimal_spec` | +0.094 | +0.09375 | +0 |
+| `upstream_stateDiagram_state_definition_separation_spec` | +0.071 | +0.070312 | +0 |
+| `upstream_stateDiagram_fork_join_spec` | +0.016 | +0.015625 | +0 |
+| `upstream_stateDiagram_handle_as_in_state_names_spec` | +0.015 | +0.015625 | +0 |
+| `upstream_stateDiagram_v2_fork_join_spec` | +0.016 | +0.015625 | +0 |
+| `upstream_stateDiagram_direction_lr_spec` | -0.007 | -0.00665 | +0 |
