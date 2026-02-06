@@ -3376,6 +3376,7 @@ fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), XtaskError> {
 fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> {
     use dugong::graphlib::Graph;
     use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
+    use std::collections::HashMap;
 
     fn rankdir_to_string(d: RankDir) -> &'static str {
         match d {
@@ -3636,6 +3637,119 @@ fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> {
     )
     .map_err(|e| XtaskError::DebugSvgFailed(format!("build dagre graph failed: {e}")))?;
 
+    fn normalize_cluster_edge_endpoints_like_harness(
+        graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    ) {
+        fn find_common_edges(
+            graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+            id1: &str,
+            id2: &str,
+        ) -> Vec<(String, String)> {
+            let edges1: Vec<(String, String)> = graph
+                .edge_keys()
+                .into_iter()
+                .filter(|e| e.v == id1 || e.w == id1)
+                .map(|e| (e.v, e.w))
+                .collect();
+            let edges2: Vec<(String, String)> = graph
+                .edge_keys()
+                .into_iter()
+                .filter(|e| e.v == id2 || e.w == id2)
+                .map(|e| (e.v, e.w))
+                .collect();
+
+            let edges1_prim: Vec<(String, String)> = edges1
+                .into_iter()
+                .map(|(v, w)| {
+                    (
+                        if v == id1 { id2.to_string() } else { v },
+                        // Mermaid's `findCommonEdges(...)` has an asymmetry here: it maps the `w`
+                        // side back to `id1` rather than `id2` (Mermaid@11.12.2).
+                        if w == id1 { id1.to_string() } else { w },
+                    )
+                })
+                .collect();
+
+            let mut out = Vec::new();
+            for e1 in edges1_prim {
+                if edges2.iter().any(|e2| *e2 == e1) {
+                    out.push(e1);
+                }
+            }
+            out
+        }
+
+        fn find_non_cluster_child(
+            graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+            id: &str,
+            cluster_id: &str,
+        ) -> Option<String> {
+            let children = graph.children(id);
+            if children.is_empty() {
+                return Some(id.to_string());
+            }
+            let mut reserve: Option<String> = None;
+            for child in children {
+                let Some(candidate) = find_non_cluster_child(graph, child, cluster_id) else {
+                    continue;
+                };
+                let common_edges = find_common_edges(graph, cluster_id, &candidate);
+                if !common_edges.is_empty() {
+                    reserve = Some(candidate);
+                } else {
+                    return Some(candidate);
+                }
+            }
+            reserve
+        }
+
+        let cluster_ids: Vec<String> = graph
+            .node_ids()
+            .into_iter()
+            .filter(|id| !graph.children(id).is_empty())
+            .collect();
+        if cluster_ids.is_empty() {
+            return;
+        }
+
+        let mut anchor: HashMap<String, String> = HashMap::new();
+        for id in &cluster_ids {
+            let Some(a) = find_non_cluster_child(graph, id, id) else {
+                continue;
+            };
+            anchor.insert(id.clone(), a);
+        }
+
+        // Dagre assumes edges never touch compound nodes (nodes with children).
+        //
+        // Mirror `tools/dagre-harness/run.mjs` `normalizeClusterEdgeEndpoints(...)` so the Rust
+        // and JS layout runs operate on the same transformed graph.
+        let edge_keys = graph.edge_keys();
+        for key in edge_keys {
+            let mut v = key.v.clone();
+            let mut w = key.w.clone();
+            if cluster_ids.iter().any(|c| c == &v) {
+                if let Some(a) = anchor.get(&v) {
+                    v = a.clone();
+                }
+            }
+            if cluster_ids.iter().any(|c| c == &w) {
+                if let Some(a) = anchor.get(&w) {
+                    w = a.clone();
+                }
+            }
+            if v == key.v && w == key.w {
+                continue;
+            }
+
+            let Some(old_label) = graph.edge_by_key(&key).cloned() else {
+                continue;
+            };
+            let _ = graph.remove_edge_key(&key);
+            graph.set_edge_named(v, w, key.name.clone(), Some(old_label));
+        }
+    }
+
     fn inject_root_cluster_node(
         g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
         root_id: &str,
@@ -3686,6 +3800,10 @@ fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> {
         inject_root_cluster_node(&mut sub, cluster_id)?;
         g = sub;
     }
+
+    // Mirror the JS dagre harness normalization for compound-edge endpoints so the input graph is
+    // identical for both the JS and Rust layout runs.
+    normalize_cluster_edge_endpoints_like_harness(&mut g);
 
     let input_path = out_dir.join(format!("{fixture}.input.json"));
     let js_path = out_dir.join(format!("{fixture}.js.json"));
