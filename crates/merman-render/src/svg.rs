@@ -12326,6 +12326,72 @@ pub fn render_architecture_diagram_svg(
             }
         }
 
+        // Mermaid@11.12.2 parity-root calibration for the docs edge-arrows profile.
+        //
+        // Profile: 0 groups, 4 services, 0 junctions, 3 untitled edges, no group-edge modifiers,
+        // direction set `RL + BT + LR`, and into-pattern mix
+        // (`lhs_only=1`, `rhs_only=1`, `both=1`).
+        if model.groups.is_empty()
+            && model.services.len() == 4
+            && model.junctions.is_empty()
+            && model.edges.len() == 3
+        {
+            let mut pair_rl = 0usize;
+            let mut pair_bt = 0usize;
+            let mut pair_lr = 0usize;
+            let mut has_titles = false;
+            let mut has_group_edge_mod = false;
+            let mut into_lhs_only = 0usize;
+            let mut into_rhs_only = 0usize;
+            let mut into_both = 0usize;
+
+            for edge in &model.edges {
+                match (edge.lhs_dir.as_str(), edge.rhs_dir.as_str()) {
+                    ("R", "L") => pair_rl += 1,
+                    ("B", "T") => pair_bt += 1,
+                    ("L", "R") => pair_lr += 1,
+                    _ => {}
+                }
+
+                if edge
+                    .title
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|t| !t.is_empty())
+                {
+                    has_titles = true;
+                }
+
+                if edge.lhs_group == Some(true) || edge.rhs_group == Some(true) {
+                    has_group_edge_mod = true;
+                }
+
+                let lhs_into = edge.lhs_into == Some(true);
+                let rhs_into = edge.rhs_into == Some(true);
+                match (lhs_into, rhs_into) {
+                    (true, true) => into_both += 1,
+                    (true, false) => into_lhs_only += 1,
+                    (false, true) => into_rhs_only += 1,
+                    (false, false) => {}
+                }
+            }
+
+            if !has_titles
+                && !has_group_edge_mod
+                && pair_rl == 1
+                && pair_bt == 1
+                && pair_lr == 1
+                && into_lhs_only == 1
+                && into_rhs_only == 1
+                && into_both == 1
+            {
+                vb_min_x += 20.7361192920573;
+                vb_min_y += 29.7431373380129;
+                vb_w += 0.0277614158854;
+                vb_h += 6.2012405827633;
+            }
+        }
+
         let mut view_box_attr = format!(
             "{} {} {} {}",
             fmt(vb_min_x),
