@@ -1543,20 +1543,31 @@ pub fn layout_state_diagram_v2(
                 message: format!("missing positioned cluster node: {}", n.id),
             });
         };
-        let rect = Rect::from_center(pos.x, pos.y, pos.width, pos.height);
-        let (cx, cy) = rect.center();
 
-        let title = n
+        let mut title = n
             .label
             .as_ref()
             .map(value_to_label_text)
             .unwrap_or_default();
+        if title.trim().is_empty() {
+            title = n.id.clone();
+        }
         let pad = n.padding.unwrap_or(8.0).max(0.0);
         let (tw, th) = if title.trim().is_empty() {
             (0.0, 0.0)
         } else {
             title_label_metrics(&title, measurer, &text_style, wrap_mode)
         };
+
+        // Mermaid expands cluster width to ensure the title fits, but does not re-run Dagre after
+        // that adjustment (so child node positions remain unchanged).
+        let min_cluster_width = if title.trim().is_empty() {
+            0.0
+        } else {
+            (tw + pad).max(0.0)
+        };
+        let rect = Rect::from_center(pos.x, pos.y, pos.width.max(min_cluster_width), pos.height);
+        let (cx, cy) = rect.center();
 
         let title_top_adjust = if html_labels { 0.0 } else { 3.0 };
         let title_label = LayoutLabel {

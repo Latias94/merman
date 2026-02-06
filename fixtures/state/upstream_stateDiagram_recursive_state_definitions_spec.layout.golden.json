@@ -23,7 +23,7 @@
           "id": "NewValuePreview",
           "x": 227.902,
           "y": 413.5,
-          "width": 131.906,
+          "width": 134.734,
           "height": 280.0,
           "is_cluster": true
         },
@@ -240,7 +240,7 @@
           "id": "NewValuePreview",
           "x": 227.902,
           "y": 413.5,
-          "width": 131.906,
+          "width": 134.734,
           "height": 280.0,
           "diff": -8.0,
           "offset_y": 20.0,
@@ -248,7 +248,7 @@
           "title_label": {
             "x": 227.902,
             "y": 286.5,
-            "width": 117.766,
+            "width": 126.734,
             "height": 24.0
           },
           "requested_dir": "TB",

@@ -468,12 +468,12 @@
           "height": 418.0,
           "diff": -8.0,
           "offset_y": 0.0,
-          "title": "",
+          "title": "divider-id-1",
           "title_label": {
             "x": 201.984,
-            "y": 110.5,
-            "width": 0.0,
-            "height": 0.0
+            "y": 122.5,
+            "width": 74.234,
+            "height": 24.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -489,12 +489,12 @@
           "height": 418.0,
           "diff": -8.0,
           "offset_y": 0.0,
-          "title": "",
+          "title": "divider-id-2",
           "title_label": {
             "x": 571.234,
-            "y": 110.5,
-            "width": 0.0,
-            "height": 0.0
+            "y": 122.5,
+            "width": 74.234,
+            "height": 24.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",
@@ -510,12 +510,12 @@
           "height": 418.0,
           "diff": -8.0,
           "offset_y": 0.0,
-          "title": "",
+          "title": "id-38dvt516gkfs-1",
           "title_label": {
             "x": 944.004,
-            "y": 110.5,
-            "width": 0.0,
-            "height": 0.0
+            "y": 122.5,
+            "width": 125.766,
+            "height": 24.0
           },
           "requested_dir": "TB",
           "effective_dir": "TB",

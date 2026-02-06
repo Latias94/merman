@@ -31,7 +31,7 @@
           "id": "NewValuePreview",
           "x": 262.902,
           "y": 830.5,
-          "width": 131.906,
+          "width": 134.734,
           "height": 330.0,
           "is_cluster": true
         },
@@ -398,7 +398,7 @@
           "id": "NewValuePreview",
           "x": 262.902,
           "y": 830.5,
-          "width": 131.906,
+          "width": 134.734,
           "height": 330.0,
           "diff": -8.0,
           "offset_y": 20.0,
@@ -406,7 +406,7 @@
           "title_label": {
             "x": 262.902,
             "y": 678.5,
-            "width": 117.766,
+            "width": 126.734,
             "height": 24.0
           },
           "requested_dir": "TB",
@@ -427,7 +427,7 @@
           "title_label": {
             "x": 274.639,
             "y": 85.0,
-            "width": 78.719,
+            "width": 87.438,
             "height": 24.0
           },
           "requested_dir": "TB",

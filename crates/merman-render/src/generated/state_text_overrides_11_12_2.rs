@@ -98,6 +98,10 @@ pub fn lookup_state_cluster_title_width_px(font_size_px: f64, text: &str) -> Opt
     match text {
         // fixtures/upstream-svgs/state/upstream_stateDiagram_state_statements_spec.svg
         "Configuring" => Some(82.703125),
+        // fixtures/upstream-svgs/state/upstream_stateDiagram_multiple_recursive_state_definitions_spec.svg
+        "NewValuePreview" => Some(126.734375),
+        // fixtures/upstream-svgs/state/upstream_stateDiagram_multiple_recursive_state_definitions_spec.svg
+        "NotShooting" => Some(87.4375),
         _ => None,
     }
 }
