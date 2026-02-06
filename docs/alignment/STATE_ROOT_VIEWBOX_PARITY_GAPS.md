@@ -21,6 +21,16 @@ This often manifests as:
 - root `viewBox` mismatch (usually width/height)
 - `debug-svg-bbox` showing min/max contributors as edge `<path>` elements (e.g. `id="edge1"`)
 
+### 1b) Missing endpoint intersection (shape-specific `data-points` drift)
+
+Mermaid adjusts the first/last edge points by intersecting the polyline with the node's rendered
+shape (e.g. start/end circles, rounded rects, **choice diamonds**). If the Rust renderer leaves
+those endpoints at the node center, `data-points` will drift even when the underlying Dagre layout
+matches.
+
+This is usually fixed in the state layout post-process (`crates/merman-render/src/state.rs`) by
+applying Mermaid-compatible intersection routines to the first/last points.
+
 ### 2) Rounded `rect` padding mismatch (rx/ry -> `roundedRect`)
 
 Mermaid's state diagram node sizing treats `rect` nodes with `rx/ry` (converted to a `roundedRect`)

@@ -1751,6 +1751,16 @@ pub fn layout_state_diagram_v2(
             points
         }
 
+        fn mermaid_choice_points(w: f64, h: f64) -> Vec<Point> {
+            // Mermaid stateDiagram-v2 "choice" nodes are diamonds.
+            vec![
+                merman_core::geom::point(0.0, -h / 2.0),
+                merman_core::geom::point(w / 2.0, 0.0),
+                merman_core::geom::point(0.0, h / 2.0),
+                merman_core::geom::point(-w / 2.0, 0.0),
+            ]
+        }
+
         fn mermaid_intersect_polygon(
             node: Point,
             w: f64,
@@ -1863,6 +1873,17 @@ pub fn layout_state_diagram_v2(
                 "stateStart" | "stateEnd" => {
                     mermaid_intersect_circle(start_center, 7.0, start_target)
                 }
+                "choice" => {
+                    let poly =
+                        mermaid_choice_points(start_ln.width.max(1.0), start_ln.height.max(1.0));
+                    mermaid_intersect_polygon(
+                        start_center,
+                        start_ln.width.max(1.0),
+                        start_ln.height.max(1.0),
+                        &poly,
+                        start_target,
+                    )
+                }
                 // `rect` with rx/ry becomes `roundedRect` in Mermaid.
                 "rect" if start_sn.rx.unwrap_or(0.0) > 0.0 && start_sn.ry.unwrap_or(0.0) > 0.0 => {
                     let poly = mermaid_rounded_rect_points(
@@ -1881,6 +1902,16 @@ pub fn layout_state_diagram_v2(
             };
             let end_hit = match end_sn.shape.as_str() {
                 "stateStart" | "stateEnd" => mermaid_intersect_circle(end_center, 7.0, end_target),
+                "choice" => {
+                    let poly = mermaid_choice_points(end_ln.width.max(1.0), end_ln.height.max(1.0));
+                    mermaid_intersect_polygon(
+                        end_center,
+                        end_ln.width.max(1.0),
+                        end_ln.height.max(1.0),
+                        &poly,
+                        end_target,
+                    )
+                }
                 "rect" if end_sn.rx.unwrap_or(0.0) > 0.0 && end_sn.ry.unwrap_or(0.0) > 0.0 => {
                     let poly =
                         mermaid_rounded_rect_points(end_ln.width.max(1.0), end_ln.height.max(1.0));
