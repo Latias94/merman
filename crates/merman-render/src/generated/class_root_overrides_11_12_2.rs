@@ -9,7 +9,6 @@ pub fn lookup_class_root_viewport_override(
     match diagram_id {
         "upstream_names_backticks_dash_underscore_spec" => Some(("0 0 288.84375 100", "288.844")),
         "upstream_namespaces_and_generics" => Some(("0 0 799.90625 436", "799.906")),
-        "upstream_note_keywords_spec" => Some(("0 0 669.90625 246", "669.906")),
         "upstream_relation_types_and_cardinalities_spec" => {
             Some(("0 0 1704.16015625 416", "1704.16"))
         }
