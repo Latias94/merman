@@ -7,7 +7,6 @@ pub fn lookup_class_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
-        "basic" => Some(("0 0 159.640625 336", "159.641")),
         "upstream_annotations_in_brackets_spec" => Some(("0 0 335.125 184", "335.125")),
         "upstream_cross_namespace_relations_spec" => Some(("0 0 367.06640625 406", "367.066")),
         "upstream_docs_define_class_relationship" => Some(("0 0 219.96875 234", "219.969")),
@@ -18,7 +17,6 @@ pub fn lookup_class_root_viewport_override(
             Some(("0 0 1704.16015625 416", "1704.16"))
         }
         "upstream_separators_labels_notes" => Some(("0 0 553.8515625 594", "553.852")),
-        "upstream_styles_spec" => Some(("0 0 225.125 234", "225.125")),
         _ => None,
     }
 }

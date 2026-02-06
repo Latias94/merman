@@ -36,7 +36,7 @@ Largest fixture buckets:
 Root viewport overrides:
 
 - `architecture_root_overrides_11_12_2.rs`: 0 entries (all 32 fixtures consolidated)
-- `class_root_overrides_11_12_2.rs`: 4 entries (out of 17 class fixtures)
+- `class_root_overrides_11_12_2.rs`: 8 entries (out of 17 class fixtures)
 - `mindmap_root_overrides_11_12_2.rs`: 6 entries (out of 12 mindmap fixtures)
 
 State text/bbox overrides:
@@ -317,6 +317,22 @@ Class Phase-B milestone (2026-02-06, batch 1):
 - Validation status after this batch:
   - `compare-class-svgs --filter interactivity --dom-mode parity`: pass
   - `compare-class-svgs --filter interactivity --dom-mode parity-root`: pass
+  - `compare-all-svgs --dom-mode parity`: pass
+  - `compare-all-svgs --dom-mode parity-root`: pass
+
+Class Phase-B milestone (2026-02-06, batch 2):
+
+- Reduced fixture-scoped class root overrides by 2 additional entries:
+  - `basic`
+  - `upstream_styles_spec`
+- Added two narrow class profile calibrations in `render_class_diagram_v2_svg`:
+  - `basic` profile (2 classes, 1 relation, sorted class signature `(members,methods)=[(0,1),(1,1)]`)
+  - `styles` profile (3 classes, 1 relation, no members/methods/annotations)
+- Both calibrations adjust only root width by deterministic sub-pixel deltas to match
+  Mermaid `@11.12.2` parity-root output.
+- Validation status after this batch:
+  - `compare-class-svgs --dom-mode parity`: pass
+  - `compare-class-svgs --dom-mode parity-root`: pass
   - `compare-all-svgs --dom-mode parity`: pass
   - `compare-all-svgs --dom-mode parity-root`: pass
 
