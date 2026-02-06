@@ -7,7 +7,6 @@ pub fn lookup_class_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
-        "upstream_namespaces_and_generics" => Some(("0 0 799.90625 436", "799.906")),
         "upstream_relation_types_and_cardinalities_spec" => {
             Some(("0 0 1704.16015625 416", "1704.16"))
         }
