@@ -9,11 +9,6 @@ pub fn lookup_architecture_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
-        "upstream_architecture_cypress_reasonable_height"
-        | "upstream_architecture_layout_reasonable_height" => Some((
-            "-889.9099731445312 -270.7564392089844 1859.8199462890625 672.5128784179688",
-            "1859.8199462890625",
-        )),
         _ => None,
     }
 }

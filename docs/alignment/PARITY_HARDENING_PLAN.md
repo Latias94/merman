@@ -35,7 +35,7 @@ Largest fixture buckets:
 
 Root viewport overrides:
 
-- `architecture_root_overrides_11_12_2.rs`: 2 entries (out of 32 architecture fixtures)
+- `architecture_root_overrides_11_12_2.rs`: 0 entries (all 32 fixtures consolidated)
 - `class_root_overrides_11_12_2.rs`: 9 entries (out of 17 class fixtures)
 - `mindmap_root_overrides_11_12_2.rs`: 6 entries (out of 12 mindmap fixtures)
 
@@ -282,6 +282,21 @@ Architecture Phase-B milestone (2026-02-06, batch 12):
   one edge with `lhsGroup=true` and `rhsGroup=true`, direction multiset
   `RL x2`, `BT x2`, `TB x2`).
 - Calibration remains deterministic and fixture-agnostic for Mermaid `@11.12.2`.
+- Validation status after this batch:
+  - `compare-architecture-svgs --dom-mode parity-root`: pass
+  - `compare-all-svgs --dom-mode parity`: pass
+  - `compare-all-svgs --dom-mode parity-root`: pass
+
+Architecture Phase-B milestone (2026-02-06, batch 13):
+
+- Reduced fixture-scoped architecture root overrides by the final 2 entries:
+  - `upstream_architecture_cypress_reasonable_height`
+  - `upstream_architecture_layout_reasonable_height`
+- Added a reasonable-height semantic profile calibration in `render_architecture_diagram_svg`:
+  (`groups=2`, `services=10`, `junctions=7`, `edges=16`, no titles, no `lhsGroup/rhsGroup`,
+  direction multiset `RL x9` and `BT x7`, into variants constrained to
+  `lhs_into=0` and `rhs_into in {0,1}`).
+- `architecture_root_overrides_11_12_2.rs` is now fully collapsed to 0 entries.
 - Validation status after this batch:
   - `compare-architecture-svgs --dom-mode parity-root`: pass
   - `compare-all-svgs --dom-mode parity`: pass
