@@ -60,6 +60,13 @@ Source files:
 
 - `classTypes.spec.ts`, `svgDraw.spec.js`: rendering/layout-focused behavior and not part of headless parsing parity.
 
+## Docs-derived parser+render fixture
+
+Source: `repo-ref/mermaid/docs/syntax/classDiagram.md`
+
+- explicit class + relationship definition (`class Animal`, `Vehicle <|-- Car`):
+  `fixtures/class/upstream_docs_define_class_relationship.mmd`
+
 ## Headless layout coverage (Stage A)
 
 Layout entrypoint:

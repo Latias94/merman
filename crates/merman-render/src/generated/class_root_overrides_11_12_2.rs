@@ -10,6 +10,7 @@ pub fn lookup_class_root_viewport_override(
         "basic" => Some(("0 0 159.640625 336", "159.641")),
         "upstream_annotations_in_brackets_spec" => Some(("0 0 335.125 184", "335.125")),
         "upstream_cross_namespace_relations_spec" => Some(("0 0 367.06640625 406", "367.066")),
+        "upstream_docs_define_class_relationship" => Some(("0 0 219.96875 234", "219.969")),
         "upstream_interactivity"
         | "upstream_interactivity_click_call_with_args_spec"
         | "upstream_interactivity_click_href_target_spec"

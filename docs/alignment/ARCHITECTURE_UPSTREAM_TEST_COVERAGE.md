@@ -70,3 +70,8 @@ and newer Langium syntax. For end-to-end CLI baselines + DOM parity, we keep the
 - normalized edge labels: `fixtures/architecture/upstream_architecture_cypress_edge_labels_normalized.mmd`
 - normalized simple junction edges: `fixtures/architecture/upstream_architecture_cypress_simple_junction_edges_normalized.mmd`
 - normalized complex junction edges: `fixtures/architecture/upstream_architecture_cypress_complex_junction_edges_normalized.mmd`
+
+Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/svgDraw.spec.ts`
+
+- SVG id coverage for group/service/edge nodes:
+  `fixtures/architecture/upstream_architecture_svgdraw_ids_spec.mmd`

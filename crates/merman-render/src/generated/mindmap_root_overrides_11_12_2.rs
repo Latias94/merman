@@ -8,6 +8,9 @@ pub fn lookup_mindmap_root_viewport_override(
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
         "basic" => Some(("5 5 294.05145263671875 54", "294.051")),
+        "upstream_docs_unclear_indentation" => {
+            Some(("5 5 242.63980102539062 210.3271942138672", "242.64"))
+        }
         "upstream_decorations_and_descriptions" => {
             Some(("5 5 467.0743713378906 383.4874267578125", "467.074"))
         }

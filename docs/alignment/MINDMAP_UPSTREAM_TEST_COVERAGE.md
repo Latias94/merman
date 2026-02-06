@@ -52,3 +52,10 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/mindmap/mindmap.spec.ts`
 - MMP-22 end-of-line comments: fixture `fixtures/mindmap/upstream_whitespace_and_comments.mmd`
 - MMP-23 rows with only spaces do not interfere: fixture `fixtures/mindmap/upstream_whitespace_and_comments.mmd`
 - MMP-24/25 rows above the declaration are ignored: fixture `fixtures/mindmap/upstream_whitespace_and_comments.mmd`
+
+## Docs-derived parser+render fixture
+
+Source: `repo-ref/mermaid/docs/syntax/mindmap.md`
+
+- unclear indentation fallback (node `C` attaches to nearest valid ancestor):
+  `fixtures/mindmap/upstream_docs_unclear_indentation.mmd`
