@@ -60,6 +60,8 @@ pub fn lookup_state_edge_label_width_px(font_size_px: f64, text: &str) -> Option
 
     match text {
         // fixtures/upstream-svgs/state/upstream_stateDiagram_state_statements_spec.svg
+        "EvNewValue" => Some(85.984375),
+        // fixtures/upstream-svgs/state/upstream_stateDiagram_state_statements_spec.svg
         "EvNewValueRejected" => Some(149.875),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_state_statements_spec.svg
         "EvNewValueSaved1" => Some(135.953125),
