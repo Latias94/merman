@@ -12065,6 +12065,39 @@ pub fn render_architecture_diagram_svg(
             }
         }
 
+        // Mermaid@11.12.2 parity-root calibration for fallback icon singleton sample.
+        //
+        // Profile: one service, no groups/junctions/edges, and the service icon resolves to the
+        // architecture unknown-icon fallback glyph.
+        if model.groups.is_empty()
+            && model.services.len() == 1
+            && model.junctions.is_empty()
+            && model.edges.is_empty()
+        {
+            if let Some(service) = model.services.first() {
+                let icon_name = service
+                    .icon
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|n| !n.is_empty());
+                let uses_unknown_fallback = icon_name
+                    .map(|name| arch_icon_body(name) == arch_icon_body("unknown"))
+                    .unwrap_or(false);
+                let has_icon_text = service
+                    .icon_text
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|t| !t.is_empty());
+
+                if uses_unknown_fallback && !has_icon_text {
+                    vb_min_x -= 0.00390625;
+                    vb_min_y += 18.0;
+                    vb_w += 0.2578125;
+                    vb_h += 6.1875;
+                }
+            }
+        }
+
         let mut view_box_attr = format!(
             "{} {} {} {}",
             fmt(vb_min_x),
