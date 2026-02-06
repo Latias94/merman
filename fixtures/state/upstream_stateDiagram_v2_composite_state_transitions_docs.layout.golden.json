@@ -15,7 +15,7 @@
           "id": "First_end",
           "x": 139.039,
           "y": 320.5,
-          "width": 14.0,
+          "width": 14.013,
           "height": 14.0,
           "is_cluster": false
         },
@@ -39,7 +39,7 @@
           "id": "Second_end",
           "x": 61.32,
           "y": 663.5,
-          "width": 14.0,
+          "width": 14.013,
           "height": 14.0,
           "is_cluster": false
         },
@@ -63,7 +63,7 @@
           "id": "Third_end",
           "x": 216.758,
           "y": 663.5,
-          "width": 14.0,
+          "width": 14.013,
           "height": 14.0,
           "is_cluster": false
         },

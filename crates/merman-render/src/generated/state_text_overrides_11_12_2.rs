@@ -25,6 +25,8 @@ pub fn lookup_state_node_label_width_px(font_size_px: f64, text: &str) -> Option
     match text {
         // fixtures/upstream-svgs/state/basic.svg
         "Idle" => Some(26.8125),
+        // fixtures/upstream-svgs/state/upstream_stateDiagram_v2_spec.svg
+        "State1" | "State3" | "State4" => Some(45.90625),
         // fixtures/upstream-svgs/state/upstream_state_style_spec.svg
         "fast" => Some(27.140625),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_state_statements_spec.svg
@@ -112,6 +114,8 @@ pub fn lookup_state_edge_label_width_px(font_size_px: f64, text: &str) -> Option
         "EvNewValueRejected" => Some(149.875),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_state_statements_spec.svg
         "EvNewValueSaved1" => Some(135.953125),
+        // fixtures/upstream-svgs/state/upstream_stateDiagram_v2_spec.svg
+        "Transition 1" | "Transition 2" | "Transition 3" => Some(83.390625),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_state_definition_with_quotes_spec.svg
         "New Data" => Some(68.640625),
         // fixtures/upstream-svgs/state/upstream_stateDiagram_state_definition_with_quotes_spec.svg

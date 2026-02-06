@@ -9,6 +9,11 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+// Mermaid@11.12.2 renders end states (`[*]`) as a path-based circle whose `getBBox().width`
+// is slightly larger than the nominal diameter (14px). Mermaid feeds that measured bbox into
+// Dagre, which can shift the end node center by ~0.0066px and affect root `viewBox/max-width`.
+const STATE_END_NODE_DAGRE_WIDTH_PX_11_12_2: f64 = 14.013_293_266_296_387;
+
 #[derive(Debug, Clone, Deserialize)]
 struct StateDiagramModel {
     #[serde(default = "default_dir")]
@@ -1220,7 +1225,8 @@ pub fn layout_state_diagram_v2(
             .unwrap_or_else(|| n.id.clone());
 
         let (w, h) = match n.shape.as_str() {
-            "stateStart" | "stateEnd" => (14.0, 14.0),
+            "stateStart" => (14.0, 14.0),
+            "stateEnd" => (STATE_END_NODE_DAGRE_WIDTH_PX_11_12_2, 14.0),
             "choice" => (28.0, 28.0),
             "fork" | "join" => {
                 let (mut width, mut height) = if matches!(diagram_dir, RankDir::LR | RankDir::RL) {
@@ -2110,7 +2116,8 @@ pub fn debug_build_state_diagram_v2_dagre_graph(
             .unwrap_or_else(|| n.id.clone());
 
         let (w, h) = match n.shape.as_str() {
-            "stateStart" | "stateEnd" => (14.0, 14.0),
+            "stateStart" => (14.0, 14.0),
+            "stateEnd" => (STATE_END_NODE_DAGRE_WIDTH_PX_11_12_2, 14.0),
             "choice" => (28.0, 28.0),
             "fork" | "join" => {
                 let (mut width, mut height) = if matches!(diagram_dir, RankDir::LR | RankDir::RL) {

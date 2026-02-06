@@ -88,8 +88,21 @@ fn state_start_and_end_have_fixed_size() {
 
     let (sw, sh) = by_id["root_start"];
     let (ew, eh) = by_id["root_end"];
-    assert!((sw - 14.0).abs() < 1e-6 && (sh - 14.0).abs() < 1e-6);
-    assert!((ew - 14.0).abs() < 1e-6 && (eh - 14.0).abs() < 1e-6);
+
+    // Mermaid@11.12.2:
+    // - `[*]` (start) is treated as a nominal 14x14 circle.
+    // - `[*]` (end) is rendered as a path-based circle whose measured `getBBox().width`
+    //   ends up slightly larger than 14px, and Mermaid feeds that into Dagre.
+    const STATE_START_DIAMETER_PX: f64 = 14.0;
+    const STATE_END_DAGRE_WIDTH_PX_11_12_2: f64 = 14.013_293_266_296_387;
+
+    assert!(
+        (sw - STATE_START_DIAMETER_PX).abs() < 1e-6 && (sh - STATE_START_DIAMETER_PX).abs() < 1e-6
+    );
+    assert!(
+        (ew - STATE_END_DAGRE_WIDTH_PX_11_12_2).abs() < 1e-6
+            && (eh - STATE_START_DIAMETER_PX).abs() < 1e-6
+    );
 }
 
 #[test]
