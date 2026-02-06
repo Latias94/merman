@@ -33,10 +33,6 @@ pub fn lookup_architecture_root_viewport_override(
             "-889.9099731445312 -270.7564392089844 1859.8199462890625 672.5128784179688",
             "1859.8199462890625",
         )),
-        "upstream_architecture_cypress_split_directioning_normalized" => Some((
-            "-111.91932678222656 -237.2515869140625 346.8386535644531 638.190673828125",
-            "346.8386535644531",
-        )),
         "upstream_architecture_docs_edge_arrows" => Some((
             "-220.1748046875 -110.83182525634766 561.849609375 385.3511657714844",
             "561.849609375",
