@@ -71,6 +71,20 @@ Notes:
   `crates/merman-render/src/generated/state_text_overrides_11_12_2.rs`) to match the pinned upstream
   baselines exactly.
 
+### 5) Edge label positioning drift (`positionEdgeLabel` + `updatedPath`)
+
+Mermaid positions edge labels using a mix of Dagre's `edge.x/y` and a post-render recalculation
+(`utils.calcLabelPosition(...)`), depending on whether the path is considered “updated”.
+
+In Mermaid `@11.12.2` this `updatedPath` mode is enabled when:
+
+- cluster cutting happened (`toCluster` / `fromCluster`)
+- or the `isLabelCoordinateInPath(...)` heuristic decides the label anchor point is not present in
+  the emitted `d` string (common with `curveBasis` control points)
+
+If `merman` recomputes label centers unconditionally (or never recomputes them), the HTML
+`foreignObject` bboxes can become the root `max-width`/`viewBox` extrema, causing parity-root drift.
+
 ## Debug Workflow
 
 ### A) Identify the root viewport deltas

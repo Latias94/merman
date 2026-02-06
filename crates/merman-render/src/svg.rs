@@ -15855,13 +15855,16 @@ fn state_edge_boundary_for_cluster(
     })
 }
 
-fn state_edge_encode_path(
+fn state_edge_prepare_points(
     ctx: &StateRenderCtx<'_>,
     le: &crate::model::LayoutEdge,
     edge_id: &str,
     origin_x: f64,
     origin_y: f64,
-) -> (String, String) {
+) -> (
+    Vec<crate::model::LayoutPoint>,
+    Vec<crate::model::LayoutPoint>,
+) {
     let mut local_points: Vec<crate::model::LayoutPoint> = Vec::new();
     for p in &le.points {
         local_points.push(crate::model::LayoutPoint {
@@ -15870,25 +15873,31 @@ fn state_edge_encode_path(
         });
     }
 
-    let mut points_for_curve = local_points.clone();
     let is_cyclic_special = edge_id.contains("-cyclic-special-");
-    if is_cyclic_special {
-        points_for_curve = state_edge_dedup_consecutive_points(&points_for_curve);
-        if let Some(tc) = le.to_cluster.as_deref() {
-            if let Some(boundary) = state_edge_boundary_for_cluster(ctx, tc, origin_x, origin_y) {
-                points_for_curve = state_edge_cut_path_at_intersect(&points_for_curve, &boundary);
-            }
-        }
-        if let Some(fc) = le.from_cluster.as_deref() {
-            if let Some(boundary) = state_edge_boundary_for_cluster(ctx, fc, origin_x, origin_y) {
-                let mut rev = points_for_curve.clone();
-                rev.reverse();
-                rev = state_edge_cut_path_at_intersect(&rev, &boundary);
-                rev.reverse();
-                points_for_curve = rev;
-            }
-        }
+    let mut points_for_curve = if is_cyclic_special {
+        state_edge_dedup_consecutive_points(&local_points)
+    } else {
+        local_points.clone()
+    };
 
+    // Match Mermaid `dagre-wrapper/edges.js insertEdge`: cut the path at cluster boundaries when the
+    // edge connects to a cluster.
+    if let Some(tc) = le.to_cluster.as_deref() {
+        if let Some(boundary) = state_edge_boundary_for_cluster(ctx, tc, origin_x, origin_y) {
+            points_for_curve = state_edge_cut_path_at_intersect(&points_for_curve, &boundary);
+        }
+    }
+    if let Some(fc) = le.from_cluster.as_deref() {
+        if let Some(boundary) = state_edge_boundary_for_cluster(ctx, fc, origin_x, origin_y) {
+            let mut rev = points_for_curve;
+            rev.reverse();
+            rev = state_edge_cut_path_at_intersect(&rev, &boundary);
+            rev.reverse();
+            points_for_curve = rev;
+        }
+    }
+
+    if is_cyclic_special {
         if edge_id.contains("-cyclic-special-mid") && points_for_curve.len() > 3 {
             points_for_curve = vec![
                 points_for_curve[0].clone(),
@@ -15907,6 +15916,19 @@ fn state_edge_encode_path(
             points_for_curve.remove(1);
         }
     }
+
+    (local_points, points_for_curve)
+}
+
+fn state_edge_encode_path(
+    ctx: &StateRenderCtx<'_>,
+    le: &crate::model::LayoutEdge,
+    edge_id: &str,
+    origin_x: f64,
+    origin_y: f64,
+) -> (String, String) {
+    let (local_points, points_for_curve) =
+        state_edge_prepare_points(ctx, le, edge_id, origin_x, origin_y);
 
     let data_points = base64::engine::general_purpose::STANDARD
         .encode(serde_json::to_vec(&local_points).unwrap_or_default());
@@ -15999,6 +16021,83 @@ fn render_state_edge_label(
     origin_x: f64,
     origin_y: f64,
 ) {
+    fn mermaid_round_number(num: f64, precision: i32) -> f64 {
+        let factor = 10_f64.powi(precision);
+        (num * factor).round() / factor
+    }
+
+    fn mermaid_distance(
+        point: &crate::model::LayoutPoint,
+        prev: Option<&crate::model::LayoutPoint>,
+    ) -> f64 {
+        let Some(prev) = prev else {
+            return 0.0;
+        };
+        ((point.x - prev.x).powi(2) + (point.y - prev.y).powi(2)).sqrt()
+    }
+
+    fn mermaid_calculate_point(
+        points: &[crate::model::LayoutPoint],
+        distance_to_traverse: f64,
+    ) -> Option<crate::model::LayoutPoint> {
+        let mut prev: Option<&crate::model::LayoutPoint> = None;
+        let mut remaining = distance_to_traverse;
+        for point in points {
+            if let Some(prev_point) = prev {
+                let vector_distance = mermaid_distance(point, Some(prev_point));
+                if vector_distance == 0.0 {
+                    return Some(prev_point.clone());
+                }
+                if vector_distance < remaining {
+                    remaining -= vector_distance;
+                } else {
+                    let distance_ratio = remaining / vector_distance;
+                    if distance_ratio <= 0.0 {
+                        return Some(prev_point.clone());
+                    }
+                    if distance_ratio >= 1.0 {
+                        return Some(point.clone());
+                    }
+                    if distance_ratio > 0.0 && distance_ratio < 1.0 {
+                        return Some(crate::model::LayoutPoint {
+                            x: mermaid_round_number(
+                                (1.0 - distance_ratio) * prev_point.x + distance_ratio * point.x,
+                                5,
+                            ),
+                            y: mermaid_round_number(
+                                (1.0 - distance_ratio) * prev_point.y + distance_ratio * point.y,
+                                5,
+                            ),
+                        });
+                    }
+                }
+            }
+            prev = Some(point);
+        }
+        None
+    }
+
+    fn mermaid_calc_label_position(
+        points: &[crate::model::LayoutPoint],
+    ) -> Option<crate::model::LayoutPoint> {
+        if points.is_empty() {
+            return None;
+        }
+        if points.len() == 1 {
+            return Some(points[0].clone());
+        }
+
+        let mut total_distance: f64 = 0.0;
+        let mut prev: Option<&crate::model::LayoutPoint> = None;
+        for point in points {
+            total_distance += mermaid_distance(point, prev);
+            prev = Some(point);
+        }
+
+        let remaining_distance = total_distance / 2.0;
+        mermaid_calculate_point(points, remaining_distance)
+    }
+
     let label_text = edge.label.trim();
     if edge.start == edge.end {
         let start = edge.start.as_str();
@@ -16062,8 +16161,57 @@ fn render_state_edge_label(
         return;
     };
 
-    let cx = lbl.x - origin_x;
-    let cy = lbl.y - origin_y;
+    let mut cx = lbl.x - origin_x;
+    let mut cy = lbl.y - origin_y;
+
+    // Mermaid `rendering-elements/edges.js insertEdge` sets `paths.updatedPath` when:
+    // - cluster cutting happened (`toCluster` / `fromCluster`)
+    // - or the mid point would not be present in the rendered `d` string (curveBasis does not
+    //   pass through all control points; labels anchored on those points drift).
+    //
+    // `positionEdgeLabel` then recomputes the label center from `utils.calcLabelPosition(...)`
+    // *only when* `updatedPath` exists. Otherwise it keeps Dagre's `edge.x/y` unchanged.
+    let (_local_points, points_for_curve) =
+        state_edge_prepare_points(ctx, le, edge.id.as_str(), origin_x, origin_y);
+
+    fn mermaid_is_label_coordinate_in_path(
+        point: &crate::model::LayoutPoint,
+        d_attr: &str,
+    ) -> bool {
+        let rounded_x = point.x.round() as i64;
+        let rounded_y = point.y.round() as i64;
+        let re = regex::Regex::new(r"(\d+\.\d+)").expect("valid regex");
+        let sanitized_d = re
+            .replace_all(d_attr, |caps: &regex::Captures<'_>| {
+                caps.get(1)
+                    .and_then(|m| m.as_str().parse::<f64>().ok())
+                    .map(|v| v.round().to_string())
+                    .unwrap_or_else(|| {
+                        caps.get(1)
+                            .map(|m| m.as_str())
+                            .unwrap_or_default()
+                            .to_string()
+                    })
+            })
+            .to_string();
+        sanitized_d.contains(&rounded_x.to_string()) || sanitized_d.contains(&rounded_y.to_string())
+    }
+
+    let mut points_has_changed = le.to_cluster.is_some() || le.from_cluster.is_some();
+    if !points_has_changed && !points_for_curve.is_empty() {
+        let d_attr = curve_basis_path_d(&points_for_curve);
+        let mid = &points_for_curve[points_for_curve.len() / 2];
+        if !mermaid_is_label_coordinate_in_path(mid, &d_attr) {
+            points_has_changed = true;
+        }
+    }
+
+    if points_has_changed {
+        if let Some(pos) = mermaid_calc_label_position(&points_for_curve) {
+            cx = pos.x;
+            cy = pos.y;
+        }
+    }
     let w = lbl.width.max(0.0);
     let h = lbl.height.max(0.0);
 
