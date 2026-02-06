@@ -7,7 +7,6 @@ pub fn lookup_class_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
-        "upstream_annotations_in_brackets_spec" => Some(("0 0 335.125 184", "335.125")),
         "upstream_cross_namespace_relations_spec" => Some(("0 0 367.06640625 406", "367.066")),
         "upstream_docs_define_class_relationship" => Some(("0 0 219.96875 234", "219.969")),
         "upstream_names_backticks_dash_underscore_spec" => Some(("0 0 288.84375 100", "288.844")),
