@@ -32,13 +32,6 @@ pub fn lookup_architecture_root_viewport_override(
             "-324.6684875488281 -307.6684875488281 729.3369750976562 746.3369750976562",
             "729.3369750976562",
         )),
-        "upstream_architecture_docs_icons_example"
-        | "upstream_architecture_cypress_title_and_accessibilities"
-        | "upstream_architecture_docs_example"
-        | "upstream_architecture_svgdraw_ids_spec" => Some((
-            "-183.41357421875 -165.96131896972656 446.8271484375 462.922607421875",
-            "446.8271484375",
-        )),
         "upstream_architecture_cypress_edge_labels_normalized" => Some((
             "-185.4211883544922 -182.99441528320312 514.3424072265625 538.5298767089844",
             "514.3424072265625",

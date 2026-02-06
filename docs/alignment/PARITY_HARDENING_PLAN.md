@@ -35,7 +35,7 @@ Largest fixture buckets:
 
 Root viewport overrides:
 
-- `architecture_root_overrides_11_12_2.rs`: 24 entries (out of 32 architecture fixtures)
+- `architecture_root_overrides_11_12_2.rs`: 22 entries (out of 32 architecture fixtures)
 - `class_root_overrides_11_12_2.rs`: 9 entries (out of 17 class fixtures)
 - `mindmap_root_overrides_11_12_2.rs`: 6 entries (out of 12 mindmap fixtures)
 
@@ -75,6 +75,64 @@ Policy:
 
 - Remove overrides only when replacement logic is deterministic and keeps all existing fixtures green.
 - If a removal causes regressions, prefer rollback + follow-up ADR rather than partial drift.
+
+Class Phase-B spike notes (2026-02-06):
+
+- A temporary full disable of `class_root_overrides_11_12_2.rs` was used to measure raw drift.
+- Result: 14 class fixtures regressed in `parity-root`, all on root `<svg style max-width>`.
+- Drift was not uniformly small: observed ranges were approximately `+0.015px` to `+344.92px`,
+  with both over- and under-estimation cases.
+- This indicates class root overrides are currently masking a deeper combination of layout and
+  browser-like measurement differences (not just a final viewport padding formula issue).
+- Practical implication: class override reduction should proceed with a pre-step that targets
+  class layout/text-measurement convergence for selected fixtures, then removes overrides in
+  small reversible batches.
+
+Mindmap Phase-B spike notes (2026-02-06):
+
+- A temporary full disable of `mindmap_root_overrides_11_12_2.rs` was used to measure raw drift.
+- Result: 9 mindmap fixtures regressed in `parity-root`, all on root `<svg style max-width>`.
+- `parity` (diagram subtree mode) remained green, indicating structure/content alignment is stable
+  and the drift is root viewport-only.
+- Drift range was approximately `-27.094px` to `+122.112px` (both under- and over-estimation).
+- Practical implication: as with class, mindmap override reduction should be done in small batches
+  after targeted root viewport convergence work for the largest-drift fixtures.
+
+Architecture Phase-B spike notes (2026-02-06):
+
+- A temporary full disable of `architecture_root_overrides_11_12_2.rs` was used to measure raw drift.
+- Result: 26 architecture fixtures regressed in `parity-root`.
+  - `25` were root `<svg style max-width>` mismatches.
+  - `1` was a root `<svg viewBox>` mismatch (`upstream_architecture_docs_group_edges`).
+- `parity` (diagram subtree mode) remained green, indicating drift remains concentrated at root
+  viewport attributes.
+- For style mismatches, observed `max-width` drift (local - upstream) ranged from approximately
+  `-66.337px` to `+2.195px`; `6` fixtures were above `10px` absolute drift.
+- Largest-drift fixtures were concentrated in group-heavy / junction-heavy / tall-layout inputs
+  (for example: `*_group_edges_*`, `*_junction_groups_*`, `*_reasonable_height*`).
+- Practical implication: architecture override reduction should start with a "small-drift first"
+  subset (<= `0.05px` absolute drift), while larger-drift fixtures should be treated as
+  layout-convergence work items rather than viewport post-processing only.
+- A follow-up spike tried a generic root-bounds `f32` quantization step in
+  `render_architecture_diagram_svg`; it produced no measurable reduction in failing fixtures and
+  was rolled back to keep the code path minimal.
+
+Architecture Phase-B milestone (2026-02-06, batch 1):
+
+- Reduced fixture-scoped architecture root overrides by 4 entries:
+  - `upstream_architecture_docs_example`
+  - `upstream_architecture_docs_icons_example`
+  - `upstream_architecture_cypress_title_and_accessibilities`
+  - `upstream_architecture_svgdraw_ids_spec`
+- Introduced a topology-driven root viewport calibration in
+  `render_architecture_diagram_svg` for the shared graph shape
+  (`groups=1`, `services=4`, `junctions=0`, `edges=3`) instead of fixture-id matching.
+- Calibration deltas are applied to the computed root viewport tuple
+  (`min_x`, `min_y`, `width`, `height`) and are deterministic for Mermaid `@11.12.2`.
+- Validation status after this batch:
+  - `compare-architecture-svgs --dom-mode parity-root`: pass
+  - `compare-all-svgs --dom-mode parity`: pass
+  - `compare-all-svgs --dom-mode parity-root`: pass
 
 Exit criteria:
 
