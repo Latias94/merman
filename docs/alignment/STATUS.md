@@ -63,6 +63,9 @@ for the current fixture set (diagram subtree parity).
 As of 2026-02-06, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 0 DOM
 mismatches out of 475 upstream SVG baselines (100% passing).
 
+Post-baseline hardening plan (coverage growth + override consolidation + CI guardrails) is tracked in
+`docs/alignment/PARITY_HARDENING_PLAN.md`.
+
 Recent progress (2026-02-06): state parity-root root viewport alignment is now 0-mismatch for the current fixture
 set (`xtask compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3`).
 
