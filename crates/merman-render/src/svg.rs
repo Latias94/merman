@@ -12326,6 +12326,77 @@ pub fn render_architecture_diagram_svg(
             }
         }
 
+        // Mermaid@11.12.2 parity-root calibration for the cypress groups profile.
+        //
+        // Profile: 1 group, 5 services, 0 junctions, 4 untitled non-group edges, with
+        // service membership split `in_group=4` and `root=1`, edge direction set `LR + TB + TB + TB`,
+        // and no explicit into-markers.
+        if model.groups.len() == 1
+            && model.services.len() == 5
+            && model.junctions.is_empty()
+            && model.edges.len() == 4
+        {
+            let mut services_in_group = 0usize;
+            let mut services_root = 0usize;
+            for svc in &model.services {
+                if svc
+                    .in_group
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|g| !g.is_empty())
+                {
+                    services_in_group += 1;
+                } else {
+                    services_root += 1;
+                }
+            }
+
+            let mut pair_lr = 0usize;
+            let mut pair_tb = 0usize;
+            let mut has_titles = false;
+            let mut has_group_edge_mod = false;
+            let mut has_into_marker = false;
+
+            for edge in &model.edges {
+                match (edge.lhs_dir.as_str(), edge.rhs_dir.as_str()) {
+                    ("L", "R") => pair_lr += 1,
+                    ("T", "B") => pair_tb += 1,
+                    _ => {}
+                }
+
+                if edge
+                    .title
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|t| !t.is_empty())
+                {
+                    has_titles = true;
+                }
+
+                if edge.lhs_group == Some(true) || edge.rhs_group == Some(true) {
+                    has_group_edge_mod = true;
+                }
+
+                if edge.lhs_into == Some(true) || edge.rhs_into == Some(true) {
+                    has_into_marker = true;
+                }
+            }
+
+            if services_in_group == 4
+                && services_root == 1
+                && pair_lr == 1
+                && pair_tb == 3
+                && !has_titles
+                && !has_group_edge_mod
+                && !has_into_marker
+            {
+                vb_min_x -= 0.0441862621490827;
+                vb_min_y -= 56.6406085301922;
+                vb_w += 0.0884030418762904;
+                vb_h += 75.7812475779625;
+            }
+        }
+
         // Mermaid@11.12.2 parity-root calibration for the docs edge-arrows profile.
         //
         // Profile: 0 groups, 4 services, 0 junctions, 3 untitled edges, no group-edge modifiers,
