@@ -60,19 +60,23 @@ the dashed separators now use the exact same x-coordinates as the frame edges to
 avoid sub-pixel gaps at the frame border.
 As of 2026-02-04, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
 for the current fixture set (diagram subtree parity).
-As of 2026-02-06, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 59 DOM
-mismatches out of 475 upstream SVG baselines (87.6% passing). Current parity-root mismatches are concentrated in
+As of 2026-02-06, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 58 DOM
+mismatches out of 475 upstream SVG baselines (87.8% passing). Current parity-root mismatches are concentrated in
 4 diagrams:
 
 - Architecture: 19
 - Class: 14
 - Mindmap: 8
-- State: 18
+- State: 17
 
 Recent progress (2026-02-06): state diagram edge endpoints now intersect `choice` diamonds (and other non-rect shapes),
 and state edge label positioning now mirrors Mermaid’s `insertEdge` / `positionEdgeLabel` behavior for `updatedPath`
 cluster cuts and the `isLabelCoordinateInPath(...)` heuristic. This reduced `compare-state-svgs` `parity-root`
 mismatches from 20 → 18.
+
+Recent progress (2026-02-06): state `classDef/style` sizing parity improved by applying additional node label width
+overrides (`fast`/`slow`) and matching Chromium `getBBox()` float32 quantization for the final root `viewBox/max-width`.
+This reduced `compare-state-svgs` `parity-root` mismatches from 18 → 17.
 
 Recent progress (2026-02-04): Architecture XY edge label transforms now emit literal newlines (XML-normalized to
 spaces) rather than `&#10;` entities, restoring 0-mismatch DOM parity for `upstream_architecture_cypress_edge_labels_normalized`.

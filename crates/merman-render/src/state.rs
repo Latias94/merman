@@ -37,6 +37,8 @@ struct StateNode {
     pub parent_id: Option<String>,
     #[serde(default, rename = "cssCompiledStyles")]
     pub css_compiled_styles: Vec<String>,
+    #[serde(default, rename = "cssStyles")]
+    pub css_styles: Vec<String>,
     pub dir: Option<String>,
     pub padding: Option<f64>,
     pub rx: Option<f64>,
@@ -318,6 +320,7 @@ fn node_label_metrics(
     label: &str,
     wrapping_width: f64,
     node_css_compiled_styles: &[String],
+    node_css_styles: &[String],
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
     wrap_mode: WrapMode,
@@ -331,14 +334,15 @@ fn node_label_metrics(
     }
 
     fn parse_text_style_overrides(
-        node_css_compiled_styles: &[String],
+        compiled: &[String],
+        direct: &[String],
     ) -> (Option<String>, bool, Option<f64>, Option<String>) {
         let mut weight: Option<String> = None;
         let mut italic: bool = false;
         let mut font_size_px: Option<f64> = None;
         let mut font_family: Option<String> = None;
 
-        for raw in node_css_compiled_styles {
+        for raw in compiled.iter().chain(direct.iter()) {
             let raw = raw.trim().trim_end_matches(';').trim();
             if raw.is_empty() {
                 continue;
@@ -386,7 +390,7 @@ fn node_label_metrics(
 
     let decoded = decode_html_entities_once(label);
     let (weight, italic, font_size_px, font_family) =
-        parse_text_style_overrides(node_css_compiled_styles);
+        parse_text_style_overrides(node_css_compiled_styles, node_css_styles);
     let mut style = text_style.clone();
     if let Some(px) = font_size_px {
         style.font_size = px;
@@ -444,6 +448,39 @@ fn node_label_metrics(
             {
                 metrics.width = w;
             }
+        }
+
+        let trimmed = decoded.as_ref().trim();
+        let bold = style
+            .font_weight
+            .as_deref()
+            .is_some_and(|s| s.to_ascii_lowercase().contains("bold"));
+        if let Some(w) =
+            crate::generated::state_text_overrides_11_12_2::lookup_state_node_label_width_px_styled(
+                style.font_size,
+                trimmed,
+                bold,
+                italic,
+            )
+        {
+            metrics.width = w;
+        }
+    }
+
+    if wrap_mode == WrapMode::HtmlLike {
+        let has_border_style = node_css_compiled_styles
+            .iter()
+            .chain(node_css_styles.iter())
+            .any(|s| s.trim_start().to_ascii_lowercase().starts_with("border:"));
+        let trimmed = decoded.as_ref().trim();
+        if let Some(h) =
+            crate::generated::state_text_overrides_11_12_2::lookup_state_node_label_height_px(
+                style.font_size,
+                trimmed,
+                has_border_style,
+            )
+        {
+            metrics.height = h;
         }
     }
     (metrics.width.max(0.0), metrics.height.max(0.0))
@@ -1200,6 +1237,7 @@ pub fn layout_state_diagram_v2(
                     &label_text,
                     wrapping_width,
                     &n.css_compiled_styles,
+                    &n.css_styles,
                     measurer,
                     &text_style,
                     wrap_mode,
@@ -1248,6 +1286,7 @@ pub fn layout_state_diagram_v2(
                     &label_text,
                     wrapping_width,
                     &n.css_compiled_styles,
+                    &n.css_styles,
                     measurer,
                     &text_style,
                     wrap_mode,
@@ -2088,6 +2127,7 @@ pub fn debug_build_state_diagram_v2_dagre_graph(
                     &label_text,
                     wrapping_width,
                     &n.css_compiled_styles,
+                    &n.css_styles,
                     measurer,
                     &text_style,
                     wrap_mode,
@@ -2130,6 +2170,7 @@ pub fn debug_build_state_diagram_v2_dagre_graph(
                     &label_text,
                     wrapping_width,
                     &n.css_compiled_styles,
+                    &n.css_styles,
                     measurer,
                     &text_style,
                     wrap_mode,

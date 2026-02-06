@@ -13502,6 +13502,16 @@ pub fn render_state_diagram_v2_svg(
         max_x: 100.0,
         max_y: 100.0,
     });
+    // Chromium's `getBBox()` appears to quantize through single-precision floats. Mermaid's
+    // upstream fixtures frequently include values that match the exact `f32` representation
+    // (e.g. `...8852539062`). Mirror that here so `viewBox/max-width` parity is stable down to
+    // the last few decimals.
+    content_bounds = Bounds {
+        min_x: (content_bounds.min_x as f32) as f64,
+        min_y: (content_bounds.min_y as f32) as f64,
+        max_x: (content_bounds.max_x as f32) as f64,
+        max_y: (content_bounds.max_y as f32) as f64,
+    };
 
     let mut title_svg = String::new();
     if let Some(title) = diagram_title.as_deref() {
@@ -13543,10 +13553,12 @@ pub fn render_state_diagram_v2_svg(
         );
     }
 
-    let vb_min_x = content_bounds.min_x - viewport_padding;
-    let vb_min_y = content_bounds.min_y - viewport_padding;
-    let vb_w = ((content_bounds.max_x - content_bounds.min_x) + 2.0 * viewport_padding).max(1.0);
-    let vb_h = ((content_bounds.max_y - content_bounds.min_y) + 2.0 * viewport_padding).max(1.0);
+    let vb_min_x = ((content_bounds.min_x - viewport_padding) as f32) as f64;
+    let vb_min_y = ((content_bounds.min_y - viewport_padding) as f32) as f64;
+    let vb_w = (((content_bounds.max_x - content_bounds.min_x) + 2.0 * viewport_padding).max(1.0)
+        as f32) as f64;
+    let vb_h = (((content_bounds.max_y - content_bounds.min_y) + 2.0 * viewport_padding).max(1.0)
+        as f32) as f64;
 
     let max_w_attr = fmt_max_width_px(vb_w.max(1.0));
     let view_box_attr = format!(
@@ -13569,6 +13581,9 @@ pub struct SvgEmittedBoundsContributor {
     pub tag: String,
     pub id: Option<String>,
     pub class: Option<String>,
+    pub d: Option<String>,
+    pub points: Option<String>,
+    pub transform: Option<String>,
     pub bounds: Bounds,
 }
 
@@ -13949,10 +13964,16 @@ fn svg_emitted_bounds_from_svg_inner(
         };
         let id = attr_value(attrs, "id").map(|s| s.to_string());
         let class = attr_value(attrs, "class").map(|s| s.to_string());
+        let d = attr_value(attrs, "d").map(|s| s.to_string());
+        let points = attr_value(attrs, "points").map(|s| s.to_string());
+        let transform = attr_value(attrs, "transform").map(|s| s.to_string());
         let c = SvgEmittedBoundsContributor {
             tag: tag.to_string(),
             id,
             class,
+            d,
+            points,
+            transform,
             bounds: b.clone(),
         };
 
@@ -16601,7 +16622,11 @@ fn render_state_node_svg(
     let mut fill_override: Option<&str> = None;
     let mut stroke_override: Option<&str> = None;
     let mut stroke_width_override: Option<f64> = None;
-    for raw in &node.css_compiled_styles {
+    for raw in node
+        .css_compiled_styles
+        .iter()
+        .chain(node.css_styles.iter())
+    {
         let Some(d) = state_parse_inline_decl(raw) else {
             continue;
         };
@@ -16870,6 +16895,16 @@ fn render_state_node_svg(
                 metrics.width +=
                     crate::text::mermaid_default_italic_width_delta_px(&label, &measure_style);
             }
+            metrics.width +=
+                crate::text::mermaid_default_bold_width_delta_px(&label, &measure_style);
+
+            if metrics.width.is_finite() {
+                metrics.width = metrics.width.min(200.0);
+            }
+            metrics.width = crate::text::round_to_1_64_px(metrics.width);
+            if metrics.width.is_finite() {
+                metrics.width = metrics.width.min(200.0);
+            }
 
             if !has_metrics_style {
                 if let Some(w) =
@@ -16880,6 +16915,36 @@ fn render_state_node_svg(
                 {
                     metrics.width = w;
                 }
+            }
+
+            let bold = measure_style
+                .font_weight
+                .as_deref()
+                .is_some_and(|s| s.to_ascii_lowercase().contains("bold"));
+            if let Some(w) =
+                crate::generated::state_text_overrides_11_12_2::lookup_state_node_label_width_px_styled(
+                    measure_style.font_size,
+                    label.trim(),
+                    bold,
+                    italic,
+                )
+            {
+                metrics.width = w;
+            }
+
+            let has_border_style = node
+                .css_compiled_styles
+                .iter()
+                .chain(node.css_styles.iter())
+                .any(|s| s.trim_start().to_ascii_lowercase().starts_with("border:"));
+            if let Some(h) =
+                crate::generated::state_text_overrides_11_12_2::lookup_state_node_label_height_px(
+                    measure_style.font_size,
+                    label.trim(),
+                    has_border_style,
+                )
+            {
+                metrics.height = h;
             }
             let lw = metrics.width.max(0.0);
             let lh = metrics.height.max(0.0);

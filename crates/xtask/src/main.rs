@@ -2308,10 +2308,29 @@ fn debug_svg_bbox(args: Vec<String>) -> Result<(), XtaskError> {
             println!("{label}: <none>");
             return;
         };
+        fn clip_attr(s: &str) -> String {
+            const MAX: usize = 140;
+            if s.len() <= MAX {
+                return s.to_string();
+            }
+            let mut out = s.chars().take(MAX).collect::<String>();
+            out.push_str("…");
+            out
+        }
+
         println!(
             "{label}: <{} id={:?} class={:?}> bbox=({:.6},{:.6})-({:.6},{:.6})",
             c.tag, c.id, c.class, c.bounds.min_x, c.bounds.min_y, c.bounds.max_x, c.bounds.max_y
         );
+        if let Some(d) = c.d.as_deref() {
+            println!("  d={}", clip_attr(d));
+        }
+        if let Some(points) = c.points.as_deref() {
+            println!("  points={}", clip_attr(points));
+        }
+        if let Some(tf) = c.transform.as_deref() {
+            println!("  transform={}", clip_attr(tf));
+        }
     }
 
     print_contrib("min_x", &dbg.min_x);

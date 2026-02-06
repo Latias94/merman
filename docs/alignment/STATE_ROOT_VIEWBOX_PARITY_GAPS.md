@@ -143,7 +143,6 @@ Below are the current `compare-state-svgs` `parity-root` deltas (local - upstrea
 
 | Fixture | Δmax-width (px) | ΔviewBox.w | ΔviewBox.h |
 |---|---:|---:|---:|
-| `upstream_state_style_spec` | -5.156 | -5.15547 | -48 |
 | `upstream_stateDiagram_state_definition_with_quotes_spec` | +0.001 | +0.000592 | -1.45 |
 | `upstream_stateDiagram_v2_state_definition_with_quotes_spec` | +0.001 | +0.000592 | -1.45 |
 | `upstream_stateDiagram_v2_composite_self_link_spec` | +0 | +0.000006 | -0.05 |
