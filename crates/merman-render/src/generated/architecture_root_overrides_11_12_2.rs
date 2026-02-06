@@ -37,9 +37,6 @@ pub fn lookup_architecture_root_viewport_override(
             "-220.1748046875 -110.83182525634766 561.849609375 385.3511657714844",
             "561.849609375",
         )),
-        "upstream_architecture_docs_group_edges" => {
-            Some(("-82.5 -187.10560607910156 245 505.211181640625", "245"))
-        }
         _ => None,
     }
 }

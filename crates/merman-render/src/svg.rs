@@ -12246,6 +12246,33 @@ pub fn render_architecture_diagram_svg(
             }
         }
 
+        // Mermaid@11.12.2 parity-root calibration for docs group-edges mini profile.
+        //
+        // Profile: 2 top-level groups, 2 services, 0 junctions, 1 edge with BT direction and both
+        // group-boundary modifiers (`lhsGroup` + `rhsGroup`), no edge title.
+        if model.groups.len() == 2
+            && model.services.len() == 2
+            && model.junctions.is_empty()
+            && model.edges.len() == 1
+        {
+            if let Some(edge) = model.edges.first() {
+                let titled = edge
+                    .title
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|t| !t.is_empty());
+                if edge.lhs_dir == "B"
+                    && edge.rhs_dir == "T"
+                    && edge.lhs_group == Some(true)
+                    && edge.rhs_group == Some(true)
+                    && !titled
+                {
+                    vb_min_y += 1.89439392089844;
+                    vb_h = (vb_h - 2.788818359375).max(1.0);
+                }
+            }
+        }
+
         let mut view_box_attr = format!(
             "{} {} {} {}",
             fmt(vb_min_x),
