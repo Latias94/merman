@@ -14,11 +14,6 @@ pub fn lookup_architecture_root_viewport_override(
             "-333.2172546386719 -266.3057403564453 746.4345092773438 663.6115112304688",
             "746.4345092773438",
         )),
-        "upstream_architecture_cypress_group_edges_normalized"
-        | "upstream_architecture_demo_group_edges_bidirectional" => Some((
-            "-324.6684875488281 -307.6684875488281 729.3369750976562 746.3369750976562",
-            "729.3369750976562",
-        )),
         "upstream_architecture_cypress_reasonable_height"
         | "upstream_architecture_layout_reasonable_height" => Some((
             "-889.9099731445312 -270.7564392089844 1859.8199462890625 672.5128784179688",
