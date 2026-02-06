@@ -87,3 +87,12 @@ fully represented in parser/spec snapshots. We track these as fixture-level pari
   `fixtures/architecture/upstream_architecture_demo_edge_label_long.mmd`
 - grouped junction routing with mixed arrow directions (`<--`, `-->`, `{group}`):
   `fixtures/architecture/upstream_architecture_demo_junction_groups_arrows.mmd`
+- inverse bidirectional arrow mesh variant (top/bottom to side anchors):
+  `fixtures/architecture/upstream_architecture_demo_arrow_mesh_bidirectional_inverse.mmd`
+- group-edge bidirectional arrows (`<-->`) with `{group}` modifiers:
+  `fixtures/architecture/upstream_architecture_demo_group_edges_bidirectional.mmd`
+
+Source: `repo-ref/mermaid/docs/syntax/architecture.md`
+
+- icon-pack example (logos namespace) promoted as parity fixture:
+  `fixtures/architecture/upstream_architecture_docs_icons_example.mmd`

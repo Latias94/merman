@@ -1,0 +1,368 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [
+      {
+        "id": "left_group",
+        "icon": "cloud",
+        "title": "Left",
+        "in": null
+      },
+      {
+        "id": "right_group",
+        "icon": "cloud",
+        "title": "Right",
+        "in": null
+      },
+      {
+        "id": "top_group",
+        "icon": "cloud",
+        "title": "Top",
+        "in": null
+      },
+      {
+        "id": "bottom_group",
+        "icon": "cloud",
+        "title": "Bottom",
+        "in": null
+      },
+      {
+        "id": "center_group",
+        "icon": "cloud",
+        "title": "Center",
+        "in": null
+      }
+    ],
+    "nodes": [
+      {
+        "id": "left_disk",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "left_disk",
+            "lhsDir": "R",
+            "lhsInto": true,
+            "lhsGroup": true,
+            "rhsId": "center_disk",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
+        "title": "Disk",
+        "in": "left_group"
+      },
+      {
+        "id": "right_disk",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "right_disk",
+            "lhsDir": "L",
+            "lhsInto": true,
+            "lhsGroup": true,
+            "rhsId": "center_disk",
+            "rhsDir": "R",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
+        "title": "Disk",
+        "in": "right_group"
+      },
+      {
+        "id": "top_disk",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "top_disk",
+            "lhsDir": "B",
+            "lhsInto": true,
+            "lhsGroup": true,
+            "rhsId": "center_disk",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
+        "title": "Disk",
+        "in": "top_group"
+      },
+      {
+        "id": "bottom_disk",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "bottom_disk",
+            "lhsDir": "T",
+            "lhsInto": true,
+            "lhsGroup": true,
+            "rhsId": "center_disk",
+            "rhsDir": "B",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
+        "title": "Disk",
+        "in": "bottom_group"
+      },
+      {
+        "id": "center_disk",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "left_disk",
+            "lhsDir": "R",
+            "lhsInto": true,
+            "lhsGroup": true,
+            "rhsId": "center_disk",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          },
+          {
+            "lhsId": "right_disk",
+            "lhsDir": "L",
+            "lhsInto": true,
+            "lhsGroup": true,
+            "rhsId": "center_disk",
+            "rhsDir": "R",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          },
+          {
+            "lhsId": "top_disk",
+            "lhsDir": "B",
+            "lhsInto": true,
+            "lhsGroup": true,
+            "rhsId": "center_disk",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          },
+          {
+            "lhsId": "bottom_disk",
+            "lhsDir": "T",
+            "lhsInto": true,
+            "lhsGroup": true,
+            "rhsId": "center_disk",
+            "rhsDir": "B",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
+        "title": "Disk",
+        "in": "center_group"
+      }
+    ],
+    "services": [
+      {
+        "id": "left_disk",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "left_disk",
+            "lhsDir": "R",
+            "lhsInto": true,
+            "lhsGroup": true,
+            "rhsId": "center_disk",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
+        "title": "Disk",
+        "in": "left_group"
+      },
+      {
+        "id": "right_disk",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "right_disk",
+            "lhsDir": "L",
+            "lhsInto": true,
+            "lhsGroup": true,
+            "rhsId": "center_disk",
+            "rhsDir": "R",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
+        "title": "Disk",
+        "in": "right_group"
+      },
+      {
+        "id": "top_disk",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "top_disk",
+            "lhsDir": "B",
+            "lhsInto": true,
+            "lhsGroup": true,
+            "rhsId": "center_disk",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
+        "title": "Disk",
+        "in": "top_group"
+      },
+      {
+        "id": "bottom_disk",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "bottom_disk",
+            "lhsDir": "T",
+            "lhsInto": true,
+            "lhsGroup": true,
+            "rhsId": "center_disk",
+            "rhsDir": "B",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
+        "title": "Disk",
+        "in": "bottom_group"
+      },
+      {
+        "id": "center_disk",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "left_disk",
+            "lhsDir": "R",
+            "lhsInto": true,
+            "lhsGroup": true,
+            "rhsId": "center_disk",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          },
+          {
+            "lhsId": "right_disk",
+            "lhsDir": "L",
+            "lhsInto": true,
+            "lhsGroup": true,
+            "rhsId": "center_disk",
+            "rhsDir": "R",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          },
+          {
+            "lhsId": "top_disk",
+            "lhsDir": "B",
+            "lhsInto": true,
+            "lhsGroup": true,
+            "rhsId": "center_disk",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          },
+          {
+            "lhsId": "bottom_disk",
+            "lhsDir": "T",
+            "lhsInto": true,
+            "lhsGroup": true,
+            "rhsId": "center_disk",
+            "rhsDir": "B",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
+        "title": "Disk",
+        "in": "center_group"
+      }
+    ],
+    "junctions": [],
+    "edges": [
+      {
+        "lhsId": "left_disk",
+        "lhsDir": "R",
+        "lhsInto": true,
+        "lhsGroup": true,
+        "rhsId": "center_disk",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": true,
+        "title": null
+      },
+      {
+        "lhsId": "right_disk",
+        "lhsDir": "L",
+        "lhsInto": true,
+        "lhsGroup": true,
+        "rhsId": "center_disk",
+        "rhsDir": "R",
+        "rhsInto": true,
+        "rhsGroup": true,
+        "title": null
+      },
+      {
+        "lhsId": "top_disk",
+        "lhsDir": "B",
+        "lhsInto": true,
+        "lhsGroup": true,
+        "rhsId": "center_disk",
+        "rhsDir": "T",
+        "rhsInto": true,
+        "rhsGroup": true,
+        "title": null
+      },
+      {
+        "lhsId": "bottom_disk",
+        "lhsDir": "T",
+        "lhsInto": true,
+        "lhsGroup": true,
+        "rhsId": "center_disk",
+        "rhsDir": "B",
+        "rhsInto": true,
+        "rhsGroup": true,
+        "title": null
+      }
+    ]
+  }
+}

@@ -21,13 +21,25 @@ pub fn lookup_architecture_root_viewport_override(
             "-195.6711883544922 -187.24441528320312 514.3424072265625 538.5298767089844",
             "514.3424072265625",
         )),
+        "upstream_architecture_demo_arrow_mesh_bidirectional_inverse" => Some((
+            "-195.49441528320312 -187.4211883544922 514.3423767089844 538.5299072265625",
+            "514.3423767089844",
+        )),
         "upstream_architecture_demo_edge_label_long" => Some((
             "-151.49441528320312 -182.99441528320312 514.3423767089844 538.5298767089844",
             "514.3423767089844",
         )),
+        "upstream_architecture_demo_group_edges_bidirectional" => Some((
+            "-324.6684875488281 -307.6684875488281 729.3369750976562 746.3369750976562",
+            "729.3369750976562",
+        )),
         "upstream_architecture_demo_junction_groups_arrows" => Some((
             "-333.2172546386719 -266.3057403564453 746.4345092773438 663.6115112304688",
             "746.4345092773438",
+        )),
+        "upstream_architecture_docs_icons_example" => Some((
+            "-183.41357421875 -165.96131896972656 446.8271484375 462.922607421875",
+            "446.8271484375",
         )),
         "upstream_architecture_cypress_edge_labels_normalized" => Some((
             "-185.4211883544922 -182.99441528320312 514.3424072265625 538.5298767089844",
