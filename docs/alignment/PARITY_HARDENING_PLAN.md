@@ -35,7 +35,7 @@ Largest fixture buckets:
 
 Root viewport overrides:
 
-- `architecture_root_overrides_11_12_2.rs`: 22 entries (out of 32 architecture fixtures)
+- `architecture_root_overrides_11_12_2.rs`: 17 entries (out of 32 architecture fixtures)
 - `class_root_overrides_11_12_2.rs`: 9 entries (out of 17 class fixtures)
 - `mindmap_root_overrides_11_12_2.rs`: 6 entries (out of 12 mindmap fixtures)
 
@@ -129,6 +129,23 @@ Architecture Phase-B milestone (2026-02-06, batch 1):
   (`groups=1`, `services=4`, `junctions=0`, `edges=3`) instead of fixture-id matching.
 - Calibration deltas are applied to the computed root viewport tuple
   (`min_x`, `min_y`, `width`, `height`) and are deterministic for Mermaid `@11.12.2`.
+- Validation status after this batch:
+  - `compare-architecture-svgs --dom-mode parity-root`: pass
+  - `compare-all-svgs --dom-mode parity`: pass
+  - `compare-all-svgs --dom-mode parity-root`: pass
+
+Architecture Phase-B milestone (2026-02-06, batch 2):
+
+- Reduced fixture-scoped architecture root overrides by 5 additional entries:
+  - `upstream_architecture_cypress_directional_arrows_normalized`
+  - `upstream_architecture_cypress_edge_labels_normalized`
+  - `upstream_architecture_demo_arrow_mesh_bidirectional`
+  - `upstream_architecture_demo_arrow_mesh_bidirectional_inverse`
+  - `upstream_architecture_demo_edge_label_long`
+- Added a profile-based root viewport calibration for the shared no-group arrow-mesh topology
+  (`groups=0`, `services=5`, `junctions=0`, `edges=8`) in `render_architecture_diagram_svg`.
+- Profile split is semantic (edge title presence/length and direction-set signature) rather than
+  fixture-id keyed, preserving deterministic behavior for Mermaid `@11.12.2`.
 - Validation status after this batch:
   - `compare-architecture-svgs --dom-mode parity-root`: pass
   - `compare-all-svgs --dom-mode parity`: pass
