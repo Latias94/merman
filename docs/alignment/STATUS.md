@@ -61,7 +61,7 @@ avoid sub-pixel gaps at the frame border.
 As of 2026-02-04, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
 for the current fixture set (diagram subtree parity).
 As of 2026-02-06, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 0 DOM
-mismatches out of 478 upstream SVG baselines (100% passing).
+mismatches out of 481 upstream SVG baselines (100% passing).
 
 Post-baseline hardening plan (coverage growth + override consolidation + CI guardrails) is tracked in
 `docs/alignment/PARITY_HARDENING_PLAN.md`.
@@ -69,6 +69,10 @@ Post-baseline hardening plan (coverage growth + override consolidation + CI guar
 Recent progress (2026-02-06): Phase A fixture expansion added three upstream-rendered SVG baselines
 (`upstream_architecture_svgdraw_ids_spec`, `upstream_docs_define_class_relationship`,
 `upstream_docs_unclear_indentation`) and maintained 0-mismatch full parity/parity-root checks.
+
+Recent progress (2026-02-06): Phase A architecture expansion added three demo-derived upstream baselines
+(`upstream_architecture_demo_arrow_mesh_bidirectional`, `upstream_architecture_demo_edge_label_long`,
+`upstream_architecture_demo_junction_groups_arrows`) and preserved 0-mismatch full parity/parity-root checks.
 
 Recent progress (2026-02-06): state parity-root root viewport alignment is now 0-mismatch for the current fixture
 set (`xtask compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3`).

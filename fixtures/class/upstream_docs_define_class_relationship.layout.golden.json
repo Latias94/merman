@@ -1,0 +1,71 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "Animal",
+          "x": 34.4,
+          "y": 42.0,
+          "width": 68.8,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Car",
+          "x": 94.44,
+          "y": 176.0,
+          "width": 47.36,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Vehicle",
+          "x": 153.84,
+          "y": 42.0,
+          "width": 70.08,
+          "height": 84.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "0",
+          "from": "Vehicle",
+          "to": "Car",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 153.84,
+              "y": 84.0
+            },
+            {
+              "x": 124.14,
+              "y": 109.0
+            },
+            {
+              "x": 94.44,
+              "y": 134.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 188.88,
+        "max_y": 218.0
+      }
+    }
+  }
+}

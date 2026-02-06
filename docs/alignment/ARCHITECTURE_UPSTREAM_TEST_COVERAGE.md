@@ -75,3 +75,15 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/svgDraw.spe
 
 - SVG id coverage for group/service/edge nodes:
   `fixtures/architecture/upstream_architecture_svgdraw_ids_spec.mmd`
+
+Source: `repo-ref/mermaid/demos/architecture.html`
+
+The architecture demo page contains additional stable, production-facing examples that are not
+fully represented in parser/spec snapshots. We track these as fixture-level parity inputs:
+
+- bidirectional arrow mesh (`<-->`) across center + diagonal adjacency:
+  `fixtures/architecture/upstream_architecture_demo_arrow_mesh_bidirectional.mmd`
+- long edge labels (`-[Label that is Long]-`) across multiple directions:
+  `fixtures/architecture/upstream_architecture_demo_edge_label_long.mmd`
+- grouped junction routing with mixed arrow directions (`<--`, `-->`, `{group}`):
+  `fixtures/architecture/upstream_architecture_demo_junction_groups_arrows.mmd`
