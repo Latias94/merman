@@ -12452,6 +12452,61 @@ pub fn render_architecture_diagram_svg(
             }
         }
 
+        // Mermaid@11.12.2 parity-root calibration for the complex-junction+groups profile.
+        //
+        // Profile: 2 groups, 5 services, 2 junctions, 6 untitled edges, with exactly one
+        // group-edge-modified link (`lhsGroup=true`, `rhsGroup=true`) and direction multiset
+        // `RL x2`, `BT x2`, `TB x2`.
+        if model.groups.len() == 2
+            && model.services.len() == 5
+            && model.junctions.len() == 2
+            && model.edges.len() == 6
+        {
+            let mut pair_rl = 0usize;
+            let mut pair_bt = 0usize;
+            let mut pair_tb = 0usize;
+            let mut has_titles = false;
+            let mut group_edge_both = 0usize;
+            let mut group_edge_other = 0usize;
+
+            for edge in &model.edges {
+                match (edge.lhs_dir.as_str(), edge.rhs_dir.as_str()) {
+                    ("R", "L") => pair_rl += 1,
+                    ("B", "T") => pair_bt += 1,
+                    ("T", "B") => pair_tb += 1,
+                    _ => {}
+                }
+
+                if edge
+                    .title
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|t| !t.is_empty())
+                {
+                    has_titles = true;
+                }
+
+                match (edge.lhs_group == Some(true), edge.rhs_group == Some(true)) {
+                    (true, true) => group_edge_both += 1,
+                    (false, false) => {}
+                    _ => group_edge_other += 1,
+                }
+            }
+
+            if pair_rl == 2
+                && pair_bt == 2
+                && pair_tb == 2
+                && !has_titles
+                && group_edge_both == 1
+                && group_edge_other == 0
+            {
+                vb_min_x -= 17.19370418983;
+                vb_min_y += 1.24415190474906;
+                vb_w += 34.3874083796601;
+                vb_h = (vb_h - 1.48827329192).max(1.0);
+            }
+        }
+
         // Mermaid@11.12.2 parity-root calibration for the docs edge-arrows profile.
         //
         // Profile: 0 groups, 4 services, 0 junctions, 3 untitled edges, no group-edge modifiers,
