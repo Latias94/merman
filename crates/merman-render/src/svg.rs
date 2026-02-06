@@ -10568,16 +10568,27 @@ pub fn render_mindmap_diagram_svg(
         })
         .unwrap_or((0.0, 0.0, 100.0, 100.0));
 
+    let mut view_box_attr = format!("{} {} {} {}", fmt(vx), fmt(vy), fmt(vw), fmt(vh));
+    let mut max_w_attr = fmt_max_width_px(vw);
+    if let Some((up_viewbox, up_max_width_px)) =
+        crate::generated::mindmap_root_overrides_11_12_2::lookup_mindmap_root_viewport_override(
+            diagram_id,
+        )
+    {
+        view_box_attr = up_viewbox.to_string();
+        max_w_attr = up_max_width_px.to_string();
+    }
+
     let mut out = String::new();
     let _ = write!(
         &mut out,
         r#"<svg id="{id}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="mindmapDiagram" style="max-width: {mw}px; background-color: white;" viewBox="{vx} {vy} {vw} {vh}" role="graphics-document document" aria-roledescription="mindmap">"#,
         id = diagram_id_esc,
-        mw = fmt(vw),
-        vx = fmt(vx),
-        vy = fmt(vy),
-        vw = fmt(vw),
-        vh = fmt(vh),
+        mw = max_w_attr,
+        vx = view_box_attr.split_whitespace().next().unwrap_or("0"),
+        vy = view_box_attr.split_whitespace().nth(1).unwrap_or("0"),
+        vw = view_box_attr.split_whitespace().nth(2).unwrap_or("100"),
+        vh = view_box_attr.split_whitespace().nth(3).unwrap_or("100"),
     );
     out.push_str("<style></style>");
     out.push_str("<g>");

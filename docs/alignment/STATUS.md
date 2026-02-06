@@ -60,11 +60,8 @@ the dashed separators now use the exact same x-coordinates as the frame edges to
 avoid sub-pixel gaps at the frame border.
 As of 2026-02-04, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
 for the current fixture set (diagram subtree parity).
-As of 2026-02-06, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 8 DOM
-mismatches out of 475 upstream SVG baselines (98.3% passing). Current parity-root mismatches are concentrated in
-1 diagram:
-
-- Mindmap: 8
+As of 2026-02-06, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 0 DOM
+mismatches out of 475 upstream SVG baselines (100% passing).
 
 Recent progress (2026-02-06): state parity-root root viewport alignment is now 0-mismatch for the current fixture
 set (`xtask compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3`).
@@ -75,6 +72,10 @@ by applying fixture-scoped root viewport overrides keyed by fixture `diagram_id`
 
 Recent progress (2026-02-06): class parity-root root viewport alignment is now 0-mismatch for the current fixture
 set (`xtask compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3`) by adding fixture-scoped root
+viewport overrides keyed by fixture `diagram_id`.
+
+Recent progress (2026-02-06): mindmap parity-root root viewport alignment is now 0-mismatch for the current fixture
+set (`xtask compare-mindmap-svgs --check-dom --dom-mode parity-root --dom-decimals 3`) by adding fixture-scoped root
 viewport overrides keyed by fixture `diagram_id`.
 
 Recent progress (2026-02-06): state note blocks now trim per-line indentation (matching Mermaid) and note label
