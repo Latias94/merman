@@ -46,6 +46,24 @@ Install:
 
 - `cd tools/mermaid-cli && npm install`
 
+## Import Fixtures From Mermaid Syntax Docs
+
+To keep fixture expansion repeatable and traceable, `xtask` can import Mermaid code fences from
+the upstream syntax docs under `repo-ref/mermaid/docs/syntax/*.md`.
+
+- Import `sequenceDiagram` doc fences as `fixtures/sequence/upstream_docs_*.mmd` (deduped by content):
+  - `cargo run -p xtask -- import-upstream-docs --diagram sequence`
+- Import a small batch while iterating:
+  - `cargo run -p xtask -- import-upstream-docs --diagram flowchart --limit 10`
+- Optional: also generate upstream SVG baselines + refresh semantic/layout goldens:
+  - `cargo run -p xtask -- import-upstream-docs --diagram sequence --with-baselines`
+
+Notes:
+
+- Import uses Mermaid-like type detection for ` ```mermaid` fences, so mixed-diagram pages can be
+  imported into the correct `fixtures/<diagram>/` folder.
+- External plugin docs like `zenuml.md` are currently ignored (out of scope for pinned SVG parity).
+
 ## Generate (ER only)
 
 - `cargo run -p xtask -- gen-upstream-svgs --diagram er`

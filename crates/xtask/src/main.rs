@@ -71,6 +71,7 @@ fn print_help(topic: Option<&str>) {
     println!();
     println!("Common commands:");
     println!("  check-alignment");
+    println!("  import-upstream-docs");
     println!("  update-snapshots");
     println!("  update-layout-snapshots   (alias: gen-layout-goldens)");
     println!("  gen-upstream-svgs");
@@ -139,6 +140,7 @@ fn main() -> Result<(), XtaskError> {
         "gen-default-config" => gen_default_config(args.collect()),
         "gen-dompurify-defaults" => gen_dompurify_defaults(args.collect()),
         "verify-generated" => verify_generated(args.collect()),
+        "import-upstream-docs" => import_upstream_docs(args.collect()),
         "update-snapshots" => update_snapshots(args.collect()),
         "update-layout-snapshots" | "gen-layout-goldens" => update_layout_snapshots(args.collect()),
         "check-alignment" => check_alignment(args.collect()),
@@ -199,6 +201,467 @@ fn main() -> Result<(), XtaskError> {
         "report-overrides" => report_overrides(args.collect()),
         other => Err(XtaskError::UnknownCommand(other.to_string())),
     }
+}
+
+fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
+    let mut diagram: String = "all".to_string();
+    let mut filter: Option<String> = None;
+    let mut limit: Option<usize> = None;
+    let mut overwrite: bool = false;
+    let mut with_baselines: bool = false;
+    let mut install: bool = false;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--diagram" => {
+                i += 1;
+                diagram = args.get(i).ok_or(XtaskError::Usage)?.trim().to_string();
+            }
+            "--filter" => {
+                i += 1;
+                filter = args.get(i).map(|s| s.to_string());
+            }
+            "--limit" => {
+                i += 1;
+                let raw = args.get(i).ok_or(XtaskError::Usage)?;
+                limit = Some(raw.parse::<usize>().map_err(|_| XtaskError::Usage)?);
+            }
+            "--overwrite" => overwrite = true,
+            "--with-baselines" => with_baselines = true,
+            "--install" => install = true,
+            "--help" | "-h" => return Err(XtaskError::Usage),
+            _ => return Err(XtaskError::Usage),
+        }
+        i += 1;
+    }
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
+
+    let docs_root = workspace_root
+        .join("repo-ref")
+        .join("mermaid")
+        .join("docs")
+        .join("syntax");
+    if !docs_root.is_dir() {
+        return Err(XtaskError::SnapshotUpdateFailed(format!(
+            "upstream docs folder not found: {} (expected repo-ref checkout of mermaid@11.12.2)",
+            docs_root.display()
+        )));
+    }
+
+    #[derive(Debug, Clone)]
+    struct MdBlock {
+        source_md: PathBuf,
+        source_stem: String,
+        idx_in_file: usize,
+        heading: Option<String>,
+        info: String,
+        body: String,
+    }
+
+    #[derive(Debug, Clone)]
+    struct CreatedFixture {
+        diagram_dir: String,
+        stem: String,
+        path: PathBuf,
+    }
+
+    fn slugify(s: &str) -> String {
+        let mut out = String::with_capacity(s.len());
+        let mut prev_us = false;
+        for ch in s.chars() {
+            let ch = ch.to_ascii_lowercase();
+            if ch.is_ascii_alphanumeric() {
+                out.push(ch);
+                prev_us = false;
+            } else if !prev_us {
+                out.push('_');
+                prev_us = true;
+            }
+        }
+        while out.starts_with('_') {
+            out.remove(0);
+        }
+        while out.ends_with('_') {
+            out.pop();
+        }
+        if out.is_empty() {
+            "untitled".to_string()
+        } else {
+            out
+        }
+    }
+
+    fn canonical_fixture_text(s: &str) -> String {
+        let s = s.replace("\r\n", "\n").replace('\r', "\n");
+        let s = s.trim_matches('\n');
+        format!("{s}\n")
+    }
+
+    fn extract_md_blocks(md_path: &Path) -> Result<Vec<MdBlock>, XtaskError> {
+        let text = fs::read_to_string(md_path).map_err(|err| {
+            XtaskError::SnapshotUpdateFailed(format!(
+                "failed to read markdown file {}: {err}",
+                md_path.display()
+            ))
+        })?;
+
+        let source_stem = md_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        let mut out = Vec::new();
+        let lines: Vec<&str> = text.lines().collect();
+        let mut i = 0usize;
+        let mut current_heading: Option<String> = None;
+        let mut idx_in_file = 0usize;
+        while i < lines.len() {
+            let line = lines[i];
+            if let Some(h) = line.strip_prefix('#') {
+                current_heading = Some(h.trim().trim_start_matches('#').trim().to_string());
+            }
+
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("```") {
+                let ticks = trimmed.chars().take_while(|c| *c == '`').count();
+                let info = trimmed[ticks..].trim().to_string();
+                i += 1;
+                let mut body_lines: Vec<&str> = Vec::new();
+                while i < lines.len() {
+                    let l = lines[i];
+                    if l.trim_start().starts_with(&"`".repeat(ticks)) {
+                        break;
+                    }
+                    body_lines.push(l);
+                    i += 1;
+                }
+
+                let body = body_lines.join("\n");
+                out.push(MdBlock {
+                    source_md: md_path.to_path_buf(),
+                    source_stem: source_stem.clone(),
+                    idx_in_file,
+                    heading: current_heading.clone(),
+                    info,
+                    body,
+                });
+                idx_in_file += 1;
+            }
+
+            i += 1;
+        }
+
+        Ok(out)
+    }
+
+    fn docs_md_for_diagram(diagram: &str) -> Option<&'static str> {
+        match diagram {
+            "all" => None,
+            "architecture" => Some("architecture.md"),
+            "block" => Some("block.md"),
+            "c4" => Some("c4.md"),
+            "class" => Some("classDiagram.md"),
+            "er" => Some("entityRelationshipDiagram.md"),
+            "flowchart" => Some("flowchart.md"),
+            "gantt" => Some("gantt.md"),
+            "gitgraph" => Some("gitgraph.md"),
+            "kanban" => Some("kanban.md"),
+            "mindmap" => Some("mindmap.md"),
+            "packet" => Some("packet.md"),
+            "pie" => Some("pie.md"),
+            "quadrantchart" => Some("quadrantChart.md"),
+            "radar" => Some("radar.md"),
+            "requirement" => Some("requirementDiagram.md"),
+            "sankey" => Some("sankey.md"),
+            "sequence" => Some("sequenceDiagram.md"),
+            "state" => Some("stateDiagram.md"),
+            "timeline" => Some("timeline.md"),
+            "treemap" => Some("treemap.md"),
+            "journey" => Some("userJourney.md"),
+            "xychart" => Some("xyChart.md"),
+            _ => None,
+        }
+    }
+
+    fn normalize_diagram_dir(detected: &str) -> Option<String> {
+        match detected {
+            "flowchart" | "flowchart-v2" | "flowchart-elk" => Some("flowchart".to_string()),
+            "state" | "stateDiagram" => Some("state".to_string()),
+            "class" | "classDiagram" => Some("class".to_string()),
+            "gitGraph" => Some("gitgraph".to_string()),
+            "quadrantChart" => Some("quadrantchart".to_string()),
+            "er" => Some("er".to_string()),
+            "journey" => Some("journey".to_string()),
+            "xychart" => Some("xychart".to_string()),
+            "requirement" => Some("requirement".to_string()),
+            "architecture" | "block" | "c4" | "gantt" | "info" | "kanban" | "mindmap"
+            | "packet" | "pie" | "radar" | "sankey" | "sequence" | "timeline" | "treemap" => {
+                Some(detected.to_string())
+            }
+            _ => None,
+        }
+    }
+
+    let mut md_files: Vec<PathBuf> = Vec::new();
+    if diagram == "all" {
+        for entry in fs::read_dir(&docs_root).map_err(|err| {
+            XtaskError::SnapshotUpdateFailed(format!(
+                "failed to list docs directory {}: {err}",
+                docs_root.display()
+            ))
+        })? {
+            let path = entry
+                .map_err(|err| {
+                    XtaskError::SnapshotUpdateFailed(format!(
+                        "failed to read docs directory entry under {}: {err}",
+                        docs_root.display()
+                    ))
+                })?
+                .path();
+            if path.extension().is_some_and(|e| e == "md") {
+                md_files.push(path);
+            }
+        }
+    } else {
+        let Some(name) = docs_md_for_diagram(&diagram) else {
+            return Err(XtaskError::SnapshotUpdateFailed(format!(
+                "unknown diagram: {diagram} (expected one of the fixtures/ subfolders, or 'all')"
+            )));
+        };
+        md_files.push(docs_root.join(name));
+    }
+    md_files.sort();
+
+    let allowed_infos = [
+        "mermaid",
+        "architecture",
+        "block",
+        "c4",
+        "classDiagram",
+        "erDiagram",
+        "flowchart",
+        "gantt",
+        "gitGraph",
+        "kanban",
+        "mindmap",
+        "packet",
+        "pie",
+        "quadrantChart",
+        "radar",
+        "requirementDiagram",
+        "sankey",
+        "sequenceDiagram",
+        "stateDiagram",
+        "timeline",
+        "treemap",
+        "userJourney",
+        "xyChart",
+        "xychart",
+    ];
+
+    let reg = merman::detect::DetectorRegistry::default_mermaid_11_12_2_full();
+    let mut created: Vec<CreatedFixture> = Vec::new();
+    let mut skipped: Vec<String> = Vec::new();
+
+    let mut existing_by_diagram: std::collections::HashMap<
+        String,
+        std::collections::HashMap<String, PathBuf>,
+    > = std::collections::HashMap::new();
+
+    fn load_existing_fixtures(fixtures_dir: &Path) -> std::collections::HashMap<String, PathBuf> {
+        let mut map = std::collections::HashMap::new();
+        let Ok(entries) = fs::read_dir(fixtures_dir) else {
+            return map;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|e| e == "mmd") {
+                if let Ok(text) = fs::read_to_string(&path) {
+                    let canon = canonical_fixture_text(&text);
+                    map.insert(canon, path);
+                }
+            }
+        }
+        map
+    }
+
+    let mut imported = 0usize;
+    'outer: for md_path in md_files {
+        if !md_path.is_file() {
+            skipped.push(format!("missing markdown source: {}", md_path.display()));
+            continue;
+        }
+
+        let blocks = extract_md_blocks(&md_path)?;
+        let source_stem = md_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown");
+        let source_slug = slugify(source_stem);
+
+        for b in blocks {
+            if !allowed_infos.iter().any(|v| *v == b.info) {
+                continue;
+            }
+            if let Some(f) = filter.as_deref() {
+                let h = b.heading.clone().unwrap_or_default();
+                if !b.source_stem.contains(f) && !h.contains(f) {
+                    continue;
+                }
+            }
+
+            let body = canonical_fixture_text(&b.body);
+            if body.trim().is_empty() {
+                continue;
+            }
+
+            let mut cfg = merman::MermaidConfig::default();
+            let detected = match reg.detect_type(body.as_str(), &mut cfg) {
+                Ok(t) => t,
+                Err(_) => {
+                    skipped.push(format!(
+                        "skip (type not detected): {} (info='{}', idx={})",
+                        b.source_md.display(),
+                        b.info,
+                        b.idx_in_file
+                    ));
+                    continue;
+                }
+            };
+            let Some(diagram_dir) = normalize_diagram_dir(detected) else {
+                skipped.push(format!(
+                    "skip (unsupported detected type '{detected}'): {}",
+                    b.source_md.display()
+                ));
+                continue;
+            };
+
+            // External plugin diagrams (like zenuml) are out of scope for now.
+            if diagram_dir == "zenuml" {
+                continue;
+            }
+
+            let fixtures_dir = workspace_root.join("fixtures").join(&diagram_dir);
+            if !fixtures_dir.is_dir() {
+                skipped.push(format!(
+                    "skip (fixtures dir missing): {}",
+                    fixtures_dir.display()
+                ));
+                continue;
+            }
+
+            let existing = existing_by_diagram
+                .entry(diagram_dir.clone())
+                .or_insert_with(|| load_existing_fixtures(&fixtures_dir));
+            if let Some(existing_path) = existing.get(&body) {
+                skipped.push(format!(
+                    "skip (duplicate content): {} -> {}",
+                    b.source_md.display(),
+                    existing_path.display()
+                ));
+                continue;
+            }
+
+            let heading_slug = slugify(b.heading.as_deref().unwrap_or("example"));
+            let stem = format!(
+                "upstream_docs_{source_slug}_{heading_slug}_{idx:03}",
+                idx = b.idx_in_file + 1
+            );
+            let out_path = fixtures_dir.join(format!("{stem}.mmd"));
+            if out_path.exists() && !overwrite {
+                skipped.push(format!("skip (exists): {}", out_path.display()));
+                continue;
+            }
+
+            fs::write(&out_path, &body).map_err(|err| {
+                XtaskError::SnapshotUpdateFailed(format!(
+                    "failed to write fixture {}: {err}",
+                    out_path.display()
+                ))
+            })?;
+            existing.insert(body.clone(), out_path.clone());
+
+            created.push(CreatedFixture {
+                diagram_dir: diagram_dir.clone(),
+                stem,
+                path: out_path,
+            });
+
+            imported += 1;
+            if let Some(max) = limit {
+                if imported >= max {
+                    break 'outer;
+                }
+            }
+        }
+    }
+
+    if created.is_empty() {
+        return Err(XtaskError::SnapshotUpdateFailed(
+            "no fixtures were imported (use --diagram <name> and optionally --filter/--limit)"
+                .to_string(),
+        ));
+    }
+
+    if install && !with_baselines {
+        return Err(XtaskError::SnapshotUpdateFailed(
+            "`--install` only applies when `--with-baselines` is set".to_string(),
+        ));
+    }
+
+    if with_baselines {
+        // Generate upstream SVGs + semantic + layout snapshots for each imported fixture.
+        //
+        // This is intentionally per-fixture (filter=stem) so we don't accidentally regenerate or
+        // fail on unrelated upstream fixtures in the same folder.
+        for f in &created {
+            let mut svg_args = vec![
+                "--diagram".to_string(),
+                f.diagram_dir.clone(),
+                "--filter".to_string(),
+                f.stem.clone(),
+            ];
+            if install {
+                svg_args.push("--install".to_string());
+            }
+            gen_upstream_svgs(svg_args)?;
+            update_snapshots(vec![
+                "--diagram".to_string(),
+                f.diagram_dir.clone(),
+                "--filter".to_string(),
+                f.stem.clone(),
+            ])?;
+            update_layout_snapshots(vec![
+                "--diagram".to_string(),
+                f.diagram_dir.clone(),
+                "--filter".to_string(),
+                f.stem.clone(),
+            ])?;
+        }
+    }
+
+    eprintln!("Imported {} fixtures:", created.len());
+    for f in &created {
+        eprintln!("  {}", f.path.display());
+    }
+    if !skipped.is_empty() {
+        eprintln!("Skipped {} blocks:", skipped.len());
+        for s in skipped.iter().take(50) {
+            eprintln!("  {s}");
+        }
+        if skipped.len() > 50 {
+            eprintln!("  ... ({} more)", skipped.len() - 50);
+        }
+    }
+
+    Ok(())
 }
 
 fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
