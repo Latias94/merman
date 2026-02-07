@@ -204,9 +204,82 @@ pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) {
     let theme = config.get_str("theme").unwrap_or("default");
     match theme {
         "base" => apply_base_theme_defaults(config),
+        "dark" => apply_dark_theme_defaults(config),
         "forest" => apply_forest_theme_defaults(config),
+        "neutral" => apply_neutral_theme_defaults(config),
         _ => {}
     }
+}
+
+fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
+    let mut tv = match config.as_value().get("themeVariables") {
+        Some(Value::Object(m)) => m.clone(),
+        _ => Map::new(),
+    };
+
+    // Mermaid 11.12.2: `theme-dark` color scale seeds.
+    // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-dark.js`.
+    //
+    // Note: `theme-dark` keeps `cScale*` as the provided hex strings, while derived
+    // `cScalePeer*` values are produced via `khroma.lighten(...)` (serialized as `hsl(...)`).
+    let c_scales_hex: [&str; 12] = [
+        "#1f2020", // primaryColor
+        "#0b0000", "#4d1037", "#3f5258", "#4f2f1b", "#6e0a0a", "#3b0048", "#995a01", "#154706",
+        "#161722", "#00296f", "#01629c",
+    ];
+
+    set_if_missing(
+        &mut tv,
+        "labelTextColor",
+        Value::String("lightgrey".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "scaleLabelColor",
+        Value::String("black".to_string()),
+    );
+    let scale_label_color =
+        get_truthy_string(&tv, "scaleLabelColor").unwrap_or_else(|| "black".to_string());
+
+    for (i, c_hex) in c_scales_hex.iter().enumerate() {
+        set_if_missing(
+            &mut tv,
+            &format!("cScale{i}"),
+            Value::String((*c_hex).to_string()),
+        );
+
+        let Some(rgb) = parse_hex_rgb01(c_hex) else {
+            continue;
+        };
+        let hsl = rgb01_to_hsl(rgb);
+
+        // `theme-dark` peers: `lighten(cScale, 10)`.
+        set_if_missing(
+            &mut tv,
+            &format!("cScalePeer{i}"),
+            Value::String(fmt_hsl(adjust_hsl(hsl, 0.0, 0.0, 10.0))),
+        );
+
+        // `theme-dark` inverted scale: `invert(cScale)`.
+        set_if_missing(
+            &mut tv,
+            &format!("cScaleInv{i}"),
+            Value::String(rgb01_to_hex(Rgb01 {
+                r: 1.0 - rgb.r,
+                g: 1.0 - rgb.g,
+                b: 1.0 - rgb.b,
+            })),
+        );
+
+        // `theme-dark` label scale: `scaleLabelColor`.
+        set_if_missing(
+            &mut tv,
+            &format!("cScaleLabel{i}"),
+            Value::String(scale_label_color.clone()),
+        );
+    }
+
+    config.set_value("themeVariables", Value::Object(tv));
 }
 
 fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
@@ -319,6 +392,77 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
             &format!("cScaleInv{i}"),
             Value::String(fmt_hsl(adjust_hsl(c_hsl, 180.0, 0.0, 0.0))),
         );
+        set_if_missing(
+            &mut tv,
+            &format!("cScaleLabel{i}"),
+            Value::String(scale_label_color.clone()),
+        );
+    }
+
+    config.set_value("themeVariables", Value::Object(tv));
+}
+
+fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
+    let mut tv = match config.as_value().get("themeVariables") {
+        Some(Value::Object(m)) => m.clone(),
+        _ => Map::new(),
+    };
+
+    // Mermaid 11.12.2: `theme-neutral` color scale seeds.
+    // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-neutral.js`.
+    let c_scales_hex: [&str; 12] = [
+        "#555", "#F4F4F4", "#555", "#BBB", "#777", "#999", "#DDD", "#FFF", "#DDD", "#BBB", "#999",
+        "#777",
+    ];
+
+    set_if_missing(&mut tv, "labelTextColor", Value::String("#333".to_string()));
+    set_if_missing(
+        &mut tv,
+        "scaleLabelColor",
+        Value::String("#333".to_string()),
+    );
+    let scale_label_color =
+        get_truthy_string(&tv, "scaleLabelColor").unwrap_or_else(|| "#333".to_string());
+
+    for (i, c_hex) in c_scales_hex.iter().enumerate() {
+        set_if_missing(
+            &mut tv,
+            &format!("cScale{i}"),
+            Value::String((*c_hex).to_string()),
+        );
+
+        let Some(rgb) = parse_hex_rgb01(c_hex) else {
+            continue;
+        };
+        let hsl = rgb01_to_hsl(rgb);
+
+        // `theme-neutral` peers: `darken(cScale, 10)` (darkMode defaults to false).
+        set_if_missing(
+            &mut tv,
+            &format!("cScalePeer{i}"),
+            Value::String(fmt_hsl(adjust_hsl(hsl, 0.0, 0.0, -10.0))),
+        );
+
+        // `theme-neutral` inverted scale: `invert(cScale)`.
+        set_if_missing(
+            &mut tv,
+            &format!("cScaleInv{i}"),
+            Value::String(rgb01_to_hex(Rgb01 {
+                r: 1.0 - rgb.r,
+                g: 1.0 - rgb.g,
+                b: 1.0 - rgb.b,
+            })),
+        );
+
+        // `theme-neutral` label scale: `scaleLabelColor`, with special-cased indices.
+        // - `cScaleLabel0` and `cScaleLabel2`: `cScale1` (light fill needs dark text)
+        if i == 0 || i == 2 {
+            set_if_missing(
+                &mut tv,
+                &format!("cScaleLabel{i}"),
+                Value::String(c_scales_hex[1].to_string()),
+            );
+        }
         set_if_missing(
             &mut tv,
             &format!("cScaleLabel{i}"),
@@ -597,5 +741,92 @@ mod tests {
             Some("rgb(202.9906542056, 158.4112149531, 219.0887850467)")
         );
         assert_eq!(tv.get("titleColor").and_then(|v| v.as_str()), Some("white"));
+    }
+
+    #[test]
+    fn forest_theme_derives_cscale_palette_like_upstream() {
+        let mut cfg = MermaidConfig::from_value(json!({
+            "theme": "forest"
+        }));
+        apply_theme_defaults(&mut cfg);
+
+        let tv = cfg
+            .as_value()
+            .get("themeVariables")
+            .and_then(|v| v.as_object())
+            .unwrap();
+
+        assert_eq!(
+            tv.get("cScale0").and_then(|v| v.as_str()),
+            Some("hsl(78.1578947368, 58.4615384615%, 64.5098039216%)")
+        );
+        assert_eq!(
+            tv.get("cScalePeer0").and_then(|v| v.as_str()),
+            Some("hsl(78.1578947368, 58.4615384615%, 39.5098039216%)")
+        );
+        assert_eq!(
+            tv.get("cScalePeer1").and_then(|v| v.as_str()),
+            Some("hsl(98.961038961, 100%, 39.9019607843%)")
+        );
+        assert_eq!(
+            tv.get("cScalePeer2").and_then(|v| v.as_str()),
+            Some("hsl(78.1578947368, 58.4615384615%, 44.5098039216%)")
+        );
+    }
+
+    #[test]
+    fn dark_theme_derives_peer_and_inverted_scales_like_upstream() {
+        let mut cfg = MermaidConfig::from_value(json!({
+            "theme": "dark"
+        }));
+        apply_theme_defaults(&mut cfg);
+
+        let tv = cfg
+            .as_value()
+            .get("themeVariables")
+            .and_then(|v| v.as_object())
+            .unwrap();
+
+        assert_eq!(tv.get("cScale1").and_then(|v| v.as_str()), Some("#0b0000"));
+        assert_eq!(
+            tv.get("cScalePeer1").and_then(|v| v.as_str()),
+            Some("hsl(0, 100%, 12.1568627451%)")
+        );
+        assert_eq!(
+            tv.get("cScaleInv1").and_then(|v| v.as_str()),
+            Some("#f4ffff")
+        );
+        assert_eq!(
+            tv.get("cScaleLabel1").and_then(|v| v.as_str()),
+            Some("black")
+        );
+    }
+
+    #[test]
+    fn neutral_theme_derives_peer_and_label_scales_like_upstream() {
+        let mut cfg = MermaidConfig::from_value(json!({
+            "theme": "neutral"
+        }));
+        apply_theme_defaults(&mut cfg);
+
+        let tv = cfg
+            .as_value()
+            .get("themeVariables")
+            .and_then(|v| v.as_object())
+            .unwrap();
+
+        assert_eq!(tv.get("cScale0").and_then(|v| v.as_str()), Some("#555"));
+        assert_eq!(
+            tv.get("cScalePeer0").and_then(|v| v.as_str()),
+            Some("hsl(0, 0%, 23.3333333333%)")
+        );
+        assert_eq!(
+            tv.get("cScaleInv0").and_then(|v| v.as_str()),
+            Some("#aaaaaa")
+        );
+        assert_eq!(
+            tv.get("cScaleLabel0").and_then(|v| v.as_str()),
+            Some("#F4F4F4")
+        );
     }
 }
