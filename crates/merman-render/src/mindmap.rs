@@ -68,10 +68,20 @@ fn mindmap_text_style(effective_config: &Value) -> TextStyle {
     }
 }
 
-fn mindmap_label_bbox_px(text: &str, measurer: &dyn TextMeasurer, style: &TextStyle) -> (f64, f64) {
-    // Mermaid mindmap uses HTML labels with `white-space: nowrap`, so we should not apply wrapping
-    // even if `mindmap.maxNodeWidth` is set.
-    let m = measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike);
+fn mindmap_label_bbox_px(
+    text: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    max_node_width_px: f64,
+) -> (f64, f64) {
+    // Mermaid mindmap labels are rendered via HTML `<foreignObject>` and respect
+    // `mindmap.maxNodeWidth` (default 200px). When the raw label is wider than that, Mermaid
+    // switches the label container to a fixed 200px width and allows HTML-like wrapping (e.g.
+    // `white-space: break-spaces` in upstream SVG baselines).
+    //
+    // Mirror that by measuring with an explicit max width in HTML-like mode.
+    let max_node_width_px = max_node_width_px.max(1.0);
+    let m = measurer.measure_wrapped(text, style, Some(max_node_width_px), WrapMode::HtmlLike);
     (m.width.max(0.0), m.height.max(0.0))
 }
 
@@ -79,8 +89,9 @@ fn mindmap_node_dimensions_px(
     node: &MindmapNodeModel,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
+    max_node_width_px: f64,
 ) -> (f64, f64) {
-    let (bbox_w, bbox_h) = mindmap_label_bbox_px(&node.label, measurer, style);
+    let (bbox_w, bbox_h) = mindmap_label_bbox_px(&node.label, measurer, style, max_node_width_px);
     let padding = node.padding.max(0.0);
     let half_padding = padding / 2.0;
 
@@ -164,6 +175,9 @@ pub fn layout_mindmap_diagram(
     let model: MindmapModel = serde_json::from_value(model.clone())?;
 
     let text_style = mindmap_text_style(effective_config);
+    let max_node_width_px = config_f64(effective_config, &["mindmap", "maxNodeWidth"])
+        .unwrap_or(200.0)
+        .max(1.0);
 
     let mut nodes: Vec<LayoutNode> = Vec::new();
     let mut id_order: Vec<(i64, String)> = model
@@ -180,7 +194,8 @@ pub fn layout_mindmap_diagram(
         let Some(n) = node_by_id.get(id) else {
             continue;
         };
-        let (width, height) = mindmap_node_dimensions_px(n, text_measurer, &text_style);
+        let (width, height) =
+            mindmap_node_dimensions_px(n, text_measurer, &text_style, max_node_width_px);
 
         nodes.push(LayoutNode {
             id: n.id.clone(),

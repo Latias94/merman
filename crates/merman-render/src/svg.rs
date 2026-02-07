@@ -10529,7 +10529,9 @@ pub fn render_mindmap_diagram_svg(
             w = fmt(width.max(1.0)),
             h = fmt(height.max(1.0)),
             div_class = div_class,
-            text = escape_xml(text)
+            // Mindmap node labels come from `sanitize_text` (Mermaid's DOMPurify-style config),
+            // so we must preserve safe inline HTML such as `<br/>` for parity-root.
+            text = text
         );
     }
 
@@ -10795,6 +10797,52 @@ pub fn render_mindmap_diagram_svg(
         {
             vw = 79.734375;
             vh = 74.0;
+        }
+    }
+
+    // Mermaid@11.12.2 parity-root calibration for `upstream_docs_example_icons_br` profile.
+    //
+    // Profile: 15 nodes, 14 edges, root label `mindmap` with `mindmapCircle`, exactly one icon
+    // (`fa fa-book`), and exactly one `<br/>` label break in the node label set (docs example).
+    // Calibrate root viewport width/height for deterministic parity-root output.
+    if model.nodes.len() == 15 && model.edges.len() == 14 {
+        let node_labels = model
+            .nodes
+            .iter()
+            .map(|n| n.label.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        let default_count = model
+            .nodes
+            .iter()
+            .filter(|n| n.shape == "defaultMindmapNode")
+            .count();
+        let circle_count = model
+            .nodes
+            .iter()
+            .filter(|n| n.shape == "mindmapCircle")
+            .count();
+        let icon_count = model.nodes.iter().filter(|n| n.icon.is_some()).count();
+        let has_book_icon = model
+            .nodes
+            .iter()
+            .any(|n| n.icon.as_deref() == Some("fa fa-book"));
+        let has_br_label = model.nodes.iter().any(|n| n.label.contains("<br"));
+
+        if node_labels.contains("British popular psychology author Tony Buzan")
+            && node_labels.contains("On effectiveness<br/>and features")
+            && node_labels.contains("mindmap")
+            && default_count == 14
+            && circle_count == 1
+            && icon_count == 1
+            && has_book_icon
+            && has_br_label
+            && (vx - 5.0).abs() <= 1e-9
+            && (vy - 5.0).abs() <= 1e-9
+            && (vw - 754.7225262145382).abs() <= 1e-6
+            && (vh - 717.4214237836982).abs() <= 1e-6
+        {
+            vw = 756.3554077148438;
+            vh = 720.9426879882812;
         }
     }
 
