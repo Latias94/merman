@@ -1,0 +1,89 @@
+{
+  "diagramType": "treemap",
+  "model": {
+    "type": "treemap",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "name": "",
+      "children": [
+        {
+          "name": "Budget",
+          "children": [
+            {
+              "name": "Operations",
+              "children": [
+                {
+                  "name": "Salaries",
+                  "value": 700000
+                },
+                {
+                  "name": "Equipment",
+                  "value": 200000
+                },
+                {
+                  "name": "Supplies",
+                  "value": 100000
+                }
+              ]
+            },
+            {
+              "name": "Marketing",
+              "children": [
+                {
+                  "name": "Advertising",
+                  "value": 400000
+                },
+                {
+                  "name": "Events",
+                  "value": 100000
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "level": 0,
+        "name": "Budget"
+      },
+      {
+        "level": 1,
+        "name": "Operations"
+      },
+      {
+        "level": 2,
+        "name": "Salaries",
+        "value": 700000
+      },
+      {
+        "level": 2,
+        "name": "Equipment",
+        "value": 200000
+      },
+      {
+        "level": 2,
+        "name": "Supplies",
+        "value": 100000
+      },
+      {
+        "level": 1,
+        "name": "Marketing"
+      },
+      {
+        "level": 2,
+        "name": "Advertising",
+        "value": 400000
+      },
+      {
+        "level": 2,
+        "name": "Events",
+        "value": 100000
+      }
+    ],
+    "classes": {}
+  }
+}

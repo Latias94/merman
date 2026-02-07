@@ -60,8 +60,8 @@ the dashed separators now use the exact same x-coordinates as the frame edges to
 avoid sub-pixel gaps at the frame border.
 As of 2026-02-04, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
 for the current fixture set (diagram subtree parity).
-As of 2026-02-06, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 0 DOM
-mismatches out of 501 upstream SVG baselines (100% passing).
+As of 2026-02-07, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 0 DOM
+mismatches out of 503 upstream SVG baselines (100% passing).
 
 Post-baseline hardening plan (coverage growth + override consolidation + CI guardrails) is tracked in
 `docs/alignment/PARITY_HARDENING_PLAN.md`.
@@ -73,6 +73,9 @@ Recent progress (2026-02-06): Phase A fixture expansion added three upstream-ren
 Recent progress (2026-02-06): Phase A architecture expansion added three demo-derived upstream baselines
 (`upstream_architecture_demo_arrow_mesh_bidirectional`, `upstream_architecture_demo_edge_label_long`,
 `upstream_architecture_demo_junction_groups_arrows`) and preserved 0-mismatch full parity/parity-root checks.
+
+Recent progress (2026-02-07): Treemap docs-derived fixtures now cover theme `forest` and currency `valueFormat`,
+and forest theme `cScale*` defaults are derived so treemap section fills match upstream SVG baselines.
 
 Recent progress (2026-02-06): Phase A architecture expansion (third batch) added three additional upstream-rendered
 baselines (`upstream_architecture_demo_arrow_mesh_bidirectional_inverse`,

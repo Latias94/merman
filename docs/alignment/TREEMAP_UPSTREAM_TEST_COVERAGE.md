@@ -27,3 +27,5 @@ Source: `repo-ref/mermaid/packages/mermaid/src/docs/syntax/treemap.md`
 - hierarchical treemap: `fixtures/treemap/upstream_treemap_docs_hierarchical_spec.mmd`
 - styling (`classDef` + `:::class`): `fixtures/treemap/upstream_treemap_docs_styling_spec.mmd`
 - config `treemap.diagramPadding`: `fixtures/treemap/upstream_treemap_docs_diagram_padding_spec.mmd`
+- theme `forest`: `fixtures/treemap/upstream_treemap_docs_theme_forest_spec.mmd`
+- config `treemap.valueFormat` (currency): `fixtures/treemap/upstream_treemap_docs_value_format_currency_spec.mmd`
