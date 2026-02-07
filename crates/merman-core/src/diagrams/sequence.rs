@@ -906,8 +906,37 @@ impl<'input> Lexer<'input> {
         if self.pos >= self.input.len() {
             return None;
         }
-        let b = self.input.as_bytes()[self.pos];
-        self.pos += 1;
+        let bytes = self.input.as_bytes();
+        let b = bytes[self.pos];
+
+        // Keep `self.pos` on a UTF-8 char boundary. Mermaid input can contain arbitrary Unicode
+        // (including `encodeEntities(...)` placeholders), and this lexer is otherwise byte-based.
+        if b.is_ascii() {
+            self.pos += 1;
+        } else {
+            // If we're already in the middle of a codepoint (continuation byte), resync by
+            // skipping continuation bytes.
+            if (b & 0b1100_0000) == 0b1000_0000 {
+                self.pos += 1;
+                while self.pos < bytes.len() && (bytes[self.pos] & 0b1100_0000) == 0b1000_0000 {
+                    self.pos += 1;
+                }
+            } else {
+                let len = if (b & 0b1110_0000) == 0b1100_0000 {
+                    2
+                } else if (b & 0b1111_0000) == 0b1110_0000 {
+                    3
+                } else if (b & 0b1111_1000) == 0b1111_0000 {
+                    4
+                } else {
+                    1
+                };
+                self.pos = (self.pos + len).min(bytes.len());
+                while self.pos < bytes.len() && (bytes[self.pos] & 0b1100_0000) == 0b1000_0000 {
+                    self.pos += 1;
+                }
+            }
+        }
         Some(b)
     }
 
@@ -922,11 +951,19 @@ impl<'input> Lexer<'input> {
     }
 
     fn starts_with_ci(&self, kw: &str) -> bool {
-        let rest = &self.input[self.pos..];
-        if rest.len() < kw.len() {
+        let rest = self.input.as_bytes().get(self.pos..).unwrap_or_default();
+        let kwb = kw.as_bytes();
+        if rest.len() < kwb.len() {
             return false;
         }
-        rest[..kw.len()].eq_ignore_ascii_case(kw)
+        for i in 0..kwb.len() {
+            let a = rest[i];
+            let b = kwb[i];
+            if a.to_ascii_lowercase() != b.to_ascii_lowercase() {
+                return false;
+            }
+        }
+        true
     }
 
     fn starts_with_ci_word(&self, kw: &str) -> bool {

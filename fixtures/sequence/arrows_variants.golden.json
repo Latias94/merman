@@ -1,134 +1,134 @@
 {
   "diagramType": "sequence",
   "model": {
-    "accDescr": null,
+    "type": "sequence",
+    "title": null,
     "accTitle": null,
+    "accDescr": null,
     "actorOrder": [
       "A",
       "B"
     ],
     "actors": {
       "A": {
-        "description": "A",
-        "links": {},
         "name": "A",
-        "properties": {},
+        "description": "A",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "B": {
-        "description": "B",
-        "links": {},
         "name": "B",
-        "properties": {},
+        "description": "B",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       }
     },
-    "boxes": [],
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "over": 2,
-        "rightOf": 1
-      }
-    },
-    "createdActors": {},
-    "destroyedActors": {},
     "messages": [
       {
-        "activate": false,
-        "from": "A",
         "id": "0",
+        "from": "A",
+        "to": "B",
         "message": "solid",
-        "to": "B",
+        "wrap": false,
         "type": 0,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "A",
         "id": "1",
+        "from": "A",
+        "to": "B",
         "message": "dotted",
-        "to": "B",
+        "wrap": false,
         "type": 1,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "A",
         "id": "2",
+        "from": "A",
+        "to": "B",
         "message": "solid_open",
-        "to": "B",
+        "wrap": false,
         "type": 5,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "A",
         "id": "3",
+        "from": "A",
+        "to": "B",
         "message": "dotted_open",
-        "to": "B",
+        "wrap": false,
         "type": 6,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "A",
         "id": "4",
+        "from": "A",
+        "to": "B",
         "message": "solid_cross",
-        "to": "B",
+        "wrap": false,
         "type": 3,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "A",
         "id": "5",
+        "from": "A",
+        "to": "B",
         "message": "dotted_cross",
-        "to": "B",
+        "wrap": false,
         "type": 4,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "A",
         "id": "6",
+        "from": "A",
+        "to": "B",
         "message": "solid_point",
-        "to": "B",
+        "wrap": false,
         "type": 24,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "A",
         "id": "7",
+        "from": "A",
+        "to": "B",
         "message": "dotted_point",
-        "to": "B",
+        "wrap": false,
         "type": 25,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "A",
         "id": "8",
-        "message": "bidirectional_solid",
+        "from": "A",
         "to": "B",
+        "message": "bidirectional_solid",
+        "wrap": false,
         "type": 33,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "A",
         "id": "9",
-        "message": "bidirectional_dotted",
+        "from": "A",
         "to": "B",
+        "message": "bidirectional_dotted",
+        "wrap": false,
         "type": 34,
-        "wrap": false
+        "activate": false
       }
     ],
     "notes": [],
-    "title": null,
-    "type": "sequence"
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
   }
 }

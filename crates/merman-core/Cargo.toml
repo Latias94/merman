@@ -11,6 +11,7 @@ large-features = []
 
 [dependencies]
 euclid.workspace = true
+htmlize.workspace = true
 indexmap.workspace = true
 lalrpop-util.workspace = true
 logos.workspace = true

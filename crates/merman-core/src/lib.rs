@@ -6,6 +6,7 @@ pub mod config;
 pub mod detect;
 pub mod diagram;
 pub mod diagrams;
+pub mod entities;
 pub mod error;
 pub mod generated;
 pub mod geom;
@@ -2108,7 +2109,9 @@ A_node-->P[\Inv trapezoid/];
     #[test]
     fn parse_diagram_flowchart_inline_vertex_class_via_style_separator() {
         let engine = Engine::new();
-        let text = "graph TD;classDef exClass background:#bbb;A-->B[test]:::exClass;";
+        // Mermaid `encodeEntities(...)` treats `#bbb;` as an entity placeholder when semicolons
+        // are used as statement separators. Use newlines to match upstream parsing behavior.
+        let text = "graph TD\nclassDef exClass background:#bbb\nA-->B[test]:::exClass\n";
         let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
             .unwrap();

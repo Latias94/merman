@@ -1,197 +1,197 @@
 {
   "diagramType": "sequence",
   "model": {
-    "accDescr": null,
+    "type": "sequence",
+    "title": null,
     "accTitle": null,
+    "accDescr": null,
     "actorOrder": [
       "Alice",
       "Bob"
     ],
     "actors": {
       "Alice": {
-        "description": "Alice",
-        "links": {},
         "name": "Alice",
-        "properties": {},
+        "description": "Alice",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "Bob": {
-        "description": "Bob",
-        "links": {},
         "name": "Bob",
-        "properties": {},
+        "description": "Bob",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       }
     },
-    "boxes": [],
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "over": 2,
-        "rightOf": 1
-      }
-    },
-    "createdActors": {},
-    "destroyedActors": {},
     "messages": [
       {
-        "activate": false,
-        "from": "Alice",
         "id": "0",
-        "message": "Hello Bob, how are you?",
+        "from": "Alice",
         "to": "Bob",
+        "message": "Hello Bob, how are you?",
+        "wrap": false,
         "type": 5,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": null,
         "id": "1",
-        "message": "",
+        "from": null,
         "to": null,
+        "message": "",
+        "wrap": false,
         "type": 10,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "Bob",
         "id": "2",
-        "message": "I am good thanks!",
+        "from": "Bob",
         "to": "Alice",
+        "message": "I am good thanks!",
+        "wrap": false,
         "type": 6,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": null,
         "id": "3",
-        "message": "",
+        "from": null,
         "to": null,
+        "message": "",
+        "wrap": false,
         "type": 11,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": null,
         "id": "4",
-        "message": "",
+        "from": null,
         "to": null,
+        "message": "",
+        "wrap": false,
         "type": 15,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "Bob",
         "id": "5",
-        "message": "I am good thanks!",
+        "from": "Bob",
         "to": "Alice",
+        "message": "I am good thanks!",
+        "wrap": false,
         "type": 6,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": null,
         "id": "6",
-        "message": "",
+        "from": null,
         "to": null,
+        "message": "",
+        "wrap": false,
         "type": 16,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": null,
         "id": "7",
-        "message": "",
+        "from": null,
         "to": null,
+        "message": "",
+        "wrap": false,
         "type": 12,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "Bob",
         "id": "8",
-        "message": "I am good thanks!",
+        "from": "Bob",
         "to": "Alice",
+        "message": "I am good thanks!",
+        "wrap": false,
         "type": 6,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": null,
         "id": "9",
-        "message": "",
+        "from": null,
         "to": null,
+        "message": "",
+        "wrap": false,
         "type": 13,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "Bob",
         "id": "10",
-        "message": "I am good thanks!",
+        "from": "Bob",
         "to": "Alice",
+        "message": "I am good thanks!",
+        "wrap": false,
         "type": 6,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": null,
         "id": "11",
-        "message": "",
+        "from": null,
         "to": null,
+        "message": "",
+        "wrap": false,
         "type": 14,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": null,
         "id": "12",
-        "message": "",
+        "from": null,
         "to": null,
+        "message": "",
+        "wrap": false,
         "type": 19,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "Bob",
         "id": "13",
-        "message": "I am good thanks!",
-        "to": "Alice",
-        "type": 6,
-        "wrap": false
-      },
-      {
-        "activate": false,
-        "from": null,
-        "id": "14",
-        "message": "",
-        "to": null,
-        "type": 20,
-        "wrap": false
-      },
-      {
-        "activate": false,
         "from": "Bob",
-        "id": "15",
-        "message": "I am good thanks!",
         "to": "Alice",
+        "message": "I am good thanks!",
+        "wrap": false,
         "type": 6,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
+        "id": "14",
         "from": null,
-        "id": "16",
-        "message": "",
         "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 20,
+        "activate": false
+      },
+      {
+        "id": "15",
+        "from": "Bob",
+        "to": "Alice",
+        "message": "I am good thanks!",
+        "wrap": false,
+        "type": 6,
+        "activate": false
+      },
+      {
+        "id": "16",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
         "type": 21,
-        "wrap": false
+        "activate": false
       }
     ],
     "notes": [],
-    "title": null,
-    "type": "sequence"
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
   }
 }

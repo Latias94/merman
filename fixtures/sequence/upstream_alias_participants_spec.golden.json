@@ -1,62 +1,62 @@
 {
   "diagramType": "sequence",
   "model": {
-    "accDescr": null,
+    "type": "sequence",
+    "title": null,
     "accTitle": null,
+    "accDescr": null,
     "actorOrder": [
       "A",
       "B"
     ],
     "actors": {
       "A": {
-        "description": "Alice",
-        "links": {},
         "name": "A",
-        "properties": {},
+        "description": "Alice",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "B": {
-        "description": "Bob",
-        "links": {},
         "name": "B",
-        "properties": {},
+        "description": "Bob",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       }
     },
-    "boxes": [],
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "over": 2,
-        "rightOf": 1
-      }
-    },
-    "createdActors": {},
-    "destroyedActors": {},
     "messages": [
       {
-        "activate": false,
-        "from": "A",
         "id": "0",
-        "message": "Hello Bob, how are you?",
+        "from": "A",
         "to": "B",
+        "message": "Hello Bob, how are you?",
+        "wrap": false,
         "type": 5,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "B",
         "id": "1",
-        "message": "I am good thanks!",
+        "from": "B",
         "to": "A",
+        "message": "I am good thanks!",
+        "wrap": false,
         "type": 6,
-        "wrap": false
+        "activate": false
       }
     ],
     "notes": [],
-    "title": null,
-    "type": "sequence"
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
   }
 }

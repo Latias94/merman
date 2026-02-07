@@ -1447,77 +1447,10 @@ pub fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
     }
 
     fn decode_mermaid_hash_entities(input: &str) -> std::borrow::Cow<'_, str> {
-        // Mermaid encodes `#quot;`-style placeholders in the parser and later decodes them before
-        // rendering (`encodeEntities` / `decodeEntities`). In our headless pipeline we decode them
-        // at parse time so layout + SVG output match upstream.
-        if !input.contains('#') {
-            return std::borrow::Cow::Borrowed(input);
-        }
-
-        fn decode_entity(entity: &str) -> Option<char> {
-            match entity {
-                "nbsp" => Some(' '),
-                "lt" => Some('<'),
-                "gt" => Some('>'),
-                "amp" => Some('&'),
-                "quot" => Some('"'),
-                "apos" => Some('\''),
-                _ => {
-                    if let Some(hex) = entity
-                        .strip_prefix("x")
-                        .or_else(|| entity.strip_prefix("X"))
-                    {
-                        u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
-                    } else if entity.chars().all(|c| c.is_ascii_digit() || c == '+') {
-                        entity
-                            .trim_start_matches('+')
-                            .parse::<u32>()
-                            .ok()
-                            .and_then(char::from_u32)
-                    } else {
-                        None
-                    }
-                }
-            }
-        }
-
-        let mut out = String::with_capacity(input.len());
-        let mut it = input.chars().peekable();
-        while let Some(ch) = it.next() {
-            if ch != '#' {
-                out.push(ch);
-                continue;
-            }
-            let mut entity = String::new();
-            let mut ok = false;
-            for _ in 0..32 {
-                match it.peek().copied() {
-                    Some(';') => {
-                        it.next();
-                        ok = true;
-                        break;
-                    }
-                    Some(c) if c.is_ascii_alphanumeric() || c == '+' => {
-                        entity.push(c);
-                        it.next();
-                    }
-                    _ => break,
-                }
-            }
-            if ok {
-                if let Some(decoded) = decode_entity(&entity) {
-                    out.push(decoded);
-                } else {
-                    out.push('#');
-                    out.push_str(&entity);
-                    out.push(';');
-                }
-            } else {
-                out.push('#');
-                out.push_str(&entity);
-            }
-        }
-        std::borrow::Cow::Owned(out)
+        // Mermaid runs `encodeEntities(...)` before parsing and later decodes with browser
+        // `entityDecode(...)`. In our headless pipeline we decode into Unicode during parsing so
+        // layout + SVG output match upstream.
+        crate::entities::decode_mermaid_entities_to_unicode(input)
     }
 
     Ok(json!({

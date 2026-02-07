@@ -1,8 +1,10 @@
 {
   "diagramType": "sequence",
   "model": {
-    "accDescr": null,
+    "type": "sequence",
+    "title": null,
     "accTitle": null,
+    "accDescr": null,
     "actorOrder": [
       "a",
       "b",
@@ -10,83 +12,81 @@
     ],
     "actors": {
       "a": {
-        "description": "Alice",
-        "links": {},
         "name": "a",
-        "properties": {},
+        "description": "Alice",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "b": {
-        "description": "b",
-        "links": {},
         "name": "b",
-        "properties": {},
+        "description": "b",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "c": {
-        "description": "c",
-        "links": {},
         "name": "c",
-        "properties": {},
+        "description": "c",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       }
-    },
-    "boxes": [],
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "over": 2,
-        "rightOf": 1
-      }
-    },
-    "createdActors": {},
-    "destroyedActors": {
-      "a": 1,
-      "c": 3
     },
     "messages": [
       {
-        "activate": false,
-        "from": "a",
         "id": "0",
-        "message": "Hello Bob?",
+        "from": "a",
         "to": "b",
+        "message": "Hello Bob?",
+        "wrap": false,
         "type": 0,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "b",
         "id": "1",
-        "message": "Hello Alice!",
+        "from": "b",
         "to": "a",
+        "message": "Hello Alice!",
+        "wrap": false,
         "type": 1,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "b",
         "id": "2",
-        "message": "Where is Alice?",
+        "from": "b",
         "to": "c",
+        "message": "Where is Alice?",
+        "wrap": false,
         "type": 0,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "b",
         "id": "3",
-        "message": "Where are you?",
+        "from": "b",
         "to": "c",
+        "message": "Where are you?",
+        "wrap": false,
         "type": 0,
-        "wrap": false
+        "activate": false
       }
     ],
     "notes": [],
-    "title": null,
-    "type": "sequence"
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {
+      "c": 3,
+      "a": 1
+    },
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
   }
 }

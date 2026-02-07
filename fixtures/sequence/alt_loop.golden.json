@@ -1,125 +1,125 @@
 {
   "diagramType": "sequence",
   "model": {
-    "accDescr": null,
+    "type": "sequence",
+    "title": null,
     "accTitle": null,
+    "accDescr": null,
     "actorOrder": [
       "A",
       "B"
     ],
     "actors": {
       "A": {
-        "description": "A",
-        "links": {},
         "name": "A",
-        "properties": {},
+        "description": "A",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "B": {
-        "description": "B",
-        "links": {},
         "name": "B",
-        "properties": {},
+        "description": "B",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       }
     },
-    "boxes": [],
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "over": 2,
-        "rightOf": 1
-      }
-    },
-    "createdActors": {},
-    "destroyedActors": {},
     "messages": [
       {
-        "activate": false,
-        "from": "A",
         "id": "0",
-        "message": "Hi",
-        "to": "B",
-        "type": 0,
-        "wrap": false
-      },
-      {
-        "activate": false,
-        "from": null,
-        "id": "1",
-        "message": "ok",
-        "to": null,
-        "type": 12,
-        "wrap": false
-      },
-      {
-        "activate": false,
-        "from": "B",
-        "id": "2",
-        "message": "yes",
-        "to": "A",
-        "type": 1,
-        "wrap": false
-      },
-      {
-        "activate": false,
-        "from": null,
-        "id": "3",
-        "message": "no",
-        "to": null,
-        "type": 13,
-        "wrap": false
-      },
-      {
-        "activate": false,
-        "from": "B",
-        "id": "4",
-        "message": "no",
-        "to": "A",
-        "type": 1,
-        "wrap": false
-      },
-      {
-        "activate": false,
-        "from": null,
-        "id": "5",
-        "message": "",
-        "to": null,
-        "type": 14,
-        "wrap": false
-      },
-      {
-        "activate": false,
-        "from": null,
-        "id": "6",
-        "message": "Every day",
-        "to": null,
-        "type": 10,
-        "wrap": false
-      },
-      {
-        "activate": false,
         "from": "A",
-        "id": "7",
-        "message": "ping",
         "to": "B",
+        "message": "Hi",
+        "wrap": false,
         "type": 0,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
+        "id": "1",
         "from": null,
-        "id": "8",
-        "message": "",
         "to": null,
+        "message": "ok",
+        "wrap": false,
+        "type": 12,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "B",
+        "to": "A",
+        "message": "yes",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": null,
+        "to": null,
+        "message": "no",
+        "wrap": false,
+        "type": 13,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "B",
+        "to": "A",
+        "message": "no",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 14,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": null,
+        "to": null,
+        "message": "Every day",
+        "wrap": false,
+        "type": 10,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "A",
+        "to": "B",
+        "message": "ping",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
         "type": 11,
-        "wrap": false
+        "activate": false
       }
     ],
     "notes": [],
-    "title": null,
-    "type": "sequence"
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
   }
 }

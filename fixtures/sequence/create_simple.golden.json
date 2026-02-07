@@ -1,8 +1,10 @@
 {
   "diagramType": "sequence",
   "model": {
-    "accDescr": null,
+    "type": "sequence",
+    "title": null,
     "accTitle": null,
+    "accDescr": null,
     "actorOrder": [
       "a",
       "b",
@@ -11,91 +13,89 @@
     ],
     "actors": {
       "a": {
-        "description": "Alice",
-        "links": {},
         "name": "a",
-        "properties": {},
+        "description": "Alice",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "b": {
-        "description": "b",
-        "links": {},
         "name": "b",
-        "properties": {},
+        "description": "b",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "c": {
-        "description": "c",
-        "links": {},
         "name": "c",
-        "properties": {},
+        "description": "c",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "d": {
-        "description": "Donald",
-        "links": {},
         "name": "d",
-        "properties": {},
+        "description": "Donald",
+        "wrap": false,
         "type": "actor",
-        "wrap": false
+        "links": {},
+        "properties": {}
       }
     },
+    "messages": [
+      {
+        "id": "0",
+        "from": "a",
+        "to": "b",
+        "message": "Hello Bob?",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "b",
+        "to": "c",
+        "message": "Hello c!",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "c",
+        "to": "b",
+        "message": "Hello b?",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "a",
+        "to": "d",
+        "message": "Hello Donald?",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      }
+    ],
+    "notes": [],
     "boxes": [],
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "over": 2,
-        "rightOf": 1
-      }
-    },
     "createdActors": {
       "c": 1,
       "d": 3
     },
     "destroyedActors": {},
-    "messages": [
-      {
-        "activate": false,
-        "from": "a",
-        "id": "0",
-        "message": "Hello Bob?",
-        "to": "b",
-        "type": 0,
-        "wrap": false
-      },
-      {
-        "activate": false,
-        "from": "b",
-        "id": "1",
-        "message": "Hello c!",
-        "to": "c",
-        "type": 1,
-        "wrap": false
-      },
-      {
-        "activate": false,
-        "from": "c",
-        "id": "2",
-        "message": "Hello b?",
-        "to": "b",
-        "type": 0,
-        "wrap": false
-      },
-      {
-        "activate": false,
-        "from": "a",
-        "id": "3",
-        "message": "Hello Donald?",
-        "to": "d",
-        "type": 0,
-        "wrap": false
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
       }
-    ],
-    "notes": [],
-    "title": null,
-    "type": "sequence"
+    }
   }
 }

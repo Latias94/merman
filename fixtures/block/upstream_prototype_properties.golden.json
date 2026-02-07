@@ -104,7 +104,7 @@
         "id": "__proto__",
         "styles": [
           "color:#ffffff",
-          "fill:#000000"
+          "fill:#000000 class A __proto__"
         ],
         "textStyles": [
           "fill:#ffffff"
@@ -114,7 +114,7 @@
         "id": "constructor",
         "styles": [
           "color:#ffffff",
-          "fill:#000000"
+          "fill:#000000 class B constructor"
         ],
         "textStyles": [
           "fill:#ffffff"

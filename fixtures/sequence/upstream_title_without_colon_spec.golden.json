@@ -1,79 +1,79 @@
 {
   "diagramType": "sequence",
   "model": {
-    "accDescr": null,
+    "type": "sequence",
+    "title": "Diagram Title",
     "accTitle": null,
+    "accDescr": null,
     "actorOrder": [
       "Alice",
       "Bob"
     ],
     "actors": {
       "Alice": {
-        "description": "Alice",
-        "links": {},
         "name": "Alice",
-        "properties": {},
+        "description": "Alice",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "Bob": {
-        "description": "Bob",
-        "links": {},
         "name": "Bob",
-        "properties": {},
+        "description": "Bob",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       }
     },
-    "boxes": [],
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "over": 2,
-        "rightOf": 1
-      }
-    },
-    "createdActors": {},
-    "destroyedActors": {},
     "messages": [
       {
-        "activate": false,
-        "from": "Alice",
         "id": "0",
+        "from": "Alice",
+        "to": "Bob",
         "message": "Hello Bob, how are you?",
-        "to": "Bob",
+        "wrap": false,
         "type": 5,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "Bob",
         "id": "1",
-        "message": "Bob thinks",
-        "placement": 1,
+        "from": "Bob",
         "to": "Bob",
+        "message": "Bob thinks",
+        "wrap": false,
         "type": 2,
-        "wrap": false
+        "activate": false,
+        "placement": 1
       },
       {
-        "activate": false,
-        "from": "Bob",
         "id": "2",
-        "message": "I am good thanks!",
+        "from": "Bob",
         "to": "Alice",
+        "message": "I am good thanks!",
+        "wrap": false,
         "type": 6,
-        "wrap": false
+        "activate": false
       }
     ],
     "notes": [
       {
         "actor": "Bob",
-        "message": "Bob thinks",
         "placement": 1,
+        "message": "Bob thinks",
         "wrap": false
       }
     ],
-    "title": "Diagram Title",
-    "type": "sequence"
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
   }
 }

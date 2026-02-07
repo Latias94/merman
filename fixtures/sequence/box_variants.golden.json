@@ -1,8 +1,10 @@
 {
   "diagramType": "sequence",
   "model": {
-    "accDescr": null,
+    "type": "sequence",
+    "title": null,
     "accTitle": null,
+    "accDescr": null,
     "actorOrder": [
       "a",
       "b",
@@ -12,93 +14,91 @@
     ],
     "actors": {
       "a": {
-        "description": "Alice",
-        "links": {},
         "name": "a",
-        "properties": {},
+        "description": "Alice",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "b": {
-        "description": "Bob",
-        "links": {},
         "name": "b",
-        "properties": {},
+        "description": "Bob",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "c": {
-        "description": "Charlie",
-        "links": {},
         "name": "c",
-        "properties": {},
+        "description": "Charlie",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "d": {
-        "description": "Donald",
-        "links": {},
         "name": "d",
-        "properties": {},
+        "description": "Donald",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "e": {
-        "description": "Eve",
-        "links": {},
         "name": "e",
-        "properties": {},
+        "description": "Eve",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       }
     },
+    "messages": [],
+    "notes": [],
     "boxes": [
       {
+        "name": null,
+        "wrap": false,
+        "fill": "aqua",
         "actorKeys": [
           "a",
           "b"
-        ],
-        "fill": "aqua",
-        "name": null,
-        "wrap": false
+        ]
       },
       {
+        "name": null,
+        "wrap": false,
+        "fill": "green",
         "actorKeys": [
           "c"
-        ],
-        "fill": "green",
-        "name": null,
-        "wrap": false
+        ]
       },
       {
+        "name": null,
+        "wrap": false,
+        "fill": "transparent",
         "actorKeys": [
           "d"
-        ],
-        "fill": "transparent",
-        "name": null,
-        "wrap": false
+        ]
       },
       {
+        "name": "Red Box",
+        "wrap": false,
+        "fill": "rgb(255, 0, 0)",
         "actorKeys": [
           "e"
-        ],
-        "fill": "rgb(255, 0, 0)",
-        "name": "Red Box",
-        "wrap": false
+        ]
       }
     ],
+    "createdActors": {},
+    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "over": 2,
-        "rightOf": 1
+        "rightOf": 1,
+        "over": 2
       }
-    },
-    "createdActors": {},
-    "destroyedActors": {},
-    "messages": [],
-    "notes": [],
-    "title": null,
-    "type": "sequence"
+    }
   }
 }

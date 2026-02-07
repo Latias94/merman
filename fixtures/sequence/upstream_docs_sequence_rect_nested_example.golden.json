@@ -1,0 +1,205 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Alice",
+      "John"
+    ],
+    "actors": {
+      "Alice": {
+        "name": "Alice",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "John": {
+        "name": "John",
+        "description": "John",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": null,
+        "to": null,
+        "message": "rgb(191, 223, 255)",
+        "wrap": false,
+        "type": 22,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Alice",
+        "to": "Alice",
+        "message": "Alice calls John.",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 1
+      },
+      {
+        "id": "2",
+        "from": "Alice",
+        "to": "John",
+        "message": "Hello John, how are you?",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "3",
+        "from": "John",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": null,
+        "to": null,
+        "message": "rgb(200, 150, 255)",
+        "wrap": false,
+        "type": 22,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "Alice",
+        "to": "John",
+        "message": "John, can you hear me?",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "6",
+        "from": "John",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "John",
+        "to": "Alice",
+        "message": "Hi Alice, I can hear you!",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "John",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 23,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": "John",
+        "to": "Alice",
+        "message": "I feel great!",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "11",
+        "from": "John",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "12",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 23,
+        "activate": false
+      },
+      {
+        "id": "13",
+        "from": "Alice",
+        "to": "John",
+        "message": "Did you want to go to the game tonight?",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "14",
+        "from": "John",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "15",
+        "from": "John",
+        "to": "Alice",
+        "message": "Yeah! See you there.",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "16",
+        "from": "John",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": "Alice",
+        "placement": 1,
+        "message": "Alice calls John.",
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

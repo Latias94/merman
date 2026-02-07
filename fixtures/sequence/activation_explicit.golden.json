@@ -1,80 +1,80 @@
 {
   "diagramType": "sequence",
   "model": {
-    "accDescr": null,
+    "type": "sequence",
+    "title": null,
     "accTitle": null,
+    "accDescr": null,
     "actorOrder": [
       "Alice",
       "Bob"
     ],
     "actors": {
       "Alice": {
-        "description": "Alice",
-        "links": {},
         "name": "Alice",
-        "properties": {},
+        "description": "Alice",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "Bob": {
-        "description": "Bob",
-        "links": {},
         "name": "Bob",
-        "properties": {},
+        "description": "Bob",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       }
     },
-    "boxes": [],
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "over": 2,
-        "rightOf": 1
-      }
-    },
-    "createdActors": {},
-    "destroyedActors": {},
     "messages": [
       {
-        "activate": false,
-        "from": "Alice",
         "id": "0",
-        "message": "Hello Bob, how are you?",
+        "from": "Alice",
         "to": "Bob",
+        "message": "Hello Bob, how are you?",
+        "wrap": false,
         "type": 1,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "Bob",
         "id": "1",
-        "message": "",
+        "from": "Bob",
         "to": null,
+        "message": "",
+        "wrap": false,
         "type": 17,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "Bob",
         "id": "2",
-        "message": "Hello Alice, I'm fine and you?",
+        "from": "Bob",
         "to": "Alice",
+        "message": "Hello Alice, I'm fine and you?",
+        "wrap": false,
         "type": 1,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "Bob",
         "id": "3",
-        "message": "",
+        "from": "Bob",
         "to": null,
+        "message": "",
+        "wrap": false,
         "type": 18,
-        "wrap": false
+        "activate": false
       }
     ],
     "notes": [],
-    "title": null,
-    "type": "sequence"
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
   }
 }

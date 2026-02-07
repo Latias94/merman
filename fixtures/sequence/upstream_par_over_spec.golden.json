@@ -1,104 +1,104 @@
 {
   "diagramType": "sequence",
   "model": {
-    "accDescr": null,
+    "type": "sequence",
+    "title": null,
     "accTitle": null,
+    "accDescr": null,
     "actorOrder": [
       "Alice",
       "Bob"
     ],
     "actors": {
       "Alice": {
-        "description": "Alice",
-        "links": {},
         "name": "Alice",
-        "properties": {},
+        "description": "Alice",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "Bob": {
-        "description": "Bob",
-        "links": {},
         "name": "Bob",
-        "properties": {},
+        "description": "Bob",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       }
     },
-    "boxes": [],
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "over": 2,
-        "rightOf": 1
-      }
-    },
-    "createdActors": {},
-    "destroyedActors": {},
     "messages": [
       {
-        "activate": false,
-        "from": null,
         "id": "0",
-        "message": "Parallel overlap",
-        "to": null,
-        "type": 32,
-        "wrap": false
-      },
-      {
-        "activate": false,
-        "from": "Alice",
-        "id": "1",
-        "message": "Message",
-        "to": "Bob",
-        "type": 0,
-        "wrap": false
-      },
-      {
-        "activate": false,
-        "from": "Alice",
-        "id": "2",
-        "message": "Alice note",
-        "placement": 0,
-        "to": "Alice",
-        "type": 2,
-        "wrap": false
-      },
-      {
-        "activate": false,
-        "from": "Bob",
-        "id": "3",
-        "message": "Bob note",
-        "placement": 1,
-        "to": "Bob",
-        "type": 2,
-        "wrap": false
-      },
-      {
-        "activate": false,
         "from": null,
-        "id": "4",
-        "message": "",
         "to": null,
+        "message": "Parallel overlap",
+        "wrap": false,
+        "type": 32,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Alice",
+        "to": "Bob",
+        "message": "Message",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "Alice",
+        "to": "Alice",
+        "message": "Alice note",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 0
+      },
+      {
+        "id": "3",
+        "from": "Bob",
+        "to": "Bob",
+        "message": "Bob note",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 1
+      },
+      {
+        "id": "4",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
         "type": 21,
-        "wrap": false
+        "activate": false
       }
     ],
     "notes": [
       {
         "actor": "Alice",
-        "message": "Alice note",
         "placement": 0,
+        "message": "Alice note",
         "wrap": false
       },
       {
         "actor": "Bob",
-        "message": "Bob note",
         "placement": 1,
+        "message": "Bob note",
         "wrap": false
       }
     ],
-    "title": null,
-    "type": "sequence"
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
   }
 }

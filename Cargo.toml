@@ -20,6 +20,7 @@ license = "MIT"
 [workspace.dependencies]
 base64 = "0.22.1"
 euclid = "0.22"
+htmlize = { version = "1.0.6", features = ["unescape"] }
 indexmap = { version = "2.2.6", features = ["serde"] }
 lalrpop = "0.20.2"
 lalrpop-util = "0.20.2"

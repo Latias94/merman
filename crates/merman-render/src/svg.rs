@@ -651,7 +651,8 @@ pub fn render_sequence_diagram_svg(
     }
 
     fn write_actor_label(out: &mut String, cx: f64, cy: f64, label: &str, font_size: f64) {
-        let lines = split_html_br_lines(label);
+        let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(label);
+        let lines = split_html_br_lines(decoded.as_ref());
         let n = lines.len().max(1) as f64;
         for (i, line) in lines.into_iter().enumerate() {
             let dy = if n <= 1.0 {
@@ -1417,26 +1418,6 @@ pub fn render_sequence_diagram_svg(
         let _ = msg.activate;
     }
 
-    // Render activation groups in start order, preserving Mermaid's "empty <g/> when unclosed"
-    // behavior.
-    for maybe_rect in &activation_groups {
-        out.push_str("<g>");
-        if let Some(a) = maybe_rect {
-            let _ = write!(
-                &mut out,
-                r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="{stroke}" width="{w}" height="{h}" class="activation{idx}"/>"##,
-                x = fmt(a.startx),
-                y = fmt(a.starty),
-                w = fmt(a.width),
-                h = fmt(a.height),
-                idx = a.class_idx,
-                fill = escape_xml(activation_fill),
-                stroke = escape_xml(activation_stroke),
-            );
-        }
-        out.push_str("</g>");
-    }
-
     #[derive(Debug, Clone)]
     struct AltSection {
         raw_label: String,
@@ -1952,7 +1933,8 @@ pub fn render_sequence_diagram_svg(
 
     if let Some((_frame_x1, _frame_x2)) = frame_x_from_actors(&model, &nodes_by_id) {
         fn display_block_label(raw_label: &str, always_show: bool) -> Option<String> {
-            let t = raw_label.trim();
+            let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw_label);
+            let t = decoded.as_ref().trim();
             if t.is_empty() {
                 if always_show {
                     // Mermaid renders empty block labels as a zero-width space inside `<tspan>`.
@@ -2090,7 +2072,8 @@ pub fn render_sequence_diagram_svg(
                         w = fmt(n.width),
                         h = fmt(n.height)
                     );
-                    let lines = split_html_br_lines(raw);
+                    let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw);
+                    let lines = split_html_br_lines(decoded.as_ref());
                     for (i, line) in lines.into_iter().enumerate() {
                         let y = text_y + (i as f64) * line_step;
                         let _ = write!(
@@ -3027,6 +3010,27 @@ pub fn render_sequence_diagram_svg(
         }
     }
 
+    // Render notes / blocks first (pre-items), then activation rectangles, then message edges.
+    // Upstream Mermaid emits NOTE groups before activation `<rect class="activation{0..2}">`
+    // groups (see docs-derived fixtures with mixed NOTE + rect/activation output).
+    for maybe_rect in &activation_groups {
+        out.push_str("<g>");
+        if let Some(a) = maybe_rect {
+            let _ = write!(
+                &mut out,
+                r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="{stroke}" width="{w}" height="{h}" class="activation{idx}"/>"##,
+                x = fmt(a.startx),
+                y = fmt(a.starty),
+                w = fmt(a.width),
+                h = fmt(a.height),
+                idx = a.class_idx,
+                fill = escape_xml(activation_fill),
+                stroke = escape_xml(activation_stroke),
+            );
+        }
+        out.push_str("</g>");
+    }
+
     let mut sequence_number_visible = false;
     let mut sequence_number: i64 = 1;
     let mut sequence_number_step: i64 = 1;
@@ -3075,7 +3079,8 @@ pub fn render_sequence_diagram_svg(
         let text = msg.message.as_str().unwrap_or_default();
         if let Some(lbl) = &edge.label {
             let line_step = actor_label_font_size * 1.1875;
-            let lines = split_html_br_lines(text);
+            let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(text);
+            let lines = split_html_br_lines(decoded.as_ref());
             for (i, line) in lines.into_iter().enumerate() {
                 let y = lbl.y + (i as f64) * line_step;
                 let line = if line.is_empty() { "\u{200B}" } else { line };

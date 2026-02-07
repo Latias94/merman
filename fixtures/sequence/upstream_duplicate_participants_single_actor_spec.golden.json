@@ -1,34 +1,34 @@
 {
   "diagramType": "sequence",
   "model": {
-    "accDescr": null,
+    "type": "sequence",
+    "title": null,
     "accTitle": null,
+    "accDescr": null,
     "actorOrder": [
       "Alice"
     ],
     "actors": {
       "Alice": {
-        "description": "Alice",
-        "links": {},
         "name": "Alice",
-        "properties": {},
+        "description": "Alice",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       }
     },
+    "messages": [],
+    "notes": [],
     "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "over": 2,
-        "rightOf": 1
+        "rightOf": 1,
+        "over": 2
       }
-    },
-    "createdActors": {},
-    "destroyedActors": {},
-    "messages": [],
-    "notes": [],
-    "title": null,
-    "type": "sequence"
+    }
   }
 }

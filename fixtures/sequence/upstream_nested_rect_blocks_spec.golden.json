@@ -1,115 +1,115 @@
 {
   "diagramType": "sequence",
   "model": {
-    "accDescr": null,
+    "type": "sequence",
+    "title": null,
     "accTitle": null,
+    "accDescr": null,
     "actorOrder": [
       "Alice",
       "Bob"
     ],
     "actors": {
       "Alice": {
-        "description": "Alice",
-        "links": {},
         "name": "Alice",
-        "properties": {},
+        "description": "Alice",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "Bob": {
-        "description": "Bob",
-        "links": {},
         "name": "Bob",
-        "properties": {},
+        "description": "Bob",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       }
     },
-    "boxes": [],
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "over": 2,
-        "rightOf": 1
-      }
-    },
-    "createdActors": {},
-    "destroyedActors": {},
     "messages": [
       {
-        "activate": false,
-        "from": "Alice",
         "id": "0",
+        "from": "Alice",
+        "to": "Bob",
         "message": "Hello Bob, how are you?",
-        "to": "Bob",
+        "wrap": false,
         "type": 5,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": null,
         "id": "1",
+        "from": null,
+        "to": null,
         "message": "rgb(200, 255, 200)",
-        "to": null,
+        "wrap": false,
         "type": 22,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": null,
         "id": "2",
+        "from": null,
+        "to": null,
         "message": "rgb(0, 0, 0)",
-        "to": null,
+        "wrap": false,
         "type": 22,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "Bob",
         "id": "3",
-        "message": "Bob thinks",
-        "placement": 1,
-        "to": "Bob",
-        "type": 2,
-        "wrap": false
-      },
-      {
-        "activate": false,
-        "from": null,
-        "id": "4",
-        "message": "",
-        "to": null,
-        "type": 23,
-        "wrap": false
-      },
-      {
-        "activate": false,
         "from": "Bob",
-        "id": "5",
-        "message": "I am good thanks",
-        "to": "Alice",
-        "type": 6,
-        "wrap": false
+        "to": "Bob",
+        "message": "Bob thinks",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 1
       },
       {
-        "activate": false,
+        "id": "4",
         "from": null,
-        "id": "6",
-        "message": "",
         "to": null,
+        "message": "",
+        "wrap": false,
         "type": 23,
-        "wrap": false
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "Bob",
+        "to": "Alice",
+        "message": "I am good thanks",
+        "wrap": false,
+        "type": 6,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 23,
+        "activate": false
       }
     ],
     "notes": [
       {
         "actor": "Bob",
-        "message": "Bob thinks",
         "placement": 1,
+        "message": "Bob thinks",
         "wrap": false
       }
     ],
-    "title": null,
-    "type": "sequence"
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
   }
 }

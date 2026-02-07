@@ -29,6 +29,13 @@ fn cleanup_text(input: &str) -> String {
     let crlf_re = Regex::new(r"\r\n?").unwrap();
     let mut s = crlf_re.replace_all(input, "\n").to_string();
 
+    // Mermaid encodes `#quot;`-style sequences before parsing (`encodeEntities(...)`).
+    // This is required because `#` and `;` are significant in several grammars (comments and
+    // statement separators), and the encoded placeholders are later decoded by the renderer.
+    //
+    // Source of truth: `packages/mermaid/src/utils.ts::encodeEntities` at Mermaid@11.12.2.
+    s = encode_mermaid_entities_like_upstream(&s);
+
     // Mermaid performs this HTML attribute rewrite as part of preprocessing.
     let tag_re = Regex::new(r"<(\w+)([^>]*)>").unwrap();
     s = tag_re
@@ -43,6 +50,50 @@ fn cleanup_text(input: &str) -> String {
         .to_string();
 
     s
+}
+
+fn encode_mermaid_entities_like_upstream(text: &str) -> String {
+    // Mirrors Mermaid `encodeEntities` (Mermaid@11.12.2):
+    //
+    // 1) Protect `style...:#...;` and `classDef...:#...;` so color hex fragments are not mistaken
+    //    as entities by the `/#\\w+;/g` pass.
+    // 2) Encode `#<name>;` and `#<number>;` sequences into placeholders that do not contain `#`/`;`.
+    let mut txt = text.to_string();
+
+    let re_style = Regex::new(r"style.*:\S*#.*;").unwrap();
+    txt = re_style
+        .replace_all(&txt, |caps: &regex::Captures| {
+            let s = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
+            s.strip_suffix(';').unwrap_or(s).to_string()
+        })
+        .to_string();
+
+    let re_classdef = Regex::new(r"classDef.*:\S*#.*;").unwrap();
+    txt = re_classdef
+        .replace_all(&txt, |caps: &regex::Captures| {
+            let s = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
+            s.strip_suffix(';').unwrap_or(s).to_string()
+        })
+        .to_string();
+
+    let re_entity = Regex::new(r"#\w+;").unwrap();
+    txt = re_entity
+        .replace_all(&txt, |caps: &regex::Captures| {
+            let s = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
+            let inner = s
+                .strip_prefix('#')
+                .and_then(|s| s.strip_suffix(';'))
+                .unwrap_or("");
+            let is_int = Regex::new(r"^\+?\d+$").unwrap().is_match(inner);
+            if is_int {
+                format!("ﬂ°°{inner}¶ß")
+            } else {
+                format!("ﬂ°{inner}¶ß")
+            }
+        })
+        .to_string();
+
+    txt
 }
 
 fn cleanup_comments(input: &str) -> String {

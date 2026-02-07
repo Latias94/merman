@@ -445,8 +445,10 @@ fn gen_svg_overrides(args: Vec<String>) -> Result<(), XtaskError> {
                 "all" => true,
                 // For strict SVG XML parity, sequence layout is extremely sensitive to message
                 // text width (it drives `actor.margin` and thus all x coordinates). We start by
-                // generating overrides for message text only.
-                "sequence" => tokens.iter().any(|t| matches!(*t, "messageText")),
+                // generating overrides from Mermaid's own text measurement. In practice, actor
+                // box sizing is also driven by `calculateTextDimensions(...)`, so include actor
+                // labels as well to avoid drift on long participant ids.
+                "sequence" => tokens.iter().any(|t| matches!(*t, "messageText" | "actor")),
                 _ => false,
             };
             if !include {
@@ -491,6 +493,78 @@ fn gen_svg_overrides(args: Vec<String>) -> Result<(), XtaskError> {
                 .entry((font_key.clone(), size_key))
                 .or_default()
                 .push(raw);
+        }
+    }
+
+    // For Mermaid `sequenceDiagram`, text widths are computed from the *encoded* Mermaid source
+    // (after `encodeEntities(...)`), not from the final decoded SVG glyphs. To match upstream,
+    // include raw strings extracted from our pinned fixture corpus as additional override seeds.
+    if mode == "sequence" {
+        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..");
+        let fixtures_dir = workspace_root.join("fixtures").join("sequence");
+
+        let engine = merman::Engine::new();
+        let parse_opts = merman::ParseOptions {
+            suppress_errors: true,
+        };
+
+        let mut extra: Vec<String> = Vec::new();
+        if let Ok(entries) = fs::read_dir(&fixtures_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_file() || !path.extension().is_some_and(|e| e == "mmd") {
+                    continue;
+                }
+                let Ok(text) = fs::read_to_string(&path) else {
+                    continue;
+                };
+                let parsed =
+                    match futures::executor::block_on(engine.parse_diagram(&text, parse_opts)) {
+                        Ok(Some(v)) => v,
+                        _ => continue,
+                    };
+
+                let m = &parsed.model;
+                if let Some(actors) = m.get("actors").and_then(|v| v.as_object()) {
+                    for a in actors.values() {
+                        if let Some(s) = a.get("description").and_then(|v| v.as_str()) {
+                            extra.push(s.to_string());
+                        }
+                    }
+                }
+                if let Some(msgs) = m.get("messages").and_then(|v| v.as_array()) {
+                    for msg in msgs {
+                        if let Some(s) = msg.get("message").and_then(|v| v.as_str()) {
+                            extra.push(s.to_string());
+                        }
+                    }
+                }
+                if let Some(notes) = m.get("notes").and_then(|v| v.as_array()) {
+                    for note in notes {
+                        if let Some(s) = note.get("message").and_then(|v| v.as_str()) {
+                            extra.push(s.to_string());
+                        }
+                    }
+                }
+                if let Some(boxes) = m.get("boxes").and_then(|v| v.as_array()) {
+                    for b in boxes {
+                        if let Some(s) = b.get("name").and_then(|v| v.as_str()) {
+                            extra.push(s.to_string());
+                        }
+                    }
+                }
+                if let Some(title) = m.get("title").and_then(|v| v.as_str()) {
+                    extra.push(title.to_string());
+                }
+            }
+        }
+
+        if !extra.is_empty() {
+            for v in strings_by_key.values_mut() {
+                v.extend(extra.iter().cloned());
+            }
         }
     }
 

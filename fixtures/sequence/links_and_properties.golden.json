@@ -1,51 +1,51 @@
 {
   "diagramType": "sequence",
   "model": {
-    "accDescr": null,
+    "type": "sequence",
+    "title": null,
     "accTitle": null,
+    "accDescr": null,
     "actorOrder": [
       "a"
     ],
     "actors": {
       "a": {
-        "description": "Alice",
-        "links": {
-          "Dashboard": "https://dashboard.contoso.com/",
-          "Endpoint": "https://alice.contoso.com",
-          "Repo": "https://repo.contoso.com/"
-        },
         "name": "a",
-        "properties": {
-          "level": 3,
-          "role": "admin"
-        },
+        "description": "Alice",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {
+          "Repo": "https://repo.contoso.com/",
+          "Dashboard": "https://dashboard.contoso.com/",
+          "Endpoint": "https://alice.contoso.com"
+        },
+        "properties": {
+          "role": "admin",
+          "level": 3
+        }
       }
     },
-    "boxes": [],
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "over": 2,
-        "rightOf": 1
-      }
-    },
-    "createdActors": {},
-    "destroyedActors": {},
     "messages": [
       {
-        "activate": false,
-        "from": "a",
         "id": "0",
-        "message": "ok",
+        "from": "a",
         "to": "a",
+        "message": "ok",
+        "wrap": false,
         "type": 0,
-        "wrap": false
+        "activate": false
       }
     ],
     "notes": [],
-    "title": null,
-    "type": "sequence"
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
   }
 }

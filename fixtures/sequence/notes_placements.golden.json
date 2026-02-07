@@ -1,8 +1,10 @@
 {
   "diagramType": "sequence",
   "model": {
-    "accDescr": null,
+    "type": "sequence",
+    "title": null,
     "accTitle": null,
+    "accDescr": null,
     "actorOrder": [
       "Alice",
       "Bob",
@@ -10,102 +12,92 @@
     ],
     "actors": {
       "Alice": {
-        "description": "Alice",
-        "links": {},
         "name": "Alice",
-        "properties": {},
+        "description": "Alice",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "Bob": {
-        "description": "Bob",
-        "links": {},
         "name": "Bob",
-        "properties": {},
+        "description": "Bob",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "Carl": {
-        "description": "Carl",
-        "links": {},
         "name": "Carl",
-        "properties": {},
+        "description": "Carl",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       }
     },
-    "boxes": [],
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "over": 2,
-        "rightOf": 1
-      }
-    },
-    "createdActors": {},
-    "destroyedActors": {},
     "messages": [
       {
-        "activate": false,
-        "from": "Alice",
         "id": "0",
-        "message": "left note",
-        "placement": 0,
+        "from": "Alice",
         "to": "Alice",
+        "message": "left note",
+        "wrap": false,
         "type": 2,
-        "wrap": false
+        "activate": false,
+        "placement": 0
       },
       {
-        "activate": false,
-        "from": "Bob",
         "id": "1",
+        "from": "Bob",
+        "to": "Bob",
         "message": "right note",
-        "placement": 1,
-        "to": "Bob",
+        "wrap": false,
         "type": 2,
-        "wrap": false
+        "activate": false,
+        "placement": 1
       },
       {
-        "activate": false,
-        "from": "Carl",
         "id": "2",
-        "message": "over single",
-        "placement": 2,
+        "from": "Carl",
         "to": "Carl",
+        "message": "over single",
+        "wrap": false,
         "type": 2,
-        "wrap": false
+        "activate": false,
+        "placement": 2
       },
       {
-        "activate": false,
-        "from": "Alice",
         "id": "3",
-        "message": "over two",
-        "placement": 2,
+        "from": "Alice",
         "to": "Bob",
+        "message": "over two",
+        "wrap": false,
         "type": 2,
-        "wrap": false
+        "activate": false,
+        "placement": 2
       },
       {
-        "activate": false,
-        "from": "Alice",
         "id": "4",
-        "message": "message",
+        "from": "Alice",
         "to": "Bob",
+        "message": "message",
+        "wrap": false,
         "type": 5,
-        "wrap": false
+        "activate": false
       }
     ],
     "notes": [
       {
         "actor": "Alice",
-        "message": "left note",
         "placement": 0,
+        "message": "left note",
         "wrap": false
       },
       {
         "actor": "Bob",
-        "message": "right note",
         "placement": 1,
+        "message": "right note",
         "wrap": false
       },
       {
@@ -113,8 +105,8 @@
           "Carl",
           "Carl"
         ],
-        "message": "over single",
         "placement": 2,
+        "message": "over single",
         "wrap": false
       },
       {
@@ -122,12 +114,20 @@
           "Alice",
           "Bob"
         ],
-        "message": "over two",
         "placement": 2,
+        "message": "over two",
         "wrap": false
       }
     ],
-    "title": null,
-    "type": "sequence"
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
   }
 }

@@ -66,3 +66,21 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceDiagram
 
 - `showSequenceNumbers()` depends on `renderer.draw(...)` side effects in upstream tests.
 - bounds calculation, APA rendering, actor mirror behavior, and `svgDraw` unit tests.
+
+## Docs-derived parser+render fixtures
+
+Source: `repo-ref/mermaid/docs/syntax/sequenceDiagram.md`
+
+- basic example arrows (`->>`, `-->>`, `-)`): `fixtures/sequence/upstream_docs_sequence_basic_example.mmd`
+- explicit participants and order: `fixtures/sequence/upstream_docs_sequence_participants_order.mmd`
+- explicit `actor` statements: `fixtures/sequence/upstream_docs_sequence_actors_basic.mmd`
+- `as` aliases: `fixtures/sequence/upstream_docs_sequence_aliases_basic.mmd`
+- create/destroy example (participants + actors): `fixtures/sequence/upstream_docs_sequence_create_destroy_example.mmd`
+- boxes/grouping: `fixtures/sequence/upstream_docs_sequence_box_groups_example.mmd`
+- `<br/>` in message + note: `fixtures/sequence/upstream_docs_sequence_note_with_br.mmd`
+- `<br/>` in participant label: `fixtures/sequence/upstream_docs_sequence_actor_label_with_br.mmd`
+- `loop` example: `fixtures/sequence/upstream_docs_sequence_loop_every_minute.mmd`
+- `alt` + `opt` example: `fixtures/sequence/upstream_docs_sequence_alt_and_opt_example.mmd`
+- nested `rect` blocks + mixed whitespace: `fixtures/sequence/upstream_docs_sequence_rect_nested_example.mmd`
+- entity code escaping (`#9829;`, `#infin;`): `fixtures/sequence/upstream_docs_sequence_entity_codes_example.mmd`
+- `autonumber` full example: `fixtures/sequence/upstream_docs_sequence_autonumber_example.mmd`

@@ -1,8 +1,10 @@
 {
   "diagramType": "sequence",
   "model": {
-    "accDescr": null,
+    "type": "sequence",
+    "title": null,
     "accTitle": null,
+    "accDescr": null,
     "actorOrder": [
       "Alice",
       "Bob",
@@ -10,116 +12,114 @@
     ],
     "actors": {
       "Alice": {
-        "description": "Alice",
-        "links": {},
         "name": "Alice",
-        "properties": {},
+        "description": "Alice",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "Bob": {
-        "description": "Bob",
-        "links": {},
         "name": "Bob",
-        "properties": {},
+        "description": "Bob",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "Carol": {
-        "description": "Carol",
-        "links": {},
         "name": "Carol",
-        "properties": {},
+        "description": "Carol",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       }
     },
-    "boxes": [],
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "over": 2,
-        "rightOf": 1
-      }
-    },
-    "createdActors": {},
-    "destroyedActors": {},
     "messages": [
       {
-        "activate": true,
-        "from": "Alice",
         "id": "0",
+        "from": "Alice",
+        "to": "Bob",
         "message": "Hello Bob, how are you?",
-        "to": "Bob",
+        "wrap": false,
         "type": 1,
-        "wrap": false
+        "activate": true
       },
       {
-        "activate": false,
-        "from": "Bob",
         "id": "1",
-        "message": "",
+        "from": "Bob",
         "to": null,
+        "message": "",
+        "wrap": false,
         "type": 17,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": true,
-        "from": "Bob",
         "id": "2",
-        "message": "Carol, let me introduce Alice?",
+        "from": "Bob",
         "to": "Carol",
+        "message": "Carol, let me introduce Alice?",
+        "wrap": false,
         "type": 1,
-        "wrap": false
+        "activate": true
       },
       {
-        "activate": false,
-        "from": "Carol",
         "id": "3",
-        "message": "",
+        "from": "Carol",
         "to": null,
+        "message": "",
+        "wrap": false,
         "type": 17,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "Bob",
         "id": "4",
-        "message": "Hello Alice, please meet Carol?",
-        "to": "Alice",
-        "type": 1,
-        "wrap": false
-      },
-      {
-        "activate": false,
         "from": "Bob",
+        "to": "Alice",
+        "message": "Hello Alice, please meet Carol?",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
         "id": "5",
-        "message": "",
+        "from": "Bob",
         "to": null,
+        "message": "",
+        "wrap": false,
         "type": 18,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "Carol",
         "id": "6",
-        "message": "Oh Bob, I'm so happy to be here!",
+        "from": "Carol",
         "to": "Bob",
+        "message": "Oh Bob, I'm so happy to be here!",
+        "wrap": false,
         "type": 0,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "Carol",
         "id": "7",
-        "message": "",
+        "from": "Carol",
         "to": null,
+        "message": "",
+        "wrap": false,
         "type": 18,
-        "wrap": false
+        "activate": false
       }
     ],
     "notes": [],
-    "title": null,
-    "type": "sequence"
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
   }
 }

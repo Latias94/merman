@@ -1,53 +1,53 @@
 {
   "diagramType": "sequence",
   "model": {
-    "accDescr": "Accessibility\nDescription",
+    "type": "sequence",
+    "title": "Diagram Title",
     "accTitle": "This is the title",
+    "accDescr": "Accessibility\nDescription",
     "actorOrder": [
       "Alice",
       "Bob"
     ],
     "actors": {
       "Alice": {
-        "description": "Alice",
-        "links": {},
         "name": "Alice",
-        "properties": {},
+        "description": "Alice",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "Bob": {
-        "description": "Bob",
-        "links": {},
         "name": "Bob",
-        "properties": {},
+        "description": "Bob",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       }
     },
-    "boxes": [],
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "over": 2,
-        "rightOf": 1
-      }
-    },
-    "createdActors": {},
-    "destroyedActors": {},
     "messages": [
       {
-        "activate": false,
-        "from": "Alice",
         "id": "0",
-        "message": "Hello Bob, how are you?",
+        "from": "Alice",
         "to": "Bob",
+        "message": "Hello Bob, how are you?",
+        "wrap": false,
         "type": 5,
-        "wrap": false
+        "activate": false
       }
     ],
     "notes": [],
-    "title": "Diagram Title",
-    "type": "sequence"
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
   }
 }

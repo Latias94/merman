@@ -1,8 +1,10 @@
 {
   "diagramType": "sequence",
   "model": {
-    "accDescr": null,
+    "type": "sequence",
+    "title": null,
     "accTitle": null,
+    "accDescr": null,
     "actorOrder": [
       "Alice",
       "Bob",
@@ -12,105 +14,103 @@
     ],
     "actors": {
       "Alice": {
-        "description": "Alice2",
-        "links": {},
         "name": "Alice",
-        "properties": {},
+        "description": "Alice2",
+        "wrap": false,
         "type": "actor",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "Bob": {
-        "description": "Bob",
-        "links": {},
         "name": "Bob",
-        "properties": {},
+        "description": "Bob",
+        "wrap": false,
         "type": "actor",
-        "wrap": false
-      },
-      "Joan": {
-        "description": "Joan",
         "links": {},
-        "name": "Joan",
-        "properties": {},
-        "type": "participant",
-        "wrap": false
+        "properties": {}
       },
       "John": {
-        "description": "John2",
-        "links": {},
         "name": "John",
-        "properties": {},
+        "description": "John2",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
       },
       "Mandy": {
-        "description": "Mandy",
-        "links": {},
         "name": "Mandy",
-        "properties": {},
+        "description": "Mandy",
+        "wrap": false,
         "type": "participant",
-        "wrap": false
+        "links": {},
+        "properties": {}
+      },
+      "Joan": {
+        "name": "Joan",
+        "description": "Joan",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
       }
     },
-    "boxes": [],
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "over": 2,
-        "rightOf": 1
-      }
-    },
-    "createdActors": {},
-    "destroyedActors": {},
     "messages": [
       {
-        "activate": false,
-        "from": "Alice",
         "id": "0",
-        "message": "Hi Bob",
-        "to": "Bob",
-        "type": 0,
-        "wrap": false
-      },
-      {
-        "activate": false,
-        "from": "Bob",
-        "id": "1",
-        "message": "Hi Alice",
-        "to": "Alice",
-        "type": 0,
-        "wrap": false
-      },
-      {
-        "activate": false,
         "from": "Alice",
+        "to": "Bob",
+        "message": "Hi Bob",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Bob",
+        "to": "Alice",
+        "message": "Hi Alice",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
         "id": "2",
-        "message": "Hi John",
+        "from": "Alice",
         "to": "John",
+        "message": "Hi John",
+        "wrap": false,
         "type": 0,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "John",
         "id": "3",
-        "message": "Hi Mandy",
+        "from": "John",
         "to": "Mandy",
+        "message": "Hi Mandy",
+        "wrap": false,
         "type": 0,
-        "wrap": false
+        "activate": false
       },
       {
-        "activate": false,
-        "from": "Mandy",
         "id": "4",
-        "message": "Hi Joan",
+        "from": "Mandy",
         "to": "Joan",
+        "message": "Hi Joan",
+        "wrap": false,
         "type": 0,
-        "wrap": false
+        "activate": false
       }
     ],
     "notes": [],
-    "title": null,
-    "type": "sequence"
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
   }
 }
