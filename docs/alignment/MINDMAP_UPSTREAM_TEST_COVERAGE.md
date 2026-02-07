@@ -57,5 +57,7 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/mindmap/mindmap.spec.ts`
 
 Source: `repo-ref/mermaid/docs/syntax/mindmap.md`
 
+- full docs example (includes `::icon(...)` + `<br/>` inside a label):
+  `fixtures/mindmap/upstream_docs_example_icons_br.mmd`
 - unclear indentation fallback (node `C` attaches to nearest valid ancestor):
   `fixtures/mindmap/upstream_docs_unclear_indentation.mmd`
