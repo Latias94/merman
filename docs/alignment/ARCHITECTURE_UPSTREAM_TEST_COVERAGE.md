@@ -85,6 +85,10 @@ fully represented in parser/spec snapshots. We track these as fixture-level pari
   `fixtures/architecture/upstream_architecture_demo_arrow_mesh_bidirectional.mmd`
 - long edge labels (`-[Label that is Long]-`) across multiple directions:
   `fixtures/architecture/upstream_architecture_demo_edge_label_long.mmd`
+- short edge labels (`-[Label]-`) across multiple directions:
+  `fixtures/architecture/upstream_architecture_demo_edge_label_short.mmd`
+- basic junction routing (multiple incoming/outgoing on two junctions):
+  `fixtures/architecture/upstream_architecture_demo_junction_basic.mmd`
 - grouped junction routing with mixed arrow directions (`<--`, `-->`, `{group}`):
   `fixtures/architecture/upstream_architecture_demo_junction_groups_arrows.mmd`
 - inverse bidirectional arrow mesh variant (top/bottom to side anchors):
