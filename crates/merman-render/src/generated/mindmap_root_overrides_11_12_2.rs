@@ -7,9 +7,6 @@ pub fn lookup_mindmap_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
-        "upstream_whitespace_and_comments" => {
-            Some(("5 5 317.027587890625 345.3640441894531", "317.028"))
-        }
         _ => None,
     }
 }

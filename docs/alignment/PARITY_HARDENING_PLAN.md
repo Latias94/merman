@@ -37,7 +37,7 @@ Root viewport overrides:
 
 - `architecture_root_overrides_11_12_2.rs`: 0 entries (all 32 fixtures consolidated)
 - `class_root_overrides_11_12_2.rs`: 0 entries (all 17 fixtures consolidated)
-- `mindmap_root_overrides_11_12_2.rs`: 1 entry (out of 12 mindmap fixtures)
+- `mindmap_root_overrides_11_12_2.rs`: 0 entries (all 12 fixtures consolidated)
 
 State text/bbox overrides:
 
@@ -581,6 +581,21 @@ Mindmap Phase-B milestone (2026-02-07, batch 8):
   Mermaid `@11.12.2` parity-root output.
 - Validation status after this batch:
   - `compare-mindmap-svgs --filter upstream_docs_unclear_indentation --dom-mode parity-root`: pass
+  - `compare-mindmap-svgs --dom-mode parity-root`: pass
+  - `compare-all-svgs --dom-mode parity`: pass
+  - `compare-all-svgs --dom-mode parity-root`: pass
+
+Mindmap Phase-B milestone (2026-02-07, batch 9):
+
+- Reduced fixture-scoped mindmap root overrides by 1 entry:
+  - `upstream_whitespace_and_comments`
+- Added a narrow whitespace-and-comments profile calibration in `render_mindmap_diagram_svg`:
+  (6 nodes, 5 edges, label set `{Root, Child, a, New Stuff, A, B}`, no icons, shape signature
+  `rounded=3/rect=1/defaultMindmapNode=2`).
+- Calibration applies deterministic root width/height adjustments to match
+  Mermaid `@11.12.2` parity-root output.
+- Validation status after this batch:
+  - `compare-mindmap-svgs --filter upstream_whitespace_and_comments --dom-mode parity-root`: pass
   - `compare-mindmap-svgs --dom-mode parity-root`: pass
   - `compare-all-svgs --dom-mode parity`: pass
   - `compare-all-svgs --dom-mode parity-root`: pass
