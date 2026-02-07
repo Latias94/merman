@@ -18,3 +18,20 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/packet/packet.spec.ts`
 - split when cut at exact length: `fixtures/packet/upstream_packet_split_exact_length_spec.mmd`
 - contiguity/end/zero-bit error cases: `crates/merman-core/src/diagrams/packet.rs:370`
 
+Docs-derived fixtures (rendered via official Mermaid CLI, version-pinned):
+
+Source: `repo-ref/mermaid/packages/mermaid/src/docs/syntax/packet.md`
+
+- TCP Packet example (frontmatter title): `fixtures/packet/upstream_packet_docs_tcp_packet_example.mmd`
+- UDP Packet example: `fixtures/packet/upstream_packet_docs_udp_packet_example.mmd`
+- bit-count mixing (`+<count>` + manual range): `fixtures/packet/upstream_packet_docs_bit_count_mix_spec.mmd`
+
+Upstream SVG baselines:
+
+- `fixtures/upstream-svgs/packet/upstream_packet_docs_tcp_packet_example.svg`
+- `fixtures/upstream-svgs/packet/upstream_packet_docs_udp_packet_example.svg`
+- `fixtures/upstream-svgs/packet/upstream_packet_docs_bit_count_mix_spec.svg`
+
+Compare report:
+
+- `cargo run -p xtask -- compare-packet-svgs --check-dom --dom-mode parity-root --dom-decimals 3`

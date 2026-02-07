@@ -176,6 +176,7 @@ pub fn render_layouted_svg(
             layout,
             &diagram.semantic,
             &diagram.meta.effective_config,
+            diagram.meta.title.as_deref(),
             options,
         ),
         LayoutDiagram::TimelineDiagram(layout) => render_timeline_diagram_svg(
@@ -8231,6 +8232,7 @@ pub fn render_packet_diagram_svg(
     layout: &PacketDiagramLayout,
     semantic: &serde_json::Value,
     _effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let model: PacketSvgModel = serde_json::from_value(semantic.clone())?;
@@ -8352,7 +8354,13 @@ pub fn render_packet_diagram_svg(
 
     let total_row_height = layout.row_height + layout.padding_y;
     let title_y = layout.height - total_row_height / 2.0;
-    match model.title.as_deref().filter(|t| !t.trim().is_empty()) {
+    let title_from_semantic = model
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty());
+    let title_from_meta = diagram_title.map(str::trim).filter(|t| !t.is_empty());
+    match title_from_semantic.or(title_from_meta) {
         Some(title) => {
             let _ = write!(
                 &mut out,

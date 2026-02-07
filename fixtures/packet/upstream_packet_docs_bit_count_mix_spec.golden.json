@@ -1,0 +1,45 @@
+{
+  "diagramType": "packet",
+  "model": {
+    "type": "packet",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "packet": [
+      [
+        {
+          "start": 0,
+          "end": 0,
+          "bits": 1,
+          "label": "Flag"
+        },
+        {
+          "start": 1,
+          "end": 8,
+          "bits": 8,
+          "label": "Byte"
+        },
+        {
+          "start": 9,
+          "end": 15,
+          "bits": 7,
+          "label": "Manual Range"
+        },
+        {
+          "start": 16,
+          "end": 31,
+          "bits": 16,
+          "label": "Word"
+        }
+      ],
+      [
+        {
+          "start": 32,
+          "end": 47,
+          "bits": 16,
+          "label": "Manual 2"
+        }
+      ]
+    ]
+  }
+}

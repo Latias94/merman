@@ -11105,6 +11105,7 @@ fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                         layout,
                         &layouted.semantic,
                         &layouted.meta.effective_config,
+                        layouted.meta.title.as_deref(),
                         &merman_render::svg::SvgRenderOptions::default(),
                     )
                     .map_err(|e| {
@@ -13984,6 +13985,7 @@ fn compare_packet_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             layout,
             &layouted.semantic,
             &layouted.meta.effective_config,
+            layouted.meta.title.as_deref(),
             &svg_opts,
         ) {
             Ok(v) => v,

@@ -1,0 +1,98 @@
+{
+  "diagramType": "treemap",
+  "layout": {
+    "TreemapDiagram": {
+      "title_height": 0.0,
+      "width": 1000.0,
+      "height": 400.0,
+      "use_max_width": true,
+      "diagram_padding": 200.0,
+      "show_values": true,
+      "value_format": ",",
+      "accTitle": null,
+      "accDescr": null,
+      "title": null,
+      "sections": [
+        {
+          "name": "",
+          "depth": 0.0,
+          "value": 70.0,
+          "x0": 0.0,
+          "y0": 0.0,
+          "x1": 1000.0,
+          "y1": 400.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Category B",
+          "depth": 1.0,
+          "value": 40.0,
+          "x0": 10.0,
+          "y0": 35.0,
+          "x1": 566.0,
+          "y1": 390.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Category A",
+          "depth": 1.0,
+          "value": 30.0,
+          "x0": 576.0,
+          "y0": 35.0,
+          "x1": 990.0,
+          "y1": 390.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        }
+      ],
+      "leaves": [
+        {
+          "name": "Item B2",
+          "value": 25.0,
+          "parent_name": "Category B",
+          "x0": 20.0,
+          "y0": 70.0,
+          "x1": 351.0,
+          "y1": 380.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Item B1",
+          "value": 15.0,
+          "parent_name": "Category B",
+          "x0": 361.0,
+          "y0": 70.0,
+          "x1": 556.0,
+          "y1": 380.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Item A2",
+          "value": 20.0,
+          "parent_name": "Category A",
+          "x0": 586.0,
+          "y0": 70.0,
+          "x1": 845.0,
+          "y1": 380.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Item A1",
+          "value": 10.0,
+          "parent_name": "Category A",
+          "x0": 855.0,
+          "y0": 70.0,
+          "x1": 980.0,
+          "y1": 380.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        }
+      ]
+    }
+  }
+}

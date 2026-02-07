@@ -141,6 +141,7 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
         )?),
         "packet" => LayoutDiagram::PacketDiagram(packet::layout_packet_diagram(
             &parsed.model,
+            meta.title.as_deref(),
             &meta.effective_config,
             options.text_measurer.as_ref(),
         )?),

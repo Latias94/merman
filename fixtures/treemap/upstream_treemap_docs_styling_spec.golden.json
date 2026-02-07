@@ -1,0 +1,115 @@
+{
+  "diagramType": "treemap",
+  "model": {
+    "type": "treemap",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "root": {
+      "name": "",
+      "children": [
+        {
+          "name": "Section 1",
+          "children": [
+            {
+              "name": "Leaf 1.1",
+              "value": 12
+            },
+            {
+              "name": "Section 1.2",
+              "classSelector": "class1",
+              "cssCompiledStyles": [
+                "fill:red;color:blue;stroke:#FFD600"
+              ],
+              "children": [
+                {
+                  "name": "Leaf 1.2.1",
+                  "value": 12
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Section 2",
+          "children": [
+            {
+              "name": "Leaf 2.1",
+              "value": 20,
+              "classSelector": "class1",
+              "cssCompiledStyles": [
+                "fill:red;color:blue;stroke:#FFD600"
+              ]
+            },
+            {
+              "name": "Leaf 2.2",
+              "value": 25
+            },
+            {
+              "name": "Leaf 2.3",
+              "value": 12
+            }
+          ]
+        }
+      ]
+    },
+    "nodes": [
+      {
+        "level": 0,
+        "name": "Section 1"
+      },
+      {
+        "level": 1,
+        "name": "Leaf 1.1",
+        "value": 12
+      },
+      {
+        "level": 1,
+        "name": "Section 1.2",
+        "classSelector": "class1",
+        "cssCompiledStyles": [
+          "fill:red;color:blue;stroke:#FFD600"
+        ]
+      },
+      {
+        "level": 2,
+        "name": "Leaf 1.2.1",
+        "value": 12
+      },
+      {
+        "level": 0,
+        "name": "Section 2"
+      },
+      {
+        "level": 1,
+        "name": "Leaf 2.1",
+        "value": 20,
+        "classSelector": "class1",
+        "cssCompiledStyles": [
+          "fill:red;color:blue;stroke:#FFD600"
+        ]
+      },
+      {
+        "level": 1,
+        "name": "Leaf 2.2",
+        "value": 25
+      },
+      {
+        "level": 1,
+        "name": "Leaf 2.3",
+        "value": 12
+      }
+    ],
+    "classes": {
+      "class1": {
+        "id": "class1",
+        "styles": [
+          "fill:red",
+          "color:blue",
+          "stroke:#FFD600"
+        ],
+        "textStyles": []
+      }
+    }
+  }
+}

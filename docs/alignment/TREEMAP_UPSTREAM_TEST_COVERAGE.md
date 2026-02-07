@@ -18,3 +18,12 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/treemap/utils.test.ts`
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/treemap/db.ts`
 
 - addClass splitting + cssCompiledStyles projection (parser-only fixture, upstream CLI renders an error diagram): `fixtures/treemap/upstream_treemap_classdef_and_css_compiled_styles_db_parser_only_.mmd`
+
+Docs-derived fixtures (rendered via official Mermaid CLI, version-pinned):
+
+Source: `repo-ref/mermaid/packages/mermaid/src/docs/syntax/treemap.md`
+
+- basic treemap: `fixtures/treemap/upstream_treemap_docs_basic_spec.mmd`
+- hierarchical treemap: `fixtures/treemap/upstream_treemap_docs_hierarchical_spec.mmd`
+- styling (`classDef` + `:::class`): `fixtures/treemap/upstream_treemap_docs_styling_spec.mmd`
+- config `treemap.diagramPadding`: `fixtures/treemap/upstream_treemap_docs_diagram_padding_spec.mmd`

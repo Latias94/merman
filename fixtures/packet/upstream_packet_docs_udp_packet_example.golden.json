@@ -1,0 +1,47 @@
+{
+  "diagramType": "packet",
+  "model": {
+    "type": "packet",
+    "title": "UDP Packet",
+    "accTitle": null,
+    "accDescr": null,
+    "packet": [
+      [
+        {
+          "start": 0,
+          "end": 15,
+          "bits": 16,
+          "label": "Source Port"
+        },
+        {
+          "start": 16,
+          "end": 31,
+          "bits": 16,
+          "label": "Destination Port"
+        }
+      ],
+      [
+        {
+          "start": 32,
+          "end": 47,
+          "bits": 16,
+          "label": "Length"
+        },
+        {
+          "start": 48,
+          "end": 63,
+          "bits": 16,
+          "label": "Checksum"
+        }
+      ],
+      [
+        {
+          "start": 64,
+          "end": 95,
+          "bits": 32,
+          "label": "Data (variable length)"
+        }
+      ]
+    ]
+  }
+}

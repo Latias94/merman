@@ -22,6 +22,7 @@ struct PacketModel {
 
 pub fn layout_packet_diagram(
     semantic: &serde_json::Value,
+    diagram_title: Option<&str>,
     _effective_config: &serde_json::Value,
     _measurer: &dyn TextMeasurer,
 ) -> Result<PacketDiagramLayout> {
@@ -37,7 +38,13 @@ pub fn layout_packet_diagram(
     let show_bits: bool = true;
 
     let total_row_height = row_height + padding_y;
-    let has_title = model.title.as_deref().is_some_and(|t| !t.trim().is_empty());
+    let title_from_semantic = model
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty());
+    let title_from_meta = diagram_title.map(str::trim).filter(|t| !t.is_empty());
+    let has_title = title_from_semantic.or(title_from_meta).is_some();
 
     let words_count = model.packet.len();
     let svg_height =
