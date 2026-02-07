@@ -625,7 +625,8 @@ Actions:
 1. Keep mandatory checks for:
    - `compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`
    - `compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
-2. Add a lightweight override inventory report in CI logs (entry count per override file).
+2. Add a lightweight override inventory report in CI logs (entry count per override file):
+   - `xtask report-overrides`
 3. Document update protocol when pinned Mermaid version changes.
 
 Exit criteria:
