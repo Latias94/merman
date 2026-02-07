@@ -41,7 +41,7 @@ Root viewport overrides:
 
 State text/bbox overrides:
 
-- `state_text_overrides_11_12_2.rs`: 47 `Some(...)` entries across width/height/bbox helpers
+- `state_text_overrides_11_12_2.rs`: 46 `Some(...)` entries across width/height/bbox helpers
 
 ## Phase Plan
 
@@ -597,6 +597,18 @@ Mindmap Phase-B milestone (2026-02-07, batch 9):
 - Validation status after this batch:
   - `compare-mindmap-svgs --filter upstream_whitespace_and_comments --dom-mode parity-root`: pass
   - `compare-mindmap-svgs --dom-mode parity-root`: pass
+  - `compare-all-svgs --dom-mode parity`: pass
+  - `compare-all-svgs --dom-mode parity-root`: pass
+
+State Phase-B milestone (2026-02-07, batch 1):
+
+- Reduced state text/bbox overrides by 1 entry:
+  - Removed `lookup_state_node_label_height_px(...)` string-keyed special cases.
+- Added a deterministic border-style label height inflation heuristic in `node_label_metrics` to mirror
+  Mermaid@11.12.2 headless browser `getBoundingClientRect()` behavior for `classDef` border nodes.
+- Validation status after this batch:
+  - `compare-state-svgs --dom-mode parity`: pass
+  - `compare-state-svgs --dom-mode parity-root`: pass
   - `compare-all-svgs --dom-mode parity`: pass
   - `compare-all-svgs --dom-mode parity-root`: pass
 

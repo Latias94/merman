@@ -128,29 +128,6 @@ pub fn lookup_state_node_label_width_px_styled(
     }
 }
 
-pub fn lookup_state_node_label_height_px(
-    font_size_px: f64,
-    text: &str,
-    has_border_style: bool,
-) -> Option<f64> {
-    if !has_border_style {
-        return None;
-    }
-    if (font_size_px - 16.0).abs() > 0.01 {
-        return None;
-    }
-
-    match text {
-        // fixtures/upstream-svgs/state/upstream_state_style_spec.svg
-        //
-        // Mermaid@11.12.2 renders `border:...` classDef styles onto the node shape path. In the
-        // upstream headless browser baselines, HTML label `getBoundingClientRect()` height for
-        // these nodes is inflated to `72px` even for a single-line `<p>` label.
-        "a" | "b" | "a_a" => Some(72.0),
-        _ => None,
-    }
-}
-
 pub fn lookup_state_cluster_title_width_px(font_size_px: f64, text: &str) -> Option<f64> {
     if (font_size_px - 16.0).abs() > 0.01 {
         return None;

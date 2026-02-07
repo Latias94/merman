@@ -17952,14 +17952,18 @@ fn render_state_node_svg(
                 .iter()
                 .chain(node.css_styles.iter())
                 .any(|s| s.trim_start().to_ascii_lowercase().starts_with("border:"));
-            if let Some(h) =
-                crate::generated::state_text_overrides_11_12_2::lookup_state_node_label_height_px(
-                    measure_style.font_size,
-                    label.trim(),
-                    has_border_style,
-                )
-            {
-                metrics.height = h;
+
+            // Mermaid@11.12.2 browser baselines show a surprising `getBoundingClientRect()` inflation
+            // for `classDef`-styled border nodes: even a single-line `<p>` label can measure as `72px`
+            // tall. Mirror that behavior here to avoid relying on string-keyed height overrides.
+            if has_border_style && (measure_style.font_size - 16.0).abs() <= 0.01 {
+                let trimmed = label.trim();
+                let is_single_line = !trimmed.contains('\n')
+                    && !trimmed.to_ascii_lowercase().contains("<br")
+                    && !trimmed.is_empty();
+                if is_single_line && (metrics.height - 24.0).abs() <= 0.01 {
+                    metrics.height = metrics.height.max(72.0);
+                }
             }
             let lw = metrics.width.max(0.0);
             let lh = metrics.height.max(0.0);
