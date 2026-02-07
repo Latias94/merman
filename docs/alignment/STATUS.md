@@ -61,7 +61,7 @@ avoid sub-pixel gaps at the frame border.
 As of 2026-02-04, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
 for the current fixture set (diagram subtree parity).
 As of 2026-02-07, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 0 DOM
-mismatches out of 505 upstream SVG baselines (100% passing).
+mismatches out of 507 upstream SVG baselines (100% passing).
 
 Post-baseline hardening plan (coverage growth + override consolidation + CI guardrails) is tracked in
 `docs/alignment/PARITY_HARDENING_PLAN.md`.
@@ -79,6 +79,9 @@ and forest theme `cScale*` defaults are derived so treemap section fills match u
 
 Recent progress (2026-02-07): Architecture demo coverage added short edge labels (`-[Label]-`) and a basic
 junction routing example, preserving 0-mismatch full parity-root checks.
+
+Recent progress (2026-02-07): Theme defaults now derive `cScale*` palettes for `dark` and `neutral`,
+and treemap now has theme-guard fixtures for both themes, preserving 0-mismatch full parity-root checks.
 
 Recent progress (2026-02-06): Phase A architecture expansion (third batch) added three additional upstream-rendered
 baselines (`upstream_architecture_demo_arrow_mesh_bidirectional_inverse`,

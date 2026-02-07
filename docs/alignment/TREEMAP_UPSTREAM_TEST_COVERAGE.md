@@ -29,3 +29,13 @@ Source: `repo-ref/mermaid/packages/mermaid/src/docs/syntax/treemap.md`
 - config `treemap.diagramPadding`: `fixtures/treemap/upstream_treemap_docs_diagram_padding_spec.mmd`
 - theme `forest`: `fixtures/treemap/upstream_treemap_docs_theme_forest_spec.mmd`
 - config `treemap.valueFormat` (currency): `fixtures/treemap/upstream_treemap_docs_value_format_currency_spec.mmd`
+
+Theme guard fixtures (color-scale parity):
+
+Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-dark.js`
+
+- theme `dark`: `fixtures/treemap/upstream_treemap_theme_dark_minimal_spec.mmd`
+
+Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-neutral.js`
+
+- theme `neutral`: `fixtures/treemap/upstream_treemap_theme_neutral_minimal_spec.mmd`
