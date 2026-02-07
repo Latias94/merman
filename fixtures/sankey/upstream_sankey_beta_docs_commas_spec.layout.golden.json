@@ -1,0 +1,75 @@
+{
+  "diagramType": "sankey",
+  "layout": {
+    "SankeyDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 600.0,
+        "max_y": 400.0
+      },
+      "width": 600.0,
+      "height": 400.0,
+      "node_width": 10.0,
+      "node_padding": 25.0,
+      "nodes": [
+        {
+          "id": "Pumped heat",
+          "index": 0.0,
+          "depth": 0.0,
+          "height": 1.0,
+          "layer": 0.0,
+          "value": 263.698,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 4.383,
+          "y1": 379.383
+        },
+        {
+          "id": "Heating and cooling, homes",
+          "index": 1.0,
+          "depth": 1.0,
+          "height": 0.0,
+          "layer": 1.0,
+          "value": 193.026,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 0.0,
+          "y1": 274.499
+        },
+        {
+          "id": "Heating and cooling, commercial",
+          "index": 2.0,
+          "depth": 1.0,
+          "height": 0.0,
+          "layer": 1.0,
+          "value": 70.672,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 299.499,
+          "y1": 400.0
+        }
+      ],
+      "links": [
+        {
+          "index": 0.0,
+          "source": "Pumped heat",
+          "target": "Heating and cooling, homes",
+          "value": 193.026,
+          "width": 274.499,
+          "y0": 141.632,
+          "y1": 137.249
+        },
+        {
+          "index": 1.0,
+          "source": "Pumped heat",
+          "target": "Heating and cooling, commercial",
+          "value": 70.672,
+          "width": 100.501,
+          "y0": 329.132,
+          "y1": 349.749
+        }
+      ]
+    }
+  }
+}

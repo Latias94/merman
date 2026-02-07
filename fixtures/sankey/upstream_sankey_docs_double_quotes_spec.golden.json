@@ -1,0 +1,31 @@
+{
+  "diagramType": "sankey",
+  "model": {
+    "type": "sankey",
+    "graph": {
+      "nodes": [
+        {
+          "id": "Pumped heat"
+        },
+        {
+          "id": "Heating and cooling, \"homes\""
+        },
+        {
+          "id": "Heating and cooling, \"commercial\""
+        }
+      ],
+      "links": [
+        {
+          "source": "Pumped heat",
+          "target": "Heating and cooling, \"homes\"",
+          "value": 193.026
+        },
+        {
+          "source": "Pumped heat",
+          "target": "Heating and cooling, \"commercial\"",
+          "value": 70.672
+        }
+      ]
+    }
+  }
+}

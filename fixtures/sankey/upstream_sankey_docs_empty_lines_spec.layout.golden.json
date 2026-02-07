@@ -1,0 +1,96 @@
+{
+  "diagramType": "sankey",
+  "layout": {
+    "SankeyDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 600.0,
+        "max_y": 400.0
+      },
+      "width": 600.0,
+      "height": 400.0,
+      "node_width": 10.0,
+      "node_padding": 25.0,
+      "nodes": [
+        {
+          "id": "Bio-conversion",
+          "index": 0.0,
+          "depth": 0.0,
+          "height": 1.0,
+          "layer": 0.0,
+          "value": 388.328,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 32.649,
+          "y1": 382.649
+        },
+        {
+          "id": "Losses",
+          "index": 1.0,
+          "depth": 1.0,
+          "height": 0.0,
+          "layer": 1.0,
+          "value": 26.862,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": -0.0,
+          "y1": 24.211
+        },
+        {
+          "id": "Solid",
+          "index": 2.0,
+          "depth": 1.0,
+          "height": 0.0,
+          "layer": 1.0,
+          "value": 280.322,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 49.211,
+          "y1": 301.865
+        },
+        {
+          "id": "Gas",
+          "index": 3.0,
+          "depth": 1.0,
+          "height": 0.0,
+          "layer": 1.0,
+          "value": 81.144,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 326.865,
+          "y1": 400.0
+        }
+      ],
+      "links": [
+        {
+          "index": 0.0,
+          "source": "Bio-conversion",
+          "target": "Losses",
+          "value": 26.862,
+          "width": 24.211,
+          "y0": 44.754,
+          "y1": 12.105
+        },
+        {
+          "index": 1.0,
+          "source": "Bio-conversion",
+          "target": "Solid",
+          "value": 280.322,
+          "width": 252.654,
+          "y0": 183.187,
+          "y1": 175.538
+        },
+        {
+          "index": 2.0,
+          "source": "Bio-conversion",
+          "target": "Gas",
+          "value": 81.144,
+          "width": 73.135,
+          "y0": 346.081,
+          "y1": 363.432
+        }
+      ]
+    }
+  }
+}

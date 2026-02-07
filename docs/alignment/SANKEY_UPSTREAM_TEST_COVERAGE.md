@@ -14,10 +14,25 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/sankey/parser/sankey.spe
 - allows `__proto__` as id (parser-only; upstream renderer errors on cycles): `fixtures/sankey/upstream_sankey_allows_proto_id_parser_only_spec.mmd`
 - allows `__proto__` as id with `sankey` header (parser-only; upstream renderer errors on cycles): `fixtures/sankey/upstream_sankey_allows_proto_id_sankey_header_parser_only_spec.mmd`
 
+Docs-derived fixtures (rendered via official Mermaid CLI, version-pinned):
+
+Source: `repo-ref/mermaid/packages/mermaid/src/docs/syntax/sankey.md`
+
+- empty lines allowed: `fixtures/sankey/upstream_sankey_docs_empty_lines_spec.mmd`
+- commas inside quoted fields: `fixtures/sankey/upstream_sankey_docs_commas_spec.mmd`
+- double quotes inside quoted fields: `fixtures/sankey/upstream_sankey_docs_double_quotes_spec.mmd`
+- config: `linkColor: source`, `showValues: false`, `nodeAlignment: left`: `fixtures/sankey/upstream_sankey_docs_config_linkcolor_source_showvalues_false_spec.mmd`
+- `sankey-beta` header + commas example: `fixtures/sankey/upstream_sankey_beta_docs_commas_spec.mmd`
+
 Upstream SVG baselines:
 
 - `fixtures/upstream-svgs/sankey/upstream_sankey_beta_energy_csv_spec.svg`
 - `fixtures/upstream-svgs/sankey/upstream_sankey_header_energy_csv_spec.svg`
+- `fixtures/upstream-svgs/sankey/upstream_sankey_docs_empty_lines_spec.svg`
+- `fixtures/upstream-svgs/sankey/upstream_sankey_docs_commas_spec.svg`
+- `fixtures/upstream-svgs/sankey/upstream_sankey_docs_double_quotes_spec.svg`
+- `fixtures/upstream-svgs/sankey/upstream_sankey_docs_config_linkcolor_source_showvalues_false_spec.svg`
+- `fixtures/upstream-svgs/sankey/upstream_sankey_beta_docs_commas_spec.svg`
 
 Compare report:
 
