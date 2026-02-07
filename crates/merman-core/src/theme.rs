@@ -202,10 +202,134 @@ fn set_if_missing(map: &mut Map<String, Value>, key: &str, value: Value) {
 
 pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) {
     let theme = config.get_str("theme").unwrap_or("default");
-    if theme != "base" {
+    match theme {
+        "base" => apply_base_theme_defaults(config),
+        "forest" => apply_forest_theme_defaults(config),
+        _ => {}
+    }
+}
+
+fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
+    let mut tv = match config.as_value().get("themeVariables") {
+        Some(Value::Object(m)) => m.clone(),
+        _ => Map::new(),
+    };
+
+    // Mermaid 11.12.2: `theme-forest` base colors.
+    // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-forest.js`.
+    set_if_missing(
+        &mut tv,
+        "primaryColor",
+        Value::String("#cde498".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "secondaryColor",
+        Value::String("#cdffb2".to_string()),
+    );
+
+    let Some(primary_color) = get_truthy_string(&tv, "primaryColor") else {
+        config.set_value("themeVariables", Value::Object(tv));
         return;
+    };
+    let Some(primary_rgb) = parse_hex_rgb01(&primary_color) else {
+        config.set_value("themeVariables", Value::Object(tv));
+        return;
+    };
+    let primary_hsl = rgb01_to_hsl(primary_rgb);
+
+    let secondary_color =
+        get_truthy_string(&tv, "secondaryColor").unwrap_or_else(|| "#cdffb2".to_string());
+    let secondary_hsl = parse_hex_rgb01(&secondary_color)
+        .map(rgb01_to_hsl)
+        .unwrap_or(primary_hsl);
+
+    // `theme-forest` sets: `tertiaryColor = lighten(primaryColor, 10)`.
+    let tertiary_hsl = if let Some(v) =
+        get_truthy_string(&tv, "tertiaryColor").and_then(|s| parse_hex_rgb01(&s).map(rgb01_to_hsl))
+    {
+        v
+    } else {
+        adjust_hsl(primary_hsl, 0.0, 0.0, 10.0)
+    };
+    set_if_missing(
+        &mut tv,
+        "tertiaryColor",
+        Value::String(fmt_hsl(tertiary_hsl)),
+    );
+
+    // `theme-forest` ends up using black label text (via `actorTextColor`).
+    set_if_missing(
+        &mut tv,
+        "labelTextColor",
+        Value::String("black".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "scaleLabelColor",
+        Value::String("black".to_string()),
+    );
+    let scale_label_color =
+        get_truthy_string(&tv, "scaleLabelColor").unwrap_or_else(|| "black".to_string());
+
+    // Color scales: match `theme-forest` `updateColors()`:
+    // - derive from base colors / hue shifts
+    // - darken each `cScale*` by 10
+    // - `cScalePeer1/2` use special darken amounts, others are darken(`cScale*`, 25)
+    let c_scales: [Hsl; 12] = [
+        primary_hsl,
+        secondary_hsl,
+        tertiary_hsl,
+        adjust_hsl(primary_hsl, 30.0, 0.0, 0.0),
+        adjust_hsl(primary_hsl, 60.0, 0.0, 0.0),
+        adjust_hsl(primary_hsl, 90.0, 0.0, 0.0),
+        adjust_hsl(primary_hsl, 120.0, 0.0, 0.0),
+        adjust_hsl(primary_hsl, 150.0, 0.0, 0.0),
+        adjust_hsl(primary_hsl, 210.0, 0.0, 0.0),
+        adjust_hsl(primary_hsl, 270.0, 0.0, 0.0),
+        adjust_hsl(primary_hsl, 300.0, 0.0, 0.0),
+        adjust_hsl(primary_hsl, 330.0, 0.0, 0.0),
+    ]
+    .map(|base| adjust_hsl(base, 0.0, 0.0, -10.0));
+
+    for (i, v) in c_scales.iter().enumerate() {
+        set_if_missing(&mut tv, &format!("cScale{i}"), Value::String(fmt_hsl(*v)));
     }
 
+    set_if_missing(
+        &mut tv,
+        "cScalePeer1",
+        Value::String(fmt_hsl(adjust_hsl(secondary_hsl, 0.0, 0.0, -45.0))),
+    );
+    set_if_missing(
+        &mut tv,
+        "cScalePeer2",
+        Value::String(fmt_hsl(adjust_hsl(tertiary_hsl, 0.0, 0.0, -40.0))),
+    );
+
+    for i in 0..12 {
+        let c_hsl = c_scales[i];
+        set_if_missing(
+            &mut tv,
+            &format!("cScalePeer{i}"),
+            Value::String(fmt_hsl(adjust_hsl(c_hsl, 0.0, 0.0, -25.0))),
+        );
+        set_if_missing(
+            &mut tv,
+            &format!("cScaleInv{i}"),
+            Value::String(fmt_hsl(adjust_hsl(c_hsl, 180.0, 0.0, 0.0))),
+        );
+        set_if_missing(
+            &mut tv,
+            &format!("cScaleLabel{i}"),
+            Value::String(scale_label_color.clone()),
+        );
+    }
+
+    config.set_value("themeVariables", Value::Object(tv));
+}
+
+fn apply_base_theme_defaults(config: &mut MermaidConfig) {
     let mut tv = match config.as_value().get("themeVariables") {
         Some(Value::Object(m)) => m.clone(),
         _ => Map::new(),
