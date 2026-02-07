@@ -85,6 +85,7 @@ fn print_help(topic: Option<&str>) {
     println!("  compare-dagre-layout");
     println!("  analyze-state-fixture");
     println!("  debug-mindmap-svg-positions");
+    println!("  report-overrides");
     println!();
     println!("Per-diagram SVG compare commands:");
     println!("  compare-er-svgs");
@@ -195,8 +196,78 @@ fn main() -> Result<(), XtaskError> {
         "compare-all-svgs" => compare_all_svgs(args.collect()),
         "compare-svg-xml" => compare_svg_xml(args.collect()),
         "canon-svg-xml" => canon_svg_xml(args.collect()),
+        "report-overrides" => report_overrides(args.collect()),
         other => Err(XtaskError::UnknownCommand(other.to_string())),
     }
+}
+
+fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
+    if args.iter().any(|a| matches!(a.as_str(), "--help" | "-h")) {
+        println!("usage: xtask report-overrides");
+        println!();
+        println!("Prints a lightweight inventory of parity override footprint.");
+        println!("This is intended for CI logs and drift reviews.");
+        return Ok(());
+    }
+
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
+
+    let generated_dir = workspace_root
+        .join("crates")
+        .join("merman-render")
+        .join("src")
+        .join("generated");
+
+    fn read_text(path: &Path) -> Result<String, XtaskError> {
+        fs::read_to_string(path).map_err(|source| XtaskError::ReadFile {
+            path: path.display().to_string(),
+            source,
+        })
+    }
+
+    fn count_matches(re: &Regex, text: &str) -> usize {
+        re.find_iter(text).count()
+    }
+
+    static ROOT_VIEWPORT_ENTRY_RE: OnceLock<Regex> = OnceLock::new();
+    static STATE_TEXT_ENTRY_RE: OnceLock<Regex> = OnceLock::new();
+    let root_viewport_entry_re = ROOT_VIEWPORT_ENTRY_RE
+        .get_or_init(|| Regex::new(r#""[^"]+"\s*=>\s*Some\("#).expect("valid regex"));
+    let state_text_entry_re =
+        STATE_TEXT_ENTRY_RE.get_or_init(|| Regex::new(r#"=>\s*Some\("#).expect("valid regex"));
+
+    let architecture = generated_dir.join("architecture_root_overrides_11_12_2.rs");
+    let class = generated_dir.join("class_root_overrides_11_12_2.rs");
+    let mindmap = generated_dir.join("mindmap_root_overrides_11_12_2.rs");
+    let state_text = generated_dir.join("state_text_overrides_11_12_2.rs");
+
+    let architecture_txt = read_text(&architecture)?;
+    let class_txt = read_text(&class)?;
+    let mindmap_txt = read_text(&mindmap)?;
+    let state_text_txt = read_text(&state_text)?;
+
+    let architecture_n = count_matches(root_viewport_entry_re, &architecture_txt);
+    let class_n = count_matches(root_viewport_entry_re, &class_txt);
+    let mindmap_n = count_matches(root_viewport_entry_re, &mindmap_txt);
+    let state_text_n = count_matches(state_text_entry_re, &state_text_txt);
+
+    println!("Mermaid baseline: @11.12.2");
+    println!();
+    println!("Root viewport overrides:");
+    println!("- architecture_root_overrides_11_12_2.rs: {architecture_n} entries");
+    println!("- class_root_overrides_11_12_2.rs: {class_n} entries");
+    println!("- mindmap_root_overrides_11_12_2.rs: {mindmap_n} entries");
+    println!();
+    println!("State text/bbox overrides:");
+    println!(
+        "- state_text_overrides_11_12_2.rs: {state_text_n} entries (\"=> Some(...)\" match arms)"
+    );
+
+    Ok(())
 }
 
 fn gen_svg_overrides(args: Vec<String>) -> Result<(), XtaskError> {

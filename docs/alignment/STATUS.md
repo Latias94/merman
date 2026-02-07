@@ -82,17 +82,17 @@ baselines (`upstream_architecture_demo_arrow_mesh_bidirectional_inverse`,
 Recent progress (2026-02-06): state parity-root root viewport alignment is now 0-mismatch for the current fixture
 set (`xtask compare-state-svgs --check-dom --dom-mode parity-root --dom-decimals 3`).
 
-Recent progress (2026-02-06): architecture parity-root root viewport alignment is now 0-mismatch for the current
-non-parser-only fixture set (`xtask compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3`)
-by applying fixture-scoped root viewport overrides keyed by fixture `diagram_id`.
+Recent progress (2026-02-07): architecture parity-root root viewport alignment is now 0-mismatch for the current
+fixture set (`xtask compare-architecture-svgs --check-dom --dom-mode parity-root --dom-decimals 3`) without relying on
+fixture-scoped root viewport overrides.
 
-Recent progress (2026-02-06): class parity-root root viewport alignment is now 0-mismatch for the current fixture
-set (`xtask compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3`) by adding fixture-scoped root
-viewport overrides keyed by fixture `diagram_id`.
+Recent progress (2026-02-07): class parity-root root viewport alignment is now 0-mismatch for the current fixture
+set (`xtask compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3`) without relying on fixture-scoped
+root viewport overrides.
 
-Recent progress (2026-02-06): mindmap parity-root root viewport alignment is now 0-mismatch for the current fixture
-set (`xtask compare-mindmap-svgs --check-dom --dom-mode parity-root --dom-decimals 3`) by adding fixture-scoped root
-viewport overrides keyed by fixture `diagram_id`.
+Recent progress (2026-02-07): mindmap parity-root root viewport alignment is now 0-mismatch for the current fixture
+set (`xtask compare-mindmap-svgs --check-dom --dom-mode parity-root --dom-decimals 3`) without relying on fixture-scoped
+root viewport overrides (mindmap root viewport override map is now empty).
 
 Recent progress (2026-02-06): state note blocks now trim per-line indentation (matching Mermaid) and note label
 widths use additional upstream overrides. This reduced state `parity-root` mismatches from 13 → 11 (and total
