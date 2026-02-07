@@ -5,7 +5,7 @@ Baseline version: Mermaid `@11.12.2`.
 As of 2026-02-07:
 
 - `parity` full compare: 0 mismatch.
-- `parity-root` full compare: 0 mismatch (507/507 upstream SVG baselines).
+- `parity-root` full compare: 0 mismatch (520/520 upstream SVG baselines).
 
 This document defines the next hardening phases after reaching baseline 100% parity for the
 current fixture set.
@@ -21,7 +21,7 @@ current fixture set.
 ### Upstream SVG Corpus
 
 - Total diagrams covered: 23
-- Total upstream SVG baselines: 507
+- Total upstream SVG baselines: 520
 
 ### Upstream Syntax Docs Inventory (11.12.2)
 
@@ -34,11 +34,11 @@ reviewable batches so that new mismatches are attributable and fixes are reversi
 
 Largest fixture buckets:
 
-- `flowchart`: 120
-- `gantt`: 73
-- `state`: 43
-- `sequence`: 40
-- `architecture`: 34
+- `flowchart`: 121
+- `gantt`: 78
+- `sequence`: 53
+- `state`: 44
+- `architecture`: 42
 
 ### Override Footprint (11.12.2)
 
