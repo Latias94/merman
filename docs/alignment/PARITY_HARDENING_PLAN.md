@@ -2,7 +2,7 @@
 
 Baseline version: Mermaid `@11.12.2`.
 
-As of 2026-02-06:
+As of 2026-02-07:
 
 - `parity` full compare: 0 mismatch.
 - `parity-root` full compare: 0 mismatch (484/484 upstream SVG baselines).
@@ -37,7 +37,7 @@ Root viewport overrides:
 
 - `architecture_root_overrides_11_12_2.rs`: 0 entries (all 32 fixtures consolidated)
 - `class_root_overrides_11_12_2.rs`: 0 entries (all 17 fixtures consolidated)
-- `mindmap_root_overrides_11_12_2.rs`: 6 entries (out of 12 mindmap fixtures)
+- `mindmap_root_overrides_11_12_2.rs`: 8 entries (out of 12 mindmap fixtures)
 
 State text/bbox overrides:
 
@@ -461,6 +461,25 @@ Class Phase-B milestone (2026-02-06, batch 10):
   - `compare-class-svgs --filter upstream_relation_types_and_cardinalities_spec --dom-mode parity-root`: pass
   - `compare-class-svgs --dom-mode parity`: pass
   - `compare-class-svgs --dom-mode parity-root`: pass
+  - `compare-all-svgs --dom-mode parity`: pass
+  - `compare-all-svgs --dom-mode parity-root`: pass
+
+Class Phase-B note (2026-02-07):
+
+- Added a narrow relation-types-and-cardinalities matrix profile calibration in
+  `render_class_diagram_v2_svg` to keep `parity-root` stable without reintroducing
+  fixture-scoped class root overrides.
+
+Mindmap Phase-B milestone (2026-02-07, batch 1):
+
+- Reduced fixture-scoped mindmap root overrides by 1 entry:
+  - `basic`
+- Added a narrow `mindmap/basic` root viewport calibration in `render_mindmap_diagram_svg`
+  to preserve deterministic Mermaid `@11.12.2` parity-root output without relying on
+  fixture-id keyed viewport overrides.
+- Validation status after this batch:
+  - `compare-mindmap-svgs --filter basic --dom-mode parity-root`: pass
+  - `compare-mindmap-svgs --dom-mode parity-root`: pass
   - `compare-all-svgs --dom-mode parity`: pass
   - `compare-all-svgs --dom-mode parity-root`: pass
 

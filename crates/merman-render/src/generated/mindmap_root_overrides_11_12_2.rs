@@ -7,7 +7,6 @@ pub fn lookup_mindmap_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
-        "basic" => Some(("5 5 294.05145263671875 54", "294.051")),
         "upstream_docs_unclear_indentation" => {
             Some(("5 5 242.63980102539062 210.3271942138672", "242.64"))
         }
