@@ -18,6 +18,7 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/timeline/timeline.spec.j
 - event containing markdown link (`http://` must not split): `fixtures/timeline/upstream_events_markdown_multiline.mmd`
 - multi-line events (continuation lines starting with `:`): `fixtures/timeline/upstream_events_markdown_multiline.mmd`
 - semicolons in title/section/events: `fixtures/timeline/upstream_semicolons.mmd`
+- semicolons (spec-derived case): `fixtures/timeline/upstream_semicolons_spec.mmd`
 - hashtags in title/section/events: `fixtures/timeline/upstream_hashtags.mmd`
 
 ## Additional Fixtures (non-spec)

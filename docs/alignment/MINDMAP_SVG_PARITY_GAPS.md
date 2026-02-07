@@ -13,20 +13,12 @@ This document tracks the remaining gaps for Mindmap SVG output parity against up
 
 ## Current mismatches (parity-root)
 
-The remaining Mindmap parity-root mismatches are dominated by root viewport attributes (`viewBox` and
-`style="max-width: ...px"`), which depend on the final COSE-Bilkent placements and our headless
-measurement of node sizes.
+None (as of 2026-02-07).
 
-As of 2026-02-04, the following fixtures are still mismatching in `parity-root` mode:
+Mindmap SVG DOM parity-root is currently 0-mismatch for the tracked fixture set, including the
+docs-derived example with `::icon(...)` and `<br/>` inside a label:
 
-- `basic`
-- `upstream_decorations_and_descriptions`
-- `upstream_hierarchy_nodes`
-- `upstream_node_types`
-- `upstream_root_type_bang`
-- `upstream_root_type_cloud`
-- `upstream_shaped_root_without_id`
-- `upstream_whitespace_and_comments`
+- `fixtures/mindmap/upstream_docs_example_icons_br.mmd`
 
 ## Notes
 
@@ -34,4 +26,3 @@ As of 2026-02-04, the following fixtures are still mismatching in `parity-root` 
 - `manatee` contains a growing COSE-Bilkent port. The remaining work is primarily in matching
   Cytoscape/cose-base iteration behavior and tie-breaking so the final node coordinates (and thus
   root viewport sizing) match upstream exactly.
-
