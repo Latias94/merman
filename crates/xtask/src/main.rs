@@ -11652,7 +11652,8 @@ fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
                 || (diagram == "flowchart" && dt == "flowchart-v2")
                 || (diagram == "state" && dt == "stateDiagram")
                 || (diagram == "class" && matches!(dt, "class" | "classDiagram"))
-                || (diagram == "gitgraph" && dt == "gitGraph");
+                || (diagram == "gitgraph" && dt == "gitGraph")
+                || (diagram == "quadrantchart" && dt == "quadrantChart");
             if !matches {
                 continue;
             }

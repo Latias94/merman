@@ -241,6 +241,51 @@ fn default_quadrant_theme() -> QuadrantThemeConfig {
     }
 }
 
+fn quadrant_theme_with_overrides(effective_config: &Value) -> QuadrantThemeConfig {
+    let mut theme = default_quadrant_theme();
+
+    // Mermaid applies theme variables as raw CSS tokens (some upstream examples omit the leading
+    // `#` in hex colors). Preserve the string verbatim for DOM parity.
+    let set = |field: &mut String, key: &str| {
+        if let Some(v) = config_string(effective_config, &["themeVariables", key]) {
+            *field = v;
+        }
+    };
+
+    set(&mut theme.quadrant1_fill, "quadrant1Fill");
+    set(&mut theme.quadrant2_fill, "quadrant2Fill");
+    set(&mut theme.quadrant3_fill, "quadrant3Fill");
+    set(&mut theme.quadrant4_fill, "quadrant4Fill");
+
+    set(&mut theme.quadrant1_text_fill, "quadrant1TextFill");
+    set(&mut theme.quadrant2_text_fill, "quadrant2TextFill");
+    set(&mut theme.quadrant3_text_fill, "quadrant3TextFill");
+    set(&mut theme.quadrant4_text_fill, "quadrant4TextFill");
+
+    set(&mut theme.quadrant_point_fill, "quadrantPointFill");
+    set(&mut theme.quadrant_point_text_fill, "quadrantPointTextFill");
+    set(
+        &mut theme.quadrant_x_axis_text_fill,
+        "quadrantXAxisTextFill",
+    );
+    set(
+        &mut theme.quadrant_y_axis_text_fill,
+        "quadrantYAxisTextFill",
+    );
+    set(&mut theme.quadrant_title_fill, "quadrantTitleFill");
+
+    set(
+        &mut theme.quadrant_internal_border_stroke_fill,
+        "quadrantInternalBorderStrokeFill",
+    );
+    set(
+        &mut theme.quadrant_external_border_stroke_fill,
+        "quadrantExternalBorderStrokeFill",
+    );
+
+    theme
+}
+
 fn scale_linear(domain: (f64, f64), range: (f64, f64), v: f64) -> f64 {
     let (d0, d1) = domain;
     let (r0, r1) = range;
@@ -259,7 +304,7 @@ pub fn layout_quadrantchart_diagram(
     let model: QuadrantChartModel = serde_json::from_value(model.clone())?;
 
     let cfg = default_quadrant_config(effective_config);
-    let theme = default_quadrant_theme();
+    let theme = quadrant_theme_with_overrides(effective_config);
 
     let title_text = model.title.as_deref().unwrap_or("").trim();
     let show_title = !title_text.is_empty();

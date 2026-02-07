@@ -1,0 +1,173 @@
+{
+  "diagramType": "quadrantChart",
+  "layout": {
+    "QuadrantChartDiagram": {
+      "width": 400.0,
+      "height": 400.0,
+      "title": null,
+      "quadrants": [
+        {
+          "x": 213.0,
+          "y": 31.0,
+          "width": 182.0,
+          "height": 182.0,
+          "fill": "#ECECFF",
+          "text": {
+            "text": "Plan",
+            "x": 304.0,
+            "y": 122.0,
+            "fill": "ff0000",
+            "fontSize": 16.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "middle"
+          }
+        },
+        {
+          "x": 31.0,
+          "y": 31.0,
+          "width": 182.0,
+          "height": 182.0,
+          "fill": "#f1f1ff",
+          "text": {
+            "text": "Do",
+            "x": 122.0,
+            "y": 122.0,
+            "fill": "#0e0e00",
+            "fontSize": 16.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "middle"
+          }
+        },
+        {
+          "x": 31.0,
+          "y": 213.0,
+          "width": 182.0,
+          "height": 182.0,
+          "fill": "#f6f6ff",
+          "text": {
+            "text": "Delegate",
+            "x": 122.0,
+            "y": 304.0,
+            "fill": "#090900",
+            "fontSize": 16.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "middle"
+          }
+        },
+        {
+          "x": 213.0,
+          "y": 213.0,
+          "width": 182.0,
+          "height": 182.0,
+          "fill": "#fbfbff",
+          "text": {
+            "text": "Delete",
+            "x": 304.0,
+            "y": 304.0,
+            "fill": "#040400",
+            "fontSize": 16.0,
+            "rotation": 0.0,
+            "verticalPos": "center",
+            "horizontalPos": "middle"
+          }
+        }
+      ],
+      "borderLines": [
+        {
+          "strokeWidth": 2.0,
+          "strokeFill": "rgb(199, 199, 241)",
+          "x1": 30.0,
+          "y1": 31.0,
+          "x2": 396.0,
+          "y2": 31.0
+        },
+        {
+          "strokeWidth": 2.0,
+          "strokeFill": "rgb(199, 199, 241)",
+          "x1": 395.0,
+          "y1": 32.0,
+          "x2": 395.0,
+          "y2": 394.0
+        },
+        {
+          "strokeWidth": 2.0,
+          "strokeFill": "rgb(199, 199, 241)",
+          "x1": 30.0,
+          "y1": 395.0,
+          "x2": 396.0,
+          "y2": 395.0
+        },
+        {
+          "strokeWidth": 2.0,
+          "strokeFill": "rgb(199, 199, 241)",
+          "x1": 31.0,
+          "y1": 32.0,
+          "x2": 31.0,
+          "y2": 394.0
+        },
+        {
+          "strokeWidth": 1.0,
+          "strokeFill": "rgb(199, 199, 241)",
+          "x1": 213.0,
+          "y1": 32.0,
+          "x2": 213.0,
+          "y2": 394.0
+        },
+        {
+          "strokeWidth": 1.0,
+          "strokeFill": "rgb(199, 199, 241)",
+          "x1": 32.0,
+          "y1": 213.0,
+          "x2": 394.0,
+          "y2": 213.0
+        }
+      ],
+      "points": [],
+      "axisLabels": [
+        {
+          "text": "Urgent",
+          "x": 122.0,
+          "y": 5.0,
+          "fill": "#131300",
+          "fontSize": 16.0,
+          "rotation": 0.0,
+          "verticalPos": "center",
+          "horizontalPos": "top"
+        },
+        {
+          "text": "Not Urgent",
+          "x": 304.0,
+          "y": 5.0,
+          "fill": "#131300",
+          "fontSize": 16.0,
+          "rotation": 0.0,
+          "verticalPos": "center",
+          "horizontalPos": "top"
+        },
+        {
+          "text": "Not Important",
+          "x": 5.0,
+          "y": 304.0,
+          "fill": "#131300",
+          "fontSize": 16.0,
+          "rotation": -90.0,
+          "verticalPos": "center",
+          "horizontalPos": "top"
+        },
+        {
+          "text": "Important ❤",
+          "x": 5.0,
+          "y": 122.0,
+          "fill": "#131300",
+          "fontSize": 16.0,
+          "rotation": -90.0,
+          "verticalPos": "center",
+          "horizontalPos": "top"
+        }
+      ]
+    }
+  }
+}

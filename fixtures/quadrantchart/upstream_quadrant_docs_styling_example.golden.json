@@ -1,0 +1,115 @@
+{
+  "diagramType": "quadrantChart",
+  "model": {
+    "type": "quadrantChart",
+    "title": "Reach and engagement of campaigns",
+    "accTitle": null,
+    "accDescr": null,
+    "quadrants": {
+      "quadrant1Text": "We should expand",
+      "quadrant2Text": "Need to promote",
+      "quadrant3Text": "Re-evaluate",
+      "quadrant4Text": "May be improved"
+    },
+    "axes": {
+      "xAxisLeftText": "Low Reach",
+      "xAxisRightText": "High Reach",
+      "yAxisBottomText": "Low Engagement",
+      "yAxisTopText": "High Engagement"
+    },
+    "points": [
+      {
+        "text": "Campaign F",
+        "x": 0.4,
+        "y": 0.5,
+        "className": "class3",
+        "styles": {
+          "radius": null,
+          "color": "#0000ff",
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "Campaign E",
+        "x": 0.5,
+        "y": 0.4,
+        "className": "class2",
+        "styles": {
+          "radius": null,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "Campaign D",
+        "x": 0.6,
+        "y": 0.3,
+        "className": null,
+        "styles": {
+          "radius": 15,
+          "color": "#ff33f0",
+          "strokeColor": "#00ff0f",
+          "strokeWidth": "5px"
+        }
+      },
+      {
+        "text": "Campaign C",
+        "x": 0.7,
+        "y": 0.2,
+        "className": null,
+        "styles": {
+          "radius": 25,
+          "color": "#00ff33",
+          "strokeColor": "#10f0f0",
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "Campaign B",
+        "x": 0.8,
+        "y": 0.1,
+        "className": "class1",
+        "styles": {
+          "radius": 10,
+          "color": "#ff3300",
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      },
+      {
+        "text": "Campaign A",
+        "x": 0.9,
+        "y": 0.0,
+        "className": null,
+        "styles": {
+          "radius": 12,
+          "color": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        }
+      }
+    ],
+    "classes": {
+      "class3": {
+        "radius": 10,
+        "color": "#f00fff",
+        "strokeColor": null,
+        "strokeWidth": null
+      },
+      "class1": {
+        "radius": null,
+        "color": "#109060",
+        "strokeColor": null,
+        "strokeWidth": null
+      },
+      "class2": {
+        "radius": 10,
+        "color": "#908342",
+        "strokeColor": "#310085",
+        "strokeWidth": "10px"
+      }
+    }
+  }
+}

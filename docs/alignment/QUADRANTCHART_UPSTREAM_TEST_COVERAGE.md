@@ -24,4 +24,12 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/quadrant-chart/quadrantD
 ## SVG Parity
 
 - Local renderer (Stage B): `crates/merman-render/src/svg.rs` (`render_quadrantchart_diagram_svg`)
-- DOM parity compare: `cargo run -p xtask -- compare-quadrantchart-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- DOM parity compare: `cargo run -p xtask -- compare-quadrantchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
+
+Docs-derived fixtures (rendered via official Mermaid CLI, version-pinned):
+
+Source: `repo-ref/mermaid/packages/mermaid/src/docs/syntax/quadrantChart.md`
+
+- docs example (reach/engagement): `fixtures/quadrantchart/upstream_quadrant_docs_example_reach_engagement.mmd`
+- docs example (config + themeVariables): `fixtures/quadrantchart/upstream_quadrant_docs_config_and_theme_example.mmd`
+- docs example (point styling): `fixtures/quadrantchart/upstream_quadrant_docs_styling_example.mmd`
