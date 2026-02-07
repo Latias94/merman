@@ -10,10 +10,6 @@ pub fn lookup_mindmap_root_viewport_override(
         "upstream_docs_unclear_indentation" => {
             Some(("5 5 242.63980102539062 210.3271942138672", "242.64"))
         }
-        "upstream_root_type_bang" => Some((
-            "7.709373474121094 6.599998474121094 155.46875 100",
-            "155.469",
-        )),
         "upstream_root_type_cloud" => Some((
             "6.52117919921875 6.006782531738281 111.66693878173828 86.86467742919922",
             "111.667",
