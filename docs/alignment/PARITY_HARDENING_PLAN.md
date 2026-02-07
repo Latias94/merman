@@ -23,6 +23,15 @@ current fixture set.
 - Total diagrams covered: 23
 - Total upstream SVG baselines: 507
 
+### Upstream Syntax Docs Inventory (11.12.2)
+
+Mermaid's syntax docs contain a large set of Mermaid code blocks that can be turned into fixtures.
+As a rough upper bound, `repo-ref/mermaid/docs/syntax/*.md` contains `769` diagram-typed code fences
+(````mermaid`, ` ```flowchart`, ` ```sequenceDiagram`, ..., ` ```zenuml`) at tag `@11.12.2`.
+
+We intentionally do not import these in one shot. Phase A grows the fixture corpus in small,
+reviewable batches so that new mismatches are attributable and fixes are reversible.
+
 Largest fixture buckets:
 
 - `flowchart`: 120

@@ -55,6 +55,13 @@ Legend:
 | QuadrantChart | yes | yes | Stage B | yes | yes (`xtask compare-quadrantchart-svgs`) |
 | Sankey | yes | yes | Stage B | yes | yes (`xtask compare-sankey-svgs`, DOM parity-root mode) |
 
+Notes:
+
+- Mermaid `error` is a registered diagram type upstream, but it is currently tracked as parse/snapshot-only
+  (see `docs/alignment/ERROR_UPSTREAM_TEST_COVERAGE.md`). We do not yet maintain upstream SVG baselines for it.
+- Mermaid `zenuml` is provided as an external diagram plugin upstream (`registerExternalDiagrams(...)` in the docs).
+  `merman` does not yet implement an external-diagram plugin API; it is out of scope for the current SVG parity corpus.
+
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
 the dashed separators now use the exact same x-coordinates as the frame edges to match upstream SVG and
 avoid sub-pixel gaps at the frame border.
