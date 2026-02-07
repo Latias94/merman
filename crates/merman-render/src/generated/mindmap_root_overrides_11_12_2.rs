@@ -10,7 +10,6 @@ pub fn lookup_mindmap_root_viewport_override(
         "upstream_docs_unclear_indentation" => {
             Some(("5 5 242.63980102539062 210.3271942138672", "242.64"))
         }
-        "upstream_hierarchy_nodes" => Some(("5 5 121.3125 345.82373046875", "121.312")),
         "upstream_node_types" => Some((
             "7.709373474121094 5 412.6386413574219 268.28924560546875",
             "412.639",
