@@ -113,6 +113,10 @@ Recent progress (2026-02-08): SVG Block renderer implementation was extracted fr
 `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/block.rs` to improve
 maintainability while keeping all parity checks green.
 
+Recent progress (2026-02-08): SVG Radar renderer implementation was extracted from the monolithic
+`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/radar.rs` to improve
+maintainability while keeping all parity checks green.
+
 Recent progress (2026-02-08): SVG sequence renderer implementation was extracted from the monolithic
 `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/sequence.rs` to improve
 maintainability while keeping all parity checks green.
