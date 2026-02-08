@@ -137,7 +137,7 @@ NOTES:\n\
   - If <path> is omitted or '-', input is read from stdin.\n\
   - parse prints the semantic JSON model by default; --meta wraps it with parse metadata.\n\
   - render prints SVG to stdout by default; use --out to write a file.\n\
-  - PNG output requires --out.\n\
+  - PNG output defaults to writing next to the input file (or ./out.png for stdin).\n\
 "
 }
 
@@ -289,6 +289,20 @@ fn write_text(text: &str, out: Option<&str>) -> Result<(), CliError> {
             std::fs::write(path, text)?;
             Ok(())
         }
+    }
+}
+
+fn default_png_out_path(input: Option<&str>) -> std::path::PathBuf {
+    match input {
+        Some(path) if path != "-" => {
+            let p = std::path::PathBuf::from(path);
+            if p.extension().is_some() {
+                p.with_extension("png")
+            } else {
+                p.with_extension("png")
+            }
+        }
+        _ => std::path::PathBuf::from("out.png"),
     }
 }
 
@@ -481,12 +495,19 @@ fn run(args: Args) -> Result<(), CliError> {
                     write_text(&svg, args.out.as_deref())?;
                 }
                 RenderFormat::Png => {
-                    let Some(out) = args.out.as_deref() else {
-                        return Err(CliError::Usage(usage()));
-                    };
                     let bytes =
                         render_svg_to_png(&svg, args.render_scale, args.background.as_deref())?;
-                    std::fs::write(out, bytes)?;
+                    let out = args.out.clone().unwrap_or_else(|| {
+                        default_png_out_path(args.input.as_deref())
+                            .to_string_lossy()
+                            .to_string()
+                    });
+                    if out == "-" {
+                        use std::io::Write;
+                        std::io::stdout().lock().write_all(&bytes)?;
+                    } else {
+                        std::fs::write(out, bytes)?;
+                    }
                 }
             }
             Ok(())
