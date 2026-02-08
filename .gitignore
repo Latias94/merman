@@ -12,3 +12,10 @@
 /cose-base-*.tgz
 /cytoscape-fcose-*.tgz
 /layout-base-*.tgz
+
+# Upstream docs example fixtures (generated locally). Promote to tracked fixtures explicitly
+# when we decide they are part of the official corpus.
+/fixtures/**/upstream_docs_examples_*.mmd
+/fixtures/**/upstream_docs_examples_*.golden.json
+/fixtures/**/upstream_docs_examples_*.layout.golden.json
+/fixtures/upstream-svgs/**/upstream_docs_examples_*.svg
