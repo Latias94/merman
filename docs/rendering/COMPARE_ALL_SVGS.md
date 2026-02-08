@@ -36,3 +36,9 @@ checks in one shot and aggregates failures.
 Example:
 
 - `cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --flowchart-text-measurer vendored --report-root`
+
+## Notes
+
+- `parity-root` depends on the headless `getBBox()`-like bounds approximation in `merman-render`.
+  It treats `<a>` as a transform container (so link-wrapped nodes contribute correctly), and it
+  ignores non-rendered containers like `<defs>`/`<marker>` when deriving the root viewport.

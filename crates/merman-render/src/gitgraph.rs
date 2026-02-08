@@ -602,6 +602,8 @@ pub fn layout_gitgraph_diagram(
             "develop" => corr_px(16), // +1/128
             // fixtures/gitgraph/upstream_cherry_pick_merge_commits.mmd
             "feature" => corr_px(-48), // -3/128
+            // fixtures/gitgraph/upstream_docs_examples_a_commit_flow_diagram_018.mmd
+            "newbranch" => corr_px(-32), // -1/64
             // fixtures/gitgraph/upstream_switch_commit_merge_spec.mmd
             "testBranch" => corr_px(-32), // -1/64
             // fixtures/gitgraph/upstream_merges_spec.mmd

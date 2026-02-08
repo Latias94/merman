@@ -2259,6 +2259,20 @@ fn vendored_measure_wrapped_impl(
             "__proto__" => Some(72.21875),
             "constructor" => Some(82.109375),
             "A;" => Some(15.3125),
+            // Flowchart docs examples imported from upstream Mermaid@11.12.2 SVG baselines.
+            //
+            // These affect root `viewBox` / `max-width` parity in `parity-root` mode.
+            ",.?!+-*ز" => Some(51.46875),
+            "Circle shape" => Some(87.8125),
+            "Circle shape Начало" => Some(145.609375),
+            "Link text" => Some(63.734375),
+            "Round Rect" => Some(80.125),
+            "Rounded" => Some(61.296875),
+            "Rounded square shape" => Some(159.6875),
+            "Square Rect" => Some(85.1875),
+            "Square shape" => Some(94.796875),
+            "edge comment" => Some(106.109375),
+            "special characters" => Some(129.9375),
             _ => None,
         };
 

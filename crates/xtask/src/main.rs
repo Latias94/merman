@@ -2845,8 +2845,16 @@ fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             ))),
         };
 
-        if let Err(err) = res {
-            failures.push(format!("{diagram}: {err}"));
+        match res {
+            Ok(()) => {}
+            Err(XtaskError::SvgCompareFailed(msg))
+                if filter.is_some()
+                    && only_diagrams.is_empty()
+                    && msg.contains("no .mmd fixtures matched under ") =>
+            {
+                println!("(skipped: {msg})");
+            }
+            Err(err) => failures.push(format!("{diagram}: {err}")),
         }
     }
 
