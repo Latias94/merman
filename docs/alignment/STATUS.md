@@ -81,6 +81,10 @@ Recent progress (2026-02-08): SVG ER renderer implementation was extracted from 
 `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/er.rs` to improve
 maintainability while keeping all parity checks green.
 
+Recent progress (2026-02-08): SVG Sankey renderer implementation was extracted from the monolithic
+`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/sankey.rs` to improve
+maintainability while keeping all parity checks green.
+
 Recent progress (2026-02-08): SVG sequence renderer implementation was extracted from the monolithic
 `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/sequence.rs` to improve
 maintainability while keeping all parity checks green.
