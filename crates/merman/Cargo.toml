@@ -8,6 +8,8 @@ homepage.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Rust, headless, 1:1 re-implementation of Mermaid (pinned to mermaid@11.12.2)."
+documentation = "https://docs.rs/merman"
+readme = "../../README.md"
 keywords = ["mermaid", "diagrams", "svg", "parser", "headless"]
 categories = ["parser-implementations", "visualization"]
 

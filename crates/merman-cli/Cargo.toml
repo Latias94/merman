@@ -8,6 +8,8 @@ homepage.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "CLI for parsing/layout/rendering Mermaid diagrams (headless)."
+documentation = "https://docs.rs/merman-cli"
+readme = "../../README.md"
 keywords = ["mermaid", "diagrams", "svg", "cli"]
 categories = ["command-line-utilities", "visualization"]
 
