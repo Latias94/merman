@@ -44,6 +44,8 @@ Populate `repo-ref/*` by cloning each repo at the pinned commit shown in
   - `cargo run -p merman-cli -- layout path/to/diagram.mmd --pretty`
 - Render SVG (prints to stdout by default):
   - `cargo run -p merman-cli -- render path/to/diagram.mmd --out out.svg`
+- Render PNG:
+  - `cargo run -p merman-cli -- render --format png --out out.png path/to/diagram.mmd`
 
 ## Library (headless)
 

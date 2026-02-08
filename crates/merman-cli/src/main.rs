@@ -7,6 +7,7 @@ use merman_render::text::{
 use serde::Serialize;
 use serde_json::Value;
 use std::io::Read;
+use std::str::FromStr;
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -72,6 +73,25 @@ enum TextMeasurerKind {
     Vendored,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+enum RenderFormat {
+    #[default]
+    Svg,
+    Png,
+}
+
+impl FromStr for RenderFormat {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "svg" => Ok(Self::Svg),
+            "png" => Ok(Self::Png),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 struct Args {
     command: Command,
@@ -81,6 +101,9 @@ struct Args {
     suppress_errors: bool,
     hand_drawn_seed: Option<u64>,
     text_measurer: TextMeasurerKind,
+    render_format: RenderFormat,
+    render_scale: f32,
+    background: Option<String>,
     viewport_width: f64,
     viewport_height: f64,
     diagram_id: Option<String>,
@@ -108,18 +131,21 @@ USAGE:\n\
   merman-cli [parse] [--pretty] [--meta] [--suppress-errors] [<path>|-]\n\
   merman-cli detect [<path>|-]\n\
   merman-cli layout [--pretty] [--text-measurer deterministic|vendored] [--viewport-width <w>] [--viewport-height <h>] [--suppress-errors] [<path>|-]\n\
-  merman-cli render [--text-measurer deterministic|vendored] [--viewport-width <w>] [--viewport-height <h>] [--id <diagram-id>] [--out <path>] [--hand-drawn-seed <n>] [--suppress-errors] [<path>|-]\n\
+  merman-cli render [--format svg|png] [--scale <n>] [--background <css-color>] [--text-measurer deterministic|vendored] [--viewport-width <w>] [--viewport-height <h>] [--id <diagram-id>] [--out <path>] [--hand-drawn-seed <n>] [--suppress-errors] [<path>|-]\n\
 \n\
 NOTES:\n\
   - If <path> is omitted or '-', input is read from stdin.\n\
   - parse prints the semantic JSON model by default; --meta wraps it with parse metadata.\n\
   - render prints SVG to stdout by default; use --out to write a file.\n\
+  - PNG output requires --out.\n\
 "
 }
 
 fn parse_args(argv: &[String]) -> Result<Args, CliError> {
     let mut args = Args {
         command: Command::Parse,
+        render_format: RenderFormat::Svg,
+        render_scale: 1.0,
         viewport_width: 800.0,
         viewport_height: 600.0,
         ..Default::default()
@@ -145,6 +171,31 @@ fn parse_args(argv: &[String]) -> Result<Args, CliError> {
                     "vendored" => TextMeasurerKind::Vendored,
                     _ => return Err(CliError::Usage(usage())),
                 };
+            }
+            "--format" => {
+                let Some(fmt) = it.next() else {
+                    return Err(CliError::Usage(usage()));
+                };
+                args.render_format = fmt
+                    .parse::<RenderFormat>()
+                    .map_err(|_| CliError::Usage(usage()))?;
+            }
+            "--scale" => {
+                let Some(scale) = it.next() else {
+                    return Err(CliError::Usage(usage()));
+                };
+                args.render_scale = scale.parse::<f32>().map_err(|_| CliError::Usage(usage()))?;
+                if !(args.render_scale.is_finite() && args.render_scale > 0.0) {
+                    return Err(CliError::Usage(usage()));
+                }
+            }
+            "--background" => {
+                let Some(bg) = it.next() else {
+                    return Err(CliError::Usage(usage()));
+                };
+                if !bg.trim().is_empty() {
+                    args.background = Some(bg.trim().to_string());
+                }
             }
             "--viewport-width" => {
                 let Some(w) = it.next() else {
@@ -241,6 +292,109 @@ fn write_text(text: &str, out: Option<&str>) -> Result<(), CliError> {
     }
 }
 
+fn render_svg_to_png(svg: &str, scale: f32, background: Option<&str>) -> Result<Vec<u8>, CliError> {
+    fn parse_svg_viewbox(svg: &str) -> Option<(f32, f32)> {
+        // Cheap, non-validating parse for root viewBox: `viewBox="minX minY w h"`.
+        // This is sufficient for our own Mermaid-like SVG output.
+        let i = svg.find("viewBox=\"")?;
+        let rest = &svg[i + "viewBox=\"".len()..];
+        let end = rest.find('"')?;
+        let raw = &rest[..end];
+        let mut it = raw.split_whitespace();
+        let _min_x = it.next()?.parse::<f32>().ok()?;
+        let _min_y = it.next()?.parse::<f32>().ok()?;
+        let w = it.next()?.parse::<f32>().ok()?;
+        let h = it.next()?.parse::<f32>().ok()?;
+        if w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0 {
+            Some((w, h))
+        } else {
+            None
+        }
+    }
+
+    let (vb_w, vb_h) =
+        parse_svg_viewbox(svg).ok_or(CliError::Usage("render png requires an SVG root viewBox"))?;
+
+    let width_px = (vb_w * scale).ceil().max(1.0) as u32;
+    let height_px = (vb_h * scale).ceil().max(1.0) as u32;
+
+    let mut opt = usvg::Options::default();
+    // Keep output stable-ish across environments while still using system fonts.
+    opt.fontdb_mut().load_system_fonts();
+    // Mermaid baseline assumes a sans-serif stack; system selection may vary, but this is best-effort.
+    opt.font_family = "Arial".to_string();
+
+    let tree = usvg::Tree::from_str(svg, &opt)
+        .map_err(|_| CliError::Usage("failed to parse SVG for PNG rendering"))?;
+
+    let mut pixmap = tiny_skia::Pixmap::new(width_px, height_px).ok_or(CliError::Usage(
+        "failed to allocate pixmap for PNG rendering",
+    ))?;
+
+    if let Some(bg) = background {
+        if let Some(color) = parse_tiny_skia_color(bg) {
+            pixmap.fill(color);
+        }
+    }
+
+    let transform = tiny_skia::Transform::from_scale(scale, scale);
+    resvg::render(&tree, transform, &mut pixmap.as_mut());
+
+    pixmap
+        .encode_png()
+        .map_err(|_| CliError::Usage("failed to encode PNG"))
+}
+
+fn parse_tiny_skia_color(text: &str) -> Option<tiny_skia::Color> {
+    let s = text.trim().to_ascii_lowercase();
+    match s.as_str() {
+        "transparent" => return Some(tiny_skia::Color::from_rgba8(0, 0, 0, 0)),
+        "white" => return Some(tiny_skia::Color::from_rgba8(255, 255, 255, 255)),
+        "black" => return Some(tiny_skia::Color::from_rgba8(0, 0, 0, 255)),
+        _ => {}
+    }
+
+    let hex = s.strip_prefix('#')?;
+    fn hex2(b: &[u8]) -> Option<u8> {
+        let hi = (*b.get(0)? as char).to_digit(16)? as u8;
+        let lo = (*b.get(1)? as char).to_digit(16)? as u8;
+        Some((hi << 4) | lo)
+    }
+    fn hex1(c: u8) -> Option<u8> {
+        let v = (c as char).to_digit(16)? as u8;
+        Some((v << 4) | v)
+    }
+
+    let bytes = hex.as_bytes();
+    match bytes.len() {
+        3 => Some(tiny_skia::Color::from_rgba8(
+            hex1(bytes[0])?,
+            hex1(bytes[1])?,
+            hex1(bytes[2])?,
+            255,
+        )),
+        4 => Some(tiny_skia::Color::from_rgba8(
+            hex1(bytes[0])?,
+            hex1(bytes[1])?,
+            hex1(bytes[2])?,
+            hex1(bytes[3])?,
+        )),
+        6 => Some(tiny_skia::Color::from_rgba8(
+            hex2(&bytes[0..2])?,
+            hex2(&bytes[2..4])?,
+            hex2(&bytes[4..6])?,
+            255,
+        )),
+        8 => Some(tiny_skia::Color::from_rgba8(
+            hex2(&bytes[0..2])?,
+            hex2(&bytes[2..4])?,
+            hex2(&bytes[4..6])?,
+            hex2(&bytes[6..8])?,
+        )),
+        _ => None,
+    }
+}
+
 fn run(args: Args) -> Result<(), CliError> {
     let text = read_input(args.input.as_deref())?;
     let mut engine = Engine::new();
@@ -321,7 +475,20 @@ fn run(args: Args) -> Result<(), CliError> {
                 measurer.as_ref(),
                 &svg_options,
             )?;
-            write_text(&svg, args.out.as_deref())?;
+
+            match args.render_format {
+                RenderFormat::Svg => {
+                    write_text(&svg, args.out.as_deref())?;
+                }
+                RenderFormat::Png => {
+                    let Some(out) = args.out.as_deref() else {
+                        return Err(CliError::Usage(usage()));
+                    };
+                    let bytes =
+                        render_svg_to_png(&svg, args.render_scale, args.background.as_deref())?;
+                    std::fs::write(out, bytes)?;
+                }
+            }
             Ok(())
         }
     }
