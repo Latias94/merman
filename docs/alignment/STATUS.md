@@ -141,6 +141,10 @@ Recent progress (2026-02-08): SVG state diagram renderer implementation was extr
 `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/state.rs` to improve
 maintainability while keeping all parity checks green.
 
+Recent progress (2026-02-08): SVG Requirement renderer implementation was extracted from the monolithic
+`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/requirement.rs` to improve
+maintainability while keeping all parity checks green.
+
 Recent progress (2026-02-08): SVG class diagram renderer implementation was extracted from the monolithic
 `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/class.rs` to improve
 maintainability while keeping all parity checks green.
