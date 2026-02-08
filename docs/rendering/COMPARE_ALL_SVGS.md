@@ -42,3 +42,10 @@ Example:
 - `parity-root` depends on the headless `getBBox()`-like bounds approximation in `merman-render`.
   It treats `<a>` as a transform container (so link-wrapped nodes contribute correctly), and it
   ignores non-rendered containers like `<defs>`/`<marker>` when deriving the root viewport.
+
+## Precision
+
+- `--dom-decimals 3` is the current stability gate for `parity-root`.
+- `--dom-decimals 6` is a useful stress test for root viewport parity (`viewBox` + `max-width`),
+  but it is expected to surface small residual numeric drift as we continue to tighten the
+  headless bbox + viewport pipeline.
