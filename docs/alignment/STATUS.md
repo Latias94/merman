@@ -73,6 +73,10 @@ mismatches out of 520 upstream SVG baselines (100% passing).
 Post-baseline hardening plan (coverage growth + override consolidation + CI guardrails) is tracked in
 `docs/alignment/PARITY_HARDENING_PLAN.md`.
 
+Recent progress (2026-02-08): SVG flowchart renderer implementation was extracted from the monolithic
+`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/flowchart.rs` to improve
+maintainability while keeping all parity checks green.
+
 Recent progress (2026-02-06): Phase A fixture expansion added three upstream-rendered SVG baselines
 (`upstream_architecture_svgdraw_ids_spec`, `upstream_docs_define_class_relationship`,
 `upstream_docs_unclear_indentation`) and maintained 0-mismatch full parity/parity-root checks.
