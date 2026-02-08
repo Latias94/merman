@@ -129,6 +129,10 @@ Recent progress (2026-02-08): SVG Treemap renderer implementation was extracted 
 `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/treemap.rs` to improve
 maintainability while keeping all parity checks green.
 
+Recent progress (2026-02-08): SVG Error renderer implementation was extracted from the monolithic
+`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/error.rs` to improve
+maintainability while keeping all parity checks green.
+
 Recent progress (2026-02-08): SVG sequence renderer implementation was extracted from the monolithic
 `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/sequence.rs` to improve
 maintainability while keeping all parity checks green.
