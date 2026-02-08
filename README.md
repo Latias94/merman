@@ -11,6 +11,7 @@ The upstream Mermaid implementation is the spec (see `docs/adr/0014-upstream-par
 - Compute headless layout (geometry + routes) as JSON
 - Render SVG (parity-focused DOM)
 - Render PNG (SVG rasterization via `resvg`)
+- Render JPG (SVG rasterization via `resvg`)
 
 Diagram coverage and current parity status live in `docs/alignment/STATUS.md`.
 
@@ -40,6 +41,11 @@ The goal is not “it looks similar”, but “it stays aligned”.
     - `cargo run -p merman-cli -- render --format png path/to/diagram.mmd`
   - Explicit output path:
     - `cargo run -p merman-cli -- render --format png --out out.png path/to/diagram.mmd`
+- Render JPG:
+  - Default output path (writes next to the input file):
+    - `cargo run -p merman-cli -- render --format jpg path/to/diagram.mmd`
+  - Explicit output path:
+    - `cargo run -p merman-cli -- render --format jpg --out out.jpg path/to/diagram.mmd`
 
 ## Library
 

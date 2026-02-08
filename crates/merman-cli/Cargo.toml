@@ -7,7 +7,7 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "CLI to parse/layout/render Mermaid diagrams to SVG/PNG (headless)."
+description = "CLI to parse/layout/render Mermaid diagrams to SVG/PNG/JPG (headless)."
 documentation = "https://docs.rs/merman-cli"
 readme = "../../README.md"
 keywords = ["mermaid", "diagrams", "svg", "png", "cli"]
@@ -19,6 +19,7 @@ merman.workspace = true
 merman-render.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
 resvg = "0.46.0"
 usvg = "0.46.0"
 tiny-skia = "0.11.4"

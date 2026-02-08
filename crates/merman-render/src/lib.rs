@@ -1,5 +1,11 @@
 #![forbid(unsafe_code)]
 
+//! Headless layout + rendering for Mermaid diagrams.
+//!
+//! This crate consumes `merman-core`'s semantic models and produces:
+//! - a layout JSON (geometry + routes)
+//! - Mermaid-like SVG output with DOM parity checks against upstream baselines
+
 pub mod architecture;
 pub mod block;
 pub mod c4;

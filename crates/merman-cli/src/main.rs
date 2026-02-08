@@ -78,6 +78,7 @@ enum RenderFormat {
     #[default]
     Svg,
     Png,
+    Jpeg,
 }
 
 impl FromStr for RenderFormat {
@@ -87,6 +88,7 @@ impl FromStr for RenderFormat {
         match s.trim().to_ascii_lowercase().as_str() {
             "svg" => Ok(Self::Svg),
             "png" => Ok(Self::Png),
+            "jpg" | "jpeg" => Ok(Self::Jpeg),
             _ => Err(()),
         }
     }
@@ -131,13 +133,14 @@ USAGE:\n\
   merman-cli [parse] [--pretty] [--meta] [--suppress-errors] [<path>|-]\n\
   merman-cli detect [<path>|-]\n\
   merman-cli layout [--pretty] [--text-measurer deterministic|vendored] [--viewport-width <w>] [--viewport-height <h>] [--suppress-errors] [<path>|-]\n\
-  merman-cli render [--format svg|png] [--scale <n>] [--background <css-color>] [--text-measurer deterministic|vendored] [--viewport-width <w>] [--viewport-height <h>] [--id <diagram-id>] [--out <path>] [--hand-drawn-seed <n>] [--suppress-errors] [<path>|-]\n\
+  merman-cli render [--format svg|png|jpg] [--scale <n>] [--background <css-color>] [--text-measurer deterministic|vendored] [--viewport-width <w>] [--viewport-height <h>] [--id <diagram-id>] [--out <path>] [--hand-drawn-seed <n>] [--suppress-errors] [<path>|-]\n\
 \n\
 NOTES:\n\
   - If <path> is omitted or '-', input is read from stdin.\n\
   - parse prints the semantic JSON model by default; --meta wraps it with parse metadata.\n\
   - render prints SVG to stdout by default; use --out to write a file.\n\
   - PNG output defaults to writing next to the input file (or ./out.png for stdin).\n\
+  - JPG output defaults to writing next to the input file (or ./out.jpg for stdin).\n\
 "
 }
 
@@ -292,42 +295,46 @@ fn write_text(text: &str, out: Option<&str>) -> Result<(), CliError> {
     }
 }
 
-fn default_png_out_path(input: Option<&str>) -> std::path::PathBuf {
+fn default_raster_out_path(input: Option<&str>, ext: &str) -> std::path::PathBuf {
     match input {
         Some(path) if path != "-" => {
             let p = std::path::PathBuf::from(path);
             if p.extension().is_some() {
-                p.with_extension("png")
+                p.with_extension(ext)
             } else {
-                p.with_extension("png")
+                p.with_extension(ext)
             }
         }
-        _ => std::path::PathBuf::from("out.png"),
+        _ => std::path::PathBuf::from(format!("out.{ext}")),
     }
 }
 
-fn render_svg_to_png(svg: &str, scale: f32, background: Option<&str>) -> Result<Vec<u8>, CliError> {
-    fn parse_svg_viewbox(svg: &str) -> Option<(f32, f32)> {
-        // Cheap, non-validating parse for root viewBox: `viewBox="minX minY w h"`.
-        // This is sufficient for our own Mermaid-like SVG output.
-        let i = svg.find("viewBox=\"")?;
-        let rest = &svg[i + "viewBox=\"".len()..];
-        let end = rest.find('"')?;
-        let raw = &rest[..end];
-        let mut it = raw.split_whitespace();
-        let _min_x = it.next()?.parse::<f32>().ok()?;
-        let _min_y = it.next()?.parse::<f32>().ok()?;
-        let w = it.next()?.parse::<f32>().ok()?;
-        let h = it.next()?.parse::<f32>().ok()?;
-        if w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0 {
-            Some((w, h))
-        } else {
-            None
-        }
+fn parse_svg_viewbox(svg: &str) -> Option<(f32, f32)> {
+    // Cheap, non-validating parse for root viewBox: `viewBox="minX minY w h"`.
+    // This is sufficient for our own Mermaid-like SVG output.
+    let i = svg.find("viewBox=\"")?;
+    let rest = &svg[i + "viewBox=\"".len()..];
+    let end = rest.find('"')?;
+    let raw = &rest[..end];
+    let mut it = raw.split_whitespace();
+    let _min_x = it.next()?.parse::<f32>().ok()?;
+    let _min_y = it.next()?.parse::<f32>().ok()?;
+    let w = it.next()?.parse::<f32>().ok()?;
+    let h = it.next()?.parse::<f32>().ok()?;
+    if w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0 {
+        Some((w, h))
+    } else {
+        None
     }
+}
 
+fn render_svg_to_pixmap(
+    svg: &str,
+    scale: f32,
+    background: Option<&str>,
+) -> Result<tiny_skia::Pixmap, CliError> {
     let (vb_w, vb_h) =
-        parse_svg_viewbox(svg).ok_or(CliError::Usage("render png requires an SVG root viewBox"))?;
+        parse_svg_viewbox(svg).ok_or(CliError::Usage("render requires an SVG root viewBox"))?;
 
     let width_px = (vb_w * scale).ceil().max(1.0) as u32;
     let height_px = (vb_h * scale).ceil().max(1.0) as u32;
@@ -342,7 +349,7 @@ fn render_svg_to_png(svg: &str, scale: f32, background: Option<&str>) -> Result<
         .map_err(|_| CliError::Usage("failed to parse SVG for PNG rendering"))?;
 
     let mut pixmap = tiny_skia::Pixmap::new(width_px, height_px).ok_or(CliError::Usage(
-        "failed to allocate pixmap for PNG rendering",
+        "failed to allocate pixmap for raster rendering",
     ))?;
 
     if let Some(bg) = background {
@@ -354,9 +361,51 @@ fn render_svg_to_png(svg: &str, scale: f32, background: Option<&str>) -> Result<
     let transform = tiny_skia::Transform::from_scale(scale, scale);
     resvg::render(&tree, transform, &mut pixmap.as_mut());
 
+    Ok(pixmap)
+}
+
+fn render_svg_to_png(svg: &str, scale: f32, background: Option<&str>) -> Result<Vec<u8>, CliError> {
+    let pixmap = render_svg_to_pixmap(svg, scale, background)?;
     pixmap
         .encode_png()
         .map_err(|_| CliError::Usage("failed to encode PNG"))
+}
+
+fn render_svg_to_jpeg(
+    svg: &str,
+    scale: f32,
+    background: Option<&str>,
+) -> Result<Vec<u8>, CliError> {
+    let bg = background.unwrap_or("white");
+    let Some(color) = parse_tiny_skia_color(bg) else {
+        return Err(CliError::Usage(
+            "invalid --background color for JPG rendering",
+        ));
+    };
+    if color.alpha() != 1.0 {
+        return Err(CliError::Usage(
+            "JPG rendering requires an opaque --background (e.g. white)",
+        ));
+    }
+
+    let pixmap = render_svg_to_pixmap(svg, scale, Some(bg))?;
+    let (w, h) = (pixmap.width(), pixmap.height());
+
+    // tiny-skia renders into an RGBA8 buffer. When the destination is opaque (we always fill a
+    // solid background for JPG), the alpha channel is always 255 and can be dropped safely.
+    let rgba = pixmap.data();
+    let mut rgb = vec![0u8; (w as usize) * (h as usize) * 3];
+    for (src, dst) in rgba.chunks_exact(4).zip(rgb.chunks_exact_mut(3)) {
+        dst[0] = src[0];
+        dst[1] = src[1];
+        dst[2] = src[2];
+    }
+
+    let mut out = Vec::new();
+    let mut enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 90);
+    enc.encode(&rgb, w, h, image::ExtendedColorType::Rgb8)
+        .map_err(|_| CliError::Usage("failed to encode JPG"))?;
+    Ok(out)
 }
 
 fn parse_tiny_skia_color(text: &str) -> Option<tiny_skia::Color> {
@@ -498,7 +547,22 @@ fn run(args: Args) -> Result<(), CliError> {
                     let bytes =
                         render_svg_to_png(&svg, args.render_scale, args.background.as_deref())?;
                     let out = args.out.clone().unwrap_or_else(|| {
-                        default_png_out_path(args.input.as_deref())
+                        default_raster_out_path(args.input.as_deref(), "png")
+                            .to_string_lossy()
+                            .to_string()
+                    });
+                    if out == "-" {
+                        use std::io::Write;
+                        std::io::stdout().lock().write_all(&bytes)?;
+                    } else {
+                        std::fs::write(out, bytes)?;
+                    }
+                }
+                RenderFormat::Jpeg => {
+                    let bytes =
+                        render_svg_to_jpeg(&svg, args.render_scale, args.background.as_deref())?;
+                    let out = args.out.clone().unwrap_or_else(|| {
+                        default_raster_out_path(args.input.as_deref(), "jpg")
                             .to_string_lossy()
                             .to_string()
                     });

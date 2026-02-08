@@ -1,5 +1,12 @@
 #![forbid(unsafe_code)]
 
+//! Mermaid parser + semantic model (headless).
+//!
+//! Design goals:
+//! - 1:1 parity with upstream Mermaid (`mermaid@11.12.2`)
+//! - deterministic, testable outputs (semantic snapshot goldens)
+//! - runtime-agnostic async APIs (no specific executor required)
+
 pub mod common;
 pub mod common_db;
 pub mod config;
