@@ -94,7 +94,7 @@ The goal is not “it looks similar”, but “it stays aligned”.
 - Update semantic goldens:
   - `cargo run -p xtask -- update-snapshots`
 - Full parity sweep (DOM):
-  - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3 --flowchart-text-measurer vendored`
+  - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --flowchart-text-measurer vendored`
 
 More workflows: `docs/rendering/COMPARE_ALL_SVGS.md`.
 
