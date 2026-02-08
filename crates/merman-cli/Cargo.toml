@@ -3,10 +3,14 @@ name = "merman-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
+description = "CLI for parsing/layout/rendering Mermaid diagrams (headless)."
+keywords = ["mermaid", "diagrams", "svg", "cli"]
+categories = ["command-line-utilities", "visualization"]
 
 [dependencies]
 futures.workspace = true
-merman = { path = "../merman" }
-merman-render = { path = "../merman-render" }
+merman.workspace = true
+merman-render.workspace = true
 serde.workspace = true
 serde_json.workspace = true

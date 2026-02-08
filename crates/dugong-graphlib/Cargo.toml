@@ -3,6 +3,9 @@ name = "dugong-graphlib"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
+description = "Graph data structure APIs used by dugong (port of dagrejs/graphlib)."
+keywords = ["graph", "dagre", "graphlib"]
+categories = ["data-structures"]
 
 [dependencies]
-

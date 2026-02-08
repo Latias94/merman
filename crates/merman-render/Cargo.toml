@@ -3,14 +3,18 @@ name = "merman-render"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
+description = "Headless layout + SVG renderer for Mermaid (parity-focused)."
+keywords = ["mermaid", "diagrams", "svg", "layout", "headless"]
+categories = ["visualization"]
 
 [dependencies]
 base64.workspace = true
 chrono.workspace = true
-dugong = { path = "../dugong" }
+dugong.workspace = true
 indexmap.workspace = true
-manatee = { path = "../manatee" }
-merman-core = { path = "../merman-core" }
+manatee.workspace = true
+merman-core.workspace = true
 pulldown-cmark.workspace = true
 regex.workspace = true
 serde.workspace = true

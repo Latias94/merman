@@ -3,12 +3,16 @@ name = "merman"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+rust-version.workspace = true
+description = "Rust, headless, 1:1 re-implementation of Mermaid (pinned to mermaid@11.12.2)."
+keywords = ["mermaid", "diagrams", "svg", "parser", "headless"]
+categories = ["parser-implementations", "visualization"]
 
 [features]
 default = []
 render = ["dep:merman-render", "dep:thiserror"]
 
 [dependencies]
-merman-core = { path = "../merman-core" }
-merman-render = { path = "../merman-render", optional = true }
+merman-core.workspace = true
+merman-render = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }

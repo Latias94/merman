@@ -16,6 +16,7 @@ members = [
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
+rust-version = "1.85"
 
 [workspace.dependencies]
 base64 = "0.22.1"
@@ -41,6 +42,16 @@ lol_html = "2.7.1"
 url = "2.5.4"
 uuid = { version = "1.12.1", features = ["v4"] }
 chrono = { version = "0.4.40", features = ["clock"] }
+
+# Workspace crates (publishable). Keeping versions explicit makes `cargo publish` work without
+# duplicating version requirements across crates.
+merman = { path = "crates/merman", version = "0.1.0" }
+merman-core = { path = "crates/merman-core", version = "0.1.0" }
+merman-render = { path = "crates/merman-render", version = "0.1.0" }
+merman-cli = { path = "crates/merman-cli", version = "0.1.0" }
+dugong = { path = "crates/dugong", version = "0.1.0" }
+dugong-graphlib = { path = "crates/dugong-graphlib", version = "0.1.0" }
+manatee = { path = "crates/manatee", version = "0.1.0" }
 
 [patch.crates-io]
 roughr = { path = "crates/roughr" }
