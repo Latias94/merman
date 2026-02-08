@@ -79,6 +79,7 @@ enum RenderFormat {
     Svg,
     Png,
     Jpeg,
+    Pdf,
 }
 
 impl FromStr for RenderFormat {
@@ -89,6 +90,7 @@ impl FromStr for RenderFormat {
             "svg" => Ok(Self::Svg),
             "png" => Ok(Self::Png),
             "jpg" | "jpeg" => Ok(Self::Jpeg),
+            "pdf" => Ok(Self::Pdf),
             _ => Err(()),
         }
     }
@@ -133,7 +135,7 @@ USAGE:\n\
   merman-cli [parse] [--pretty] [--meta] [--suppress-errors] [<path>|-]\n\
   merman-cli detect [<path>|-]\n\
   merman-cli layout [--pretty] [--text-measurer deterministic|vendored] [--viewport-width <w>] [--viewport-height <h>] [--suppress-errors] [<path>|-]\n\
-  merman-cli render [--format svg|png|jpg] [--scale <n>] [--background <css-color>] [--text-measurer deterministic|vendored] [--viewport-width <w>] [--viewport-height <h>] [--id <diagram-id>] [--out <path>] [--hand-drawn-seed <n>] [--suppress-errors] [<path>|-]\n\
+  merman-cli render [--format svg|png|jpg|pdf] [--scale <n>] [--background <css-color>] [--text-measurer deterministic|vendored] [--viewport-width <w>] [--viewport-height <h>] [--id <diagram-id>] [--out <path>] [--hand-drawn-seed <n>] [--suppress-errors] [<path>|-]\n\
 \n\
 NOTES:\n\
   - If <path> is omitted or '-', input is read from stdin.\n\
@@ -141,6 +143,7 @@ NOTES:\n\
   - render prints SVG to stdout by default; use --out to write a file.\n\
   - PNG output defaults to writing next to the input file (or ./out.png for stdin).\n\
   - JPG output defaults to writing next to the input file (or ./out.jpg for stdin).\n\
+  - PDF output defaults to writing next to the input file (or ./out.pdf for stdin).\n\
 "
 }
 
@@ -408,6 +411,23 @@ fn render_svg_to_jpeg(
     Ok(out)
 }
 
+fn render_svg_to_pdf(svg: &str) -> Result<Vec<u8>, CliError> {
+    let mut opt = svg2pdf::usvg::Options::default();
+    opt.fontdb_mut().load_system_fonts();
+    // Keep output stable-ish across environments while still using system fonts.
+    opt.font_family = "Arial".to_string();
+
+    let tree = svg2pdf::usvg::Tree::from_str(svg, &opt)
+        .map_err(|_| CliError::Usage("failed to parse SVG for PDF rendering"))?;
+
+    svg2pdf::to_pdf(
+        &tree,
+        svg2pdf::ConversionOptions::default(),
+        svg2pdf::PageOptions::default(),
+    )
+    .map_err(|_| CliError::Usage("failed to convert SVG to PDF"))
+}
+
 fn parse_tiny_skia_color(text: &str) -> Option<tiny_skia::Color> {
     let s = text.trim().to_ascii_lowercase();
     match s.as_str() {
@@ -563,6 +583,20 @@ fn run(args: Args) -> Result<(), CliError> {
                         render_svg_to_jpeg(&svg, args.render_scale, args.background.as_deref())?;
                     let out = args.out.clone().unwrap_or_else(|| {
                         default_raster_out_path(args.input.as_deref(), "jpg")
+                            .to_string_lossy()
+                            .to_string()
+                    });
+                    if out == "-" {
+                        use std::io::Write;
+                        std::io::stdout().lock().write_all(&bytes)?;
+                    } else {
+                        std::fs::write(out, bytes)?;
+                    }
+                }
+                RenderFormat::Pdf => {
+                    let bytes = render_svg_to_pdf(&svg)?;
+                    let out = args.out.clone().unwrap_or_else(|| {
+                        default_raster_out_path(args.input.as_deref(), "pdf")
                             .to_string_lossy()
                             .to_string()
                     });

@@ -18,6 +18,7 @@ The upstream Mermaid implementation is the spec (see `docs/adr/0014-upstream-par
 - Render SVG (parity-focused DOM)
 - Render PNG (SVG rasterization via `resvg`)
 - Render JPG (SVG rasterization via `resvg`)
+- Render PDF (SVG → PDF conversion via `svg2pdf`)
 
 Diagram coverage and current parity status live in `docs/alignment/STATUS.md`.
 
@@ -70,6 +71,7 @@ The goal is not “it looks similar”, but “it stays aligned”.
 - Render SVG: `cargo run -p merman-cli -- render path/to/diagram.mmd --out out.svg`
 - Render PNG: `cargo run -p merman-cli -- render --format png --out out.png path/to/diagram.mmd`
 - Render JPG: `cargo run -p merman-cli -- render --format jpg --out out.jpg path/to/diagram.mmd`
+- Render PDF: `cargo run -p merman-cli -- render --format pdf --out out.pdf path/to/diagram.mmd`
 
 ## Library
 
