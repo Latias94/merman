@@ -13,6 +13,9 @@ use indexmap::IndexMap;
 use serde::Deserialize;
 use std::fmt::Write as _;
 
+mod info;
+mod pie;
+
 const MERMAID_SEQUENCE_BASE_DEFS_11_12_2: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/assets/sequence_base_defs_11_12_2.svgfrag"
@@ -4697,24 +4700,7 @@ pub fn render_info_diagram_svg(
     _effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let diagram_id_esc = escape_xml(diagram_id);
-
-    let mut out = String::new();
-    let _ = write!(
-        &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: 400px; background-color: white;" role="graphics-document document" aria-roledescription="info">"#,
-    );
-    let css = info_css(diagram_id);
-    let _ = write!(&mut out, r#"<style>{}</style>"#, css);
-    out.push_str(r#"<g/>"#);
-    let _ = write!(
-        &mut out,
-        r#"<g><text x="100" y="40" class="version" font-size="32" style="text-anchor: middle;">{}</text></g>"#,
-        escape_xml(&layout.version)
-    );
-    out.push_str("</svg>\n");
-    Ok(out)
+    info::render_info_diagram_svg(layout, _semantic, _effective_config, options)
 }
 
 pub fn render_pie_diagram_svg(
@@ -4723,186 +4709,7 @@ pub fn render_pie_diagram_svg(
     _effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let model: PieSvgModel = serde_json::from_value(semantic.clone())?;
-
-    let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let diagram_id_esc = escape_xml(diagram_id);
-
-    let bounds = layout.bounds.clone().unwrap_or(Bounds {
-        min_x: 0.0,
-        min_y: 0.0,
-        max_x: 450.0,
-        max_y: 450.0,
-    });
-    let vb_min_x = bounds.min_x;
-    let vb_min_y = bounds.min_y;
-    let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
-    let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
-
-    let aria = match (model.acc_title.as_deref(), model.acc_descr.as_deref()) {
-        (Some(_), Some(_)) => format!(
-            r#" aria-describedby="chart-desc-{id}" aria-labelledby="chart-title-{id}""#,
-            id = diagram_id_esc
-        ),
-        (Some(_), None) => format!(
-            r#" aria-labelledby="chart-title-{id}""#,
-            id = diagram_id_esc
-        ),
-        (None, Some(_)) => format!(
-            r#" aria-describedby="chart-desc-{id}""#,
-            id = diagram_id_esc
-        ),
-        (None, None) => String::new(),
-    };
-
-    let mut max_w_attr = fmt_max_width_px(vb_w);
-    let mut viewbox_attr = format!(
-        "{} {} {} {}",
-        fmt(vb_min_x),
-        fmt(vb_min_y),
-        fmt(vb_w),
-        fmt(vb_h)
-    );
-    if let Some((viewbox, max_w)) =
-        crate::generated::pie_root_overrides_11_12_2::lookup_pie_root_viewport_override(diagram_id)
-    {
-        viewbox_attr = viewbox.to_string();
-        max_w_attr = max_w.to_string();
-    }
-
-    let mut out = String::new();
-    let _ = write!(
-        &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="{viewbox}" style="max-width: {max_w}px; background-color: white;" role="graphics-document document" aria-roledescription="pie"{aria}>"#,
-        diagram_id_esc = diagram_id_esc,
-        viewbox = viewbox_attr,
-        max_w = max_w_attr,
-        aria = aria
-    );
-
-    if let Some(t) = model.acc_title.as_deref() {
-        let _ = write!(
-            &mut out,
-            r#"<title id="chart-title-{id}">{text}</title>"#,
-            id = diagram_id_esc,
-            text = escape_xml(t)
-        );
-    }
-    if let Some(d) = model.acc_descr.as_deref() {
-        let _ = write!(
-            &mut out,
-            r#"<desc id="chart-desc-{id}">{text}</desc>"#,
-            id = diagram_id_esc,
-            text = escape_xml(d)
-        );
-    }
-
-    let css = pie_css(diagram_id);
-    let _ = write!(&mut out, r#"<style>{}</style>"#, css);
-    out.push_str(r#"<g/>"#);
-
-    let _ = write!(
-        &mut out,
-        r#"<g transform="translate({x},{y})">"#,
-        x = fmt(layout.center_x),
-        y = fmt(layout.center_y)
-    );
-    let _ = write!(
-        &mut out,
-        r#"<circle cx="0" cy="0" r="{r}" class="pieOuterCircle"/>"#,
-        r = fmt(layout.outer_radius)
-    );
-
-    for slice in &layout.slices {
-        let r = layout.radius;
-        if slice.is_full_circle {
-            let d = format!(
-                "M0,-{r}A{r},{r},0,1,1,0,{r}A{r},{r},0,1,1,0,-{r}Z",
-                r = fmt(r)
-            );
-            let _ = write!(
-                &mut out,
-                r#"<path d="{d}" fill="{fill}" class="pieCircle"/>"#,
-                d = d,
-                fill = escape_xml(&slice.fill)
-            );
-        } else {
-            let (x0, y0) = pie_polar_xy(r, slice.start_angle);
-            let (x1, y1) = pie_polar_xy(r, slice.end_angle);
-            let large = if (slice.end_angle - slice.start_angle) > std::f64::consts::PI {
-                1
-            } else {
-                0
-            };
-            let d = format!(
-                "M{x0},{y0}A{r},{r},0,{large},1,{x1},{y1}L0,0Z",
-                x0 = fmt(x0),
-                y0 = fmt(y0),
-                r = fmt(r),
-                large = large,
-                x1 = fmt(x1),
-                y1 = fmt(y1)
-            );
-            let _ = write!(
-                &mut out,
-                r#"<path d="{d}" fill="{fill}" class="pieCircle"/>"#,
-                d = d,
-                fill = escape_xml(&slice.fill)
-            );
-        }
-    }
-
-    for slice in &layout.slices {
-        let _ = write!(
-            &mut out,
-            r#"<text transform="translate({x},{y})" class="slice" style="text-anchor: middle;">{text}</text>"#,
-            x = fmt(slice.text_x),
-            y = fmt(slice.text_y),
-            text = escape_xml(&format!("{}%", slice.percent))
-        );
-    }
-
-    match model.title.as_deref() {
-        Some(t) => {
-            let _ = write!(
-                &mut out,
-                r#"<text x="0" y="-200" class="pieTitleText">{text}</text>"#,
-                text = escape_xml(t)
-            );
-        }
-        None => {
-            out.push_str(r#"<text x="0" y="-200" class="pieTitleText"/>"#);
-        }
-    }
-
-    for item in &layout.legend_items {
-        let _ = write!(
-            &mut out,
-            r#"<g class="legend" transform="translate({x},{y})">"#,
-            x = fmt(layout.legend_x),
-            y = fmt(item.y)
-        );
-        let style = pie_legend_rect_style(&item.fill);
-        let _ = write!(
-            &mut out,
-            r#"<rect width="18" height="18" style="{style}"/>"#,
-            style = escape_xml(&style)
-        );
-        let text = if model.show_data {
-            format!("{} [{}]", item.label, fmt(item.value))
-        } else {
-            item.label.clone()
-        };
-        let _ = write!(
-            &mut out,
-            r#"<text x="22" y="14">{text}</text>"#,
-            text = escape_xml(&text)
-        );
-        out.push_str("</g>");
-    }
-
-    out.push_str("</g></svg>\n");
-    Ok(out)
+    pie::render_pie_diagram_svg(layout, semantic, _effective_config, options)
 }
 
 pub fn render_requirement_diagram_svg(
