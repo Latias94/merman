@@ -699,31 +699,55 @@ fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     static ROOT_VIEWPORT_ENTRY_RE: OnceLock<Regex> = OnceLock::new();
     static STATE_TEXT_ENTRY_RE: OnceLock<Regex> = OnceLock::new();
     let root_viewport_entry_re = ROOT_VIEWPORT_ENTRY_RE
-        .get_or_init(|| Regex::new(r#""[^"]+"\s*=>\s*Some\("#).expect("valid regex"));
+        .get_or_init(|| Regex::new(r#""[^"]+"\s*=>\s*(?:\{\s*)?Some\("#).expect("valid regex"));
     let state_text_entry_re =
         STATE_TEXT_ENTRY_RE.get_or_init(|| Regex::new(r#"=>\s*Some\("#).expect("valid regex"));
 
     let architecture = generated_dir.join("architecture_root_overrides_11_12_2.rs");
+    let flowchart = generated_dir.join("flowchart_root_overrides_11_12_2.rs");
     let class = generated_dir.join("class_root_overrides_11_12_2.rs");
     let mindmap = generated_dir.join("mindmap_root_overrides_11_12_2.rs");
+    let pie = generated_dir.join("pie_root_overrides_11_12_2.rs");
+    let sankey = generated_dir.join("sankey_root_overrides_11_12_2.rs");
+    let sequence = generated_dir.join("sequence_root_overrides_11_12_2.rs");
+    let state_root = generated_dir.join("state_root_overrides_11_12_2.rs");
     let state_text = generated_dir.join("state_text_overrides_11_12_2.rs");
+    let timeline = generated_dir.join("timeline_root_overrides_11_12_2.rs");
 
     let architecture_txt = read_text(&architecture)?;
+    let flowchart_txt = read_text(&flowchart)?;
     let class_txt = read_text(&class)?;
     let mindmap_txt = read_text(&mindmap)?;
+    let pie_txt = read_text(&pie)?;
+    let sankey_txt = read_text(&sankey)?;
+    let sequence_txt = read_text(&sequence)?;
+    let state_root_txt = read_text(&state_root)?;
     let state_text_txt = read_text(&state_text)?;
+    let timeline_txt = read_text(&timeline)?;
 
     let architecture_n = count_matches(root_viewport_entry_re, &architecture_txt);
+    let flowchart_n = count_matches(root_viewport_entry_re, &flowchart_txt);
     let class_n = count_matches(root_viewport_entry_re, &class_txt);
     let mindmap_n = count_matches(root_viewport_entry_re, &mindmap_txt);
+    let pie_n = count_matches(root_viewport_entry_re, &pie_txt);
+    let sankey_n = count_matches(root_viewport_entry_re, &sankey_txt);
+    let sequence_n = count_matches(root_viewport_entry_re, &sequence_txt);
+    let state_root_n = count_matches(root_viewport_entry_re, &state_root_txt);
     let state_text_n = count_matches(state_text_entry_re, &state_text_txt);
+    let timeline_n = count_matches(root_viewport_entry_re, &timeline_txt);
 
     println!("Mermaid baseline: @11.12.2");
     println!();
     println!("Root viewport overrides:");
     println!("- architecture_root_overrides_11_12_2.rs: {architecture_n} entries");
+    println!("- flowchart_root_overrides_11_12_2.rs: {flowchart_n} entries");
     println!("- class_root_overrides_11_12_2.rs: {class_n} entries");
     println!("- mindmap_root_overrides_11_12_2.rs: {mindmap_n} entries");
+    println!("- pie_root_overrides_11_12_2.rs: {pie_n} entries");
+    println!("- sankey_root_overrides_11_12_2.rs: {sankey_n} entries");
+    println!("- sequence_root_overrides_11_12_2.rs: {sequence_n} entries");
+    println!("- state_root_overrides_11_12_2.rs: {state_root_n} entries");
+    println!("- timeline_root_overrides_11_12_2.rs: {timeline_n} entries");
     println!();
     println!("State text/bbox overrides:");
     println!(

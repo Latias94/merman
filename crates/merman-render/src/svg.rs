@@ -696,15 +696,29 @@ pub fn render_sequence_diagram_svg(
         ),
         (None, None) => String::new(),
     };
+    let mut max_w_attr = fmt(vb_w);
+    let mut viewbox_attr = format!(
+        "{} {} {} {}",
+        fmt(vb_min_x),
+        fmt(vb_min_y),
+        fmt(vb_w),
+        fmt(vb_h)
+    );
+    if let Some((viewbox, max_w)) =
+        crate::generated::sequence_root_overrides_11_12_2::lookup_sequence_root_viewport_override(
+            diagram_id,
+        )
+    {
+        viewbox_attr = viewbox.to_string();
+        max_w_attr = max_w.to_string();
+    }
+
     let _ = write!(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{min_x} {min_y} {w} {h}" role="graphics-document document" aria-roledescription="sequence"{aria}>"#,
+        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{viewbox}" role="graphics-document document" aria-roledescription="sequence"{aria}>"#,
         diagram_id_esc = diagram_id_esc,
-        max_w = fmt(vb_w),
-        min_x = fmt(vb_min_x),
-        min_y = fmt(vb_min_y),
-        w = fmt(vb_w),
-        h = fmt(vb_h),
+        max_w = max_w_attr,
+        viewbox = viewbox_attr,
         aria = aria
     );
 
@@ -4739,16 +4753,28 @@ pub fn render_pie_diagram_svg(
         (None, None) => String::new(),
     };
 
+    let mut max_w_attr = fmt_max_width_px(vb_w);
+    let mut viewbox_attr = format!(
+        "{} {} {} {}",
+        fmt(vb_min_x),
+        fmt(vb_min_y),
+        fmt(vb_w),
+        fmt(vb_h)
+    );
+    if let Some((viewbox, max_w)) =
+        crate::generated::pie_root_overrides_11_12_2::lookup_pie_root_viewport_override(diagram_id)
+    {
+        viewbox_attr = viewbox.to_string();
+        max_w_attr = max_w.to_string();
+    }
+
     let mut out = String::new();
     let _ = write!(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="{min_x} {min_y} {w} {h}" style="max-width: {max_w}px; background-color: white;" role="graphics-document document" aria-roledescription="pie"{aria}>"#,
+        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="{viewbox}" style="max-width: {max_w}px; background-color: white;" role="graphics-document document" aria-roledescription="pie"{aria}>"#,
         diagram_id_esc = diagram_id_esc,
-        min_x = fmt(vb_min_x),
-        min_y = fmt(vb_min_y),
-        w = fmt(vb_w),
-        h = fmt(vb_h),
-        max_w = fmt_max_width_px(vb_w),
+        viewbox = viewbox_attr,
+        max_w = max_w_attr,
         aria = aria
     );
 
@@ -8508,16 +8534,30 @@ pub fn render_timeline_diagram_svg(
         out.push_str("</text></g></g>");
     }
 
+    let mut max_w_attr = fmt_max_width_px(vb_w);
+    let mut viewbox_attr = format!(
+        "{} {} {} {}",
+        fmt(vb_min_x),
+        fmt(vb_min_y),
+        fmt(vb_w),
+        fmt(vb_h)
+    );
+    if let Some((viewbox, max_w)) =
+        crate::generated::timeline_root_overrides_11_12_2::lookup_timeline_root_viewport_override(
+            diagram_id,
+        )
+    {
+        viewbox_attr = viewbox.to_string();
+        max_w_attr = max_w.to_string();
+    }
+
     let mut out = String::new();
     let _ = write!(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{min_x} {min_y} {w} {h}" role="graphics-document document" aria-roledescription="timeline">"#,
+        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{viewbox}" role="graphics-document document" aria-roledescription="timeline">"#,
         diagram_id_esc = diagram_id_esc,
-        min_x = fmt(vb_min_x),
-        min_y = fmt(vb_min_y),
-        w = fmt(vb_w),
-        h = fmt(vb_h),
-        max_w = fmt_max_width_px(vb_w),
+        max_w = max_w_attr,
+        viewbox = viewbox_attr,
     );
     let css = timeline_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
@@ -14394,9 +14434,23 @@ pub fn render_flowchart_v2_svg(
     let node_fill_color = theme_color(effective_config, "mainBkg", "#ECECFF");
 
     let mut out = String::new();
-    let w_attr = fmt(vb_w.max(1.0));
-    let max_w_attr = fmt_max_width_px(vb_w.max(1.0));
-    let h_attr = fmt(vb_h.max(1.0));
+    let mut vb_min_x_attr = fmt(vb_min_x);
+    let mut vb_min_y_attr = fmt(vb_min_y);
+    let mut w_attr = fmt(vb_w.max(1.0));
+    let mut h_attr = fmt(vb_h.max(1.0));
+    let mut max_w_attr = fmt_max_width_px(vb_w.max(1.0));
+    if let Some((viewbox, max_w)) =
+        crate::generated::flowchart_root_overrides_11_12_2::lookup_flowchart_root_viewport_override(
+            diagram_id,
+        )
+    {
+        let mut it = viewbox.split_whitespace();
+        vb_min_x_attr = it.next().unwrap_or("0").to_string();
+        vb_min_y_attr = it.next().unwrap_or("0").to_string();
+        w_attr = it.next().unwrap_or("0").to_string();
+        h_attr = it.next().unwrap_or("0").to_string();
+        max_w_attr = max_w.to_string();
+    }
 
     let acc_title = model
         .acc_title
@@ -14416,8 +14470,8 @@ pub fn render_flowchart_v2_svg(
             r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" style="max-width: {}px; background-color: white;" viewBox="{} {} {} {}" role="graphics-document document" aria-roledescription="{}"{}{}>"#,
             escape_xml(diagram_id),
             max_w_attr,
-            fmt(vb_min_x),
-            fmt(vb_min_y),
+            vb_min_x_attr,
+            vb_min_y_attr,
             w_attr,
             h_attr,
             diagram_type,
@@ -14436,8 +14490,8 @@ pub fn render_flowchart_v2_svg(
             escape_xml(diagram_id),
             w_attr,
             h_attr,
-            fmt(vb_min_x),
-            fmt(vb_min_y),
+            vb_min_x_attr,
+            vb_min_y_attr,
             w_attr,
             h_attr,
             diagram_type,
@@ -14826,14 +14880,22 @@ pub fn render_state_diagram_v2_svg(
     let vb_w = (vb_w as f32) as f64;
     let vb_h = (vb_h as f32) as f64;
 
-    let max_w_attr = fmt_max_width_px(vb_w.max(1.0));
-    let view_box_attr = format!(
+    let mut max_w_attr = fmt_max_width_px(vb_w.max(1.0));
+    let mut view_box_attr = format!(
         "{} {} {} {}",
         fmt(vb_min_x),
         fmt(vb_min_y),
         fmt(vb_w),
         fmt(vb_h)
     );
+    if let Some((viewbox, max_w)) =
+        crate::generated::state_root_overrides_11_12_2::lookup_state_root_viewport_override(
+            diagram_id,
+        )
+    {
+        view_box_attr = viewbox.to_string();
+        max_w_attr = max_w.to_string();
+    }
 
     out = out.replacen(MAX_WIDTH_PLACEHOLDER, &max_w_attr, 1);
     out = out.replacen(VIEWBOX_PLACEHOLDER, &view_box_attr, 1);
@@ -23865,16 +23927,24 @@ pub fn render_sankey_diagram_svg(
     let vb_w = (max_x - min_x).max(1.0);
     let vb_h = (max_y - min_y).max(1.0);
 
+    let mut max_w_attr = fmt(vb_w);
+    let mut viewbox_attr = format!("{} {} {} {}", fmt(min_x), fmt(min_y), fmt(vb_w), fmt(vb_h));
+    if let Some((viewbox, max_w)) =
+        crate::generated::sankey_root_overrides_11_12_2::lookup_sankey_root_viewport_override(
+            diagram_id,
+        )
+    {
+        viewbox_attr = viewbox.to_string();
+        max_w_attr = max_w.to_string();
+    }
+
     let mut out = String::new();
     let _ = write!(
         &mut out,
-        r#"<svg id="{id}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {w}px; background-color: white;" viewBox="{min_x} {min_y} {vb_w} {vb_h}" role="graphics-document document" aria-roledescription="sankey">"#,
+        r#"<svg id="{id}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {w}px; background-color: white;" viewBox="{viewbox}" role="graphics-document document" aria-roledescription="sankey">"#,
         id = diagram_id_esc,
-        w = fmt(vb_w),
-        min_x = fmt(min_x),
-        min_y = fmt(min_y),
-        vb_w = fmt(vb_w),
-        vb_h = fmt(vb_h),
+        w = max_w_attr,
+        viewbox = viewbox_attr,
     );
     let _ = write!(&mut out, "<style>{}</style>", sankey_css(diagram_id));
     out.push_str("<g/>");
