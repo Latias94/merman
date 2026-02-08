@@ -51,3 +51,7 @@ The `merman` crate can be used as a headless library. Enable the optional `rende
 convenience API for layout + SVG rendering:
 
 - `merman = { path = "...", features = ["render"] }`
+
+## License
+
+Dual-licensed under MIT or Apache-2.0.

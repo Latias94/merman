@@ -2,7 +2,10 @@
 name = "manatee"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
 license.workspace = true
+homepage.workspace = true
+repository.workspace = true
 rust-version.workspace = true
 description = "Headless compound graph layout algorithms (COSE/FCoSE ports)."
 keywords = ["graph", "layout", "cose", "fcose"]

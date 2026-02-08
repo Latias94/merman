@@ -2,7 +2,10 @@
 name = "merman-render"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
 license.workspace = true
+homepage.workspace = true
+repository.workspace = true
 rust-version.workspace = true
 description = "Headless layout + SVG renderer for Mermaid (parity-focused)."
 keywords = ["mermaid", "diagrams", "svg", "layout", "headless"]

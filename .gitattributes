@@ -22,6 +22,8 @@
 *.sh  text eol=lf
 *.mjs text eol=lf
 *.lock text eol=lf
+LICENSE text eol=lf
+LICENSE-* text eol=lf
 
 # Windows script formats
 *.ps1 text eol=crlf

@@ -2,7 +2,10 @@
 name = "merman"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
 license.workspace = true
+homepage.workspace = true
+repository.workspace = true
 rust-version.workspace = true
 description = "Rust, headless, 1:1 re-implementation of Mermaid (pinned to mermaid@11.12.2)."
 keywords = ["mermaid", "diagrams", "svg", "parser", "headless"]
