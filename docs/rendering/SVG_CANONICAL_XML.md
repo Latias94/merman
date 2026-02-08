@@ -35,8 +35,11 @@ deterministic.
 
 - `--dom-mode <mode>`
   - Supported: `strict`, `structure`, `parity`, `parity-root`
-  - Recommendation for canonical XML: `strict` (default)
-- `--dom-decimals <n>`
+  - `strict` keeps geometry and most attributes, so it is expected to be noisy until layout engines
+    match upstream closely.
+  - Note: stylesheets (`<style>...</style>`) are treated as non-semantic and their text content is
+    ignored in all modes (CSS parity is tracked separately from SVG DOM parity).
+  - `--dom-decimals <n>`
   - Rounds numeric tokens to reduce float drift (default: `3`)
   - In `strict` mode this also normalizes `data-points` by decoding the Base64 JSON payload, rounding JSON numbers,
     and re-encoding.

@@ -329,7 +329,7 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             }
             if matches!(
                 mode,
-                DomMode::Structure | DomMode::Parity | DomMode::ParityRoot
+                DomMode::Strict | DomMode::Structure | DomMode::Parity | DomMode::ParityRoot
             ) && key == "id"
                 && is_architecture_service_icon_content(n)
                 && (val.starts_with("IconifyId") || val.len() <= 2)
@@ -402,11 +402,10 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
         }
     }
 
-    if mode != DomMode::Strict && n.is_element() && n.tag_name().name() == "style" {
+    if n.is_element() && n.tag_name().name() == "style" {
         // Stylesheets are large and may differ in whitespace, ordering, and numeric precision
         // even when the effective rendering is unchanged. Treat them as non-semantic for DOM
-        // parity checks.
-        // (In strict mode, we keep style text verbatim for byte-level parity.)
+        // comparisons, including strict mode (we track DOM structure separately from CSS parity).
         text = None;
     }
 
