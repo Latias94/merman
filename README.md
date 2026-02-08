@@ -5,6 +5,12 @@ Mermaid, but headless, in Rust.
 `merman` is a Rust, headless, 1:1 re-implementation of Mermaid pinned to `mermaid@11.12.2`.
 The upstream Mermaid implementation is the spec (see `docs/adr/0014-upstream-parity-policy.md`).
 
+## Status
+
+- Baseline: Mermaid `@11.12.2`.
+- Parity is enforced via upstream SVG DOM baselines + golden snapshots; current coverage lives in
+  `docs/alignment/STATUS.md`.
+
 ## What you get
 
 - Parse Mermaid into a semantic JSON model (headless)
@@ -14,6 +20,36 @@ The upstream Mermaid implementation is the spec (see `docs/adr/0014-upstream-par
 - Render JPG (SVG rasterization via `resvg`)
 
 Diagram coverage and current parity status live in `docs/alignment/STATUS.md`.
+
+## Quickstart (library)
+
+The `merman` crate is a convenience wrapper around `merman-core` (parsing) + `merman-render` (layout + SVG).
+Enable the `render` feature when you want layout + SVG.
+
+```rust
+use merman_core::{Engine, ParseOptions};
+use merman::render::{LayoutOptions, SvgRenderOptions, VendoredFontMetricsTextMeasurer};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let engine = Engine::new();
+
+    let mut layout = LayoutOptions::default();
+    layout.text_measurer = std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default());
+
+    // Use any executor you like; `futures` is used here to keep the example runtime-agnostic.
+    let svg = futures::executor::block_on(merman::render::render_svg(
+        &engine,
+        "flowchart TD; A-->B;",
+        ParseOptions::default(),
+        &layout,
+        &SvgRenderOptions::default(),
+    ))?
+    .unwrap();
+
+    println!("{svg}");
+    Ok(())
+}
+```
 
 ## Parity & goldens
 
@@ -28,24 +64,12 @@ The goal is not “it looks similar”, but “it stays aligned”.
 
 ## CLI
 
-- Detect diagram type:
-  - `cargo run -p merman-cli -- detect path/to/diagram.mmd`
-- Parse → semantic JSON:
-  - `cargo run -p merman-cli -- parse path/to/diagram.mmd --pretty`
-- Layout → layout JSON:
-  - `cargo run -p merman-cli -- layout path/to/diagram.mmd --pretty`
-- Render SVG:
-  - `cargo run -p merman-cli -- render path/to/diagram.mmd --out out.svg`
-- Render PNG:
-  - Default output path (writes next to the input file):
-    - `cargo run -p merman-cli -- render --format png path/to/diagram.mmd`
-  - Explicit output path:
-    - `cargo run -p merman-cli -- render --format png --out out.png path/to/diagram.mmd`
-- Render JPG:
-  - Default output path (writes next to the input file):
-    - `cargo run -p merman-cli -- render --format jpg path/to/diagram.mmd`
-  - Explicit output path:
-    - `cargo run -p merman-cli -- render --format jpg --out out.jpg path/to/diagram.mmd`
+- Detect diagram type: `cargo run -p merman-cli -- detect path/to/diagram.mmd`
+- Parse → semantic JSON: `cargo run -p merman-cli -- parse path/to/diagram.mmd --pretty`
+- Layout → layout JSON: `cargo run -p merman-cli -- layout path/to/diagram.mmd --pretty`
+- Render SVG: `cargo run -p merman-cli -- render path/to/diagram.mmd --out out.svg`
+- Render PNG: `cargo run -p merman-cli -- render --format png --out out.png path/to/diagram.mmd`
+- Render JPG: `cargo run -p merman-cli -- render --format jpg --out out.jpg path/to/diagram.mmd`
 
 ## Library
 
