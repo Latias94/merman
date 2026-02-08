@@ -327,8 +327,10 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
                 val = normalize_class_list(&val, mode);
                 val = normalize_gitgraph_dynamic_commit_ids(&val);
             }
-            if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
-                && key == "id"
+            if matches!(
+                mode,
+                DomMode::Structure | DomMode::Parity | DomMode::ParityRoot
+            ) && key == "id"
                 && is_architecture_service_icon_content(n)
                 && (val.starts_with("IconifyId") || val.len() <= 2)
             {
@@ -768,6 +770,25 @@ mod tests {
             Some("foo_<n>")
         );
         assert_eq!(dom.children[0].children[0].text, None);
+    }
+
+    #[test]
+    fn structure_masks_architecture_icon_internal_ids() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><g class="architecture-service"><g><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><g><ellipse id="IconifyIddeadbeef" cx="5" cy="5" rx="4" ry="4"/></g></svg></g></g></svg>"#;
+        let dom = dom_signature(svg, DomMode::Structure, 3).unwrap();
+        fn find_ellipse_id<'a>(n: &'a SvgDomNode) -> Option<&'a str> {
+            if n.name == "ellipse" {
+                return n.attrs.get("id").map(|s| s.as_str());
+            }
+            for c in &n.children {
+                if let Some(id) = find_ellipse_id(c) {
+                    return Some(id);
+                }
+            }
+            None
+        }
+
+        assert_eq!(find_ellipse_id(&dom), Some("<icon-id>"));
     }
 
     #[test]
