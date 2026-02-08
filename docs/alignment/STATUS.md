@@ -89,6 +89,10 @@ Recent progress (2026-02-08): SVG Packet renderer implementation was extracted f
 `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/packet.rs` to improve
 maintainability while keeping all parity checks green.
 
+Recent progress (2026-02-08): SVG Timeline renderer implementation was extracted from the monolithic
+`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/timeline.rs` to improve
+maintainability while keeping all parity checks green.
+
 Recent progress (2026-02-08): SVG sequence renderer implementation was extracted from the monolithic
 `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/sequence.rs` to improve
 maintainability while keeping all parity checks green.
