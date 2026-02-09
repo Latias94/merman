@@ -11,6 +11,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Note:
+# - Raster rendering is best-effort (see docs/rendering/RASTER_OUTPUT.md).
+# - Many upstream Mermaid diagrams use SVG <foreignObject> HTML labels; pure-Rust rasterizers do
+#   not fully support this, so `merman-cli` applies a raster-only text fallback conversion.
+
 function Resolve-CliPath {
   $candidates = @(
     "target/release/merman-cli.exe",
@@ -107,4 +112,3 @@ $fails = ($results | Where-Object { $_.status -ne "ok" }).Count
 Write-Host ""
 Write-Host "PNG preview written to: $OutDir"
 Write-Host "Failures: $fails / $($results.Count)"
-
