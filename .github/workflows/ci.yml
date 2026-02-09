@@ -56,4 +56,4 @@ jobs:
 
       - name: SVG DOM parity-root
         if: matrix.os == 'ubuntu-22.04'
-        run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --flowchart-text-measurer vendored
+        run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3

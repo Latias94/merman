@@ -58,3 +58,8 @@ manatee = { path = "crates/manatee", version = "0.1.0" }
 
 [patch.crates-io]
 roughr = { path = "crates/roughr" }
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
