@@ -1,0 +1,68 @@
+{
+  "diagramType": "radar",
+  "model": {
+    "type": "radar",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "axes": [
+      {
+        "name": "m",
+        "label": "Math"
+      },
+      {
+        "name": "s",
+        "label": "Science"
+      },
+      {
+        "name": "e",
+        "label": "English"
+      },
+      {
+        "name": "h",
+        "label": "History"
+      },
+      {
+        "name": "g",
+        "label": "Geography"
+      },
+      {
+        "name": "a",
+        "label": "Art"
+      }
+    ],
+    "curves": [
+      {
+        "name": "a",
+        "label": "Alice",
+        "entries": [
+          85,
+          90,
+          80,
+          70,
+          75,
+          90
+        ]
+      },
+      {
+        "name": "b",
+        "label": "Bob",
+        "entries": [
+          70,
+          75,
+          85,
+          80,
+          90,
+          85
+        ]
+      }
+    ],
+    "options": {
+      "showLegend": true,
+      "ticks": 5,
+      "max": 100,
+      "min": 0,
+      "graticule": "circle"
+    }
+  }
+}
