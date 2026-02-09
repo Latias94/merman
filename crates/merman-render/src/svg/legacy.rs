@@ -296,24 +296,6 @@ struct PieSvgModel {
     sections: Vec<PieSvgSection>,
 }
 
-fn pie_legend_rect_style(fill: &str) -> String {
-    // Mermaid emits legend colors via inline `style` in rgb() form for default themes.
-    // The compare tooling ignores `style`, but we keep this for human inspection parity.
-    let rgb = match fill {
-        "#ECECFF" => "rgb(236, 236, 255)",
-        "#ffffde" => "rgb(255, 255, 222)",
-        "hsl(80, 100%, 56.2745098039%)" => "rgb(181, 255, 32)",
-        other => other,
-    };
-    format!("fill: {rgb}; stroke: {rgb};")
-}
-
-fn pie_polar_xy(radius: f64, angle: f64) -> (f64, f64) {
-    let x = radius * angle.sin();
-    let y = -radius * angle.cos();
-    (x, y)
-}
-
 pub fn render_sequence_diagram_debug_svg(
     layout: &SequenceDiagramLayout,
     options: &SvgRenderOptions,

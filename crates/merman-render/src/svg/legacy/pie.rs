@@ -1,6 +1,24 @@
 use super::{PieDiagramLayout, Result, SvgRenderOptions};
 use std::fmt::Write as _;
 
+fn pie_legend_rect_style(fill: &str) -> String {
+    // Mermaid emits legend colors via inline `style` in rgb() form for default themes.
+    // The compare tooling ignores `style`, but we keep this for human inspection parity.
+    let rgb = match fill {
+        "#ECECFF" => "rgb(236, 236, 255)",
+        "#ffffde" => "rgb(255, 255, 222)",
+        "hsl(80, 100%, 56.2745098039%)" => "rgb(181, 255, 32)",
+        other => other,
+    };
+    format!("fill: {rgb}; stroke: {rgb};")
+}
+
+fn pie_polar_xy(radius: f64, angle: f64) -> (f64, f64) {
+    let x = radius * angle.sin();
+    let y = -radius * angle.cos();
+    (x, y)
+}
+
 pub(super) fn render_pie_diagram_svg(
     layout: &PieDiagramLayout,
     semantic: &serde_json::Value,
@@ -111,8 +129,8 @@ pub(super) fn render_pie_diagram_svg(
                 fill = super::escape_xml(&slice.fill)
             );
         } else {
-            let (x0, y0) = super::pie_polar_xy(r, slice.start_angle);
-            let (x1, y1) = super::pie_polar_xy(r, slice.end_angle);
+            let (x0, y0) = pie_polar_xy(r, slice.start_angle);
+            let (x1, y1) = pie_polar_xy(r, slice.end_angle);
             let large = if (slice.end_angle - slice.start_angle) > std::f64::consts::PI {
                 1
             } else {
@@ -166,7 +184,7 @@ pub(super) fn render_pie_diagram_svg(
             x = super::fmt(layout.legend_x),
             y = super::fmt(item.y)
         );
-        let style = super::pie_legend_rect_style(&item.fill);
+        let style = pie_legend_rect_style(&item.fill);
         let _ = write!(
             &mut out,
             r#"<rect width="18" height="18" style="{style}"/>"#,
