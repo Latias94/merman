@@ -179,6 +179,10 @@ Recent progress (2026-02-09): C4 diagram SVG helpers (`c4_css` and config/font h
 `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/c4.rs` to reduce shared-scope
 surface area while keeping DOM parity checks green.
 
+Recent progress (2026-02-09): Shared style parsing helpers (`parse_style_decl` and style key filters) were extracted
+from `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/style.rs` to make future
+diagram splits less error-prone.
+
 Recent progress (2026-02-08): SVG class diagram renderer implementation was extracted from the monolithic
 `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/class.rs` to improve
 maintainability while keeping all parity checks green.

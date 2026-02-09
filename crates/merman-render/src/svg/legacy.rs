@@ -34,6 +34,7 @@ mod requirement;
 mod sankey;
 mod sequence;
 mod state;
+mod style;
 mod timeline;
 mod treemap;
 mod util;
@@ -46,6 +47,7 @@ use state::{
     roughjs_ops_to_svg_path_d, roughjs_parse_hex_color_to_srgba, roughjs_paths_for_rect,
     svg_emitted_bounds_from_svg, svg_emitted_bounds_from_svg_inner,
 };
+use style::{is_rect_style_key, is_text_style_key, parse_style_decl};
 use util::{
     config_f64, config_string, escape_attr, escape_xml, fmt, fmt_debug_3dp, fmt_max_width_px,
     fmt_path, json_f64, json_stringify_points, normalize_css_font_family, theme_color,
@@ -672,20 +674,6 @@ pub fn render_sankey_diagram_svg(
     sankey::render_sankey_diagram_svg(layout, _semantic, effective_config, options)
 }
 
-fn parse_style_decl(s: &str) -> Option<(&str, &str)> {
-    let s = s.trim().trim_end_matches(';').trim();
-    if s.is_empty() {
-        return None;
-    }
-    let (k, v) = s.split_once(':')?;
-    let k = k.trim();
-    let v = v.trim();
-    if k.is_empty() || v.is_empty() {
-        return None;
-    }
-    Some((k, v))
-}
-
 fn curve_monotone_path_d(points: &[crate::model::LayoutPoint], swap_xy: bool) -> String {
     fn sign(v: f64) -> f64 {
         if v < 0.0 { -1.0 } else { 1.0 }
@@ -944,26 +932,6 @@ fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {
     }
 
     out
-}
-
-fn is_rect_style_key(key: &str) -> bool {
-    matches!(
-        key,
-        "fill"
-            | "stroke"
-            | "stroke-width"
-            | "stroke-dasharray"
-            | "opacity"
-            | "fill-opacity"
-            | "stroke-opacity"
-    )
-}
-
-fn is_text_style_key(key: &str) -> bool {
-    matches!(
-        key,
-        "color" | "font-family" | "font-size" | "font-weight" | "opacity"
-    )
 }
 
 fn curve_linear_path_d(points: &[crate::model::LayoutPoint]) -> String {
