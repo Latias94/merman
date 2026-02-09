@@ -135,4 +135,112 @@ pub mod render {
     ) -> Result<Option<String>> {
         render_svg_sync(engine, text, parse_options, layout_options, svg_options)
     }
+
+    /// Convenience wrapper that bundles an [`Engine`] and common options for headless rendering.
+    ///
+    /// This is intended for UI integrations where passing 4-5 separate parameters per call is
+    /// noisy. It stays runtime-agnostic: all work is CPU-bound and does not perform I/O.
+    #[derive(Clone)]
+    pub struct HeadlessRenderer {
+        pub engine: merman_core::Engine,
+        pub parse: merman_core::ParseOptions,
+        pub layout: LayoutOptions,
+        pub svg: SvgRenderOptions,
+    }
+
+    impl Default for HeadlessRenderer {
+        fn default() -> Self {
+            Self {
+                engine: merman_core::Engine::new(),
+                parse: merman_core::ParseOptions::default(),
+                layout: LayoutOptions::headless_svg_defaults(),
+                svg: SvgRenderOptions::default(),
+            }
+        }
+    }
+
+    impl HeadlessRenderer {
+        pub fn new() -> Self {
+            Self::default()
+        }
+
+        pub fn with_site_config(mut self, site_config: merman_core::MermaidConfig) -> Self {
+            self.engine = self.engine.with_site_config(site_config);
+            self
+        }
+
+        pub fn parse_metadata_sync(
+            &self,
+            text: &str,
+        ) -> Result<Option<merman_core::ParseMetadata>> {
+            Ok(self.engine.parse_metadata_sync(text, self.parse)?)
+        }
+
+        pub fn parse_diagram_sync(&self, text: &str) -> Result<Option<merman_core::ParsedDiagram>> {
+            Ok(self.engine.parse_diagram_sync(text, self.parse)?)
+        }
+
+        pub fn layout_diagram_sync(&self, text: &str) -> Result<Option<LayoutedDiagram>> {
+            layout_diagram_sync(&self.engine, text, self.parse, &self.layout)
+        }
+
+        pub fn render_svg_sync(&self, text: &str) -> Result<Option<String>> {
+            render_svg_sync(&self.engine, text, self.parse, &self.layout, &self.svg)
+        }
+
+        pub fn render_svg_sync_with(
+            &self,
+            text: &str,
+            svg: &SvgRenderOptions,
+        ) -> Result<Option<String>> {
+            render_svg_sync(&self.engine, text, self.parse, &self.layout, svg)
+        }
+
+        pub fn render_svg_sync_with_diagram_id(
+            &self,
+            text: &str,
+            diagram_id: &str,
+        ) -> Result<Option<String>> {
+            let mut svg = self.svg.clone();
+            svg.diagram_id = Some(sanitize_svg_id(diagram_id));
+            self.render_svg_sync_with(text, &svg)
+        }
+
+        #[cfg(feature = "raster")]
+        pub fn render_png_sync(
+            &self,
+            text: &str,
+            raster: &raster::RasterOptions,
+        ) -> raster::Result<Option<Vec<u8>>> {
+            raster::render_png_sync(
+                &self.engine,
+                text,
+                self.parse,
+                &self.layout,
+                &self.svg,
+                raster,
+            )
+        }
+
+        #[cfg(feature = "raster")]
+        pub fn render_jpeg_sync(
+            &self,
+            text: &str,
+            raster: &raster::RasterOptions,
+        ) -> raster::Result<Option<Vec<u8>>> {
+            raster::render_jpeg_sync(
+                &self.engine,
+                text,
+                self.parse,
+                &self.layout,
+                &self.svg,
+                raster,
+            )
+        }
+
+        #[cfg(feature = "raster")]
+        pub fn render_pdf_sync(&self, text: &str) -> raster::Result<Option<Vec<u8>>> {
+            raster::render_pdf_sync(&self.engine, text, self.parse, &self.layout, &self.svg)
+        }
+    }
 }

@@ -63,6 +63,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+If you prefer a bundled "pipeline" instead of passing multiple option structs per call, use
+`merman::render::HeadlessRenderer`.
+
 ## Parity & goldens
 
 This repo is built around reproducible alignment layers:
