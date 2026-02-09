@@ -43,18 +43,31 @@ impl MermaidConfig {
     }
 
     pub fn set_value(&mut self, dotted_path: &str, value: Value) {
-        let mut cur = self.0.as_object_mut().unwrap();
+        // Be defensive: callers can construct `MermaidConfig` from any JSON value via
+        // `from_value`. Mermaid configs are objects; if we see a non-object here, coerce it
+        // to an object so this API never panics on user input.
+        if !self.0.is_object() {
+            self.0 = Value::Object(Map::new());
+        }
+
+        let Value::Object(ref mut root) = self.0 else {
+            return;
+        };
+        let mut cur: &mut Map<String, Value> = root;
         let mut segments = dotted_path.split('.').peekable();
         while let Some(seg) = segments.next() {
             if segments.peek().is_none() {
                 cur.insert(seg.to_string(), value);
                 return;
             }
-            cur = cur
-                .entry(seg)
-                .or_insert_with(|| Value::Object(Map::new()))
-                .as_object_mut()
-                .unwrap();
+            let slot = cur.entry(seg).or_insert_with(|| Value::Object(Map::new()));
+            if !slot.is_object() {
+                *slot = Value::Object(Map::new());
+            }
+            let Some(next) = slot.as_object_mut() else {
+                return;
+            };
+            cur = next;
         }
     }
 
