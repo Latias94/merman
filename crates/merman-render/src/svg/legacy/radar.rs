@@ -2,6 +2,237 @@ use super::*;
 
 // Radar diagram SVG renderer implementation (split from legacy.rs).
 
+fn radar_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+    // Keep `:root` last (matches upstream Mermaid radar SVG baselines).
+    let id = escape_xml(diagram_id);
+    let default_font = r#""trebuchet ms",verdana,arial,sans-serif"#;
+
+    fn theme_var_string(cfg: &serde_json::Value, path: &[&str], fallback: &str) -> String {
+        let mut cur = cfg;
+        for key in path {
+            cur = match cur.get(*key) {
+                Some(v) => v,
+                None => return fallback.to_string(),
+            };
+        }
+        cur.as_str()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| fallback.to_string())
+    }
+
+    fn theme_var_number_as_string(
+        cfg: &serde_json::Value,
+        path: &[&str],
+        fallback: &str,
+    ) -> String {
+        let mut cur = cfg;
+        for key in path {
+            cur = match cur.get(*key) {
+                Some(v) => v,
+                None => return fallback.to_string(),
+            };
+        }
+        if let Some(s) = cur.as_str() {
+            return s.to_string();
+        }
+        if let Some(n) = json_f64(cur) {
+            return fmt(n);
+        }
+        fallback.to_string()
+    }
+
+    fn default_c_scale(i: usize) -> &'static str {
+        match i {
+            0 => "hsl(240, 100%, 76.2745098039%)",
+            1 => "hsl(60, 100%, 73.5294117647%)",
+            2 => "hsl(80, 100%, 76.2745098039%)",
+            3 => "hsl(270, 100%, 76.2745098039%)",
+            4 => "hsl(300, 100%, 76.2745098039%)",
+            5 => "hsl(330, 100%, 76.2745098039%)",
+            6 => "hsl(0, 100%, 76.2745098039%)",
+            7 => "hsl(30, 100%, 76.2745098039%)",
+            8 => "hsl(90, 100%, 76.2745098039%)",
+            9 => "hsl(150, 100%, 76.2745098039%)",
+            10 => "hsl(180, 100%, 76.2745098039%)",
+            _ => "hsl(210, 100%, 76.2745098039%)",
+        }
+    }
+
+    let font_family = config_string(effective_config, &["themeVariables", "fontFamily"])
+        .map(|s| normalize_css_font_family(&s))
+        .unwrap_or_else(|| default_font.to_string());
+    let base_font_size =
+        theme_var_number_as_string(effective_config, &["themeVariables", "fontSize"], "16px");
+    let base_text_color =
+        theme_var_string(effective_config, &["themeVariables", "textColor"], "#333");
+    let error_bkg_color = theme_var_string(
+        effective_config,
+        &["themeVariables", "errorBkgColor"],
+        "#552222",
+    );
+    let error_text_color = theme_var_string(
+        effective_config,
+        &["themeVariables", "errorTextColor"],
+        "#552222",
+    );
+    let line_color = theme_var_string(
+        effective_config,
+        &["themeVariables", "lineColor"],
+        "#333333",
+    );
+
+    let title_font_size = base_font_size.clone();
+    let title_color = theme_color(effective_config, "titleColor", "#333");
+
+    let axis_color = theme_var_string(
+        effective_config,
+        &["themeVariables", "radar", "axisColor"],
+        "#333333",
+    );
+    let axis_stroke_width = config_f64(
+        effective_config,
+        &["themeVariables", "radar", "axisStrokeWidth"],
+    )
+    .unwrap_or(2.0);
+    let axis_label_font_size = config_f64(
+        effective_config,
+        &["themeVariables", "radar", "axisLabelFontSize"],
+    )
+    .unwrap_or(12.0);
+
+    let graticule_color = theme_var_string(
+        effective_config,
+        &["themeVariables", "radar", "graticuleColor"],
+        "#DEDEDE",
+    );
+    let graticule_opacity = config_f64(
+        effective_config,
+        &["themeVariables", "radar", "graticuleOpacity"],
+    )
+    .unwrap_or(0.3);
+    let graticule_stroke_width = config_f64(
+        effective_config,
+        &["themeVariables", "radar", "graticuleStrokeWidth"],
+    )
+    .unwrap_or(1.0);
+
+    let legend_font_size = config_f64(
+        effective_config,
+        &["themeVariables", "radar", "legendFontSize"],
+    )
+    .unwrap_or(12.0);
+
+    let curve_opacity = config_f64(
+        effective_config,
+        &["themeVariables", "radar", "curveOpacity"],
+    )
+    .unwrap_or(0.5);
+    let curve_stroke_width = config_f64(
+        effective_config,
+        &["themeVariables", "radar", "curveStrokeWidth"],
+    )
+    .unwrap_or(2.0);
+
+    let mut out = String::new();
+    let _ = write!(
+        &mut out,
+        r#"#{}{{font-family:{};font-size:{};fill:{};}}"#,
+        id, font_family, base_font_size, base_text_color
+    );
+    out.push_str(
+        r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .error-icon{{fill:{};}}#{} .error-text{{fill:{};stroke:{};}}"#,
+        id, error_bkg_color, id, error_text_color, error_text_color
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
+        id, id, id, id, id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .marker{{fill:{};stroke:{};}}#{} .marker.cross{{stroke:{};}}"#,
+        id, line_color, line_color, id, line_color
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} svg{{font-family:{};font-size:{};}}#{} p{{margin:0;}}"#,
+        id, font_family, base_font_size, id
+    );
+
+    let _ = write!(
+        &mut out,
+        r#"#{} .radarTitle{{font-size:{};color:{};dominant-baseline:hanging;text-anchor:middle;}}"#,
+        id, title_font_size, title_color
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .radarAxisLine{{stroke:{};stroke-width:{};}}"#,
+        id,
+        axis_color,
+        fmt(axis_stroke_width)
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .radarAxisLabel{{dominant-baseline:middle;text-anchor:middle;font-size:{}px;color:{};}}"#,
+        id,
+        fmt(axis_label_font_size),
+        axis_color
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .radarGraticule{{fill:{};fill-opacity:{};stroke:{};stroke-width:{};}}"#,
+        id,
+        graticule_color,
+        fmt(graticule_opacity),
+        graticule_color,
+        fmt(graticule_stroke_width)
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .radarLegendText{{text-anchor:start;font-size:{}px;dominant-baseline:hanging;}}"#,
+        id,
+        fmt(legend_font_size)
+    );
+
+    for i in 0..12 {
+        let key = format!("cScale{i}");
+        let c = theme_color(effective_config, &key, default_c_scale(i));
+        let _ = write!(
+            &mut out,
+            r#"#{} .radarCurve-{}{{color:{};fill:{};fill-opacity:{};stroke:{};stroke-width:{};}}#{} .radarLegendBox-{}{{fill:{};fill-opacity:{};stroke:{};}}"#,
+            id,
+            i,
+            c,
+            c,
+            fmt(curve_opacity),
+            c,
+            fmt(curve_stroke_width),
+            id,
+            i,
+            c,
+            fmt(curve_opacity),
+            c
+        );
+    }
+
+    let _ = write!(
+        &mut out,
+        r#"#{} :root{{--mermaid-font-family:{};}}"#,
+        id, font_family
+    );
+
+    out
+}
+
 pub(super) fn render_radar_diagram_svg(
     layout: &RadarDiagramLayout,
     semantic: &serde_json::Value,
