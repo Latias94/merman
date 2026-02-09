@@ -495,6 +495,184 @@ fn render_svg_to_pdf(svg: &str) -> Result<Vec<u8>, CliError> {
     .map_err(|_| CliError::Usage("failed to convert SVG to PDF"))
 }
 
+fn escape_xml_text(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+fn decode_xml_entity_at(s: &str, amp_index: usize) -> Option<(char, usize)> {
+    let rest = &s[amp_index + 1..];
+    let semi_rel = rest.find(';')?;
+    let entity = &rest[..semi_rel];
+
+    let ch = match entity {
+        "amp" => '&',
+        "lt" => '<',
+        "gt" => '>',
+        "quot" => '"',
+        "apos" => '\'',
+        _ => {
+            if let Some(num) = entity.strip_prefix("#x") {
+                let v = u32::from_str_radix(num, 16).ok()?;
+                char::from_u32(v)?
+            } else if let Some(num) = entity.strip_prefix("#X") {
+                let v = u32::from_str_radix(num, 16).ok()?;
+                char::from_u32(v)?
+            } else if let Some(num) = entity.strip_prefix('#') {
+                let v = num.parse::<u32>().ok()?;
+                char::from_u32(v)?
+            } else {
+                return None;
+            }
+        }
+    };
+
+    Some((ch, amp_index + 1 + semi_rel + 1))
+}
+
+fn htmlish_to_text_lines(s: &str) -> Vec<String> {
+    let mut out = String::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0usize;
+
+    while i < bytes.len() {
+        match bytes[i] {
+            b'<' => {
+                if let Some(end_rel) = s[i..].find('>') {
+                    let tag = &s[i + 1..i + end_rel];
+                    let tag_trim = tag.trim().to_ascii_lowercase();
+                    if tag_trim.starts_with("br") || tag_trim.starts_with("br/") {
+                        out.push('\n');
+                    }
+                    if tag_trim.starts_with("/p") || tag_trim.starts_with("/div") {
+                        out.push('\n');
+                    }
+                    i = i + end_rel + 1;
+                } else {
+                    i += 1;
+                }
+            }
+            b'&' => {
+                if let Some((ch, next)) = decode_xml_entity_at(s, i) {
+                    out.push(ch);
+                    i = next;
+                } else {
+                    out.push('&');
+                    i += 1;
+                }
+            }
+            _ => {
+                let ch = s[i..].chars().next().unwrap();
+                out.push(ch);
+                i += ch.len_utf8();
+            }
+        }
+    }
+
+    out.split('\n')
+        .map(|line| {
+            line.split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .trim()
+                .to_string()
+        })
+        .filter(|line| !line.is_empty())
+        .collect()
+}
+
+fn parse_attr_f64(tag: &str, key: &str) -> Option<f64> {
+    let needle = format!(r#"{key}=""#);
+    let i = tag.find(&needle)?;
+    let rest = &tag[i + needle.len()..];
+    let end = rest.find('"')?;
+    rest[..end].trim().parse::<f64>().ok()
+}
+
+fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
+    // `resvg` does not fully render `<foreignObject>` HTML content. For raster output we rewrite
+    // common Mermaid label patterns into SVG `<text>/<tspan>` elements so PNG/JPG/PDF previews are
+    // readable without a browser engine.
+    let mut out = String::with_capacity(svg.len());
+    let mut i = 0usize;
+    let close_tag = "</foreignObject>";
+
+    while let Some(rel) = svg[i..].find("<foreignObject") {
+        let start = i + rel;
+        out.push_str(&svg[i..start]);
+
+        let Some(start_tag_end_rel) = svg[start..].find('>') else {
+            out.push_str(&svg[start..]);
+            return out;
+        };
+        let start_tag_end = start + start_tag_end_rel;
+        let start_tag = &svg[start..=start_tag_end];
+
+        let inner_start = start_tag_end + 1;
+        let Some(close_rel) = svg[inner_start..].find(close_tag) else {
+            out.push_str(&svg[start..]);
+            return out;
+        };
+        let inner_end = inner_start + close_rel;
+        let inner = &svg[inner_start..inner_end];
+        let i_next = inner_end + close_tag.len();
+
+        let width = parse_attr_f64(start_tag, "width").unwrap_or(0.0);
+        let height = parse_attr_f64(start_tag, "height").unwrap_or(0.0);
+        if width <= 0.0 || height <= 0.0 {
+            i = i_next;
+            continue;
+        }
+
+        let lines = htmlish_to_text_lines(inner);
+        if lines.is_empty() {
+            i = i_next;
+            continue;
+        }
+
+        let x = parse_attr_f64(start_tag, "x").unwrap_or(0.0);
+        let y = parse_attr_f64(start_tag, "y").unwrap_or(0.0);
+
+        let left_align = inner.to_ascii_lowercase().contains("text-align:left");
+        let (anchor, text_x) = if left_align {
+            ("start", x)
+        } else {
+            ("middle", x + width / 2.0)
+        };
+        let text_y = y + height / 2.0;
+
+        // Most Mermaid baselines assume 16px, and `resvg` uses system fonts.
+        let font_size = 16.0_f64;
+        let n = lines.len() as f64;
+        for (idx, line) in lines.iter().enumerate() {
+            let dy = (idx as f64) * font_size - (font_size * (n - 1.0)) / 2.0;
+            let text = escape_xml_text(line);
+            out.push_str("<text");
+            out.push_str(&format!(
+                r##" x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="#333" style="text-anchor: {}; font-size: {}px; font-family: Arial;">"##,
+                text_x, text_y, anchor, font_size
+            ));
+            out.push_str(&format!(
+                r#"<tspan x="{}" dy="{}">{}</tspan></text>"#,
+                text_x, dy, text
+            ));
+        }
+
+        i = i_next;
+    }
+
+    out.push_str(&svg[i..]);
+    out
+}
+
 fn parse_tiny_skia_color(text: &str) -> Option<tiny_skia::Color> {
     let s = text.trim().to_ascii_lowercase();
     match s.as_str() {
@@ -592,11 +770,15 @@ fn run(args: Args) -> Result<(), CliError> {
             };
 
             let measurer = build_text_measurer(args.text_measurer);
+            let use_manatee_layout = matches!(
+                parsed.meta.diagram_type.as_str(),
+                "mindmap" | "architecture"
+            );
             let layout_opts = LayoutOptions {
                 text_measurer: Arc::clone(&measurer),
                 viewport_width: args.viewport_width,
                 viewport_height: args.viewport_height,
-                use_manatee_layout: false,
+                use_manatee_layout,
             };
             let layouted = merman_render::layout_parsed(&parsed, &layout_opts)?;
             write_json(&layouted, args.pretty)?;
@@ -608,11 +790,15 @@ fn run(args: Args) -> Result<(), CliError> {
             };
 
             let measurer = build_text_measurer(args.text_measurer);
+            let use_manatee_layout = matches!(
+                parsed.meta.diagram_type.as_str(),
+                "mindmap" | "architecture"
+            );
             let layout_opts = LayoutOptions {
                 text_measurer: Arc::clone(&measurer),
                 viewport_width: args.viewport_width,
                 viewport_height: args.viewport_height,
-                use_manatee_layout: false,
+                use_manatee_layout,
             };
             let layouted = merman_render::layout_parsed(&parsed, &layout_opts)?;
 
@@ -631,8 +817,12 @@ fn run(args: Args) -> Result<(), CliError> {
                     write_text(&svg, args.out.as_deref())?;
                 }
                 RenderFormat::Png => {
-                    let bytes =
-                        render_svg_to_png(&svg, args.render_scale, args.background.as_deref())?;
+                    let raster_svg = foreign_object_label_fallback_svg_text(&svg);
+                    let bytes = render_svg_to_png(
+                        &raster_svg,
+                        args.render_scale,
+                        args.background.as_deref(),
+                    )?;
                     let out = args.out.clone().unwrap_or_else(|| {
                         default_raster_out_path(args.input.as_deref(), "png")
                             .to_string_lossy()
@@ -646,8 +836,12 @@ fn run(args: Args) -> Result<(), CliError> {
                     }
                 }
                 RenderFormat::Jpeg => {
-                    let bytes =
-                        render_svg_to_jpeg(&svg, args.render_scale, args.background.as_deref())?;
+                    let raster_svg = foreign_object_label_fallback_svg_text(&svg);
+                    let bytes = render_svg_to_jpeg(
+                        &raster_svg,
+                        args.render_scale,
+                        args.background.as_deref(),
+                    )?;
                     let out = args.out.clone().unwrap_or_else(|| {
                         default_raster_out_path(args.input.as_deref(), "jpg")
                             .to_string_lossy()
@@ -661,7 +855,8 @@ fn run(args: Args) -> Result<(), CliError> {
                     }
                 }
                 RenderFormat::Pdf => {
-                    let bytes = render_svg_to_pdf(&svg)?;
+                    let raster_svg = foreign_object_label_fallback_svg_text(&svg);
+                    let bytes = render_svg_to_pdf(&raster_svg)?;
                     let out = args.out.clone().unwrap_or_else(|| {
                         default_raster_out_path(args.input.as_deref(), "pdf")
                             .to_string_lossy()
