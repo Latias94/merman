@@ -90,7 +90,12 @@ impl Engine {
         &mut self.diagram_registry
     }
 
-    pub async fn parse_metadata(
+    /// Synchronous variant of [`Engine::parse_metadata`].
+    ///
+    /// This is useful for UI render pipelines that are synchronous (e.g. immediate-mode UI),
+    /// where introducing an async executor would be awkward. The parsing work is CPU-bound and
+    /// does not perform I/O.
+    pub fn parse_metadata_sync(
         &self,
         text: &str,
         options: ParseOptions,
@@ -101,7 +106,19 @@ impl Engine {
         Ok(Some(meta))
     }
 
-    pub async fn parse_diagram(
+    pub async fn parse_metadata(
+        &self,
+        text: &str,
+        options: ParseOptions,
+    ) -> Result<Option<ParseMetadata>> {
+        self.parse_metadata_sync(text, options)
+    }
+
+    /// Synchronous variant of [`Engine::parse_diagram`].
+    ///
+    /// Note: callers that want “always returns a diagram” behavior can set
+    /// [`ParseOptions::suppress_errors`] to `true` to get an `error` diagram on parse failures.
+    pub fn parse_diagram_sync(
         &self,
         text: &str,
         options: ParseOptions,
@@ -137,6 +154,14 @@ impl Engine {
         };
         common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
         Ok(Some(ParsedDiagram { meta, model }))
+    }
+
+    pub async fn parse_diagram(
+        &self,
+        text: &str,
+        options: ParseOptions,
+    ) -> Result<Option<ParsedDiagram>> {
+        self.parse_diagram_sync(text, options)
     }
 
     pub async fn parse(&self, text: &str, options: ParseOptions) -> Result<Option<ParseMetadata>> {

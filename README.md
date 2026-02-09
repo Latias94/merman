@@ -31,7 +31,9 @@ Enable the `render` feature when you want layout + SVG.
 
 ```rust
 use merman_core::{Engine, ParseOptions};
-use merman::render::{LayoutOptions, SvgRenderOptions, VendoredFontMetricsTextMeasurer};
+use merman::render::{
+    render_svg_sync, sanitize_svg_id, LayoutOptions, SvgRenderOptions, VendoredFontMetricsTextMeasurer,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let engine = Engine::new();
@@ -39,14 +41,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut layout = LayoutOptions::default();
     layout.text_measurer = std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default());
 
-    // Use any executor you like; `futures` is used here to keep the example runtime-agnostic.
-    let svg = futures::executor::block_on(merman::render::render_svg(
+    // For UIs that inline multiple diagrams, set a per-diagram SVG id to avoid internal `<defs>`
+    // and accessibility id collisions.
+    let svg_opts = SvgRenderOptions {
+        diagram_id: Some(sanitize_svg_id("example-diagram")),
+        ..SvgRenderOptions::default()
+    };
+
+    // Executor-free synchronous entrypoint (the work is CPU-bound and does not perform I/O).
+    let svg = render_svg_sync(
         &engine,
         "flowchart TD; A-->B;",
         ParseOptions::default(),
         &layout,
-        &SvgRenderOptions::default(),
-    ))?
+        &svg_opts,
+    )?
     .unwrap();
 
     println!("{svg}");

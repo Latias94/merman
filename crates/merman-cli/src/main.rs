@@ -700,7 +700,8 @@ fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
             return tag.to_owned();
         }
         let insert_at = if tag.trim_end().ends_with("/>") {
-            tag.rfind("/>").unwrap_or_else(|| tag.len().saturating_sub(2))
+            tag.rfind("/>")
+                .unwrap_or_else(|| tag.len().saturating_sub(2))
         } else {
             tag.rfind('>').unwrap_or(tag.len())
         };
