@@ -271,12 +271,17 @@ mod tests {
     fn foreign_object_overlay_accounts_for_parent_translate() {
         let svg = r#"<svg viewBox="90 -310 425 99" xmlns="http://www.w3.org/2000/svg"><g transform="translate(183.3046875, -300)"><foreignObject width="33.390625" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Todo</p></div></foreignObject></g></svg>"#;
         let out = foreign_object_label_fallback_svg_text(svg);
-        assert!(out.contains(r#"x="200""#), "expected x=200 center placement");
+        assert!(
+            out.contains(r#"x="200""#),
+            "expected x=200 center placement"
+        );
         assert!(
             out.contains(r#"y="-288""#),
             "expected y=-288 center placement"
         );
-        assert!(out.contains(">Todo<"), "expected text content to be present");
+        assert!(
+            out.contains(">Todo<"),
+            "expected text content to be present"
+        );
     }
 }
-
