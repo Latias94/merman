@@ -2,6 +2,118 @@ use super::*;
 
 // Mindmap diagram SVG renderer implementation (split from legacy.rs).
 
+fn mindmap_css(diagram_id: &str) -> String {
+    // Mirrors Mermaid@11.12.2 `diagrams/mindmap/styles.ts` + shared base stylesheet ordering.
+    //
+    // Keep `:root` last (matches upstream fixtures).
+    let id = escape_xml(diagram_id);
+    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
+    let root_rule = format!(r#"#{} :root{{--mermaid-font-family:{};}}"#, id, font);
+
+    let mut out = info_css(diagram_id);
+    if let Some(prefix) = out.strip_suffix(&root_rule) {
+        out = prefix.to_string();
+    }
+
+    let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, id);
+
+    // Mermaid default theme resolves `cScale0..11` into this fixed palette for mindmap/kanban/timeline.
+    // The first generated section is `section--1` (i=0).
+    let fills = [
+        "hsl(240, 100%, 76.2745098039%)",
+        "hsl(60, 100%, 73.5294117647%)",
+        "hsl(80, 100%, 76.2745098039%)",
+        "hsl(270, 100%, 76.2745098039%)",
+        "hsl(300, 100%, 76.2745098039%)",
+        "hsl(330, 100%, 76.2745098039%)",
+        "hsl(0, 100%, 76.2745098039%)",
+        "hsl(30, 100%, 76.2745098039%)",
+        "hsl(90, 100%, 76.2745098039%)",
+        "hsl(150, 100%, 76.2745098039%)",
+        "hsl(180, 100%, 76.2745098039%)",
+        "hsl(210, 100%, 76.2745098039%)",
+    ];
+    let inv_fills = [
+        "hsl(60, 100%, 86.2745098039%)",
+        "hsl(240, 100%, 83.5294117647%)",
+        "hsl(260, 100%, 86.2745098039%)",
+        "hsl(90, 100%, 86.2745098039%)",
+        "hsl(120, 100%, 86.2745098039%)",
+        "hsl(150, 100%, 86.2745098039%)",
+        "hsl(180, 100%, 86.2745098039%)",
+        "hsl(210, 100%, 86.2745098039%)",
+        "hsl(270, 100%, 86.2745098039%)",
+        "hsl(330, 100%, 86.2745098039%)",
+        "hsl(0, 100%, 86.2745098039%)",
+        "hsl(30, 100%, 86.2745098039%)",
+    ];
+
+    for (i, (fill, inv)) in fills.iter().zip(inv_fills.iter()).enumerate() {
+        let section = i as i64 - 1;
+        let label = if i == 0 || i == 3 { "#ffffff" } else { "black" };
+        let sw = 17_i64 - 3_i64 * (i as i64);
+        let _ = write!(
+            &mut out,
+            r#"#{} .section-{} rect,#{} .section-{} path,#{} .section-{} circle,#{} .section-{} polygon,#{} .section-{} path{{fill:{};}}"#,
+            id, section, id, section, id, section, id, section, id, section, fill
+        );
+        let _ = write!(
+            &mut out,
+            r#"#{} .section-{} text{{fill:{};}}"#,
+            id, section, label
+        );
+        let _ = write!(
+            &mut out,
+            r#"#{} .node-icon-{}{{font-size:40px;color:{};}}"#,
+            id, section, label
+        );
+        let _ = write!(
+            &mut out,
+            r#"#{} .section-edge-{}{{stroke:{};}}"#,
+            id, section, fill
+        );
+        let _ = write!(
+            &mut out,
+            r#"#{} .edge-depth-{}{{stroke-width:{};}}"#,
+            id, section, sw
+        );
+        let _ = write!(
+            &mut out,
+            r#"#{} .section-{} line{{stroke:{};stroke-width:3;}}"#,
+            id, section, inv
+        );
+        let _ = write!(
+            &mut out,
+            r#"#{} .disabled,#{} .disabled circle,#{} .disabled text{{fill:lightgray;}}#{} .disabled text{{fill:#efefef;}}"#,
+            id, id, id, id
+        );
+    }
+
+    // Root section overrides.
+    let _ = write!(
+        &mut out,
+        r#"#{} .section-root rect,#{} .section-root path,#{} .section-root circle,#{} .section-root polygon{{fill:hsl(240, 100%, 46.2745098039%);}}"#,
+        id, id, id, id
+    );
+    let _ = write!(&mut out, r#"#{} .section-root text{{fill:#ffffff;}}"#, id);
+    let _ = write!(&mut out, r#"#{} .section-root span{{color:#ffffff;}}"#, id);
+    let _ = write!(&mut out, r#"#{} .section-2 span{{color:#ffffff;}}"#, id);
+    let _ = write!(
+        &mut out,
+        r#"#{} .icon-container{{height:100%;display:flex;justify-content:center;align-items:center;}}"#,
+        id
+    );
+    let _ = write!(&mut out, r#"#{} .edge{{fill:none;}}"#, id);
+    let _ = write!(
+        &mut out,
+        r#"#{} .mindmap-node-label{{dy:1em;alignment-baseline:middle;text-anchor:middle;dominant-baseline:middle;text-align:center;}}"#,
+        id
+    );
+
+    out.push_str(&root_rule);
+    out
+}
+
 pub(super) fn render_mindmap_diagram_svg(
     layout: &MindmapDiagramLayout,
     semantic: &serde_json::Value,
@@ -19,6 +131,8 @@ pub(super) fn render_mindmap_diagram_svg(
         label: String,
         shape: String,
         #[serde(default)]
+        padding: f64,
+        #[serde(default)]
         icon: Option<String>,
     }
 
@@ -28,6 +142,8 @@ pub(super) fn render_mindmap_diagram_svg(
         id: String,
         start: String,
         end: String,
+        #[serde(default)]
+        curve: String,
         classes: String,
         thickness: String,
     }
@@ -47,7 +163,15 @@ pub(super) fn render_mindmap_diagram_svg(
         y: f64,
     }
 
-    fn mk_label(out: &mut String, text: &str, label_bkg: bool, width: f64, height: f64) {
+    fn mk_label(
+        out: &mut String,
+        text: &str,
+        label_bkg: bool,
+        width: f64,
+        height: f64,
+        tx: f64,
+        ty: f64,
+    ) {
         let div_class = if label_bkg {
             r#" class="labelBkg""#
         } else {
@@ -55,7 +179,9 @@ pub(super) fn render_mindmap_diagram_svg(
         };
         let _ = write!(
             out,
-            r#"<g class="label" transform="translate(0, 0)"><rect/><foreignObject width="{w}" height="{h}"><div xmlns="http://www.w3.org/1999/xhtml"{div_class} style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>{text}</p></span></div></foreignObject></g>"#,
+            r#"<g class="label" style="" transform="translate({tx}, {ty})"><rect/><foreignObject width="{w}" height="{h}"><div xmlns="http://www.w3.org/1999/xhtml"{div_class} style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>{text}</p></span></div></foreignObject></g>"#,
+            tx = fmt(tx),
+            ty = fmt(ty),
             w = fmt(width.max(1.0)),
             h = fmt(height.max(1.0)),
             div_class = div_class,
@@ -462,7 +588,8 @@ pub(super) fn render_mindmap_diagram_svg(
         vw = view_box_attr.split_whitespace().nth(2).unwrap_or("100"),
         vh = view_box_attr.split_whitespace().nth(3).unwrap_or("100"),
     );
-    out.push_str("<style></style>");
+    let css = mindmap_css(diagram_id);
+    let _ = write!(&mut out, "<style>{}</style>", css);
     out.push_str("<g>");
 
     let _ = write!(
@@ -484,13 +611,18 @@ pub(super) fn render_mindmap_diagram_svg(
             (Some(a), Some(b)) => (a.x, a.y, b.x, b.y),
             _ => (0.0, 0.0, 0.0, 0.0),
         };
+
+        // Mermaid mindmap edges use `curveBasis` and offset endpoints from node centers.
+        let dx = if tx >= sx { 15.0 } else { -15.0 };
+        let start_x = sx + dx;
+        let end_x = tx - dx;
+        let mid_x = (start_x + end_x) / 2.0;
+        let mid_y = (sy + ty) / 2.0;
+
         let points = vec![
-            Pt { x: sx, y: sy },
-            Pt {
-                x: (sx + tx) / 2.0,
-                y: (sy + ty) / 2.0,
-            },
-            Pt { x: tx, y: ty },
+            Pt { x: start_x, y: sy },
+            Pt { x: mid_x, y: mid_y },
+            Pt { x: end_x, y: ty },
         ];
         let points_for_data_points = points
             .iter()
@@ -498,6 +630,12 @@ pub(super) fn render_mindmap_diagram_svg(
             .collect::<Vec<_>>();
         let data_points = base64::engine::general_purpose::STANDARD
             .encode(json_stringify_points(&points_for_data_points));
+
+        let d = if e.curve.trim() == "basis" {
+            curve::curve_basis_path_d(&points_for_data_points)
+        } else {
+            curve::curve_linear_path_d(&points_for_data_points)
+        };
         let class = format!(
             "edge-thickness-{} edge-pattern-solid {}",
             e.thickness.trim(),
@@ -505,7 +643,8 @@ pub(super) fn render_mindmap_diagram_svg(
         );
         let _ = write!(
             &mut out,
-            r#"<path d="M0 0" id="{id}" class="{class}" data-edge="true" data-et="edge" data-id="{id}" data-points="{pts}"/>"#,
+            r#"<path d="{d}" id="{id}" class="{class}" style="undefined;;;undefined" data-edge="true" data-et="edge" data-id="{id}" data-points="{pts}"/>"#,
+            d = escape_attr(&d),
             id = escape_xml(&e.id),
             class = escape_xml(&class),
             pts = escape_xml(&data_points),
@@ -525,6 +664,8 @@ pub(super) fn render_mindmap_diagram_svg(
             .get(&n.id)
             .map(|ln| (ln.x, ln.y, ln.width, ln.height))
             .unwrap_or((0.0, 0.0, 80.0, 44.0));
+        let padding = n.padding.max(0.0);
+        let half_padding = padding / 2.0;
         let class = format!("node {}", n.css_classes.trim());
         let _ = write!(
             &mut out,
@@ -537,15 +678,58 @@ pub(super) fn render_mindmap_diagram_svg(
 
         match n.shape.as_str() {
             "defaultMindmapNode" => {
+                let rd = 5.0;
+                let rect_path = format!(
+                    "\n    M{} {}\n    v{}\n    q0,-{} {},-{}\n    h{}\n    q{},0 {},{}\n    v{}\n    q0,{} -{},{}\n    h{}\n    q-{},0 -{},-{}\n    Z\n  ",
+                    fmt_path(-(w / 2.0)),
+                    fmt_path(h / 2.0 - rd),
+                    fmt_path(-h + 2.0 * rd),
+                    fmt_path(rd),
+                    fmt_path(rd),
+                    fmt_path(rd),
+                    fmt_path(w - 2.0 * rd),
+                    fmt_path(rd),
+                    fmt_path(rd),
+                    fmt_path(rd),
+                    fmt_path(h - 2.0 * rd),
+                    fmt_path(rd),
+                    fmt_path(rd),
+                    fmt_path(rd),
+                    fmt_path(-w + 2.0 * rd),
+                    fmt_path(rd),
+                    fmt_path(rd),
+                    fmt_path(rd),
+                );
+
+                // Recover label bbox dimensions from the rendered node size + padding rules.
+                let bbox_w = (w - 8.0 * half_padding).max(1.0);
+                let bbox_h = (h - 2.0 * half_padding).max(1.0);
                 let _ = write!(
                     &mut out,
-                    r#"<path id="node-{id}" class="node-bkg node-0" d="M0 0" style=""/>"#,
-                    id = escape_xml(&n.id)
+                    r#"<path id="node-{id}" class="node-bkg node-0" style="" d="{d}"/>"#,
+                    id = escape_xml(&n.id),
+                    d = escape_attr(&rect_path),
                 );
-                out.push_str(r#"<line class="node-line-" x1="0" y1="17" x2="0" y2="17"/>"#);
-                mk_label(&mut out, &n.label, n.icon.is_some(), w.max(1.0), 24.0);
+                let _ = write!(
+                    &mut out,
+                    r#"<line class="node-line-" x1="{x1}" y1="{y}" x2="{x2}" y2="{y}"/>"#,
+                    x1 = fmt(-(w / 2.0)),
+                    x2 = fmt(w / 2.0),
+                    y = fmt(h / 2.0),
+                );
+                mk_label(
+                    &mut out,
+                    &n.label,
+                    n.icon.is_some(),
+                    bbox_w,
+                    bbox_h,
+                    -bbox_w / 2.0,
+                    -bbox_h / 2.0,
+                );
             }
             "rect" => {
+                let bbox_w = (w - 4.0 * padding).max(1.0);
+                let bbox_h = (h - 2.0 * padding).max(1.0);
                 let _ = write!(
                     &mut out,
                     r#"<rect class="basic label-container" style="" x="{x}" y="-22" width="{w}" height="44"/>"#,
@@ -556,8 +740,10 @@ pub(super) fn render_mindmap_diagram_svg(
                     &mut out,
                     &n.label,
                     n.icon.is_some(),
-                    (w - 40.0).max(1.0),
-                    24.0,
+                    bbox_w,
+                    bbox_h,
+                    -bbox_w / 2.0,
+                    -bbox_h / 2.0,
                 );
             }
             "rounded" => {
@@ -566,7 +752,17 @@ pub(super) fn render_mindmap_diagram_svg(
                     r##"<path d="M0 0" stroke="none" stroke-width="0" fill="#ECECFF" style=""/>"##,
                 );
                 out.push_str("</g>");
-                mk_label(&mut out, &n.label, n.icon.is_some(), w.max(1.0), 24.0);
+                let bbox_w = (w - 2.0 * padding).max(1.0);
+                let bbox_h = (h - 2.0 * padding).max(1.0);
+                mk_label(
+                    &mut out,
+                    &n.label,
+                    n.icon.is_some(),
+                    bbox_w,
+                    bbox_h,
+                    -bbox_w / 2.0,
+                    -bbox_h / 2.0,
+                );
             }
             "mindmapCircle" => {
                 let r = (w.max(h) / 2.0).max(1.0);
@@ -575,13 +771,33 @@ pub(super) fn render_mindmap_diagram_svg(
                     r#"<circle class="basic label-container" style="" r="{r}" cx="0" cy="0"/>"#,
                     r = fmt(r),
                 );
-                mk_label(&mut out, &n.label, n.icon.is_some(), w.max(1.0), 24.0);
+                let bbox_w = (w - 2.0 * padding).max(1.0);
+                let bbox_h = (h - 2.0 * padding).max(1.0);
+                mk_label(
+                    &mut out,
+                    &n.label,
+                    n.icon.is_some(),
+                    bbox_w,
+                    bbox_h,
+                    -bbox_w / 2.0,
+                    -bbox_h / 2.0,
+                );
             }
             "cloud" => {
                 out.push_str(
                     r#"<path class="basic label-container" style="" d="M0 0" transform="translate(0, 0)"/>"#,
                 );
-                mk_label(&mut out, &n.label, n.icon.is_some(), w.max(1.0), 24.0);
+                let bbox_w = (w - 2.0 * half_padding).max(1.0);
+                let bbox_h = (h - 2.0 * half_padding).max(1.0);
+                mk_label(
+                    &mut out,
+                    &n.label,
+                    n.icon.is_some(),
+                    bbox_w,
+                    bbox_h,
+                    -bbox_w / 2.0,
+                    -bbox_h / 2.0,
+                );
             }
             "hexagon" => {
                 out.push_str(r#"<g class="basic label-container">"#);
@@ -592,13 +808,31 @@ pub(super) fn render_mindmap_diagram_svg(
                     r##"<path d="M0 0" stroke="#9370DB" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/>"##,
                 );
                 out.push_str("</g>");
-                mk_label(&mut out, &n.label, n.icon.is_some(), w.max(1.0), 24.0);
+                mk_label(
+                    &mut out,
+                    &n.label,
+                    n.icon.is_some(),
+                    w.max(1.0),
+                    h.max(1.0),
+                    -w / 2.0,
+                    -h / 2.0,
+                );
             }
             "bang" => {
                 out.push_str(
                     r#"<path class="basic label-container" style="" d="M0 0" transform="translate(0, 0)"/>"#,
                 );
-                mk_label(&mut out, &n.label, n.icon.is_some(), w.max(1.0), 24.0);
+                let bbox_w = (w - 10.0 * half_padding).max(1.0);
+                let bbox_h = (h - 8.0 * half_padding).max(1.0);
+                mk_label(
+                    &mut out,
+                    &n.label,
+                    n.icon.is_some(),
+                    bbox_w,
+                    bbox_h,
+                    -bbox_w / 2.0,
+                    -bbox_h / 2.0,
+                );
             }
             _ => {
                 let _ = write!(
@@ -611,8 +845,10 @@ pub(super) fn render_mindmap_diagram_svg(
                     &mut out,
                     &n.label,
                     n.icon.is_some(),
-                    (w - 40.0).max(1.0),
-                    24.0,
+                    w.max(1.0),
+                    h.max(1.0),
+                    -w / 2.0,
+                    -h / 2.0,
                 );
             }
         }
