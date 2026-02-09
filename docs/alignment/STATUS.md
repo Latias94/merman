@@ -482,6 +482,9 @@ aligning default text style (16px) and node padding behavior.
 Recent progress: Architecture Cypress fixtures that use legacy shorthand syntax now have
 CLI-compatible `*_normalized` variants so we can store upstream CLI SVG baselines and run DOM parity
 checks without losing the original Cypress strings.
+Recent progress (2026-02-09): extracted shared D3 curve/path helpers and layout/debug SVG helpers out of
+`crates/merman-render/src/svg/legacy.rs` into `curve.rs` and `layout_debug.rs` to keep refactors localized;
+`xtask compare-all-svgs --check-dom --dom-mode parity-root` remains 0-mismatch.
 
 ## Alignment Sanity Checks
 
