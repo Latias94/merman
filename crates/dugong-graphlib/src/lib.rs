@@ -695,77 +695,106 @@ pub mod alg {
     {
         // Strongly connected components (Tarjan). Report SCCs with size > 1, or self-loops.
         let node_ids = g.node_ids();
-        let mut index: usize = 0;
-        let mut stack: Vec<String> = Vec::new();
-        let mut on_stack: BTreeSet<String> = BTreeSet::new();
-        let mut indices: BTreeMap<String, usize> = BTreeMap::new();
-        let mut lowlink: BTreeMap<String, usize> = BTreeMap::new();
-        let mut sccs: Vec<Vec<String>> = Vec::new();
-
-        fn strongconnect<N, E, G>(
-            g: &Graph<N, E, G>,
-            v: &str,
-            index: &mut usize,
-            stack: &mut Vec<String>,
-            on_stack: &mut BTreeSet<String>,
-            indices: &mut BTreeMap<String, usize>,
-            lowlink: &mut BTreeMap<String, usize>,
-            sccs: &mut Vec<Vec<String>>,
-        ) where
+        struct Tarjan<'a, N, E, G>
+        where
             N: Default + 'static,
             E: Default + 'static,
             G: Default,
         {
-            indices.insert(v.to_string(), *index);
-            lowlink.insert(v.to_string(), *index);
-            *index += 1;
-            stack.push(v.to_string());
-            on_stack.insert(v.to_string());
+            g: &'a Graph<N, E, G>,
+            index: usize,
+            stack: Vec<String>,
+            on_stack: BTreeSet<String>,
+            indices: BTreeMap<String, usize>,
+            lowlink: BTreeMap<String, usize>,
+            sccs: Vec<Vec<String>>,
+        }
 
-            for w in g.successors(v) {
-                if !indices.contains_key(w) {
-                    strongconnect(g, w, index, stack, on_stack, indices, lowlink, sccs);
-                    let v_low = lowlink[v];
-                    let w_low = lowlink[w];
-                    lowlink.insert(v.to_string(), v_low.min(w_low));
-                } else if on_stack.contains(w) {
-                    let v_low = lowlink[v];
-                    let w_idx = indices[w];
-                    lowlink.insert(v.to_string(), v_low.min(w_idx));
-                }
-            }
+        impl<N, E, G> Tarjan<'_, N, E, G>
+        where
+            N: Default + 'static,
+            E: Default + 'static,
+            G: Default,
+        {
+            fn strongconnect(&mut self, v: &str) {
+                self.indices.insert(v.to_string(), self.index);
+                self.lowlink.insert(v.to_string(), self.index);
+                self.index += 1;
+                self.stack.push(v.to_string());
+                self.on_stack.insert(v.to_string());
 
-            if lowlink[v] == indices[v] {
-                let mut scc: Vec<String> = Vec::new();
-                loop {
-                    let w = stack.pop().expect("tarjan stack underflow");
-                    on_stack.remove(&w);
-                    scc.push(w.clone());
-                    if w == v {
-                        break;
+                for w in self.g.successors(v) {
+                    if !self.indices.contains_key(w) {
+                        self.strongconnect(w);
+                        let v_low = self
+                            .lowlink
+                            .get(v)
+                            .copied()
+                            .expect("tarjan lowlink missing for v");
+                        let w_low = self
+                            .lowlink
+                            .get(w)
+                            .copied()
+                            .expect("tarjan lowlink missing for w");
+                        self.lowlink.insert(v.to_string(), v_low.min(w_low));
+                    } else if self.on_stack.contains(w) {
+                        let v_low = self
+                            .lowlink
+                            .get(v)
+                            .copied()
+                            .expect("tarjan lowlink missing for v");
+                        let w_idx = self
+                            .indices
+                            .get(w)
+                            .copied()
+                            .expect("tarjan index missing for w");
+                        self.lowlink.insert(v.to_string(), v_low.min(w_idx));
                     }
                 }
-                sccs.push(scc);
+
+                let v_low = self
+                    .lowlink
+                    .get(v)
+                    .copied()
+                    .expect("tarjan lowlink missing for v");
+                let v_idx = self
+                    .indices
+                    .get(v)
+                    .copied()
+                    .expect("tarjan index missing for v");
+                if v_low == v_idx {
+                    let mut scc: Vec<String> = Vec::new();
+                    loop {
+                        let w = self.stack.pop().expect("tarjan stack underflow");
+                        self.on_stack.remove(&w);
+                        scc.push(w.clone());
+                        if w == v {
+                            break;
+                        }
+                    }
+                    self.sccs.push(scc);
+                }
             }
         }
 
+        let mut tarjan = Tarjan {
+            g,
+            index: 0,
+            stack: Vec::new(),
+            on_stack: BTreeSet::new(),
+            indices: BTreeMap::new(),
+            lowlink: BTreeMap::new(),
+            sccs: Vec::new(),
+        };
+
         for v in &node_ids {
-            if !indices.contains_key(v) {
-                strongconnect(
-                    g,
-                    v,
-                    &mut index,
-                    &mut stack,
-                    &mut on_stack,
-                    &mut indices,
-                    &mut lowlink,
-                    &mut sccs,
-                );
+            if !tarjan.indices.contains_key(v) {
+                tarjan.strongconnect(v);
             }
         }
 
         let mut cycles: Vec<Vec<String>> = Vec::new();
-        for mut scc in sccs {
+        for mut scc in tarjan.sccs {
             if scc.len() > 1 {
                 // Deterministic node order: use original insertion order.
                 let order: BTreeMap<String, usize> = node_ids
