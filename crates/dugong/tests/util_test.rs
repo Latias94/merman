@@ -63,7 +63,7 @@ fn util_simplify_collapses_multi_edges() {
     );
 
     let g2 = util::simplify(&g);
-    assert_eq!(g2.options().multigraph, false);
+    assert!(!g2.options().multigraph);
     assert_eq!(
         g2.edge("a", "b", None).cloned(),
         Some(EdgeLabel {
@@ -100,7 +100,7 @@ fn util_as_non_compound_graph_copies_all_nodes() {
 
     let g2 = util::as_non_compound_graph(&g);
     assert_eq!(g2.node("a"), Some(&json!({ "foo": "bar" })));
-    assert_eq!(g2.has_node("b"), true);
+    assert!(g2.has_node("b"));
 }
 
 #[test]
@@ -133,8 +133,8 @@ fn util_as_non_compound_graph_does_not_copy_compound_nodes() {
     g.set_parent("a", "sg1");
     let g2 = util::as_non_compound_graph(&g);
     assert_eq!(g2.parent("a"), None);
-    assert_eq!(g2.options().compound, false);
-    assert_eq!(g2.has_node("sg1"), false);
+    assert!(!g2.options().compound);
+    assert!(!g2.has_node("sg1"));
 }
 
 #[test]

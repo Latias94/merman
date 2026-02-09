@@ -460,7 +460,7 @@ fn normalize_undo_restores_multi_edges() {
 
     normalize::undo(&mut g);
 
-    assert_eq!(g.has_edge("a", "b", None), false);
+    assert!(!g.has_edge("a", "b", None));
     assert_eq!(
         g.edge("a", "b", Some("bar")).unwrap().points,
         vec![Point { x: 5.0, y: 10.0 }]

@@ -131,7 +131,7 @@ pub fn undo(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             }
             let w = g
                 .successors(&v)
-                .get(0)
+                .first()
                 .map(|s| s.to_string())
                 .unwrap_or_default();
 

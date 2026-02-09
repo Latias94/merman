@@ -170,8 +170,8 @@ fn add_border_segments_adds_a_border_for_a_multi_rank_subgraph() {
     );
     assert_eq!(g.parent(&br2), Some("sg"));
 
-    assert_eq!(g.has_edge(&bl1, &bl2, None), true);
-    assert_eq!(g.has_edge(&br1, &br2, None), true);
+    assert!(g.has_edge(&bl1, &bl2, None));
+    assert!(g.has_edge(&br1, &br2, None));
 }
 
 #[test]

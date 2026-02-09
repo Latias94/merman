@@ -214,7 +214,7 @@ fn parent_dummy_chains_handles_nested_subgraphs() {
         g.set_node(
             format!("d{}", i + 1),
             NodeLabel {
-                rank: Some((i + 3) as i32),
+                rank: Some(i + 3),
                 ..Default::default()
             },
         );

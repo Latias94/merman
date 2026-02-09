@@ -92,8 +92,7 @@ pub fn find_type2_conflicts(
         prev_north_border: isize,
         next_north_border: isize,
     ) {
-        for i in south_pos..south_end {
-            let v = &south[i];
+        for v in south.iter().take(south_end).skip(south_pos) {
             let v_dummy = g.node(v).and_then(|n| n.dummy.as_deref());
             if v_dummy.is_some() {
                 for u in g.predecessors(v) {
@@ -211,8 +210,7 @@ where
             let i0 = mp.floor() as usize;
             let i1 = mp.ceil() as usize;
 
-            for i in i0..=i1 {
-                let w = &ws[i];
+            for w in ws.iter().take(i1 + 1).skip(i0) {
                 let v_align = align.get(v).cloned().unwrap_or_else(|| v.clone());
                 let w_pos = pos.get(w).copied().unwrap_or(usize::MAX) as isize;
                 if v_align == *v && prev_idx < w_pos && !has_conflict(conflicts, v, w) {

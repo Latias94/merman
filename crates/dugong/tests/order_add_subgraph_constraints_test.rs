@@ -52,7 +52,7 @@ fn add_subgraph_constraints_adds_a_constraint_when_parents_for_adjacent_nodes_ar
     let mut g = new_compound_graph();
     let mut cg: Graph<(), (), ()> = Graph::new(GraphOptions::default());
 
-    let vs = vec!["a", "b"];
+    let vs = ["a", "b"];
     g.set_parent("a", "sg1");
     g.set_parent("b", "sg2");
 

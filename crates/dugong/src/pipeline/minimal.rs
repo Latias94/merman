@@ -39,7 +39,7 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     let node_ids: Vec<String> = g.nodes().map(|s| s.to_string()).collect();
     let node_ids: Vec<String> = node_ids
         .into_iter()
-        .filter(|id| !(g.options().compound && !g.children(id).is_empty()))
+        .filter(|id| !g.options().compound || g.children(id).is_empty())
         .collect();
 
     let mut indegree: std::collections::HashMap<String, usize> =

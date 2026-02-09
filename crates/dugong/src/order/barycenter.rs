@@ -384,8 +384,8 @@ where
                 return result;
             };
 
-            let bl_order = g.node(&bl_pred).and_then(|n| n.order()).unwrap_or(0) as f64;
-            let br_order = g.node(&br_pred).and_then(|n| n.order()).unwrap_or(0) as f64;
+            let bl_order = g.node(bl_pred).and_then(|n| n.order()).unwrap_or(0) as f64;
+            let br_order = g.node(br_pred).and_then(|n| n.order()).unwrap_or(0) as f64;
 
             let bc = result.barycenter.unwrap_or(0.0);
             let w = result.weight.unwrap_or(0.0);

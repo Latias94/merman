@@ -15,7 +15,7 @@ pub fn position(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     let leaf_ids: Vec<String> = g
         .node_ids()
         .into_iter()
-        .filter(|id| !(g.options().compound && !g.children(id).is_empty()))
+        .filter(|id| !g.options().compound || g.children(id).is_empty())
         .collect();
 
     let mut ranks: BTreeMap<i32, Vec<String>> = BTreeMap::new();

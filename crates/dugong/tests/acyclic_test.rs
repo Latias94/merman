@@ -183,5 +183,5 @@ fn acyclic_greedy_prefers_to_break_cycles_at_low_weight_edges() {
     );
     acyclic::run(&mut g);
     assert_eq!(alg::find_cycles(&g), Vec::<Vec<String>>::new());
-    assert_eq!(g.has_edge("c", "d", None), false);
+    assert!(!g.has_edge("c", "d", None));
 }
