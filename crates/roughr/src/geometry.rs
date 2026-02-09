@@ -33,7 +33,7 @@ impl<F: Float + Trig> Line<F> {
         }
     }
     pub fn as_points(&self) -> Vec<Point2D<F>> {
-        return vec![self.start_point, self.end_point];
+        vec![self.start_point, self.end_point]
     }
 
     pub fn length(&self) -> F {
@@ -63,10 +63,10 @@ pub fn rotate_points<F: Float + Trig>(
         .to_transform()
         .then_rotate(angle)
         .then_translate(Vector2D::new(center.x, center.y));
-    return points
+    points
         .iter()
         .map(|&p| transformation.transform_point(p))
-        .collect::<Vec<Point2D<F>>>();
+        .collect::<Vec<Point2D<F>>>()
 }
 
 pub fn rotate_lines<F: Float + Trig>(

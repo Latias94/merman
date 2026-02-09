@@ -27,7 +27,7 @@ where
         gap = gap.max(_c::<F>(0.1));
         let mut o2 = o.clone();
         o2.set_hachure_gap(Some(gap.to_f32().unwrap()));
-        let lines = polygon_hachure_lines(polygon_list.borrow_mut(), &o2);
+        let lines = polygon_hachure_lines(polygon_list.borrow_mut().as_mut_slice(), &o2);
         let zig_zag_angle =
             (_c::<F>(f32::PI()) / _c::<F>(180.0)) * _c::<F>(o.hachure_angle.unwrap_or(0.0));
         let mut zig_zag_lines = vec![];
@@ -48,12 +48,12 @@ where
         }
 
         let ops = ZigZagFiller::render_lines(zig_zag_lines, o);
-        return OpSet {
+        OpSet {
             ops,
             op_set_type: OpSetType::FillSketch,
             size: None,
             path: None,
-        };
+        }
     }
 }
 
@@ -78,5 +78,11 @@ impl<F: Float + Trig + FromPrimitive> ZigZagFiller<F> {
         });
 
         ops
+    }
+}
+
+impl<F: Float + Trig + FromPrimitive> Default for ZigZagFiller<F> {
+    fn default() -> Self {
+        Self::new()
     }
 }

@@ -22,7 +22,7 @@ where
 {
     fn fill_polygons(&self, mut polygon_list: P, o: &mut Options) -> crate::core::OpSet<F> {
         o.set_hachure_angle(Some(0.0));
-        let lines = polygon_hachure_lines(polygon_list.borrow_mut(), o);
+        let lines = polygon_hachure_lines(polygon_list.borrow_mut().as_mut_slice(), o);
         let ops = DotFiller::dots_on_line(lines, o);
         OpSet {
             op_set_type: crate::core::OpSetType::FillSketch,

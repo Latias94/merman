@@ -35,7 +35,7 @@ where
             zig_zag_offset = gap;
         }
         o.set_hachure_gap(Some((gap + zig_zag_offset).to_f32().unwrap()));
-        let lines = polygon_hachure_lines(polygon_list.borrow_mut(), o);
+        let lines = polygon_hachure_lines(polygon_list.borrow_mut().as_mut_slice(), o);
         OpSet {
             op_set_type: OpSetType::FillSketch,
             ops: ZigZagLineFiller::zig_zag_lines(&lines, zig_zag_offset, o),
@@ -88,5 +88,11 @@ impl<F: Float + Trig + FromPrimitive> ZigZagLineFiller<F> {
             }
         }
         ops
+    }
+}
+
+impl<F: Float + Trig + FromPrimitive> Default for ZigZagLineFiller<F> {
+    fn default() -> Self {
+        Self::new()
     }
 }

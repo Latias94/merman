@@ -127,7 +127,7 @@ pub fn linear_path<F: Float + Trig + FromPrimitive>(
         }
         OpSet {
             op_set_type: OpSetType::Path,
-            ops: ops,
+            ops,
             path: None,
             size: None,
         }
@@ -308,6 +308,7 @@ pub fn ellipse_with_params<F: Float + Trig + FromPrimitive>(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn arc<F: Float + Trig + FromPrimitive>(
     x: F,
     y: F,
@@ -491,20 +492,18 @@ fn _line<F: Float + Trig + FromPrimitive>(
         roughness_gain = _c::<F>(-0.0016668) * length + _c(1.233334);
     }
 
-    let mut offset = _c(o.max_randomness_offset.unwrap_or(2.0) as f32);
+    let mut offset = _c(o.max_randomness_offset.unwrap_or(2.0));
     if (offset * offset * _c(100.0)) > length_sq {
         offset = length / _c(10.0);
     }
     let half_offset = offset / _c(2.0);
     let diverge_point = _c::<F>(0.2) + _cc::<F>(o.random()) * _c(0.2);
-    let mut mid_disp_x = _c::<F>(o.bowing.unwrap_or(1.0) as f32)
-        * _c(o.max_randomness_offset.unwrap_or(2.0) as f32)
-        * (y2 - y1)
-        / _c(200.0);
-    let mut mid_disp_y = _c::<F>(o.bowing.unwrap_or(1.0) as f32)
-        * _c(o.max_randomness_offset.unwrap_or(2.0) as f32)
-        * (x1 - x2)
-        / _c(200.0);
+    let mut mid_disp_x =
+        _c::<F>(o.bowing.unwrap_or(1.0)) * _c(o.max_randomness_offset.unwrap_or(2.0)) * (y2 - y1)
+            / _c(200.0);
+    let mut mid_disp_y =
+        _c::<F>(o.bowing.unwrap_or(1.0)) * _c(o.max_randomness_offset.unwrap_or(2.0)) * (x1 - x2)
+            / _c(200.0);
     mid_disp_x = _offset_opt(mid_disp_x, o, Some(roughness_gain));
     mid_disp_y = _offset_opt(mid_disp_y, o, Some(roughness_gain));
     let mut ops: Vec<Op<F>> = Vec::new();
@@ -740,6 +739,7 @@ fn _curve_with_offset<F: Float + Trig + FromPrimitive>(
     _curve(&ps, None, o)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn _compute_ellipse_points<F: Float + Trig + FromPrimitive>(
     increment: F,
     cx: F,
@@ -830,6 +830,7 @@ pub(crate) fn _compute_ellipse_points<F: Float + Trig + FromPrimitive>(
     vec![all_points, core_points]
 }
 
+#[allow(clippy::too_many_arguments)]
 fn _arc<F: Float + Trig + FromPrimitive>(
     increment: F,
     cx: F,
@@ -893,6 +894,7 @@ fn _bezier_quadratic_to<F: Float + Trig + FromPrimitive>(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn _bezier_to<F: Float + Trig + FromPrimitive>(
     x1: F,
     y1: F,

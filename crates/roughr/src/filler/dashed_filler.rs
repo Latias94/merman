@@ -21,7 +21,7 @@ where
     P: BorrowMut<Vec<Vec<Point2D<F>>>>,
 {
     fn fill_polygons(&self, mut polygon_list: P, o: &mut Options) -> crate::core::OpSet<F> {
-        let lines = polygon_hachure_lines(polygon_list.borrow_mut(), o);
+        let lines = polygon_hachure_lines(polygon_list.borrow_mut().as_mut_slice(), o);
         let ops = DashedFiller::dashed_line(lines, o);
         OpSet {
             op_set_type: crate::core::OpSetType::FillSketch,
@@ -31,7 +31,7 @@ where
         }
     }
 }
-impl<'a, F: Float + Trig + FromPrimitive> DashedFiller<F> {
+impl<F: Float + Trig + FromPrimitive> DashedFiller<F> {
     pub fn new() -> Self {
         DashedFiller {
             _phantom: PhantomData,
@@ -96,5 +96,11 @@ impl<'a, F: Float + Trig + FromPrimitive> DashedFiller<F> {
         }
 
         ops
+    }
+}
+
+impl<F: Float + Trig + FromPrimitive> Default for DashedFiller<F> {
+    fn default() -> Self {
+        Self::new()
     }
 }

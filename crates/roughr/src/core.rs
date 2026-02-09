@@ -3,6 +3,7 @@ use euclid::Trig;
 use num_traits::{Float, FromPrimitive};
 use palette::Srgba;
 use rand::random;
+use std::fmt;
 
 pub struct Space;
 
@@ -29,31 +30,27 @@ pub enum FillStyle {
     ZigZagLine,
 }
 
-impl ToString for FillStyle {
-    fn to_string(&self) -> String {
-        match self {
-            FillStyle::Solid => "Solid".into(),
-            FillStyle::Hachure => "Hachure".into(),
-            FillStyle::ZigZag => "ZigZag".into(),
-            FillStyle::CrossHatch => "CrossHatch".into(),
-            FillStyle::Dots => "Dots".into(),
-            FillStyle::Dashed => "Dashed".into(),
-            FillStyle::ZigZagLine => "ZigZagLine".into(),
-        }
+impl fmt::Display for FillStyle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            FillStyle::Solid => "Solid",
+            FillStyle::Hachure => "Hachure",
+            FillStyle::ZigZag => "ZigZag",
+            FillStyle::CrossHatch => "CrossHatch",
+            FillStyle::Dots => "Dots",
+            FillStyle::Dashed => "Dashed",
+            FillStyle::ZigZagLine => "ZigZagLine",
+        };
+        f.write_str(s)
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum LineCap {
+    #[default]
     Butt,
     Round,
     Square,
-}
-
-impl Default for LineCap {
-    fn default() -> Self {
-        LineCap::Butt
-    }
 }
 
 /// Options for angled joins in strokes.

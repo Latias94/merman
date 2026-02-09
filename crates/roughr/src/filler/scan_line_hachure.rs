@@ -20,13 +20,14 @@ struct EdgeEntry<F: Float + FromPrimitive + Trig> {
 
 impl<F: Float + FromPrimitive + Trig> std::fmt::Display for EdgeEntry<F> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return f.write_str(&format!(
+        write!(
+            f,
             "ymin={} ymax={} x={} islope={}",
             self.ymin.to_f64().unwrap(),
             self.ymax.to_f64().unwrap(),
             self.x.to_f64().unwrap(),
             self.islope.to_f64().unwrap()
-        ));
+        )
     }
 }
 
@@ -37,7 +38,7 @@ struct ActiveEdgeEntry<F: Float + FromPrimitive + Trig> {
 }
 
 pub fn polygon_hachure_lines<F: Float + FromPrimitive + Trig>(
-    polygon_list: &mut Vec<Vec<Point2D<F>>>,
+    polygon_list: &mut [Vec<Point2D<F>>],
     options: &Options,
 ) -> Vec<Line<F>> {
     let angle = options.hachure_angle.unwrap_or(0.0) + 90.0;
@@ -64,7 +65,7 @@ pub fn polygon_hachure_lines<F: Float + FromPrimitive + Trig>(
         lines = rotate_lines(&lines, &center, _c(-angle));
     }
 
-    return lines;
+    lines
 }
 
 fn straight_hachure_lines<F>(polygon_list: &mut [Vec<Point2D<F>>], gap: F) -> Vec<Line<F>>
@@ -201,7 +202,7 @@ where
         }
     }
 
-    return lines;
+    lines
 }
 
 pub struct ScanlineHachureFiller<F> {
@@ -214,11 +215,11 @@ where
     P: BorrowMut<Vec<Vec<Point2D<F>>>>,
 {
     fn fill_polygons(&self, mut polygon_list: P, o: &mut Options) -> crate::core::OpSet<F> {
-        let lines = polygon_hachure_lines(polygon_list.borrow_mut(), o);
+        let lines = polygon_hachure_lines(polygon_list.borrow_mut().as_mut_slice(), o);
         let ops = ScanlineHachureFiller::render_lines(lines, o);
         OpSet {
             op_set_type: crate::core::OpSetType::FillSketch,
-            ops: ops,
+            ops,
             size: None,
             path: None,
         }
@@ -246,6 +247,12 @@ impl<F: Float + Trig + FromPrimitive> ScanlineHachureFiller<F> {
         });
 
         ops
+    }
+}
+
+impl<F: Float + Trig + FromPrimitive> Default for ScanlineHachureFiller<F> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

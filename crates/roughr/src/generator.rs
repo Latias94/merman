@@ -173,6 +173,7 @@ impl Generator {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn arc<F>(
         &self,
         x: F,
