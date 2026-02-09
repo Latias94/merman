@@ -55,6 +55,7 @@ pub fn render_png_sync(
     else {
         return Ok(None);
     };
+    let svg = super::foreign_object_label_fallback_svg_text(&svg);
     Ok(Some(svg_to_png(&svg, raster)?))
 }
 
@@ -71,6 +72,7 @@ pub fn render_jpeg_sync(
     else {
         return Ok(None);
     };
+    let svg = super::foreign_object_label_fallback_svg_text(&svg);
     Ok(Some(svg_to_jpeg(&svg, raster)?))
 }
 
@@ -86,6 +88,7 @@ pub fn render_pdf_sync(
     else {
         return Ok(None);
     };
+    let svg = super::foreign_object_label_fallback_svg_text(&svg);
     Ok(Some(svg_to_pdf(&svg)?))
 }
 

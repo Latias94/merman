@@ -20,6 +20,7 @@ mod css;
 mod curve;
 mod er;
 mod error;
+mod fallback;
 mod flowchart;
 mod gantt;
 mod gitgraph;
@@ -45,6 +46,7 @@ mod xychart;
 use css::{
     er_css, gantt_css, info_css, pie_css, requirement_css, sankey_css, treemap_css, xychart_css,
 };
+pub use fallback::foreign_object_label_fallback_svg_text;
 use path_bounds::svg_path_bounds_from_d;
 pub use state::{SvgEmittedBoundsContributor, SvgEmittedBoundsDebug, debug_svg_emitted_bounds};
 use state::{

@@ -11,7 +11,7 @@ pub use merman_core::*;
 #[cfg(feature = "render")]
 pub mod render {
     pub use merman_render::model::LayoutedDiagram;
-    pub use merman_render::svg::SvgRenderOptions;
+    pub use merman_render::svg::{SvgRenderOptions, foreign_object_label_fallback_svg_text};
     pub use merman_render::text::{
         DeterministicTextMeasurer, TextMeasurer, VendoredFontMetricsTextMeasurer,
     };
@@ -186,6 +186,18 @@ pub mod render {
 
         pub fn render_svg_sync(&self, text: &str) -> Result<Option<String>> {
             render_svg_sync(&self.engine, text, self.parse, &self.layout, &self.svg)
+        }
+
+        /// Renders SVG and applies a best-effort readability fallback for `<foreignObject>` labels.
+        ///
+        /// Many headless SVG renderers and rasterizers do not fully support HTML inside
+        /// `<foreignObject>`. This helper overlays extracted label text as `<text>/<tspan>` so
+        /// consumers can still display something readable.
+        pub fn render_svg_readable_sync(&self, text: &str) -> Result<Option<String>> {
+            let Some(svg) = self.render_svg_sync(text)? else {
+                return Ok(None);
+            };
+            Ok(Some(foreign_object_label_fallback_svg_text(&svg)))
         }
 
         pub fn render_svg_sync_with(
