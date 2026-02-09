@@ -95,48 +95,124 @@ where
     let mut alive: HashSet<String> = node_ids.iter().cloned().collect();
     let mut results: Vec<(String, String)> = Vec::new();
 
-    while !alive.is_empty() {
+    struct Work<'a> {
+        alive: &'a mut HashSet<String>,
+        buckets: &'a mut [VecDeque<String>],
+        zero_idx: i64,
+        bucket_of: &'a mut HashMap<String, usize>,
+        in_w: &'a mut HashMap<String, i64>,
+        out_w: &'a mut HashMap<String, i64>,
+        in_edges: &'a HashMap<String, Vec<(String, i64)>>,
+        out_edges: &'a HashMap<String, Vec<(String, i64)>>,
+    }
+
+    impl Work<'_> {
+        fn pop_bucket(&mut self, idx: usize) -> Option<String> {
+            pop_bucket(&mut self.buckets[idx], &*self.alive)
+        }
+
+        fn remove_node(&mut self, v: &str) {
+            self.remove_node_inner(v, None);
+        }
+
+        fn remove_node_collect_predecessors(&mut self, v: &str, preds: &mut Vec<(String, String)>) {
+            self.remove_node_inner(v, Some(preds));
+        }
+
+        fn remove_node_inner(
+            &mut self,
+            v: &str,
+            collect_predecessors: Option<&mut Vec<(String, String)>>,
+        ) {
+            if !self.alive.remove(v) {
+                return;
+            }
+
+            if let Some(preds) = collect_predecessors {
+                if let Some(ins) = self.in_edges.get(v) {
+                    for (u, _) in ins {
+                        if self.alive.contains(u) {
+                            preds.push((u.clone(), v.to_string()));
+                        }
+                    }
+                }
+            }
+
+            if let Some(ins) = self.in_edges.get(v) {
+                for (u, wgt) in ins {
+                    if !self.alive.contains(u) {
+                        continue;
+                    }
+                    if let Some(o) = self.out_w.get_mut(u) {
+                        *o -= *wgt;
+                    }
+                    assign_bucket(
+                        u,
+                        &*self.in_w,
+                        &*self.out_w,
+                        self.buckets,
+                        self.zero_idx,
+                        self.bucket_of,
+                    );
+                }
+            }
+
+            if let Some(outs) = self.out_edges.get(v) {
+                for (w, wgt) in outs {
+                    if !self.alive.contains(w) {
+                        continue;
+                    }
+                    if let Some(i) = self.in_w.get_mut(w) {
+                        *i -= *wgt;
+                    }
+                    assign_bucket(
+                        w,
+                        &*self.in_w,
+                        &*self.out_w,
+                        self.buckets,
+                        self.zero_idx,
+                        self.bucket_of,
+                    );
+                }
+            }
+
+            self.in_w.remove(v);
+            self.out_w.remove(v);
+            self.bucket_of.remove(v);
+        }
+    }
+
+    let mut work = Work {
+        alive: &mut alive,
+        buckets: &mut buckets,
+        zero_idx,
+        bucket_of: &mut bucket_of,
+        in_w: &mut in_w,
+        out_w: &mut out_w,
+        in_edges: &in_edges,
+        out_edges: &out_edges,
+    };
+
+    while !work.alive.is_empty() {
         // Drain sinks (out == 0).
-        while let Some(v) = pop_bucket(&mut buckets[0], &alive) {
-            remove_node(
-                &v,
-                &mut alive,
-                &mut buckets,
-                zero_idx,
-                &mut bucket_of,
-                &mut in_w,
-                &mut out_w,
-                &in_edges,
-                &out_edges,
-                None,
-            );
+        while let Some(v) = work.pop_bucket(0) {
+            work.remove_node(&v);
         }
 
         // Drain sources (in == 0).
-        let last = buckets.len() - 1;
-        while let Some(v) = pop_bucket(&mut buckets[last], &alive) {
-            remove_node(
-                &v,
-                &mut alive,
-                &mut buckets,
-                zero_idx,
-                &mut bucket_of,
-                &mut in_w,
-                &mut out_w,
-                &in_edges,
-                &out_edges,
-                None,
-            );
+        let last = work.buckets.len() - 1;
+        while let Some(v) = work.pop_bucket(last) {
+            work.remove_node(&v);
         }
 
-        if alive.is_empty() {
+        if work.alive.is_empty() {
             break;
         }
 
         // Pick a node from the highest non-extreme bucket and collect its predecessor edges.
         let mut picked: Option<String> = None;
         for i in (1..last).rev() {
-            if let Some(v) = pop_bucket(&mut buckets[i], &alive) {
+            if let Some(v) = work.pop_bucket(i) {
                 picked = Some(v);
                 break;
             }
@@ -146,40 +222,18 @@ where
             // Should not happen, but avoid an infinite loop.
             let v = node_ids
                 .iter()
-                .find(|id| alive.contains(*id))
+                .find(|id| work.alive.contains(*id))
                 .cloned()
-                .or_else(|| alive.iter().next().cloned());
+                .or_else(|| work.alive.iter().next().cloned());
             let Some(v) = v else {
                 break;
             };
-            remove_node(
-                &v,
-                &mut alive,
-                &mut buckets,
-                zero_idx,
-                &mut bucket_of,
-                &mut in_w,
-                &mut out_w,
-                &in_edges,
-                &out_edges,
-                None,
-            );
+            work.remove_node(&v);
             continue;
         };
 
         let mut preds: Vec<(String, String)> = Vec::new();
-        remove_node(
-            &v,
-            &mut alive,
-            &mut buckets,
-            zero_idx,
-            &mut bucket_of,
-            &mut in_w,
-            &mut out_w,
-            &in_edges,
-            &out_edges,
-            Some(&mut preds),
-        );
+        work.remove_node_collect_predecessors(&v, &mut preds);
         results.extend(preds);
     }
 
@@ -227,59 +281,4 @@ fn assign_bucket(
 
     buckets[idx].push_front(v.to_string());
     bucket_of.insert(v.to_string(), idx);
-}
-
-fn remove_node(
-    v: &str,
-    alive: &mut HashSet<String>,
-    buckets: &mut [VecDeque<String>],
-    zero_idx: i64,
-    bucket_of: &mut HashMap<String, usize>,
-    in_w: &mut HashMap<String, i64>,
-    out_w: &mut HashMap<String, i64>,
-    in_edges: &HashMap<String, Vec<(String, i64)>>,
-    out_edges: &HashMap<String, Vec<(String, i64)>>,
-    collect_predecessors: Option<&mut Vec<(String, String)>>,
-) {
-    if !alive.remove(v) {
-        return;
-    }
-
-    if let Some(preds) = collect_predecessors {
-        if let Some(ins) = in_edges.get(v) {
-            for (u, _) in ins {
-                if alive.contains(u) {
-                    preds.push((u.clone(), v.to_string()));
-                }
-            }
-        }
-    }
-
-    if let Some(ins) = in_edges.get(v) {
-        for (u, wgt) in ins {
-            if !alive.contains(u) {
-                continue;
-            }
-            if let Some(o) = out_w.get_mut(u) {
-                *o -= *wgt;
-            }
-            assign_bucket(u, in_w, out_w, buckets, zero_idx, bucket_of);
-        }
-    }
-
-    if let Some(outs) = out_edges.get(v) {
-        for (w, wgt) in outs {
-            if !alive.contains(w) {
-                continue;
-            }
-            if let Some(i) = in_w.get_mut(w) {
-                *i -= *wgt;
-            }
-            assign_bucket(w, in_w, out_w, buckets, zero_idx, bucket_of);
-        }
-    }
-
-    in_w.remove(v);
-    out_w.remove(v);
-    bucket_of.remove(v);
 }
