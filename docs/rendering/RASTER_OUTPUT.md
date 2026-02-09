@@ -31,6 +31,29 @@ outputs, `merman-cli` applies a **raster-only SVG preprocessing pass**:
 This makes `tools/preview/export-fixtures-png.ps1` produce readable previews across most diagrams
 without bundling a browser engine.
 
+## Library usage
+
+If you want the same PNG/JPG/PDF output without spawning the CLI, enable the `raster` feature on
+the `merman` crate and call the helpers directly:
+
+```rust
+use merman::render::raster::{svg_to_jpeg, svg_to_pdf, svg_to_png, RasterOptions};
+
+let svg = "<svg><!-- ... --></svg>";
+
+let mut opts = RasterOptions::default();
+opts.scale = 2.0;
+opts.background = Some("white".to_string());
+
+let png = svg_to_png(svg, &opts)?;
+let jpg = svg_to_jpeg(svg, &opts)?;
+let pdf = svg_to_pdf(svg)?;
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+Note: raster helpers intentionally apply the `<foreignObject>` readability fallback described
+above. Strict upstream SVG baselines are still generated from the original SVG output.
+
 ## Known gaps
 
 - The `<text>` fallback is an approximation and is not expected to be pixel-identical to upstream.
