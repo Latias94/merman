@@ -16,8 +16,21 @@ categories = ["parser-implementations", "visualization"]
 [features]
 default = []
 render = ["dep:merman-render", "dep:thiserror"]
+raster = [
+    "render",
+    "dep:image",
+    "dep:resvg",
+    "dep:usvg",
+    "dep:tiny-skia",
+    "dep:svg2pdf",
+]
 
 [dependencies]
 merman-core.workspace = true
 merman-render = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
+image = { workspace = true, optional = true }
+resvg = { workspace = true, optional = true }
+usvg = { workspace = true, optional = true }
+tiny-skia = { workspace = true, optional = true }
+svg2pdf = { workspace = true, optional = true }

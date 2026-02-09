@@ -1355,9 +1355,14 @@ dependencies = [
 name = "merman"
 version = "0.1.0"
 dependencies = [
+ "image",
  "merman-core",
  "merman-render",
+ "resvg 0.46.0",
+ "svg2pdf",
  "thiserror 2.0.18",
+ "tiny-skia",
+ "usvg 0.46.0",
 ]
 
 [[package]]

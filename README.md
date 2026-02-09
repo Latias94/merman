@@ -27,7 +27,8 @@ Diagram coverage and current parity status live in `docs/alignment/STATUS.md`.
 ## Quickstart (library)
 
 The `merman` crate is a convenience wrapper around `merman-core` (parsing) + `merman-render` (layout + SVG).
-Enable the `render` feature when you want layout + SVG.
+Enable the `render` feature when you want layout + SVG. Enable `raster` when you also need
+PNG/JPG/PDF from Rust (no CLI required).
 
 ```rust
 use merman_core::{Engine, ParseOptions};

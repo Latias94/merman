@@ -17,6 +17,9 @@ pub mod render {
     };
     pub use merman_render::{LayoutOptions, layout_parsed};
 
+    #[cfg(feature = "raster")]
+    pub mod raster;
+
     #[derive(Debug, thiserror::Error)]
     pub enum HeadlessError {
         #[error(transparent)]
