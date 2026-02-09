@@ -12200,9 +12200,12 @@ fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let parsed = match futures::executor::block_on(
-            engine.parse_diagram(&text, merman::ParseOptions::default()),
-        ) {
+        let parsed = match futures::executor::block_on(engine.parse_diagram(
+            &text,
+            merman::ParseOptions {
+                suppress_errors: true,
+            },
+        )) {
             Ok(Some(v)) => v,
             Ok(None) => {
                 failures.push(format!("no diagram detected in {}", mmd_path.display()));
@@ -16953,9 +16956,12 @@ fn compare_radar_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let parsed = match futures::executor::block_on(
-            engine.parse_diagram(&text, merman::ParseOptions::default()),
-        ) {
+        let parsed = match futures::executor::block_on(engine.parse_diagram(
+            &text,
+            merman::ParseOptions {
+                suppress_errors: true,
+            },
+        )) {
             Ok(Some(v)) => v,
             Ok(None) => {
                 failures.push(format!("no diagram detected in {}", mmd_path.display()));
@@ -16976,24 +16982,14 @@ fn compare_radar_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let merman_render::model::LayoutDiagram::RadarDiagram(layout) = &layouted.layout else {
-            failures.push(format!(
-                "unexpected layout type for {}: {}",
-                mmd_path.display(),
-                layouted.meta.diagram_type
-            ));
-            continue;
-        };
-
         let svg_opts = merman_render::svg::SvgRenderOptions {
             diagram_id: Some(diagram_id),
             ..Default::default()
         };
 
-        let local_svg = match merman_render::svg::render_radar_diagram_svg(
-            layout,
-            &layouted.semantic,
-            &layouted.meta.effective_config,
+        let local_svg = match merman_render::svg::render_layouted_svg(
+            &layouted,
+            layout_opts.text_measurer.as_ref(),
             &svg_opts,
         ) {
             Ok(v) => v,
