@@ -314,8 +314,6 @@ fn default_raster_out_path(input: Option<&str>, ext: &str) -> std::path::PathBuf
 
 #[derive(Debug, Clone, Copy)]
 struct ParsedViewBox {
-    min_x: f32,
-    min_y: f32,
     width: f32,
     height: f32,
 }
@@ -328,23 +326,12 @@ fn parse_svg_viewbox(svg: &str) -> Option<ParsedViewBox> {
     let end = rest.find('"')?;
     let raw = &rest[..end];
     let mut it = raw.split_whitespace();
-    let min_x = it.next()?.parse::<f32>().ok()?;
-    let min_y = it.next()?.parse::<f32>().ok()?;
+    let _min_x = it.next()?.parse::<f32>().ok()?;
+    let _min_y = it.next()?.parse::<f32>().ok()?;
     let width = it.next()?.parse::<f32>().ok()?;
     let height = it.next()?.parse::<f32>().ok()?;
-    if min_x.is_finite()
-        && min_y.is_finite()
-        && width.is_finite()
-        && height.is_finite()
-        && width > 0.0
-        && height > 0.0
-    {
-        Some(ParsedViewBox {
-            min_x,
-            min_y,
-            width,
-            height,
-        })
+    if width.is_finite() && height.is_finite() && width > 0.0 && height > 0.0 {
+        Some(ParsedViewBox { width, height })
     } else {
         None
     }
@@ -372,13 +359,20 @@ fn render_svg_to_pixmap(
     let tree = usvg::Tree::from_str(svg, &opt)
         .map_err(|_| CliError::Usage("failed to parse SVG for PNG rendering"))?;
 
-    let geo = if let Some(vb) = parse_svg_viewbox(svg) {
-        RasterGeometry {
-            min_x: vb.min_x,
-            min_y: vb.min_y,
-            width: vb.width,
-            height: vb.height,
-        }
+    let (geo, translate_min_to_origin) = if let Some(vb) = parse_svg_viewbox(svg) {
+        // `usvg`/`resvg` already apply the root viewBox transform (including translating the
+        // viewBox min corner to (0,0)) when building/rendering the tree. If we also translate
+        // by `-min_x/-min_y` here, diagrams with negative viewBox mins (e.g. kanban, gitGraph)
+        // get shifted fully out of the viewport and render as a blank/transparent pixmap.
+        (
+            RasterGeometry {
+                min_x: 0.0,
+                min_y: 0.0,
+                width: vb.width,
+                height: vb.height,
+            },
+            false,
+        )
     } else {
         // Some Mermaid diagrams (e.g. `info`) don't emit a viewBox upstream.
         // For raster formats, fall back to the rendered content bounds as computed by usvg.
@@ -386,20 +380,26 @@ fn render_svg_to_pixmap(
         let w = bbox.width().max(1.0);
         let h = bbox.height().max(1.0);
         if w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0 {
-            RasterGeometry {
-                min_x: bbox.x(),
-                min_y: bbox.y(),
-                width: w,
-                height: h,
-            }
+            (
+                RasterGeometry {
+                    min_x: bbox.x(),
+                    min_y: bbox.y(),
+                    width: w,
+                    height: h,
+                },
+                true,
+            )
         } else {
             let size = tree.size();
-            RasterGeometry {
-                min_x: 0.0,
-                min_y: 0.0,
-                width: size.width(),
-                height: size.height(),
-            }
+            (
+                RasterGeometry {
+                    min_x: 0.0,
+                    min_y: 0.0,
+                    width: size.width(),
+                    height: size.height(),
+                },
+                false,
+            )
         }
     };
 
@@ -416,15 +416,19 @@ fn render_svg_to_pixmap(
         }
     }
 
-    // Render at `scale`, translating so min_x/min_y map to (0,0).
-    let transform = tiny_skia::Transform::from_row(
-        scale,
-        0.0,
-        0.0,
-        scale,
-        -geo.min_x * scale,
-        -geo.min_y * scale,
-    );
+    let transform = if translate_min_to_origin {
+        // Render at `scale`, translating so min_x/min_y map to (0,0).
+        tiny_skia::Transform::from_row(
+            scale,
+            0.0,
+            0.0,
+            scale,
+            -geo.min_x * scale,
+            -geo.min_y * scale,
+        )
+    } else {
+        tiny_skia::Transform::from_scale(scale, scale)
+    };
     resvg::render(&tree, transform, &mut pixmap.as_mut());
 
     Ok(pixmap)
