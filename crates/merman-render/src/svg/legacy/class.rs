@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use super::*;
 
 // Class diagram SVG renderer implementation (split from legacy.rs).
@@ -150,6 +152,7 @@ struct ClassSvgModel {
     acc_title: Option<String>,
     #[serde(rename = "accDescr")]
     acc_descr: Option<String>,
+    #[allow(dead_code)]
     direction: String,
     classes: std::collections::BTreeMap<String, ClassSvgNode>,
     #[serde(default)]
@@ -167,6 +170,7 @@ struct ClassSvgNode {
     dom_id: String,
     #[serde(rename = "cssClasses")]
     css_classes: String,
+    #[allow(dead_code)]
     label: String,
     text: String,
     #[serde(default)]
@@ -181,6 +185,7 @@ struct ClassSvgNode {
     link: Option<String>,
     #[serde(rename = "linkTarget")]
     #[serde(default)]
+    #[allow(dead_code)]
     link_target: Option<String>,
     #[serde(default)]
     tooltip: Option<String>,
@@ -221,6 +226,7 @@ struct ClassSvgNote {
     id: String,
     text: String,
     #[serde(rename = "class")]
+    #[allow(dead_code)]
     class_id: Option<String>,
 }
 

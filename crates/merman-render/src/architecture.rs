@@ -21,10 +21,12 @@ struct ArchitectureNodeModel {
     #[serde(default)]
     edges: Vec<ArchitectureEdgeModel>,
     #[serde(default)]
+    #[allow(dead_code)]
     icon: Option<String>,
     #[serde(default)]
     title: Option<String>,
     #[serde(default, rename = "iconText")]
+    #[allow(dead_code)]
     icon_text: Option<String>,
     #[serde(default, rename = "in")]
     in_group: Option<String>,
@@ -279,7 +281,7 @@ pub fn layout_architecture_diagram(
 
         // Apply component offset.
         let dx = offset_x - min_x;
-        for (id, _coords) in spatial {
+        for id in spatial.keys() {
             let (x, y) = pos_px.get(id).copied().unwrap_or((0.0, 0.0));
             pos_px.insert(id.clone(), (x + dx, y));
         }
@@ -294,7 +296,7 @@ pub fn layout_architecture_diagram(
     let mut max_cx = f64::NEG_INFINITY;
     let mut min_cy = f64::INFINITY;
     let mut max_cy = f64::NEG_INFINITY;
-    for (_id, (x, y)) in &pos_px {
+    for (x, y) in pos_px.values() {
         let cx = x + half_icon;
         let cy = y + half_icon;
         min_cx = min_cx.min(cx);
@@ -440,9 +442,7 @@ pub fn layout_architecture_diagram(
             let (Some(a), Some(b)) = (a.and_then(Dir::parse), b.and_then(Dir::parse)) else {
                 return GroupAlignment::Bend;
             };
-            if a.is_x() && !b.is_x() {
-                GroupAlignment::Bend
-            } else if !a.is_x() && b.is_x() {
+            if a.is_x() != b.is_x() {
                 GroupAlignment::Bend
             } else if a.is_x() {
                 GroupAlignment::Horizontal
@@ -711,7 +711,7 @@ pub fn layout_architecture_diagram(
 
         #[derive(Debug, Clone, Copy)]
         enum Child<'a> {
-            Node(&'a str),
+            Node(#[allow(dead_code)] &'a str),
             Group(&'a str),
         }
 
@@ -942,7 +942,6 @@ pub fn layout_architecture_diagram(
             // generated with a deterministic RNG seed (see ADR-0055), so we must use the same
             // seed here to match those baselines.
             random_seed: 1,
-            ..Default::default()
         };
 
         let result = manatee::layout(&graph, manatee::Algorithm::Fcose(opts)).map_err(|e| {

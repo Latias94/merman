@@ -4,6 +4,7 @@ use super::*;
 
 pub(super) struct FlowchartRenderCtx<'a> {
     pub(super) diagram_id: String,
+    #[allow(dead_code)]
     pub(super) diagram_type: String,
     pub(super) tx: f64,
     pub(super) ty: f64,
@@ -16,6 +17,7 @@ pub(super) struct FlowchartRenderCtx<'a> {
     pub(super) node_fill_color: String,
     pub(super) default_edge_interpolate: String,
     pub(super) default_edge_style: Vec<String>,
+    #[allow(dead_code)]
     pub(super) node_order: Vec<String>,
     pub(super) subgraph_order: Vec<String>,
     pub(super) edge_order: Vec<String>,
@@ -35,6 +37,7 @@ pub(super) struct FlowchartRenderCtx<'a> {
     pub(super) node_wrap_mode: crate::text::WrapMode,
     pub(super) edge_wrap_mode: crate::text::WrapMode,
     pub(super) text_style: crate::text::TextStyle,
+    #[allow(dead_code)]
     pub(super) diagram_title: Option<String>,
 }
 
@@ -43,12 +46,10 @@ pub(super) fn flowchart_node_dom_indices(
 ) -> std::collections::HashMap<String, usize> {
     if !model.vertex_calls.is_empty() {
         let mut out: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-        let mut vertex_counter: usize = 0;
-        for id in &model.vertex_calls {
+        for (vertex_counter, id) in model.vertex_calls.iter().enumerate() {
             if !out.contains_key(id) {
                 out.insert(id.clone(), vertex_counter);
             }
-            vertex_counter += 1;
         }
         return out;
     }
@@ -618,9 +619,8 @@ pub(super) fn flowchart_collect_edge_marker_colors(ctx: &FlowchartRenderCtx<'_>)
             let Some((k, v)) = parse_style_decl(raw) else {
                 continue;
             };
-            match k {
-                "stroke" => return Some(v.to_string()),
-                _ => {}
+            if k == "stroke" {
+                return Some(v.to_string());
             }
         }
         None
@@ -650,6 +650,7 @@ pub(super) fn flowchart_collect_edge_marker_colors(ctx: &FlowchartRenderCtx<'_>)
     out
 }
 
+#[allow(dead_code)]
 pub(super) fn flowchart_is_in_cluster(
     parent: &std::collections::HashMap<String, String>,
     _cluster_ids: &std::collections::HashSet<String>,
@@ -707,7 +708,7 @@ pub(super) fn flowchart_root_children_clusters(
     parent_cluster: Option<&str>,
 ) -> Vec<String> {
     let mut out = Vec::new();
-    for (id, _) in &ctx.subgraphs_by_id {
+    for id in ctx.subgraphs_by_id.keys() {
         if !ctx.recursive_clusters.contains(id) {
             continue;
         }
@@ -2889,10 +2890,7 @@ pub(super) fn render_flowchart_edge_path(
                 radius,
                 &crate::trig_tables::STADIUM_ARC_270_450_COS_SIN,
             ));
-
-            let mut out = intersect_polygon(node, &pts, point);
-
-            out
+            intersect_polygon(node, &pts, point)
         }
 
         fn intersect_hexagon(
@@ -4918,6 +4916,13 @@ pub(super) fn render_flowchart_edge_label(
 
         if !label_text_plain.trim().is_empty() {
             let (x, y) = fallback_midpoint(le, ctx, origin_x, origin_y);
+            let has_inline_style_tags = if label_type == "markdown" {
+                false
+            } else {
+                let lower = label_text.to_ascii_lowercase();
+                crate::text::flowchart_html_has_inline_style_tags(&lower)
+            };
+
             let metrics = if label_type == "markdown" {
                 crate::text::measure_markdown_with_flowchart_bold_deltas(
                     ctx.measurer,
@@ -4926,10 +4931,7 @@ pub(super) fn render_flowchart_edge_label(
                     Some(ctx.wrapping_width),
                     ctx.edge_wrap_mode,
                 )
-            } else if {
-                let lower = label_text.to_ascii_lowercase();
-                crate::text::flowchart_html_has_inline_style_tags(&lower)
-            } {
+            } else if has_inline_style_tags {
                 crate::text::measure_html_with_flowchart_bold_deltas(
                     ctx.measurer,
                     label_text,
@@ -4992,6 +4994,7 @@ pub(super) fn render_flowchart_edge_label(
     );
 }
 
+#[allow(dead_code)]
 pub(super) fn flowchart_inline_style_for_classes(
     class_defs: &IndexMap<String, Vec<String>>,
     classes: &[String],
@@ -5326,7 +5329,7 @@ pub(super) fn render_flowchart_node(
             let cmd = if i == 0 { 'M' } else { 'L' };
             let _ = write!(&mut out, "{cmd}{x},{y} ");
         }
-        out.push_str("Z");
+        out.push('Z');
         out
     }
 
@@ -6204,6 +6207,11 @@ pub(super) fn render_flowchart_node(
             span_style_attr = format!(r#" style="{}""#, escape_attr(&compiled_styles.label_style));
         }
         let needs_wrap = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
+            let has_inline_style_tags = ctx.node_html_labels && label_type != "markdown" && {
+                let lower = label_text.to_ascii_lowercase();
+                crate::text::flowchart_html_has_inline_style_tags(&lower)
+            };
+
             let raw = if label_type == "markdown" {
                 crate::text::measure_markdown_with_flowchart_bold_deltas(
                     ctx.measurer,
@@ -6213,10 +6221,7 @@ pub(super) fn render_flowchart_node(
                     ctx.node_wrap_mode,
                 )
                 .width
-            } else if ctx.node_html_labels && {
-                let lower = label_text.to_ascii_lowercase();
-                crate::text::flowchart_html_has_inline_style_tags(&lower)
-            } {
+            } else if has_inline_style_tags {
                 crate::text::measure_html_with_flowchart_bold_deltas(
                     ctx.measurer,
                     &label_text,
@@ -6389,7 +6394,7 @@ pub(super) fn flowchart_label_html(
 
                     let mut tag = String::from("<");
                     let mut saw_end = false;
-                    while let Some(c) = chars.next() {
+                    for c in chars.by_ref() {
                         tag.push(c);
                         if c == '>' {
                             saw_end = true;
@@ -6483,7 +6488,7 @@ pub(super) fn flowchart_label_html(
             let mut val = String::new();
             let mut it = rest.chars();
             let _ = it.next(); // consume quote
-            while let Some(ch) = it.next() {
+            for ch in it {
                 if ch == quote {
                     break;
                 }
@@ -6920,15 +6925,9 @@ pub(super) fn render_flowchart_v2_svg(
 
     fn self_loop_label_base_node_id(id: &str) -> Option<&str> {
         let mut parts = id.split("---");
-        let Some(a) = parts.next() else {
-            return None;
-        };
-        let Some(b) = parts.next() else {
-            return None;
-        };
-        let Some(n) = parts.next() else {
-            return None;
-        };
+        let a = parts.next()?;
+        let b = parts.next()?;
+        let n = parts.next()?;
         if parts.next().is_some() {
             return None;
         }
@@ -7050,7 +7049,7 @@ pub(super) fn render_flowchart_v2_svg(
                         // width (and thus `viewBox` / `max-width`) by 0.5px.
                         if shape == "diamond" || shape == "rhombus" {
                             left_hw = (left_hw - 0.5).max(0.0);
-                            right_hw = right_hw + 0.5;
+                            right_hw += 0.5;
                         }
                     }
                 }
@@ -7075,17 +7074,18 @@ pub(super) fn render_flowchart_v2_svg(
                 e.start_label_right.as_ref(),
                 e.end_label_left.as_ref(),
                 e.end_label_right.as_ref(),
-            ] {
-                if let Some(lbl) = lbl {
-                    let hw = lbl.width / 2.0;
-                    let hh = lbl.height / 2.0;
-                    include_rect(
-                        lbl.x - hw,
-                        lbl.y + y_off - hh,
-                        lbl.x + hw,
-                        lbl.y + y_off + hh,
-                    );
-                }
+            ]
+            .into_iter()
+            .flatten()
+            {
+                let hw = lbl.width / 2.0;
+                let hh = lbl.height / 2.0;
+                include_rect(
+                    lbl.x - hw,
+                    lbl.y + y_off - hh,
+                    lbl.x + hw,
+                    lbl.y + y_off + hh,
+                );
             }
         }
 

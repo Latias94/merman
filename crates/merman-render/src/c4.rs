@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use crate::model::{
     Bounds, C4BoundaryLayout, C4DiagramLayout, C4ImageLayout, C4RelLayout, C4ShapeLayout,
     C4TextBlockLayout, LayoutPoint,

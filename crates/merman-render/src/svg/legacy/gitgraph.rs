@@ -52,7 +52,7 @@ pub(super) fn render_gitgraph_diagram_svg(
         let Some(first) = text.chars().next() else {
             return extra;
         };
-        let Some(last) = text.chars().rev().next() else {
+        let Some(last) = text.chars().next_back() else {
             return extra;
         };
         extra
@@ -455,9 +455,9 @@ pub(super) fn render_gitgraph_diagram_svg(
 
     out.push_str(r#"<g class="commit-labels">"#);
     for c in &layout.commits {
-        let show = layout.show_commit_label
+        let show = (c.commit_type != 3 || c.custom_id.unwrap_or(false))
             && c.commit_type != 4
-            && ((c.custom_id.unwrap_or(false) && c.commit_type == 3) || c.commit_type != 3);
+            && layout.show_commit_label;
         if show {
             let bbox_w = gitgraph_simple_text_bbox_width_px(measurer, &c.id, &commit_label_style);
             let bbox_h = measurer
@@ -711,6 +711,7 @@ pub(super) fn render_gitgraph_diagram_svg(
         if (q as f64) < v { next_up_f32(q) } else { q }
     }
 
+    #[allow(dead_code)]
     fn f32_round_down(v: f64) -> f32 {
         let q = v as f32;
         if !q.is_finite() {
@@ -719,7 +720,7 @@ pub(super) fn render_gitgraph_diagram_svg(
         if (q as f64) > v { next_down_f32(q) } else { q }
     }
 
-    let mut bbox_x = b.min_x as f32;
+    let bbox_x = b.min_x as f32;
     let bbox_y = b.min_y as f32;
     let dbg_viewbox = std::env::var("MERMAN_DEBUG_GITGRAPH_VIEWBOX").is_ok();
 

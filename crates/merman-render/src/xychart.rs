@@ -337,7 +337,7 @@ fn max_text_dimension(texts: &[String], font_size: f64, measurer: &dyn TextMeasu
 
 fn d3_ticks(start: f64, stop: f64, count: usize) -> Vec<f64> {
     fn tick_spec(start: f64, stop: f64, count: f64) -> Option<(i64, i64, f64)> {
-        if !(count > 0.0) {
+        if count <= 0.0 {
             return None;
         }
 
@@ -401,10 +401,8 @@ fn d3_ticks(start: f64, stop: f64, count: usize) -> Vec<f64> {
     if !start.is_finite() || !stop.is_finite() {
         return Vec::new();
     }
-    let start = start;
-    let stop = stop;
     let count = count as f64;
-    if !(count > 0.0) {
+    if count <= 0.0 {
         return Vec::new();
     }
     if start == stop {
@@ -635,7 +633,7 @@ impl Axis {
 
             if self.axis_config.show_title && !self.title.is_empty() {
                 let dim = max_text_dimension(
-                    &[self.title.clone()],
+                    std::slice::from_ref(&self.title),
                     self.axis_config.title_font_size,
                     measurer,
                 );
@@ -682,7 +680,7 @@ impl Axis {
 
             if self.axis_config.show_title && !self.title.is_empty() {
                 let dim = max_text_dimension(
-                    &[self.title.clone()],
+                    std::slice::from_ref(&self.title),
                     self.axis_config.title_font_size,
                     measurer,
                 );
@@ -1041,7 +1039,11 @@ pub(crate) fn layout_xychart_diagram(
     let theme_cfg = parse_theme_config(effective_config);
 
     let title = model.title.clone().unwrap_or_default();
-    let title_dim = max_text_dimension(&[title.clone()], chart_cfg.title_font_size, text_measurer);
+    let title_dim = max_text_dimension(
+        std::slice::from_ref(&title),
+        chart_cfg.title_font_size,
+        text_measurer,
+    );
     let title_height = title_dim.height + 2.0 * chart_cfg.title_padding;
     let show_chart_title =
         chart_cfg.show_title && !title.is_empty() && title_height <= chart_cfg.height;

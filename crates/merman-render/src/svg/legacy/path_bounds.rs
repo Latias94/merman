@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 // Shared SVG path bounds helper extracted from legacy.rs.
 //
 // Keep behavior identical to Mermaid@11.12.2 DOM parity baselines.
@@ -145,9 +147,8 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
                 }
             }
 
-            for idx in 0..root_count {
-                let t = roots[idx];
-                if !(t > 0.0 && t < 1.0) {
+            for &t in roots.iter().take(root_count) {
+                if t <= 0.0 || t >= 1.0 {
                     continue;
                 }
                 let v = cubic_eval(p0, p1, p2, p3, t);

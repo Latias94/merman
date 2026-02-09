@@ -18,6 +18,7 @@ const SECTION_Y: f64 = 50.0;
 const TITLE_Y: f64 = 25.0;
 const VIEWBOX_TOP_PAD: f64 = 25.0;
 
+#[allow(dead_code)]
 const FACE_RADIUS: f64 = 15.0;
 const FACE_BASE_Y: f64 = 300.0;
 const FACE_SCORE_STEP_Y: f64 = 30.0;
@@ -26,6 +27,7 @@ const FACE_SCORE_STEP_Y: f64 = 30.0;
 struct JourneyTaskModel {
     section: String,
     #[serde(rename = "type")]
+    #[allow(dead_code)]
     task_type: String,
     task: String,
     score: i64,

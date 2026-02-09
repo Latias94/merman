@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use super::*;
 
 fn journey_css(diagram_id: &str) -> String {

@@ -9,6 +9,7 @@ struct GanttSemanticTask {
     #[serde(rename = "type")]
     task_type: String,
     #[serde(default)]
+    #[allow(dead_code)]
     classes: Vec<String>,
     #[serde(default)]
     active: bool,

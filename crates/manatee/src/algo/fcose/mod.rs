@@ -94,7 +94,9 @@ impl SimNode {
 struct SimEdge {
     a: usize,
     b: usize,
+    #[allow(dead_code)]
     a_anchor: Option<Anchor>,
+    #[allow(dead_code)]
     b_anchor: Option<Anchor>,
     ideal_length: f64,
     elasticity: f64,
@@ -173,6 +175,7 @@ struct ConstraintRuntime {
 struct AxisConstraintRuntime {
     node_count: usize,
     dummy_to_nodes: Vec<Vec<usize>>,
+    #[allow(dead_code)]
     node_to_dummy: Vec<Option<usize>>,
     fixed_nodes: IndexSet<usize>,
     nodes_in_relative: Vec<usize>,
@@ -263,7 +266,7 @@ impl ConstraintRuntime {
             .refresh_temp_positions(nodes, Axis::Horizontal);
         self.vertical.refresh_temp_positions(nodes, Axis::Vertical);
 
-        if total_iterations % 10 == 0 {
+        if total_iterations.is_multiple_of(10) {
             self.horizontal.shuffle_tail_third(rng);
             self.vertical.shuffle_tail_third(rng);
         }
@@ -465,7 +468,7 @@ impl AxisConstraintRuntime {
                 displacement = max_d * displacement.signum();
             }
 
-            self.temp_pos[key] = self.temp_pos[key] + displacement;
+            self.temp_pos[key] += displacement;
 
             if key < n {
                 match axis {
@@ -524,6 +527,7 @@ impl SimGraph {
 
     const MAX_ITERATIONS: usize = 2500;
     const CONVERGENCE_CHECK_PERIOD: usize = 100;
+    #[allow(dead_code)]
     const MAX_NODE_DISPLACEMENT: f64 = 300.0;
     const MAX_NODE_DISPLACEMENT_INCREMENTAL: f64 = 100.0; // layout-base `FDLayoutConstants.MAX_NODE_DISPLACEMENT_INCREMENTAL`
     fn from_graph(graph: &Graph) -> Self {
@@ -736,7 +740,7 @@ impl SimGraph {
         let initial_cooling_factor = Self::DEFAULT_COOLING_FACTOR_INCREMENTAL;
         let mut cooling_factor = initial_cooling_factor;
         let max_node_displacement = Self::MAX_NODE_DISPLACEMENT_INCREMENTAL;
-        let max_iterations = Self::MAX_ITERATIONS.max((self.nodes.len() * 5) as usize);
+        let max_iterations = Self::MAX_ITERATIONS.max(self.nodes.len() * 5);
         let max_cooling_cycle = (max_iterations as f64) / (Self::CONVERGENCE_CHECK_PERIOD as f64);
         let final_temperature = Self::FINAL_TEMPERATURE;
         let mut cooling_cycle = 0.0f64;
@@ -751,7 +755,7 @@ impl SimGraph {
                 break;
             }
 
-            if total_iterations % Self::CONVERGENCE_CHECK_PERIOD == 0 {
+            if total_iterations.is_multiple_of(Self::CONVERGENCE_CHECK_PERIOD) {
                 let oscilating = total_iterations > (max_iterations / 3)
                     && (last_total_displacement - old_total_displacement).abs() < 2.0;
                 let converged = last_total_displacement < total_displacement_threshold;
@@ -1517,7 +1521,7 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
         for comp in comps {
             let mut sources: Vec<usize> = Vec::new();
             for node in comp {
-                if rev.get(&node).map_or(true, |v| v.is_empty()) {
+                if rev.get(&node).is_none_or(|v| v.is_empty()) {
                     sources.push(node);
                 }
             }
@@ -1959,6 +1963,7 @@ impl XorShift64Star {
         Self { state: seed.max(1) }
     }
 
+    #[allow(dead_code)]
     fn mix_u64(&mut self, v: u64) {
         // One-way mix to decorrelate node indices.
         self.state ^= v.wrapping_mul(0x9E3779B97F4A7C15_u64);
@@ -2369,8 +2374,8 @@ fn calc_separation_amount(a: &SimNode, b: &SimNode, separation_buffer: f64) -> (
         move_by_y = overlap_y;
     }
 
-    let dx = -1.0 * dir_x * ((move_by_x / 2.0) + separation_buffer);
-    let dy = -1.0 * dir_y * ((move_by_y / 2.0) + separation_buffer);
+    let dx = -dir_x * ((move_by_x / 2.0) + separation_buffer);
+    let dy = -dir_y * ((move_by_y / 2.0) + separation_buffer);
     (dx, dy)
 }
 

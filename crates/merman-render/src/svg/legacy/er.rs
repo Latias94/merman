@@ -959,6 +959,7 @@ pub(super) fn render_er_diagram_svg(
             continue;
         }
 
+        #[allow(dead_code)]
         fn rect_fill_path_d(x0: f64, y0: f64, x1: f64, y1: f64) -> String {
             format!(
                 "M{} {} L{} {} L{} {} L{} {}",
@@ -1033,9 +1034,7 @@ pub(super) fn render_er_diagram_svg(
 
         fn parse_hex_color_rgb(s: &str) -> Option<(u8, u8, u8)> {
             let s = s.trim();
-            let Some(hex) = s.strip_prefix('#') else {
-                return None;
-            };
+            let hex = s.strip_prefix('#')?;
             if hex.len() == 3 {
                 let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?;
                 let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?;
@@ -1213,14 +1212,7 @@ pub(super) fn render_er_diagram_svg(
         fn roughjs46_rect_fill_path_d(x0: f64, y0: f64, x1: f64, y1: f64) -> String {
             format!(
                 "M{} {} L{} {} L{} {} L{} {}",
-                x0.to_string(),
-                y0.to_string(),
-                x1.to_string(),
-                y0.to_string(),
-                x1.to_string(),
-                y1.to_string(),
-                x0.to_string(),
-                y1.to_string()
+                x0, y0, x1, y0, x1, y1, x0, y1
             )
         }
 

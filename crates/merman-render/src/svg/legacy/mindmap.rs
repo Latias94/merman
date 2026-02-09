@@ -619,7 +619,7 @@ pub(super) fn render_mindmap_diagram_svg(
         let mid_x = (start_x + end_x) / 2.0;
         let mid_y = (sy + ty) / 2.0;
 
-        let points = vec![
+        let points = [
             Pt { x: start_x, y: sy },
             Pt { x: mid_x, y: mid_y },
             Pt { x: end_x, y: ty },

@@ -295,7 +295,7 @@ pub(crate) fn measure_entity_box(
         // used by `drawRect`.
         let calc_w = calculate_text_width_like_mermaid_px(measurer, label_style, &label_text);
         let clamp_to_min_w = er_upstream_entity_drawrect_clamp_to_min_entity_width(&label_text)
-            .unwrap_or_else(|| (calc_w as f64 + label_pad_x * 2.0) < min_w);
+            .unwrap_or((calc_w as f64 + label_pad_x * 2.0) < min_w);
         let width = if clamp_to_min_w {
             min_w
         } else {

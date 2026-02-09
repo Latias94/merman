@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use crate::model::{Bounds, SankeyDiagramLayout, SankeyLinkLayout, SankeyNodeLayout};
 use crate::text::TextMeasurer;
 use crate::{Error, Result};
@@ -514,8 +516,7 @@ pub fn layout_sankey_diagram(
         y0_extent: f64,
         y1_extent: f64,
     ) {
-        for i in 1..columns.len() {
-            let column = &mut columns[i];
+        for column in columns.iter_mut().skip(1) {
             for &target in column.iter() {
                 let mut y = 0.0;
                 let mut w = 0.0;
@@ -526,7 +527,7 @@ pub fn layout_sankey_diagram(
                     y += target_top(nodes, links, py, source, target) * v;
                     w += v;
                 }
-                if !(w > 0.0) {
+                if w <= 0.0 {
                     continue;
                 }
                 let dy = (y / w - nodes[target].y0) * alpha;
@@ -564,7 +565,7 @@ pub fn layout_sankey_diagram(
                     y += source_top(nodes, links, py, source, target) * v;
                     w += v;
                 }
-                if !(w > 0.0) {
+                if w <= 0.0 {
                     continue;
                 }
                 let dy = (y / w - nodes[source].y0) * alpha;

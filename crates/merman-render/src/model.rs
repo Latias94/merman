@@ -1016,6 +1016,7 @@ pub struct ErrorDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::large_enum_variant)]
 pub enum LayoutDiagram {
     BlockDiagram(BlockDiagramLayout),
     RequirementDiagram(RequirementDiagramLayout),

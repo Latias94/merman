@@ -1016,7 +1016,7 @@ pub fn layout_class_diagram_v2(
         ..Default::default()
     });
 
-    for (id, _ns) in &model.namespaces {
+    for id in model.namespaces.keys() {
         // Mermaid's dagre-wrapper assigns a concrete size to namespace nodes (cluster placeholders)
         // based on the rendered label bbox plus padding. Doing the same here helps compound
         // constraints match upstream (especially for LR layouts).
@@ -1034,7 +1034,7 @@ pub fn layout_class_diagram_v2(
         );
     }
 
-    for (_id, c) in &model.classes {
+    for c in model.classes.values() {
         let (w, h) = class_box_dimensions(
             c,
             measurer,
@@ -1074,7 +1074,7 @@ pub fn layout_class_diagram_v2(
     if g.options().compound {
         // Mermaid assigns parents based on the class' `parent` field (see upstream
         // `addClasses(..., parent)` + `g.setParent(vertex.id, parent)`).
-        for (_id, c) in &model.classes {
+        for c in model.classes.values() {
             if let Some(parent) = c
                 .parent
                 .as_ref()
@@ -1370,18 +1370,19 @@ fn compute_bounds(
         for p in &e.points {
             points.push((p.x, p.y));
         }
-        for lbl in [
+        for l in [
             e.label.as_ref(),
             e.start_label_left.as_ref(),
             e.start_label_right.as_ref(),
             e.end_label_left.as_ref(),
             e.end_label_right.as_ref(),
-        ] {
-            if let Some(l) = lbl {
-                let r = Rect::from_center(l.x, l.y, l.width, l.height);
-                points.push((r.min_x(), r.min_y()));
-                points.push((r.max_x(), r.max_y()));
-            }
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let r = Rect::from_center(l.x, l.y, l.width, l.height);
+            points.push((r.min_x(), r.min_y()));
+            points.push((r.max_x(), r.max_y()));
         }
     }
 

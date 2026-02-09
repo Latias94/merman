@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use super::*;
 
 pub(super) fn curve_monotone_path_d(points: &[crate::model::LayoutPoint], swap_xy: bool) -> String {
@@ -178,10 +180,12 @@ pub(super) fn curve_monotone_path_d(points: &[crate::model::LayoutPoint], swap_x
     out
 }
 
+#[allow(dead_code)]
 fn curve_monotone_x_path_d(points: &[crate::model::LayoutPoint]) -> String {
     curve_monotone_path_d(points, false)
 }
 
+#[allow(dead_code)]
 fn curve_monotone_y_path_d(points: &[crate::model::LayoutPoint]) -> String {
     curve_monotone_path_d(points, true)
 }

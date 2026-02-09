@@ -48,7 +48,7 @@ fn class_layout_produces_positions_and_routes() {
     };
 
     assert!(layout.nodes.len() >= 2);
-    assert!(layout.edges.len() >= 1);
+    assert!(!layout.edges.is_empty());
 
     for n in &layout.nodes {
         assert!(n.width.is_finite() && n.width > 0.0);

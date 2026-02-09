@@ -64,11 +64,9 @@ pub(super) fn apply_spectral_start_positions(
     // Greedy sampling (Mermaid default): pick a random first sample, then repeatedly pick the node
     // that maximizes the minimum distance to the already-sampled set.
     let mut sample = rng.next_usize(node_size);
-    for v in &mut min_dist {
-        *v = INFINITY_HOPS;
-    }
-    for col in 0..sample_size {
-        samples[col] = sample;
+    min_dist.fill(INFINITY_HOPS);
+    for (col, slot) in samples.iter_mut().enumerate().take(sample_size) {
+        *slot = sample;
         sample = bfs_fill_column(
             sample,
             col,
@@ -243,8 +241,8 @@ fn build_transformed_adjacency(
                 top_level.push(ElemKey::Compound(cix));
             }
         }
-        for i in 0..n_real {
-            if leaf_immediate_parent[i].is_none() {
+        for (i, parent) in leaf_immediate_parent.iter().enumerate().take(n_real) {
+            if parent.is_none() {
                 top_level.push(ElemKey::Leaf(i));
             }
         }
@@ -502,7 +500,7 @@ fn regularized_inverse_from_svd(phi: &DMatrix<f64>) -> Option<DMatrix<f64>> {
     let u = svd.u?;
     let v_t = svd.v_t?;
     let s = svd.singular_values;
-    if s.len() == 0 {
+    if s.is_empty() {
         return None;
     }
 

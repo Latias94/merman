@@ -56,7 +56,7 @@ fn parse_translate(transform: &str) -> Translate {
     }
 
     Translate {
-        x: *nums.get(0).unwrap_or(&0.0),
+        x: *nums.first().unwrap_or(&0.0),
         y: *nums.get(1).unwrap_or(&0.0),
     }
 }

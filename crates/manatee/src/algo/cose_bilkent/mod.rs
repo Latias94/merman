@@ -360,6 +360,7 @@ impl SimGraph {
         flat_forest
     }
 
+    #[allow(dead_code)]
     fn active_degree(&self, node_idx: usize) -> usize {
         if !self.nodes[node_idx].active {
             return 0;
@@ -377,6 +378,7 @@ impl SimGraph {
         d
     }
 
+    #[allow(dead_code)]
     fn active_leaf_edge(&self, node_idx: usize) -> Option<usize> {
         if self.active_degree(node_idx) != 1 {
             return None;
@@ -445,6 +447,7 @@ impl SimGraph {
         }
     }
 
+    #[allow(dead_code)]
     fn reduce_trees(&mut self) {
         self.pruned_nodes_all.clear();
 
@@ -735,7 +738,6 @@ impl SimGraph {
         }
         let mut branch_count = 0usize;
         let inc_edges_count = neighbor_edges.len();
-        let start_index: usize;
 
         let mut edges_to_parent = parent
             .map(|p| self.edges_between(node, p))
@@ -745,21 +747,20 @@ impl SimGraph {
             if let Some(pos) = neighbor_edges.iter().position(|&e| e == temp) {
                 neighbor_edges.remove(pos);
             }
-            if child_count > 0 {
-                child_count -= 1;
-            }
+            child_count = child_count.saturating_sub(1);
         }
 
-        if parent.is_some() && !edges_to_parent.is_empty() && inc_edges_count > 0 {
-            start_index = (neighbor_edges
-                .iter()
-                .position(|&e| e == edges_to_parent[0])
-                .unwrap_or(0)
-                + 1)
-                % inc_edges_count;
-        } else {
-            start_index = 0;
-        }
+        let start_index: usize =
+            if parent.is_some() && !edges_to_parent.is_empty() && inc_edges_count > 0 {
+                (neighbor_edges
+                    .iter()
+                    .position(|&e| e == edges_to_parent[0])
+                    .unwrap_or(0)
+                    + 1)
+                    % inc_edges_count
+            } else {
+                0
+            };
 
         let step_angle = if child_count == 0 {
             0.0
@@ -887,7 +888,7 @@ impl SimGraph {
         // Non-incremental mode: coolingFactor starts at 1.0 for small graphs.
         let initial_cooling_factor = 1.0;
         let mut cooling_factor = initial_cooling_factor;
-        let max_iterations = Self::MAX_ITERATIONS.max((active_n as usize * 5) as usize);
+        let max_iterations = Self::MAX_ITERATIONS.max(active_n as usize * 5);
         let max_cooling_cycle = (max_iterations as f64) / (Self::CONVERGENCE_CHECK_PERIOD as f64);
         let final_temperature = (Self::CONVERGENCE_CHECK_PERIOD as f64) / (max_iterations as f64);
         let mut cooling_cycle = 0.0f64;
@@ -915,7 +916,7 @@ impl SimGraph {
                 }
             }
 
-            if total_iterations % Self::CONVERGENCE_CHECK_PERIOD == 0
+            if total_iterations.is_multiple_of(Self::CONVERGENCE_CHECK_PERIOD)
                 && !is_tree_growing
                 && !is_growth_finished
             {
@@ -949,7 +950,7 @@ impl SimGraph {
             }
 
             if is_tree_growing {
-                if grow_tree_iterations % 10 == 0 {
+                if grow_tree_iterations.is_multiple_of(10) {
                     if !self.pruned_nodes_all.is_empty() {
                         self.update_grid(repulsion_range);
                         self.grow_tree_one_step(repulsion_range);
@@ -971,7 +972,7 @@ impl SimGraph {
                     break;
                 }
 
-                if after_growth_iterations % 10 == 0 {
+                if after_growth_iterations.is_multiple_of(10) {
                     self.update_grid(repulsion_range);
                 }
                 cooling_factor = Self::DEFAULT_COOLING_FACTOR_INCREMENTAL
@@ -1495,8 +1496,8 @@ fn calc_separation_amount(a: &SimNode, b: &SimNode, separation_buffer: f64) -> (
         move_by_y = overlap_y;
     }
 
-    let dx = -1.0 * (dir_x as f64) * ((move_by_x / 2.0) + separation_buffer);
-    let dy = -1.0 * (dir_y as f64) * ((move_by_y / 2.0) + separation_buffer);
+    let dx = -(dir_x as f64) * ((move_by_x / 2.0) + separation_buffer);
+    let dy = -(dir_y as f64) * ((move_by_y / 2.0) + separation_buffer);
     (dx, dy)
 }
 

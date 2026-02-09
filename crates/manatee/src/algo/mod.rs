@@ -9,20 +9,14 @@ pub enum Algorithm {
     Fcose(FcoseOptions),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CoseBilkentOptions {
     /// Seed for deterministic randomness. The upstream JS implementation relies on `Math.random`,
     /// so the Rust port will use a reproducible RNG here.
     pub random_seed: u64,
 }
 
-impl Default for CoseBilkentOptions {
-    fn default() -> Self {
-        Self { random_seed: 0 }
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct FcoseOptions {
     pub random_seed: u64,
     /// Override for layout-base/CoSE `DEFAULT_EDGE_LENGTH` (used for repulsion/grid range, overlap
@@ -37,18 +31,6 @@ pub struct FcoseOptions {
     pub relative_placement_constraint: Vec<RelativePlacementConstraint>,
     /// Optional padding applied around compound (group) bounds when computing compound repulsion.
     pub compound_padding: Option<f64>,
-}
-
-impl Default for FcoseOptions {
-    fn default() -> Self {
-        Self {
-            random_seed: 0,
-            default_edge_length: None,
-            alignment_constraint: None,
-            relative_placement_constraint: Vec::new(),
-            compound_padding: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Default)]

@@ -363,10 +363,12 @@ fn run(args: Args) -> Result<(), CliError> {
                 TextMeasurerKind::Vendored => Arc::new(VendoredFontMetricsTextMeasurer::default()),
             };
 
-            let mut layout = LayoutOptions::default();
-            layout.viewport_width = args.viewport_width;
-            layout.viewport_height = args.viewport_height;
-            layout.text_measurer = measurer;
+            let layout = LayoutOptions {
+                viewport_width: args.viewport_width,
+                viewport_height: args.viewport_height,
+                text_measurer: measurer,
+                ..Default::default()
+            };
 
             let Some(layouted) =
                 merman::render::layout_diagram_sync(&engine, &text, options, &layout)?
@@ -386,10 +388,12 @@ fn run(args: Args) -> Result<(), CliError> {
                 TextMeasurerKind::Vendored => Arc::new(VendoredFontMetricsTextMeasurer::default()),
             };
 
-            let mut layout = LayoutOptions::default();
-            layout.viewport_width = args.viewport_width;
-            layout.viewport_height = args.viewport_height;
-            layout.text_measurer = measurer;
+            let layout = LayoutOptions {
+                viewport_width: args.viewport_width,
+                viewport_height: args.viewport_height,
+                text_measurer: measurer,
+                ..Default::default()
+            };
 
             let svg_opts = SvgRenderOptions {
                 diagram_id: args.diagram_id.clone(),
@@ -408,9 +412,11 @@ fn run(args: Args) -> Result<(), CliError> {
                     write_output(out, svg.as_bytes())
                 }
                 RenderFormat::Png => {
-                    let mut raster = merman::render::raster::RasterOptions::default();
-                    raster.scale = args.render_scale;
-                    raster.background = args.background.clone();
+                    let raster = merman::render::raster::RasterOptions {
+                        scale: args.render_scale,
+                        background: args.background.clone(),
+                        ..Default::default()
+                    };
                     let bytes = merman::render::raster::svg_to_png(&svg, &raster)?;
                     let default_out_path = default_raster_out_path(args.input.as_deref(), "png")
                         .to_string_lossy()
@@ -419,9 +425,11 @@ fn run(args: Args) -> Result<(), CliError> {
                     write_output(Some(out), &bytes)
                 }
                 RenderFormat::Jpeg => {
-                    let mut raster = merman::render::raster::RasterOptions::default();
-                    raster.scale = args.render_scale;
-                    raster.background = args.background.clone();
+                    let raster = merman::render::raster::RasterOptions {
+                        scale: args.render_scale,
+                        background: args.background.clone(),
+                        ..Default::default()
+                    };
                     let bytes = merman::render::raster::svg_to_jpeg(&svg, &raster)?;
                     let default_out_path = default_raster_out_path(args.input.as_deref(), "jpg")
                         .to_string_lossy()

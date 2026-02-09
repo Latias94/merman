@@ -137,6 +137,7 @@ fn rank_dir_from(direction: &str) -> RankDir {
     }
 }
 
+#[allow(dead_code)]
 fn toggle_rank_dir(dir: RankDir) -> RankDir {
     match dir {
         RankDir::TB => RankDir::LR,
@@ -572,7 +573,7 @@ fn find_common_edges(
 
     let mut out = Vec::new();
     for e1 in edges1_prim {
-        if edges2.iter().any(|e2| *e2 == e1) {
+        if edges2.contains(&e1) {
             out.push(e1);
         }
     }
@@ -1313,7 +1314,7 @@ pub fn layout_state_diagram_v2(
                 // Mermaid converts `rect` into `roundedRect` when rx/ry is set.
                 let has_rounding = n.rx.unwrap_or(0.0) > 0.0 && n.ry.unwrap_or(0.0) > 0.0;
                 let pad_x = if has_rounding { padding } else { padding * 2.0 };
-                let pad_y = if has_rounding { padding } else { padding };
+                let pad_y = padding;
                 (tw + pad_x * 2.0, th + pad_y * 2.0)
             }
             other => {
@@ -2218,7 +2219,7 @@ pub fn debug_build_state_diagram_v2_dagre_graph(
                 );
                 let has_rounding = n.rx.unwrap_or(0.0) > 0.0 && n.ry.unwrap_or(0.0) > 0.0;
                 let pad_x = if has_rounding { padding } else { padding * 2.0 };
-                let pad_y = if has_rounding { padding } else { padding };
+                let pad_y = padding;
                 (tw + pad_x * 2.0, th + pad_y * 2.0)
             }
             other => {

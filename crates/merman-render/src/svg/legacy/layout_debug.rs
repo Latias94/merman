@@ -164,12 +164,13 @@ pub(super) fn compute_layout_bounds(
             e.start_label_right.as_ref(),
             e.end_label_left.as_ref(),
             e.end_label_right.as_ref(),
-        ] {
-            if let Some(lbl) = lbl {
-                let hw = lbl.width / 2.0;
-                let hh = lbl.height / 2.0;
-                include_rect(lbl.x - hw, lbl.y - hh, lbl.x + hw, lbl.y + hh);
-            }
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let hw = lbl.width / 2.0;
+            let hh = lbl.height / 2.0;
+            include_rect(lbl.x - hw, lbl.y - hh, lbl.x + hw, lbl.y + hh);
         }
     }
 

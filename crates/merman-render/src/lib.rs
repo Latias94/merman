@@ -81,9 +81,10 @@ impl LayoutOptions {
     /// Compared to `Default`, this uses a Mermaid-like text measurer backed by vendored font
     /// metrics (instead of deterministic placeholder metrics).
     pub fn headless_svg_defaults() -> Self {
-        let mut out = Self::default();
-        out.text_measurer = Arc::new(crate::text::VendoredFontMetricsTextMeasurer::default());
-        out
+        Self {
+            text_measurer: Arc::new(crate::text::VendoredFontMetricsTextMeasurer::default()),
+            ..Default::default()
+        }
     }
 
     pub fn with_text_measurer(mut self, measurer: Arc<dyn TextMeasurer + Send + Sync>) -> Self {

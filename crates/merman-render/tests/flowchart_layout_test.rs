@@ -191,7 +191,6 @@ fn flowchart_layout_includes_clusters_with_title_placeholders() {
         .iter()
         .map(|n| (n.id.as_str(), n))
         .collect::<std::collections::HashMap<_, _>>();
-    let clusters_by_id = clusters_by_id;
 
     // Verify that cluster `dir` (or toggled direction) affects internal node layout when the
     // cluster has no external connections.

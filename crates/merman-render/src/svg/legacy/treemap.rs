@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use super::*;
 
 // Treemap diagram SVG renderer implementation (split from legacy.rs).
@@ -649,10 +651,7 @@ pub(super) fn render_treemap_diagram_svg(
             format!("treemapNode treemapLeafGroup leaf{i}x")
         };
 
-        let fill_key = leaf
-            .parent_name
-            .as_deref()
-            .unwrap_or_else(|| leaf.name.as_str());
+        let fill_key = leaf.parent_name.as_deref().unwrap_or(leaf.name.as_str());
         let fill = color_scale.get(fill_key);
 
         let leaf_css: &[String] = leaf.css_compiled_styles.as_deref().unwrap_or(&[]);

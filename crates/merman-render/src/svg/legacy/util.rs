@@ -151,7 +151,7 @@ pub(super) fn json_stringify_points(points: &[crate::model::LayoutPoint]) -> Str
     // For strict SVG XML parity we must also match V8's number-to-string behavior, including
     // tie-breaking cases where Rust's default float formatting can pick a different shortest
     // round-trippable decimal (e.g. `...0312` vs `...0313`).
-    fn js_number_to_string<'a>(mut v: f64, buf: &'a mut ryu_js::Buffer) -> &'a str {
+    fn js_number_to_string(mut v: f64, buf: &mut ryu_js::Buffer) -> &str {
         if !v.is_finite() {
             return "0";
         }

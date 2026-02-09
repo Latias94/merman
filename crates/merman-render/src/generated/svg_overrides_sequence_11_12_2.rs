@@ -26,7 +26,8 @@ fn lookup_in(tbl: &'static [(&'static str, f64, f64)], text: &str) -> Option<(f6
 fn lookup_in_trebuchetms_verdana_arial_sans_serif() -> Option<&'static [(&'static str, f64, f64)]> {
     Some(SVG_OVERRIDES_TREBUCHETMS_VERDANA_ARIAL_SANS_SERIF)
 }
-static SVG_OVERRIDES_TREBUCHETMS_VERDANA_ARIAL_SANS_SERIF: &[(&'static str, f64, f64)] = &[
+
+static SVG_OVERRIDES_TREBUCHETMS_VERDANA_ARIAL_SANS_SERIF: &[(&str, f64, f64)] = &[
     ("", 0.0, 0.8125),
     (",<>:-", 0.0, 2.0),
     ("-:<>,", 0.0, 2.0),

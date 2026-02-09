@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use crate::model::{
     Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, SequenceDiagramLayout,
 };
@@ -8,10 +10,12 @@ use serde_json::Value;
 
 #[derive(Debug, Clone, Deserialize)]
 struct SequenceActor {
+    #[allow(dead_code)]
     name: String,
     description: String,
     #[serde(rename = "type")]
     actor_type: String,
+    #[allow(dead_code)]
     wrap: bool,
 }
 
@@ -25,6 +29,7 @@ struct SequenceMessage {
     #[serde(rename = "type")]
     message_type: i32,
     message: Value,
+    #[allow(dead_code)]
     wrap: bool,
     activate: bool,
     #[serde(default)]
@@ -643,22 +648,6 @@ pub fn layout_sequence_diagram(
         if actor_idxs.len() == 1 {
             let i = actor_idxs[0];
             let actor_w = actor_widths.get(i).copied().unwrap_or(150.0);
-            let center_x = message_ids
-                .iter()
-                .find_map(|id| {
-                    let msg = msg_by_id.get(id.as_str()).copied()?;
-                    let (l, r) = message_span_x(
-                        msg,
-                        actor_index,
-                        actor_centers_x,
-                        measurer,
-                        msg_text_style,
-                        message_width_scale,
-                    )?;
-                    Some((l + r) / 2.0)
-                })
-                .unwrap_or(actor_centers_x[i] + 1.0);
-
             let half_width =
                 actor_w / 2.0 + (message_margin / 2.0) + box_text_margin + bottom_margin_adj;
             let w = (2.0 * half_width).max(1.0);
@@ -2013,29 +2002,24 @@ pub fn layout_sequence_diagram(
     };
 
     let mut content_min_x = f64::INFINITY;
-    let mut content_min_y = f64::INFINITY;
     let mut content_max_x = f64::NEG_INFINITY;
     let mut content_max_y = f64::NEG_INFINITY;
     for n in &nodes {
         let left = n.x - n.width / 2.0;
         let right = n.x + n.width / 2.0;
-        let top = n.y - n.height / 2.0;
         let bottom = n.y + n.height / 2.0;
         content_min_x = content_min_x.min(left);
-        content_min_y = content_min_y.min(top);
         content_max_x = content_max_x.max(right);
         content_max_y = content_max_y.max(bottom);
     }
-    if !content_min_x.is_finite() || !content_min_y.is_finite() {
+    if !content_min_x.is_finite() {
         content_min_x = 0.0;
-        content_min_y = 0.0;
         content_max_x = actor_width_min.max(1.0);
         content_max_y = (bottom_box_top_y + actor_height).max(1.0);
     }
 
-    if let Some((min_x, min_y, max_x, max_y)) = block_bounds {
+    if let Some((min_x, _min_y, max_x, max_y)) = block_bounds {
         content_min_x = content_min_x.min(min_x);
-        content_min_y = content_min_y.min(min_y);
         content_max_x = content_max_x.max(max_x);
         content_max_y = content_max_y.max(max_y);
     }

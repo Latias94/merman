@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use super::*;
 
 // Sequence SVG renderer implementation (split from legacy.rs).
@@ -172,6 +174,7 @@ struct SequenceSvgModel {
     boxes: Vec<SequenceSvgBox>,
     messages: Vec<SequenceSvgMessage>,
     #[serde(default)]
+    #[allow(dead_code)]
     notes: Vec<SequenceSvgNote>,
 }
 
@@ -181,14 +184,19 @@ struct SequenceSvgBox {
     actor_keys: Vec<String>,
     fill: String,
     name: Option<String>,
+    #[allow(dead_code)]
     wrap: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 struct SequenceSvgNote {
+    #[allow(dead_code)]
     actor: serde_json::Value,
+    #[allow(dead_code)]
     message: String,
+    #[allow(dead_code)]
     placement: i32,
+    #[allow(dead_code)]
     wrap: bool,
 }
 
@@ -225,12 +233,12 @@ pub(super) fn render_sequence_diagram_svg(
         .and_then(|v| v.as_f64())
         .unwrap_or(5.0)
         .max(0.0);
-    let message_margin = seq_cfg
+    let _message_margin = seq_cfg
         .get("messageMargin")
         .and_then(|v| v.as_f64())
         .unwrap_or(35.0)
         .max(0.0);
-    let bottom_margin_adj = seq_cfg
+    let _bottom_margin_adj = seq_cfg
         .get("bottomMarginAdj")
         .and_then(|v| v.as_f64())
         .unwrap_or(1.0);
@@ -987,6 +995,7 @@ pub(super) fn render_sequence_diagram_svg(
         width: f64,
         height: f64,
         class_idx: usize,
+        #[allow(dead_code)]
         start_index: usize,
     }
 

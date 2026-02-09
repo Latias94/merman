@@ -269,7 +269,7 @@ fn parse_tiny_skia_color(text: &str) -> Option<tiny_skia::Color> {
 
     let hex = s.strip_prefix('#')?;
     fn hex2(b: &[u8]) -> Option<u8> {
-        let hi = (*b.get(0)? as char).to_digit(16)? as u8;
+        let hi = (*b.first()? as char).to_digit(16)? as u8;
         let lo = (*b.get(1)? as char).to_digit(16)? as u8;
         Some((hi << 4) | lo)
     }

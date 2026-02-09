@@ -29,10 +29,12 @@ struct MindmapNodeModel {
     #[serde(default)]
     shape: String,
     #[serde(default)]
+    #[allow(dead_code)]
     level: i64,
     #[serde(default)]
     padding: f64,
     #[serde(default)]
+    #[allow(dead_code)]
     width: f64,
 }
 
@@ -190,7 +192,7 @@ pub fn layout_mindmap_diagram(
     let node_by_id: std::collections::BTreeMap<String, MindmapNodeModel> =
         model.nodes.into_iter().map(|n| (n.id.clone(), n)).collect();
 
-    for (_idx, (_num, id)) in id_order.iter().enumerate() {
+    for (_num, id) in id_order.iter() {
         let Some(n) = node_by_id.get(id) else {
             continue;
         };

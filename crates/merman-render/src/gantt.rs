@@ -363,9 +363,9 @@ fn get_max_intersections(tasks: &mut [GanttTaskModel], order_offset: i64) -> i64
 
     let mut max_i: i64 = 0;
     for idx in sorted {
-        for j in 0..timeline.len() {
-            if tasks[idx].start_ms >= timeline[j] {
-                timeline[j] = tasks[idx].end_ms;
+        for (j, slot) in timeline.iter_mut().enumerate() {
+            if tasks[idx].start_ms >= *slot {
+                *slot = tasks[idx].end_ms;
                 tasks[idx].order = j as i64 + order_offset;
                 max_i = max_i.max(j as i64);
                 break;
@@ -677,7 +677,7 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
                 let mut ws = cur.date();
                 loop {
                     let weeks = ws.signed_duration_since(epoch).num_days() / 7;
-                    let rem = (weeks % e as i64 + e as i64) % e as i64;
+                    let rem = (weeks % e + e) % e;
                     if rem == 0 {
                         break;
                     }
@@ -705,9 +705,9 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
             let e = every.max(1);
             if e > 1 {
                 let mut idx = month_index(y, m);
-                let rem = (idx % e as i64 + e as i64) % e as i64;
+                let rem = (idx % e + e) % e;
                 if rem != 0 {
-                    idx += (e as i64) - rem;
+                    idx += e - rem;
                     y = (idx / 12) as i32;
                     m = (idx % 12) as u32 + 1;
                     cur = chrono::NaiveDate::from_ymd_opt(y, m, 1)?.and_hms_opt(0, 0, 0)?;

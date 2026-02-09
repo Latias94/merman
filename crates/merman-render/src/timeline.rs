@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use crate::Result;
 use crate::model::{
     Bounds, TimelineDiagramLayout, TimelineLineLayout, TimelineNodeLayout, TimelineSectionLayout,
@@ -20,11 +22,14 @@ const DEFAULT_VIEWBOX_PADDING: f64 = 50.0;
 
 #[derive(Debug, Clone, Deserialize)]
 struct TimelineTaskModel {
+    #[allow(dead_code)]
     id: i64,
     section: String,
     #[serde(rename = "type")]
+    #[allow(dead_code)]
     task_type: String,
     task: String,
+    #[allow(dead_code)]
     score: i64,
     #[serde(default)]
     events: Vec<String>,

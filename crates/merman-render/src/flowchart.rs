@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use crate::model::{
     Bounds, FlowchartV2Layout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
 };
@@ -138,8 +140,10 @@ pub(crate) struct FlowNode {
     #[serde(default)]
     pub link: Option<String>,
     #[serde(default, rename = "linkTarget")]
+    #[allow(dead_code)]
     pub link_target: Option<String>,
     #[serde(default, rename = "haveCallback")]
+    #[allow(dead_code)]
     pub have_callback: bool,
 }
 
@@ -269,7 +273,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
                     let mut it = rest.chars();
                     let _ = it.next();
                     let mut val = String::new();
-                    while let Some(ch) = it.next() {
+                    for ch in it {
                         if ch == quote {
                             break;
                         }
@@ -671,7 +675,7 @@ fn flowchart_find_common_edges(
 
     let mut out = Vec::new();
     for e1 in edges1_prim {
-        if edges2.iter().any(|e2| *e2 == e1) {
+        if edges2.contains(&e1) {
             out.push(e1);
         }
     }
@@ -895,7 +899,7 @@ fn copy_cluster(
 fn extract_clusters_recursively(
     graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     subgraphs_by_id: &std::collections::HashMap<String, FlowSubgraph>,
-    effective_dir_by_id: &std::collections::HashMap<String, String>,
+    _effective_dir_by_id: &std::collections::HashMap<String, String>,
     extracted: &mut std::collections::HashMap<String, Graph<NodeLabel, EdgeLabel, GraphLabel>>,
     depth: usize,
 ) {
@@ -998,7 +1002,7 @@ fn extract_clusters_recursively(
         extract_clusters_recursively(
             &mut g,
             subgraphs_by_id,
-            effective_dir_by_id,
+            _effective_dir_by_id,
             extracted,
             depth + 1,
         );
@@ -1743,7 +1747,7 @@ pub fn layout_flowchart_v2(
         >,
         subgraph_ids: &std::collections::HashSet<&str>,
         leaf_node_ids: &std::collections::HashSet<String>,
-        title_total_margin: f64,
+        _title_total_margin: f64,
         base_pos: &mut std::collections::HashMap<String, (f64, f64)>,
         leaf_rects: &mut std::collections::HashMap<String, Rect>,
         cluster_rects_from_graph: &mut std::collections::HashMap<String, Rect>,
@@ -1928,7 +1932,7 @@ pub fn layout_flowchart_v2(
                 extracted_graphs,
                 subgraph_ids,
                 leaf_node_ids,
-                title_total_margin,
+                _title_total_margin,
                 base_pos,
                 leaf_rects,
                 cluster_rects_from_graph,
@@ -2514,7 +2518,7 @@ pub fn layout_flowchart_v2(
         wrap_mode: WrapMode,
         cluster_padding: f64,
         title_total_margin: f64,
-        node_padding: f64,
+        _node_padding: f64,
     ) -> Result<(Rect, f64)> {
         if let Some(r) = cluster_rects.get(id).copied() {
             let base_width = cluster_base_widths
@@ -2555,7 +2559,7 @@ pub fn layout_flowchart_v2(
                         wrap_mode,
                         cluster_padding,
                         title_total_margin,
-                        node_padding,
+                        _node_padding,
                     )?
                     .0,
                 )
@@ -3319,7 +3323,7 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
         while let Some(ch) = it.next() {
             if ch == '<' {
                 let mut tag = String::new();
-                while let Some(c) = it.next() {
+                for c in it.by_ref() {
                     if c == '>' {
                         break;
                     }
@@ -3338,10 +3342,9 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
                     .split_whitespace()
                     .next()
                     .unwrap_or("");
-                if name == "br" {
-                    trim_trailing_break_whitespace(&mut out);
-                    out.push('\n');
-                } else if is_closing && matches!(name, "p" | "div" | "li" | "tr" | "ul" | "ol") {
+                if name == "br"
+                    || (is_closing && matches!(name, "p" | "div" | "li" | "tr" | "ul" | "ol"))
+                {
                     trim_trailing_break_whitespace(&mut out);
                     out.push('\n');
                 }

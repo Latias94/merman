@@ -1710,7 +1710,7 @@ const mermaidIifePath = path.join(cliRoot, 'node_modules', 'mermaid', 'dist', 'm
         );
         let _ = writeln!(
             &mut out,
-            "static SVG_OVERRIDES_{key}: &[(&'static str, f64, f64)] = &[",
+            "static SVG_OVERRIDES_{key}: &[(&str, f64, f64)] = &[",
             key = font_key.replace(['-', ','], "_").to_ascii_uppercase()
         );
         for (text, l, r) in &list {

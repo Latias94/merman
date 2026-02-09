@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use super::*;
 
 // State diagram SVG renderer implementation (split from legacy.rs).
@@ -378,6 +380,7 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
     }
 
     impl AffineTransform {
+        #[allow(dead_code)]
         fn identity() -> Self {
             Self {
                 a: 1.0,
@@ -440,9 +443,7 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
         let bytes = attrs.as_bytes();
         let mut from = 0usize;
         while from < attrs.len() {
-            let Some(rel) = attrs[from..].find(&needle) else {
-                return None;
-            };
+            let rel = attrs[from..].find(&needle)?;
             let pos = from + rel;
             let ok_prefix = pos == 0 || bytes[pos.saturating_sub(1)].is_ascii_whitespace();
             if ok_prefix {
@@ -795,8 +796,7 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
 
         let buf = points.replace(',', " ");
         let mut nums = buf.split_whitespace().filter_map(parse_f64);
-        loop {
-            let Some(x) = nums.next() else { break };
+        while let Some(x) = nums.next() {
             let Some(y) = nums.next() else { break };
             have = true;
             min_x = min_x.min(x);
@@ -1091,6 +1091,7 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
         (v - v.round()).abs() <= 1e-9
     }
 
+    #[allow(dead_code)]
     fn next_up_f32(v: f32) -> f32 {
         if v.is_nan() || v == f32::INFINITY {
             return v;
@@ -1167,7 +1168,7 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
             .filter(|t| {
                 (t.b.abs() > 1e-12 || t.c.abs() > 1e-12) && (t.e.abs() > 1e-12 || t.f.abs() > 1e-12)
             })
-            .filter_map(|t| pivot_from_baked_rotate_op(t))
+            .filter_map(pivot_from_baked_rotate_op)
             .any(|(_cx, cy)| (cy - target_cy).abs() <= 1.0)
     }
 
@@ -1183,7 +1184,7 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
             .filter(|t| {
                 (t.b.abs() > 1e-12 || t.c.abs() > 1e-12) && (t.e.abs() > 1e-12 || t.f.abs() > 1e-12)
             })
-            .filter_map(|t| pivot_from_baked_rotate_op(t))
+            .filter_map(pivot_from_baked_rotate_op)
             .any(|(cx, cy)| (cx - target_cx).abs() <= 1e-3 && (cy - target_cy).abs() <= 1e-3)
     }
 
@@ -1793,6 +1794,7 @@ struct StateSvgLink {
 struct StateSvgNode {
     pub id: String,
     #[serde(default, rename = "labelStyle")]
+    #[allow(dead_code)]
     pub label_style: String,
     #[serde(default)]
     pub label: Option<serde_json::Value>,
@@ -2318,6 +2320,7 @@ fn state_node_label_html_with_style(raw: &str, span_style: Option<&str>) -> Stri
     )
 }
 
+#[allow(dead_code)]
 fn state_node_label_inline_html_with_style(raw: &str, span_style: Option<&str>) -> String {
     let style_attr = span_style
         .filter(|s| !s.is_empty())
@@ -2576,9 +2579,7 @@ fn state_strip_note_group<'a>(
 fn state_leaf_context_raw<'a>(ctx: &'a StateRenderCtx<'_>, id: &str) -> Option<&'a str> {
     let mut p = ctx.parent.get(id).copied();
     loop {
-        let Some(pid) = state_strip_note_group(ctx, p) else {
-            return None;
-        };
+        let pid = state_strip_note_group(ctx, p)?;
         let Some(pn) = ctx.nodes_by_id.get(pid).copied() else {
             return Some(pid);
         };
@@ -2636,9 +2637,7 @@ fn state_edge_context_raw<'a>(ctx: &'a StateRenderCtx<'_>, edge: &StateSvgEdge) 
 fn state_leaf_context<'a>(ctx: &'a StateRenderCtx<'_>, id: &str) -> Option<&'a str> {
     let mut p = ctx.parent.get(id).copied();
     loop {
-        let Some(pid) = state_strip_note_group(ctx, p) else {
-            return None;
-        };
+        let pid = state_strip_note_group(ctx, p)?;
         let Some(pn) = ctx.nodes_by_id.get(pid).copied() else {
             return Some(pid);
         };
@@ -2864,10 +2863,12 @@ fn render_state_root(
         if state_is_hidden(ctx, id) {
             continue;
         }
-        if n.is_group && n.shape != "noteGroup" {
-            if ctx.nested_roots.contains(id) && state_insertion_context(ctx, id) == root {
-                nested.push(id);
-            }
+        if n.is_group
+            && n.shape != "noteGroup"
+            && ctx.nested_roots.contains(id)
+            && state_insertion_context(ctx, id) == root
+        {
+            nested.push(id);
         }
     }
 
@@ -3617,7 +3618,7 @@ fn mermaid_create_path_from_points(points: &[(f64, f64)]) -> String {
         let cmd = if i == 0 { 'M' } else { 'L' };
         let _ = write!(&mut out, "{cmd}{x},{y} ");
     }
-    out.push_str("Z");
+    out.push('Z');
     out.trim_end().to_string()
 }
 
@@ -3730,11 +3731,12 @@ fn mermaid_rounded_rect_path_data(w: f64, h: f64) -> String {
 }
 
 fn mermaid_choice_diamond_path_data(w: f64, h: f64) -> String {
-    let mut points: Vec<(f64, f64)> = Vec::with_capacity(4);
-    points.push((0.0, h / 2.0));
-    points.push((w / 2.0, 0.0));
-    points.push((0.0, -h / 2.0));
-    points.push((-w / 2.0, 0.0));
+    let points: Vec<(f64, f64)> = vec![
+        (0.0, h / 2.0),
+        (w / 2.0, 0.0),
+        (0.0, -h / 2.0),
+        (-w / 2.0, 0.0),
+    ];
     mermaid_create_path_from_points(&points)
 }
 

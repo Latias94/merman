@@ -5,7 +5,11 @@ use serde_json::{Value, json};
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, VecDeque};
 
-lalrpop_util::lalrpop_mod!(state_grammar, "/diagrams/state_grammar.rs");
+lalrpop_util::lalrpop_mod!(
+    #[allow(clippy::filter_map_identity)]
+    state_grammar,
+    "/diagrams/state_grammar.rs"
+);
 
 #[derive(Debug, Clone)]
 pub(crate) enum Tok {

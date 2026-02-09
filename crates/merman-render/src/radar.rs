@@ -8,12 +8,14 @@ use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
 struct RadarAxis {
+    #[allow(dead_code)]
     name: String,
     label: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 struct RadarCurve {
+    #[allow(dead_code)]
     name: String,
     label: String,
     entries: Vec<f64>,

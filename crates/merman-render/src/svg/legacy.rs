@@ -288,7 +288,9 @@ pub fn render_flowchart_v2_debug_svg(
 
 #[derive(Debug, Clone, Deserialize)]
 struct PieSvgSection {
+    #[allow(dead_code)]
     label: String,
+    #[allow(dead_code)]
     value: f64,
 }
 
@@ -301,6 +303,7 @@ struct PieSvgModel {
     #[serde(rename = "showData")]
     show_data: bool,
     title: Option<String>,
+    #[allow(dead_code)]
     sections: Vec<PieSvgSection>,
 }
 
@@ -486,6 +489,7 @@ pub fn render_gantt_diagram_svg(
 
 #[derive(Debug, Clone, Deserialize)]
 struct C4SvgModelText {
+    #[allow(dead_code)]
     text: String,
 }
 
@@ -501,6 +505,7 @@ struct C4SvgModelShape {
     #[serde(default)]
     sprite: Option<serde_json::Value>,
     #[serde(default, rename = "typeC4Shape")]
+    #[allow(dead_code)]
     type_c4_shape: Option<C4SvgModelText>,
 }
 
@@ -514,6 +519,7 @@ struct C4SvgModelBoundary {
     #[serde(default, rename = "borderColor")]
     border_color: Option<String>,
     #[serde(default, rename = "fontColor")]
+    #[allow(dead_code)]
     font_color: Option<String>,
 }
 

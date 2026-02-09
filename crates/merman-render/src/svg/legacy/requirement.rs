@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use super::*;
 
 // Requirement diagram SVG renderer implementation (split from legacy.rs).

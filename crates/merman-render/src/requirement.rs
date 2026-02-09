@@ -100,6 +100,7 @@ struct RequirementLabelMetrics {
     width: f64,
     height: f64,
     // Mermaid `calculateTextWidth(...)+50` result used as `max-width: ...px` in HTML labels.
+    #[allow(dead_code)]
     max_width_px: i64,
 }
 
@@ -621,7 +622,7 @@ pub fn layout_requirement_diagram(
 
     let mut out_nodes: Vec<LayoutNode> = Vec::new();
     for v in g.nodes() {
-        let Some(n) = g.node(&v) else {
+        let Some(n) = g.node(v) else {
             continue;
         };
         let (Some(cx), Some(cy)) = (n.x, n.y) else {

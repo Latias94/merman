@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use super::*;
 
 // Architecture diagram SVG renderer implementation (split from legacy.rs).
@@ -791,8 +793,7 @@ pub(super) fn render_architecture_diagram_svg(
                     "Y" => (bbox_h, bbox_w),
                     _ => {
                         // |cos(45°)| == |sin(45°)| == sqrt(1/2)
-                        let k = 0.7071067811865476_f64;
-                        let a = k * bbox_w + k * bbox_h;
+                        let a = (bbox_w + bbox_h) * std::f64::consts::FRAC_1_SQRT_2;
                         (a, a)
                     }
                 };
@@ -985,7 +986,7 @@ pub(super) fn render_architecture_diagram_svg(
                             "BR" | "RB" => (-1.0, -1.0),
                             _ => (-1.0, 1.0),
                         };
-                        let angle = (-1.0f64 * xf * yf * 45.0f64).round() as i64;
+                        let angle = (-xf * yf * 45.0f64).round() as i64;
 
                         // Rotated bbox at 45° (w' == h' == (w+h)*sqrt(2)/2).
                         let diag = (bbox_w + bbox_h) * std::f64::consts::FRAC_1_SQRT_2;

@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
@@ -20,8 +22,9 @@ pub fn replace_fontawesome_icons(input: &str) -> String {
     .to_string()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum WrapMode {
+    #[default]
     SvgLike,
     /// SVG `<text>` behaves as a single shaping run (no whitespace-to-`<tspan>` tokenization).
     ///
@@ -29,12 +32,6 @@ pub enum WrapMode {
     /// resulting `getBBox()` width differs measurably from per-word `<tspan>` tokenization.
     SvgLikeSingleRun,
     HtmlLike,
-}
-
-impl Default for WrapMode {
-    fn default() -> Self {
-        Self::SvgLike
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -455,7 +452,7 @@ pub fn measure_html_with_flowchart_bold_deltas(
     while let Some(ch) = it.next() {
         if ch == '<' {
             let mut tag = String::new();
-            while let Some(c) = it.next() {
+            for c in it.by_ref() {
                 if c == '>' {
                     break;
                 }
@@ -1323,6 +1320,7 @@ pub struct VendoredFontMetricsTextMeasurer {
 }
 
 impl VendoredFontMetricsTextMeasurer {
+    #[allow(dead_code)]
     fn quantize_svg_px_nearest(v: f64) -> f64 {
         if !(v.is_finite() && v >= 0.0) {
             return 0.0;
@@ -1987,6 +1985,7 @@ impl VendoredFontMetricsTextMeasurer {
         em * font_size
     }
 
+    #[allow(dead_code)]
     fn ceil_to_1_64_px(v: f64) -> f64 {
         if !(v.is_finite() && v >= 0.0) {
             return 0.0;
