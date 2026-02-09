@@ -394,6 +394,11 @@ fn parse_axes_list(input: &str) -> std::result::Result<Vec<AxisAst>, String> {
         out.push(AxisAst { name, label });
         p.skip_ws();
         if p.try_consume(',') {
+            // Upstream Mermaid rejects a trailing comma at the end of an `axis` list.
+            p.skip_ws();
+            if p.eof() {
+                return Err("unexpected trailing ',' in axis list".to_string());
+            }
             continue;
         }
         if p.eof() {
