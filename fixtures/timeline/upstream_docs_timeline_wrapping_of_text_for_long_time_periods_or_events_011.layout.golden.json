@@ -1,0 +1,277 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "bounds": {
+        "min_x": 100.0,
+        "min_y": -61.0,
+        "max_x": 1290.0,
+        "max_y": 802.4
+      },
+      "left_margin": 150.0,
+      "base_x": 200.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 790.0,
+      "sections": [
+        {
+          "node": {
+            "x": 200.0,
+            "y": 50.0,
+            "width": 390.0,
+            "height": 67.8,
+            "content_width": 350.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "Stone Age",
+            "label_lines": [
+              "Stone   Age"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 200.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "7600 BC ",
+                "label_lines": [
+                  "7600   BC"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 295.0,
+                "y1": 235.6,
+                "x2": 295.0,
+                "y2": 752.4
+              },
+              "events": [
+                {
+                  "x": 200.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 100.6,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Britain's oldest known house was built in Orkney, Scotland",
+                  "label_lines": [
+                    "Britain's   oldest",
+                    "known   house   was",
+                    "built   in   Orkney,",
+                    "Scotland"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            },
+            {
+              "node": {
+                "x": 400.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "6000 BC ",
+                "label_lines": [
+                  "6000   BC"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 495.0,
+                "y1": 235.6,
+                "x2": 495.0,
+                "y2": 752.4
+              },
+              "events": [
+                {
+                  "x": 400.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 135.8,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Sea levels rise and Britain becomes an island.<br> The people who live here are hunter-gatherers.",
+                  "label_lines": [
+                    "Sea   levels   rise",
+                    "and   Britain",
+                    "becomes   an   island.",
+                    "The   people   who",
+                    "live   here   are",
+                    "hunter-gatherers."
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 600.0,
+            "y": 50.0,
+            "width": 390.0,
+            "height": 67.8,
+            "content_width": 350.0,
+            "padding": 20.0,
+            "section_class": "section-0",
+            "label": "Bronze Age",
+            "label_lines": [
+              "Bronze   Age"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 600.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-0",
+                "label": "2300 BC ",
+                "label_lines": [
+                  "2300   BC"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 695.0,
+                "y1": 235.6,
+                "x2": 695.0,
+                "y2": 752.4
+              },
+              "events": [
+                {
+                  "x": 600.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 118.2,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "People arrive from Europe and settle in Britain. <br>They bring farming and metalworking.",
+                  "label_lines": [
+                    "People   arrive   from",
+                    "Europe   and   settle",
+                    "in   Britain.",
+                    "They   bring   farming",
+                    "and   metalworking."
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 600.0,
+                  "y": 496.0,
+                  "width": 190.0,
+                  "height": 100.6,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "New styles of pottery and ways of burying the dead appear.",
+                  "label_lines": [
+                    "New   styles   of",
+                    "pottery   and   ways",
+                    "of   burying   the",
+                    "dead   appear."
+                  ],
+                  "kind": "event"
+                }
+              ]
+            },
+            {
+              "node": {
+                "x": 800.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-0",
+                "label": "2200 BC ",
+                "label_lines": [
+                  "2200   BC"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 895.0,
+                "y1": 235.6,
+                "x2": 895.0,
+                "y2": 752.4
+              },
+              "events": [
+                {
+                  "x": 800.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 153.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "The last major building works are completed at Stonehenge.<br> People now bury their dead in stone circles.",
+                  "label_lines": [
+                    "The   last   major",
+                    "building   works   are",
+                    "completed   at",
+                    "Stonehenge.",
+                    "People   now   bury",
+                    "their   dead   in",
+                    "stone   circles."
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 800.0,
+                  "y": 531.2,
+                  "width": 190.0,
+                  "height": 153.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "The first metal objects are made in Britain.Some other nice things happen. it is a good time to be alive.",
+                  "label_lines": [
+                    "The   first   metal",
+                    "objects   are   made",
+                    "in   Britain.Some",
+                    "other   nice   things",
+                    "happen.   it   is   a",
+                    "good   time   to   be",
+                    "alive."
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "orphan_tasks": [],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "y1": 285.6,
+        "x2": 1240.0,
+        "y2": 285.6
+      },
+      "title": "England's History Timeline",
+      "title_x": 245.0,
+      "title_y": 20.0
+    }
+  }
+}

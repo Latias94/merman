@@ -1,0 +1,57 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "England's History Timeline",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Stone Age",
+      "Bronze Age"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Stone Age",
+        "type": "Stone Age",
+        "task": "7600 BC ",
+        "score": 0,
+        "events": [
+          "Britain's oldest known house was built in Orkney, Scotland"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Stone Age",
+        "type": "Stone Age",
+        "task": "6000 BC ",
+        "score": 0,
+        "events": [
+          "Sea levels rise and Britain becomes an island.<br> The people who live here are hunter-gatherers."
+        ]
+      },
+      {
+        "id": 2,
+        "section": "Bronze Age",
+        "type": "Bronze Age",
+        "task": "2300 BC ",
+        "score": 0,
+        "events": [
+          "People arrive from Europe and settle in Britain. <br>They bring farming and metalworking.",
+          "New styles of pottery and ways of burying the dead appear."
+        ]
+      },
+      {
+        "id": 3,
+        "section": "Bronze Age",
+        "type": "Bronze Age",
+        "task": "2200 BC ",
+        "score": 0,
+        "events": [
+          "The last major building works are completed at Stonehenge.<br> People now bury their dead in stone circles.",
+          "The first metal objects are made in Britain.Some other nice things happen. it is a good time to be alive."
+        ]
+      }
+    ]
+  }
+}

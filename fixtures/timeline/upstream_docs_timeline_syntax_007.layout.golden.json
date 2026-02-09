@@ -1,0 +1,200 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "bounds": {
+        "min_x": 100.0,
+        "min_y": -61.0,
+        "max_x": 1290.0,
+        "max_y": 473.4
+      },
+      "left_margin": 150.0,
+      "base_x": 200.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 790.0,
+      "sections": [],
+      "orphan_tasks": [
+        {
+          "node": {
+            "x": 200.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "2002 ",
+            "label_lines": [
+              "2002"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 295.0,
+            "y1": 117.8,
+            "x2": 295.0,
+            "y2": 423.4
+          },
+          "events": [
+            {
+              "x": 200.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section--1",
+              "label": "LinkedIn",
+              "label_lines": [
+                "LinkedIn"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 400.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-0",
+            "label": "2004 ",
+            "label_lines": [
+              "2004"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 495.0,
+            "y1": 117.8,
+            "x2": 495.0,
+            "y2": 423.4
+          },
+          "events": [
+            {
+              "x": 400.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-0",
+              "label": "Facebook ",
+              "label_lines": [
+                "Facebook"
+              ],
+              "kind": "event"
+            },
+            {
+              "x": 400.0,
+              "y": 310.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-0",
+              "label": "Google",
+              "label_lines": [
+                "Google"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 600.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-1",
+            "label": "2005 ",
+            "label_lines": [
+              "2005"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 695.0,
+            "y1": 117.8,
+            "x2": 695.0,
+            "y2": 423.4
+          },
+          "events": [
+            {
+              "x": 600.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-1",
+              "label": "YouTube",
+              "label_lines": [
+                "YouTube"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 800.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-2",
+            "label": "2006 ",
+            "label_lines": [
+              "2006"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 895.0,
+            "y1": 117.8,
+            "x2": 895.0,
+            "y2": 423.4
+          },
+          "events": [
+            {
+              "x": 800.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-2",
+              "label": "Twitter",
+              "label_lines": [
+                "Twitter"
+              ],
+              "kind": "event"
+            }
+          ]
+        }
+      ],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "y1": 167.8,
+        "x2": 1240.0,
+        "y2": 167.8
+      },
+      "title": "History of Social Media Platform",
+      "title_x": 245.0,
+      "title_y": 20.0
+    }
+  }
+}
