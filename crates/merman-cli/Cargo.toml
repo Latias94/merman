@@ -14,16 +14,9 @@ keywords = ["mermaid", "diagrams", "svg", "cli", "headless"]
 categories = ["command-line-utilities", "visualization"]
 
 [dependencies]
-futures.workspace = true
-merman.workspace = true
-merman-render.workspace = true
+merman = { workspace = true, features = ["raster"] }
 serde.workspace = true
 serde_json.workspace = true
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
-resvg = "0.46.0"
-usvg = "0.46.0"
-tiny-skia = "0.11.4"
-svg2pdf = "0.13.0"
 
 [dev-dependencies]
 assert_cmd = "2.0.16"

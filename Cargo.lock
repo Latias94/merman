@@ -1370,18 +1370,11 @@ name = "merman-cli"
 version = "0.1.0"
 dependencies = [
  "assert_cmd",
- "futures",
- "image",
  "merman",
- "merman-render",
  "png 0.17.16",
- "resvg 0.46.0",
  "serde",
  "serde_json",
- "svg2pdf",
  "tempfile",
- "tiny-skia",
- "usvg 0.46.0",
 ]
 
 [[package]]
