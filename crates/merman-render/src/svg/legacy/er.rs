@@ -1166,14 +1166,7 @@ pub(super) fn render_er_diagram_svg(
                 let _ = write!(
                     &mut out,
                     "M{} {} C{} {}, {} {}, {} {} ",
-                    x0.to_string(),
-                    y0.to_string(),
-                    cx1.to_string(),
-                    cy1.to_string(),
-                    cx2.to_string(),
-                    cy2.to_string(),
-                    x1.to_string(),
-                    y1.to_string()
+                    x0, y0, cx1, cy1, cx2, cy2, x1, y1
                 );
             }
 

@@ -5427,32 +5427,17 @@ pub(super) fn render_flowchart_node(
             for op in &opset.ops {
                 match op.op {
                     roughr::core::OpType::Move => {
-                        let _ = write!(
-                            &mut out,
-                            "M{} {} ",
-                            op.data[0].to_string(),
-                            op.data[1].to_string()
-                        );
+                        let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
                     }
                     roughr::core::OpType::BCurveTo => {
                         let _ = write!(
                             &mut out,
                             "C{} {}, {} {}, {} {} ",
-                            op.data[0].to_string(),
-                            op.data[1].to_string(),
-                            op.data[2].to_string(),
-                            op.data[3].to_string(),
-                            op.data[4].to_string(),
-                            op.data[5].to_string()
+                            op.data[0], op.data[1], op.data[2], op.data[3], op.data[4], op.data[5]
                         );
                     }
                     roughr::core::OpType::LineTo => {
-                        let _ = write!(
-                            &mut out,
-                            "L{} {} ",
-                            op.data[0].to_string(),
-                            op.data[1].to_string()
-                        );
+                        let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
                     }
                 }
             }

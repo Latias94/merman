@@ -13,6 +13,8 @@
 //! The values were generated from Node.js (V8) and are used to avoid platform `libm` drift that
 //! shows up at the 1e-13 scale in strict SVG `data-points` parity.
 
+#![allow(clippy::excessive_precision)]
+
 #[rustfmt::skip]
 pub(crate) const STADIUM_ARC_90_270_COS_SIN: [(f64, f64); 50] = [
     (6.1232339957367660e-17f64, 1.0000000000000000f64),

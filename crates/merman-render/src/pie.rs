@@ -94,7 +94,7 @@ fn pie_legend_bbox_overhang_left_em(ch: char) -> f64 {
     // (`viewBox` / `max-width`) matches upstream baselines.
     match ch {
         // Leading underscore (observed in `__proto__`).
-        '_' => 0.061250573529411764,
+        '_' => 0.06125057352941176,
         _ => 0.0,
     }
 }
@@ -102,13 +102,13 @@ fn pie_legend_bbox_overhang_left_em(ch: char) -> f64 {
 fn pie_legend_bbox_overhang_right_em(ch: char) -> f64 {
     match ch {
         // Trailing underscore (observed in `__proto__`).
-        '_' => 0.061250573529411764,
+        '_' => 0.06125057352941176,
         // Trailing `t` expands bbox in Chromium (`bat`).
-        't' => 0.014964441176470588,
+        't' => 0.01496444117647059,
         // Trailing `r` expands bbox in Chromium (`constructor`).
         'r' => 0.08091001764705883,
         // Trailing `e` expands bbox in Chromium (`prototype`).
-        'e' => 0.042911305147058826,
+        'e' => 0.04291130514705883,
         // Trailing `s` expands bbox in Chromium (`dogs`/`rats`).
         's' => 0.007008272058823529,
         // Trailing `h` small bbox delta (`ash`).
@@ -125,7 +125,11 @@ pub fn layout_pie_diagram(
     measurer: &dyn TextMeasurer,
 ) -> Result<PieDiagramLayout> {
     let model: PieModel = serde_json::from_value(semantic.clone())?;
-    let _ = (model.acc_title.as_deref(), model.acc_descr.as_deref());
+    let _ = (
+        model.title.as_deref(),
+        model.acc_title.as_deref(),
+        model.acc_descr.as_deref(),
+    );
 
     // Mermaid@11.12.2 `packages/mermaid/src/diagrams/pie/pieRenderer.ts` constants.
     let margin: f64 = 40.0;
