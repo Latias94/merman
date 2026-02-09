@@ -7,6 +7,7 @@
 !/repo-ref/REPOS.lock.json
 /tools/mermaid-cli/node_modules
 /tools/mermaid-cli/.cache
+/dist/
 
 # Local npm tarballs used for upstream layout source inspection (do not commit)
 /cose-base-*.tgz

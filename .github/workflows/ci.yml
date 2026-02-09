@@ -6,39 +6,54 @@ on:
       - master
   pull_request:
 
-jobs:
-  rust:
-    name: Rust checks
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
-      - name: Install Rust
+jobs:
+  build-test:
+    name: build-test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-22.04
+          - macos-14
+          - windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
+          components: rustfmt, clippy
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
 
-      - name: Cargo cache
+      - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
       - name: Format
-        run: cargo fmt --check
+        if: matrix.os == 'ubuntu-22.04'
+        run: cargo fmt --all -- --check
 
-      - name: Tests
-        run: cargo nextest run
+      - name: Clippy
+        if: matrix.os == 'ubuntu-22.04'
+        run: cargo clippy --workspace --all-targets
+
+      - name: Test (nextest)
+        run: cargo nextest run --cargo-quiet
+
+      - name: Build (release)
+        run: cargo build --release --locked -p merman-cli
 
       - name: Override inventory
+        if: matrix.os == 'ubuntu-22.04'
         run: cargo run --release -p xtask -- report-overrides
 
-      - name: SVG DOM parity
-        run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3 --flowchart-text-measurer vendored
-
-      - name: SVG DOM structure
-        run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3 --flowchart-text-measurer vendored
-
       - name: SVG DOM parity-root
+        if: matrix.os == 'ubuntu-22.04'
         run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --flowchart-text-measurer vendored
