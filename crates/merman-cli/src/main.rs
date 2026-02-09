@@ -312,7 +312,15 @@ fn default_raster_out_path(input: Option<&str>, ext: &str) -> std::path::PathBuf
     }
 }
 
-fn parse_svg_viewbox(svg: &str) -> Option<(f32, f32)> {
+#[derive(Debug, Clone, Copy)]
+struct ParsedViewBox {
+    min_x: f32,
+    min_y: f32,
+    width: f32,
+    height: f32,
+}
+
+fn parse_svg_viewbox(svg: &str) -> Option<ParsedViewBox> {
     // Cheap, non-validating parse for root viewBox: `viewBox="minX minY w h"`.
     // This is sufficient for our own Mermaid-like SVG output.
     let i = svg.find("viewBox=\"")?;
@@ -320,15 +328,34 @@ fn parse_svg_viewbox(svg: &str) -> Option<(f32, f32)> {
     let end = rest.find('"')?;
     let raw = &rest[..end];
     let mut it = raw.split_whitespace();
-    let _min_x = it.next()?.parse::<f32>().ok()?;
-    let _min_y = it.next()?.parse::<f32>().ok()?;
-    let w = it.next()?.parse::<f32>().ok()?;
-    let h = it.next()?.parse::<f32>().ok()?;
-    if w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0 {
-        Some((w, h))
+    let min_x = it.next()?.parse::<f32>().ok()?;
+    let min_y = it.next()?.parse::<f32>().ok()?;
+    let width = it.next()?.parse::<f32>().ok()?;
+    let height = it.next()?.parse::<f32>().ok()?;
+    if min_x.is_finite()
+        && min_y.is_finite()
+        && width.is_finite()
+        && height.is_finite()
+        && width > 0.0
+        && height > 0.0
+    {
+        Some(ParsedViewBox {
+            min_x,
+            min_y,
+            width,
+            height,
+        })
     } else {
         None
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RasterGeometry {
+    min_x: f32,
+    min_y: f32,
+    width: f32,
+    height: f32,
 }
 
 fn render_svg_to_pixmap(
@@ -336,12 +363,6 @@ fn render_svg_to_pixmap(
     scale: f32,
     background: Option<&str>,
 ) -> Result<tiny_skia::Pixmap, CliError> {
-    let (vb_w, vb_h) =
-        parse_svg_viewbox(svg).ok_or(CliError::Usage("render requires an SVG root viewBox"))?;
-
-    let width_px = (vb_w * scale).ceil().max(1.0) as u32;
-    let height_px = (vb_h * scale).ceil().max(1.0) as u32;
-
     let mut opt = usvg::Options::default();
     // Keep output stable-ish across environments while still using system fonts.
     opt.fontdb_mut().load_system_fonts();
@@ -350,6 +371,40 @@ fn render_svg_to_pixmap(
 
     let tree = usvg::Tree::from_str(svg, &opt)
         .map_err(|_| CliError::Usage("failed to parse SVG for PNG rendering"))?;
+
+    let geo = if let Some(vb) = parse_svg_viewbox(svg) {
+        RasterGeometry {
+            min_x: vb.min_x,
+            min_y: vb.min_y,
+            width: vb.width,
+            height: vb.height,
+        }
+    } else {
+        // Some Mermaid diagrams (e.g. `info`) don't emit a viewBox upstream.
+        // For raster formats, fall back to the rendered content bounds as computed by usvg.
+        let bbox = tree.root().abs_stroke_bounding_box();
+        let w = bbox.width().max(1.0);
+        let h = bbox.height().max(1.0);
+        if w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0 {
+            RasterGeometry {
+                min_x: bbox.x(),
+                min_y: bbox.y(),
+                width: w,
+                height: h,
+            }
+        } else {
+            let size = tree.size();
+            RasterGeometry {
+                min_x: 0.0,
+                min_y: 0.0,
+                width: size.width(),
+                height: size.height(),
+            }
+        }
+    };
+
+    let width_px = (geo.width * scale).ceil().max(1.0) as u32;
+    let height_px = (geo.height * scale).ceil().max(1.0) as u32;
 
     let mut pixmap = tiny_skia::Pixmap::new(width_px, height_px).ok_or(CliError::Usage(
         "failed to allocate pixmap for raster rendering",
@@ -361,7 +416,15 @@ fn render_svg_to_pixmap(
         }
     }
 
-    let transform = tiny_skia::Transform::from_scale(scale, scale);
+    // Render at `scale`, translating so min_x/min_y map to (0,0).
+    let transform = tiny_skia::Transform::from_row(
+        scale,
+        0.0,
+        0.0,
+        scale,
+        -geo.min_x * scale,
+        -geo.min_y * scale,
+    );
     resvg::render(&tree, transform, &mut pixmap.as_mut());
 
     Ok(pixmap)
