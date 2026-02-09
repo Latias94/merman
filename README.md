@@ -2,6 +2,8 @@
 
 Mermaid, but headless, in Rust.
 
+Think of `merman` as Mermaid's headless twin: same language, same diagrams, no browser required.
+
 `merman` is a Rust, headless, 1:1 re-implementation of Mermaid pinned to `mermaid@11.12.2`.
 The upstream Mermaid implementation is the spec (see `docs/adr/0014-upstream-parity-policy.md`).
 
@@ -94,9 +96,13 @@ The goal is not “it looks similar”, but “it stays aligned”.
 - Update semantic goldens:
   - `cargo run -p xtask -- update-snapshots`
 - Full parity sweep (DOM):
-  - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --flowchart-text-measurer vendored`
+  - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 
 More workflows: `docs/rendering/COMPARE_ALL_SVGS.md`.
+
+If you want a local binary without `cargo run`, install the CLI from source:
+
+- `cargo install --path crates/merman-cli`
 
 ## Reference upstreams (no submodules)
 
