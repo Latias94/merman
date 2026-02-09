@@ -164,6 +164,9 @@ while preserving full DOM parity.
 Recent progress (2026-02-09): Shared SVG CSS helpers were extracted from `crates/merman-render/src/svg/legacy.rs`
 into `crates/merman-render/src/svg/legacy/css.rs` to reduce churn and make future renderer splits safer.
 
+Recent progress (2026-02-09): Shared SVG utility helpers (formatting, escaping, and config access) were extracted
+from `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/util.rs`.
+
 Recent progress (2026-02-08): SVG class diagram renderer implementation was extracted from the monolithic
 `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/class.rs` to improve
 maintainability while keeping all parity checks green.
