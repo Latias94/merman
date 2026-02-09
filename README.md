@@ -66,6 +66,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 If you prefer a bundled "pipeline" instead of passing multiple option structs per call, use
 `merman::render::HeadlessRenderer`.
 
+If your downstream renderer does not support SVG `<foreignObject>` (common for rasterizers),
+prefer `HeadlessRenderer::render_svg_readable_sync()` which adds a best-effort `<text>/<tspan>`
+overlay extracted from Mermaid labels.
+
 ## Parity & goldens
 
 This repo is built around reproducible alignment layers:
