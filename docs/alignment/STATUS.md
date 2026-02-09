@@ -157,6 +157,13 @@ Recent progress (2026-02-08): SVG C4 renderer implementation was extracted from 
 `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/c4.rs` to improve
 maintainability while keeping all parity checks green.
 
+Recent progress (2026-02-09): Flowchart V2 SVG entry points were moved into the existing
+`crates/merman-render/src/svg/legacy/flowchart.rs` module to keep `legacy.rs` focused on shared helpers
+while preserving full DOM parity.
+
+Recent progress (2026-02-09): Shared SVG CSS helpers were extracted from `crates/merman-render/src/svg/legacy.rs`
+into `crates/merman-render/src/svg/legacy/css.rs` to reduce churn and make future renderer splits safer.
+
 Recent progress (2026-02-08): SVG class diagram renderer implementation was extracted from the monolithic
 `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/class.rs` to improve
 maintainability while keeping all parity checks green.
