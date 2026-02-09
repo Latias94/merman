@@ -31,29 +31,50 @@ pub fn parse_info(code: &str, meta: &ParseMetadata) -> Result<Value> {
     }
 
     let mut show_info = false;
-    let mut unsupported: Option<&str> = None;
+    let mut unsupported: Option<String> = None;
     for tok in tokens {
         if tok == "showInfo" {
             show_info = true;
             continue;
         }
-        unsupported = Some(tok);
+        unsupported = Some(tok.to_string());
         break;
     }
 
-    if unsupported.is_none() && rest_lines.is_empty() {
+    // Upstream Mermaid accepts both:
+    // - `info showInfo`
+    // - `info\nshowInfo`
+    //
+    // The Langium grammar (`packages/parser/src/language/info/info.langium`) allows an optional
+    // `showInfo` token after the initial `info` keyword, separated by newlines.
+    if unsupported.is_none() && !rest_lines.is_empty() {
+        for line in &rest_lines {
+            let mut it = line.split_whitespace();
+            while let Some(tok) = it.next() {
+                if tok == "showInfo" {
+                    show_info = true;
+                    continue;
+                }
+                unsupported = Some(tok.to_string());
+                break;
+            }
+            if unsupported.is_some() {
+                break;
+            }
+        }
+    }
+
+    if unsupported.is_none() {
         return Ok(json!({
             "type": meta.diagram_type,
             "showInfo": show_info,
         }));
     }
 
-    let bad = unsupported
-        .or_else(|| rest_lines.first().map(|s| s.as_str()))
-        .unwrap();
+    let bad = unsupported.unwrap_or_else(|| rest_lines.first().cloned().unwrap_or_default());
     let ch = bad.chars().next().unwrap_or('?');
     let skipped = bad.chars().count();
-    let offset = code.find(bad).unwrap_or(5);
+    let offset = code.find(&bad).unwrap_or(5);
 
     Err(Error::DiagramParse {
         diagram_type: meta.diagram_type.clone(),
