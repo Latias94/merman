@@ -485,6 +485,8 @@ checks without losing the original Cypress strings.
 Recent progress (2026-02-09): extracted shared D3 curve/path helpers and layout/debug SVG helpers out of
 `crates/merman-render/src/svg/legacy.rs` into `curve.rs` and `layout_debug.rs` to keep refactors localized;
 `xtask compare-all-svgs --check-dom --dom-mode parity-root` remains 0-mismatch.
+Recent progress (2026-02-09): extracted `svg_path_bounds_from_d` into `path_bounds.rs` (fields are `pub(super)` to
+preserve sibling-module access) and kept DOM parity-root gate green.
 
 ## Alignment Sanity Checks
 
