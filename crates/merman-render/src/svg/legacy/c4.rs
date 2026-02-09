@@ -2,6 +2,115 @@ use super::*;
 
 // C4 diagram SVG renderer implementation (split from legacy.rs).
 
+fn c4_css(diagram_id: &str) -> String {
+    let id = escape_xml(diagram_id);
+    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
+    let mut out = String::new();
+    let _ = write!(
+        &mut out,
+        r#"#{}{{font-family:{};font-size:16px;fill:#333;}}"#,
+        id, font
+    );
+    out.push_str(
+        r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .error-icon{{fill:#552222;}}#{} .error-text{{fill:#552222;stroke:#552222;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .edge-thickness-normal{{stroke-width:1px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
+        id, id, id, id, id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} .marker{{fill:#333333;stroke:#333333;}}#{} .marker.cross{{stroke:#333333;}}"#,
+        id, id
+    );
+    let _ = write!(
+        &mut out,
+        r#"#{} svg{{font-family:{};font-size:16px;}}#{} p{{margin:0;}}#{} .person{{stroke:hsl(240, 60%, 86.2745098039%);fill:#ECECFF;}}#{} :root{{--mermaid-font-family:{};}}"#,
+        id, font, id, id, id, font
+    );
+    out
+}
+
+fn c4_config_string(cfg: &serde_json::Value, key: &str) -> Option<String> {
+    config_string(cfg, &["c4", key])
+}
+
+fn c4_config_color(cfg: &serde_json::Value, key: &str, fallback: &str) -> String {
+    c4_config_string(cfg, key).unwrap_or_else(|| fallback.to_string())
+}
+
+fn c4_config_font_family(cfg: &serde_json::Value, type_key: &str) -> String {
+    c4_config_string(cfg, &format!("{type_key}FontFamily"))
+        .map(|s| s.trim().trim_end_matches(';').trim().to_string())
+        .unwrap_or_else(|| r#""Open Sans", sans-serif"#.to_string())
+}
+
+fn c4_config_font_size(cfg: &serde_json::Value, type_key: &str, fallback: f64) -> f64 {
+    config_f64(cfg, &["c4", &format!("{type_key}FontSize")]).unwrap_or(fallback)
+}
+
+fn c4_config_font_weight(cfg: &serde_json::Value, type_key: &str) -> String {
+    c4_config_string(cfg, &format!("{type_key}FontWeight")).unwrap_or_else(|| "normal".to_string())
+}
+
+fn c4_write_text_by_tspan(
+    out: &mut String,
+    content: &str,
+    x: f64,
+    y: f64,
+    width: f64,
+    font_family: &str,
+    font_size: f64,
+    font_weight: &str,
+    attrs: &[(&str, &str)],
+) {
+    let x = x + width / 2.0;
+    let mut style = String::new();
+    let _ = write!(
+        &mut style,
+        "text-anchor: middle; font-size: {}px; font-weight: {}; font-family: {};",
+        fmt(font_size.max(1.0)),
+        font_weight,
+        font_family
+    );
+
+    let _ = write!(
+        out,
+        r#"<text x="{}" y="{}" dominant-baseline="middle""#,
+        fmt(x),
+        fmt(y)
+    );
+    for (k, v) in attrs {
+        let _ = write!(out, r#" {k}="{v}""#);
+    }
+    let _ = write!(out, r#" style="{}">"#, escape_attr(&style));
+
+    let lines: Vec<&str> = content.split('\n').collect();
+    let n = lines.len().max(1) as f64;
+    for (i, line) in lines.iter().enumerate() {
+        let dy = (i as f64) * font_size - (font_size * (n - 1.0)) / 2.0;
+        let dy_s = fmt(dy);
+        let _ = write!(
+            out,
+            r#"<tspan dy="{}" alignment-baseline="mathematical">{}</tspan>"#,
+            dy_s,
+            escape_xml(line)
+        );
+    }
+    out.push_str("</text>");
+}
+
 pub(super) fn render_c4_diagram_svg(
     layout: &crate::model::C4DiagramLayout,
     semantic: &serde_json::Value,

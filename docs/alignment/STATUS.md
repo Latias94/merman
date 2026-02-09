@@ -175,6 +175,10 @@ Recent progress (2026-02-09): Pie diagram helpers (`pie_polar_xy` and `pie_legen
 `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/pie.rs` to keep the diagram module
 self-contained while preserving DOM parity.
 
+Recent progress (2026-02-09): C4 diagram SVG helpers (`c4_css` and config/font helpers) were moved from
+`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/c4.rs` to reduce shared-scope
+surface area while keeping DOM parity checks green.
+
 Recent progress (2026-02-08): SVG class diagram renderer implementation was extracted from the monolithic
 `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/class.rs` to improve
 maintainability while keeping all parity checks green.
