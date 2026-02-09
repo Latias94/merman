@@ -145,6 +145,18 @@ Recent progress (2026-02-08): SVG Requirement renderer implementation was extrac
 `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/requirement.rs` to improve
 maintainability while keeping all parity checks green.
 
+Recent progress (2026-02-08): SVG Mindmap renderer implementation was extracted from the monolithic
+`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/mindmap.rs` to improve
+maintainability while keeping all parity checks green.
+
+Recent progress (2026-02-08): SVG Architecture renderer implementation was extracted from the monolithic
+`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/architecture.rs` to improve
+maintainability while keeping all parity checks green.
+
+Recent progress (2026-02-08): SVG C4 renderer implementation was extracted from the monolithic
+`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/c4.rs` to improve
+maintainability while keeping all parity checks green.
+
 Recent progress (2026-02-08): SVG class diagram renderer implementation was extracted from the monolithic
 `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/class.rs` to improve
 maintainability while keeping all parity checks green.
