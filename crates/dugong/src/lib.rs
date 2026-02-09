@@ -661,7 +661,10 @@ pub mod greedy_fas {
                     .iter()
                     .find(|id| alive.contains(*id))
                     .cloned()
-                    .unwrap_or_else(|| alive.iter().next().cloned().unwrap());
+                    .or_else(|| alive.iter().next().cloned());
+                let Some(v) = v else {
+                    break;
+                };
                 remove_node(
                     &v,
                     &mut alive,
@@ -1187,7 +1190,11 @@ pub mod parent_dummy_chains {
                 break;
             }
             w_path.push(p.clone());
-            cur = p.unwrap();
+            if let Some(p) = p {
+                cur = p;
+            } else {
+                break;
+            }
         }
 
         let mut path = v_path;
@@ -1588,7 +1595,7 @@ pub mod util {
         if ranks.is_empty() {
             return;
         }
-        let offset = *ranks.iter().min().unwrap();
+        let offset = ranks.iter().min().copied().unwrap_or(0);
 
         let mut max_idx: usize = 0;
         let mut layers: BTreeMap<usize, Vec<String>> = BTreeMap::new();
@@ -1733,16 +1740,10 @@ pub mod rank {
         }
 
         pub fn slack(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>, e: &EdgeKey) -> i32 {
-            let w_rank = g
-                .node(&e.w)
-                .expect("edge head node missing")
-                .rank
-                .expect("edge head rank missing");
-            let v_rank = g
-                .node(&e.v)
-                .expect("edge tail node missing")
-                .rank
-                .expect("edge tail rank missing");
+            // Be defensive: callers can provide arbitrary graphs. Missing nodes/ranks are treated
+            // as `0` so layout can degrade gracefully instead of panicking.
+            let w_rank = g.node(&e.w).and_then(|n| n.rank).unwrap_or(0);
+            let v_rank = g.node(&e.v).and_then(|n| n.rank).unwrap_or(0);
             let minlen: i32 = g.edge_by_key(e).map(|lbl| lbl.minlen as i32).unwrap_or(1);
             w_rank - v_rank - minlen
         }
@@ -1776,17 +1777,23 @@ pub mod rank {
                     ..Default::default()
                 });
 
-            let start = g
-                .nodes()
-                .next()
-                .expect("feasible_tree requires at least one node")
-                .to_string();
+            let Some(start) = g.nodes().next().map(|s| s.to_string()) else {
+                return t;
+            };
             let size = g.node_count();
             t.set_node(start, tree::TreeNodeLabel::default());
 
             while tight_tree(&mut t, g) < size {
-                let edge = find_min_slack_edge(&t, g)
-                    .expect("graph must be connected to construct feasible tree");
+                let Some(edge) = find_min_slack_edge(&t, g) else {
+                    // Disconnected graphs can occur in downstream usage. Dagre effectively works
+                    // per component; here we create a forest by starting a new component root.
+                    let Some(next_root) = g.nodes().find(|v| !t.has_node(v)).map(|s| s.to_string())
+                    else {
+                        break;
+                    };
+                    t.set_node(next_root, tree::TreeNodeLabel::default());
+                    continue;
+                };
                 let slack = util::slack(g, &edge);
                 let delta = if t.has_node(&edge.v) { slack } else { -slack };
                 shift_ranks(&t, g, delta);
@@ -1848,8 +1855,12 @@ pub mod rank {
             delta: i32,
         ) {
             for v in t.node_ids() {
-                let label = g.node_mut(&v).expect("tree node missing from graph");
-                let rank = label.rank.expect("node rank missing");
+                let Some(label) = g.node_mut(&v) else {
+                    continue;
+                };
+                let Some(rank) = label.rank else {
+                    continue;
+                };
                 label.rank = Some(rank + delta);
             }
         }
@@ -1885,10 +1896,12 @@ pub mod rank {
             tree: &mut Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
             root: Option<&str>,
         ) {
-            let root = root
+            let Some(root) = root
                 .map(|s| s.to_string())
                 .or_else(|| tree.nodes().next().map(|s| s.to_string()))
-                .expect("init_low_lim_values requires at least one node");
+            else {
+                return;
+            };
 
             let mut visited: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
             let _ = dfs_assign_low_lim(tree, &mut visited, 1, &root, None);
@@ -1916,10 +1929,11 @@ pub mod rank {
                 }
             }
 
-            let label = tree.node_mut(v).expect("tree node missing");
-            label.low = low;
-            label.lim = next_lim;
-            label.parent = parent.map(|p| p.to_string());
+            if let Some(label) = tree.node_mut(v) {
+                label.low = low;
+                label.lim = next_lim;
+                label.parent = parent.map(|p| p.to_string());
+            }
             next_lim + 1
         }
 
@@ -1942,13 +1956,13 @@ pub mod rank {
             g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
             child: &str,
         ) {
-            let parent = t
-                .node(child)
-                .and_then(|lbl| lbl.parent.clone())
-                .expect("tree node parent missing");
+            let Some(parent) = t.node(child).and_then(|lbl| lbl.parent.clone()) else {
+                return;
+            };
             let cutvalue = calc_cut_value(t, g, child);
-            let edge = t.edge_mut(child, &parent, None).expect("tree edge missing");
-            edge.cutvalue = cutvalue;
+            if let Some(edge) = t.edge_mut(child, &parent, None) {
+                edge.cutvalue = cutvalue;
+            }
         }
 
         pub fn calc_cut_value(
@@ -1956,10 +1970,9 @@ pub mod rank {
             g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
             child: &str,
         ) -> f64 {
-            let parent = t
-                .node(child)
-                .and_then(|lbl| lbl.parent.as_deref())
-                .expect("tree node parent missing");
+            let Some(parent) = t.node(child).and_then(|lbl| lbl.parent.as_deref()) else {
+                return 0.0;
+            };
 
             let mut child_is_tail = true;
             let mut graph_edge = g.edge(child, parent, None);
@@ -1967,7 +1980,9 @@ pub mod rank {
                 child_is_tail = false;
                 graph_edge = g.edge(parent, child, None);
             }
-            let graph_edge = graph_edge.expect("tree edge missing from graph");
+            let Some(graph_edge) = graph_edge else {
+                return 0.0;
+            };
 
             let mut cut_value = graph_edge.weight;
 
@@ -1991,15 +2006,14 @@ pub mod rank {
                 };
 
                 if is_tree_edge(t, child, other) {
-                    let other_cut_value = t
-                        .edge(child, other, None)
-                        .expect("tree edge missing")
-                        .cutvalue;
-                    cut_value += if points_to_head {
-                        -other_cut_value
-                    } else {
-                        other_cut_value
-                    };
+                    if let Some(other_edge) = t.edge(child, other, None) {
+                        let other_cut_value = other_edge.cutvalue;
+                        cut_value += if points_to_head {
+                            -other_cut_value
+                        } else {
+                            other_cut_value
+                        };
+                    }
                 }
             }
 
@@ -2029,8 +2043,12 @@ pub mod rank {
                 std::mem::swap(&mut v, &mut w);
             }
 
-            let v_label = t.node(&v).expect("tree node missing");
-            let w_label = t.node(&w).expect("tree node missing");
+            let Some(v_label) = t.node(&v) else {
+                return edge.clone();
+            };
+            let Some(w_label) = t.node(&w) else {
+                return edge.clone();
+            };
             let (tail_label, flip) = if v_label.lim > w_label.lim {
                 (w_label, true)
             } else {
@@ -2039,8 +2057,14 @@ pub mod rank {
 
             let mut best: Option<(i32, EdgeKey)> = None;
             for e in g.edges() {
-                let v_desc = is_descendant(t, t.node(&e.v).expect("tree node missing"), tail_label);
-                let w_desc = is_descendant(t, t.node(&e.w).expect("tree node missing"), tail_label);
+                let Some(v_node) = t.node(&e.v) else {
+                    continue;
+                };
+                let Some(w_node) = t.node(&e.w) else {
+                    continue;
+                };
+                let v_desc = is_descendant(t, v_node, tail_label);
+                let w_desc = is_descendant(t, w_node, tail_label);
 
                 if flip == v_desc && flip != w_desc {
                     let s = util::slack(g, e);
@@ -2051,7 +2075,7 @@ pub mod rank {
                 }
             }
 
-            best.map(|(_, e)| e).expect("no entering edge found")
+            best.map(|(_, e)| e).unwrap_or_else(|| edge.clone())
         }
 
         pub fn exchange_edges(
@@ -2071,40 +2095,42 @@ pub mod rank {
             t: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
             g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
         ) {
-            let root = t
+            let Some(root) = t
                 .node_ids()
                 .into_iter()
                 .find(|v| t.node(v).map(|lbl| lbl.parent.is_none()).unwrap_or(false))
                 .or_else(|| t.nodes().next().map(|v| v.to_string()))
-                .expect("update_ranks requires at least one node");
+            else {
+                return;
+            };
 
             let vs = alg::preorder(t, &[root.as_str()]);
             for v in vs.into_iter().skip(1) {
-                let parent = t
-                    .node(&v)
-                    .and_then(|lbl| lbl.parent.clone())
-                    .expect("tree node parent missing");
+                let Some(parent) = t.node(&v).and_then(|lbl| lbl.parent.clone()) else {
+                    continue;
+                };
 
                 let (minlen, flipped) = match g.edge(&v, &parent, None) {
                     Some(e) => (e.minlen as i32, false),
                     None => {
-                        let e = g
-                            .edge(&parent, &v, None)
-                            .expect("tree edge missing from graph");
+                        let Some(e) = g.edge(&parent, &v, None) else {
+                            continue;
+                        };
                         (e.minlen as i32, true)
                     }
                 };
 
-                let parent_rank = g
-                    .node(&parent)
-                    .and_then(|n| n.rank)
-                    .expect("parent rank missing");
+                let Some(parent_rank) = g.node(&parent).and_then(|n| n.rank) else {
+                    continue;
+                };
                 let rank = if flipped {
                     parent_rank + minlen
                 } else {
                     parent_rank - minlen
                 };
-                g.node_mut(&v).expect("node missing").rank = Some(rank);
+                if let Some(node) = g.node_mut(&v) {
+                    node.rank = Some(rank);
+                }
             }
         }
 
@@ -2286,8 +2312,8 @@ pub mod order {
             let in_range = node.rank() == Some(rank)
                 || (node.min_rank().is_some()
                     && node.max_rank().is_some()
-                    && node.min_rank().unwrap() <= rank
-                    && rank <= node.max_rank().unwrap());
+                    && node.min_rank().is_some_and(|min| min <= rank)
+                    && node.max_rank().is_some_and(|max| rank <= max));
 
             if !in_range {
                 continue;
@@ -2426,12 +2452,12 @@ pub mod order {
             let Some(_) = mapped.get(&e.v) else { continue };
             let Some(_) = mapped.get(&e.w) else { continue };
 
-            mapped.get_mut(&e.w).expect("mapped entry missing").indegree += 1;
-            mapped
-                .get_mut(&e.v)
-                .expect("mapped entry missing")
-                .outs
-                .push(e.w.clone());
+            if let Some(w_entry) = mapped.get_mut(&e.w) {
+                w_entry.indegree += 1;
+            }
+            if let Some(v_entry) = mapped.get_mut(&e.v) {
+                v_entry.outs.push(e.w.clone());
+            }
         }
 
         let mut source_set: Vec<String> = mapped
@@ -2449,7 +2475,7 @@ pub mod order {
         while let Some(v) = source_set.pop() {
             processed.push(v.clone());
 
-            let ins = mapped.get(&v).expect("mapped entry missing").ins.clone();
+            let ins = mapped.get(&v).map(|e| e.ins.clone()).unwrap_or_default();
 
             // Match upstream `.reverse().forEach(...)` on the "in" list.
             for u in ins.into_iter().rev() {
@@ -2457,8 +2483,12 @@ pub mod order {
                     continue;
                 }
                 let (u_bary, v_bary) = {
-                    let u_entry = mapped.get(&u).expect("mapped entry missing");
-                    let v_entry = mapped.get(&v).expect("mapped entry missing");
+                    let Some(u_entry) = mapped.get(&u) else {
+                        continue;
+                    };
+                    let Some(v_entry) = mapped.get(&v) else {
+                        continue;
+                    };
                     (u_entry.barycenter, v_entry.barycenter)
                 };
                 let should_merge = match (u_bary, v_bary) {
@@ -2471,16 +2501,16 @@ pub mod order {
                 }
             }
 
-            let outs = mapped.get(&v).expect("mapped entry missing").outs.clone();
+            let outs = mapped.get(&v).map(|e| e.outs.clone()).unwrap_or_default();
             for w in outs {
-                mapped
-                    .get_mut(&w)
-                    .expect("mapped entry missing")
-                    .ins
-                    .push(v.clone());
+                if let Some(w_entry) = mapped.get_mut(&w) {
+                    w_entry.ins.push(v.clone());
+                }
                 let w_indegree = {
-                    let w_entry = mapped.get_mut(&w).expect("mapped entry missing");
-                    w_entry.indegree -= 1;
+                    let Some(w_entry) = mapped.get_mut(&w) else {
+                        continue;
+                    };
+                    w_entry.indegree = w_entry.indegree.saturating_sub(1);
                     w_entry.indegree
                 };
                 if w_indegree == 0 {
@@ -2515,8 +2545,9 @@ pub mod order {
         source: &str,
     ) {
         let (target_bary, target_weight, source_bary, source_weight, source_vs, source_i) = {
-            let t = mapped.get(target).expect("mapped entry missing");
-            let s = mapped.get(source).expect("mapped entry missing");
+            let (Some(t), Some(s)) = (mapped.get(target), mapped.get(source)) else {
+                return;
+            };
             (
                 t.barycenter,
                 t.weight,
@@ -2542,7 +2573,9 @@ pub mod order {
             }
         }
 
-        let t = mapped.get_mut(target).expect("mapped entry missing");
+        let Some(t) = mapped.get_mut(target) else {
+            return;
+        };
         t.vs = source_vs.into_iter().chain(t.vs.drain(..)).collect();
         if weight != 0.0 {
             t.barycenter = Some(sum / weight);
@@ -2550,7 +2583,9 @@ pub mod order {
         }
         t.i = t.i.min(source_i);
 
-        mapped.get_mut(source).expect("mapped entry missing").merged = true;
+        if let Some(s) = mapped.get_mut(source) {
+            s.merged = true;
+        }
     }
 
     #[derive(Debug, Clone, PartialEq)]
@@ -2602,7 +2637,9 @@ pub mod order {
                 if last.i > index {
                     break;
                 }
-                let last = unsortable.pop().expect("last must exist");
+                let Some(last) = unsortable.pop() else {
+                    break;
+                };
                 parts.push(last.vs);
                 index += 1;
             }
@@ -3420,7 +3457,9 @@ pub mod position {
                     if w.is_some() || last_node == Some(v.as_str()) {
                         for scan_node in layer.iter().skip(scan_pos).take(idx + 1 - scan_pos) {
                             for u in g.predecessors(scan_node) {
-                                let u_label = g.node(u).expect("predecessor node must exist");
+                                let Some(u_label) = g.node(u) else {
+                                    continue;
+                                };
                                 let u_pos = u_label.order.unwrap_or(0);
                                 let scan_dummy = g
                                     .node(scan_node)
@@ -3465,7 +3504,9 @@ pub mod position {
                     let v_dummy = g.node(v).and_then(|n| n.dummy.as_deref());
                     if v_dummy.is_some() {
                         for u in g.predecessors(v) {
-                            let u_node = g.node(u).expect("predecessor node must exist");
+                            let Some(u_node) = g.node(u) else {
+                                continue;
+                            };
                             if u_node.dummy.is_some() {
                                 let u_order = u_node.order.unwrap_or(0) as isize;
                                 if u_order < prev_north_border || u_order > next_north_border {
@@ -3666,9 +3707,10 @@ pub mod position {
                         min = min.min(x_w - w);
                     }
 
-                    let node = g
-                        .node(elem)
-                        .expect("block node must exist in original graph");
+                    let node = g.node(elem);
+                    let Some(node) = node else {
+                        return;
+                    };
                     if min.is_finite() && node.border_type.as_deref() != Some(border_type) {
                         let cur = xs.get(elem).copied().unwrap_or(0.0);
                         xs.insert(elem.to_string(), cur.max(min));
@@ -3877,8 +3919,8 @@ pub mod position {
             w: &str,
             reverse_sep: bool,
         ) -> f64 {
-            let v_label = g.node(v).expect("node must exist");
-            let w_label = g.node(w).expect("node must exist");
+            let v_label = g.node(v).cloned().unwrap_or_default();
+            let w_label = g.node(w).cloned().unwrap_or_default();
 
             let mut sum: f64 = 0.0;
             let mut delta: f64 = 0.0;
