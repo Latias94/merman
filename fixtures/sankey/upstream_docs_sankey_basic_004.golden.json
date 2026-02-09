@@ -1,0 +1,39 @@
+{
+  "diagramType": "sankey",
+  "model": {
+    "type": "sankey",
+    "graph": {
+      "nodes": [
+        {
+          "id": "Electricity grid"
+        },
+        {
+          "id": "Over generation / exports"
+        },
+        {
+          "id": "Heating and cooling - homes"
+        },
+        {
+          "id": "H2 conversion"
+        }
+      ],
+      "links": [
+        {
+          "source": "Electricity grid",
+          "target": "Over generation / exports",
+          "value": 104.453
+        },
+        {
+          "source": "Electricity grid",
+          "target": "Heating and cooling - homes",
+          "value": 113.726
+        },
+        {
+          "source": "Electricity grid",
+          "target": "H2 conversion",
+          "value": 27.14
+        }
+      ]
+    }
+  }
+}

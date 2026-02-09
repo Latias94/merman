@@ -10,6 +10,8 @@ pub fn lookup_sankey_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
+        "upstream_docs_sankey_basic_004" => Some(("0 0 600 400", "600")),
+        "upstream_docs_sankey_example_002" => Some(("0 0 600 403.91900634765625", "600")),
         "upstream_sankey_beta_energy_csv_spec" => {
             Some(("0 -5.975983619689941 600 405.9759826660156", "600"))
         }

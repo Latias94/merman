@@ -1,0 +1,1209 @@
+{
+  "diagramType": "sankey",
+  "layout": {
+    "SankeyDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 600.0,
+        "max_y": 400.0
+      },
+      "width": 600.0,
+      "height": 400.0,
+      "node_width": 10.0,
+      "node_padding": 10.0,
+      "nodes": [
+        {
+          "id": "Agricultural 'waste'",
+          "index": 0.0,
+          "depth": 0.0,
+          "height": 7.0,
+          "layer": 0.0,
+          "value": 124.729,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 72.096,
+          "y1": 81.316
+        },
+        {
+          "id": "Bio-conversion",
+          "index": 1.0,
+          "depth": 1.0,
+          "height": 6.0,
+          "layer": 1.0,
+          "value": 388.925,
+          "x0": 84.286,
+          "x1": 94.286,
+          "y0": 88.205,
+          "y1": 116.957
+        },
+        {
+          "id": "Liquid",
+          "index": 2.0,
+          "depth": 2.0,
+          "height": 1.0,
+          "layer": 2.0,
+          "value": 647.587,
+          "x0": 168.571,
+          "x1": 178.571,
+          "y0": 332.98,
+          "y1": 380.853
+        },
+        {
+          "id": "Losses",
+          "index": 3.0,
+          "depth": 6.0,
+          "height": 0.0,
+          "layer": 7.0,
+          "value": 878.325,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 0.183,
+          "y1": 65.113
+        },
+        {
+          "id": "Solid",
+          "index": 4.0,
+          "depth": 2.0,
+          "height": 5.0,
+          "layer": 2.0,
+          "value": 447.48,
+          "x0": 168.571,
+          "x1": 178.571,
+          "y0": 95.136,
+          "y1": 128.216
+        },
+        {
+          "id": "Gas",
+          "index": 5.0,
+          "depth": 2.0,
+          "height": 5.0,
+          "layer": 2.0,
+          "value": 204.097,
+          "x0": 168.571,
+          "x1": 178.571,
+          "y0": 138.216,
+          "y1": 153.304
+        },
+        {
+          "id": "Biofuel imports",
+          "index": 6.0,
+          "depth": 0.0,
+          "height": 2.0,
+          "layer": 0.0,
+          "value": 35.0,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 332.171,
+          "y1": 334.758
+        },
+        {
+          "id": "Biomass imports",
+          "index": 7.0,
+          "depth": 0.0,
+          "height": 6.0,
+          "layer": 0.0,
+          "value": 35.0,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 125.095,
+          "y1": 127.682
+        },
+        {
+          "id": "Coal imports",
+          "index": 8.0,
+          "depth": 0.0,
+          "height": 7.0,
+          "layer": 0.0,
+          "value": 11.606,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 137.682,
+          "y1": 138.54
+        },
+        {
+          "id": "Coal",
+          "index": 9.0,
+          "depth": 1.0,
+          "height": 6.0,
+          "layer": 1.0,
+          "value": 75.571,
+          "x0": 84.286,
+          "x1": 94.286,
+          "y0": 158.446,
+          "y1": 164.033
+        },
+        {
+          "id": "Coal reserves",
+          "index": 10.0,
+          "depth": 0.0,
+          "height": 7.0,
+          "layer": 0.0,
+          "value": 63.965,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 168.476,
+          "y1": 173.204
+        },
+        {
+          "id": "District heating",
+          "index": 11.0,
+          "depth": 4.0,
+          "height": 1.0,
+          "layer": 4.0,
+          "value": 79.329,
+          "x0": 337.143,
+          "x1": 347.143,
+          "y0": 63.864,
+          "y1": 69.729
+        },
+        {
+          "id": "Industry",
+          "index": 12.0,
+          "depth": 5.0,
+          "height": 0.0,
+          "layer": 7.0,
+          "value": 568.927,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 96.602,
+          "y1": 138.66
+        },
+        {
+          "id": "Heating and cooling - commercial",
+          "index": 13.0,
+          "depth": 5.0,
+          "height": 0.0,
+          "layer": 7.0,
+          "value": 134.164,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 186.175,
+          "y1": 196.093
+        },
+        {
+          "id": "Heating and cooling - homes",
+          "index": 14.0,
+          "depth": 5.0,
+          "height": 0.0,
+          "layer": 7.0,
+          "value": 372.199,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 148.66,
+          "y1": 176.175
+        },
+        {
+          "id": "Electricity grid",
+          "index": 15.0,
+          "depth": 4.0,
+          "height": 3.0,
+          "layer": 4.0,
+          "value": 918.607,
+          "x0": 337.143,
+          "x1": 347.143,
+          "y0": 197.466,
+          "y1": 265.374
+        },
+        {
+          "id": "Over generation / exports",
+          "index": 16.0,
+          "depth": 5.0,
+          "height": 0.0,
+          "layer": 7.0,
+          "value": 104.453,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 78.88,
+          "y1": 86.602
+        },
+        {
+          "id": "H2 conversion",
+          "index": 17.0,
+          "depth": 5.0,
+          "height": 2.0,
+          "layer": 5.0,
+          "value": 27.14,
+          "x0": 421.429,
+          "x1": 431.429,
+          "y0": 242.733,
+          "y1": 244.739
+        },
+        {
+          "id": "Road transport",
+          "index": 18.0,
+          "depth": 7.0,
+          "height": 0.0,
+          "layer": 7.0,
+          "value": 194.529,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 298.307,
+          "y1": 312.688
+        },
+        {
+          "id": "Agriculture",
+          "index": 19.0,
+          "depth": 5.0,
+          "height": 0.0,
+          "layer": 7.0,
+          "value": 11.03,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 233.904,
+          "y1": 234.719
+        },
+        {
+          "id": "Rail transport",
+          "index": 20.0,
+          "depth": 5.0,
+          "height": 0.0,
+          "layer": 7.0,
+          "value": 12.276,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 322.688,
+          "y1": 323.596
+        },
+        {
+          "id": "Lighting & appliances - commercial",
+          "index": 21.0,
+          "depth": 5.0,
+          "height": 0.0,
+          "layer": 7.0,
+          "value": 90.008,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 217.25,
+          "y1": 223.904
+        },
+        {
+          "id": "Lighting & appliances - homes",
+          "index": 22.0,
+          "depth": 5.0,
+          "height": 0.0,
+          "layer": 7.0,
+          "value": 93.494,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 244.719,
+          "y1": 251.631
+        },
+        {
+          "id": "Gas imports",
+          "index": 23.0,
+          "depth": 0.0,
+          "height": 7.0,
+          "layer": 0.0,
+          "value": 40.719,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 183.204,
+          "y1": 186.214
+        },
+        {
+          "id": "Ngas",
+          "index": 24.0,
+          "depth": 1.0,
+          "height": 6.0,
+          "layer": 1.0,
+          "value": 122.952,
+          "x0": 84.286,
+          "x1": 94.286,
+          "y0": 184.765,
+          "y1": 193.854
+        },
+        {
+          "id": "Gas reserves",
+          "index": 25.0,
+          "depth": 0.0,
+          "height": 7.0,
+          "layer": 0.0,
+          "value": 82.233,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 196.214,
+          "y1": 202.294
+        },
+        {
+          "id": "Thermal generation",
+          "index": 26.0,
+          "depth": 3.0,
+          "height": 4.0,
+          "layer": 3.0,
+          "value": 1391.989,
+          "x0": 252.857,
+          "x1": 262.857,
+          "y0": 4.102,
+          "y1": 107.005
+        },
+        {
+          "id": "Geothermal",
+          "index": 27.0,
+          "depth": 0.0,
+          "height": 4.0,
+          "layer": 0.0,
+          "value": 7.013,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 212.294,
+          "y1": 212.812
+        },
+        {
+          "id": "H2",
+          "index": 28.0,
+          "depth": 6.0,
+          "height": 1.0,
+          "layer": 6.0,
+          "value": 20.897,
+          "x0": 505.714,
+          "x1": 515.714,
+          "y0": 247.553,
+          "y1": 249.098
+        },
+        {
+          "id": "Hydro",
+          "index": 29.0,
+          "depth": 0.0,
+          "height": 4.0,
+          "layer": 0.0,
+          "value": 6.995,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 268.158,
+          "y1": 268.675
+        },
+        {
+          "id": "International shipping",
+          "index": 30.0,
+          "depth": 3.0,
+          "height": 0.0,
+          "layer": 7.0,
+          "value": 128.69,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 333.596,
+          "y1": 343.109
+        },
+        {
+          "id": "Domestic aviation",
+          "index": 31.0,
+          "depth": 3.0,
+          "height": 0.0,
+          "layer": 7.0,
+          "value": 14.458,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 353.109,
+          "y1": 354.178
+        },
+        {
+          "id": "International aviation",
+          "index": 32.0,
+          "depth": 3.0,
+          "height": 0.0,
+          "layer": 7.0,
+          "value": 206.267,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 364.178,
+          "y1": 379.426
+        },
+        {
+          "id": "National navigation",
+          "index": 33.0,
+          "depth": 3.0,
+          "height": 0.0,
+          "layer": 7.0,
+          "value": 33.218,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 389.426,
+          "y1": 391.882
+        },
+        {
+          "id": "Marine algae",
+          "index": 34.0,
+          "depth": 0.0,
+          "height": 7.0,
+          "layer": 0.0,
+          "value": 4.375,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 91.316,
+          "y1": 91.64
+        },
+        {
+          "id": "Nuclear",
+          "index": 35.0,
+          "depth": 0.0,
+          "height": 5.0,
+          "layer": 0.0,
+          "value": 839.978,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 0.0,
+          "y1": 62.096
+        },
+        {
+          "id": "Oil imports",
+          "index": 36.0,
+          "depth": 0.0,
+          "height": 3.0,
+          "layer": 0.0,
+          "value": 504.287,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 344.758,
+          "y1": 382.038
+        },
+        {
+          "id": "Oil",
+          "index": 37.0,
+          "depth": 1.0,
+          "height": 2.0,
+          "layer": 1.0,
+          "value": 611.99,
+          "x0": 84.286,
+          "x1": 94.286,
+          "y0": 341.616,
+          "y1": 386.858
+        },
+        {
+          "id": "Oil reserves",
+          "index": 38.0,
+          "depth": 0.0,
+          "height": 3.0,
+          "layer": 0.0,
+          "value": 107.703,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 392.038,
+          "y1": 400.0
+        },
+        {
+          "id": "Other waste",
+          "index": 39.0,
+          "depth": 0.0,
+          "height": 7.0,
+          "layer": 0.0,
+          "value": 134.397,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 148.54,
+          "y1": 158.476
+        },
+        {
+          "id": "Pumped heat",
+          "index": 40.0,
+          "depth": 0.0,
+          "height": 1.0,
+          "layer": 0.0,
+          "value": 263.698,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 222.812,
+          "y1": 242.306
+        },
+        {
+          "id": "Solar PV",
+          "index": 41.0,
+          "depth": 1.0,
+          "height": 4.0,
+          "layer": 1.0,
+          "value": 59.901,
+          "x0": 84.286,
+          "x1": 94.286,
+          "y0": 242.071,
+          "y1": 246.5
+        },
+        {
+          "id": "Solar Thermal",
+          "index": 42.0,
+          "depth": 1.0,
+          "height": 1.0,
+          "layer": 1.0,
+          "value": 19.263,
+          "x0": 84.286,
+          "x1": 94.286,
+          "y0": 256.5,
+          "y1": 257.924
+        },
+        {
+          "id": "Solar",
+          "index": 43.0,
+          "depth": 0.0,
+          "height": 5.0,
+          "layer": 0.0,
+          "value": 79.164,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 252.306,
+          "y1": 258.158
+        },
+        {
+          "id": "Tidal",
+          "index": 44.0,
+          "depth": 0.0,
+          "height": 4.0,
+          "layer": 0.0,
+          "value": 9.452,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 278.675,
+          "y1": 279.374
+        },
+        {
+          "id": "UK land based bioenergy",
+          "index": 45.0,
+          "depth": 0.0,
+          "height": 7.0,
+          "layer": 0.0,
+          "value": 182.01,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 101.64,
+          "y1": 115.095
+        },
+        {
+          "id": "Wave",
+          "index": 46.0,
+          "depth": 0.0,
+          "height": 4.0,
+          "layer": 0.0,
+          "value": 19.013,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 289.374,
+          "y1": 290.78
+        },
+        {
+          "id": "Wind",
+          "index": 47.0,
+          "depth": 0.0,
+          "height": 4.0,
+          "layer": 0.0,
+          "value": 289.366,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 300.78,
+          "y1": 322.171
+        }
+      ],
+      "links": [
+        {
+          "index": 0.0,
+          "source": "Agricultural 'waste'",
+          "target": "Bio-conversion",
+          "value": 124.729,
+          "width": 9.221,
+          "y0": 76.706,
+          "y1": 92.816
+        },
+        {
+          "index": 1.0,
+          "source": "Bio-conversion",
+          "target": "Liquid",
+          "value": 0.597,
+          "width": 0.044,
+          "y0": 116.935,
+          "y1": 333.002
+        },
+        {
+          "index": 2.0,
+          "source": "Bio-conversion",
+          "target": "Losses",
+          "value": 26.862,
+          "width": 1.986,
+          "y0": 89.198,
+          "y1": 59.364
+        },
+        {
+          "index": 3.0,
+          "source": "Bio-conversion",
+          "target": "Solid",
+          "value": 280.322,
+          "width": 20.723,
+          "y0": 100.553,
+          "y1": 105.498
+        },
+        {
+          "index": 4.0,
+          "source": "Bio-conversion",
+          "target": "Gas",
+          "value": 81.144,
+          "width": 5.999,
+          "y0": 113.913,
+          "y1": 141.216
+        },
+        {
+          "index": 5.0,
+          "source": "Biofuel imports",
+          "target": "Liquid",
+          "value": 35.0,
+          "width": 2.587,
+          "y0": 333.465,
+          "y1": 334.318
+        },
+        {
+          "index": 6.0,
+          "source": "Biomass imports",
+          "target": "Solid",
+          "value": 35.0,
+          "width": 2.587,
+          "y0": 126.389,
+          "y1": 117.153
+        },
+        {
+          "index": 7.0,
+          "source": "Coal imports",
+          "target": "Coal",
+          "value": 11.606,
+          "width": 0.858,
+          "y0": 138.111,
+          "y1": 158.875
+        },
+        {
+          "index": 8.0,
+          "source": "Coal reserves",
+          "target": "Coal",
+          "value": 63.965,
+          "width": 4.729,
+          "y0": 170.84,
+          "y1": 161.668
+        },
+        {
+          "index": 9.0,
+          "source": "Coal",
+          "target": "Solid",
+          "value": 75.571,
+          "width": 5.587,
+          "y0": 161.239,
+          "y1": 125.423
+        },
+        {
+          "index": 10.0,
+          "source": "District heating",
+          "target": "Industry",
+          "value": 10.639,
+          "width": 0.786,
+          "y0": 64.258,
+          "y1": 96.995
+        },
+        {
+          "index": 11.0,
+          "source": "District heating",
+          "target": "Heating and cooling - commercial",
+          "value": 22.505,
+          "width": 1.664,
+          "y0": 68.897,
+          "y1": 187.007
+        },
+        {
+          "index": 12.0,
+          "source": "District heating",
+          "target": "Heating and cooling - homes",
+          "value": 46.184,
+          "width": 3.414,
+          "y0": 66.358,
+          "y1": 150.367
+        },
+        {
+          "index": 13.0,
+          "source": "Electricity grid",
+          "target": "Over generation / exports",
+          "value": 104.453,
+          "width": 7.722,
+          "y0": 205.517,
+          "y1": 82.741
+        },
+        {
+          "index": 14.0,
+          "source": "Electricity grid",
+          "target": "Heating and cooling - homes",
+          "value": 113.726,
+          "width": 8.407,
+          "y0": 238.877,
+          "y1": 156.278
+        },
+        {
+          "index": 15.0,
+          "source": "Electricity grid",
+          "target": "H2 conversion",
+          "value": 27.14,
+          "width": 2.006,
+          "y0": 247.104,
+          "y1": 243.736
+        },
+        {
+          "index": 16.0,
+          "source": "Electricity grid",
+          "target": "Industry",
+          "value": 342.165,
+          "width": 25.295,
+          "y0": 222.026,
+          "y1": 117.063
+        },
+        {
+          "index": 17.0,
+          "source": "Electricity grid",
+          "target": "Road transport",
+          "value": 37.797,
+          "width": 2.794,
+          "y0": 263.396,
+          "y1": 299.705
+        },
+        {
+          "index": 18.0,
+          "source": "Electricity grid",
+          "target": "Agriculture",
+          "value": 4.412,
+          "width": 0.326,
+          "y0": 254.924,
+          "y1": 234.287
+        },
+        {
+          "index": 19.0,
+          "source": "Electricity grid",
+          "target": "Heating and cooling - commercial",
+          "value": 40.858,
+          "width": 3.02,
+          "y0": 244.59,
+          "y1": 189.359
+        },
+        {
+          "index": 20.0,
+          "source": "Electricity grid",
+          "target": "Losses",
+          "value": 56.691,
+          "width": 4.191,
+          "y0": 199.561,
+          "y1": 62.556
+        },
+        {
+          "index": 21.0,
+          "source": "Electricity grid",
+          "target": "Rail transport",
+          "value": 7.863,
+          "width": 0.581,
+          "y0": 265.083,
+          "y1": 322.979
+        },
+        {
+          "index": 22.0,
+          "source": "Electricity grid",
+          "target": "Lighting & appliances - commercial",
+          "value": 90.008,
+          "width": 6.654,
+          "y0": 251.434,
+          "y1": 220.577
+        },
+        {
+          "index": 23.0,
+          "source": "Electricity grid",
+          "target": "Lighting & appliances - homes",
+          "value": 93.494,
+          "width": 6.912,
+          "y0": 258.543,
+          "y1": 248.175
+        },
+        {
+          "index": 24.0,
+          "source": "Gas imports",
+          "target": "Ngas",
+          "value": 40.719,
+          "width": 3.01,
+          "y0": 184.709,
+          "y1": 186.27
+        },
+        {
+          "index": 25.0,
+          "source": "Gas reserves",
+          "target": "Ngas",
+          "value": 82.233,
+          "width": 6.079,
+          "y0": 199.254,
+          "y1": 190.815
+        },
+        {
+          "index": 26.0,
+          "source": "Gas",
+          "target": "Heating and cooling - commercial",
+          "value": 0.129,
+          "width": 0.01,
+          "y0": 153.145,
+          "y1": 187.844
+        },
+        {
+          "index": 27.0,
+          "source": "Gas",
+          "target": "Losses",
+          "value": 1.401,
+          "width": 0.104,
+          "y0": 138.268,
+          "y1": 60.409
+        },
+        {
+          "index": 28.0,
+          "source": "Gas",
+          "target": "Thermal generation",
+          "value": 151.891,
+          "width": 11.229,
+          "y0": 143.934,
+          "y1": 101.391
+        },
+        {
+          "index": 29.0,
+          "source": "Gas",
+          "target": "Agriculture",
+          "value": 2.096,
+          "width": 0.155,
+          "y0": 153.227,
+          "y1": 234.047
+        },
+        {
+          "index": 30.0,
+          "source": "Gas",
+          "target": "Industry",
+          "value": 48.58,
+          "width": 3.591,
+          "y0": 151.344,
+          "y1": 102.62
+        },
+        {
+          "index": 31.0,
+          "source": "Geothermal",
+          "target": "Electricity grid",
+          "value": 7.013,
+          "width": 0.518,
+          "y0": 212.553,
+          "y1": 236.575
+        },
+        {
+          "index": 32.0,
+          "source": "H2 conversion",
+          "target": "H2",
+          "value": 20.897,
+          "width": 1.545,
+          "y0": 243.967,
+          "y1": 248.325
+        },
+        {
+          "index": 33.0,
+          "source": "H2 conversion",
+          "target": "Losses",
+          "value": 6.242,
+          "width": 0.461,
+          "y0": 242.963,
+          "y1": 64.883
+        },
+        {
+          "index": 34.0,
+          "source": "H2",
+          "target": "Road transport",
+          "value": 20.897,
+          "width": 1.545,
+          "y0": 248.325,
+          "y1": 301.874
+        },
+        {
+          "index": 35.0,
+          "source": "Hydro",
+          "target": "Electricity grid",
+          "value": 6.995,
+          "width": 0.517,
+          "y0": 268.417,
+          "y1": 241.521
+        },
+        {
+          "index": 36.0,
+          "source": "Liquid",
+          "target": "Industry",
+          "value": 121.066,
+          "width": 8.95,
+          "y0": 337.455,
+          "y1": 134.185
+        },
+        {
+          "index": 37.0,
+          "source": "Liquid",
+          "target": "International shipping",
+          "value": 128.69,
+          "width": 9.513,
+          "y0": 357.323,
+          "y1": 338.352
+        },
+        {
+          "index": 38.0,
+          "source": "Liquid",
+          "target": "Road transport",
+          "value": 135.835,
+          "width": 10.042,
+          "y0": 347.22,
+          "y1": 307.667
+        },
+        {
+          "index": 39.0,
+          "source": "Liquid",
+          "target": "Domestic aviation",
+          "value": 14.458,
+          "width": 1.069,
+          "y0": 362.615,
+          "y1": 353.643
+        },
+        {
+          "index": 40.0,
+          "source": "Liquid",
+          "target": "International aviation",
+          "value": 206.267,
+          "width": 15.248,
+          "y0": 370.773,
+          "y1": 371.802
+        },
+        {
+          "index": 41.0,
+          "source": "Liquid",
+          "target": "Agriculture",
+          "value": 3.64,
+          "width": 0.269,
+          "y0": 342.064,
+          "y1": 234.585
+        },
+        {
+          "index": 42.0,
+          "source": "Liquid",
+          "target": "National navigation",
+          "value": 33.218,
+          "width": 2.456,
+          "y0": 379.625,
+          "y1": 390.654
+        },
+        {
+          "index": 43.0,
+          "source": "Liquid",
+          "target": "Rail transport",
+          "value": 4.413,
+          "width": 0.326,
+          "y0": 352.404,
+          "y1": 323.432
+        },
+        {
+          "index": 44.0,
+          "source": "Marine algae",
+          "target": "Bio-conversion",
+          "value": 4.375,
+          "width": 0.323,
+          "y0": 91.478,
+          "y1": 97.588
+        },
+        {
+          "index": 45.0,
+          "source": "Ngas",
+          "target": "Gas",
+          "value": 122.952,
+          "width": 9.089,
+          "y0": 189.31,
+          "y1": 148.76
+        },
+        {
+          "index": 46.0,
+          "source": "Nuclear",
+          "target": "Thermal generation",
+          "value": 839.978,
+          "width": 62.096,
+          "y0": 31.048,
+          "y1": 35.15
+        },
+        {
+          "index": 47.0,
+          "source": "Oil imports",
+          "target": "Oil",
+          "value": 504.287,
+          "width": 37.28,
+          "y0": 363.398,
+          "y1": 360.256
+        },
+        {
+          "index": 48.0,
+          "source": "Oil reserves",
+          "target": "Oil",
+          "value": 107.703,
+          "width": 7.962,
+          "y0": 396.019,
+          "y1": 382.877
+        },
+        {
+          "index": 49.0,
+          "source": "Oil",
+          "target": "Liquid",
+          "value": 611.99,
+          "width": 45.242,
+          "y0": 364.237,
+          "y1": 358.232
+        },
+        {
+          "index": 50.0,
+          "source": "Other waste",
+          "target": "Solid",
+          "value": 56.587,
+          "width": 4.183,
+          "y0": 156.384,
+          "y1": 120.538
+        },
+        {
+          "index": 51.0,
+          "source": "Other waste",
+          "target": "Bio-conversion",
+          "value": 77.81,
+          "width": 5.752,
+          "y0": 151.416,
+          "y1": 114.081
+        },
+        {
+          "index": 52.0,
+          "source": "Pumped heat",
+          "target": "Heating and cooling - homes",
+          "value": 193.026,
+          "width": 14.27,
+          "y0": 229.947,
+          "y1": 167.616
+        },
+        {
+          "index": 53.0,
+          "source": "Pumped heat",
+          "target": "Heating and cooling - commercial",
+          "value": 70.672,
+          "width": 5.224,
+          "y0": 239.694,
+          "y1": 193.481
+        },
+        {
+          "index": 54.0,
+          "source": "Solar PV",
+          "target": "Electricity grid",
+          "value": 59.901,
+          "width": 4.428,
+          "y0": 244.286,
+          "y1": 239.048
+        },
+        {
+          "index": 55.0,
+          "source": "Solar Thermal",
+          "target": "Heating and cooling - homes",
+          "value": 19.263,
+          "width": 1.424,
+          "y0": 257.212,
+          "y1": 175.463
+        },
+        {
+          "index": 56.0,
+          "source": "Solar",
+          "target": "Solar Thermal",
+          "value": 19.263,
+          "width": 1.424,
+          "y0": 257.446,
+          "y1": 257.212
+        },
+        {
+          "index": 57.0,
+          "source": "Solar",
+          "target": "Solar PV",
+          "value": 59.901,
+          "width": 4.428,
+          "y0": 254.52,
+          "y1": 244.286
+        },
+        {
+          "index": 58.0,
+          "source": "Solid",
+          "target": "Agriculture",
+          "value": 0.882,
+          "width": 0.065,
+          "y0": 128.184,
+          "y1": 233.937
+        },
+        {
+          "index": 59.0,
+          "source": "Solid",
+          "target": "Thermal generation",
+          "value": 400.12,
+          "width": 29.579,
+          "y0": 109.926,
+          "y1": 80.987
+        },
+        {
+          "index": 60.0,
+          "source": "Solid",
+          "target": "Industry",
+          "value": 46.477,
+          "width": 3.436,
+          "y0": 126.433,
+          "y1": 99.107
+        },
+        {
+          "index": 61.0,
+          "source": "Thermal generation",
+          "target": "Electricity grid",
+          "value": 525.531,
+          "width": 38.85,
+          "y0": 87.58,
+          "y1": 216.891
+        },
+        {
+          "index": 62.0,
+          "source": "Thermal generation",
+          "target": "Losses",
+          "value": 787.129,
+          "width": 58.189,
+          "y0": 33.196,
+          "y1": 29.277
+        },
+        {
+          "index": 63.0,
+          "source": "Thermal generation",
+          "target": "District heating",
+          "value": 79.329,
+          "width": 5.864,
+          "y0": 65.223,
+          "y1": 66.796
+        },
+        {
+          "index": 64.0,
+          "source": "Tidal",
+          "target": "Electricity grid",
+          "value": 9.452,
+          "width": 0.699,
+          "y0": 279.025,
+          "y1": 242.129
+        },
+        {
+          "index": 65.0,
+          "source": "UK land based bioenergy",
+          "target": "Bio-conversion",
+          "value": 182.01,
+          "width": 13.455,
+          "y0": 108.367,
+          "y1": 104.477
+        },
+        {
+          "index": 66.0,
+          "source": "Wave",
+          "target": "Electricity grid",
+          "value": 19.013,
+          "width": 1.406,
+          "y0": 290.077,
+          "y1": 243.181
+        },
+        {
+          "index": 67.0,
+          "source": "Wind",
+          "target": "Electricity grid",
+          "value": 289.366,
+          "width": 21.391,
+          "y0": 311.475,
+          "y1": 254.58
+        }
+      ]
+    }
+  }
+}

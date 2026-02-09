@@ -1,0 +1,96 @@
+{
+  "diagramType": "sankey",
+  "layout": {
+    "SankeyDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 600.0,
+        "max_y": 400.0
+      },
+      "width": 600.0,
+      "height": 400.0,
+      "node_width": 10.0,
+      "node_padding": 25.0,
+      "nodes": [
+        {
+          "id": "Electricity grid",
+          "index": 0.0,
+          "depth": 0.0,
+          "height": 1.0,
+          "layer": 0.0,
+          "value": 245.319,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 12.298,
+          "y1": 362.298
+        },
+        {
+          "id": "Over generation / exports",
+          "index": 1.0,
+          "depth": 1.0,
+          "height": 0.0,
+          "layer": 1.0,
+          "value": 104.453,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 0.0,
+          "y1": 149.025
+        },
+        {
+          "id": "Heating and cooling - homes",
+          "index": 2.0,
+          "depth": 1.0,
+          "height": 0.0,
+          "layer": 1.0,
+          "value": 113.726,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 174.025,
+          "y1": 336.279
+        },
+        {
+          "id": "H2 conversion",
+          "index": 3.0,
+          "depth": 1.0,
+          "height": 0.0,
+          "layer": 1.0,
+          "value": 27.14,
+          "x0": 590.0,
+          "x1": 600.0,
+          "y0": 361.279,
+          "y1": 400.0
+        }
+      ],
+      "links": [
+        {
+          "index": 0.0,
+          "source": "Electricity grid",
+          "target": "Over generation / exports",
+          "value": 104.453,
+          "width": 149.025,
+          "y0": 86.81,
+          "y1": 74.512
+        },
+        {
+          "index": 1.0,
+          "source": "Electricity grid",
+          "target": "Heating and cooling - homes",
+          "value": 113.726,
+          "width": 162.254,
+          "y0": 242.45,
+          "y1": 255.152
+        },
+        {
+          "index": 2.0,
+          "source": "Electricity grid",
+          "target": "H2 conversion",
+          "value": 27.14,
+          "width": 38.721,
+          "y0": 342.938,
+          "y1": 380.639
+        }
+      ]
+    }
+  }
+}
