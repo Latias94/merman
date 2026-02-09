@@ -25,8 +25,11 @@
 LICENSE text eol=lf
 LICENSE-* text eol=lf
 
-# Windows script formats
-*.ps1 text eol=crlf
+# Script formats
+#
+# Keep these as LF as well so we don't fight autocrlf conversions and avoid "LF will be replaced by
+# CRLF" warnings when editing on Windows.
+*.ps1 text eol=lf
 *.cmd text eol=crlf
 *.bat text eol=crlf
 
