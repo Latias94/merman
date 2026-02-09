@@ -56,6 +56,14 @@ enum XtaskError {
     SvgCompareFailed(String),
 }
 
+fn has_extension(path: &Path, ext: &str) -> bool {
+    path.extension().is_some_and(|e| e == ext)
+}
+
+fn is_file_with_extension(path: &Path, ext: &str) -> bool {
+    path.is_file() && has_extension(path, ext)
+}
+
 fn print_help(topic: Option<&str>) {
     if let Some(topic) = topic.filter(|t| !t.trim().is_empty()) {
         println!("usage: xtask {topic} ...");
@@ -880,6 +888,7 @@ fn gen_svg_overrides(args: Vec<String>) -> Result<(), XtaskError> {
             .any(|a| a.has_tag_name("defs"))
     }
 
+    #[allow(dead_code)]
     #[derive(Debug, Clone)]
     struct SampleKey {
         font_key: String,
@@ -900,7 +909,7 @@ fn gen_svg_overrides(args: Vec<String>) -> Result<(), XtaskError> {
 
     for entry in entries.flatten() {
         let path = entry.path();
-        if !path.is_file() || !path.extension().is_some_and(|e| e == "svg") {
+        if !is_file_with_extension(&path, "svg") {
             continue;
         }
         let svg = fs::read_to_string(&path).map_err(|source| XtaskError::ReadFile {
@@ -1001,7 +1010,7 @@ fn gen_svg_overrides(args: Vec<String>) -> Result<(), XtaskError> {
         if let Ok(entries) = fs::read_dir(&fixtures_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if !path.is_file() || !path.extension().is_some_and(|e| e == "mmd") {
+                if !is_file_with_extension(&path, "mmd") {
                     continue;
                 }
                 let Ok(text) = fs::read_to_string(&path) else {
@@ -1645,12 +1654,12 @@ const mermaidIifePath = path.join(cliRoot, 'node_modules', 'mermaid', 'dist', 'm
         "pub fn lookup_svg_override_em(font_key: &str, text: &str) -> Option<(f64, f64)> {{"
     );
     let _ = writeln!(&mut out, "    match font_key {{");
-    for (font_key, _) in &best_by_font {
+    for font_key in best_by_font.keys() {
         let _ = writeln!(
             &mut out,
             "        {:?} => lookup_in_{}(),",
             font_key,
-            font_key.replace('-', "_").replace(',', "_")
+            font_key.replace(['-', ','], "_")
         );
     }
     let _ = writeln!(&mut out, "        _ => None,");
@@ -1692,23 +1701,17 @@ const mermaidIifePath = path.join(cliRoot, 'node_modules', 'mermaid', 'dist', 'm
             .collect();
         list.sort_by(|a, b| a.0.cmp(b.0));
 
-        let fn_name = format!("lookup_in_{}", font_key.replace('-', "_").replace(',', "_"));
+        let fn_name = format!("lookup_in_{}", font_key.replace(['-', ','], "_"));
         let _ = writeln!(
             &mut out,
             "fn {fn_name}() -> Option<&'static [(&'static str, f64, f64)]> {{ Some(SVG_OVERRIDES_{key}) }}",
             fn_name = fn_name,
-            key = font_key
-                .replace('-', "_")
-                .replace(',', "_")
-                .to_ascii_uppercase()
+            key = font_key.replace(['-', ','], "_").to_ascii_uppercase()
         );
         let _ = writeln!(
             &mut out,
             "static SVG_OVERRIDES_{key}: &[(&'static str, f64, f64)] = &[",
-            key = font_key
-                .replace('-', "_")
-                .replace(',', "_")
-                .to_ascii_uppercase()
+            key = font_key.replace(['-', ','], "_").to_ascii_uppercase()
         );
         for (text, l, r) in &list {
             let _ = writeln!(
@@ -2400,7 +2403,7 @@ fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             if !p.is_file() {
                 continue;
             }
-            if !p.extension().is_some_and(|e| e == "svg") {
+            if !has_extension(&p, "svg") {
                 continue;
             }
             if let Some(ref f) = filter {
@@ -2527,7 +2530,7 @@ fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let report_path = out_root.join("xml_report.md");
     let mut report = String::new();
     let _ = writeln!(&mut report, "# SVG Canonical XML Compare Report");
-    let _ = writeln!(&mut report, "");
+    let _ = writeln!(&mut report);
     let _ = writeln!(
         &mut report,
         "- Mode: `{}`",
@@ -2543,9 +2546,9 @@ fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
         &mut report,
         "- Output: `target/compare/xml/<diagram>/<fixture>.(upstream|local).xml`"
     );
-    let _ = writeln!(&mut report, "");
+    let _ = writeln!(&mut report);
     let _ = writeln!(&mut report, "## Mismatches ({})", mismatches.len());
-    let _ = writeln!(&mut report, "");
+    let _ = writeln!(&mut report);
     for (diagram, stem, upstream_out, local_out) in &mismatches {
         let _ = writeln!(
             &mut report,
@@ -2555,9 +2558,9 @@ fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
         );
     }
     if !missing.is_empty() {
-        let _ = writeln!(&mut report, "");
+        let _ = writeln!(&mut report);
         let _ = writeln!(&mut report, "## Missing / Failed ({})", missing.len());
-        let _ = writeln!(&mut report, "");
+        let _ = writeln!(&mut report);
         for m in &missing {
             let _ = writeln!(&mut report, "- {m}");
         }
@@ -2639,8 +2642,7 @@ fn canon_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let mode = svgdom::DomMode::parse(dom_mode.as_deref().unwrap_or("strict"));
     let decimals = dom_decimals.unwrap_or(3);
 
-    let xml =
-        svgdom::canonical_xml(&svg, mode, decimals).map_err(|e| XtaskError::SvgCompareFailed(e))?;
+    let xml = svgdom::canonical_xml(&svg, mode, decimals).map_err(XtaskError::SvgCompareFailed)?;
     print!("{xml}");
     Ok(())
 }
@@ -2954,7 +2956,7 @@ fn debug_svg_bbox(args: Vec<String>) -> Result<(), XtaskError> {
                 return s.to_string();
             }
             let mut out = s.chars().take(MAX).collect::<String>();
-            out.push_str("…");
+            out.push('…');
             out
         }
 
@@ -3149,7 +3151,7 @@ fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskError> {
             .split(|c: char| c == ',' || c.is_whitespace())
             .filter(|t: &&str| !t.trim().is_empty())
             .collect();
-        let x = parts.get(0)?.trim().parse::<f64>().ok()?;
+        let x = parts.first()?.trim().parse::<f64>().ok()?;
         let y = parts
             .get(1)
             .copied()
@@ -3194,18 +3196,15 @@ fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskError> {
         h: f64,
     }
 
-    fn extract_arch_positions(
-        svg: &str,
-    ) -> Result<
-        (
-            Option<(f64, f64, f64, f64)>,
-            Option<f64>,
-            BTreeMap<String, Pt>,
-            BTreeMap<String, Pt>,
-            BTreeMap<String, Rect>,
-        ),
-        XtaskError,
-    > {
+    type ArchPositions = (
+        Option<(f64, f64, f64, f64)>,
+        Option<f64>,
+        BTreeMap<String, Pt>,
+        BTreeMap<String, Pt>,
+        BTreeMap<String, Rect>,
+    );
+
+    fn extract_arch_positions(svg: &str) -> Result<ArchPositions, XtaskError> {
         let doc = roxmltree::Document::parse(svg)
             .map_err(|e| XtaskError::SvgCompareFailed(format!("failed to parse svg xml: {e}")))?;
         let root = doc.root_element();
@@ -3222,23 +3221,23 @@ fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskError> {
                 continue;
             };
 
-            if tag == "g" && id.starts_with("service-") {
-                if n.attribute("class")
+            if tag == "g"
+                && id.starts_with("service-")
+                && n.attribute("class")
                     .is_some_and(|c| has_class_token(c, "architecture-service"))
-                {
-                    if let Some((x, y)) = n.attribute("transform").and_then(parse_translate) {
-                        services.insert(id.to_string(), Pt { x, y });
-                    }
+            {
+                if let Some((x, y)) = n.attribute("transform").and_then(parse_translate) {
+                    services.insert(id.to_string(), Pt { x, y });
                 }
             }
 
-            if tag == "g" && id.starts_with("junction-") {
-                if n.attribute("class")
+            if tag == "g"
+                && id.starts_with("junction-")
+                && n.attribute("class")
                     .is_some_and(|c| has_class_token(c, "architecture-junction"))
-                {
-                    if let Some((x, y)) = n.attribute("transform").and_then(parse_translate) {
-                        junctions.insert(id.to_string(), Pt { x, y });
-                    }
+            {
+                if let Some((x, y)) = n.attribute("transform").and_then(parse_translate) {
+                    junctions.insert(id.to_string(), Pt { x, y });
                 }
             }
 
@@ -3290,7 +3289,7 @@ fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskError> {
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        if !path.is_file() || !path.extension().is_some_and(|e| e == "mmd") {
+        if !is_file_with_extension(&path, "mmd") {
             continue;
         }
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
@@ -3683,7 +3682,7 @@ fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), XtaskError> {
             .split(|c: char| c == ',' || c.is_whitespace())
             .filter(|t: &&str| !t.trim().is_empty())
             .collect();
-        let x = parts.get(0)?.trim().parse::<f64>().ok()?;
+        let x = parts.first()?.trim().parse::<f64>().ok()?;
         let y = parts
             .get(1)
             .copied()
@@ -3720,17 +3719,14 @@ fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), XtaskError> {
         y: f64,
     }
 
-    fn extract_arch_summary(
-        svg: &str,
-    ) -> Result<
-        (
-            Option<(f64, f64, f64, f64)>,
-            Option<f64>,
-            BTreeMap<String, Pt>,
-            BTreeMap<String, Pt>,
-        ),
-        XtaskError,
-    > {
+    type ArchSummary = (
+        Option<(f64, f64, f64, f64)>,
+        Option<f64>,
+        BTreeMap<String, Pt>,
+        BTreeMap<String, Pt>,
+    );
+
+    fn extract_arch_summary(svg: &str) -> Result<ArchSummary, XtaskError> {
         let doc = roxmltree::Document::parse(svg)
             .map_err(|e| XtaskError::SvgCompareFailed(format!("failed to parse svg xml: {e}")))?;
         let root = doc.root_element();
@@ -3746,23 +3742,23 @@ fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), XtaskError> {
                 continue;
             };
 
-            if tag == "g" && id.starts_with("service-") {
-                if n.attribute("class")
+            if tag == "g"
+                && id.starts_with("service-")
+                && n.attribute("class")
                     .is_some_and(|c| has_class_token(c, "architecture-service"))
-                {
-                    if let Some((x, y)) = n.attribute("transform").and_then(parse_translate) {
-                        services.insert(id.to_string(), Pt { x, y });
-                    }
+            {
+                if let Some((x, y)) = n.attribute("transform").and_then(parse_translate) {
+                    services.insert(id.to_string(), Pt { x, y });
                 }
             }
 
-            if tag == "g" && id.starts_with("junction-") {
-                if n.attribute("class")
+            if tag == "g"
+                && id.starts_with("junction-")
+                && n.attribute("class")
                     .is_some_and(|c| has_class_token(c, "architecture-junction"))
-                {
-                    if let Some((x, y)) = n.attribute("transform").and_then(parse_translate) {
-                        junctions.insert(id.to_string(), Pt { x, y });
-                    }
+            {
+                if let Some((x, y)) = n.attribute("transform").and_then(parse_translate) {
+                    junctions.insert(id.to_string(), Pt { x, y });
                 }
             }
         }
@@ -4331,7 +4327,7 @@ fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> {
 
             let mut out = Vec::new();
             for e1 in edges1_prim {
-                if edges2.iter().any(|e2| *e2 == e1) {
+                if edges2.contains(&e1) {
                     out.push(e1);
                 }
             }
@@ -5261,6 +5257,7 @@ fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
 
     use base64::Engine as _;
 
+    #[allow(dead_code)]
     fn class_has_token(node: roxmltree::Node<'_, '_>, token: &str) -> bool {
         node.attribute("class")
             .unwrap_or_default()
@@ -5268,16 +5265,16 @@ fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
             .any(|t| t == token)
     }
 
+    #[allow(dead_code)]
     fn parse_translate_x(transform: &str) -> Option<f64> {
         let t = transform.trim();
         let start = t.find("translate(")? + "translate(".len();
         let rest = &t[start..];
-        let end = rest
-            .find(|c: char| c == ',' || c == ' ' || c == ')')
-            .unwrap_or(rest.len());
+        let end = rest.find([',', ' ', ')']).unwrap_or(rest.len());
         rest[..end].trim().parse::<f64>().ok()
     }
 
+    #[allow(dead_code)]
     fn accumulated_translate_x(node: roxmltree::Node<'_, '_>) -> f64 {
         let mut sum = 0.0;
         for a in node.ancestors().filter(|n| n.is_element()) {
@@ -5290,6 +5287,7 @@ fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
         sum
     }
 
+    #[allow(dead_code)]
     fn parse_viewbox_w(root_svg: roxmltree::Node<'_, '_>) -> Option<f64> {
         let vb = root_svg.attribute("viewBox")?;
         let nums = vb
@@ -5299,6 +5297,7 @@ fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
         if nums.len() == 4 { Some(nums[2]) } else { None }
     }
 
+    #[allow(dead_code)]
     fn parse_viewbox(root_svg: roxmltree::Node<'_, '_>) -> Option<(f64, f64, f64, f64)> {
         let vb = root_svg.attribute("viewBox")?;
         let nums = vb
@@ -5319,9 +5318,7 @@ fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
         let Ok(doc) = roxmltree::Document::parse(svg) else {
             return None;
         };
-        let Some(style_node) = doc.descendants().find(|n| n.has_tag_name("style")) else {
-            return None;
-        };
+        let style_node = doc.descendants().find(|n| n.has_tag_name("style"))?;
         let style_text = style_node.text().unwrap_or_default();
         if style_text.is_empty() {
             return None;
@@ -5344,9 +5341,7 @@ fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
         let Ok(doc) = roxmltree::Document::parse(svg) else {
             return None;
         };
-        let Some(style_node) = doc.descendants().find(|n| n.has_tag_name("style")) else {
-            return None;
-        };
+        let style_node = doc.descendants().find(|n| n.has_tag_name("style"))?;
         let style_text = style_node.text().unwrap_or_default();
         if style_text.is_empty() {
             return None;
@@ -5362,6 +5357,7 @@ fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
         caps.get(1)?.as_str().parse::<f64>().ok()
     }
 
+    #[allow(dead_code)]
     fn parse_points_min_max_x(points: &str) -> Option<(f64, f64)> {
         let nums = points
             .split(|c: char| c == ',' || c.is_whitespace())
@@ -5387,13 +5383,11 @@ fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
+    #[allow(dead_code)]
     fn estimate_flowchart_content_width_px(doc: &roxmltree::Document<'_>) -> Option<f64> {
-        let Some(root_g) = doc
+        let root_g = doc
             .descendants()
-            .find(|n| n.has_tag_name("g") && n.is_element() && class_has_token(*n, "root"))
-        else {
-            return None;
-        };
+            .find(|n| n.has_tag_name("g") && n.is_element() && class_has_token(*n, "root"))?;
 
         let mut min_x = f64::INFINITY;
         let mut max_x = f64::NEG_INFINITY;
@@ -5529,7 +5523,7 @@ fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
 
     for entry in entries.flatten() {
         let path = entry.path();
-        if !path.is_file() || !path.extension().is_some_and(|e| e == "svg") {
+        if !is_file_with_extension(&path, "svg") {
             continue;
         }
         let svg = match fs::read_to_string(&path) {
@@ -5890,6 +5884,7 @@ fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
+    #[allow(clippy::needless_range_loop)]
     fn solve_ridge(at_a: &mut [Vec<f64>], at_b: &mut [f64]) -> Vec<f64> {
         let n = at_b.len();
         for i in 0..n {
@@ -6036,7 +6031,7 @@ fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
         svg_overrides: Vec<(String, f64, f64)>,
     }
 
-    fn median(v: &mut Vec<f64>) -> Option<f64> {
+    fn median(v: &mut [f64]) -> Option<f64> {
         if v.is_empty() {
             return None;
         }
@@ -6094,7 +6089,7 @@ fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
                 .collect::<std::collections::BTreeSet<_>>()
                 .into_iter()
                 .collect();
-            unknown_chars.sort_by(|a, b| (*a as u32).cmp(&(*b as u32)));
+            unknown_chars.sort_by_key(|a| *a as u32);
 
             let mut unknown_index: BTreeMap<char, usize> = BTreeMap::new();
             for (idx, ch) in unknown_chars.iter().enumerate() {
@@ -6219,6 +6214,7 @@ fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
         None
     }
 
+    #[allow(dead_code)]
     fn measure_char_widths_via_browser(
         node_cwd: &Path,
         browser_exe: &Path,
@@ -7101,10 +7097,8 @@ const strings = input.strings;
     // Derive first/last-character bbox overhangs (relative to the `text-anchor=middle` position)
     // from browser SVG metrics. This models the fact that SVG `getBBox()` can be asymmetric due to
     // glyph overhangs. Overhangs are stored in `em` and applied on top of scaled advances.
-    let mut svg_bbox_overhangs_by_font: BTreeMap<
-        String,
-        (f64, f64, Vec<(char, f64)>, Vec<(char, f64)>),
-    > = BTreeMap::new();
+    type SvgBBoxOverhangs = (f64, f64, Vec<(char, f64)>, Vec<(char, f64)>);
+    let mut svg_bbox_overhangs_by_font: BTreeMap<String, SvgBBoxOverhangs> = BTreeMap::new();
     let mut svg_overrides_by_font: BTreeMap<String, Vec<(String, f64, f64)>> = BTreeMap::new();
     if matches!(backend.as_str(), "browser" | "puppeteer") {
         let browser_exe = if let Some(p) = browser_exe.as_deref() {
@@ -7266,11 +7260,8 @@ const strings = input.strings;
         }
     }
 
-    let mut tables: Vec<(
-        FontTable,
-        f64,
-        (f64, f64, Vec<(char, f64)>, Vec<(char, f64)>),
-    )> = Vec::new();
+    type FontTableWithScaleAndOverhangs = (FontTable, f64, SvgBBoxOverhangs);
+    let mut tables: Vec<FontTableWithScaleAndOverhangs> = Vec::new();
     for (font_key, mut t) in html_tables {
         if let Some(ov) = svg_overrides_by_font.get(&font_key).cloned() {
             t.svg_overrides = ov;
@@ -7586,9 +7577,8 @@ fn debug_flowchart_svg_roots(args: Vec<String>) -> Result<(), XtaskError> {
         })
     }
 
-    let upstream_summary =
-        parse_summary(&upstream_svg).map_err(|e| XtaskError::DebugSvgFailed(e))?;
-    let local_summary = parse_summary(&local_svg).map_err(|e| XtaskError::DebugSvgFailed(e))?;
+    let upstream_summary = parse_summary(&upstream_svg).map_err(XtaskError::DebugSvgFailed)?;
+    let local_summary = parse_summary(&local_svg).map_err(XtaskError::DebugSvgFailed)?;
 
     println!("upstream: {}", upstream_path.display());
     println!("local:    {}", local_path.display());
@@ -7775,9 +7765,9 @@ fn debug_flowchart_svg_positions(args: Vec<String>) -> Result<(), XtaskError> {
         h: f64,
     }
 
-    fn parse_positions(
-        svg: &str,
-    ) -> Result<(BTreeMap<String, NodePos>, BTreeMap<String, ClusterRect>), String> {
+    type PositionsAndClusters = (BTreeMap<String, NodePos>, BTreeMap<String, ClusterRect>);
+
+    fn parse_positions(svg: &str) -> Result<PositionsAndClusters, String> {
         let doc = roxmltree::Document::parse(svg).map_err(|e| e.to_string())?;
 
         let mut nodes: BTreeMap<String, NodePos> = BTreeMap::new();
@@ -7793,7 +7783,7 @@ fn debug_flowchart_svg_positions(args: Vec<String>) -> Result<(), XtaskError> {
             let class = n.attribute("class").unwrap_or_default();
             let class_tokens = class.split_whitespace().collect::<Vec<_>>();
 
-            if class_tokens.iter().any(|t| *t == "node") {
+            if class_tokens.contains(&"node") {
                 let Some(transform) = n.attribute("transform") else {
                     continue;
                 };
@@ -7813,9 +7803,7 @@ fn debug_flowchart_svg_positions(args: Vec<String>) -> Result<(), XtaskError> {
             }
 
             // Mermaid self-loop helper nodes use `<g class="label edgeLabel" id="X---X---1" transform="translate(...)">`.
-            if class_tokens.iter().any(|t| *t == "edgeLabel")
-                && class_tokens.iter().any(|t| *t == "label")
-            {
+            if class_tokens.contains(&"edgeLabel") && class_tokens.contains(&"label") {
                 let Some(transform) = n.attribute("transform") else {
                     continue;
                 };
@@ -7834,7 +7822,7 @@ fn debug_flowchart_svg_positions(args: Vec<String>) -> Result<(), XtaskError> {
                 continue;
             }
 
-            if class_tokens.iter().any(|t| *t == "cluster") {
+            if class_tokens.contains(&"cluster") {
                 let abs = accumulated_translate(n);
                 let rect = n
                     .children()
@@ -7874,9 +7862,9 @@ fn debug_flowchart_svg_positions(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     let (up_nodes, up_clusters) =
-        parse_positions(&upstream_svg).map_err(|e| XtaskError::DebugSvgFailed(e))?;
+        parse_positions(&upstream_svg).map_err(XtaskError::DebugSvgFailed)?;
     let (lo_nodes, lo_clusters) =
-        parse_positions(&local_svg).map_err(|e| XtaskError::DebugSvgFailed(e))?;
+        parse_positions(&local_svg).map_err(XtaskError::DebugSvgFailed)?;
 
     println!("upstream: {}", upstream_path.display());
     println!("local:    {}", local_path.display());
@@ -8176,7 +8164,7 @@ fn debug_mindmap_svg_positions(args: Vec<String>) -> Result<(), XtaskError> {
             None => println!("upstream-only: {id}"),
         }
     }
-    for (id, _lo) in &lo_by_id {
+    for id in lo_by_id.keys() {
         if !up_by_id.contains_key(id) {
             println!("local-only: {id}");
         }
@@ -8353,9 +8341,7 @@ fn debug_flowchart_svg_diff(args: Vec<String>) -> Result<(), XtaskError> {
         let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
             return None;
         };
-        let Some(arr) = v.as_array() else {
-            return None;
-        };
+        let arr = v.as_array()?;
         let mut out: Vec<(f64, f64)> = Vec::with_capacity(arr.len());
         for p in arr {
             let (Some(x), Some(y)) = (
@@ -8411,17 +8397,14 @@ fn debug_flowchart_svg_diff(args: Vec<String>) -> Result<(), XtaskError> {
         Ok((view_box, max_width))
     }
 
-    fn parse_positions_and_edges(
-        svg: &str,
-    ) -> Result<
-        (
-            BTreeMap<String, NodePos>,
-            BTreeMap<String, ClusterRect>,
-            BTreeMap<String, EdgePoints>,
-            Vec<String>,
-        ),
-        String,
-    > {
+    type PositionsAndEdges = (
+        BTreeMap<String, NodePos>,
+        BTreeMap<String, ClusterRect>,
+        BTreeMap<String, EdgePoints>,
+        Vec<String>,
+    );
+
+    fn parse_positions_and_edges(svg: &str) -> Result<PositionsAndEdges, String> {
         let doc = roxmltree::Document::parse(svg).map_err(|e| e.to_string())?;
 
         let mut nodes: BTreeMap<String, NodePos> = BTreeMap::new();
@@ -8453,7 +8436,7 @@ fn debug_flowchart_svg_diff(args: Vec<String>) -> Result<(), XtaskError> {
                 let class = n.attribute("class").unwrap_or_default();
                 let class_tokens = class.split_whitespace().collect::<Vec<_>>();
 
-                if class_tokens.iter().any(|t| *t == "node") {
+                if class_tokens.contains(&"node") {
                     let abs = accumulated_translate_including_self(n);
                     nodes.insert(
                         id.to_string(),
@@ -8467,9 +8450,7 @@ fn debug_flowchart_svg_diff(args: Vec<String>) -> Result<(), XtaskError> {
                 }
 
                 // Mermaid self-loop helper nodes use `<g class="label edgeLabel" id="X---X---1" transform="translate(...)">`.
-                if class_tokens.iter().any(|t| *t == "edgeLabel")
-                    && class_tokens.iter().any(|t| *t == "label")
-                {
+                if class_tokens.contains(&"edgeLabel") && class_tokens.contains(&"label") {
                     let abs = accumulated_translate_including_self(n);
                     nodes.insert(
                         id.to_string(),
@@ -8482,7 +8463,7 @@ fn debug_flowchart_svg_diff(args: Vec<String>) -> Result<(), XtaskError> {
                     continue;
                 }
 
-                if class_tokens.iter().any(|t| *t == "cluster") {
+                if class_tokens.contains(&"cluster") {
                     let abs = accumulated_translate_including_self(n);
                     let rect = n
                         .children()
@@ -8519,7 +8500,7 @@ fn debug_flowchart_svg_diff(args: Vec<String>) -> Result<(), XtaskError> {
             }
 
             if n.tag_name().name() == "path" {
-                if !n.attribute("data-edge").is_some_and(|v| v == "true") {
+                if n.attribute("data-edge").is_none_or(|v| v != "true") {
                     continue;
                 }
                 let Some(edge_id) = n.attribute("data-id") else {
@@ -8701,30 +8682,29 @@ fn debug_flowchart_svg_diff(args: Vec<String>) -> Result<(), XtaskError> {
             ));
         }
 
-        match (up.bbox, lo.bbox, up.abs_bbox, lo.abs_bbox) {
-            (Some(ub), Some(lb), Some(uab), Some(lab)) => {
-                let dw = lb.width() - ub.width();
-                let dh = lb.height() - ub.height();
-                let dminx = lab.min_x - uab.min_x;
-                let dmaxx = lab.max_x - uab.max_x;
-                let dminy = lab.min_y - uab.min_y;
-                let dmaxy = lab.max_y - uab.max_y;
-                score = score
-                    .max(dw.abs())
-                    .max(dh.abs())
-                    .max(dminx.abs())
-                    .max(dmaxx.abs())
-                    .max(dminy.abs())
-                    .max(dmaxy.abs());
-                detail.push_str(&format!(
-                    " abs_bbox upstream=({:.3},{:.3},{:.3},{:.3}) local=({:.3},{:.3},{:.3},{:.3}) Δ=({:.3},{:.3},{:.3},{:.3}) sizeΔ=({:.3},{:.3})",
-                    uab.min_x, uab.min_y, uab.max_x, uab.max_y,
-                    lab.min_x, lab.min_y, lab.max_x, lab.max_y,
-                    dminx, dminy, dmaxx, dmaxy,
-                    dw, dh
-                ));
-            }
-            _ => {}
+        if let (Some(ub), Some(lb), Some(uab), Some(lab)) =
+            (up.bbox, lo.bbox, up.abs_bbox, lo.abs_bbox)
+        {
+            let dw = lb.width() - ub.width();
+            let dh = lb.height() - ub.height();
+            let dminx = lab.min_x - uab.min_x;
+            let dmaxx = lab.max_x - uab.max_x;
+            let dminy = lab.min_y - uab.min_y;
+            let dmaxy = lab.max_y - uab.max_y;
+            score = score
+                .max(dw.abs())
+                .max(dh.abs())
+                .max(dminx.abs())
+                .max(dmaxx.abs())
+                .max(dminy.abs())
+                .max(dmaxy.abs());
+            detail.push_str(&format!(
+                " abs_bbox upstream=({:.3},{:.3},{:.3},{:.3}) local=({:.3},{:.3},{:.3},{:.3}) Δ=({:.3},{:.3},{:.3},{:.3}) sizeΔ=({:.3},{:.3})",
+                uab.min_x, uab.min_y, uab.max_x, uab.max_y,
+                lab.min_x, lab.min_y, lab.max_x, lab.max_y,
+                dminx, dminy, dmaxx, dmaxy,
+                dw, dh
+            ));
         }
 
         if score < min_abs_delta {
@@ -9436,12 +9416,13 @@ fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError> {
                 e.start_label_right.as_ref(),
                 e.end_label_left.as_ref(),
                 e.end_label_right.as_ref(),
-            ] {
-                if let Some(lbl) = lbl {
-                    let hw = lbl.width / 2.0;
-                    let hh = lbl.height / 2.0;
-                    include_rect(lbl.x - hw, lbl.y - hh, lbl.x + hw, lbl.y + hh);
-                }
+            ]
+            .into_iter()
+            .flatten()
+            {
+                let hw = lbl.width / 2.0;
+                let hh = lbl.height / 2.0;
+                include_rect(lbl.x - hw, lbl.y - hh, lbl.x + hw, lbl.y + hh);
             }
         }
 
@@ -9552,7 +9533,7 @@ fn gen_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if let Some(ref f) = filter {
@@ -9720,7 +9701,7 @@ fn gen_c4_textlength(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "svg") {
+        if path.extension().is_none_or(|e| e != "svg") {
             continue;
         }
         svg_files.push(path);
@@ -10174,7 +10155,7 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if let Some(ref f) = filter {
@@ -10219,26 +10200,32 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         re_marker_id: &Regex,
         re_marker_ref: &Regex,
     ) -> SvgSig {
-        let mut sig = SvgSig::default();
-        sig.view_box = re_viewbox
+        let view_box = re_viewbox
             .captures(svg)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().trim().to_string());
-        sig.max_width_px = re_max_width
+        let max_width_px = re_max_width
             .captures(svg)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().trim().to_string());
+        let mut marker_ids = std::collections::BTreeSet::new();
         for cap in re_marker_id.captures_iter(svg) {
             if let Some(m) = cap.get(1) {
-                sig.marker_ids.insert(m.as_str().to_string());
+                marker_ids.insert(m.as_str().to_string());
             }
         }
+        let mut marker_refs = std::collections::BTreeSet::new();
         for cap in re_marker_ref.captures_iter(svg) {
             if let Some(m) = cap.get(1) {
-                sig.marker_refs.insert(m.as_str().to_string());
+                marker_refs.insert(m.as_str().to_string());
             }
         }
-        sig
+        SvgSig {
+            view_box,
+            max_width_px,
+            marker_ids,
+            marker_refs,
+        }
     }
 
     let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
@@ -10248,13 +10235,13 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
     let mut report = String::new();
     let _ = writeln!(&mut report, "# ER SVG Compare Report");
-    let _ = writeln!(&mut report, "");
+    let _ = writeln!(&mut report);
     let _ = writeln!(
         &mut report,
         "- Upstream: `fixtures/upstream-svgs/er/*.svg` (Mermaid CLI pinned to Mermaid 11.12.2)"
     );
     let _ = writeln!(&mut report, "- Local: `render_er_diagram_svg` (Stage B)");
-    let _ = writeln!(&mut report, "");
+    let _ = writeln!(&mut report);
     let _ = writeln!(
         &mut report,
         "| fixture | markers ok | dom ok | viewBox (upstream) | viewBox (local) | max-width (upstream) | max-width (local) |"
@@ -10456,9 +10443,9 @@ fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     if check_dom && !dom_failures.is_empty() {
-        let _ = writeln!(&mut report, "");
+        let _ = writeln!(&mut report);
         let _ = writeln!(&mut report, "## DOM Mismatch Details");
-        let _ = writeln!(&mut report, "");
+        let _ = writeln!(&mut report);
         for f in &dom_failures {
             let _ = writeln!(&mut report, "- {f}");
         }
@@ -10594,7 +10581,7 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             if !path.is_file() {
                 continue;
             }
-            if !path.extension().is_some_and(|e| e == "mmd") {
+            if path.extension().is_none_or(|e| e != "mmd") {
                 continue;
             }
             if path
@@ -10604,8 +10591,8 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             {
                 continue;
             }
-            if diagram == "gantt" {
-                if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+            if diagram == "gantt"
+                && path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
                     matches!(
                         n,
                         "click_loose.mmd"
@@ -10614,27 +10601,25 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                             | "excludes_hash_comment_truncates.mmd"
                             | "today_marker_and_axis.mmd"
                     )
-                }) {
-                    continue;
-                }
+                })
+            {
+                continue;
             }
-            if diagram == "state" {
-                if path
+            if diagram == "state"
+                && path
                     .file_name()
                     .and_then(|n| n.to_str())
                     .is_some_and(|n| n.contains("_parser_") || n.contains("_parser_spec"))
-                {
-                    continue;
-                }
+            {
+                continue;
             }
-            if diagram == "class" {
-                if path
+            if diagram == "class"
+                && path
                     .file_name()
                     .and_then(|n| n.to_str())
                     .is_some_and(|n| n.contains("upstream_text_label_variants_spec"))
-                {
-                    continue;
-                }
+            {
+                continue;
             }
             if diagram == "c4" {
                 // Mermaid C4 has known render-time type assumptions that make some valid parser
@@ -10889,11 +10874,12 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let baseline_root = workspace_root.join("fixtures").join("upstream-svgs");
     let out_root = workspace_root.join("target").join("upstream-svgs-check");
 
-    let mut gen_args: Vec<String> = Vec::new();
-    gen_args.push("--diagram".to_string());
-    gen_args.push(diagram.clone());
-    gen_args.push("--out".to_string());
-    gen_args.push(out_root.to_string_lossy().to_string());
+    let mut gen_args: Vec<String> = vec![
+        "--diagram".to_string(),
+        diagram.clone(),
+        "--out".to_string(),
+        out_root.to_string_lossy().to_string(),
+    ];
     if let Some(f) = &filter {
         gen_args.push("--filter".to_string());
         gen_args.push(f.clone());
@@ -10904,6 +10890,7 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
     gen_upstream_svgs(gen_args)?;
 
+    #[allow(clippy::too_many_arguments)]
     fn check_one(
         workspace_root: &Path,
         baseline_root: &Path,
@@ -10930,7 +10917,7 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             if !path.is_file() {
                 continue;
             }
-            if !path.extension().is_some_and(|e| e == "mmd") {
+            if path.extension().is_none_or(|e| e != "mmd") {
                 continue;
             }
             if path
@@ -10940,8 +10927,8 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             {
                 continue;
             }
-            if diagram == "gantt" {
-                if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+            if diagram == "gantt"
+                && path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
                     matches!(
                         n,
                         "click_loose.mmd"
@@ -10950,30 +10937,28 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                             | "excludes_hash_comment_truncates.mmd"
                             | "today_marker_and_axis.mmd"
                     )
-                }) {
-                    continue;
-                }
+                })
+            {
+                continue;
             }
-            if diagram == "state" {
-                if path
+            if diagram == "state"
+                && path
                     .file_name()
                     .and_then(|n| n.to_str())
                     .is_some_and(|n| n.contains("_parser_") || n.contains("_parser_spec"))
-                {
-                    continue;
-                }
+            {
+                continue;
             }
-            if diagram == "class" {
-                if path
+            if diagram == "class"
+                && path
                     .file_name()
                     .and_then(|n| n.to_str())
                     .is_some_and(|n| n.contains("upstream_text_label_variants_spec"))
-                {
-                    continue;
-                }
+            {
+                continue;
             }
-            if diagram == "c4" {
-                if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+            if diagram == "c4"
+                && path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
                     matches!(
                         n,
                         "nesting_updates.mmd"
@@ -10985,9 +10970,9 @@ fn check_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                             | "upstream_system_spec.mmd"
                             | "upstream_update_element_style_all_fields_spec.mmd"
                     )
-                }) {
-                    continue;
-                }
+                })
+            {
+                continue;
             }
             if let Some(f) = filter {
                 if !path
@@ -11342,7 +11327,7 @@ fn gen_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if let Some(ref f) = filter {
@@ -11547,7 +11532,7 @@ fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             if !path.is_file() {
                 continue;
             }
-            if !path.extension().is_some_and(|e| e == "mmd") {
+            if path.extension().is_none_or(|e| e != "mmd") {
                 continue;
             }
             if let Some(f) = filter {
@@ -12191,6 +12176,32 @@ fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
         )
     }
 
+    let re_gitgraph_id = Regex::new(r"\b(\d+)-[0-9a-f]{7}\b")
+        .map_err(|e| XtaskError::SnapshotUpdateFailed(format!("invalid gitGraph id regex: {e}")))?;
+    let re_block_id = Regex::new(r"id-[a-z0-9]+-(\d+)")
+        .map_err(|e| XtaskError::SnapshotUpdateFailed(format!("invalid block id regex: {e}")))?;
+
+    fn walk_replace(re: &Regex, replacement: &str, v: &mut JsonValue) {
+        match v {
+            JsonValue::String(s) => {
+                if re.is_match(s) {
+                    *s = re.replace_all(s, replacement).to_string();
+                }
+            }
+            JsonValue::Array(arr) => {
+                for item in arr {
+                    walk_replace(re, replacement, item);
+                }
+            }
+            JsonValue::Object(map) => {
+                for (_k, val) in map.iter_mut() {
+                    walk_replace(re, replacement, val);
+                }
+            }
+            _ => {}
+        }
+    }
+
     for mmd_path in mmd_files {
         let text = match fs::read_to_string(&mmd_path) {
             Ok(v) => v,
@@ -12274,61 +12285,11 @@ fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
         }
 
         if parsed.meta.diagram_type == "gitGraph" {
-            let re = Regex::new(r"\b(\d+)-[0-9a-f]{7}\b").map_err(|e| {
-                XtaskError::SnapshotUpdateFailed(format!("invalid gitGraph id regex: {e}"))
-            })?;
-
-            fn walk(re: &Regex, v: &mut JsonValue) {
-                match v {
-                    JsonValue::String(s) => {
-                        if re.is_match(s) {
-                            *s = re.replace_all(s, "$1-<dynamic>").to_string();
-                        }
-                    }
-                    JsonValue::Array(arr) => {
-                        for item in arr {
-                            walk(re, item);
-                        }
-                    }
-                    JsonValue::Object(map) => {
-                        for (_k, val) in map.iter_mut() {
-                            walk(re, val);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            walk(&re, &mut model);
+            walk_replace(&re_gitgraph_id, "$1-<dynamic>", &mut model);
         }
 
         if parsed.meta.diagram_type == "block" {
-            let re = Regex::new(r"id-[a-z0-9]+-(\d+)").map_err(|e| {
-                XtaskError::SnapshotUpdateFailed(format!("invalid block id regex: {e}"))
-            })?;
-
-            fn walk(re: &Regex, v: &mut JsonValue) {
-                match v {
-                    JsonValue::String(s) => {
-                        if re.is_match(s) {
-                            *s = re.replace_all(s, "id-<id>-$1").to_string();
-                        }
-                    }
-                    JsonValue::Array(arr) => {
-                        for item in arr {
-                            walk(re, item);
-                        }
-                    }
-                    JsonValue::Object(map) => {
-                        for (_k, val) in map.iter_mut() {
-                            walk(re, val);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            walk(&re, &mut model);
+            walk_replace(&re_block_id, "id-<id>-$1", &mut model);
         }
 
         let out = serde_json::json!({
@@ -12592,14 +12553,14 @@ fn extract_defaults(schema: &YamlValue, root: &YamlValue) -> Option<JsonValue> {
 
     if let Some(default) = schema
         .as_mapping()
-        .and_then(|m| m.get(&YamlValue::String("default".to_string())))
+        .and_then(|m| m.get(YamlValue::String("default".to_string())))
     {
         return yaml_to_json(default).ok();
     }
 
     if let Some(any_of) = schema
         .as_mapping()
-        .and_then(|m| m.get(&YamlValue::String("anyOf".to_string())))
+        .and_then(|m| m.get(YamlValue::String("anyOf".to_string())))
         .and_then(|v| v.as_sequence())
     {
         for s in any_of {
@@ -12611,7 +12572,7 @@ fn extract_defaults(schema: &YamlValue, root: &YamlValue) -> Option<JsonValue> {
 
     if let Some(one_of) = schema
         .as_mapping()
-        .and_then(|m| m.get(&YamlValue::String("oneOf".to_string())))
+        .and_then(|m| m.get(YamlValue::String("oneOf".to_string())))
         .and_then(|v| v.as_sequence())
     {
         for s in one_of {
@@ -12623,13 +12584,13 @@ fn extract_defaults(schema: &YamlValue, root: &YamlValue) -> Option<JsonValue> {
 
     let is_object_type = schema
         .as_mapping()
-        .and_then(|m| m.get(&YamlValue::String("type".to_string())))
+        .and_then(|m| m.get(YamlValue::String("type".to_string())))
         .and_then(|v| v.as_str())
         == Some("object");
 
     let props = schema
         .as_mapping()
-        .and_then(|m| m.get(&YamlValue::String("properties".to_string())))
+        .and_then(|m| m.get(YamlValue::String("properties".to_string())))
         .and_then(|v| v.as_mapping());
 
     if is_object_type || props.is_some() {
@@ -12657,14 +12618,14 @@ fn expand_schema(schema: &YamlValue, root: &YamlValue) -> YamlValue {
 
     let all_of = schema
         .as_mapping()
-        .and_then(|m| m.get(&YamlValue::String("allOf".to_string())))
+        .and_then(|m| m.get(YamlValue::String("allOf".to_string())))
         .and_then(|v| v.as_sequence())
         .cloned();
 
     if let Some(all_of) = all_of {
         let mut merged = schema.clone();
         if let Some(m) = merged.as_mapping_mut() {
-            m.remove(&YamlValue::String("allOf".to_string()));
+            m.remove(YamlValue::String("allOf".to_string()));
         }
         for s in all_of {
             let s = expand_schema(&s, root);
@@ -12681,7 +12642,7 @@ fn resolve_ref(schema: &YamlValue, root: &YamlValue) -> Result<YamlValue, XtaskE
         return Ok(schema.clone());
     };
     let Some(ref_str) = map
-        .get(&YamlValue::String("$ref".to_string()))
+        .get(YamlValue::String("$ref".to_string()))
         .and_then(|v| v.as_str())
     else {
         return Ok(schema.clone());
@@ -12692,7 +12653,7 @@ fn resolve_ref(schema: &YamlValue, root: &YamlValue) -> Result<YamlValue, XtaskE
     // Overlay other keys on top of the resolved target.
     let mut overlay = YamlValue::Mapping(map.clone());
     if let Some(m) = overlay.as_mapping_mut() {
-        m.remove(&YamlValue::String("$ref".to_string()));
+        m.remove(YamlValue::String("$ref".to_string()));
     }
     base = merge_yaml(base, overlay);
     Ok(base)
@@ -12780,7 +12741,7 @@ fn gen_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if let Some(ref f) = filter {
@@ -12932,7 +12893,7 @@ fn gen_state_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if let Some(ref f) = filter {
@@ -13084,7 +13045,7 @@ fn gen_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if let Some(ref f) = filter {
@@ -13278,7 +13239,7 @@ fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if path
@@ -13692,7 +13653,7 @@ fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if let Some(ref f) = filter {
@@ -13782,9 +13743,12 @@ fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             }
         };
 
-        let mut layout_opts = merman_render::LayoutOptions::default();
-        layout_opts.text_measurer =
-            std::sync::Arc::new(merman_render::text::VendoredFontMetricsTextMeasurer::default());
+        let layout_opts = merman_render::LayoutOptions {
+            text_measurer: std::sync::Arc::new(
+                merman_render::text::VendoredFontMetricsTextMeasurer::default(),
+            ),
+            ..Default::default()
+        };
         let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
             Ok(v) => v,
             Err(err) => {
@@ -13956,7 +13920,7 @@ fn compare_info_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if let Some(ref f) = filter {
@@ -14205,7 +14169,7 @@ fn compare_pie_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if let Some(ref f) = filter {
@@ -14453,7 +14417,7 @@ fn compare_packet_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if let Some(ref f) = filter {
@@ -14705,7 +14669,7 @@ fn compare_timeline_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if let Some(ref f) = filter {
@@ -14955,7 +14919,7 @@ fn compare_journey_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if let Some(ref f) = filter {
@@ -15206,7 +15170,7 @@ fn compare_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
@@ -15467,7 +15431,7 @@ fn compare_kanban_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if let Some(ref f) = filter {
@@ -15718,7 +15682,7 @@ fn compare_gitgraph_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if let Some(ref f) = filter {
@@ -15973,7 +15937,7 @@ fn compare_gantt_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
 
@@ -16346,7 +16310,7 @@ fn compare_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         // Keep C4 fixtures that Mermaid CLI can render (baselines exist).
@@ -16614,7 +16578,7 @@ fn compare_block_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if let Some(ref f) = filter {
@@ -16881,7 +16845,7 @@ fn compare_radar_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if let Some(ref f) = filter {
@@ -17133,7 +17097,7 @@ fn compare_treemap_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if path
@@ -17401,7 +17365,7 @@ fn compare_requirement_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if path
@@ -17665,7 +17629,7 @@ fn compare_quadrantchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if path
@@ -17926,7 +17890,7 @@ fn compare_xychart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if path
@@ -18200,7 +18164,7 @@ fn compare_mindmap_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if path
@@ -18474,7 +18438,7 @@ fn compare_sankey_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if path
@@ -18751,7 +18715,7 @@ fn compare_architecture_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if path
@@ -19026,7 +18990,7 @@ fn compare_state_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         if !path.is_file() {
             continue;
         }
-        if !path.extension().is_some_and(|e| e == "mmd") {
+        if path.extension().is_none_or(|e| e != "mmd") {
             continue;
         }
         if path

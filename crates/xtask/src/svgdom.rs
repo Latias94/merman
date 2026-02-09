@@ -775,7 +775,7 @@ mod tests {
     fn structure_masks_architecture_icon_internal_ids() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><g class="architecture-service"><g><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><g><ellipse id="IconifyIddeadbeef" cx="5" cy="5" rx="4" ry="4"/></g></svg></g></g></svg>"#;
         let dom = dom_signature(svg, DomMode::Structure, 3).unwrap();
-        fn find_ellipse_id<'a>(n: &'a SvgDomNode) -> Option<&'a str> {
+        fn find_ellipse_id(n: &SvgDomNode) -> Option<&str> {
             if n.name == "ellipse" {
                 return n.attrs.get("id").map(|s| s.as_str());
             }

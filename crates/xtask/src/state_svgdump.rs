@@ -390,13 +390,13 @@ pub(crate) fn analyze_state_fixture(args: Vec<String>) -> Result<(), XtaskError>
     let _ = writeln!(
         &mut report,
         "- Upstream: max-width(px)={:?}, viewBox={:?}",
-        up_max_w.map(|v| fmt(v)),
+        up_max_w.map(&fmt),
         up_viewbox.as_deref()
     );
     let _ = writeln!(
         &mut report,
         "- Local: max-width(px)={:?}, viewBox={:?}\n",
-        lo_max_w.map(|v| fmt(v)),
+        lo_max_w.map(&fmt),
         lo_viewbox.as_deref()
     );
 
@@ -420,11 +420,11 @@ pub(crate) fn analyze_state_fixture(args: Vec<String>) -> Result<(), XtaskError>
 
     // Top-level scope row.
     let up0 = upstream_scopes
-        .get(0)
+        .first()
         .map(|s| s.translate)
         .unwrap_or(Point { x: 0.0, y: 0.0 });
     let lo0 = local_scopes
-        .get(0)
+        .first()
         .map(|s| s.translate)
         .unwrap_or(Point { x: 0.0, y: 0.0 });
     let _ = writeln!(
@@ -465,24 +465,14 @@ pub(crate) fn analyze_state_fixture(args: Vec<String>) -> Result<(), XtaskError>
         } else {
             (
                 "Root Scope: (root)".to_string(),
-                upstream_scopes.get(0),
-                local_scopes.get(0),
+                upstream_scopes.first(),
+                local_scopes.first(),
             )
         };
 
         let _ = writeln!(&mut report, "## {scope_label}\n");
 
-        if up_scope.is_none() || lo_scope.is_none() {
-            let _ = writeln!(
-                &mut report,
-                "- Missing scope: upstream={} local={}\n",
-                up_scope.is_some(),
-                lo_scope.is_some()
-            );
-        } else {
-            let up = up_scope.unwrap();
-            let lo = lo_scope.unwrap();
-
+        if let (Some(up), Some(lo)) = (up_scope, lo_scope) {
             let _ = writeln!(
                 &mut report,
                 "### Root Translate\n\n- Upstream: ({},{})\n- Local: ({},{})\n",
@@ -607,6 +597,13 @@ pub(crate) fn analyze_state_fixture(args: Vec<String>) -> Result<(), XtaskError>
                 );
             }
             let _ = writeln!(&mut report);
+        } else {
+            let _ = writeln!(
+                &mut report,
+                "- Missing scope: upstream={} local={}\n",
+                up_scope.is_some(),
+                lo_scope.is_some()
+            );
         }
     }
 
