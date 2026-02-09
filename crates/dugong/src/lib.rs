@@ -25,4 +25,6 @@ pub mod self_edges;
 pub mod util;
 
 mod pipeline;
-pub use pipeline::{layout, layout_dagreish};
+pub use pipeline::layout;
+#[cfg(feature = "dagreish")]
+pub use pipeline::layout_dagreish;

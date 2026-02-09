@@ -13,6 +13,11 @@ readme = "../../README.md"
 keywords = ["graph", "layout", "dagre", "diagrams"]
 categories = ["visualization"]
 
+[features]
+default = ["dagreish"]
+# A parity-oriented pipeline that mirrors upstream dagre more closely.
+dagreish = []
+
 [dependencies]
 dugong-graphlib.workspace = true
 serde.workspace = true

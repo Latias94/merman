@@ -43,6 +43,8 @@ To avoid subjective drift, we need:
   - `layout_dagreish(graph)` provides a parity-oriented pipeline that mirrors Dagre’s layout
     sequence more closely (rank/normalize/order/BK positioning), and is used by `merman` where SVG
     parity requires Dagre-compatible behavior.
+    - It is gated behind the `dugong/dagreish` feature (enabled by default) to keep the minimal
+      pipeline lightweight for downstream consumers that do not need parity mode.
 
 ### Dagre pipeline notes (connectivity + compound graphs)
 

@@ -21,6 +21,9 @@ both without forking the codebase.
   - optional dependencies (e.g. KaTeX),
   - layout engines.
 
+Related: `dugong` also exposes an optional parity-oriented pipeline (`layout_dagreish`) behind the
+`dugong/dagreish` feature (enabled by default).
+
 ## Consequences
 
 - Detector order and diagram registry become feature-dependent and must be documented and tested.
