@@ -33,6 +33,22 @@ pub struct ParseOptions {
     pub suppress_errors: bool,
 }
 
+impl ParseOptions {
+    /// Strict parsing (errors are returned).
+    pub fn strict() -> Self {
+        Self {
+            suppress_errors: false,
+        }
+    }
+
+    /// Lenient parsing: on parse failures, return an `error` diagram instead of returning an error.
+    pub fn lenient() -> Self {
+        Self {
+            suppress_errors: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ParseMetadata {
     pub diagram_type: String,

@@ -75,6 +75,23 @@ impl Default for LayoutOptions {
     }
 }
 
+impl LayoutOptions {
+    /// Returns layout defaults suitable for headless SVG rendering in UI integrations.
+    ///
+    /// Compared to `Default`, this uses a Mermaid-like text measurer backed by vendored font
+    /// metrics (instead of deterministic placeholder metrics).
+    pub fn headless_svg_defaults() -> Self {
+        let mut out = Self::default();
+        out.text_measurer = Arc::new(crate::text::VendoredFontMetricsTextMeasurer::default());
+        out
+    }
+
+    pub fn with_text_measurer(mut self, measurer: Arc<dyn TextMeasurer + Send + Sync>) -> Self {
+        self.text_measurer = measurer;
+        self
+    }
+}
+
 pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<LayoutedDiagram> {
     let meta = LayoutMeta::from_parse_metadata(&parsed.meta);
     let diagram_type = parsed.meta.diagram_type.as_str();

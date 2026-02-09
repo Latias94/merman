@@ -78,6 +78,13 @@ pub mod render {
         Ok(Some(merman_render::layout_parsed(&parsed, layout_options)?))
     }
 
+    /// Returns layout defaults intended for UI integrations that render headless SVG.
+    ///
+    /// This is a convenience wrapper around [`LayoutOptions::headless_svg_defaults`].
+    pub fn headless_layout_options() -> LayoutOptions {
+        LayoutOptions::headless_svg_defaults()
+    }
+
     pub async fn layout_diagram(
         engine: &merman_core::Engine,
         text: &str,

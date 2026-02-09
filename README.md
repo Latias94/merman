@@ -32,14 +32,13 @@ Enable the `render` feature when you want layout + SVG.
 ```rust
 use merman_core::{Engine, ParseOptions};
 use merman::render::{
-    render_svg_sync, sanitize_svg_id, LayoutOptions, SvgRenderOptions, VendoredFontMetricsTextMeasurer,
+    headless_layout_options, render_svg_sync, sanitize_svg_id, SvgRenderOptions,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let engine = Engine::new();
 
-    let mut layout = LayoutOptions::default();
-    layout.text_measurer = std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default());
+    let layout = headless_layout_options();
 
     // For UIs that inline multiple diagrams, set a per-diagram SVG id to avoid internal `<defs>`
     // and accessibility id collisions.
