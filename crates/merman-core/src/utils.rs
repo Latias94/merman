@@ -137,7 +137,7 @@ fn url_scheme_like(input: &str) -> Option<&str> {
 
     if let Some(idx) = last_entity {
         let end = idx + "&colon;".len();
-        if best_end.map_or(true, |cur| end > cur) {
+        if best_end.is_none_or(|cur| end > cur) {
             best_end = Some(end);
         }
     }

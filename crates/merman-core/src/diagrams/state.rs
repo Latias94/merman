@@ -416,8 +416,8 @@ impl<'input> Lexer<'input> {
             let text_start = self.pos;
             let text = if self.peek() == Some(b':') {
                 self.pos += 1;
-                let t = self.read_to_newline().trim().to_string();
-                t
+
+                self.read_to_newline().trim().to_string()
             } else {
                 let rest = &self.input[self.pos..];
                 let rest_lower = rest.to_ascii_lowercase();
@@ -545,9 +545,7 @@ impl<'input> Lexer<'input> {
         let start = self.pos;
         self.skip_ws();
 
-        if self.peek().is_none() {
-            return None;
-        }
+        self.peek()?;
 
         if self.mode() == Mode::StateId {
             let body_start = self.pos;
@@ -683,9 +681,7 @@ impl<'input> Lexer<'input> {
 
         if self.starts_with("[*]:::") {
             self.pos += "[*]:::".len();
-            let Some(class_id) = self.read_plain_id() else {
-                return None;
-            };
+            let class_id = self.read_plain_id()?;
             return Some((
                 start,
                 Tok::StyledId(("[*]".to_string(), class_id)),
@@ -873,6 +869,7 @@ impl StateStmt {
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub(crate) enum Stmt {
     Noop,
@@ -1064,7 +1061,7 @@ impl StateDb {
         }
     }
 
-    fn translate_doc(&mut self, parent_id: &str, doc: &mut Vec<Stmt>) {
+    fn translate_doc(&mut self, parent_id: &str, doc: &mut [Stmt]) {
         for stmt in doc.iter_mut() {
             match stmt {
                 Stmt::Relation {
@@ -1172,6 +1169,7 @@ impl StateDb {
         self.ensure_state(id).descriptions.push(clean);
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn add_state(
         &mut self,
         id: &str,
@@ -1525,6 +1523,7 @@ fn build_layout_data(
     let mut node_db: HashMap<String, NodeScratch> = HashMap::new();
     let mut graph_item_count: usize = 0;
 
+    #[allow(clippy::too_many_arguments)]
     fn setup_doc(
         parent: Option<&StateStmt>,
         doc: &[Stmt],
@@ -1615,6 +1614,7 @@ fn build_layout_data(
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn data_fetcher(
         parent: Option<&StateStmt>,
         parsed_item: &StateStmt,
@@ -1717,25 +1717,27 @@ fn build_layout_data(
         }
 
         // Group handling (composite states)
-        if entry.node_type.is_none() && parsed_item.doc.is_some() {
-            entry.node_type = Some("group".to_string());
-            entry.is_group = true;
-            let dir = get_dir_for_doc(parsed_item.doc.as_ref().unwrap(), DEFAULT_NESTED_DOC_DIR);
-            entry.dir = Some(dir);
-            entry.shape = if parsed_item.ty == "divider" {
-                SHAPE_DIVIDER.to_string()
-            } else {
-                SHAPE_GROUP.to_string()
-            };
+        if entry.node_type.is_none() {
+            if let Some(doc) = parsed_item.doc.as_ref() {
+                entry.node_type = Some("group".to_string());
+                entry.is_group = true;
+                let dir = get_dir_for_doc(doc, DEFAULT_NESTED_DOC_DIR);
+                entry.dir = Some(dir);
+                entry.shape = if parsed_item.ty == "divider" {
+                    SHAPE_DIVIDER.to_string()
+                } else {
+                    SHAPE_GROUP.to_string()
+                };
 
-            let mut css = entry.css_classes.clone();
-            css.push(' ');
-            css.push_str(CSS_DIAGRAM_CLUSTER);
-            if alt_flag {
+                let mut css = entry.css_classes.clone();
                 css.push(' ');
-                css.push_str(CSS_DIAGRAM_CLUSTER_ALT);
+                css.push_str(CSS_DIAGRAM_CLUSTER);
+                if alt_flag {
+                    css.push(' ');
+                    css.push_str(CSS_DIAGRAM_CLUSTER_ALT);
+                }
+                entry.css_classes = css;
             }
-            entry.css_classes = css;
         }
 
         if let Some(p) = parent {

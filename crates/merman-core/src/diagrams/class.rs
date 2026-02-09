@@ -494,9 +494,7 @@ impl<'input> Lexer<'input> {
         }
         let after = self.pos + "accTitle".len();
         let rest = &self.input[after..];
-        let Some(colon) = rest.find(':') else {
-            return None;
-        };
+        let colon = rest.find(':')?;
         self.pos = after + colon + 1;
         let value = self.read_to_newline();
         Some((start, Tok::AccTitle(value.trim().to_string()), self.pos))
@@ -526,9 +524,7 @@ impl<'input> Lexer<'input> {
                 self.pos,
             )));
         }
-        let Some(colon) = rest.find(':') else {
-            return None;
-        };
+        let colon = rest.find(':')?;
         self.pos = after + colon + 1;
         let value = self.read_to_newline();
         Some(Ok((
@@ -881,15 +877,11 @@ impl<'input> Lexer<'input> {
             if b == b'<' || b == b'>' {
                 break;
             }
-            if b == b'.' {
-                if end + 1 < bytes.len() && bytes[end + 1] == b'.' {
-                    break;
-                }
+            if b == b'.' && end + 1 < bytes.len() && bytes[end + 1] == b'.' {
+                break;
             }
-            if b == b'-' {
-                if end + 1 < bytes.len() && bytes[end + 1] == b'-' {
-                    break;
-                }
+            if b == b'-' && end + 1 < bytes.len() && bytes[end + 1] == b'-' {
+                break;
             }
             end += 1;
         }

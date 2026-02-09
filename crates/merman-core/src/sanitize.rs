@@ -444,7 +444,7 @@ fn dompurify_like_sanitize_html(text: &str, cfg: &DompurifyEffectiveConfig) -> S
         if lc_tag == "a" {
             if let Some(target) = el.get_attribute("data-temp-href-target") {
                 let _ = el.set_attribute("target", &target);
-                let _ = el.remove_attribute("data-temp-href-target");
+                el.remove_attribute("data-temp-href-target");
                 if target == "_blank" {
                     let _ = el.set_attribute("rel", "noopener");
                 }
@@ -515,7 +515,7 @@ pub fn sanitize_text_or_array(
         serde_json::Value::Array(arr) => serde_json::Value::Array(
             arr.iter()
                 .flat_map(|v| match v {
-                    serde_json::Value::Array(inner) => inner.iter().cloned().collect::<Vec<_>>(),
+                    serde_json::Value::Array(inner) => inner.to_vec(),
                     _ => vec![v.clone()],
                 })
                 .map(|v| match v {

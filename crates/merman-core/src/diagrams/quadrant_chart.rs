@@ -279,10 +279,10 @@ fn parse_unit_interval_token(raw: &str) -> Result<f64> {
     }
     if let Some(rest) = s.strip_prefix("0.") {
         if !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()) {
-            return Ok(s.parse::<f64>().map_err(|e| Error::DiagramParse {
+            return s.parse::<f64>().map_err(|e| Error::DiagramParse {
                 diagram_type: "quadrantChart".to_string(),
                 message: e.to_string(),
-            })?);
+            });
         }
     }
     Err(Error::DiagramParse {
@@ -327,9 +327,7 @@ fn find_point_colon(s: &str) -> Option<usize> {
     None
 }
 
-fn parse_point_statement(
-    line: &str,
-) -> Result<Option<(String, Option<String>, f64, f64, Vec<String>)>> {
+fn parse_point_statement(line: &str) -> Result<Option<PointStatement>> {
     let Some(colon_idx) = find_point_colon(line) else {
         return Ok(None);
     };
@@ -373,6 +371,8 @@ fn parse_point_statement(
     let styles = parse_style_list(after);
     Ok(Some((label, class_name, x, y, styles)))
 }
+
+type PointStatement = (String, Option<String>, f64, f64, Vec<String>);
 
 fn split_semicolons(line: &str) -> Vec<&str> {
     let mut out: Vec<&str> = Vec::new();
@@ -482,9 +482,9 @@ pub fn parse_quadrant_chart(code: &str, meta: &ParseMetadata) -> Result<Value> {
             }
             if let Some(rest) = parse_keyword_rest_ci(stmt, "accDescr") {
                 let rest = rest.trim_start();
-                if rest.starts_with('{') {
+                if let Some(after_lbrace) = rest.strip_prefix('{') {
                     in_acc_descr_block = true;
-                    let after = rest[1..].trim_start();
+                    let after = after_lbrace.trim_start();
                     if !after.is_empty() {
                         acc_descr_buf.push_str(after);
                         acc_descr_buf.push('\n');

@@ -117,7 +117,7 @@ impl BlockDb {
             });
 
         for raw in style_attributes.split(',') {
-            let fixed = raw.splitn(2, ';').next().unwrap_or("").trim().to_string();
+            let fixed = raw.split(';').next().unwrap_or("").trim().to_string();
             if fixed.is_empty() {
                 continue;
             }
@@ -804,7 +804,7 @@ impl<'a> Parser<'a> {
         let mut width = 1;
         self.skip_ws_and_comments();
         if self.consume_exact(":") {
-            width = self.parse_int()? as i64;
+            width = self.parse_int()?;
         }
         let mut b = Block::new(self.generate_id());
         b.block_type = "space".to_string();
@@ -903,7 +903,7 @@ impl<'a> Parser<'a> {
 
         self.skip_ws_and_comments();
         if self.consume_exact(":") {
-            let w = self.parse_int()? as i64;
+            let w = self.parse_int()?;
             left.width_in_columns = Some(w);
         } else {
             left.width_in_columns.get_or_insert(1);
@@ -1503,11 +1503,7 @@ mod tests {
             .iter()
             .filter_map(|v| v.as_str())
             .collect();
-        assert!(
-            warnings
-                .iter()
-                .any(|w| *w == "Block B width 2 exceeds configured column width 1")
-        );
+        assert!(warnings.contains(&"Block B width 2 exceeds configured column width 1"));
     }
 
     #[test]

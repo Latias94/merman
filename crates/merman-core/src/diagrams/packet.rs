@@ -187,7 +187,7 @@ fn get_next_fitting_block(
         });
     }
 
-    if block.end + 1 <= row * bits_per_row {
+    if block.end < row * bits_per_row {
         return Ok((block, None));
     }
 

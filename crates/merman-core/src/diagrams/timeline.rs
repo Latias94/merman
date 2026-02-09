@@ -68,9 +68,7 @@ fn parse_keyword_arg_full_line_after_one_ws<'a>(line: &'a str, keyword: &str) ->
         return None;
     }
     let after = &t[keyword.len()..];
-    let Some(ws) = after.chars().next() else {
-        return None;
-    };
+    let ws = after.chars().next()?;
     if !ws.is_whitespace() {
         return None;
     }

@@ -543,9 +543,7 @@ impl<'input> Lexer<'input> {
                 self.pos,
             )));
         }
-        let Some(colon_pos) = rest.find(':') else {
-            return None;
-        };
+        let colon_pos = rest.find(':')?;
         self.pos = after + colon_pos + 1;
         let s = self.read_to_newline();
         Some(Ok((start, Tok::AccDescr(s.trim().to_string()), self.pos)))
@@ -881,9 +879,7 @@ impl<'input> Lexer<'input> {
         }
 
         let mut chars = raw.chars();
-        let Some(first) = chars.next() else {
-            return None;
-        };
+        let first = chars.next()?;
         let first_ok = first == '*' || first == '_' || first.is_alphabetic() || !first.is_ascii();
         let rest_ok = chars.all(|c| {
             c == '*'

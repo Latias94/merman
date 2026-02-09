@@ -15,7 +15,7 @@ fn process_set(mut input: String) -> String {
     }
 
     let mut has_starting_tilde = false;
-    if tilde_count % 2 != 0 && input.starts_with('~') {
+    if !tilde_count.is_multiple_of(2) && input.starts_with('~') {
         input = input[1..].to_string();
         has_starting_tilde = true;
     }

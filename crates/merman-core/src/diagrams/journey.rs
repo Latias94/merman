@@ -100,9 +100,7 @@ fn parse_keyword_arg_one_ws(line: &str, keyword: &str) -> Option<String> {
         return None;
     }
     let after = &t[keyword.len()..];
-    let Some(ws) = after.chars().next() else {
-        return None;
-    };
+    let ws = after.chars().next()?;
     if !ws.is_whitespace() {
         return None;
     }

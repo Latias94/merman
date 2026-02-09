@@ -71,7 +71,7 @@ impl C4Db {
     }
 
     fn add_person_or_system(&mut self, type_c4_shape: &str, args: &[Value]) -> Result<()> {
-        let alias = arg_to_string(args.get(0))?;
+        let alias = arg_to_string(args.first())?;
         let label = args.get(1).cloned().unwrap_or_else(|| json!(""));
         let descr = args.get(2).cloned();
 
@@ -104,7 +104,7 @@ impl C4Db {
     }
 
     fn add_container(&mut self, type_c4_shape: &str, args: &[Value]) -> Result<()> {
-        let alias = arg_to_string(args.get(0))?;
+        let alias = arg_to_string(args.first())?;
         let label = args.get(1).cloned().unwrap_or_else(|| json!(""));
         let techn = args.get(2).cloned();
         let descr = args.get(3).cloned();
@@ -143,7 +143,7 @@ impl C4Db {
     }
 
     fn add_person_or_system_boundary(&mut self, args: Vec<Value>) -> Result<()> {
-        let alias = arg_to_string(args.get(0))?;
+        let alias = arg_to_string(args.first())?;
         let label = args.get(1).cloned().unwrap_or_else(|| json!(""));
         let boundary_type = args.get(2).cloned();
         let tags = args.get(3).cloned();
@@ -187,7 +187,7 @@ impl C4Db {
     }
 
     fn add_deployment_node(&mut self, node_type: &str, args: Vec<Value>) -> Result<()> {
-        let alias = arg_to_string(args.get(0))?;
+        let alias = arg_to_string(args.first())?;
         let label = args.get(1).cloned().unwrap_or_else(|| json!(""));
         let node_label_type = args.get(2).cloned();
         let descr = args.get(3).cloned();
@@ -237,7 +237,7 @@ impl C4Db {
     }
 
     fn add_rel(&mut self, rel_type: &str, args: Vec<Value>) -> Result<()> {
-        let from = arg_to_string(args.get(0))?;
+        let from = arg_to_string(args.first())?;
         let to = arg_to_string(args.get(1))?;
         let Some(label) = args.get(2).cloned() else {
             return Ok(());
@@ -273,7 +273,7 @@ impl C4Db {
     }
 
     fn update_el_style(&mut self, args: Vec<Value>) -> Result<()> {
-        let element_name = arg_to_string(args.get(0))?;
+        let element_name = arg_to_string(args.first())?;
         let Some(target) = self
             .shape_index
             .get(&element_name)
@@ -300,7 +300,7 @@ impl C4Db {
     }
 
     fn update_rel_style(&mut self, args: Vec<Value>) -> Result<()> {
-        let from = arg_to_string(args.get(0))?;
+        let from = arg_to_string(args.first())?;
         let to = arg_to_string(args.get(1))?;
 
         let Some(target) = self
@@ -323,7 +323,7 @@ impl C4Db {
     }
 
     fn update_layout_config(&mut self, args: Vec<Value>) -> Result<()> {
-        if let Some(v) = args.get(0) {
+        if let Some(v) = args.first() {
             if let Some(parsed) = value_as_i64(v) {
                 if parsed >= 1 {
                     self.c4_shape_in_row = parsed;
@@ -639,12 +639,10 @@ fn is_direction_stmt(t: &str) -> bool {
 fn next_non_empty_line<'a>(
     lines: &mut std::iter::Peekable<std::str::Lines<'a>>,
 ) -> Option<&'a str> {
-    while let Some(l) = lines.next() {
-        if !l.trim().is_empty() {
-            return Some(l);
-        }
-    }
-    None
+    lines
+        .by_ref()
+        .find(|&l| !l.trim().is_empty())
+        .map(|v| v as _)
 }
 
 fn try_parse_title(t: &str) -> Option<String> {
@@ -687,17 +685,17 @@ fn try_parse_acc_descr<'a>(
 
     let rest = &t["accDescr".len()..];
     let rest = rest.trim_start();
-    if rest.starts_with(':') {
-        let val = rest[1..].trim();
+    if let Some(after) = rest.strip_prefix(':') {
+        let val = after.trim();
         return Ok(Some(val.to_string()));
     }
 
-    if rest.starts_with('{') {
+    if let Some(rest) = rest.strip_prefix('{') {
         let mut buf = String::new();
 
         // Mermaid's lexer consumes whitespace after '{' (`accDescr\s*"{"\s*`),
         // and the parser applies a single `.trim()` to the whole token.
-        let mut after = rest[1..].to_string();
+        let mut after = rest.to_string();
         if let Some(end) = after.find('}') {
             after.truncate(end);
             return Ok(Some(after.trim().to_string()));
@@ -707,7 +705,7 @@ fn try_parse_acc_descr<'a>(
             buf.push_str(after);
         }
 
-        while let Some(raw) = lines.next() {
+        for raw in lines.by_ref() {
             if let Some(pos) = raw.find('}') {
                 let part = &raw[..pos];
                 if !buf.is_empty() {
@@ -785,8 +783,8 @@ fn parse_macro_stmt(t: &str) -> Result<Option<(String, Vec<Value>, bool)>> {
     let args_raw = &after[..end_paren];
     let rest = after[end_paren + 1..].trim();
     let mut has_lbrace = false;
-    if rest.starts_with('{') {
-        if rest[1..].trim().is_empty() {
+    if let Some(after) = rest.strip_prefix('{') {
+        if after.trim().is_empty() {
             has_lbrace = true;
         } else {
             return Err(Error::DiagramParse {

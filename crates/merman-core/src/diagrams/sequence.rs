@@ -2,7 +2,11 @@ use crate::{Error, ParseMetadata, Result};
 use serde_json::{Value, json};
 use std::collections::{HashMap, VecDeque};
 
-lalrpop_util::lalrpop_mod!(sequence_grammar, "/diagrams/sequence_grammar.rs");
+lalrpop_util::lalrpop_mod!(
+    #[allow(clippy::type_complexity, clippy::result_large_err)]
+    sequence_grammar,
+    "/diagrams/sequence_grammar.rs"
+);
 
 // Mermaid 11.12.x sequence diagram constants (SequenceDB.LINETYPE / PLACEMENT).
 const LINETYPE_NOTE: i32 = 2;
@@ -959,7 +963,7 @@ impl<'input> Lexer<'input> {
         for i in 0..kwb.len() {
             let a = rest[i];
             let b = kwb[i];
-            if a.to_ascii_lowercase() != b.to_ascii_lowercase() {
+            if !a.eq_ignore_ascii_case(&b) {
                 return false;
             }
         }
@@ -1056,9 +1060,7 @@ impl<'input> Lexer<'input> {
         if self.starts_with_ci_word("accTitle") {
             let after = self.pos + "accTitle".len();
             let rest = &self.input[after..];
-            let Some(colon_pos) = rest.find(':') else {
-                return None;
-            };
+            let colon_pos = rest.find(':')?;
             if rest[..colon_pos].chars().any(|c| c == '\n' || c == ';') {
                 return None;
             }
@@ -1071,9 +1073,7 @@ impl<'input> Lexer<'input> {
         if self.starts_with_ci_word("accDescr") {
             let after = self.pos + "accDescr".len();
             let rest = &self.input[after..];
-            let Some(non_ws) = rest.find(|c: char| !c.is_whitespace()) else {
-                return None;
-            };
+            let non_ws = rest.find(|c: char| !c.is_whitespace())?;
             match rest[non_ws..].chars().next() {
                 Some(':') => {
                     self.pos = after + non_ws + 1;

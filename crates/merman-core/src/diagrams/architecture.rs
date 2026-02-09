@@ -525,9 +525,7 @@ fn take_id_prefix(input: &str) -> Option<(&str, &str)> {
 
 fn take_bracketed(input: &str, open: char, close: char) -> Option<(String, &str)> {
     let mut it = input.char_indices();
-    let Some((_, first)) = it.next() else {
-        return None;
-    };
+    let (_, first) = it.next()?;
     if first != open {
         return None;
     }
@@ -593,9 +591,7 @@ fn parse_group_stmt(db: &mut ArchitectureDb, line: &str) -> Result<bool> {
 
 fn take_quoted(input: &str) -> Option<(String, &str)> {
     let mut it = input.char_indices();
-    let Some((_, q)) = it.next() else {
-        return None;
-    };
+    let (_, q) = it.next()?;
     if q != '"' && q != '\'' {
         return None;
     }
@@ -731,9 +727,16 @@ fn is_arch_dir(ch: char) -> bool {
     matches!(ch, 'L' | 'R' | 'T' | 'B')
 }
 
-fn parse_edge_middle_shorthand(
-    input: &str,
-) -> Option<(char, Option<bool>, Option<String>, Option<bool>, char, &str)> {
+type EdgeMiddleShorthand<'a> = (
+    char,
+    Option<bool>,
+    Option<String>,
+    Option<bool>,
+    char,
+    &'a str,
+);
+
+fn parse_edge_middle_shorthand<'a>(input: &'a str) -> Option<EdgeMiddleShorthand<'a>> {
     // Parses Mermaid Architecture "shorthand" edge forms used in some upstream fixtures:
     //
     // - `db L--R server`
@@ -979,18 +982,14 @@ pub fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let mut lines = code.lines();
     let mut found_header = false;
     let mut header_tail: Option<String> = None;
-    while let Some(line) = lines.next() {
+    for line in lines.by_ref() {
         let t = strip_inline_comment(line);
         let trimmed = t.trim();
         if trimmed.is_empty() {
             continue;
         }
-        if trimmed == "architecture-beta" {
-            found_header = true;
-            break;
-        }
-        if trimmed.starts_with("architecture-beta") {
-            let rest = trimmed["architecture-beta".len()..].trim_start();
+        if let Some(rest) = trimmed.strip_prefix("architecture-beta") {
+            let rest = rest.trim_start();
             if !rest.is_empty() {
                 header_tail = Some(rest.to_string());
             }

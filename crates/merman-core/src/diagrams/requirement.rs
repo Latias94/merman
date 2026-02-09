@@ -462,10 +462,10 @@ fn try_parse_acc_title(t: &str, out: &mut Option<String>) -> bool {
     }
     let rest = &t["acctitle".len()..];
     let rest = rest.trim_start();
-    if !rest.starts_with(':') {
+    let Some(val) = rest.strip_prefix(':') else {
         return false;
-    }
-    let val = rest[1..].trim();
+    };
+    let val = val.trim();
     *out = Some(val.to_string());
     true
 }
@@ -478,14 +478,14 @@ fn try_parse_acc_descr<'a>(t: &str, lines: &mut Peekable<Lines<'a>>) -> Result<O
 
     let rest = &t["accdescr".len()..];
     let rest = rest.trim_start();
-    if rest.starts_with(':') {
-        let val = rest[1..].trim();
+    if let Some(after) = rest.strip_prefix(':') {
+        let val = after.trim();
         return Ok(Some(val.to_string()));
     }
 
-    if rest.starts_with('{') {
+    if let Some(rest) = rest.strip_prefix('{') {
         let mut buf = String::new();
-        let mut after = rest[1..].to_string();
+        let mut after = rest.to_string();
         if let Some(end) = after.find('}') {
             after.truncate(end);
             return Ok(Some(after.trim().to_string()));
@@ -494,7 +494,7 @@ fn try_parse_acc_descr<'a>(t: &str, lines: &mut Peekable<Lines<'a>>) -> Result<O
             buf.push_str(after.trim_end());
         }
 
-        while let Some(raw) = lines.next() {
+        for raw in lines.by_ref() {
             let t = raw.trim_end();
             if let Some(pos) = t.find('}') {
                 let part = t[..pos].trim_end();
@@ -541,7 +541,7 @@ fn parse_direction(t: &str) -> Option<&'static str> {
     None
 }
 
-fn parse_requirement_def_open(t: &str) -> Result<Option<(String, String, Option<Vec<String>>)>> {
+fn parse_requirement_def_open(t: &str) -> Result<Option<RequirementDefOpen>> {
     let t = t.trim();
     if !t.ends_with('{') {
         return Ok(None);
@@ -573,6 +573,8 @@ fn parse_requirement_def_open(t: &str) -> Result<Option<(String, String, Option<
     }
     Ok(Some((name, requirement_type, classes)))
 }
+
+type RequirementDefOpen = (String, String, Option<Vec<String>>);
 
 fn parse_element_def_open(t: &str) -> Result<Option<(String, Option<Vec<String>>)>> {
     let t = t.trim();
@@ -661,7 +663,7 @@ fn parse_quoted_prefix(input: &str) -> Option<(String, &str)> {
 
 fn parse_requirement_body(lines: &mut Peekable<Lines<'_>>) -> Result<RequirementBuilder> {
     let mut b = RequirementBuilder::new();
-    while let Some(raw) = lines.next() {
+    for raw in lines.by_ref() {
         let line = strip_inline_comment(raw);
         let t = line.trim();
         if t.is_empty() {
@@ -701,7 +703,7 @@ fn parse_requirement_body(lines: &mut Peekable<Lines<'_>>) -> Result<Requirement
 
 fn parse_element_body(lines: &mut Peekable<Lines<'_>>) -> Result<ElementBuilder> {
     let mut b = ElementBuilder::new();
-    while let Some(raw) = lines.next() {
+    for raw in lines.by_ref() {
         let line = strip_inline_comment(raw);
         let t = line.trim();
         if t.is_empty() {

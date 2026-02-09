@@ -1,4 +1,7 @@
 #![forbid(unsafe_code)]
+// LALRPOP generates code that can contain an "empty line after outer attribute" in its output.
+// We keep the generated sources as-is and suppress this lint at the crate level.
+#![allow(clippy::empty_line_after_outer_attr)]
 
 //! Mermaid parser + semantic model (headless).
 //!
@@ -1178,12 +1181,11 @@ AS2>"`@for@ AS@`"]
             .unwrap();
         let nodes = res.model["nodes"].as_array().unwrap();
         assert_eq!(nodes.len(), 11);
-        for i in 0..nodes.len() {
+        for (i, node) in nodes.iter().enumerate() {
             assert!(
-                nodes[i]["label"].as_str().unwrap().contains("@for@")
-                    || nodes[i]["label"] == json!("@A@"),
+                node["label"].as_str().unwrap().contains("@for@") || node["label"] == json!("@A@"),
                 "node {i}: {:?}",
-                nodes[i]
+                node
             );
         }
         assert_eq!(nodes[0]["label"], json!("@A@"));

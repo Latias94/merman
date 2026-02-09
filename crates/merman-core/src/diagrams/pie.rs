@@ -92,7 +92,7 @@ pub fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
 
         if starts_acc_descr_block(t) {
             let mut parts: Vec<String> = Vec::new();
-            while let Some(next_line) = lines.next() {
+            for next_line in lines.by_ref() {
                 let s = strip_inline_comment(next_line);
                 if s.contains('}') {
                     let before = s.split('}').next().unwrap_or("").trim();

@@ -380,17 +380,16 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
         Value::String(fmt_hsl(adjust_hsl(tertiary_hsl, 0.0, 0.0, -40.0))),
     );
 
-    for i in 0..12 {
-        let c_hsl = c_scales[i];
+    for (i, c_hsl) in c_scales.iter().enumerate() {
         set_if_missing(
             &mut tv,
             &format!("cScalePeer{i}"),
-            Value::String(fmt_hsl(adjust_hsl(c_hsl, 0.0, 0.0, -25.0))),
+            Value::String(fmt_hsl(adjust_hsl(*c_hsl, 0.0, 0.0, -25.0))),
         );
         set_if_missing(
             &mut tv,
             &format!("cScaleInv{i}"),
-            Value::String(fmt_hsl(adjust_hsl(c_hsl, 180.0, 0.0, 0.0))),
+            Value::String(fmt_hsl(adjust_hsl(*c_hsl, 180.0, 0.0, 0.0))),
         );
         set_if_missing(
             &mut tv,

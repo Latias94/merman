@@ -49,8 +49,8 @@ pub fn parse_info(code: &str, meta: &ParseMetadata) -> Result<Value> {
     // `showInfo` token after the initial `info` keyword, separated by newlines.
     if unsupported.is_none() && !rest_lines.is_empty() {
         for line in &rest_lines {
-            let mut it = line.split_whitespace();
-            while let Some(tok) = it.next() {
+            let it = line.split_whitespace();
+            for tok in it {
                 if tok == "showInfo" {
                     show_info = true;
                     continue;

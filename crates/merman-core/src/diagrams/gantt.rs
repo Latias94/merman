@@ -865,7 +865,7 @@ fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<DateTimeFixed> 
                 }
                 DayjsToken::Month2 => {
                     let (m, rest) = parse_int_exact(input, 2)?;
-                    if m < 1 || m > 12 {
+                    if !(1..=12).contains(&m) {
                         return None;
                     }
                     let mut next = parts.clone();
@@ -874,7 +874,7 @@ fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<DateTimeFixed> 
                 }
                 DayjsToken::Month1 => {
                     for (m, rest) in parse_int_var(input, 1, 2) {
-                        if m < 1 || m > 12 {
+                        if !(1..=12).contains(&m) {
                             continue;
                         }
                         let mut next = parts.clone();
@@ -893,7 +893,7 @@ fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<DateTimeFixed> 
                 }
                 DayjsToken::Day2 => {
                     let (d, rest) = parse_int_exact(input, 2)?;
-                    if d < 1 || d > 31 {
+                    if !(1..=31).contains(&d) {
                         return None;
                     }
                     let mut next = parts.clone();
@@ -902,7 +902,7 @@ fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<DateTimeFixed> 
                 }
                 DayjsToken::Day1 => {
                     for (d, rest) in parse_int_var(input, 1, 2) {
-                        if d < 1 || d > 31 {
+                        if !(1..=31).contains(&d) {
                             continue;
                         }
                         let mut next = parts.clone();
@@ -915,7 +915,7 @@ fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<DateTimeFixed> 
                 }
                 DayjsToken::DayOrdinal => {
                     let (d, rest) = parse_day_ordinal(input)?;
-                    if d < 1 || d > 31 {
+                    if !(1..=31).contains(&d) {
                         return None;
                     }
                     let mut next = parts.clone();
@@ -946,7 +946,7 @@ fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<DateTimeFixed> 
                 }
                 DayjsToken::Hour12_2 => {
                     let (h, rest) = parse_int_exact(input, 2)?;
-                    if h < 1 || h > 12 {
+                    if !(1..=12).contains(&h) {
                         return None;
                     }
                     let mut next = parts.clone();
@@ -955,7 +955,7 @@ fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<DateTimeFixed> 
                 }
                 DayjsToken::Hour12_1 => {
                     for (h, rest) in parse_int_var(input, 1, 2) {
-                        if h < 1 || h > 12 {
+                        if !(1..=12).contains(&h) {
                             continue;
                         }
                         let mut next = parts.clone();
@@ -1095,7 +1095,7 @@ fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<DateTimeFixed> 
     let mut hour = parts.hour24.unwrap_or(0);
     if parts.hour24.is_none() {
         if let Some(h12) = parts.hour12 {
-            let mut h = (h12 % 12) as u32;
+            let mut h = h12 % 12;
             if parts.ampm_is_pm.unwrap_or(false) {
                 h += 12;
             }
@@ -1123,7 +1123,7 @@ fn parse_js_date_fallback(s: &str) -> Result<DateTimeFixed> {
 
     if let Some(dt) = parse_js_like_ymd_datetime(s) {
         let year = dt.year();
-        if year < -10000 || year > 10000 {
+        if !(-10000..=10000).contains(&year) {
             return Err(Error::DiagramParse {
                 diagram_type: "gantt".to_string(),
                 message: format!("Invalid date:{s}"),
@@ -1138,7 +1138,7 @@ fn parse_js_date_fallback(s: &str) -> Result<DateTimeFixed> {
             message: format!("Invalid date:{s}"),
         })?;
         let year = if s.len() <= 2 { 2000 + n } else { n };
-        if year < -10000 || year > 10000 {
+        if !(-10000..=10000).contains(&year) {
             return Err(Error::DiagramParse {
                 diagram_type: "gantt".to_string(),
                 message: format!("Invalid date:{s}"),
@@ -1153,7 +1153,7 @@ fn parse_js_date_fallback(s: &str) -> Result<DateTimeFixed> {
 
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
         let year = dt.year();
-        if year < -10000 || year > 10000 {
+        if !(-10000..=10000).contains(&year) {
             return Err(Error::DiagramParse {
                 diagram_type: "gantt".to_string(),
                 message: format!("Invalid date:{s}"),
@@ -1176,7 +1176,7 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
         s.parse().ok()
     }
 
-    fn split_once<'a>(s: &'a str, ch: char) -> Option<(&'a str, &'a str)> {
+    fn split_once(s: &str, ch: char) -> Option<(&str, &str)> {
         let idx = s.find(ch)?;
         Some((&s[..idx], &s[idx + 1..]))
     }
@@ -1380,7 +1380,7 @@ fn get_start_date(db: &GanttDb, date_format: &str, raw: &str) -> Result<Option<D
 
     let dt = parse_js_date_fallback(s)?;
     let year = dt.year();
-    if year < -10000 || year > 10000 {
+    if !(-10000..=10000).contains(&year) {
         return Err(Error::DiagramParse {
             diagram_type: "gantt".to_string(),
             message: format!("Invalid date:{s}"),
@@ -1747,6 +1747,7 @@ fn split_statement_suffix(s: &str) -> &str {
     &s[..end]
 }
 
+#[allow(dead_code)]
 fn split_statement_suffix_semi_only(s: &str) -> &str {
     let mut end = s.len();
     for (i, c) in s.char_indices() {
@@ -1768,9 +1769,7 @@ fn parse_keyword_arg<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
         return None;
     }
     let after = &t[keyword.len()..];
-    let Some(ws) = after.chars().next() else {
-        return None;
-    };
+    let ws = after.chars().next()?;
     if !ws.is_whitespace() {
         return None;
     }
@@ -1784,24 +1783,21 @@ fn parse_keyword_arg_full_line<'a>(line: &'a str, keyword: &str) -> Option<&'a s
         return None;
     }
     let after = &t[keyword.len()..];
-    let Some(ws) = after.chars().next() else {
-        return None;
-    };
+    let ws = after.chars().next()?;
     if !ws.is_whitespace() {
         return None;
     }
     Some(&after[ws.len_utf8()..])
 }
 
+#[allow(dead_code)]
 fn parse_keyword_arg_semi_only<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
     let t = line.trim_start();
     if !starts_with_ci(t, keyword) {
         return None;
     }
     let after = &t[keyword.len()..];
-    let Some(ws) = after.chars().next() else {
-        return None;
-    };
+    let ws = after.chars().next()?;
     if !ws.is_whitespace() {
         return None;
     }
@@ -1847,9 +1843,7 @@ fn parse_acc_descr_block(lines: &mut std::str::Lines<'_>, first_line: &str) -> O
     Some(buf.trim().to_string())
 }
 
-fn parse_click_statement(
-    line: &str,
-) -> Option<(String, Option<String>, Option<(String, Option<String>)>)> {
+fn parse_click_statement(line: &str) -> Option<ClickStatementParts> {
     let t = line.trim_start();
     if !starts_with_ci(t, "click") {
         return None;
@@ -1903,6 +1897,8 @@ fn parse_click_statement(
 
     Some((ids, href, call))
 }
+
+type ClickStatementParts = (String, Option<String>, Option<(String, Option<String>)>);
 
 fn parse_callback_args(raw: Option<&str>) -> Option<Vec<String>> {
     let raw = raw?;

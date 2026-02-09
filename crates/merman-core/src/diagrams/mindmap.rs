@@ -348,7 +348,7 @@ pub fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let mut lines = code.lines();
     let mut found_header = false;
     let mut header_tail: Option<String> = None;
-    while let Some(line) = lines.next() {
+    for line in lines.by_ref() {
         let t = strip_inline_comment(line);
         let trimmed = t.trim();
         if trimmed.is_empty() {

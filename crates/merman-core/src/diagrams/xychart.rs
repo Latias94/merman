@@ -379,8 +379,7 @@ fn strip_keyword<'a>(stmt: &'a str, kw: &str) -> Option<&'a str> {
 
 fn parse_text(input: &str) -> Result<String> {
     let t = input.trim_start();
-    if t.starts_with("\"`") {
-        let body = &t[2..];
+    if let Some(body) = t.strip_prefix("\"`") {
         let Some(end) = body.find("`\"") else {
             return Err(Error::DiagramParse {
                 diagram_type: "xychart".to_string(),
@@ -398,8 +397,7 @@ fn parse_text(input: &str) -> Result<String> {
         return Ok(s.to_string());
     }
 
-    if t.starts_with('"') {
-        let body = &t[1..];
+    if let Some(body) = t.strip_prefix('"') {
         let Some(end) = body.find('"') else {
             return Err(Error::DiagramParse {
                 diagram_type: "xychart".to_string(),
@@ -628,8 +626,7 @@ fn take_number_token(input: &str) -> Option<(String, &str)> {
 
 fn parse_text_prefix(input: &str) -> Result<(String, &str)> {
     let t = input.trim_start();
-    if t.starts_with("\"`") {
-        let body = &t[2..];
+    if let Some(body) = t.strip_prefix("\"`") {
         let Some(end) = body.find("`\"") else {
             return Err(Error::DiagramParse {
                 diagram_type: "xychart".to_string(),
@@ -640,8 +637,7 @@ fn parse_text_prefix(input: &str) -> Result<(String, &str)> {
         let rest = &body[end + 2..];
         return Ok((s.to_string(), rest));
     }
-    if t.starts_with('"') {
-        let body = &t[1..];
+    if let Some(body) = t.strip_prefix('"') {
         let Some(end) = body.find('"') else {
             return Err(Error::DiagramParse {
                 diagram_type: "xychart".to_string(),

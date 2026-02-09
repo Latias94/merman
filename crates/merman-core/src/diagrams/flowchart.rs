@@ -5,7 +5,11 @@ use indexmap::IndexMap;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 
-lalrpop_util::lalrpop_mod!(flowchart_grammar, "/diagrams/flowchart_grammar.rs");
+lalrpop_util::lalrpop_mod!(
+    #[allow(clippy::type_complexity, clippy::result_large_err)]
+    flowchart_grammar,
+    "/diagrams/flowchart_grammar.rs"
+);
 
 #[derive(Debug, Clone)]
 pub(crate) struct Node {
@@ -155,6 +159,7 @@ pub(crate) struct SubgraphBlock {
     pub statements: Vec<Stmt>,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub(crate) enum Stmt {
     Chain { nodes: Vec<Node>, edges: Vec<Edge> },
@@ -707,12 +712,11 @@ impl<'input> Lexer<'input> {
         self.pos += 1;
 
         while self.pos < bytes.len() {
-            if self.pos + 1 < bytes.len() {
-                if bytes[self.pos] == b'-' && bytes[self.pos + 1] == b'-'
-                    || bytes[self.pos] == b'=' && bytes[self.pos + 1] == b'='
-                {
-                    break;
-                }
+            if self.pos + 1 < bytes.len()
+                && (bytes[self.pos] == b'-' && bytes[self.pos + 1] == b'-'
+                    || bytes[self.pos] == b'=' && bytes[self.pos + 1] == b'=')
+            {
+                break;
             }
             let b = bytes[self.pos];
             if b.is_ascii_alphanumeric() || b == b'_' {
@@ -1008,9 +1012,7 @@ impl<'input> Lexer<'input> {
             None
         };
 
-        let Some((_sstart, family, start_link, after_start)) = parse_start_link(self.pos) else {
-            return None;
-        };
+        let (_sstart, family, start_link, after_start) = parse_start_link(self.pos)?;
         let edge_text_start = after_start;
         let mut scan = edge_text_start;
         while scan < self.input.len() {
@@ -1535,23 +1537,23 @@ fn extract_flowchart_accessibility_statements(
 
         if let Some(rest) = trimmed.strip_prefix("accTitle") {
             let rest = rest.trim_start();
-            if rest.starts_with(':') {
-                acc_title = Some(rest[1..].trim().to_string());
+            if let Some(after) = rest.strip_prefix(':') {
+                acc_title = Some(after.trim().to_string());
                 continue;
             }
         }
 
         if let Some(rest) = trimmed.strip_prefix("accDescr") {
             let rest = rest.trim_start();
-            if rest.starts_with(':') {
-                acc_descr = Some(rest[1..].trim().to_string());
+            if let Some(after) = rest.strip_prefix(':') {
+                acc_descr = Some(after.trim().to_string());
                 continue;
             }
 
-            if rest.starts_with('{') {
+            if let Some(after_lbrace) = rest.strip_prefix('{') {
                 let mut buf = String::new();
 
-                let mut after = rest[1..].to_string();
+                let mut after = after_lbrace.to_string();
                 if let Some(end) = after.find('}') {
                     after.truncate(end);
                     acc_descr = Some(after.trim().to_string());
@@ -1562,7 +1564,7 @@ fn extract_flowchart_accessibility_statements(
                     buf.push_str(after);
                 }
 
-                while let Some(raw) = lines.next() {
+                for raw in lines.by_ref() {
                     if let Some(pos) = raw.find('}') {
                         let part = &raw[..pos];
                         if !buf.is_empty() {
@@ -2535,6 +2537,7 @@ fn strip_wrapping_backticks(s: &str) -> (String, bool) {
     (trimmed.to_string(), false)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_semantic_statements(
     statements: &[Stmt],
     nodes: &mut Vec<Node>,
@@ -2732,9 +2735,9 @@ fn apply_semantic_statements(
 }
 
 fn add_class_to_target(
-    nodes: &mut Vec<Node>,
+    nodes: &mut [Node],
     node_index: &HashMap<String, usize>,
-    subgraphs: &mut Vec<FlowSubGraph>,
+    subgraphs: &mut [FlowSubGraph],
     subgraph_index: &HashMap<String, usize>,
     target: &str,
     class_name: &str,
@@ -2942,7 +2945,7 @@ fn parse_click_stmt(rest: &str) -> std::result::Result<ClickStmt, LexError> {
         && p.rest()
             .as_bytes()
             .get(4)
-            .map_or(true, |b| b.is_ascii_whitespace())
+            .is_none_or(|b| b.is_ascii_whitespace())
     {
         let _ = p.take_word();
         let Some(link) = p.take_quoted() else {
@@ -2968,7 +2971,7 @@ fn parse_click_stmt(rest: &str) -> std::result::Result<ClickStmt, LexError> {
         && p.rest()
             .as_bytes()
             .get(4)
-            .map_or(true, |b| b.is_ascii_whitespace())
+            .is_none_or(|b| b.is_ascii_whitespace())
     {
         let _ = p.take_word();
         p.skip_ws();
@@ -3076,7 +3079,7 @@ fn parse_link_style_stmt(rest: &str) -> std::result::Result<LinkStyleStmt, LexEr
         && p.rest()
             .as_bytes()
             .get("interpolate".len())
-            .map_or(true, |b| b.is_ascii_whitespace())
+            .is_none_or(|b| b.is_ascii_whitespace())
     {
         let _ = p.take_word();
         interpolate = p.take_word();

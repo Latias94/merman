@@ -519,8 +519,8 @@ fn consume_shape_data(lines: &mut std::str::Lines<'_>, first: &str) -> Result<St
     let mut quoted = String::new();
 
     loop {
-        let mut it = rest.char_indices().peekable();
-        while let Some((_idx, ch)) = it.next() {
+        let it = rest.char_indices().peekable();
+        for (_idx, ch) in it {
             if in_quote {
                 if ch == '"' {
                     out.push_str(&replace_newline_whitespace_with_br(&quoted));
@@ -627,7 +627,7 @@ pub fn parse_kanban(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let mut lines = code.lines();
     let mut found_header = false;
     let mut header_tail: Option<String> = None;
-    while let Some(line) = lines.next() {
+    for line in lines.by_ref() {
         let t = strip_inline_comment(line);
         let trimmed = t.trim();
         if trimmed.is_empty() {

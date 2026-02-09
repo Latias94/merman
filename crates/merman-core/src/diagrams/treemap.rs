@@ -520,7 +520,7 @@ fn parse_item_row(indent: usize, line: &str) -> std::result::Result<ItemRow, Str
     // Section: "Name" (:::class)?
     if p.try_consume_str(":::") {
         p.skip_ws();
-        let (cls, _) = parse_id2(&p.rest()).ok_or_else(|| "expected class selector".to_string())?;
+        let (cls, _) = parse_id2(p.rest()).ok_or_else(|| "expected class selector".to_string())?;
         p.pos += cls.len();
         p.skip_ws();
         if !p.eof() {
@@ -547,7 +547,7 @@ fn parse_item_row(indent: usize, line: &str) -> std::result::Result<ItemRow, Str
         if p.try_consume_str(":::") {
             p.skip_ws();
             let (cls, _) =
-                parse_id2(&p.rest()).ok_or_else(|| "expected class selector".to_string())?;
+                parse_id2(p.rest()).ok_or_else(|| "expected class selector".to_string())?;
             p.pos += cls.len();
             class_selector = Some(cls);
             p.skip_ws();
