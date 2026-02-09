@@ -467,7 +467,7 @@ where
             return self
                 .edges
                 .iter()
-                .filter(|e| e.key.v == v && w.map_or(true, |w| e.key.w == w))
+                .filter(|e| e.key.v == v && w.is_none_or(|w| e.key.w == w))
                 .map(|e| e.key.clone())
                 .collect();
         }
@@ -476,9 +476,9 @@ where
             .iter()
             .filter(|e| {
                 if e.key.v == v {
-                    w.map_or(true, |w| e.key.w == w)
+                    w.is_none_or(|w| e.key.w == w)
                 } else if e.key.w == v {
-                    w.map_or(true, |w| e.key.v == w)
+                    w.is_none_or(|w| e.key.v == w)
                 } else {
                     false
                 }
@@ -492,7 +492,7 @@ where
             return self
                 .edges
                 .iter()
-                .filter(|e| e.key.w == v && w.map_or(true, |w| e.key.v == w))
+                .filter(|e| e.key.w == v && w.is_none_or(|w| e.key.v == w))
                 .map(|e| e.key.clone())
                 .collect();
         }
@@ -573,10 +573,8 @@ where
         let mut out: Vec<EdgeKey> = Vec::new();
         let mut seen: std::collections::HashSet<EdgeKey> = std::collections::HashSet::new();
         for e in &self.edges {
-            if e.key.v == v || e.key.w == v {
-                if seen.insert(e.key.clone()) {
-                    out.push(e.key.clone());
-                }
+            if (e.key.v == v || e.key.w == v) && seen.insert(e.key.clone()) {
+                out.push(e.key.clone());
             }
         }
         out

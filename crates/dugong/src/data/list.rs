@@ -61,7 +61,7 @@ impl<T> List<T> {
         {
             let mut n = node.borrow_mut();
             n.list = Some(Rc::downgrade(&self.inner));
-            n.prev = self.inner.borrow().tail.as_ref().map(|t| Rc::downgrade(t));
+            n.prev = self.inner.borrow().tail.as_ref().map(Rc::downgrade);
             n.next = None;
         }
 
