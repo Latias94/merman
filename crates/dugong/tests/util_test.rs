@@ -313,17 +313,15 @@ fn util_intersect_rect_touches_the_border_of_the_rectangle() {
 }
 
 #[test]
-fn util_intersect_rect_throws_if_the_point_is_at_the_center_of_the_rectangle() {
+fn util_intersect_rect_is_defined_if_the_point_is_at_the_center_of_the_rectangle() {
     let rect = util::Rect {
         x: 0.0,
         y: 0.0,
         width: 1.0,
         height: 1.0,
     };
-    let res = std::panic::catch_unwind(|| {
-        let _ = util::intersect_rect(rect, Point { x: 0.0, y: 0.0 });
-    });
-    assert!(res.is_err());
+    let p = util::intersect_rect(rect, Point { x: 0.0, y: 0.0 });
+    assert_eq!(p, Point { x: 0.5, y: 0.0 });
 }
 
 #[test]
