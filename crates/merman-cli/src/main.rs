@@ -598,79 +598,372 @@ fn parse_attr_f64(tag: &str, key: &str) -> Option<f64> {
 }
 
 fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
-    // `resvg` does not fully render `<foreignObject>` HTML content. For raster output we rewrite
-    // common Mermaid label patterns into SVG `<text>/<tspan>` elements so PNG/JPG/PDF previews are
-    // readable without a browser engine.
-    let mut out = String::with_capacity(svg.len());
-    let mut i = 0usize;
-    let close_tag = "</foreignObject>";
-
-    while let Some(rel) = svg[i..].find("<foreignObject") {
-        let start = i + rel;
-        out.push_str(&svg[i..start]);
-
-        let Some(start_tag_end_rel) = svg[start..].find('>') else {
-            out.push_str(&svg[start..]);
-            return out;
-        };
-        let start_tag_end = start + start_tag_end_rel;
-        let start_tag = &svg[start..=start_tag_end];
-
-        let inner_start = start_tag_end + 1;
-        let Some(close_rel) = svg[inner_start..].find(close_tag) else {
-            out.push_str(&svg[start..]);
-            return out;
-        };
-        let inner_end = inner_start + close_rel;
-        let inner = &svg[inner_start..inner_end];
-        let i_next = inner_end + close_tag.len();
-
-        let width = parse_attr_f64(start_tag, "width").unwrap_or(0.0);
-        let height = parse_attr_f64(start_tag, "height").unwrap_or(0.0);
-        if width <= 0.0 || height <= 0.0 {
-            i = i_next;
-            continue;
-        }
-
-        let lines = htmlish_to_text_lines(inner);
-        if lines.is_empty() {
-            i = i_next;
-            continue;
-        }
-
-        let x = parse_attr_f64(start_tag, "x").unwrap_or(0.0);
-        let y = parse_attr_f64(start_tag, "y").unwrap_or(0.0);
-
-        let left_align = inner.to_ascii_lowercase().contains("text-align:left");
-        let (anchor, text_x) = if left_align {
-            ("start", x)
-        } else {
-            ("middle", x + width / 2.0)
-        };
-        let text_y = y + height / 2.0;
-
-        // Most Mermaid baselines assume 16px, and `resvg` uses system fonts.
-        let font_size = 16.0_f64;
-        let n = lines.len() as f64;
-        for (idx, line) in lines.iter().enumerate() {
-            let dy = (idx as f64) * font_size - (font_size * (n - 1.0)) / 2.0;
-            let text = escape_xml_text(line);
-            out.push_str("<text");
-            out.push_str(&format!(
-                r##" x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="#333" style="text-anchor: {}; font-size: {}px; font-family: Arial;">"##,
-                text_x, text_y, anchor, font_size
-            ));
-            out.push_str(&format!(
-                r#"<tspan x="{}" dy="{}">{}</tspan></text>"#,
-                text_x, dy, text
-            ));
-        }
-
-        i = i_next;
+    // `resvg` does not fully render `<foreignObject>` HTML content. For raster output we add a
+    // best-effort `<text>/<tspan>` overlay extracted from Mermaid label foreignObjects so
+    // PNG/JPG/PDF previews contain something readable.
+    //
+    // Important:
+    // - This does not aim for upstream DOM parity (SVG output remains unchanged).
+    // - Mermaid typically positions labels via parent `<g transform="translate(x,y)">` wrappers,
+    //   so we track a simple translate stack to place overlay text correctly even when the
+    //   `<foreignObject>` itself lacks `x/y` attributes (e.g. kanban columns and items).
+    #[derive(Clone, Copy, Debug, Default)]
+    struct Translate {
+        x: f64,
+        y: f64,
     }
 
-    out.push_str(&svg[i..]);
-    out
+    fn parse_attr_str<'a>(tag: &'a str, key: &str) -> Option<&'a str> {
+        let needle = format!(r#"{key}=""#);
+        let i = tag.find(&needle)?;
+        let rest = &tag[i + needle.len()..];
+        let end = rest.find('"')?;
+        Some(rest[..end].trim())
+    }
+
+    fn parse_translate(transform: &str) -> Translate {
+        let lower = transform.to_ascii_lowercase();
+        let Some(i) = lower.find("translate(") else {
+            return Translate::default();
+        };
+        let after = &transform[i + "translate(".len()..];
+        let Some(end) = after.find(')') else {
+            return Translate::default();
+        };
+        let args = &after[..end];
+
+        let mut nums = Vec::<f64>::with_capacity(2);
+        let mut cur = String::new();
+        for ch in args.chars() {
+            if ch.is_ascii_digit() || ch == '.' || ch == '-' || ch == '+' || ch == 'e' || ch == 'E'
+            {
+                cur.push(ch);
+            } else if !cur.is_empty() {
+                if let Ok(v) = cur.parse::<f64>() {
+                    nums.push(v);
+                }
+                cur.clear();
+            }
+        }
+        if !cur.is_empty() {
+            if let Ok(v) = cur.parse::<f64>() {
+                nums.push(v);
+            }
+        }
+
+        Translate {
+            x: *nums.get(0).unwrap_or(&0.0),
+            y: *nums.get(1).unwrap_or(&0.0),
+        }
+    }
+
+    fn is_self_closing(tag: &str) -> bool {
+        tag.trim_end().ends_with("/>")
+    }
+
+    fn style_value<'a>(style: &'a str, key: &str) -> Option<&'a str> {
+        // Very small CSS decl extractor for inline `style="..."` attributes.
+        // Accepts `key: value` pairs separated by `;`.
+        for part in style.split(';') {
+            let part = part.trim();
+            if part.is_empty() {
+                continue;
+            }
+            let Some((k, v)) = part.split_once(':') else {
+                continue;
+            };
+            if k.trim().eq_ignore_ascii_case(key) {
+                let v = v.trim();
+                if !v.is_empty() {
+                    return Some(v);
+                }
+            }
+        }
+        None
+    }
+
+    fn has_attr(tag: &str, key: &str) -> bool {
+        // Good enough for our generated SVG (attributes always `key="..."`).
+        let needle = format!(r#"{key}=""#);
+        tag.contains(&needle)
+    }
+
+    fn class_has_token(tag: &str, token: &str) -> bool {
+        let Some(cls) = parse_attr_str(tag, "class") else {
+            return false;
+        };
+        cls.split_whitespace().any(|t| t == token)
+    }
+
+    fn ensure_attr(tag: &str, key: &str, value: &str) -> String {
+        if has_attr(tag, key) {
+            return tag.to_owned();
+        }
+        let insert_at = if tag.trim_end().ends_with("/>") {
+            tag.rfind("/>").unwrap_or_else(|| tag.len().saturating_sub(2))
+        } else {
+            tag.rfind('>').unwrap_or(tag.len())
+        };
+        let (head, tail) = tag.split_at(insert_at);
+        format!(r#"{head} {key}="{value}"{tail}"#)
+    }
+
+    fn add_presentation_attrs_from_style(tag: &str) -> String {
+        // `usvg`/`resvg` can be picky about some inline style attribute combinations inside nested
+        // SVGs (e.g. architecture icon SVGs). Duplicate common style properties as presentation
+        // attributes for raster output. This is best-effort and only runs for raster formats.
+        let Some(style) = parse_attr_str(tag, "style") else {
+            return tag.to_owned();
+        };
+
+        let mut additions = String::new();
+        for (key, attr) in [
+            ("fill", "fill"),
+            ("stroke", "stroke"),
+            ("stroke-width", "stroke-width"),
+            ("fill-opacity", "fill-opacity"),
+            ("stroke-opacity", "stroke-opacity"),
+            ("opacity", "opacity"),
+        ] {
+            if has_attr(tag, attr) {
+                continue;
+            }
+            if let Some(v) = style_value(style, key) {
+                additions.push(' ');
+                additions.push_str(attr);
+                additions.push_str("=\"");
+                additions.push_str(v);
+                additions.push('"');
+            }
+        }
+
+        if additions.is_empty() {
+            return tag.to_owned();
+        }
+
+        // Insert before the end of the start tag. Be careful with self-closing tags: inserting
+        // after the `/` in `/>` would produce invalid XML.
+        let insert_at = if tag.trim_end().ends_with("/>") {
+            tag.rfind("/>")
+                .unwrap_or_else(|| tag.len().saturating_sub(2))
+        } else {
+            tag.rfind('>').unwrap_or(tag.len())
+        };
+        let (head, tail) = tag.split_at(insert_at);
+        format!("{head}{additions}{tail}")
+    }
+
+    fn sum_translate(stack: &[Translate]) -> Translate {
+        let mut acc = Translate::default();
+        for t in stack {
+            acc.x += t.x;
+            acc.y += t.y;
+        }
+        acc
+    }
+
+    let close_tag = "</foreignObject>";
+    let mut out = String::with_capacity(svg.len() + 2048);
+    let mut overlays = String::new();
+    let mut g_translate_stack: Vec<Translate> = Vec::new();
+
+    let mut i = 0usize;
+    while let Some(lt_rel) = svg[i..].find('<') {
+        let lt = i + lt_rel;
+        out.push_str(&svg[i..lt]);
+
+        let Some(gt_rel) = svg[lt..].find('>') else {
+            out.push_str(&svg[lt..]);
+            i = svg.len();
+            break;
+        };
+        let gt = lt + gt_rel + 1;
+        let tag = &svg[lt..gt];
+
+        // Comments / declarations: passthrough.
+        if tag.starts_with("<!--") || tag.starts_with("<!") || tag.starts_with("<?") {
+            out.push_str(tag);
+            i = gt;
+            continue;
+        }
+
+        if tag.starts_with("</g") {
+            if !g_translate_stack.is_empty() {
+                g_translate_stack.pop();
+            }
+            out.push_str(tag);
+            i = gt;
+            continue;
+        }
+
+        if tag.starts_with("<g") {
+            let t = parse_attr_str(tag, "transform")
+                .map(parse_translate)
+                .unwrap_or_default();
+            if !is_self_closing(tag) {
+                g_translate_stack.push(t);
+            }
+            out.push_str(tag);
+            i = gt;
+            continue;
+        }
+
+        if tag.starts_with("<foreignObject") {
+            let start = lt;
+            let start_end = gt;
+            let Some(close_rel) = svg[start_end..].find(close_tag) else {
+                out.push_str(&svg[start..]);
+                i = svg.len();
+                break;
+            };
+            let inner_start = start_end;
+            let inner_end = inner_start + close_rel;
+            let inner = &svg[inner_start..inner_end];
+            let i_next = inner_end + close_tag.len();
+
+            out.push_str(&svg[start..i_next]);
+
+            let width = parse_attr_f64(tag, "width").unwrap_or(0.0);
+            let height = parse_attr_f64(tag, "height").unwrap_or(0.0);
+            if width > 0.0 && height > 0.0 {
+                let x = parse_attr_f64(tag, "x").unwrap_or(0.0);
+                let y = parse_attr_f64(tag, "y").unwrap_or(0.0);
+                let base = sum_translate(&g_translate_stack);
+
+                let inner_lower = inner.to_ascii_lowercase();
+                let tag_lower = tag.to_ascii_lowercase();
+                let left_align = inner_lower.contains("text-align:left")
+                    || tag_lower.contains("text-align:left");
+
+                let (anchor, text_x) = if left_align {
+                    ("start", base.x + x)
+                } else {
+                    ("middle", base.x + x + width / 2.0)
+                };
+                let text_y = base.y + y + height / 2.0;
+
+                let lines = htmlish_to_text_lines(inner);
+                if !lines.is_empty() {
+                    overlays.push_str(r#"<g data-merman-raster-fallback="foreignObject">"#);
+
+                    // Most Mermaid baselines assume 16px, and `resvg` uses system fonts.
+                    let font_size = 16.0_f64;
+                    let n = lines.len() as f64;
+                    for (idx, line) in lines.iter().enumerate() {
+                        let dy = (idx as f64) * font_size - (font_size * (n - 1.0)) / 2.0;
+                        let text = escape_xml_text(line);
+                        // Use an outlined text style to keep labels readable even when the
+                        // underlying SVG lacks fill styling (some diagrams end up with black
+                        // default shapes in resvg).
+                        overlays.push_str("<text");
+                        overlays.push_str(&format!(
+                            r##" x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="#000" stroke="#fff" stroke-width="3" stroke-linejoin="round" style="text-anchor: {}; font-size: {}px; font-family: Arial;">"##,
+                            text_x, text_y, anchor, font_size
+                        ));
+                        overlays.push_str(&format!(
+                            r#"<tspan x="{}" dy="{}">{}</tspan></text>"#,
+                            text_x, dy, text
+                        ));
+                        overlays.push_str("<text");
+                        overlays.push_str(&format!(
+                            r##" x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="#000" style="text-anchor: {}; font-size: {}px; font-family: Arial;">"##,
+                            text_x, text_y, anchor, font_size
+                        ));
+                        overlays.push_str(&format!(
+                            r#"<tspan x="{}" dy="{}">{}</tspan></text>"#,
+                            text_x, dy, text
+                        ));
+                    }
+
+                    overlays.push_str("</g>");
+                }
+            }
+
+            i = i_next;
+            continue;
+        }
+
+        // Help resvg with inline styles / missing fill defaults on common shapes.
+        if tag.starts_with("<rect")
+            || tag.starts_with("<path")
+            || tag.starts_with("<circle")
+            || tag.starts_with("<ellipse")
+            || tag.starts_with("<polygon")
+            || tag.starts_with("<line")
+        {
+            let mut fixed = add_presentation_attrs_from_style(tag);
+
+            // Some Mermaid diagrams rely on CSS to suppress default fills. When the SVG `<style>` is
+            // empty (as it may be for some parity-focused outputs), `usvg`/`resvg` will fall back to
+            // SVG defaults and fill rectangles black. Patch a few well-known Mermaid classes to
+            // behave closer to upstream in raster previews.
+            if fixed.starts_with("<rect") {
+                if (class_has_token(&fixed, "node-bkg") || class_has_token(&fixed, "background"))
+                    && !has_attr(&fixed, "fill")
+                    && !parse_attr_str(&fixed, "style")
+                        .is_some_and(|s| style_value(s, "fill").is_some())
+                {
+                    fixed = ensure_attr(&fixed, "fill", "none");
+                }
+            }
+            if fixed.starts_with("<path")
+                && class_has_token(&fixed, "edge")
+                && !has_attr(&fixed, "fill")
+                && !parse_attr_str(&fixed, "style")
+                    .is_some_and(|s| style_value(s, "fill").is_some())
+            {
+                fixed = ensure_attr(&fixed, "fill", "none");
+            }
+
+            out.push_str(&fixed);
+        } else {
+            out.push_str(tag);
+        }
+        i = gt;
+    }
+
+    if i < svg.len() {
+        out.push_str(&svg[i..]);
+    }
+
+    if overlays.is_empty() {
+        return out;
+    }
+
+    // Insert overlays before the closing </svg> tag if possible.
+    if let Some(idx) = out.rfind("</svg>") {
+        let mut with_overlays = String::with_capacity(out.len() + overlays.len() + 64);
+        with_overlays.push_str(&out[..idx]);
+        with_overlays.push_str(&overlays);
+        with_overlays.push_str(&out[idx..]);
+        with_overlays
+    } else {
+        out.push_str(&overlays);
+        out
+    }
+}
+
+#[cfg(test)]
+mod foreign_object_fallback_tests {
+    use super::foreign_object_label_fallback_svg_text;
+
+    #[test]
+    fn foreign_object_overlay_accounts_for_parent_translate() {
+        let svg = r#"<svg viewBox="90 -310 425 99" xmlns="http://www.w3.org/2000/svg"><g transform="translate(183.3046875, -300)"><foreignObject width="33.390625" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Todo</p></div></foreignObject></g></svg>"#;
+        let out = foreign_object_label_fallback_svg_text(svg);
+        assert!(
+            out.contains(r#"x="200""#),
+            "expected x=200 center placement"
+        );
+        assert!(
+            out.contains(r#"y="-288""#),
+            "expected y=-288 center placement"
+        );
+        assert!(
+            out.contains(">Todo<"),
+            "expected text content to be present"
+        );
+    }
 }
 
 fn parse_tiny_skia_color(text: &str) -> Option<tiny_skia::Color> {

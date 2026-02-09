@@ -491,6 +491,8 @@ Recent progress (2026-02-09): extracted shared D3 curve/path helpers and layout/
 `xtask compare-all-svgs --check-dom --dom-mode parity-root` remains 0-mismatch.
 Recent progress (2026-02-09): extracted `svg_path_bounds_from_d` into `path_bounds.rs` (fields are `pub(super)` to
 preserve sibling-module access) and kept DOM parity-root gate green.
+Recent progress (2026-02-09): improved CLI raster `<foreignObject>` fallback by accounting for parent `<g transform="translate(...)">`
+wrappers so kanban/mindmap previews render readable labels (still best-effort; SVG output remains authoritative).
 
 ## Alignment Sanity Checks
 

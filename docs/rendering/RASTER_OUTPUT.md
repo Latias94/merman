@@ -24,6 +24,8 @@ outputs, `merman-cli` applies a **raster-only SVG preprocessing pass**:
 
 - For raster formats (PNG/JPG/PDF), convert common `<foreignObject>` label patterns into SVG
   `<text>/<tspan>` elements (approximate alignment + line breaks).
+- The fallback accounts for common Mermaid positioning patterns where labels are placed via parent
+  `<g transform="translate(x,y)">` wrappers (so overlays land in the right place for kanban/mindmap).
 - Keep the default SVG output unchanged (no impact on upstream SVG baselines).
 
 This makes `tools/preview/export-fixtures-png.ps1` produce readable previews across most diagrams
@@ -34,4 +36,3 @@ without bundling a browser engine.
 - The `<text>` fallback is an approximation and is not expected to be pixel-identical to upstream.
 - Complex HTML labels (nested markup, icons, rich styling) may degrade in raster output until we
   add more specialized conversions or a dedicated text layout pipeline.
-

@@ -25,3 +25,8 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/user-journey/journeyDb.s
 
 - tasks and actors should be added; actors are unique+sorted: `fixtures/journey/upstream_db_tasks_and_actors.mmd`
 
+## Syntax docs
+
+Source: `repo-ref/mermaid/docs/syntax/userJourney.md`
+
+- basic example ("My working day"): `fixtures/journey/upstream_docs_userjourney_user_journey_diagram_002.mmd`
