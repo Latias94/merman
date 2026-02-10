@@ -15,6 +15,8 @@ Source repo: `repo-ref/mermaid-rs-renderer` (see `repo-ref/REPOS.lock.json`).
 
 - `fixtures/flowchart/mmdr_tests_flowchart_flowchart_complex.mmd`
   - Source: `repo-ref/mermaid-rs-renderer/tests/fixtures/flowchart/complex.mmd`
+- `fixtures/flowchart/mmdr_tests_flowchart_flowchart_ports.mmd`
+  - Source: `repo-ref/mermaid-rs-renderer/tests/fixtures/flowchart/ports.mmd`
 
 ### Sequence
 
