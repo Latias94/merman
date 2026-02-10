@@ -6564,10 +6564,16 @@ pub(super) fn flowchart_label_html(
             if label_type == "string" {
                 label = label.trim().to_string();
             }
-            let label = label.trim_end_matches('\n').replace('\n', "<br />");
+            let label = label.trim_end_matches('\n');
+            let wants_p = crate::text::mermaid_markdown_wants_paragraph_wrap(label);
+            let label = if wants_p {
+                label.replace('\n', "<br />")
+            } else {
+                label.to_string()
+            };
             let fixed_img_width = is_single_img_label(&label);
             let label = normalize_flowchart_img_tags(&label, fixed_img_width);
-            let wrapped = if fixed_img_width {
+            let wrapped = if fixed_img_width || !wants_p {
                 label
             } else {
                 format!("<p>{}</p>", label)

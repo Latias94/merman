@@ -1038,6 +1038,96 @@ pub trait TextMeasurer {
     }
 }
 
+/// Heuristic: whether Mermaid's upstream `markdownToHTML()` would wrap the given label into a
+/// `<p>...</p>` wrapper when `htmlLabels=true`.
+///
+/// Mermaid@11.12.2 uses `marked.lexer(markdown)` and only explicitly formats a small subset of
+/// token types (`paragraph`, `strong`, `em`, `text`, `html`, `escape`). For unsupported *block*
+/// tokens (e.g. ordered/unordered lists, headings, fenced code blocks), Mermaid falls back to
+/// emitting the raw Markdown without a surrounding `<p>` wrapper.
+///
+/// We don't embed `marked` in Rust; instead we match the small set of block starters that would
+/// make the top-level token *not* be a paragraph. This keeps our SVG DOM parity stable for cases
+/// like `1. foo` (ordered list) where upstream renders the raw text inside `<span class="edgeLabel">`.
+pub(crate) fn mermaid_markdown_wants_paragraph_wrap(markdown: &str) -> bool {
+    let s = markdown.trim_start();
+    if s.is_empty() {
+        return true;
+    }
+
+    // Markdown block constructs generally allow up to 3 leading spaces.
+    let mut i = 0usize;
+    for ch in s.chars() {
+        if ch == ' ' && i < 3 {
+            i += 1;
+            continue;
+        }
+        break;
+    }
+    let s = &s[i.min(s.len())..];
+    let line = s.lines().next().unwrap_or(s).trim_end();
+    let line_trim = line.trim();
+
+    if line_trim.is_empty() {
+        return true;
+    }
+
+    // Headings / blockquotes.
+    if line_trim.starts_with('#') {
+        return false;
+    }
+    if line_trim.starts_with('>') {
+        return false;
+    }
+
+    // Fenced code blocks.
+    if line_trim.starts_with("```") || line_trim.starts_with("~~~") {
+        return false;
+    }
+
+    // Indented code blocks.
+    if line.starts_with('\t') || line.starts_with("    ") {
+        return false;
+    }
+
+    // Horizontal rules.
+    if line_trim.len() >= 3 {
+        let no_spaces: String = line_trim.chars().filter(|c| !c.is_whitespace()).collect();
+        let ch = no_spaces.chars().next().unwrap_or('\0');
+        if (ch == '-' || ch == '_' || ch == '*')
+            && no_spaces.chars().all(|c| c == ch)
+            && no_spaces.len() >= 3
+        {
+            return false;
+        }
+    }
+
+    // Ordered lists: `1. item` (and tolerate `1)`).
+    let bytes = line_trim.as_bytes();
+    let mut j = 0usize;
+    while j < bytes.len() && bytes[j].is_ascii_digit() {
+        j += 1;
+    }
+    if j > 0 && j + 1 < bytes.len() && (bytes[j] == b'.' || bytes[j] == b')') {
+        let next = bytes[j + 1];
+        if next == b' ' || next == b'\t' {
+            return false;
+        }
+    }
+
+    // Unordered lists: `- item`, `* item`, `+ item`.
+    if bytes.len() >= 2 {
+        let first = bytes[0];
+        let second = bytes[1];
+        if (first == b'-' || first == b'*' || first == b'+') && (second == b' ' || second == b'\t')
+        {
+            return false;
+        }
+    }
+
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,0 +1,218 @@
+{
+  "diagramType": "flowchart-v2",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "client",
+          "x": 38.605,
+          "y": 122.0,
+          "width": 61.21,
+          "height": 39.0,
+          "is_cluster": false
+        },
+        {
+          "id": "ingress",
+          "x": 302.37,
+          "y": 122.0,
+          "width": 106.08,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "service",
+          "x": 535.81,
+          "y": 122.0,
+          "width": 108.48,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "pod1",
+          "x": 681.73,
+          "y": 70.0,
+          "width": 83.36,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "pod2",
+          "x": 681.73,
+          "y": 174.0,
+          "width": 83.36,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "cluster",
+          "x": 486.37,
+          "y": 122.0,
+          "width": 524.08,
+          "height": 228.0,
+          "is_cluster": true
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_client_ingress_0",
+          "from": "client",
+          "to": "ingress",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 69.21,
+              "y": 122.0
+            },
+            {
+              "x": 146.77,
+              "y": 122.0
+            },
+            {
+              "x": 224.33,
+              "y": 122.0
+            },
+            {
+              "x": 249.33,
+              "y": 122.0
+            }
+          ],
+          "label": {
+            "x": 146.77,
+            "y": 122.0,
+            "width": 105.12,
+            "height": 48.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_ingress_service_0",
+          "from": "ingress",
+          "to": "service",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 355.41,
+              "y": 122.0
+            },
+            {
+              "x": 418.49,
+              "y": 122.0
+            },
+            {
+              "x": 481.57,
+              "y": 122.0
+            }
+          ],
+          "label": {
+            "x": 418.49,
+            "y": 122.0,
+            "width": 76.16,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_service_pod1_0",
+          "from": "service",
+          "to": "pod1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 576.954,
+              "y": 95.0
+            },
+            {
+              "x": 615.05,
+              "y": 70.0
+            },
+            {
+              "x": 640.05,
+              "y": 70.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_service_pod2_0",
+          "from": "service",
+          "to": "pod2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 576.954,
+              "y": 149.0
+            },
+            {
+              "x": 615.05,
+              "y": 174.0
+            },
+            {
+              "x": 640.05,
+              "y": 174.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "cluster",
+          "x": 486.37,
+          "y": 122.0,
+          "width": 524.08,
+          "height": 228.0,
+          "diff": -4.0,
+          "offset_y": 20.0,
+          "title": "cluster",
+          "title_label": {
+            "x": 486.37,
+            "y": 20.0,
+            "width": 45.76,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 748.41,
+        "max_y": 236.0
+      }
+    }
+  }
+}

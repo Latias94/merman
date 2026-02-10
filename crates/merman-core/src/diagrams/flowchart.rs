@@ -948,9 +948,13 @@ impl<'input> Lexer<'input> {
                     Err(e) => return Some(Err(e)),
                 };
 
-                // Optional pipe label: A--x|label|B
-                if self.pos < self.input.len() && bytes[self.pos] == b'|' {
-                    self.pos += 1;
+                // Optional pipe label: `A--x|label|B` or `A --> |label| B`.
+                let mut pipe_pos = self.pos;
+                while pipe_pos < self.input.len() && bytes[pipe_pos].is_ascii_whitespace() {
+                    pipe_pos += 1;
+                }
+                if pipe_pos < self.input.len() && bytes[pipe_pos] == b'|' {
+                    self.pos = pipe_pos + 1;
                     let label_start = self.pos;
                     while self.pos < self.input.len() && bytes[self.pos] != b'|' {
                         self.pos += 1;
@@ -960,7 +964,7 @@ impl<'input> Lexer<'input> {
                         let (text, kind) = parse_label_text(raw);
                         self.pos += 1;
                         self.pending.push_back((
-                            label_start - 1,
+                            pipe_pos,
                             Tok::EdgeLabel(LabeledText { text, kind }),
                             self.pos,
                         ));

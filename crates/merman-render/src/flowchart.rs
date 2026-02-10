@@ -429,7 +429,13 @@ pub(crate) fn flowchart_label_metrics_for_layout(
             if label_type == "string" {
                 label = label.trim().to_string();
             }
-            let label = label.trim_end_matches('\n').replace('\n', "<br />");
+            let label = label.trim_end_matches('\n');
+            let wants_p = crate::text::mermaid_markdown_wants_paragraph_wrap(label);
+            let label = if wants_p {
+                label.replace('\n', "<br />")
+            } else {
+                label.to_string()
+            };
             let fixed_img_width = {
                 let t = label.trim();
                 let lower = t.to_ascii_lowercase();
@@ -437,7 +443,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
                     && t.find('>')
                         .is_some_and(|end| t[end + 1..].trim().is_empty())
             };
-            let html = if fixed_img_width {
+            let html = if fixed_img_width || !wants_p {
                 label
             } else {
                 format!("<p>{}</p>", label)
