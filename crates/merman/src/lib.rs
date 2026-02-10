@@ -99,6 +99,8 @@ pub mod render {
         parse_options: merman_core::ParseOptions,
         layout_options: &LayoutOptions,
     ) -> Result<Option<LayoutedDiagram>> {
+        // This async API is runtime-agnostic: layout is CPU-bound and does not perform I/O.
+        // It executes synchronously and does not yield.
         layout_diagram_sync(engine, text, parse_options, layout_options)
     }
 
@@ -131,6 +133,25 @@ pub mod render {
         Ok(Some(svg))
     }
 
+    /// Synchronous SVG render helper that applies a best-effort readability fallback for
+    /// `<foreignObject>` labels.
+    ///
+    /// This is intended for raster outputs and UI previews where `<foreignObject>` is not
+    /// supported. It does not aim for upstream Mermaid DOM parity.
+    pub fn render_svg_readable_sync(
+        engine: &merman_core::Engine,
+        text: &str,
+        parse_options: merman_core::ParseOptions,
+        layout_options: &LayoutOptions,
+        svg_options: &SvgRenderOptions,
+    ) -> Result<Option<String>> {
+        let Some(svg) = render_svg_sync(engine, text, parse_options, layout_options, svg_options)?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(foreign_object_label_fallback_svg_text(&svg)))
+    }
+
     pub async fn render_svg(
         engine: &merman_core::Engine,
         text: &str,
@@ -138,7 +159,21 @@ pub mod render {
         layout_options: &LayoutOptions,
         svg_options: &SvgRenderOptions,
     ) -> Result<Option<String>> {
+        // This async API is runtime-agnostic: rendering is CPU-bound and does not perform I/O.
+        // It executes synchronously and does not yield.
         render_svg_sync(engine, text, parse_options, layout_options, svg_options)
+    }
+
+    pub async fn render_svg_readable(
+        engine: &merman_core::Engine,
+        text: &str,
+        parse_options: merman_core::ParseOptions,
+        layout_options: &LayoutOptions,
+        svg_options: &SvgRenderOptions,
+    ) -> Result<Option<String>> {
+        // This async API is runtime-agnostic: rendering is CPU-bound and does not perform I/O.
+        // It executes synchronously and does not yield.
+        render_svg_readable_sync(engine, text, parse_options, layout_options, svg_options)
     }
 
     /// Convenience wrapper that bundles an [`Engine`] and common options for headless rendering.
@@ -174,6 +209,52 @@ pub mod render {
             self
         }
 
+        pub fn with_parse_options(mut self, parse: merman_core::ParseOptions) -> Self {
+            self.parse = parse;
+            self
+        }
+
+        pub fn with_strict_parsing(self) -> Self {
+            self.with_parse_options(merman_core::ParseOptions::strict())
+        }
+
+        pub fn with_lenient_parsing(self) -> Self {
+            self.with_parse_options(merman_core::ParseOptions::lenient())
+        }
+
+        pub fn with_layout_options(mut self, layout: LayoutOptions) -> Self {
+            self.layout = layout;
+            self
+        }
+
+        pub fn with_svg_options(mut self, svg: SvgRenderOptions) -> Self {
+            self.svg = svg;
+            self
+        }
+
+        pub fn with_diagram_id(mut self, diagram_id: &str) -> Self {
+            self.svg.diagram_id = Some(sanitize_svg_id(diagram_id));
+            self
+        }
+
+        pub fn with_text_measurer(
+            mut self,
+            measurer: std::sync::Arc<dyn TextMeasurer + Send + Sync>,
+        ) -> Self {
+            self.layout = self.layout.with_text_measurer(measurer);
+            self
+        }
+
+        pub fn with_vendored_text_measurer(self) -> Self {
+            self.with_text_measurer(std::sync::Arc::new(
+                VendoredFontMetricsTextMeasurer::default(),
+            ))
+        }
+
+        pub fn with_deterministic_text_measurer(self) -> Self {
+            self.with_text_measurer(std::sync::Arc::new(DeterministicTextMeasurer::default()))
+        }
+
         pub fn parse_metadata_sync(
             &self,
             text: &str,
@@ -187,6 +268,18 @@ pub mod render {
 
         pub fn layout_diagram_sync(&self, text: &str) -> Result<Option<LayoutedDiagram>> {
             layout_diagram_sync(&self.engine, text, self.parse, &self.layout)
+        }
+
+        pub fn render_layouted_svg_sync(&self, diagram: &LayoutedDiagram) -> Result<String> {
+            render_layouted_svg(diagram, self.layout.text_measurer.as_ref(), &self.svg)
+        }
+
+        pub fn render_layouted_svg_sync_with(
+            &self,
+            diagram: &LayoutedDiagram,
+            svg: &SvgRenderOptions,
+        ) -> Result<String> {
+            render_layouted_svg(diagram, self.layout.text_measurer.as_ref(), svg)
         }
 
         pub fn render_svg_sync(&self, text: &str) -> Result<Option<String>> {
@@ -251,6 +344,18 @@ pub mod render {
         }
 
         #[cfg(feature = "raster")]
+        pub fn render_png_sync_with_diagram_id(
+            &self,
+            text: &str,
+            diagram_id: &str,
+            raster: &raster::RasterOptions,
+        ) -> raster::Result<Option<Vec<u8>>> {
+            let mut svg = self.svg.clone();
+            svg.diagram_id = Some(sanitize_svg_id(diagram_id));
+            raster::render_png_sync(&self.engine, text, self.parse, &self.layout, &svg, raster)
+        }
+
+        #[cfg(feature = "raster")]
         pub fn render_jpeg_sync(
             &self,
             text: &str,
@@ -267,8 +372,31 @@ pub mod render {
         }
 
         #[cfg(feature = "raster")]
+        pub fn render_jpeg_sync_with_diagram_id(
+            &self,
+            text: &str,
+            diagram_id: &str,
+            raster: &raster::RasterOptions,
+        ) -> raster::Result<Option<Vec<u8>>> {
+            let mut svg = self.svg.clone();
+            svg.diagram_id = Some(sanitize_svg_id(diagram_id));
+            raster::render_jpeg_sync(&self.engine, text, self.parse, &self.layout, &svg, raster)
+        }
+
+        #[cfg(feature = "raster")]
         pub fn render_pdf_sync(&self, text: &str) -> raster::Result<Option<Vec<u8>>> {
             raster::render_pdf_sync(&self.engine, text, self.parse, &self.layout, &self.svg)
+        }
+
+        #[cfg(feature = "raster")]
+        pub fn render_pdf_sync_with_diagram_id(
+            &self,
+            text: &str,
+            diagram_id: &str,
+        ) -> raster::Result<Option<Vec<u8>>> {
+            let mut svg = self.svg.clone();
+            svg.diagram_id = Some(sanitize_svg_id(diagram_id));
+            raster::render_pdf_sync(&self.engine, text, self.parse, &self.layout, &svg)
         }
     }
 }
