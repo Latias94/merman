@@ -55,8 +55,9 @@ use state::{
 };
 use style::{is_rect_style_key, is_text_style_key, parse_style_decl};
 use util::{
-    config_f64, config_string, escape_attr, escape_xml, fmt, fmt_debug_3dp, fmt_max_width_px,
-    fmt_path, json_f64, json_stringify_points, normalize_css_font_family, theme_color,
+    config_f64, config_string, escape_attr, escape_xml, escape_xml_into, fmt, fmt_debug_3dp,
+    fmt_max_width_px, fmt_path, json_f64, json_stringify_points, normalize_css_font_family,
+    theme_color,
 };
 
 const MERMAID_SEQUENCE_BASE_DEFS_11_12_2: &str = include_str!(concat!(

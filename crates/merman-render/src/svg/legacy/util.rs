@@ -233,6 +233,11 @@ pub(super) fn fmt_max_width_px(v: f64) -> String {
 
 pub(super) fn escape_xml(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
+    escape_xml_into(&mut out, text);
+    out
+}
+
+pub(super) fn escape_xml_into(out: &mut String, text: &str) {
     for ch in text.chars() {
         match ch {
             '&' => out.push_str("&amp;"),
@@ -242,7 +247,6 @@ pub(super) fn escape_xml(text: &str) -> String {
             _ => out.push(ch),
         }
     }
-    out
 }
 
 pub(super) fn escape_attr(text: &str) -> String {

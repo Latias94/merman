@@ -6657,10 +6657,10 @@ pub(super) fn write_flowchart_svg_text(out: &mut String, text: &str, include_sty
                 r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal">"#,
             );
             if word_idx == 0 {
-                out.push_str(&escape_xml(word));
+                escape_xml_into(out, word);
             } else {
                 out.push(' ');
-                out.push_str(&escape_xml(word));
+                escape_xml_into(out, word);
             }
             out.push_str("</tspan>");
         }
