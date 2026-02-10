@@ -29,10 +29,25 @@ Notes:
 
 The `pipeline` bench measures:
 
-- `parse_only_sync`: parsing Mermaid into a semantic model (no layout).
-- `parse_only_known_type_sync`: parsing when the diagram type is already known (skips detection).
-- `layout_only_sync`: computing layout (geometry + routes) from a parsed diagram.
-- `render_svg_sync`: full pipeline (parse + layout + SVG emission).
+- `parse/*`: parsing Mermaid into a semantic model (no layout).
+- `parse_known_type/*`: parsing when the diagram type is already known (skips detection).
+- `layout/*`: computing layout (geometry + routes) from a parsed diagram.
+- `render/*`: SVG emission from an already-laid-out diagram.
+- `end_to_end/*`: full pipeline (parse + layout + SVG emission).
+
+Bench fixtures live under `crates/merman/benches/fixtures/` and are intentionally small, focused
+inputs designed for regression tracking.
+
+## Comparing with mermaid-rs-renderer (optional)
+
+If you have a local checkout under `repo-ref/mermaid-rs-renderer`, you can generate a comparison
+report:
+
+```bash
+python tools/bench/compare_mermaid_renderers.py
+```
+
+This writes `docs/performance/COMPARISON.md` with mid-point `end_to_end/*` estimates and ratios.
 
 ## Recommendations
 

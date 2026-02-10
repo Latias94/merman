@@ -133,6 +133,9 @@ spawn a browser, so it can be fast, but performance is treated as a tracked metr
 
 To run the local benchmark suite, see `docs/performance/BENCHMARKING.md`.
 
+For an optional apples-to-oranges comparison against `mermaid-rs-renderer` (mmdr), see
+`docs/performance/COMPARISON.md` and the generator script `tools/bench/compare_mermaid_renderers.py`.
+
 ## Changelog
 
 See `CHANGELOG.md`.
