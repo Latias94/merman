@@ -2756,16 +2756,19 @@ fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     fn dom_mode_slug(mode: &str) -> String {
-        let mut out = String::new();
+        let mut out = String::with_capacity(mode.len());
+        let mut prev_underscore = false;
         for ch in mode.trim().chars() {
             if ch.is_ascii_alphanumeric() {
+                prev_underscore = false;
                 out.push(ch.to_ascii_lowercase());
             } else {
+                if prev_underscore {
+                    continue;
+                }
+                prev_underscore = true;
                 out.push('_');
             }
-        }
-        while out.contains("__") {
-            out = out.replace("__", "_");
         }
         out.trim_matches('_').to_string()
     }
