@@ -1084,8 +1084,9 @@ pub fn layout_flowchart_v2(
     // wrapping width of 200px (even when `labelType=text` and `htmlLabels=false`), which results
     // in `<tspan>`-wrapped titles for long words. Match that behavior in headless metrics.
     let cluster_title_wrapping_width = 200.0;
-    // Mermaid flowchart-v2 uses the global `htmlLabels` toggle for node/subgraph labels, while
-    // edge labels follow `flowchart.htmlLabels` (falling back to the global toggle when unset).
+    // Mermaid flowchart-v2 uses the global `htmlLabels` toggle for *node* labels, while
+    // subgraph titles + edge labels follow `flowchart.htmlLabels` (falling back to the global
+    // toggle when unset).
     let node_html_labels = effective_config
         .get("htmlLabels")
         .and_then(Value::as_bool)
@@ -1095,7 +1096,13 @@ pub fn layout_flowchart_v2(
         .and_then(|v| v.get("htmlLabels"))
         .and_then(Value::as_bool)
         .unwrap_or(node_html_labels);
+    let cluster_html_labels = edge_html_labels;
     let node_wrap_mode = if node_html_labels {
+        WrapMode::HtmlLike
+    } else {
+        WrapMode::SvgLike
+    };
+    let cluster_wrap_mode = if cluster_html_labels {
         WrapMode::HtmlLike
     } else {
         WrapMode::SvgLike
@@ -2722,7 +2729,7 @@ pub fn layout_flowchart_v2(
                         measurer,
                         &text_style,
                         cluster_title_wrapping_width,
-                        node_wrap_mode,
+                        cluster_wrap_mode,
                         cluster_padding,
                         title_total_margin,
                         node_padding,
@@ -2738,7 +2745,7 @@ pub fn layout_flowchart_v2(
                 measurer,
                 &text_style,
                 cluster_title_wrapping_width,
-                node_wrap_mode,
+                cluster_wrap_mode,
                 title_total_margin,
                 cluster_padding,
                 false,
@@ -2753,7 +2760,7 @@ pub fn layout_flowchart_v2(
                 measurer,
                 &text_style,
                 cluster_title_wrapping_width,
-                node_wrap_mode,
+                cluster_wrap_mode,
                 title_total_margin,
                 cluster_padding,
                 true,
@@ -2771,7 +2778,7 @@ pub fn layout_flowchart_v2(
                 measurer,
                 &text_style,
                 cluster_title_wrapping_width,
-                node_wrap_mode,
+                cluster_wrap_mode,
                 cluster_padding,
                 title_total_margin,
                 node_padding,
@@ -2787,7 +2794,7 @@ pub fn layout_flowchart_v2(
             label_type,
             &text_style,
             title_width_limit,
-            node_wrap_mode,
+            cluster_wrap_mode,
         );
         let title_label = LayoutLabel {
             x: cx,

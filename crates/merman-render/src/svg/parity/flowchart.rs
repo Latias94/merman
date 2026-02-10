@@ -1321,21 +1321,19 @@ pub(super) fn render_flowchart_cluster(
     }
     class_attr.push_str("cluster");
 
-    if !ctx.node_html_labels {
+    // Mermaid renders subgraph titles using the same `flowchart.htmlLabels` toggle as edge labels.
+    if !ctx.edge_html_labels {
+        let label_w = cluster.title_label.width.max(0.0);
+        let label_left = left + rect_w / 2.0 - label_w / 2.0;
         let title_text = flowchart_label_plain_text(&cluster.title, label_type, false);
-        let wrapped_lines = flowchart_wrap_svg_text_lines(
+        let wrapped_title_text = flowchart_wrap_svg_text_lines(
             ctx.measurer,
             &title_text,
             &ctx.text_style,
             Some(200.0),
             true,
-        );
-        let mut label_w: f64 = 0.0;
-        for line in &wrapped_lines {
-            label_w = label_w.max(ctx.measurer.measure(line, &ctx.text_style).width.max(0.0));
-        }
-        let label_left = left + rect_w / 2.0 - label_w / 2.0;
-        let wrapped_title_text = wrapped_lines.join("\n");
+        )
+        .join("\n");
         let _ = write!(
             out,
             r#"<g class="{}" id="{}" data-look="classic"><rect style="{}" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><g><rect class="background" style="stroke: none"/>"#,
@@ -1349,7 +1347,11 @@ pub(super) fn render_flowchart_cluster(
             fmt(label_left),
             fmt(label_top)
         );
-        write_flowchart_svg_text(out, &wrapped_title_text, true);
+        if label_type == "markdown" {
+            write_flowchart_svg_text_markdown(out, &cluster.title, true);
+        } else {
+            write_flowchart_svg_text(out, &wrapped_title_text, true);
+        }
         out.push_str("</g></g></g>");
         return;
     }
@@ -4619,7 +4621,11 @@ pub(super) fn render_flowchart_edge_label(
                         true,
                     )
                     .join("\n");
-                    write_flowchart_svg_text(out, &wrapped, true);
+                    if label_type == "markdown" {
+                        write_flowchart_svg_text_markdown(out, label_text, true);
+                    } else {
+                        write_flowchart_svg_text(out, &wrapped, true);
+                    }
                     out.push_str("</g></g></g>");
                     return;
                 }
@@ -4654,7 +4660,11 @@ pub(super) fn render_flowchart_edge_label(
                     true,
                 )
                 .join("\n");
-                write_flowchart_svg_text(out, &wrapped, true);
+                if label_type == "markdown" {
+                    write_flowchart_svg_text_markdown(out, label_text, true);
+                } else {
+                    write_flowchart_svg_text(out, &wrapped, true);
+                }
                 out.push_str("</g></g></g>");
                 return;
             }
@@ -6670,6 +6680,172 @@ pub(super) fn write_flowchart_svg_text(out: &mut String, text: &str, include_sty
             }
             out.push_str("</tspan>");
         }
+        out.push_str("</tspan>");
+    }
+
+    out.push_str("</text>");
+}
+
+fn markdown_to_svg_word_lines(markdown: &str) -> Vec<Vec<(String, bool, bool)>> {
+    // Mirrors Mermaid's `markdownToLines(...)` + `createFormattedText(...)` behavior at a high
+    // level for the subset used in Mermaid@11.12.2 flowchart baselines:
+    // - words are split on whitespace
+    // - each word carries `strong`/`em` style based on the active Markdown span
+    // - line breaks come from hard/soft breaks and explicit `\n` in text
+    let mut lines: Vec<Vec<(String, bool, bool)>> = vec![Vec::new()];
+
+    let mut strong_depth: usize = 0;
+    let mut em_depth: usize = 0;
+
+    let mut curr = String::new();
+    let mut curr_strong = false;
+    let mut curr_em = false;
+
+    let flush = |lines: &mut Vec<Vec<(String, bool, bool)>>,
+                 curr: &mut String,
+                 curr_strong: &mut bool,
+                 curr_em: &mut bool| {
+        if !curr.is_empty() {
+            lines
+                .last_mut()
+                .unwrap_or_else(|| unreachable!("lines always has at least one entry"))
+                .push((std::mem::take(curr), *curr_strong, *curr_em));
+        }
+        *curr_strong = false;
+        *curr_em = false;
+    };
+
+    let parser = pulldown_cmark::Parser::new_ext(
+        markdown,
+        pulldown_cmark::Options::ENABLE_TABLES
+            | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
+            | pulldown_cmark::Options::ENABLE_TASKLISTS,
+    )
+    .map(|ev| match ev {
+        pulldown_cmark::Event::SoftBreak => pulldown_cmark::Event::HardBreak,
+        other => other,
+    });
+
+    for ev in parser {
+        match ev {
+            pulldown_cmark::Event::Start(pulldown_cmark::Tag::Strong) => {
+                strong_depth += 1;
+            }
+            pulldown_cmark::Event::Start(pulldown_cmark::Tag::Emphasis) => {
+                em_depth += 1;
+            }
+            pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Strong) => {
+                strong_depth = strong_depth.saturating_sub(1);
+            }
+            pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Emphasis) => {
+                em_depth = em_depth.saturating_sub(1);
+            }
+            pulldown_cmark::Event::HardBreak => {
+                flush(&mut lines, &mut curr, &mut curr_strong, &mut curr_em);
+                lines.push(Vec::new());
+            }
+            pulldown_cmark::Event::Text(t) | pulldown_cmark::Event::Code(t) => {
+                for ch in t.chars() {
+                    if ch == '\n' {
+                        flush(&mut lines, &mut curr, &mut curr_strong, &mut curr_em);
+                        lines.push(Vec::new());
+                        continue;
+                    }
+                    if ch.is_whitespace() {
+                        flush(&mut lines, &mut curr, &mut curr_strong, &mut curr_em);
+                        continue;
+                    }
+
+                    let want_strong = strong_depth > 0;
+                    let want_em = em_depth > 0;
+                    if curr.is_empty() {
+                        curr_strong = want_strong;
+                        curr_em = want_em;
+                    } else if curr_strong != want_strong || curr_em != want_em {
+                        flush(&mut lines, &mut curr, &mut curr_strong, &mut curr_em);
+                        curr_strong = want_strong;
+                        curr_em = want_em;
+                    }
+                    curr.push(ch);
+                }
+            }
+            pulldown_cmark::Event::Html(t) => {
+                // Mermaid's SVG-label markdown path keeps raw inline HTML tokens as literal text.
+                // Treat them as plain text here (whitespace-separated).
+                for ch in t.chars() {
+                    if ch.is_whitespace() {
+                        flush(&mut lines, &mut curr, &mut curr_strong, &mut curr_em);
+                        continue;
+                    }
+                    if curr.is_empty() {
+                        curr_strong = strong_depth > 0;
+                        curr_em = em_depth > 0;
+                    }
+                    curr.push(ch);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    flush(&mut lines, &mut curr, &mut curr_strong, &mut curr_em);
+    while lines.last().is_some_and(|l| l.is_empty()) && lines.len() > 1 {
+        lines.pop();
+    }
+    lines
+}
+
+pub(super) fn write_flowchart_svg_text_markdown(
+    out: &mut String,
+    markdown: &str,
+    include_style: bool,
+) {
+    if include_style {
+        out.push_str(r#"<text y="-10.1" style="">"#);
+    } else {
+        out.push_str(r#"<text y="-10.1">"#);
+    }
+
+    let lines = markdown_to_svg_word_lines(markdown);
+    if lines.len() == 1 && lines[0].is_empty() {
+        out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em"/>"#);
+        out.push_str("</text>");
+        return;
+    }
+
+    for (idx, words) in lines.iter().enumerate() {
+        if idx == 0 {
+            out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em">"#);
+        } else {
+            let y_em = if idx == 1 {
+                "1em".to_string()
+            } else {
+                format!("{:.1}em", 1.0 + (idx as f64 - 1.0) * 1.1)
+            };
+            let _ = write!(
+                out,
+                r#"<tspan class="text-outer-tspan" x="0" y="{}" dy="1.1em">"#,
+                y_em
+            );
+        }
+
+        for (word_idx, (word, is_strong, is_em)) in words.iter().enumerate() {
+            let font_style = if *is_em { "italic" } else { "normal" };
+            let font_weight = if *is_strong { "bold" } else { "normal" };
+            let _ = write!(
+                out,
+                r#"<tspan font-style="{}" class="text-inner-tspan" font-weight="{}">"#,
+                font_style, font_weight
+            );
+            if word_idx == 0 {
+                escape_xml_into(out, word);
+            } else {
+                out.push(' ');
+                escape_xml_into(out, word);
+            }
+            out.push_str("</tspan>");
+        }
+
         out.push_str("</tspan>");
     }
 
