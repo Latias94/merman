@@ -47,6 +47,10 @@ jobs:
       - name: Test (nextest)
         run: cargo nextest run --cargo-quiet
 
+      - name: Test (nextest, merman render)
+        if: matrix.os == 'ubuntu-22.04'
+        run: cargo nextest run -p merman --features render --cargo-quiet
+
       - name: Build (release)
         run: cargo build --release --locked -p merman-cli
 

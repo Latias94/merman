@@ -52,25 +52,97 @@ pub mod render {
             return "m-untitled".to_string();
         }
 
-        let mut out = String::with_capacity(raw.len() + 4);
-        for ch in raw.chars() {
+        let mut iter = raw.chars();
+        let Some(first_raw) = iter.next() else {
+            return "m-untitled".to_string();
+        };
+
+        fn sanitize_char(ch: char) -> char {
             let ok = ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == ':' || ch == '.';
-            out.push(if ok { ch } else { '-' });
+            if ok { ch } else { '-' }
         }
 
-        let starts_ok = out.chars().next().is_some_and(|c| c.is_ascii_alphabetic());
-        if !starts_ok {
-            out.insert_str(0, "m-");
+        let first = sanitize_char(first_raw);
+        let mut out = String::with_capacity(raw.len() + 2);
+        let mut prev_dash = false;
+
+        if !first.is_ascii_alphabetic() {
+            out.push('m');
+            if first != '-' {
+                out.push('-');
+                prev_dash = true;
+            }
         }
 
-        while out.contains("--") {
-            out = out.replace("--", "-");
+        let push_sanitized = |ch: char, out: &mut String, prev_dash: &mut bool| {
+            if ch == '-' {
+                if *prev_dash {
+                    return;
+                }
+                *prev_dash = true;
+            } else {
+                *prev_dash = false;
+            }
+            out.push(ch);
+        };
+
+        push_sanitized(first, &mut out, &mut prev_dash);
+        for ch in iter {
+            push_sanitized(sanitize_char(ch), &mut out, &mut prev_dash);
         }
-        let out = out.trim_matches('-');
+
+        while out.ends_with('-') {
+            out.pop();
+        }
+
         if out.is_empty() || out == "m" {
             return "m-untitled".to_string();
         }
-        out.to_string()
+        out
+    }
+
+    #[cfg(test)]
+    mod sanitize_svg_id_tests {
+        use super::sanitize_svg_id;
+
+        #[test]
+        fn sanitize_svg_id_empty_is_untitled() {
+            assert_eq!(sanitize_svg_id(""), "m-untitled");
+            assert_eq!(sanitize_svg_id("   "), "m-untitled");
+        }
+
+        #[test]
+        fn sanitize_svg_id_trims_and_replaces() {
+            assert_eq!(sanitize_svg_id(" my diagram "), "my-diagram");
+            assert_eq!(sanitize_svg_id("a b\tc"), "a-b-c");
+        }
+
+        #[test]
+        fn sanitize_svg_id_prefixes_when_needed() {
+            assert_eq!(sanitize_svg_id("1a"), "m-1a");
+            assert_eq!(sanitize_svg_id("_a"), "m-_a");
+            assert_eq!(sanitize_svg_id("-a"), "m-a");
+        }
+
+        #[test]
+        fn sanitize_svg_id_collapses_and_trims_dashes() {
+            assert_eq!(sanitize_svg_id("a----b"), "a-b");
+            assert_eq!(sanitize_svg_id("abc--"), "abc");
+            assert_eq!(sanitize_svg_id("--"), "m-untitled");
+            assert_eq!(sanitize_svg_id("-"), "m-untitled");
+        }
+
+        #[test]
+        fn sanitize_svg_id_keeps_allowed_punctuation() {
+            assert_eq!(sanitize_svg_id("a:b.c_d"), "a:b.c_d");
+        }
+
+        #[test]
+        fn sanitize_svg_id_m_is_reserved_for_untitled() {
+            assert_eq!(sanitize_svg_id("m"), "m-untitled");
+            assert_eq!(sanitize_svg_id("m-"), "m-untitled");
+            assert_eq!(sanitize_svg_id("m--"), "m-untitled");
+        }
     }
 
     /// Synchronous layout helper (executor-free).
