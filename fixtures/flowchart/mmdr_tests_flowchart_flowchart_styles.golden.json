@@ -1,0 +1,164 @@
+{
+  "diagramType": "flowchart-v2",
+  "model": {
+    "type": "flowchart-v2",
+    "keyword": "flowchart",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "classDefs": {
+      "hot": [
+        "fill:#f00",
+        "stroke:#000",
+        "color:#fff",
+        "stroke-width:2"
+      ],
+      "cool": [
+        "fill:#00f",
+        "stroke:#0ff",
+        "color:#fff"
+      ]
+    },
+    "tooltips": {},
+    "edgeDefaults": {
+      "style": [],
+      "interpolate": null
+    },
+    "vertexCalls": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "B"
+    ],
+    "nodes": [
+      {
+        "id": "A",
+        "label": "Alpha",
+        "labelType": "text",
+        "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [
+          "hot"
+        ],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "B",
+        "label": "Beta",
+        "labelType": "text",
+        "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [
+          "fill:#0f0",
+          "stroke:#090",
+          "stroke-width:3",
+          "color:#111"
+        ],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "C",
+        "label": "Gamma",
+        "labelType": "text",
+        "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [
+          "cool"
+        ],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "D",
+        "label": "Delta",
+        "labelType": "text",
+        "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      }
+    ],
+    "edges": [
+      {
+        "from": "A",
+        "to": "B",
+        "id": "L_A_B_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "C",
+        "to": "D",
+        "id": "L_C_D_0",
+        "isUserDefinedId": false,
+        "arrow": "-.->",
+        "type": "arrow_point",
+        "stroke": "dotted",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [
+          "stroke:#ff0",
+          "stroke-width:4",
+          "stroke-dasharray:5 5",
+          "fill:none"
+        ],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      }
+    ],
+    "subgraphs": []
+  }
+}

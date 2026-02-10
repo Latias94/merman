@@ -17,6 +17,8 @@ Source repo: `repo-ref/mermaid-rs-renderer` (see `repo-ref/REPOS.lock.json`).
   - Source: `repo-ref/mermaid-rs-renderer/tests/fixtures/flowchart/complex.mmd`
 - `fixtures/flowchart/mmdr_tests_flowchart_flowchart_ports.mmd`
   - Source: `repo-ref/mermaid-rs-renderer/tests/fixtures/flowchart/ports.mmd`
+- `fixtures/flowchart/mmdr_tests_flowchart_flowchart_styles.mmd`
+  - Source: `repo-ref/mermaid-rs-renderer/tests/fixtures/flowchart/styles.mmd`
 
 ### Sequence
 
@@ -27,11 +29,15 @@ Source repo: `repo-ref/mermaid-rs-renderer` (see `repo-ref/REPOS.lock.json`).
 
 - `fixtures/state/mmdr_tests_state_state_basic.mmd`
   - Source: `repo-ref/mermaid-rs-renderer/tests/fixtures/state/basic.mmd`
+- `fixtures/state/mmdr_tests_state_state_note.mmd`
+  - Source: `repo-ref/mermaid-rs-renderer/tests/fixtures/state/note.mmd`
 
 ### Class
 
 - `fixtures/class/mmdr_tests_class_class_basic.mmd`
   - Source: `repo-ref/mermaid-rs-renderer/tests/fixtures/class/basic.mmd`
+- `fixtures/class/mmdr_tests_class_class_multiplicity.mmd`
+  - Source: `repo-ref/mermaid-rs-renderer/tests/fixtures/class/multiplicity.mmd`
 
 ### Gantt
 

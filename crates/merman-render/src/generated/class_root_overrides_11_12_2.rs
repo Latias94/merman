@@ -8,6 +8,7 @@ pub fn lookup_class_root_viewport_override(
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
         "mmdr_tests_class_class_basic" => Some(("0 0 159.640625 318", "159.641")),
+        "mmdr_tests_class_class_multiplicity" => Some(("0 0 101.78125 258", "101.781")),
         "upstream_docs_classdiagram_annotations_on_classes_042" => {
             Some(("0 0 354.40625 256", "354.406"))
         }

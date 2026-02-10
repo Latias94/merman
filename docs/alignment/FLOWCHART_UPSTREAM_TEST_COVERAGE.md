@@ -16,6 +16,7 @@ are parity-gated against upstream SVG baselines:
 - Long edge labels + pipe notation spacing: `fixtures/flowchart/mmdr_issue_29_edge_label_distance.mmd`
 - mmdr test fixture (complex subgraph layout): `fixtures/flowchart/mmdr_tests_flowchart_flowchart_complex.mmd`
 - mmdr test fixture (ports): `fixtures/flowchart/mmdr_tests_flowchart_flowchart_ports.mmd`
+- mmdr test fixture (styles): `fixtures/flowchart/mmdr_tests_flowchart_flowchart_styles.mmd`
 
 Reference: `docs/alignment/EXTERNAL_FIXTURES.md`.
 

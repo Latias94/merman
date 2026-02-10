@@ -13,6 +13,7 @@ These fixtures are sourced from downstream renderer reports (outside Mermaid's o
 are parity-gated against upstream SVG baselines:
 
 - mmdr test fixture (basic): `fixtures/state/mmdr_tests_state_state_basic.mmd`
+- mmdr test fixture (note): `fixtures/state/mmdr_tests_state_state_note.mmd`
 
 Reference: `docs/alignment/EXTERNAL_FIXTURES.md`.
 
