@@ -136,6 +136,9 @@ To run the local benchmark suite, see `docs/performance/BENCHMARKING.md`.
 For an optional apples-to-oranges comparison against `mermaid-rs-renderer` (mmdr), see
 `docs/performance/COMPARISON.md` and the generator script `tools/bench/compare_mermaid_renderers.py`.
 
+The comparison script can also include upstream Mermaid JS rendering (via the pinned
+`tools/mermaid-cli` puppeteer setup) when available.
+
 ## Changelog
 
 See `CHANGELOG.md`.

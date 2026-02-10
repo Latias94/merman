@@ -49,6 +49,10 @@ python tools/bench/compare_mermaid_renderers.py
 
 This writes `docs/performance/COMPARISON.md` with mid-point `end_to_end/*` estimates and ratios.
 
+If you also have the pinned Node toolchain under `tools/mermaid-cli` (used for parity SVG
+baselines), the script will additionally benchmark upstream Mermaid JS rendering via a single
+headless Chromium instance (puppeteer) and include it in the report.
+
 ## Recommendations
 
 - Prefer comparing two git revisions on the same machine.

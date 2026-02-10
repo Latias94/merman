@@ -21,6 +21,7 @@ import platform
 import re
 import subprocess
 import sys
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -167,9 +168,10 @@ def write_markdown(
     warm_up: int,
     measurement: int,
     env_lines: list[str],
-    rows: Iterable[tuple[str, float, float]],
+    rows: Iterable[tuple[str, float, float, float | None]],
     merman_rev: str | None,
     mmdr_rev: str | None,
+    mermaid_js_rev: str | None,
 ) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -193,6 +195,7 @@ def write_markdown(
         lines.append(l)
     lines.append(fmt_rev("merman", merman_rev))
     lines.append(fmt_rev("mermaid-rs-renderer", mmdr_rev))
+    lines.append(fmt_rev("mermaid-js", mermaid_js_rev))
     lines.append("- Rust:")
     lines.append("")
     lines.append("```")
@@ -210,18 +213,33 @@ def write_markdown(
     lines.append("")
     lines.append("## Results (end_to_end, mid estimate)")
     lines.append("")
-    lines.append("| benchmark | merman | mermaid-rs-renderer | ratio (merman / mmdr) |")
-    lines.append("|---|---:|---:|---:|")
+    lines.append(
+        "| benchmark | merman | mermaid-rs-renderer | mermaid-js (puppeteer) | ratio (merman / mmdr) | ratio (merman / mermaid-js) |"
+    )
+    lines.append("|---|---:|---:|---:|---:|---:|")
+
+    def fmt_ratio(v: float) -> str:
+        if not (v > 0) or v == float("inf"):
+            return "inf"
+        if v < 0.1:
+            return f"{v:.2f}x"
+        return f"{v:.1f}x"
 
     any_rows = False
-    for name, merman_ns, mmdr_ns in sorted(rows, key=lambda r: r[0]):
+    for name, merman_ns, mmdr_ns, mermaid_js_ns in sorted(rows, key=lambda r: r[0]):
         any_rows = True
-        ratio = merman_ns / mmdr_ns if mmdr_ns > 0 else float("inf")
-        lines.append(
-            f"| end_to_end/{name} | {pretty_time(merman_ns)} | {pretty_time(mmdr_ns)} | {ratio:.1f}x |"
-        )
+        ratio_mmdr = merman_ns / mmdr_ns if mmdr_ns > 0 else float("inf")
+        if mermaid_js_ns is None or mermaid_js_ns <= 0:
+            lines.append(
+                f"| end_to_end/{name} | {pretty_time(merman_ns)} | {pretty_time(mmdr_ns)} | - | {fmt_ratio(ratio_mmdr)} | - |"
+            )
+        else:
+            ratio_js = merman_ns / mermaid_js_ns
+            lines.append(
+                f"| end_to_end/{name} | {pretty_time(merman_ns)} | {pretty_time(mmdr_ns)} | {pretty_time(mermaid_js_ns)} | {fmt_ratio(ratio_mmdr)} | {fmt_ratio(ratio_js)} |"
+            )
     if not any_rows:
-        lines.append("| (no matches) | - | - | - |")
+        lines.append("| (no matches) | - | - | - | - | - |")
 
     lines.append("")
     lines.append("## Notes")
@@ -248,6 +266,11 @@ def main(argv: list[str]) -> int:
         help="Path to a local checkout of mermaid-rs-renderer (default: repo-ref/mermaid-rs-renderer).",
     )
     ap.add_argument(
+        "--mermaid-cli-dir",
+        default="tools/mermaid-cli",
+        help="Path to the local Node toolchain used for upstream Mermaid rendering (default: tools/mermaid-cli).",
+    )
+    ap.add_argument(
         "--out",
         default="docs/performance/COMPARISON.md",
         help="Where to write the Markdown report.",
@@ -264,6 +287,7 @@ def main(argv: list[str]) -> int:
 
     repo_root = Path(__file__).resolve().parents[2]
     mmdr_dir = (repo_root / args.mmdr_dir).resolve()
+    mermaid_cli_dir = (repo_root / args.mermaid_cli_dir).resolve()
     out_path = (repo_root / args.out).resolve()
 
     if not mmdr_dir.exists():
@@ -317,10 +341,85 @@ def main(argv: list[str]) -> int:
     merman_times = parse_criterion_times(merman_out, prefix="end_to_end")
     mmdr_times = parse_criterion_times(mmdr_out, prefix="end_to_end")
 
+    mermaid_js_results: dict[str, float] = {}
+    mermaid_js_rev: str | None = None
+    if mermaid_cli_dir.exists():
+        # Bench upstream Mermaid JS rendering in a single long-lived headless Chromium instance.
+        bench_in = repo_root / "target" / "bench" / "mermaid_js_input.json"
+        bench_out = repo_root / "target" / "bench" / "mermaid_js_output.json"
+        bench_in.parent.mkdir(parents=True, exist_ok=True)
+
+        fixtures_dir = repo_root / "crates" / "merman" / "benches" / "fixtures"
+        fixtures: dict[str, str] = {}
+        if fixtures_dir.exists():
+            for p in fixtures_dir.glob("*.mmd"):
+                fixtures[p.stem] = p.read_text(encoding="utf-8")
+
+        bench_in.write_text(
+            json.dumps(
+                {
+                    "fixtures": fixtures,
+                    "configPath": "mermaid-config.json",
+                    "theme": "default",
+                    "seed": "1",
+                    "width": 800,
+                    "warmupMs": args.warm_up * 1000,
+                    "measureMs": args.measurement * 1000,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        script = repo_root / "tools" / "bench" / "mermaid_js_bench.cjs"
+        print("[bench] mermaid-js (puppeteer): node", script)
+        run(
+            [
+                "node",
+                str(script),
+                "--in",
+                str(bench_in),
+                "--out",
+                str(bench_out),
+            ],
+            cwd=mermaid_cli_dir,
+        )
+
+        data = json.loads(bench_out.read_text(encoding="utf-8", errors="replace"))
+        for name, v in (data.get("results") or {}).items():
+            med = v.get("median_ns")
+            if isinstance(med, (int, float)) and med > 0:
+                mermaid_js_results[name] = float(med)
+
+        # Use the Mermaid version pinned in tools/mermaid-cli's package-lock as a best-effort rev label.
+        lock = mermaid_cli_dir / "package-lock.json"
+        if lock.exists():
+            try:
+                lock_data = json.loads(lock.read_text(encoding="utf-8", errors="replace"))
+                ver = (
+                    (lock_data.get("packages") or {})
+                    .get("node_modules/mermaid", {})
+                    .get("version")
+                )
+                if isinstance(ver, str) and ver.strip():
+                    mermaid_js_rev = "mermaid@" + ver.strip()
+            except Exception:
+                mermaid_js_rev = None
+    else:
+        print("[bench] mermaid-js: skipped (missing tools/mermaid-cli)")
+
     common_names = sorted(set(merman_times.keys()) & set(mmdr_times.keys()))
-    rows: list[tuple[str, float, float]] = []
+    rows: list[tuple[str, float, float, float | None]] = []
     for name in common_names:
-        rows.append((name, merman_times[name].to_nanos(), mmdr_times[name].to_nanos()))
+        js_ns = mermaid_js_results.get(name)
+        rows.append(
+            (
+                name,
+                merman_times[name].to_nanos(),
+                mmdr_times[name].to_nanos(),
+                js_ns,
+            )
+        )
 
     env_lines = [
         f"- OS: \"{platform.platform()}\"",
@@ -338,6 +437,7 @@ def main(argv: list[str]) -> int:
         rows=rows,
         merman_rev=git_head(repo_root),
         mmdr_rev=git_head(mmdr_dir),
+        mermaid_js_rev=mermaid_js_rev,
     )
 
     print("Wrote:", out_path)
