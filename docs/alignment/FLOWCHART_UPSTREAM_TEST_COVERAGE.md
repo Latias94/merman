@@ -7,6 +7,14 @@ This document tracks which upstream Mermaid flowchart tests are covered in `merm
 
 Scope: Mermaid tag `@11.12.2`.
 
+## External regression cases
+
+These fixtures are sourced from downstream renderer reports (outside Mermaid's own test suite) and
+are parity-gated against upstream SVG baselines:
+
+- Text/`<foreignObject>` label rendering: `fixtures/flowchart/mmdr_issue_28_text_rendering.mmd`
+- Long edge labels + pipe notation spacing: `fixtures/flowchart/mmdr_issue_29_edge_label_distance.mmd`
+
 ## Parser specs
 
 ### `parser/flow-comments.spec.js`
