@@ -122,6 +122,10 @@ For a quick “does raster output look sane?” sweep across fixtures:
 
 More workflows: `docs/rendering/COMPARE_ALL_SVGS.md`.
 
+## Changelog
+
+See `CHANGELOG.md`.
+
 If you want a local binary without `cargo run`, install the CLI from source:
 
 - `cargo install --path crates/merman-cli`
