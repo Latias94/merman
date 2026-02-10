@@ -99,6 +99,8 @@ pub(super) fn fmt_debug_3dp(v: f64) -> String {
     if s == "-0" { "0".to_string() } else { s }
 }
 
+use std::fmt::Write as _;
+
 pub(super) fn fmt(v: f64) -> String {
     // Match how Mermaid/D3 generally stringify numbers for SVG attributes:
     // use a round-trippable decimal form (similar to JS `Number#toString()`),
@@ -246,6 +248,27 @@ pub(super) fn escape_xml_into(out: &mut String, text: &str) {
             '\'' => out.push_str("&#39;"),
             _ => out.push(ch),
         }
+    }
+}
+
+pub(super) fn escape_xml_display(text: &str) -> EscapeXmlDisplay<'_> {
+    EscapeXmlDisplay(text)
+}
+
+pub(super) struct EscapeXmlDisplay<'a>(&'a str);
+
+impl std::fmt::Display for EscapeXmlDisplay<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for ch in self.0.chars() {
+            match ch {
+                '&' => f.write_str("&amp;")?,
+                '<' => f.write_str("&lt;")?,
+                '"' => f.write_str("&quot;")?,
+                '\'' => f.write_str("&#39;")?,
+                _ => f.write_char(ch)?,
+            }
+        }
+        Ok(())
     }
 }
 

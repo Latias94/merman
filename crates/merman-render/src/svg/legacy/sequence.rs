@@ -114,7 +114,7 @@ pub(super) fn render_sequence_diagram_debug_svg(
                         r#"<text class="edge-label" x="{}" y="{}">{}</text>"#,
                         fmt(lbl.x),
                         fmt(lbl.y),
-                        escape_xml(&e.id)
+                        escape_xml_display(&e.id)
                     );
                 }
             }
@@ -356,7 +356,7 @@ pub(super) fn render_sequence_diagram_svg(
                 y = fmt(cy),
                 fs = fmt(font_size),
                 dy = fmt(dy),
-                text = escape_xml(line)
+                text = escape_xml_display(line)
             );
         }
     }
@@ -408,7 +408,7 @@ pub(super) fn render_sequence_diagram_svg(
             &mut out,
             r#"<title id="chart-title-{id}">{text}</title>"#,
             id = diagram_id_esc,
-            text = escape_xml(title)
+            text = escape_xml_display(title)
         );
     }
     if let Some(desc) = model.acc_descr.as_deref() {
@@ -416,7 +416,7 @@ pub(super) fn render_sequence_diagram_svg(
             &mut out,
             r#"<desc id="chart-desc-{id}">{text}</desc>"#,
             id = diagram_id_esc,
-            text = escape_xml(desc)
+            text = escape_xml_display(desc)
         );
     }
 
@@ -490,7 +490,7 @@ pub(super) fn render_sequence_diagram_svg(
             y = fmt(y),
             w = fmt(w),
             h = fmt(h),
-            fill = escape_xml(&b.fill),
+            fill = escape_xml_display(&b.fill),
         );
         if let Some(name) = b.name.as_deref() {
             let cx = x + (w / 2.0);
@@ -503,7 +503,7 @@ pub(super) fn render_sequence_diagram_svg(
                 r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="text" style="text-anchor: middle; font-size: 16px; font-weight: 400;"><tspan x="{x}" dy="0">{text}</tspan></text>"#,
                 x = fmt(cx),
                 y = fmt(text_y),
-                text = escape_xml(name)
+                text = escape_xml_display(name)
             );
         }
         out.push_str("</g>");
@@ -527,7 +527,7 @@ pub(super) fn render_sequence_diagram_svg(
             y = fmt(y),
             w = fmt(n.width),
             h = fmt(n.height),
-            fill = escape_xml(fill)
+            fill = escape_xml_display(fill)
         );
     }
 
@@ -562,7 +562,7 @@ pub(super) fn render_sequence_diagram_svg(
                     y = fmt(y),
                     w = fmt(n.width),
                     h = fmt(n.height),
-                    name = escape_xml(actor_id)
+                    name = escape_xml_display(actor_id)
                 );
                 let _ = write!(
                     &mut out,
@@ -571,7 +571,7 @@ pub(super) fn render_sequence_diagram_svg(
                     sy = fmt(front_y),
                     w = fmt(n.width),
                     h = fmt(n.height),
-                    name = escape_xml(actor_id)
+                    name = escape_xml_display(actor_id)
                 );
                 write_actor_label(&mut out, cx, cy, &actor.description, actor_label_font_size);
                 out.push_str("</g>");
@@ -2911,7 +2911,7 @@ pub(super) fn render_sequence_diagram_svg(
                 r#"<text x="{x}" y="{y}" font-family="sans-serif" font-size="12px" text-anchor="middle" class="sequenceNumber">{n}</text>"#,
                 x = fmt(x),
                 y = fmt(y + 4.0),
-                n = escape_xml(&sequence_number.to_string()),
+                n = sequence_number,
             );
             sequence_number = sequence_number.saturating_add(sequence_number_step);
         }

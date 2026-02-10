@@ -107,13 +107,21 @@ pub(super) fn render_er_diagram_debug_svg(
             if e.points.len() >= 2 {
                 let _ = write!(&mut out, r#"<polyline class="edge""#);
                 if let Some(dash) = &e.stroke_dasharray {
-                    let _ = write!(&mut out, r#" stroke-dasharray="{}""#, escape_xml(dash));
+                    let _ = write!(
+                        &mut out,
+                        r#" stroke-dasharray="{}""#,
+                        escape_xml_display(dash)
+                    );
                 }
                 if let Some(m) = &e.start_marker {
-                    let _ = write!(&mut out, r#" marker-start="url(#{})""#, escape_xml(m));
+                    let _ = write!(
+                        &mut out,
+                        r#" marker-start="url(#{})""#,
+                        escape_xml_display(m)
+                    );
                 }
                 if let Some(m) = &e.end_marker {
-                    let _ = write!(&mut out, r#" marker-end="url(#{})""#, escape_xml(m));
+                    let _ = write!(&mut out, r#" marker-end="url(#{})""#, escape_xml_display(m));
                 }
                 out.push_str(r#" points=""#);
                 for (idx, p) in e.points.iter().enumerate() {
@@ -142,7 +150,7 @@ pub(super) fn render_er_diagram_debug_svg(
                         r#"<text class="node-label" x="{}" y="{}">{}</text>"#,
                         fmt(lbl.x),
                         fmt(lbl.y),
-                        escape_xml(&e.id)
+                        escape_xml_display(&e.id)
                     );
                 }
             }
@@ -819,7 +827,7 @@ pub(super) fn render_er_diagram_svg(
                 let _ = write!(
                     &mut out,
                     r#"<g class="label" data-id="{}" transform="translate({}, {})">"#,
-                    escape_xml(&edge_dom_id),
+                    escape_xml_display(&edge_dom_id),
                     fmt(-w / 2.0),
                     fmt(-h / 2.0)
                 );
@@ -830,11 +838,15 @@ pub(super) fn render_er_diagram_svg(
                     fmt(h)
                 );
                 out.push_str(r#"<div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>"#);
-                out.push_str(&escape_xml(rel_text));
+                escape_xml_into(&mut out, rel_text);
                 out.push_str(r#"</p></span></div></foreignObject></g></g>"#);
             } else {
                 out.push_str(r#"<g class="edgeLabel"><g class="label""#);
-                let _ = write!(&mut out, r#" data-id="{}""#, escape_xml(&edge_dom_id));
+                let _ = write!(
+                    &mut out,
+                    r#" data-id="{}""#,
+                    escape_xml_display(&edge_dom_id)
+                );
                 out.push_str(r#" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#);
             }
         }
