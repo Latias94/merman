@@ -15,6 +15,9 @@ pub fn lookup_flowchart_root_viewport_override(
             "0 0.000003814697265625 1339.015625 794.8007202148438",
             "1339.02",
         )),
+        "mmdr_tests_flowchart_flowchart_complex" => {
+            Some(("0 0 978.17578125 1198.28125", "978.176"))
+        }
         "upstream_docs_flowchart_limitation_199" => Some(("0 0 706.328125 371", "706.328")),
         "upstream_docs_flowchart_markdown_formatting_008" => {
             Some(("0 0 353.203125 118", "353.203"))

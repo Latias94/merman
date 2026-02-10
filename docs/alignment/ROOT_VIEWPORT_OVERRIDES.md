@@ -26,6 +26,8 @@ All override maps live in `crates/merman-render/src/generated/`:
   - `lookup_architecture_root_viewport_override(diagram_id)`
 - `er_root_overrides_11_12_2.rs`
   - `lookup_er_root_viewport_override(diagram_id)`
+- `flowchart_root_overrides_11_12_2.rs`
+  - `lookup_flowchart_root_viewport_override(diagram_id)`
 - `class_root_overrides_11_12_2.rs`
   - `lookup_class_root_viewport_override(diagram_id)`
 - `mindmap_root_overrides_11_12_2.rs`
@@ -58,6 +60,7 @@ Current integration points:
 
 - Architecture renderer: `render_architecture_diagram_svg`
 - ER renderer: `render_er_diagram_svg`
+- Flowchart renderer: `render_flowchart_v2_svg`
 - Class renderer: `render_class_diagram_v2_svg`
 - Mindmap renderer: `render_mindmap_diagram_svg`
 - Pie renderer: `render_pie_diagram_svg`

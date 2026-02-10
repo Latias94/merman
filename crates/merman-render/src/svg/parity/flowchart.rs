@@ -1705,7 +1705,32 @@ pub(super) fn flowchart_edge_path_d_for_bbox(
             count
         }
 
-        if !fully_collinear && count_non_collinear_triples(&points_for_render) <= 1 {
+        fn has_short_segment(input: &[crate::model::LayoutPoint], max_len: f64) -> bool {
+            if input.len() < 2 {
+                return false;
+            }
+            let max_len2 = max_len * max_len;
+            for win in input.windows(2) {
+                let a = &win[0];
+                let b = &win[1];
+                let dx = b.x - a.x;
+                let dy = b.y - a.y;
+                let d2 = dx * dx + dy * dy;
+                if d2.is_finite() && d2 > 0.0 && d2 <= max_len2 {
+                    return true;
+                }
+            }
+            false
+        }
+
+        // Only collapse when the route includes a short clipped segment (usually introduced by
+        // boundary cuts). If the straight run is made up of "normal" rank-to-rank steps, Mermaid
+        // keeps those points and the `curveBasis` command sequence includes the extra `C`
+        // segments.
+        if !fully_collinear
+            && count_non_collinear_triples(&points_for_render) <= 1
+            && has_short_segment(&points_for_render, 10.0)
+        {
             points_for_render = vec![
                 points_for_render[0].clone(),
                 points_for_render[points_for_render.len() / 2].clone(),
@@ -3927,7 +3952,32 @@ pub(super) fn render_flowchart_edge_path(
             count
         }
 
-        if !fully_collinear && count_non_collinear_triples(&points_for_render) <= 1 {
+        fn has_short_segment(input: &[crate::model::LayoutPoint], max_len: f64) -> bool {
+            if input.len() < 2 {
+                return false;
+            }
+            let max_len2 = max_len * max_len;
+            for win in input.windows(2) {
+                let a = &win[0];
+                let b = &win[1];
+                let dx = b.x - a.x;
+                let dy = b.y - a.y;
+                let d2 = dx * dx + dy * dy;
+                if d2.is_finite() && d2 > 0.0 && d2 <= max_len2 {
+                    return true;
+                }
+            }
+            false
+        }
+
+        // Only collapse when the route includes a short clipped segment (usually introduced by
+        // boundary cuts). If the straight run is made up of "normal" rank-to-rank steps, Mermaid
+        // keeps those points and the `curveBasis` command sequence includes the extra `C`
+        // segments.
+        if !fully_collinear
+            && count_non_collinear_triples(&points_for_render) <= 1
+            && has_short_segment(&points_for_render, 10.0)
+        {
             points_for_render = vec![
                 points_for_render[0].clone(),
                 points_for_render[points_for_render.len() / 2].clone(),
