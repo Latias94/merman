@@ -10,6 +10,7 @@ pub mod architecture;
 pub mod block;
 pub mod c4;
 pub mod class;
+mod entities;
 pub mod er;
 pub mod error;
 pub mod flowchart;

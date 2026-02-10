@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::*;
+use crate::entities::decode_entities_minimal;
 
 // Class diagram SVG renderer implementation (split from legacy.rs).
 
@@ -527,14 +528,6 @@ fn class_apply_inline_styles(node: &ClassSvgNode) -> (Option<&str>, Option<&str>
         }
     }
     (fill, stroke, stroke_width)
-}
-
-fn class_decode_entities_minimal(text: &str) -> String {
-    text.replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&amp;", "&")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
 }
 
 fn splitmix64_next(state: &mut u64) -> u64 {
@@ -1098,7 +1091,7 @@ pub(super) fn render_class_diagram_v2_svg(
         }
 
         if let Some(note) = note_by_id.get(n.id.as_str()).copied() {
-            let note_text = class_decode_entities_minimal(note.text.trim());
+            let note_text = decode_entities_minimal(note.text.trim());
             let metrics =
                 measurer.measure_wrapped(&note_text, &text_style, None, WrapMode::HtmlLike);
             let fo_w = metrics.width.max(1.0);
@@ -1246,7 +1239,7 @@ pub(super) fn render_class_diagram_v2_svg(
         );
         out.push_str("</g>");
 
-        let title_text = class_decode_entities_minimal(node.text.trim());
+        let title_text = decode_entities_minimal(node.text.trim());
         let title_metrics =
             measurer.measure_wrapped(&title_text, &text_style, None, WrapMode::HtmlLike);
         let ann_rows = node.annotations.len();
@@ -1275,10 +1268,7 @@ pub(super) fn render_class_diagram_v2_svg(
 
         let mut ann_max_w: f64 = 0.0;
         for a in &node.annotations {
-            let t = format!(
-                "\u{00AB}{}\u{00BB}",
-                class_decode_entities_minimal(a.trim())
-            );
+            let t = format!("\u{00AB}{}\u{00BB}", decode_entities_minimal(a.trim()));
             let m = measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike);
             ann_max_w = ann_max_w.max(m.width);
         }
@@ -1300,10 +1290,7 @@ pub(super) fn render_class_diagram_v2_svg(
                 fmt(annotation_group_y)
             );
             for (idx, a) in node.annotations.iter().enumerate() {
-                let t = format!(
-                    "\u{00AB}{}\u{00BB}",
-                    class_decode_entities_minimal(a.trim())
-                );
+                let t = format!("\u{00AB}{}\u{00BB}", decode_entities_minimal(a.trim()));
                 let y = (idx as f64) * line_height - half_lh;
                 let _ = write!(
                     &mut out,
@@ -1358,7 +1345,7 @@ pub(super) fn render_class_diagram_v2_svg(
                 fmt(members_group_y)
             );
             for (idx, m) in node.members.iter().enumerate() {
-                let t = class_decode_entities_minimal(m.display_text.trim());
+                let t = decode_entities_minimal(m.display_text.trim());
                 let mm = measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike);
                 let y = (idx as f64) * line_height - half_lh;
                 let _ = write!(
@@ -1396,7 +1383,7 @@ pub(super) fn render_class_diagram_v2_svg(
                 fmt(methods_group_y)
             );
             for (idx, m) in node.methods.iter().enumerate() {
-                let t = class_decode_entities_minimal(m.display_text.trim());
+                let t = decode_entities_minimal(m.display_text.trim());
                 let mm = measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike);
                 let y = (idx as f64) * line_height - half_lh;
                 let _ = write!(

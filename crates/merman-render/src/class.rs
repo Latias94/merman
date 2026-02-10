@@ -1,3 +1,4 @@
+use crate::entities::decode_entities_minimal;
 use crate::model::{
     Bounds, ClassDiagramV2Layout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
 };
@@ -129,14 +130,6 @@ fn rank_dir_from(direction: &str) -> RankDir {
         "RL" => RankDir::RL,
         _ => RankDir::TB,
     }
-}
-
-fn decode_entities_minimal(text: &str) -> String {
-    text.replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&amp;", "&")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
 }
 
 type Rect = merman_core::geom::Box2;
