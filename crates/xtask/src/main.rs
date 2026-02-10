@@ -215,6 +215,8 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut diagram: String = "all".to_string();
     let mut filter: Option<String> = None;
     let mut limit: Option<usize> = None;
+    let mut min_lines: Option<usize> = None;
+    let mut prefer_complex: bool = false;
     let mut overwrite: bool = false;
     let mut with_baselines: bool = false;
     let mut install: bool = false;
@@ -235,6 +237,12 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
                 let raw = args.get(i).ok_or(XtaskError::Usage)?;
                 limit = Some(raw.parse::<usize>().map_err(|_| XtaskError::Usage)?);
             }
+            "--min-lines" => {
+                i += 1;
+                let raw = args.get(i).ok_or(XtaskError::Usage)?;
+                min_lines = Some(raw.parse::<usize>().map_err(|_| XtaskError::Usage)?);
+            }
+            "--complex" => prefer_complex = true,
             "--overwrite" => overwrite = true,
             "--with-baselines" => with_baselines = true,
             "--install" => install = true,
@@ -500,8 +508,82 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
         map
     }
 
-    let mut imported = 0usize;
-    'outer: for md_path in md_files {
+    #[derive(Debug, Clone)]
+    struct Candidate {
+        md_block: MdBlock,
+        diagram_dir: String,
+        fixtures_dir: PathBuf,
+        stem: String,
+        body: String,
+        score: i64,
+    }
+
+    fn complexity_score(body: &str, diagram_dir: &str) -> i64 {
+        let line_count = body.lines().count() as i64;
+        let mut score = line_count * 1_000 + (body.len() as i64);
+        let lower = body.to_ascii_lowercase();
+
+        fn bump(score: &mut i64, lower: &str, needle: &str, weight: i64) {
+            if lower.contains(needle) {
+                *score += weight;
+            }
+        }
+
+        // Global "complexity" markers across diagrams.
+        bump(&mut score, &lower, "%%{init", 5_000);
+        bump(&mut score, &lower, "accdescr", 2_000);
+        bump(&mut score, &lower, "acctitle", 2_000);
+        bump(&mut score, &lower, "linkstyle", 2_000);
+        bump(&mut score, &lower, "classdef", 2_000);
+        bump(&mut score, &lower, "direction", 1_000);
+        bump(&mut score, &lower, "click ", 1_500);
+        bump(&mut score, &lower, "<img", 1_000);
+        bump(&mut score, &lower, "<strong>", 1_000);
+        bump(&mut score, &lower, "<em>", 1_000);
+
+        match diagram_dir {
+            "flowchart" => {
+                bump(&mut score, &lower, "subgraph", 2_000);
+                bump(&mut score, &lower, ":::", 1_000);
+                bump(&mut score, &lower, "@{", 1_500);
+            }
+            "sequence" => {
+                bump(&mut score, &lower, "alt", 1_500);
+                bump(&mut score, &lower, "loop", 1_500);
+                bump(&mut score, &lower, "par", 1_500);
+                bump(&mut score, &lower, "opt", 1_000);
+                bump(&mut score, &lower, "critical", 1_500);
+                bump(&mut score, &lower, "rect", 1_000);
+                bump(&mut score, &lower, "activate", 1_000);
+                bump(&mut score, &lower, "deactivate", 1_000);
+            }
+            "class" => {
+                bump(&mut score, &lower, "namespace", 1_000);
+                bump(&mut score, &lower, "interface", 1_000);
+                bump(&mut score, &lower, "enum", 1_000);
+                bump(&mut score, &lower, "<<", 1_000);
+            }
+            "state" => {
+                bump(&mut score, &lower, "fork", 1_000);
+                bump(&mut score, &lower, "join", 1_000);
+                bump(&mut score, &lower, "[*]", 1_000);
+                bump(&mut score, &lower, "note", 1_000);
+            }
+            "gantt" => {
+                bump(&mut score, &lower, "section", 1_000);
+                bump(&mut score, &lower, "crit", 1_000);
+                bump(&mut score, &lower, "milestone", 1_000);
+                bump(&mut score, &lower, "after", 1_000);
+            }
+            _ => {}
+        }
+
+        score
+    }
+
+    let mut candidates: Vec<Candidate> = Vec::new();
+
+    for md_path in md_files {
         if !md_path.is_file() {
             skipped.push(format!("missing markdown source: {}", md_path.display()));
             continue;
@@ -528,6 +610,11 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
             let body = canonical_fixture_text(&b.body);
             if body.trim().is_empty() {
                 continue;
+            }
+            if let Some(min) = min_lines {
+                if body.lines().count() < min {
+                    continue;
+                }
             }
 
             let mut cfg = merman::MermaidConfig::default();
@@ -565,48 +652,66 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
                 continue;
             }
 
-            let existing = existing_by_diagram
-                .entry(diagram_dir.clone())
-                .or_insert_with(|| load_existing_fixtures(&fixtures_dir));
-            if let Some(existing_path) = existing.get(&body) {
-                skipped.push(format!(
-                    "skip (duplicate content): {} -> {}",
-                    b.source_md.display(),
-                    existing_path.display()
-                ));
-                continue;
-            }
-
             let heading_slug = slugify(b.heading.as_deref().unwrap_or("example"));
             let stem = format!(
                 "upstream_docs_{source_slug}_{heading_slug}_{idx:03}",
                 idx = b.idx_in_file + 1
             );
-            let out_path = fixtures_dir.join(format!("{stem}.mmd"));
-            if out_path.exists() && !overwrite {
-                skipped.push(format!("skip (exists): {}", out_path.display()));
-                continue;
-            }
 
-            fs::write(&out_path, &body).map_err(|err| {
-                XtaskError::SnapshotUpdateFailed(format!(
-                    "failed to write fixture {}: {err}",
-                    out_path.display()
-                ))
-            })?;
-            existing.insert(body.clone(), out_path.clone());
-
-            created.push(CreatedFixture {
-                diagram_dir: diagram_dir.clone(),
+            let score = complexity_score(&body, &diagram_dir);
+            candidates.push(Candidate {
+                md_block: b,
+                diagram_dir,
+                fixtures_dir,
                 stem,
-                path: out_path,
+                body,
+                score,
             });
+        }
+    }
 
-            imported += 1;
-            if let Some(max) = limit {
-                if imported >= max {
-                    break 'outer;
-                }
+    if prefer_complex {
+        candidates.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.stem.cmp(&b.stem)));
+    }
+
+    let mut imported = 0usize;
+    for c in candidates {
+        let existing = existing_by_diagram
+            .entry(c.diagram_dir.clone())
+            .or_insert_with(|| load_existing_fixtures(&c.fixtures_dir));
+        if let Some(existing_path) = existing.get(&c.body) {
+            skipped.push(format!(
+                "skip (duplicate content): {} -> {}",
+                c.md_block.source_md.display(),
+                existing_path.display()
+            ));
+            continue;
+        }
+
+        let out_path = c.fixtures_dir.join(format!("{}.mmd", c.stem));
+        if out_path.exists() && !overwrite {
+            skipped.push(format!("skip (exists): {}", out_path.display()));
+            continue;
+        }
+
+        fs::write(&out_path, &c.body).map_err(|err| {
+            XtaskError::SnapshotUpdateFailed(format!(
+                "failed to write fixture {}: {err}",
+                out_path.display()
+            ))
+        })?;
+        existing.insert(c.body.clone(), out_path.clone());
+
+        created.push(CreatedFixture {
+            diagram_dir: c.diagram_dir,
+            stem: c.stem,
+            path: out_path,
+        });
+
+        imported += 1;
+        if let Some(max) = limit {
+            if imported >= max {
+                break;
             }
         }
     }

@@ -55,6 +55,8 @@ the upstream syntax docs under `repo-ref/mermaid/docs/syntax/*.md`.
   - `cargo run -p xtask -- import-upstream-docs --diagram sequence`
 - Import a small batch while iterating:
   - `cargo run -p xtask -- import-upstream-docs --diagram flowchart --limit 10`
+- Prefer more complex examples (largest/feature-dense blocks first):
+  - `cargo run -p xtask -- import-upstream-docs --diagram flowchart --complex --min-lines 10 --limit 10`
 - Optional: also generate upstream SVG baselines + refresh semantic/layout goldens:
   - `cargo run -p xtask -- import-upstream-docs --diagram sequence --with-baselines`
 
