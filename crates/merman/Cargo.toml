@@ -37,3 +37,11 @@ resvg = { workspace = true, optional = true }
 usvg = { workspace = true, optional = true }
 tiny-skia = { workspace = true, optional = true }
 svg2pdf = { workspace = true, optional = true }
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "pipeline"
+harness = false
+required-features = ["render"]
