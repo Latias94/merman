@@ -4,12 +4,15 @@
 
 ## Environment
 
-- Timestamp: "2026-02-10 16:24:33 +0800"
+- Timestamp: "2026-02-10 17:00:22 +0800"
 - OS: "Windows-11-10.0.26200-SP0"
 - Machine: "AMD64"
-- CPU: "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel"
+- CPU: "13th Gen Intel(R) Core(TM) i9-13900KF"
 - Python: "3.13.11"
-- merman: `76cc3d832adfe8e5b5f765e17fb92775f40012ae`
+- Node: "v24.13.0"
+- Chromium: "HeadlessChrome/131.0.6778.204"
+- mermaid-cli: "11.12.0"
+- merman: `fbd2605e8a2a00eb932dad091406010ea59f4381`
 - mermaid-rs-renderer: `859253415e69dce28bd65cd5a7c1d1ae8b39f4a1`
 - mermaid-js: `mermaid@11.12.2`
 - Rust:
@@ -28,20 +31,30 @@ LLVM version: 21.1.8
 
 - `merman`: `cargo bench -p merman --features render --bench pipeline -- ...`
 - `mermaid-rs-renderer` (mmdr): `cargo bench --bench renderer -- ...`
-- Filter: "end_to_end/(flowchart_tiny|sequence_tiny|state_tiny|class_tiny)"
+- Filter: "end_to_end/(flowchart_tiny|flowchart_medium|flowchart_large|sequence_tiny|sequence_medium|state_tiny|state_medium|class_tiny|class_medium)"
 - Sample size: 20, warm-up: 1s, measurement: 1s
 
 ## Results (end_to_end, mid estimate)
 
 | benchmark | merman | mermaid-rs-renderer | mermaid-js (puppeteer) | ratio (merman / mmdr) | ratio (merman / mermaid-js) |
 |---|---:|---:|---:|---:|---:|
-| end_to_end/class_tiny | 916.13 µs | 27.76 µs | 5.60 ms | 33.0x | 0.2x |
-| end_to_end/flowchart_tiny | 665.10 µs | 40.09 µs | 4.95 ms | 16.6x | 0.1x |
-| end_to_end/sequence_tiny | 149.66 µs | 19.29 µs | 2.50 ms | 7.8x | 0.06x |
-| end_to_end/state_tiny | 1.29 ms | 29.52 µs | 9.10 ms | 43.7x | 0.1x |
+| end_to_end/class_medium | 19.36 ms | 1.68 ms | 57.25 ms | 11.5x | 0.3x |
+| end_to_end/class_tiny | 901.30 µs | 24.42 µs | 3.60 ms | 36.9x | 0.3x |
+| end_to_end/flowchart_medium | 39.66 ms | 4.25 ms | 75.70 ms | 9.3x | 0.5x |
+| end_to_end/flowchart_tiny | 578.07 µs | 37.15 µs | 4.70 ms | 15.6x | 0.1x |
+| end_to_end/sequence_medium | 282.30 µs | 206.10 µs | 9.50 ms | 1.4x | 0.03x |
+| end_to_end/sequence_tiny | 97.80 µs | 17.86 µs | 3.20 ms | 5.5x | 0.03x |
+| end_to_end/state_medium | 7.88 ms | 1.43 ms | 44.65 ms | 5.5x | 0.2x |
+| end_to_end/state_tiny | 866.14 µs | 30.27 µs | 6.90 ms | 28.6x | 0.1x |
 
 ## Notes
 
 - `merman` is parity-focused (upstream Mermaid SVG DOM gates) and optimized for deterministic alignment.
 - `mermaid-rs-renderer` is a different renderer with different goals and coverage; raw performance numbers are not directly comparable to visual/DOM parity.
 - Treat these as **local regression tracking** numbers. Always re-run on the same machine/toolchain for meaningful comparisons.
+
+## Skipped (merman)
+
+These fixtures were present but skipped because `merman` returned a parse/layout/render error during the pre-check.
+
+`pie_medium`, `treemap_medium`, `xychart_medium`

@@ -78,6 +78,11 @@ async function main() {
 
   // Run under `tools/mermaid-cli` so node can resolve puppeteer + mermaid deps.
   const cliRoot = process.cwd();
+  const meta = {
+    node: process.version,
+    platform: process.platform,
+    arch: process.arch,
+  };
   const mermaidHtmlPath = path.join(
     cliRoot,
     "node_modules",
@@ -94,6 +99,19 @@ async function main() {
     "mermaid.js"
   );
 
+  try {
+    meta.mermaid = require(path.join(cliRoot, "node_modules", "mermaid", "package.json")).version;
+  } catch {
+    // ignore
+  }
+  try {
+    meta.mermaid_cli = require(
+      path.join(cliRoot, "node_modules", "@mermaid-js", "mermaid-cli", "package.json")
+    ).version;
+  } catch {
+    // ignore
+  }
+
   const configPath = input.configPath
     ? path.resolve(cliRoot, input.configPath)
     : path.resolve(cliRoot, "..", "..", "tools", "mermaid-config.json");
@@ -105,6 +123,24 @@ async function main() {
   };
   const browser = await puppeteer.launch(launchOpts);
   const page = await browser.newPage();
+
+  try {
+    meta.chromium = await browser.version();
+  } catch {
+    // ignore
+  }
+  try {
+    meta.user_agent = await page.evaluate(() => navigator.userAgent);
+  } catch {
+    // ignore
+  }
+  try {
+    if (typeof puppeteer.version === "function") {
+      meta.puppeteer = puppeteer.version();
+    }
+  } catch {
+    // ignore
+  }
 
   // Seed Math.random + crypto.getRandomValues for stability.
   await page.evaluateOnNewDocument((seedStr2) => {
@@ -211,7 +247,7 @@ async function main() {
   }
 
   await browser.close();
-  fs.writeFileSync(args.outPath, JSON.stringify({ results }, null, 2), "utf8");
+  fs.writeFileSync(args.outPath, JSON.stringify({ meta, results }, null, 2), "utf8");
 }
 
 main().catch((err) => {

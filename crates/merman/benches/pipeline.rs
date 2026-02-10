@@ -11,16 +11,144 @@ fn fixtures() -> Vec<(&'static str, &'static str)> {
             "flowchart_tiny",
             include_str!("fixtures/flowchart_tiny.mmd"),
         ),
-        ("sequence_tiny", include_str!("fixtures/sequence_tiny.mmd")),
-        ("state_tiny", include_str!("fixtures/state_tiny.mmd")),
+        (
+            "flowchart_small",
+            include_str!("fixtures/flowchart_small.mmd"),
+        ),
+        (
+            "flowchart_medium",
+            include_str!("fixtures/flowchart_medium.mmd"),
+        ),
+        (
+            "flowchart_large",
+            include_str!("fixtures/flowchart_large.mmd"),
+        ),
+        (
+            "flowchart_ports_heavy",
+            include_str!("fixtures/flowchart_ports_heavy.mmd"),
+        ),
+        (
+            "flowchart_weave",
+            include_str!("fixtures/flowchart_weave.mmd"),
+        ),
+        (
+            "flowchart_backedges_subgraphs",
+            include_str!("fixtures/flowchart_backedges_subgraphs.mmd"),
+        ),
+        (
+            "flowchart_sparse_components",
+            include_str!("fixtures/flowchart_sparse_components.mmd"),
+        ),
+        (
+            "flowchart_lanes_crossfeed",
+            include_str!("fixtures/flowchart_lanes_crossfeed.mmd"),
+        ),
+        (
+            "flowchart_grid_feedback",
+            include_str!("fixtures/flowchart_grid_feedback.mmd"),
+        ),
+        (
+            "flowchart_fanout_returns",
+            include_str!("fixtures/flowchart_fanout_returns.mmd"),
+        ),
+        (
+            "flowchart_label_collision",
+            include_str!("fixtures/flowchart_label_collision.mmd"),
+        ),
+        (
+            "flowchart_nested_clusters",
+            include_str!("fixtures/flowchart_nested_clusters.mmd"),
+        ),
+        (
+            "flowchart_asymmetric_components",
+            include_str!("fixtures/flowchart_asymmetric_components.mmd"),
+        ),
+        (
+            "flowchart_parallel_merges",
+            include_str!("fixtures/flowchart_parallel_merges.mmd"),
+        ),
+        (
+            "flowchart_long_edge_labels",
+            include_str!("fixtures/flowchart_long_edge_labels.mmd"),
+        ),
+        (
+            "flowchart_selfloop_bidi",
+            include_str!("fixtures/flowchart_selfloop_bidi.mmd"),
+        ),
+        (
+            "flowchart_component_packing",
+            include_str!("fixtures/flowchart_component_packing.mmd"),
+        ),
+        (
+            "flowchart_direction_conflict",
+            include_str!("fixtures/flowchart_direction_conflict.mmd"),
+        ),
+        (
+            "flowchart_parallel_label_stack",
+            include_str!("fixtures/flowchart_parallel_label_stack.mmd"),
+        ),
         ("class_tiny", include_str!("fixtures/class_tiny.mmd")),
+        ("class_medium", include_str!("fixtures/class_medium.mmd")),
+        ("state_tiny", include_str!("fixtures/state_tiny.mmd")),
+        ("state_medium", include_str!("fixtures/state_medium.mmd")),
+        ("sequence_tiny", include_str!("fixtures/sequence_tiny.mmd")),
+        (
+            "sequence_medium",
+            include_str!("fixtures/sequence_medium.mmd"),
+        ),
+        ("er_medium", include_str!("fixtures/er_medium.mmd")),
+        ("pie_medium", include_str!("fixtures/pie_medium.mmd")),
+        (
+            "mindmap_medium",
+            include_str!("fixtures/mindmap_medium.mmd"),
+        ),
+        (
+            "journey_medium",
+            include_str!("fixtures/journey_medium.mmd"),
+        ),
+        (
+            "timeline_medium",
+            include_str!("fixtures/timeline_medium.mmd"),
+        ),
+        ("gantt_medium", include_str!("fixtures/gantt_medium.mmd")),
+        (
+            "requirement_medium",
+            include_str!("fixtures/requirement_medium.mmd"),
+        ),
+        (
+            "gitgraph_medium",
+            include_str!("fixtures/gitgraph_medium.mmd"),
+        ),
+        ("c4_medium", include_str!("fixtures/c4_medium.mmd")),
+        ("sankey_medium", include_str!("fixtures/sankey_medium.mmd")),
+        (
+            "quadrant_medium",
+            include_str!("fixtures/quadrant_medium.mmd"),
+        ),
+        ("zenuml_medium", include_str!("fixtures/zenuml_medium.mmd")),
+        ("block_medium", include_str!("fixtures/block_medium.mmd")),
+        ("packet_medium", include_str!("fixtures/packet_medium.mmd")),
+        ("kanban_medium", include_str!("fixtures/kanban_medium.mmd")),
+        (
+            "architecture_medium",
+            include_str!("fixtures/architecture_medium.mmd"),
+        ),
+        ("radar_medium", include_str!("fixtures/radar_medium.mmd")),
+        (
+            "treemap_medium",
+            include_str!("fixtures/treemap_medium.mmd"),
+        ),
+        (
+            "xychart_medium",
+            include_str!("fixtures/xychart_medium.mmd"),
+        ),
     ]
 }
 
 fn layout_size(layout: &merman_render::model::LayoutDiagram) -> usize {
     use merman_render::model::LayoutDiagram;
     match layout {
-        // These are the only variants exercised by this bench's fixture set today.
+        // Fast, allocation-free "size" hints for a few hot layouts to keep the optimizer honest.
         LayoutDiagram::FlowchartV2(v) => v.nodes.len() + v.edges.len() + v.clusters.len(),
         LayoutDiagram::SequenceDiagram(v) => v.nodes.len() + v.edges.len() + v.clusters.len(),
         LayoutDiagram::StateDiagramV2(v) => v.nodes.len() + v.edges.len() + v.clusters.len(),
@@ -31,15 +159,23 @@ fn layout_size(layout: &merman_render::model::LayoutDiagram) -> usize {
 
 fn bench_parse(c: &mut Criterion) {
     let engine = Engine::new();
-    let parse_opts = ParseOptions::default();
+    let parse_opts = ParseOptions::strict();
 
     let mut group = c.benchmark_group("parse");
     for (name, input) in fixtures() {
+        // Skip fixtures that are not yet supported by `merman` to keep the bench runnable while
+        // we expand coverage. Unsupported fixtures should be tracked separately as parity work.
+        if engine.parse_diagram_sync(input, parse_opts).is_err() {
+            eprintln!("[bench][skip][parse] {name}: parse error");
+            continue;
+        }
         group.bench_with_input(BenchmarkId::from_parameter(name), input, |b, data| {
             b.iter(|| {
-                let parsed = engine
-                    .parse_diagram_sync(black_box(data), parse_opts)
-                    .unwrap();
+                let parsed = engine.parse_diagram_sync(black_box(data), parse_opts);
+                let parsed = match parsed {
+                    Ok(v) => v,
+                    Err(_) => return,
+                };
                 black_box(parsed.is_some());
             })
         });
@@ -49,21 +185,39 @@ fn bench_parse(c: &mut Criterion) {
 
 fn bench_parse_known_type(c: &mut Criterion) {
     let engine = Engine::new();
-    let parse_opts = ParseOptions::default();
+    let parse_opts = ParseOptions::strict();
 
     let mut group = c.benchmark_group("parse_known_type");
     for (name, input) in fixtures() {
-        let diagram_type = engine
-            .parse_metadata_sync(input, parse_opts)
-            .unwrap()
-            .expect("fixture must be a diagram")
-            .diagram_type;
+        let diagram_type = match engine.parse_metadata_sync(input, parse_opts) {
+            Ok(Some(v)) => v.diagram_type,
+            Ok(None) => {
+                eprintln!("[bench][skip][parse_known_type] {name}: not a diagram");
+                continue;
+            }
+            Err(_) => {
+                eprintln!("[bench][skip][parse_known_type] {name}: metadata error");
+                continue;
+            }
+        };
+
+        // Pre-check that the known-type parse succeeds.
+        if engine
+            .parse_diagram_as_sync(&diagram_type, input, parse_opts)
+            .is_err()
+        {
+            eprintln!("[bench][skip][parse_known_type] {name}: parse_as({diagram_type}) error");
+            continue;
+        }
 
         group.bench_with_input(BenchmarkId::from_parameter(name), input, |b, data| {
             b.iter(|| {
-                let parsed = engine
-                    .parse_diagram_as_sync(&diagram_type, black_box(data), parse_opts)
-                    .unwrap();
+                let parsed =
+                    engine.parse_diagram_as_sync(&diagram_type, black_box(data), parse_opts);
+                let parsed = match parsed {
+                    Ok(v) => v,
+                    Err(_) => return,
+                };
                 black_box(parsed.is_some());
             })
         });
@@ -73,18 +227,32 @@ fn bench_parse_known_type(c: &mut Criterion) {
 
 fn bench_layout(c: &mut Criterion) {
     let engine = Engine::new();
-    let parse_opts = ParseOptions::default();
+    let parse_opts = ParseOptions::strict();
     let layout: LayoutOptions = headless_layout_options();
 
     let mut group = c.benchmark_group("layout");
     for (name, input) in fixtures() {
-        let Some(parsed) = engine.parse_diagram_sync(input, parse_opts).unwrap() else {
-            continue;
+        let parsed = match engine.parse_diagram_sync(input, parse_opts) {
+            Ok(Some(v)) => v,
+            Ok(None) => continue,
+            Err(_) => {
+                eprintln!("[bench][skip][layout] {name}: parse error");
+                continue;
+            }
         };
+
+        // Pre-check that layout works.
+        if merman_render::layout_parsed(&parsed, &layout).is_err() {
+            eprintln!("[bench][skip][layout] {name}: layout error");
+            continue;
+        }
 
         group.bench_with_input(BenchmarkId::from_parameter(name), &parsed, |b, data| {
             b.iter(|| {
-                let diagram = merman_render::layout_parsed(black_box(data), &layout).unwrap();
+                let diagram = match merman_render::layout_parsed(black_box(data), &layout) {
+                    Ok(v) => v,
+                    Err(_) => return,
+                };
                 black_box(layout_size(&diagram.layout));
             })
         });
@@ -94,26 +262,48 @@ fn bench_layout(c: &mut Criterion) {
 
 fn bench_render(c: &mut Criterion) {
     let engine = Engine::new();
-    let parse_opts = ParseOptions::default();
+    let parse_opts = ParseOptions::strict();
     let layout: LayoutOptions = headless_layout_options();
 
     let mut group = c.benchmark_group("render");
     for (name, input) in fixtures() {
-        let Some(parsed) = engine.parse_diagram_sync(input, parse_opts).unwrap() else {
-            continue;
+        let parsed = match engine.parse_diagram_sync(input, parse_opts) {
+            Ok(Some(v)) => v,
+            Ok(None) => continue,
+            Err(_) => {
+                eprintln!("[bench][skip][render] {name}: parse error");
+                continue;
+            }
         };
-        let diagram = merman_render::layout_parsed(&parsed, &layout).unwrap();
+        let diagram = match merman_render::layout_parsed(&parsed, &layout) {
+            Ok(v) => v,
+            Err(_) => {
+                eprintln!("[bench][skip][render] {name}: layout error");
+                continue;
+            }
+        };
 
         let svg_opts = SvgRenderOptions {
             diagram_id: Some(merman::render::sanitize_svg_id(name)),
             ..SvgRenderOptions::default()
         };
 
+        // Pre-check that SVG rendering works.
+        if render_layouted_svg(&diagram, layout.text_measurer.as_ref(), &svg_opts).is_err() {
+            eprintln!("[bench][skip][render] {name}: svg render error");
+            continue;
+        }
+
         group.bench_with_input(BenchmarkId::from_parameter(name), &diagram, |b, data| {
             b.iter(|| {
-                let svg =
-                    render_layouted_svg(black_box(data), layout.text_measurer.as_ref(), &svg_opts)
-                        .unwrap();
+                let svg = match render_layouted_svg(
+                    black_box(data),
+                    layout.text_measurer.as_ref(),
+                    &svg_opts,
+                ) {
+                    Ok(v) => v,
+                    Err(_) => return,
+                };
                 black_box(svg.len());
             })
         });
@@ -123,7 +313,7 @@ fn bench_render(c: &mut Criterion) {
 
 fn bench_end_to_end(c: &mut Criterion) {
     let engine = Engine::new();
-    let parse_opts = ParseOptions::default();
+    let parse_opts = ParseOptions::strict();
     let layout = headless_layout_options();
 
     let mut group = c.benchmark_group("end_to_end");
@@ -133,20 +323,48 @@ fn bench_end_to_end(c: &mut Criterion) {
             ..SvgRenderOptions::default()
         };
 
+        // Pre-check end-to-end viability (parse + layout + render) once to keep the bench stable.
+        let parsed = match engine.parse_diagram_sync(input, parse_opts) {
+            Ok(Some(v)) => v,
+            Ok(None) => continue,
+            Err(_) => {
+                eprintln!("[bench][skip][end_to_end] {name}: parse error");
+                continue;
+            }
+        };
+        let diagram = match merman_render::layout_parsed(&parsed, &layout) {
+            Ok(v) => v,
+            Err(_) => {
+                eprintln!("[bench][skip][end_to_end] {name}: layout error");
+                continue;
+            }
+        };
+        if render_layouted_svg(&diagram, layout.text_measurer.as_ref(), &svg_opts).is_err() {
+            eprintln!("[bench][skip][end_to_end] {name}: svg render error");
+            continue;
+        }
+
         group.bench_with_input(BenchmarkId::from_parameter(name), input, |b, data| {
             b.iter_batched(
                 || data,
                 |text| {
-                    let Some(parsed) = engine
-                        .parse_diagram_sync(black_box(text), parse_opts)
-                        .unwrap()
-                    else {
-                        return;
+                    let parsed = match engine.parse_diagram_sync(black_box(text), parse_opts) {
+                        Ok(Some(v)) => v,
+                        Ok(None) => return,
+                        Err(_) => return,
                     };
-                    let diagram = merman_render::layout_parsed(&parsed, &layout).unwrap();
-                    let svg =
-                        render_layouted_svg(&diagram, layout.text_measurer.as_ref(), &svg_opts)
-                            .unwrap();
+                    let diagram = match merman_render::layout_parsed(&parsed, &layout) {
+                        Ok(v) => v,
+                        Err(_) => return,
+                    };
+                    let svg = match render_layouted_svg(
+                        &diagram,
+                        layout.text_measurer.as_ref(),
+                        &svg_opts,
+                    ) {
+                        Ok(v) => v,
+                        Err(_) => return,
+                    };
                     black_box(svg.len());
                 },
                 BatchSize::SmallInput,

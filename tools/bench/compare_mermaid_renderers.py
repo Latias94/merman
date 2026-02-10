@@ -82,6 +82,26 @@ def run(cmd: list[str], cwd: Path) -> str:
     return proc.stdout
 
 
+_SKIP_LINE = re.compile(
+    r"^\[bench\]\[skip\]\[(?P<group>[A-Za-z0-9_\-]+)\]\s+(?P<name>[A-Za-z0-9_\-]+):\s*(?P<reason>.+)$"
+)
+
+
+def parse_skip_lines(text: str) -> dict[str, list[str]]:
+    skipped: dict[str, list[str]] = {}
+    for raw in text.splitlines():
+        line = strip_ansi(raw.rstrip("\r\n"))
+        m = _SKIP_LINE.match(line)
+        if not m:
+            continue
+        group = m.group("group")
+        name = m.group("name")
+        skipped.setdefault(group, []).append(name)
+    for k in list(skipped.keys()):
+        skipped[k] = sorted(set(skipped[k]))
+    return skipped
+
+
 def git_head(cwd: Path) -> str | None:
     try:
         out = run(["git", "rev-parse", "HEAD"], cwd=cwd).strip()
@@ -102,6 +122,58 @@ def rustc_verbose() -> str:
         return out
     except Exception:
         return "unknown"
+
+
+def best_effort_cpu_model() -> str:
+    try:
+        if sys.platform.startswith("win"):
+            out = subprocess.run(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-Command",
+                    "(Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name)",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            ).stdout.strip()
+            if out:
+                return out
+        elif sys.platform == "darwin":
+            out = subprocess.run(
+                ["sysctl", "-n", "machdep.cpu.brand_string"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            ).stdout.strip()
+            if out:
+                return out
+        else:
+            out = subprocess.run(
+                ["lscpu"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                check=False,
+            ).stdout
+            for line in out.splitlines():
+                if ":" not in line:
+                    continue
+                k, v = line.split(":", 1)
+                if k.strip().lower() == "model name" and v.strip():
+                    return v.strip()
+    except Exception:
+        pass
+    return platform.processor() or "unknown"
 
 
 _LINE_NAME_ONLY = re.compile(r"^(?P<prefix>[A-Za-z0-9_\-]+)/(?P<name>[A-Za-z0-9_\-]+)\s*$")
@@ -172,6 +244,7 @@ def write_markdown(
     merman_rev: str | None,
     mmdr_rev: str | None,
     mermaid_js_rev: str | None,
+    skipped_merman: dict[str, list[str]] | None,
 ) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -255,6 +328,18 @@ def write_markdown(
     )
     lines.append("")
 
+    if skipped_merman:
+        skipped = skipped_merman.get("end_to_end") or []
+        if skipped:
+            lines.append("## Skipped (merman)")
+            lines.append("")
+            lines.append(
+                "These fixtures were present but skipped because `merman` returned a parse/layout/render error during the pre-check."
+            )
+            lines.append("")
+            lines.append(", ".join(f"`{n}`" for n in skipped))
+            lines.append("")
+
     out_path.write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -277,7 +362,7 @@ def main(argv: list[str]) -> int:
     )
     ap.add_argument(
         "--filter",
-        default=r"end_to_end/(flowchart_tiny|sequence_tiny|state_tiny|class_tiny)",
+        default=r"end_to_end/(flowchart_tiny|flowchart_medium|flowchart_large|sequence_tiny|sequence_medium|state_tiny|state_medium|class_tiny|class_medium)",
         help="Criterion regex filter (passed to both benches).",
     )
     ap.add_argument("--sample-size", type=int, default=20)
@@ -340,9 +425,11 @@ def main(argv: list[str]) -> int:
 
     merman_times = parse_criterion_times(merman_out, prefix="end_to_end")
     mmdr_times = parse_criterion_times(mmdr_out, prefix="end_to_end")
+    skipped_merman = parse_skip_lines(merman_out)
 
     mermaid_js_results: dict[str, float] = {}
     mermaid_js_rev: str | None = None
+    mermaid_js_meta: dict[str, str] = {}
     if mermaid_cli_dir.exists():
         # Bench upstream Mermaid JS rendering in a single long-lived headless Chromium instance.
         bench_in = repo_root / "target" / "bench" / "mermaid_js_input.json"
@@ -354,6 +441,17 @@ def main(argv: list[str]) -> int:
         if fixtures_dir.exists():
             for p in fixtures_dir.glob("*.mmd"):
                 fixtures[p.stem] = p.read_text(encoding="utf-8")
+
+        # Keep Mermaid JS benchmarking aligned with the Criterion filter.
+        try:
+            bench_re = re.compile(args.filter)
+            fixtures = {
+                name: text
+                for name, text in fixtures.items()
+                if bench_re.search(f"end_to_end/{name}") is not None
+            }
+        except re.error:
+            pass
 
         bench_in.write_text(
             json.dumps(
@@ -386,25 +484,32 @@ def main(argv: list[str]) -> int:
         )
 
         data = json.loads(bench_out.read_text(encoding="utf-8", errors="replace"))
+        if isinstance(data.get("meta"), dict):
+            mermaid_js_meta = {
+                k: str(v) for k, v in data.get("meta").items() if isinstance(k, str)
+            }
         for name, v in (data.get("results") or {}).items():
             med = v.get("median_ns")
             if isinstance(med, (int, float)) and med > 0:
                 mermaid_js_results[name] = float(med)
 
-        # Use the Mermaid version pinned in tools/mermaid-cli's package-lock as a best-effort rev label.
-        lock = mermaid_cli_dir / "package-lock.json"
-        if lock.exists():
-            try:
-                lock_data = json.loads(lock.read_text(encoding="utf-8", errors="replace"))
-                ver = (
-                    (lock_data.get("packages") or {})
-                    .get("node_modules/mermaid", {})
-                    .get("version")
-                )
-                if isinstance(ver, str) and ver.strip():
-                    mermaid_js_rev = "mermaid@" + ver.strip()
-            except Exception:
-                mermaid_js_rev = None
+        # Prefer meta, then fall back to package-lock parsing.
+        if mermaid_js_meta.get("mermaid"):
+            mermaid_js_rev = "mermaid@" + mermaid_js_meta["mermaid"]
+        else:
+            lock = mermaid_cli_dir / "package-lock.json"
+            if lock.exists():
+                try:
+                    lock_data = json.loads(lock.read_text(encoding="utf-8", errors="replace"))
+                    ver = (
+                        (lock_data.get("packages") or {})
+                        .get("node_modules/mermaid", {})
+                        .get("version")
+                    )
+                    if isinstance(ver, str) and ver.strip():
+                        mermaid_js_rev = "mermaid@" + ver.strip()
+                except Exception:
+                    mermaid_js_rev = None
     else:
         print("[bench] mermaid-js: skipped (missing tools/mermaid-cli)")
 
@@ -424,9 +529,17 @@ def main(argv: list[str]) -> int:
     env_lines = [
         f"- OS: \"{platform.platform()}\"",
         f"- Machine: \"{platform.machine()}\"",
-        f"- CPU: \"{platform.processor() or 'unknown'}\"",
+        f"- CPU: \"{best_effort_cpu_model()}\"",
         f"- Python: \"{platform.python_version()}\"",
     ]
+    if mermaid_js_meta.get("node"):
+        env_lines.append(f"- Node: \"{mermaid_js_meta['node']}\"")
+    if mermaid_js_meta.get("chromium"):
+        env_lines.append(f"- Chromium: \"{mermaid_js_meta['chromium']}\"")
+    if mermaid_js_meta.get("puppeteer"):
+        env_lines.append(f"- Puppeteer: \"{mermaid_js_meta['puppeteer']}\"")
+    if mermaid_js_meta.get("mermaid_cli"):
+        env_lines.append(f"- mermaid-cli: \"{mermaid_js_meta['mermaid_cli']}\"")
     write_markdown(
         out_path,
         filter_expr=args.filter,
@@ -438,6 +551,7 @@ def main(argv: list[str]) -> int:
         merman_rev=git_head(repo_root),
         mmdr_rev=git_head(mmdr_dir),
         mermaid_js_rev=mermaid_js_rev,
+        skipped_merman=skipped_merman,
     )
 
     print("Wrote:", out_path)
