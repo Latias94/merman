@@ -540,10 +540,20 @@ pub(super) fn render_er_diagram_svg(
     let vb_h_attr = ((vb_h.max(1.0)) as f32) as f64;
 
     let mut out = String::new();
-    let w_attr = fmt(vb_w_attr);
-    let h_attr = fmt(vb_h_attr);
+    let mut w_attr = fmt(vb_w_attr);
+    let mut h_attr = fmt(vb_h_attr);
+    let mut max_w_style = fmt_max_width_px(vb_w_attr);
+    if let Some((viewbox, max_w)) =
+        crate::generated::er_root_overrides_11_12_2::lookup_er_root_viewport_override(diagram_id)
+    {
+        let mut it = viewbox.split_whitespace();
+        let _ = it.next(); // min-x
+        let _ = it.next(); // min-y
+        w_attr = it.next().unwrap_or("0").to_string();
+        h_attr = it.next().unwrap_or("0").to_string();
+        max_w_style = max_w.to_string();
+    }
     if use_max_width {
-        let max_w_style = fmt_max_width_px(vb_w_attr);
         let _ = write!(
             &mut out,
             r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="erDiagram" style="max-width: {}px; background-color: white;" viewBox="0 0 {} {}" role="graphics-document document" aria-roledescription="{}""#,

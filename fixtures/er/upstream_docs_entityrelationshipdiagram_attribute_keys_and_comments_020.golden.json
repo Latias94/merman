@@ -1,0 +1,174 @@
+{
+  "diagramType": "er",
+  "model": {
+    "type": "er",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "entities": {
+      "MANUFACTURER": {
+        "id": "entity-MANUFACTURER-3",
+        "label": "MANUFACTURER",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "NAMED-DRIVER": {
+        "id": "entity-NAMED-DRIVER-1",
+        "label": "NAMED-DRIVER",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "carRegistrationNumber",
+            "keys": [
+              "PK",
+              "FK"
+            ],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "driverLicence",
+            "keys": [
+              "PK",
+              "FK"
+            ],
+            "comment": ""
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "PERSON": {
+        "id": "entity-PERSON-2",
+        "label": "PERSON",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "driversLicense",
+            "keys": [
+              "PK"
+            ],
+            "comment": "The license #"
+          },
+          {
+            "type": "string(99)",
+            "name": "firstName",
+            "keys": [],
+            "comment": "Only 99 characters are allowed"
+          },
+          {
+            "type": "string",
+            "name": "lastName",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "phone",
+            "keys": [
+              "UK"
+            ],
+            "comment": ""
+          },
+          {
+            "type": "int",
+            "name": "age",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "CAR": {
+        "id": "entity-CAR-0",
+        "label": "CAR",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "registrationNumber",
+            "keys": [
+              "PK"
+            ],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "make",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "model",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "string[]",
+            "name": "parts",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-CAR-0",
+        "roleA": "allows",
+        "entityB": "entity-NAMED-DRIVER-1",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-PERSON-2",
+        "roleA": "is",
+        "entityB": "entity-NAMED-DRIVER-1",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-MANUFACTURER-3",
+        "roleA": "makes",
+        "entityB": "entity-CAR-0",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      }
+    ],
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}

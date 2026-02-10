@@ -1,0 +1,49 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "Class01",
+          "x": 38.32,
+          "y": 42.0,
+          "width": 76.64,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Class02",
+          "x": 164.96,
+          "y": 42.0,
+          "width": 76.64,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Class03",
+          "x": 291.6,
+          "y": 42.0,
+          "width": 76.64,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Class04",
+          "x": 418.24,
+          "y": 42.0,
+          "width": 76.64,
+          "height": 84.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "clusters": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 456.56,
+        "max_y": 84.0
+      }
+    }
+  }
+}

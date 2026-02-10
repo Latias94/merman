@@ -1,0 +1,87 @@
+{
+  "diagramType": "treemap",
+  "layout": {
+    "TreemapDiagram": {
+      "title_height": 0.0,
+      "width": 1000.0,
+      "height": 400.0,
+      "use_max_width": true,
+      "diagram_padding": 8.0,
+      "show_values": true,
+      "value_format": "$.1%",
+      "accTitle": null,
+      "accDescr": null,
+      "title": null,
+      "sections": [
+        {
+          "name": "",
+          "depth": 0.0,
+          "value": 1.0,
+          "x0": 0.0,
+          "y0": 0.0,
+          "x1": 1000.0,
+          "y1": 400.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Market Share",
+          "depth": 1.0,
+          "value": 1.0,
+          "x0": 10.0,
+          "y0": 35.0,
+          "x1": 990.0,
+          "y1": 390.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        }
+      ],
+      "leaves": [
+        {
+          "name": "Company A",
+          "value": 0.35,
+          "parent_name": "Market Share",
+          "x0": 20.0,
+          "y0": 70.0,
+          "x1": 350.0,
+          "y1": 380.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Company B",
+          "value": 0.25,
+          "parent_name": "Market Share",
+          "x0": 360.0,
+          "y0": 70.0,
+          "x1": 835.0,
+          "y1": 220.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Others",
+          "value": 0.25,
+          "parent_name": "Market Share",
+          "x0": 360.0,
+          "y0": 230.0,
+          "x1": 835.0,
+          "y1": 380.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        },
+        {
+          "name": "Company C",
+          "value": 0.15,
+          "parent_name": "Market Share",
+          "x0": 845.0,
+          "y0": 70.0,
+          "x1": 980.0,
+          "y1": 380.0,
+          "class_selector": null,
+          "css_compiled_styles": null
+        }
+      ]
+    }
+  }
+}

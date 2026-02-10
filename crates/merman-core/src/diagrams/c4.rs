@@ -319,6 +319,20 @@ impl C4Db {
         if let Some(v) = args.get(5) {
             apply_int_kv(target, "offsetY", v)?;
         }
+
+        // Mermaid C4 macros accept named parameters (e.g. `$offsetY="-40"`) and users commonly
+        // omit earlier optional keys (like `$textColor` / `$lineColor`). Our arg vector is a
+        // heterogeneous list of single-key objects, so the above positional probes can still
+        // insert `offsetX/offsetY` as strings via `apply_kv_value`. Normalize any parsed numeric
+        // strings back to integers to match upstream Mermaid behavior.
+        for key in ["offsetX", "offsetY"] {
+            let Some(v) = target.get(key) else {
+                continue;
+            };
+            if let Some(parsed) = value_as_i64(v) {
+                target.insert(key.to_string(), json!(parsed));
+            }
+        }
         Ok(())
     }
 

@@ -1,0 +1,131 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Square": {
+        "id": "Square",
+        "type": "Shape",
+        "label": "Square",
+        "text": "Square&lt;Shape&gt;",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "",
+            "id": "setPoints",
+            "classifier": "",
+            "parameters": "List~int~ points",
+            "returnType": "",
+            "displayText": "setPoints(List<int> points)",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "",
+            "id": "getPoints",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "List~int~",
+            "displayText": "getPoints() : List<int>",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "setMessages",
+            "classifier": "",
+            "parameters": "List~string~ messages",
+            "returnType": "",
+            "displayText": "+setMessages(List<string> messages)",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "getMessages",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "List~string~",
+            "displayText": "+getMessages() : List<string>",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "getDistanceMatrix",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "List~List~int~~",
+            "displayText": "+getDistanceMatrix() : List<List<int>>",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "int id",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "int id",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "List~int~ position",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "List<int> position",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "List~string~ messages",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-List<string> messages",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Square-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

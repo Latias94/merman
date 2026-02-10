@@ -1,0 +1,107 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Service",
+      "DB"
+    ],
+    "actors": {
+      "Service": {
+        "name": "Service",
+        "description": "Service",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "DB": {
+        "name": "DB",
+        "description": "DB",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": null,
+        "to": null,
+        "message": "Establish a connection to the DB",
+        "wrap": false,
+        "type": 27,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Service",
+        "to": "DB",
+        "message": "connect",
+        "wrap": false,
+        "type": 6,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": null,
+        "to": null,
+        "message": "Network timeout",
+        "wrap": false,
+        "type": 28,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "Service",
+        "to": "Service",
+        "message": "Log error",
+        "wrap": false,
+        "type": 6,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": null,
+        "to": null,
+        "message": "Credentials rejected",
+        "wrap": false,
+        "type": 28,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "Service",
+        "to": "Service",
+        "message": "Log different error",
+        "wrap": false,
+        "type": 6,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 29,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

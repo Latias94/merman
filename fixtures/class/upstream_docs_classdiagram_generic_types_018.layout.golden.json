@@ -1,0 +1,25 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "Square",
+          "x": 168.44,
+          "y": 144.0,
+          "width": 336.88,
+          "height": 288.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "clusters": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 336.88,
+        "max_y": 288.0
+      }
+    }
+  }
+}

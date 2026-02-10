@@ -1,0 +1,110 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Class01": {
+        "id": "Class01",
+        "type": "",
+        "label": "Class01",
+        "text": "Class01",
+        "cssClasses": "default clickable",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Class01-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": "Callback tooltip",
+        "haveCallback": true,
+        "callback": {
+          "function": "callbackFunction"
+        },
+        "callbackEffective": false
+      },
+      "Class02": {
+        "id": "Class02",
+        "type": "",
+        "label": "Class02",
+        "text": "Class02",
+        "cssClasses": "default clickable",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Class02-1",
+        "parent": null,
+        "link": "https://www.github.com/",
+        "linkTarget": "_blank",
+        "tooltip": "This is a link",
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Class03": {
+        "id": "Class03",
+        "type": "",
+        "label": "Class03",
+        "text": "Class03",
+        "cssClasses": "default clickable",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Class03-2",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": "Callback tooltip",
+        "haveCallback": true,
+        "callback": {
+          "function": "callbackFunction"
+        },
+        "callbackEffective": false
+      },
+      "Class04": {
+        "id": "Class04",
+        "type": "",
+        "label": "Class04",
+        "text": "Class04",
+        "cssClasses": "default clickable",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Class04-3",
+        "parent": null,
+        "link": "https://www.github.com/",
+        "linkTarget": "_blank",
+        "tooltip": "This is a link",
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}
