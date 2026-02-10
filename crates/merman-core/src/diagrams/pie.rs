@@ -80,6 +80,11 @@ pub fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
             continue;
         }
 
+        if let Some(v) = parse_title_statement(t) {
+            title = Some(v);
+            continue;
+        }
+
         if let Some(v) = parse_key_value(t, "accTitle") {
             acc_title = Some(v);
             continue;
@@ -146,6 +151,19 @@ fn strip_inline_comment(line: &str) -> &str {
     match line.find("%%") {
         Some(idx) => &line[..idx],
         None => line,
+    }
+}
+
+fn parse_title_statement(line: &str) -> Option<String> {
+    let t = line.trim_start();
+    if !t.starts_with("title") {
+        return None;
+    }
+    let rest = t.strip_prefix("title")?;
+    match rest.chars().next() {
+        None => Some(String::new()),
+        Some(c) if c.is_whitespace() => Some(rest.trim_start().to_string()),
+        _ => None,
     }
 }
 
@@ -227,4 +245,35 @@ fn parse_quoted_string(input: &str) -> Option<(String, &str)> {
         out.push(c);
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Engine, ParseOptions};
+
+    #[test]
+    fn pie_supports_title_statement_after_header() {
+        let engine = Engine::new();
+        let input = r#"
+pie showData
+  title Market Share
+  "A" : 1
+  "B" : 2
+"#;
+
+        let parsed = engine
+            .parse_diagram_sync(input, ParseOptions::strict())
+            .unwrap()
+            .expect("diagram detected");
+
+        assert_eq!(parsed.meta.diagram_type, "pie");
+        assert_eq!(
+            parsed.model.get("title").and_then(|v| v.as_str()),
+            Some("Market Share")
+        );
+        assert_eq!(
+            parsed.model.get("showData").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+    }
 }
