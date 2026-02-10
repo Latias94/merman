@@ -11,6 +11,7 @@ The upstream Mermaid implementation is the spec (see `docs/adr/0014-upstream-par
 
 - Baseline: Mermaid `@11.12.2`.
 - Parity is enforced via upstream SVG DOM baselines + golden snapshots.
+- DOM parity checks normalize geometry numeric tokens to 3 decimals (`--dom-decimals 3`) and compare the canonicalized DOM (not byte-identical SVG).
 - Current coverage and gates: `docs/alignment/STATUS.md`.
 - ZenUML is supported in a headless compatibility mode (subset; not parity-gated). See ADR 0061.
 

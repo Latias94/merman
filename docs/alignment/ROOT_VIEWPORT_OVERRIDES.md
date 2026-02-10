@@ -81,8 +81,8 @@ cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-
 - Store exact upstream strings for `viewBox`/`max-width` to avoid re-rounding drift.
 - Prefer real layout/render parity fixes first; use overrides for remaining deterministic gaps.
 
-## Current Status (2026-02-07)
+## Current Status (2026-02-10)
 
-As of 2026-02-07, all root viewport override maps are empty (0 entries) for the pinned Mermaid baseline.
-`parity-root` stability is maintained via renderer-level narrow profile calibrations where needed, and the
-override maps remain in place as a version-scoped escape hatch for future drift.
+As of 2026-02-10, small fixture-scoped root viewport overrides are in use for the pinned Mermaid baseline.
+They exist to pin `viewBox` + `style max-width` when browser `getBBox()` serialization introduces small
+numeric drift that is not worth globalizing into layout/render logic.

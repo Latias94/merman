@@ -453,6 +453,15 @@ fn class_edge_dom_id(
     relation_index_by_id: &std::collections::HashMap<&str, usize>,
 ) -> String {
     if edge.id.starts_with("edgeNote") {
+        // Mermaid numbers note edges as `edgeNote<N>` where `<N>` follows the `note<N-1>` id.
+        // (This is independent from the relation edge counter.)
+        if let Some(note_idx) = edge
+            .from
+            .strip_prefix("note")
+            .and_then(|rest| rest.parse::<usize>().ok())
+        {
+            return format!("edgeNote{}", note_idx + 1);
+        }
         return edge.id.clone();
     }
     // Mermaid uses `getEdgeId` with prefix `id`.
@@ -643,7 +652,7 @@ pub(super) fn render_class_diagram_v2_svg(
     layout: &ClassDiagramV2Layout,
     semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
-    _diagram_title: Option<&str>,
+    diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
@@ -943,6 +952,69 @@ pub(super) fn render_class_diagram_v2_svg(
 
     // Edge labels + terminals.
     out.push_str(r#"<g class="edgeLabels">"#);
+    // Mermaid renders all edge terminal labels first, then edge labels.
+    for e in &edges {
+        let Some(rel) = relations_by_id.get(e.id.as_str()).copied() else {
+            continue;
+        };
+        let start_text = if rel.relation_title_1 == "none" {
+            ""
+        } else {
+            rel.relation_title_1.as_str()
+        };
+        if start_text.trim().is_empty() {
+            continue;
+        }
+        for lbl in [&e.start_label_left, &e.start_label_right] {
+            if let Some(lbl) = lbl.as_ref() {
+                include_xywh(
+                    &mut content_bounds,
+                    lbl.x + content_tx,
+                    lbl.y + content_ty,
+                    9.0,
+                    12.0,
+                );
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
+                    fmt(lbl.x + content_tx),
+                    fmt(lbl.y + content_ty),
+                    escape_xml(start_text.trim())
+                );
+            }
+        }
+    }
+    for e in &edges {
+        let Some(rel) = relations_by_id.get(e.id.as_str()).copied() else {
+            continue;
+        };
+        let end_text = if rel.relation_title_2 == "none" {
+            ""
+        } else {
+            rel.relation_title_2.as_str()
+        };
+        if end_text.trim().is_empty() {
+            continue;
+        }
+        for lbl in [&e.end_label_left, &e.end_label_right] {
+            if let Some(lbl) = lbl.as_ref() {
+                include_xywh(
+                    &mut content_bounds,
+                    lbl.x + content_tx,
+                    lbl.y + content_ty,
+                    9.0,
+                    12.0,
+                );
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"/><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g>"#,
+                    fmt(lbl.x + content_tx),
+                    fmt(lbl.y + content_ty),
+                    escape_xml(end_text.trim())
+                );
+            }
+        }
+    }
     for e in &edges {
         let dom_id = class_edge_dom_id(e, &relation_index_by_id);
         let label_text = if e.id.starts_with("edgeNote") {
@@ -987,94 +1059,6 @@ pub(super) fn render_class_diagram_v2_svg(
                 r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
                 escape_attr(&dom_id)
             );
-        }
-
-        let Some(rel) = relations_by_id.get(e.id.as_str()).copied() else {
-            continue;
-        };
-
-        let start_text = if rel.relation_title_1 == "none" {
-            ""
-        } else {
-            rel.relation_title_1.as_str()
-        };
-        let end_text = if rel.relation_title_2 == "none" {
-            ""
-        } else {
-            rel.relation_title_2.as_str()
-        };
-
-        if let Some(lbl) = e.start_label_left.as_ref() {
-            if !start_text.trim().is_empty() {
-                include_xywh(
-                    &mut content_bounds,
-                    lbl.x + content_tx,
-                    lbl.y + content_ty,
-                    9.0,
-                    12.0,
-                );
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
-                    fmt(lbl.x + content_tx),
-                    fmt(lbl.y + content_ty),
-                    escape_xml(start_text.trim())
-                );
-            }
-        }
-        if let Some(lbl) = e.start_label_right.as_ref() {
-            if !start_text.trim().is_empty() {
-                include_xywh(
-                    &mut content_bounds,
-                    lbl.x + content_tx,
-                    lbl.y + content_ty,
-                    9.0,
-                    12.0,
-                );
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
-                    fmt(lbl.x + content_tx),
-                    fmt(lbl.y + content_ty),
-                    escape_xml(start_text.trim())
-                );
-            }
-        }
-        if let Some(lbl) = e.end_label_left.as_ref() {
-            if !end_text.trim().is_empty() {
-                include_xywh(
-                    &mut content_bounds,
-                    lbl.x + content_tx,
-                    lbl.y + content_ty,
-                    9.0,
-                    12.0,
-                );
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"/><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g>"#,
-                    fmt(lbl.x + content_tx),
-                    fmt(lbl.y + content_ty),
-                    escape_xml(end_text.trim())
-                );
-            }
-        }
-        if let Some(lbl) = e.end_label_right.as_ref() {
-            if !end_text.trim().is_empty() {
-                include_xywh(
-                    &mut content_bounds,
-                    lbl.x + content_tx,
-                    lbl.y + content_ty,
-                    9.0,
-                    12.0,
-                );
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"/><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g>"#,
-                    fmt(lbl.x + content_tx),
-                    fmt(lbl.y + content_ty),
-                    escape_xml(end_text.trim())
-                );
-            }
         }
     }
     out.push_str("</g>");
@@ -1429,7 +1413,6 @@ pub(super) fn render_class_diagram_v2_svg(
     out.push_str("</g>"); // nodes
     out.push_str("</g>"); // root
     out.push_str("</g>"); // wrapper
-    out.push_str("</svg>");
 
     let bounds = content_bounds.unwrap_or(Bounds {
         min_x: 0.0,
@@ -1441,6 +1424,19 @@ pub(super) fn render_class_diagram_v2_svg(
     let mut vb_min_y = bounds.min_y - viewport_padding;
     let mut vb_w = ((bounds.max_x - bounds.min_x) + 2.0 * viewport_padding).max(1.0);
     let mut vb_h = ((bounds.max_y - bounds.min_y) + 2.0 * viewport_padding).max(1.0);
+
+    // Mermaid class diagram titles are rendered as an SVG `<text>` node outside the content wrapper,
+    // and `setupGraphViewbox(...)` expands the root viewport to include it. Upstream v11.12.2 uses a
+    // fixed 48px title block above the diagram content.
+    const TITLE_BLOCK_HEIGHT_PX: f64 = 48.0;
+    const TITLE_Y_OFFSET_FROM_VIEWBOX_TOP_PX: f64 = 23.0;
+    let has_diagram_title = diagram_title
+        .as_deref()
+        .is_some_and(|t| !t.trim().is_empty());
+    if has_diagram_title {
+        vb_min_y -= TITLE_BLOCK_HEIGHT_PX;
+        vb_h += TITLE_BLOCK_HEIGHT_PX;
+    }
 
     // Mermaid@11.12.2 parity-root calibration for the class interactivity singleton profile.
     //
@@ -1827,10 +1823,37 @@ pub(super) fn render_class_diagram_v2_svg(
     {
         view_box_attr = up_viewbox.to_string();
         max_w_attr = up_max_width_px.to_string();
+        if has_diagram_title {
+            let parts: Vec<f64> = up_viewbox
+                .split_whitespace()
+                .filter_map(|p| p.parse::<f64>().ok())
+                .collect();
+            if parts.len() == 4 {
+                vb_min_x = parts[0];
+                vb_min_y = parts[1];
+                vb_w = parts[2];
+            }
+        }
+    }
+
+    // Mermaid renders the diagram title as a direct child of `<svg>` (outside the wrapper `<g>`),
+    // centered in the root viewport.
+    if has_diagram_title {
+        let title = diagram_title.unwrap_or_default().trim();
+        let title_x = vb_min_x + vb_w / 2.0;
+        let title_y = vb_min_y + TITLE_Y_OFFSET_FROM_VIEWBOX_TOP_PX;
+        let _ = write!(
+            &mut out,
+            r#"<text text-anchor="middle" x="{}" y="{}" class="classDiagramTitleText">{}</text>"#,
+            fmt(title_x),
+            fmt(title_y),
+            escape_xml(title)
+        );
     }
 
     out = out.replacen(MAX_WIDTH_PLACEHOLDER, &max_w_attr, 1);
     out = out.replacen(VIEWBOX_PLACEHOLDER, &view_box_attr, 1);
 
+    out.push_str("</svg>");
     Ok(out)
 }
