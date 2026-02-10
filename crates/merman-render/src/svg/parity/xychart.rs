@@ -1,6 +1,6 @@
 use super::*;
 
-// XYChart diagram SVG renderer implementation (split from legacy.rs).
+// XYChart diagram SVG renderer implementation (split from parity.rs).
 
 pub(super) fn render_xychart_diagram_svg(
     layout: &XyChartDiagramLayout,

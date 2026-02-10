@@ -1,6 +1,6 @@
 use super::*;
 
-// Block diagram SVG renderer implementation (split from legacy.rs).
+// Block diagram SVG renderer implementation (split from parity.rs).
 
 pub(super) fn render_block_diagram_svg(
     layout: &BlockDiagramLayout,

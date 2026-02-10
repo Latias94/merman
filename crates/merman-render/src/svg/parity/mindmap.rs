@@ -1,6 +1,6 @@
 use super::*;
 
-// Mindmap diagram SVG renderer implementation (split from legacy.rs).
+// Mindmap diagram SVG renderer implementation (split from parity.rs).
 
 fn mindmap_css(diagram_id: &str) -> String {
     // Mirrors Mermaid@11.12.2 `diagrams/mindmap/styles.ts` + shared base stylesheet ordering.

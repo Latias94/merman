@@ -2,7 +2,7 @@
 
 use super::*;
 
-// C4 diagram SVG renderer implementation (split from legacy.rs).
+// C4 diagram SVG renderer implementation (split from parity.rs).
 
 fn c4_css(diagram_id: &str) -> String {
     let id = escape_xml(diagram_id);

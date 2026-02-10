@@ -2,7 +2,7 @@
 
 use super::*;
 
-// Requirement diagram SVG renderer implementation (split from legacy.rs).
+// Requirement diagram SVG renderer implementation (split from parity.rs).
 
 pub(super) fn render_requirement_diagram_svg(
     layout: &RequirementDiagramLayout,

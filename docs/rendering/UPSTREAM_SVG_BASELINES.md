@@ -206,7 +206,7 @@ Convention:
 ## Normalized Fixtures (CLI-Compatible)
 
 Some upstream suites (notably Cypress) include inputs that are accepted by the browser bundle but
-rejected by Mermaid CLI `@11.12.2` (Langium parser), often due to legacy shorthand syntax.
+rejected by Mermaid CLI `@11.12.2` (Langium parser), often due to shorthand syntax.
 
 To preserve the upstream strings *and* still get authoritative CLI SVG baselines + DOM parity
 comparisons, we add `*_normalized` variants that rewrite the input into the Mermaid@11.12.2 grammar.

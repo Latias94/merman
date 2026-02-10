@@ -72,7 +72,7 @@ impl DetectorRegistry {
         reg.add_fn("c4", detector_c4);
         reg.add_fn("kanban", detector_kanban);
         reg.add_fn("classDiagram", detector_class_v2);
-        reg.add_fn("class", detector_class_legacy);
+        reg.add_fn("class", detector_class_dagre_d3);
         reg.add_fn("er", detector_er);
         reg.add_fn("gantt", detector_gantt);
         reg.add_fn("info", detector_info);
@@ -80,11 +80,11 @@ impl DetectorRegistry {
         reg.add_fn("requirement", detector_requirement);
         reg.add_fn("sequence", detector_sequence);
         reg.add_fn("flowchart-v2", detector_flowchart_v2);
-        reg.add_fn("flowchart", detector_flowchart_legacy);
+        reg.add_fn("flowchart", detector_flowchart_dagre_d3_graph);
         reg.add_fn("timeline", detector_timeline);
         reg.add_fn("gitGraph", detector_git_graph);
         reg.add_fn("stateDiagram", detector_state_v2);
-        reg.add_fn("state", detector_state_legacy);
+        reg.add_fn("state", detector_state_dagre_d3);
         reg.add_fn("journey", detector_journey);
         reg.add_fn("quadrantChart", detector_quadrant);
         reg.add_fn("sankey", detector_sankey);
@@ -108,7 +108,7 @@ impl DetectorRegistry {
         reg.add_fn("c4", detector_c4);
         reg.add_fn("kanban", detector_kanban);
         reg.add_fn("classDiagram", detector_class_v2);
-        reg.add_fn("class", detector_class_legacy);
+        reg.add_fn("class", detector_class_dagre_d3);
         reg.add_fn("er", detector_er);
         reg.add_fn("gantt", detector_gantt);
         reg.add_fn("info", detector_info);
@@ -116,11 +116,11 @@ impl DetectorRegistry {
         reg.add_fn("requirement", detector_requirement);
         reg.add_fn("sequence", detector_sequence);
         reg.add_fn("flowchart-v2", detector_flowchart_v2);
-        reg.add_fn("flowchart", detector_flowchart_legacy);
+        reg.add_fn("flowchart", detector_flowchart_dagre_d3_graph);
         reg.add_fn("timeline", detector_timeline);
         reg.add_fn("gitGraph", detector_git_graph);
         reg.add_fn("stateDiagram", detector_state_v2);
-        reg.add_fn("state", detector_state_legacy);
+        reg.add_fn("state", detector_state_dagre_d3);
         reg.add_fn("journey", detector_journey);
         reg.add_fn("quadrantChart", detector_quadrant);
         reg.add_fn("sankey", detector_sankey);
@@ -187,7 +187,7 @@ fn detector_kanban(txt: &str, _config: &mut MermaidConfig) -> bool {
     Regex::new(r"^\s*kanban").unwrap().is_match(txt)
 }
 
-fn detector_class_legacy(txt: &str, config: &mut MermaidConfig) -> bool {
+fn detector_class_dagre_d3(txt: &str, config: &mut MermaidConfig) -> bool {
     if config.get_str("class.defaultRenderer") == Some("dagre-wrapper") {
         return false;
     }
@@ -256,7 +256,7 @@ fn detector_flowchart_v2(txt: &str, config: &mut MermaidConfig) -> bool {
     Regex::new(r"^\s*flowchart").unwrap().is_match(txt)
 }
 
-fn detector_flowchart_legacy(txt: &str, config: &mut MermaidConfig) -> bool {
+fn detector_flowchart_dagre_d3_graph(txt: &str, config: &mut MermaidConfig) -> bool {
     if matches!(
         config.get_str("flowchart.defaultRenderer"),
         Some("dagre-wrapper" | "elk")
@@ -274,7 +274,7 @@ fn detector_git_graph(txt: &str, _config: &mut MermaidConfig) -> bool {
     Regex::new(r"^\s*gitGraph").unwrap().is_match(txt)
 }
 
-fn detector_state_legacy(txt: &str, config: &mut MermaidConfig) -> bool {
+fn detector_state_dagre_d3(txt: &str, config: &mut MermaidConfig) -> bool {
     if config.get_str("state.defaultRenderer") == Some("dagre-wrapper") {
         return false;
     }

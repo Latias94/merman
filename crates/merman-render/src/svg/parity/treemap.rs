@@ -2,7 +2,7 @@
 
 use super::*;
 
-// Treemap diagram SVG renderer implementation (split from legacy.rs).
+// Treemap diagram SVG renderer implementation (split from parity.rs).
 
 pub(super) fn render_treemap_diagram_svg(
     layout: &crate::model::TreemapDiagramLayout,

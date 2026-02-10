@@ -1,4 +1,4 @@
-// Shared SVG utility helpers (split from legacy.rs).
+// Shared SVG utility helpers (split from parity.rs).
 //
 // Keep behavior identical; these helpers are used across multiple diagram renderers.
 

@@ -1129,7 +1129,7 @@ pub fn layout_state_diagram_v2(
 ) -> Result<StateDiagramV2Layout> {
     let model: StateDiagramModel = serde_json::from_value(semantic.clone())?;
 
-    // Mermaid accepts some legacy "floating note" syntaxes in the parser but does not render them.
+    // Mermaid accepts some historical "floating note" syntaxes in the parser but does not render them.
     // Keep them in the semantic model/snapshots, but exclude them from layout so they do not shift
     // visible nodes/edges (and therefore do not affect root viewBox/max-width parity).
     let mut hidden_prefixes: Vec<String> = Vec::new();
@@ -1657,7 +1657,7 @@ pub fn layout_state_diagram_v2(
 
     // Mermaid adjusts the first/last edge points by intersecting the polyline with the node's
     // rendered shape. For rounded state nodes, Mermaid uses a polygon intersection that relies on
-    // the legacy `intersect-line.js` rounding behavior (producing systematic half-pixel offsets).
+    // the historical `intersect-line.js` rounding behavior (producing systematic half-pixel offsets).
     // Our layout engine emits continuous intersections; post-process endpoints to match upstream.
     {
         type Point = merman_core::geom::Point;

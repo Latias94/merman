@@ -2,7 +2,7 @@
 
 use super::*;
 
-// Architecture diagram SVG renderer implementation (split from legacy.rs).
+// Architecture diagram SVG renderer implementation (split from parity.rs).
 
 pub(super) fn render_architecture_diagram_svg(
     layout: &ArchitectureDiagramLayout,

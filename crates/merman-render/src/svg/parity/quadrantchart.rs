@@ -1,6 +1,6 @@
 use super::*;
 
-// QuadrantChart diagram SVG renderer implementation (split from legacy.rs).
+// QuadrantChart diagram SVG renderer implementation (split from parity.rs).
 
 pub(super) fn render_quadrantchart_diagram_svg(
     layout: &QuadrantChartDiagramLayout,

@@ -78,117 +78,117 @@ Post-baseline hardening plan (coverage growth + override consolidation + CI guar
 `docs/alignment/PARITY_HARDENING_PLAN.md`.
 
 Recent progress (2026-02-08): SVG flowchart renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/flowchart.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/flowchart.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-08): SVG ER renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/er.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/er.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-08): SVG Sankey renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/sankey.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/sankey.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-08): SVG Packet renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/packet.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/packet.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-08): SVG Timeline renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/timeline.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/timeline.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-08): SVG Journey renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/journey.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/journey.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-08): SVG Kanban renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/kanban.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/kanban.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-08): SVG GitGraph renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/gitgraph.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/gitgraph.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-08): SVG Gantt renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/gantt.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/gantt.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-08): SVG Block renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/block.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/block.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-08): SVG Radar renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/radar.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/radar.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-08): SVG QuadrantChart renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/quadrantchart.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/quadrantchart.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-08): SVG XYChart renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/xychart.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/xychart.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-08): SVG Treemap renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/treemap.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/treemap.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-08): SVG Error renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/error.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/error.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-08): SVG sequence renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/sequence.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/sequence.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-08): SVG state diagram renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/state.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/state.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-08): SVG Requirement renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/requirement.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/requirement.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-08): SVG Mindmap renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/mindmap.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/mindmap.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-08): SVG Architecture renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/architecture.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/architecture.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-08): SVG C4 renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/c4.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/c4.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-09): Flowchart V2 SVG entry points were moved into the existing
-`crates/merman-render/src/svg/legacy/flowchart.rs` module to keep `legacy.rs` focused on shared helpers
+`crates/merman-render/src/svg/parity/flowchart.rs` module to keep `parity.rs` focused on shared helpers
 while preserving full DOM parity.
 
-Recent progress (2026-02-09): Shared SVG CSS helpers were extracted from `crates/merman-render/src/svg/legacy.rs`
-into `crates/merman-render/src/svg/legacy/css.rs` to reduce churn and make future renderer splits safer.
+Recent progress (2026-02-09): Shared SVG CSS helpers were extracted from `crates/merman-render/src/svg/parity.rs`
+into `crates/merman-render/src/svg/parity/css.rs` to reduce churn and make future renderer splits safer.
 
 Recent progress (2026-02-09): Shared SVG utility helpers (formatting, escaping, and config access) were extracted
-from `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/util.rs`.
+from `crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/util.rs`.
 
 Recent progress (2026-02-09): Radar diagram CSS helper (`radar_css`) was moved from
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/radar.rs` to reduce cross-module
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/radar.rs` to reduce cross-module
 dependencies without affecting DOM parity.
 
 Recent progress (2026-02-09): Pie diagram helpers (`pie_polar_xy` and `pie_legend_rect_style`) were moved from
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/pie.rs` to keep the diagram module
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/pie.rs` to keep the diagram module
 self-contained while preserving DOM parity.
 
 Recent progress (2026-02-09): C4 diagram SVG helpers (`c4_css` and config/font helpers) were moved from
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/c4.rs` to reduce shared-scope
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/c4.rs` to reduce shared-scope
 surface area while keeping DOM parity checks green.
 
 Recent progress (2026-02-09): Shared style parsing helpers (`parse_style_decl` and style key filters) were extracted
-from `crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/style.rs` to make future
+from `crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/style.rs` to make future
 diagram splits less error-prone.
 
 Recent progress (2026-02-08): SVG class diagram renderer implementation was extracted from the monolithic
-`crates/merman-render/src/svg/legacy.rs` into `crates/merman-render/src/svg/legacy/class.rs` to improve
+`crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/class.rs` to improve
 maintainability while keeping all parity checks green.
 
 Recent progress (2026-02-06): Phase A fixture expansion added three upstream-rendered SVG baselines
@@ -357,7 +357,7 @@ top-level graph and extracted cluster graphs.
 Recent progress (2026-02-01): state diagram dagre cluster extraction now matches Mermaid's `dagre-wrapper` more
 closely by extracting any disconnected cluster (not only root-level), and by injecting the parent cluster node into
 the extracted graph during the recursive layout pass so Dagre's compound border sizing yields Mermaid-like padding.
-Recent progress (2026-02-02): state diagram layout now excludes legacy floating-note syntaxes that Mermaid parses but
+Recent progress (2026-02-02): state diagram layout now excludes historical floating-note syntaxes that Mermaid parses but
 does not render, so they no longer affect node/edge placement or root viewport sizing.
 Recent progress (2026-02-02): state diagram label measurement now honors compiled CSS font overrides
 (weight/size/family/italic), improving classDef-styled label width parity.
@@ -483,11 +483,11 @@ upstream SVG baselines via `xtask compare-sankey-svgs` (DOM parity-root mode).
 Recent progress: `xtask compare-all-svgs --check-dom` now runs end-to-end (class/state/gantt
 compare tasks now honor `--check-dom`), and the state layout goldens were refreshed after
 aligning default text style (16px) and node padding behavior.
-Recent progress: Architecture Cypress fixtures that use legacy shorthand syntax now have
+Recent progress: Architecture Cypress fixtures that use shorthand syntax now have
 CLI-compatible `*_normalized` variants so we can store upstream CLI SVG baselines and run DOM parity
 checks without losing the original Cypress strings.
 Recent progress (2026-02-09): extracted shared D3 curve/path helpers and layout/debug SVG helpers out of
-`crates/merman-render/src/svg/legacy.rs` into `curve.rs` and `layout_debug.rs` to keep refactors localized;
+`crates/merman-render/src/svg/parity.rs` into `curve.rs` and `layout_debug.rs` to keep refactors localized;
 `xtask compare-all-svgs --check-dom --dom-mode parity-root` remains 0-mismatch.
 Recent progress (2026-02-09): extracted `svg_path_bounds_from_d` into `path_bounds.rs` (fields are `pub(super)` to
 preserve sibling-module access) and kept DOM parity-root gate green.

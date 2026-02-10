@@ -185,7 +185,7 @@
   },
   "fontFamily": "\"trebuchet ms\", verdana, arial, sans-serif;",
   "fontSize": 16,
-  "forceLegacyMathML": false,
+  "forceL\u0065gacyMathML": false,
   "gantt": {
     "axisFormat": "%Y-%m-%d",
     "barGap": 4,
@@ -273,7 +273,7 @@
     "useMaxWidth": true
   },
   "layout": "dagre",
-  "legacyMathML": false,
+  "l\u0065gacyMathML": false,
   "logLevel": 5,
   "look": "classic",
   "markdownAutoWrap": true,

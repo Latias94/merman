@@ -67,7 +67,7 @@ extern {
     Config => Tok::Config(<String>),
 
     Title => Tok::Title(<String>),
-    LegacyTitle => Tok::LegacyTitle(<String>),
+    CompatTitle => Tok::CompatTitle(<String>),
     AccTitle => Tok::AccTitle(<String>),
     AccDescr => Tok::AccDescr(<String>),
     AccDescrMultiline => Tok::AccDescrMultiline(<String>),
@@ -137,7 +137,7 @@ Doc: Vec<Action> = {
 
 TitleStatement: String = {
   <t:Title> => t,
-  <t:LegacyTitle> => t,
+  <t:CompatTitle> => t,
 };
 
 AccTitleStatement: String = {

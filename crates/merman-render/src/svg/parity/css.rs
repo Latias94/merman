@@ -1,6 +1,6 @@
 use super::*;
 
-// Shared Mermaid diagram CSS fragments (split from legacy.rs).
+// Shared Mermaid diagram CSS fragments (split from parity.rs).
 //
 // Keep Mermaid@11.12.2 ordering quirks to preserve DOM parity.
 

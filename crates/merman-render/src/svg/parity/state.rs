@@ -2,7 +2,7 @@
 
 use super::*;
 
-// State diagram SVG renderer implementation (split from legacy.rs).
+// State diagram SVG renderer implementation (split from parity.rs).
 
 pub(super) fn render_state_diagram_v2_svg(
     layout: &StateDiagramV2Layout,

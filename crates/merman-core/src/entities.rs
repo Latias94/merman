@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-/// Decodes Mermaid's `encodeEntities` placeholders and legacy `#...;` sequences into Unicode.
+/// Decodes Mermaid's `encodeEntities` placeholders and shorthand `#...;` sequences into Unicode.
 ///
 /// Upstream Mermaid runs `encodeEntities(text)` before parsing, and later uses `decodeEntities`
 /// + browser `entityDecode(...)` to turn placeholders into actual characters.
@@ -21,7 +21,7 @@ pub fn decode_mermaid_entities_to_unicode(input: &str) -> Cow<'_, str> {
         s = s.replace("ﬂ°°", "&#").replace("ﬂ°", "&").replace("¶ß", ";");
     }
 
-    // Step 2 (legacy): `#...;` -> `&...;` / `&#...;`
+    // Step 2 (shorthand): `#...;` -> `&...;` / `&#...;`
     //
     // This is primarily for older headless code paths / fixtures that bypass upstream-like
     // preprocessing. It is intentionally conservative and only rewrites `#\w+;` patterns.
@@ -36,7 +36,7 @@ pub fn decode_mermaid_entities_to_unicode(input: &str) -> Cow<'_, str> {
                 continue;
             }
 
-            // Do not treat `&#...;` as legacy Mermaid `#...;`.
+            // Do not treat `&#...;` as Mermaid shorthand `#...;`.
             if prev == Some('&') {
                 out.push('#');
                 prev = Some('#');

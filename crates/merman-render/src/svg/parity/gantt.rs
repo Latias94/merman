@@ -1,7 +1,7 @@
 use super::*;
 use chrono::TimeZone;
 
-// Gantt diagram SVG renderer implementation (split from legacy.rs).
+// Gantt diagram SVG renderer implementation (split from parity.rs).
 
 #[derive(Debug, Clone, Deserialize)]
 struct GanttSemanticTask {

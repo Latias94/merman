@@ -20,7 +20,7 @@ Outputs to: `target/svgs/er/*.svg`
 
 ## What It Produces Today
 
-- Entity boxes with title and attribute rows (column layout follows the legacy Mermaid ER renderer logic).
+- Entity boxes with title and attribute rows (column layout follows the Mermaid ER renderer logic used by Mermaid 11.12.2).
 - Relationship lines (with ER cardinality markers via `marker-start`/`marker-end`).
 - Relationship paths use a port of D3 `curveBasis` (Mermaid-like cubic beziers), driven by Dagre-style
   edge points (including node intersection endpoints).

@@ -13,7 +13,7 @@ fn journey_css(diagram_id: &str) -> String {
         out = prefix.to_string();
     }
 
-    // Mermaid's journey diagram reuses the legacy "user-journey" stylesheet, post-processed by
+    // Mermaid's journey diagram reuses the historical "user-journey" stylesheet, post-processed by
     // Mermaid's CSS pipeline (nesting expansion + id scoping + minification).
     let _ = write!(
         &mut out,

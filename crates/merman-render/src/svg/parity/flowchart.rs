@@ -1,6 +1,6 @@
 use super::*;
 
-// Flowchart SVG renderer implementation (split from legacy.rs).
+// Flowchart SVG renderer implementation (split from parity.rs).
 
 pub(super) struct FlowchartRenderCtx<'a> {
     pub(super) diagram_id: String,
@@ -79,7 +79,7 @@ pub(super) fn flowchart_node_dom_indices(
     out
 }
 
-// Entry points (split from legacy.rs).
+// Entry points (split from parity.rs).
 
 pub(super) fn render_flowchart_v2_debug_svg(
     layout: &FlowchartV2Layout,
@@ -1124,7 +1124,7 @@ pub(super) fn render_flowchart_root(
         .cloned()
         .unwrap_or_default();
     if dom_order.is_empty() {
-        // Fallback for legacy layouts: approximate by appending extracted cluster roots after
+        // Fallback for v1 layouts: approximate by appending extracted cluster roots after
         // regular nodes.
         dom_order = flowchart_root_children_nodes(ctx, cluster_id);
         dom_order.extend(flowchart_root_children_clusters(ctx, cluster_id));

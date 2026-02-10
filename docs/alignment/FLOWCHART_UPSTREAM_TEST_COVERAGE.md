@@ -108,8 +108,8 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/flowchart/parser/flow-li
 - edge curve properties via edge id without overriding default: `fixtures/flowchart/upstream_flowchart_v2_lines_edge_id_curve_without_overriding_default_spec.mmd`
 - edge curve properties via edge id mixed with `linkStyle`: `fixtures/flowchart/upstream_flowchart_v2_lines_edge_id_curve_mixed_with_linkstyle_spec.mmd`
 - line stroke notation (`-.->`, `==>`): `fixtures/flowchart/upstream_flowchart_v2_lines_stroke_dotted_spec.mmd` and `fixtures/flowchart/upstream_flowchart_v2_lines_stroke_thick_spec.mmd`
-- combined legacy fixture (also covers click parsing and sanitization): `fixtures/flowchart/upstream_linkstyle_and_click.mmd`
-- legacy edge-curve fixture (pre v2 naming): `fixtures/flowchart/upstream_lines_edge_curve_properties_spec.mmd`
+- combined compatibility fixture (also covers click parsing and sanitization): `fixtures/flowchart/upstream_linkstyle_and_click.mmd`
+- compatibility edge-curve fixture (pre v2 naming): `fixtures/flowchart/upstream_lines_edge_curve_properties_spec.mmd`
 
 ### `parser/flow-text.spec.js`
 

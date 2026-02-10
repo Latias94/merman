@@ -90,7 +90,7 @@ pub(crate) enum Tok {
     Config(String),
 
     Title(String),
-    LegacyTitle(String),
+    CompatTitle(String),
     AccTitle(String),
     AccDescr(String),
     AccDescrMultiline(String),
@@ -1044,7 +1044,7 @@ impl<'input> Lexer<'input> {
             self.pos += "title:".len();
             self.skip_ws();
             let s = self.read_to_line_end();
-            return Some((start, Tok::LegacyTitle(s.trim().to_string()), self.pos));
+            return Some((start, Tok::CompatTitle(s.trim().to_string()), self.pos));
         }
 
         if self.starts_with_ci_word("title") {

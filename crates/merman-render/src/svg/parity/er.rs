@@ -1,6 +1,6 @@
 use super::*;
 
-// ER diagram SVG renderer implementation (split from legacy.rs).
+// ER diagram SVG renderer implementation (split from parity.rs).
 
 pub(super) fn render_er_diagram_debug_svg(
     layout: &ErDiagramLayout,
@@ -1549,14 +1549,14 @@ pub(super) fn render_er_diagram_svg(
     Ok(out)
 }
 
-fn er_unified_marker_id(diagram_id: &str, diagram_type: &str, legacy_marker: &str) -> String {
-    let legacy_marker = legacy_marker.trim();
-    let (base, suffix) = if let Some(v) = legacy_marker.strip_suffix("_START") {
+fn er_unified_marker_id(diagram_id: &str, diagram_type: &str, upstream_marker: &str) -> String {
+    let upstream_marker = upstream_marker.trim();
+    let (base, suffix) = if let Some(v) = upstream_marker.strip_suffix("_START") {
         (v, "Start")
-    } else if let Some(v) = legacy_marker.strip_suffix("_END") {
+    } else if let Some(v) = upstream_marker.strip_suffix("_END") {
         (v, "End")
     } else {
-        return legacy_marker.to_string();
+        return upstream_marker.to_string();
     };
 
     let marker_type = match base {
@@ -1565,7 +1565,7 @@ fn er_unified_marker_id(diagram_id: &str, diagram_type: &str, legacy_marker: &st
         "ONE_OR_MORE" => "oneOrMore",
         "ZERO_OR_MORE" => "zeroOrMore",
         "MD_PARENT" => "mdParent",
-        _ => return legacy_marker.to_string(),
+        _ => return upstream_marker.to_string(),
     };
 
     format!("{diagram_id}_{diagram_type}-{marker_type}{suffix}")

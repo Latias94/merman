@@ -1,6 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
-// Shared SVG path bounds helper extracted from legacy.rs.
+// Shared SVG path bounds helper extracted from parity.rs.
 //
 // Keep behavior identical to Mermaid@11.12.2 DOM parity baselines.
 

@@ -7,7 +7,7 @@ Date: 2026-01-25
 `merman` targets 1:1 parity with Mermaid `@11.12.2`. Our authoritative end-to-end baselines are
 generated via the official Mermaid CLI pinned under `tools/mermaid-cli/`.
 
-Some upstream inputs (notably Cypress rendering specs) include legacy shorthand syntax that is
+Some upstream inputs (notably Cypress rendering specs) include shorthand syntax that is
 accepted by the browser bundle but rejected by the Mermaid CLI `@11.12.2` Langium parser. When the
 CLI rejects an input, it produces an "error SVG", which cannot be used for SVG DOM parity with a
 successful local render.

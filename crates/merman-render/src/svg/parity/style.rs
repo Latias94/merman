@@ -1,4 +1,4 @@
-// Style parsing helpers (split from legacy.rs).
+// Style parsing helpers (split from parity.rs).
 
 pub(super) fn parse_style_decl(s: &str) -> Option<(&str, &str)> {
     let s = s.trim().trim_end_matches(';').trim();

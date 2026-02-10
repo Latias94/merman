@@ -39,7 +39,7 @@ Upstream references:
 - Click/link statements:
   - `click <id> "<url>" "<tooltip>"`
   - `click <id> href "<url>"`
-- Legacy directives (parsed and ignored, matching upstream runtime behavior):
+- Compatibility directives (parsed and ignored, matching upstream runtime behavior):
   - `hide empty description`
   - `scale <n> width`
 

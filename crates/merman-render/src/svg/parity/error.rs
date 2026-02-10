@@ -1,6 +1,6 @@
 use super::*;
 
-// Error diagram SVG renderer implementation (split from legacy.rs).
+// Error diagram SVG renderer implementation (split from parity.rs).
 
 pub(super) fn render_error_diagram_svg(
     layout: &ErrorDiagramLayout,

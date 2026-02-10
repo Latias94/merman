@@ -58,7 +58,7 @@ set of real-world inputs, including shorthand edge syntax that appears in exampl
 
 Normalized (Langium grammar) variants:
 
-The Cypress suite mixes legacy shorthand syntax (which Mermaid CLI `@11.12.2` renders as an error SVG)
+The Cypress suite mixes shorthand syntax (which Mermaid CLI `@11.12.2` renders as an error SVG)
 and newer Langium syntax. For end-to-end CLI baselines + DOM parity, we keep the raw Cypress strings as
 `*_parser_only_` fixtures and add normalized variants that use the Mermaid@11.12.2 grammar:
 

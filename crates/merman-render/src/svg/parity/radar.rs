@@ -1,6 +1,6 @@
 use super::*;
 
-// Radar diagram SVG renderer implementation (split from legacy.rs).
+// Radar diagram SVG renderer implementation (split from parity.rs).
 
 fn radar_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     // Keep `:root` last (matches upstream Mermaid radar SVG baselines).

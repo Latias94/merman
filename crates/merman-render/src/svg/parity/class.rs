@@ -3,7 +3,7 @@
 use super::*;
 use crate::entities::decode_entities_minimal;
 
-// Class diagram SVG renderer implementation (split from legacy.rs).
+// Class diagram SVG renderer implementation (split from parity.rs).
 
 pub(super) fn render_class_diagram_v2_debug_svg(
     layout: &ClassDiagramV2Layout,

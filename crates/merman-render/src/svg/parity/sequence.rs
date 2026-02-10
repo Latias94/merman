@@ -2,7 +2,7 @@
 
 use super::*;
 
-// Sequence SVG renderer implementation (split from legacy.rs).
+// Sequence SVG renderer implementation (split from parity.rs).
 
 pub(super) fn render_sequence_diagram_debug_svg(
     layout: &SequenceDiagramLayout,
