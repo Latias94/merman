@@ -1,0 +1,40 @@
+{
+  "diagramType": "er",
+  "layout": {
+    "ErDiagram": {
+      "nodes": [
+        {
+          "id": "entity-CAR-0",
+          "x": 108.867,
+          "y": 85.5,
+          "width": 217.735,
+          "height": 171.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-HOUSE-2",
+          "x": 705.95,
+          "y": 85.5,
+          "width": 100.0,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-PERSON-1",
+          "x": 436.843,
+          "y": 85.5,
+          "width": 158.215,
+          "height": 171.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 755.95,
+        "max_y": 171.0
+      }
+    }
+  }
+}

@@ -8,6 +8,12 @@
 
 pub fn lookup_er_root_viewport_override(diagram_id: &str) -> Option<(&'static str, &'static str)> {
     match diagram_id {
+        "upstream_docs_entityrelationshipdiagram_classes_034" => {
+            Some(("0 0 786.203125 187", "786.203"))
+        }
+        "upstream_docs_entityrelationshipdiagram_classes_036" => {
+            Some(("0 0 485.6875 459", "485.688"))
+        }
         "upstream_docs_entityrelationshipdiagram_attribute_keys_and_comments_020" => {
             Some(("0 0 954.203125 686.75", "954.203"))
         }

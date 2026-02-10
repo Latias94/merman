@@ -24,12 +24,26 @@ All override maps live in `crates/merman-render/src/generated/`:
 
 - `architecture_root_overrides_11_12_2.rs`
   - `lookup_architecture_root_viewport_override(diagram_id)`
+- `er_root_overrides_11_12_2.rs`
+  - `lookup_er_root_viewport_override(diagram_id)`
 - `class_root_overrides_11_12_2.rs`
   - `lookup_class_root_viewport_override(diagram_id)`
 - `mindmap_root_overrides_11_12_2.rs`
   - `lookup_mindmap_root_viewport_override(diagram_id)`
+- `pie_root_overrides_11_12_2.rs`
+  - `lookup_pie_root_viewport_override(diagram_id)`
+- `requirement_root_overrides_11_12_2.rs`
+  - `lookup_requirement_root_viewport_override(diagram_id)`
+- `sankey_root_overrides_11_12_2.rs`
+  - `lookup_sankey_root_viewport_override(diagram_id)`
+- `sequence_root_overrides_11_12_2.rs`
+  - `lookup_sequence_root_viewport_override(diagram_id)`
+- `state_root_overrides_11_12_2.rs`
+  - `lookup_state_root_viewport_override(diagram_id)`
+- `timeline_root_overrides_11_12_2.rs`
+  - `lookup_timeline_root_viewport_override(diagram_id)`
 
-State diagram currently uses text/bbox overrides in:
+State diagram also uses text/bbox overrides in:
 
 - `state_text_overrides_11_12_2.rs`
 
@@ -43,8 +57,15 @@ Overrides are only applied at render time for root viewport attributes and only 
 Current integration points:
 
 - Architecture renderer: `render_architecture_diagram_svg`
+- ER renderer: `render_er_diagram_svg`
 - Class renderer: `render_class_diagram_v2_svg`
 - Mindmap renderer: `render_mindmap_diagram_svg`
+- Pie renderer: `render_pie_diagram_svg`
+- Requirement renderer: `render_requirement_diagram_svg`
+- Sankey renderer: `render_sankey_diagram_svg`
+- Sequence renderer: `render_sequence_diagram_svg`
+- State renderer: `render_state_diagram_v2_svg`
+- Timeline renderer: `render_timeline_diagram_svg`
 
 In upstream parity compares, `xtask` sets `diagram_id` to fixture stem, so these keys match.
 For normal application rendering (`diagram_id = "merman"` by default), these fixture keys do not

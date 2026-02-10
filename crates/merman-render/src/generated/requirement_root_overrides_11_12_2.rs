@@ -10,6 +10,12 @@ pub fn lookup_requirement_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
+        "upstream_docs_requirementdiagram_class_definitions_016" => {
+            Some(("0 0 416.375 200", "416.375"))
+        }
+        "upstream_docs_requirementdiagram_combined_example_022" => {
+            Some(("0 0 430.28125 200", "430.281"))
+        }
         "upstream_docs_requirementdiagram_larger_example_010" => {
             Some(("0 0 855.671875 1442", "855.672"))
         }

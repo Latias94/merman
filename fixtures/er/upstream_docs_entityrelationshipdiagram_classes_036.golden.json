@@ -1,0 +1,134 @@
+{
+  "diagramType": "er",
+  "model": {
+    "type": "er",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "entities": {
+      "CAR": {
+        "id": "entity-CAR-0",
+        "label": "CAR",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "registrationNumber",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "make",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "model",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "PERSON": {
+        "id": "entity-PERSON-1",
+        "label": "PERSON",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "firstName",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "lastName",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "int",
+            "name": "age",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default foo",
+        "cssStyles": []
+      },
+      "HOUSE": {
+        "id": "entity-HOUSE-2",
+        "label": "HOUSE",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default bar",
+        "cssStyles": []
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-PERSON-1",
+        "roleA": "owns",
+        "entityB": "entity-CAR-0",
+        "relSpec": {
+          "cardA": "ONLY_ONE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-PERSON-1",
+        "roleA": "has",
+        "entityB": "entity-HOUSE-2",
+        "relSpec": {
+          "cardA": "ONLY_ONE",
+          "cardB": "ZERO_OR_MORE",
+          "relType": "IDENTIFYING"
+        }
+      }
+    ],
+    "classes": {
+      "foo": {
+        "id": "foo",
+        "styles": [
+          "stroke:#f00"
+        ],
+        "textStyles": []
+      },
+      "foobar": {
+        "id": "foobar",
+        "styles": [
+          "stroke:#00f"
+        ],
+        "textStyles": []
+      },
+      "bar": {
+        "id": "bar",
+        "styles": [
+          "stroke:#0f0"
+        ],
+        "textStyles": []
+      }
+    },
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}
