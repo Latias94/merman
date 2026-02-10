@@ -1,34 +1,32 @@
-# Normalize text line endings to LF to avoid CRLF-only diffs on Windows.
+# Keep text files stable across platforms (especially Windows vs. CI Linux).
 * text=auto
 
-# Core sources/docs/fixtures
 .gitattributes text eol=lf
 .gitignore     text eol=lf
-*.rs  text eol=lf
-*.toml text eol=lf
-*.md  text eol=lf
-*.json text eol=lf
-*.svg text eol=lf
+LICENSE        text eol=lf
+LICENSE-*      text eol=lf
+
+# Core sources/docs/fixtures
+*.rs      text eol=lf
+*.toml    text eol=lf
+*.md      text eol=lf
+*.json    text eol=lf
+*.svg     text eol=lf
 *.svgfrag text eol=lf
-*.xml text eol=lf
-*.mmd text eol=lf
-*.yml text eol=lf
-*.yaml text eol=lf
-*.js  text eol=lf
-*.ts  text eol=lf
-*.tsx text eol=lf
-*.css text eol=lf
-*.html text eol=lf
-*.sh  text eol=lf
-*.mjs text eol=lf
-*.lock text eol=lf
-LICENSE text eol=lf
-LICENSE-* text eol=lf
+*.xml     text eol=lf
+*.mmd     text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.js      text eol=lf
+*.ts      text eol=lf
+*.tsx     text eol=lf
+*.css     text eol=lf
+*.html    text eol=lf
+*.sh      text eol=lf
+*.mjs     text eol=lf
+*.lock    text eol=lf
 
 # Script formats
-#
-# Keep these as LF as well so we don't fight autocrlf conversions and avoid "LF will be replaced by
-# CRLF" warnings when editing on Windows.
 *.ps1 text eol=lf
 *.cmd text eol=crlf
 *.bat text eol=crlf
