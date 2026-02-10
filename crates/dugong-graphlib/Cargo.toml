@@ -9,7 +9,7 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Graph data structure APIs used by dugong (port of dagrejs/graphlib)."
 documentation = "https://docs.rs/dugong-graphlib"
-readme = "../../README.md"
+readme = "README.md"
 keywords = ["graph", "dagre", "graphlib"]
 categories = ["data-structures"]
 

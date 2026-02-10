@@ -10,8 +10,8 @@ The upstream Mermaid implementation is the spec (see `docs/adr/0014-upstream-par
 ## Status
 
 - Baseline: Mermaid `@11.12.2`.
-- Parity is enforced via upstream SVG DOM baselines + golden snapshots; current coverage lives in
-  `docs/alignment/STATUS.md`.
+- Parity is enforced via upstream SVG DOM baselines + golden snapshots.
+- Current coverage and gates: `docs/alignment/STATUS.md`.
 
 ## What you get
 
@@ -91,6 +91,10 @@ The goal is not “it looks similar”, but “it stays aligned”.
 - Render JPG: `cargo run -p merman-cli -- render --format jpg --out out.jpg path/to/diagram.mmd`
 - Render PDF: `cargo run -p merman-cli -- render --format pdf --out out.pdf path/to/diagram.mmd`
 
+For a quick “does raster output look sane?” sweep across fixtures:
+
+- `pwsh -NoProfile -ExecutionPolicy Bypass -File tools/preview/export-fixtures-png.ps1 -BuildReleaseCli -CleanOutDir`
+
 ## Library
 
 - Headless parsing: `merman-core`
@@ -111,6 +115,8 @@ The goal is not “it looks similar”, but “it stays aligned”.
   - `cargo run -p xtask -- verify-generated`
 - Update semantic goldens:
   - `cargo run -p xtask -- update-snapshots`
+- Update layout goldens:
+  - `cargo run -p xtask -- update-layout-snapshots`
 - Full parity sweep (DOM):
   - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 

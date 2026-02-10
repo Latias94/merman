@@ -9,9 +9,12 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Rust, headless Mermaid implementation (1:1 parity; pinned to mermaid@11.12.2)."
 documentation = "https://docs.rs/merman"
-readme = "../../README.md"
+readme = "README.md"
 keywords = ["mermaid", "diagrams", "svg", "parser", "headless"]
 categories = ["parser-implementations", "visualization"]
+
+[package.metadata.docs.rs]
+features = ["render"]
 
 [features]
 default = []

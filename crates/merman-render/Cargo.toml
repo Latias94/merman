@@ -9,7 +9,7 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Headless layout + SVG renderer for Mermaid (parity-focused; upstream SVG goldens)."
 documentation = "https://docs.rs/merman-render"
-readme = "../../README.md"
+readme = "README.md"
 keywords = ["mermaid", "diagrams", "svg", "layout", "headless"]
 categories = ["visualization"]
 

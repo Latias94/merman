@@ -9,7 +9,7 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Headless compound graph layout algorithms (COSE/FCoSE ports)."
 documentation = "https://docs.rs/manatee"
-readme = "../../README.md"
+readme = "README.md"
 keywords = ["graph", "layout", "cose", "fcose"]
 categories = ["visualization"]
 
