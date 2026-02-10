@@ -58,13 +58,15 @@ Legend:
 | Requirement | yes | yes | Stage B | yes | yes (`xtask compare-requirement-svgs`) |
 | QuadrantChart | yes | yes | Stage B | yes | yes (`xtask compare-quadrantchart-svgs`) |
 | Sankey | yes | yes | Stage B | yes | yes (`xtask compare-sankey-svgs`, DOM parity-root mode) |
+| ZenUML | yes | yes | Sequence compatibility | no | no |
 
 Notes:
 
 - Mermaid `error` is a registered diagram type upstream, but it is currently tracked as parse/snapshot-only
   (see `docs/alignment/ERROR_UPSTREAM_TEST_COVERAGE.md`). We do not yet maintain upstream SVG baselines for it.
-- Mermaid `zenuml` is provided as an external diagram plugin upstream (`registerExternalDiagrams(...)` in the docs).
-  `merman` does not yet implement an external-diagram plugin API; it is out of scope for the current SVG parity corpus.
+- Mermaid `zenuml` is provided as an external diagram plugin upstream and rendered via browser-only `@zenuml/core`.
+  `merman` provides a headless compatibility mode that translates a small ZenUML subset into a `sequenceDiagram` model.
+  This is not currently covered by upstream SVG baselines.
 
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
 the dashed separators now use the exact same x-coordinates as the frame edges to match upstream SVG and
@@ -76,6 +78,11 @@ mismatches out of 520 upstream SVG baselines (100% passing).
 
 Post-baseline hardening plan (coverage growth + override consolidation + CI guardrails) is tracked in
 `docs/alignment/PARITY_HARDENING_PLAN.md`.
+
+## Roadmap (selected)
+
+- Performance regression tracking: `docs/performance/BENCHMARKING.md`.
+- ZenUML: headless compatibility mode (ADR 0061).
 
 Recent progress (2026-02-08): SVG flowchart renderer implementation was extracted from the monolithic
 `crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/flowchart.rs` to improve

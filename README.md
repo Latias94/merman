@@ -12,6 +12,7 @@ The upstream Mermaid implementation is the spec (see `docs/adr/0014-upstream-par
 - Baseline: Mermaid `@11.12.2`.
 - Parity is enforced via upstream SVG DOM baselines + golden snapshots.
 - Current coverage and gates: `docs/alignment/STATUS.md`.
+- ZenUML is supported in a headless compatibility mode (subset; not parity-gated). See ADR 0061.
 
 ## What you get
 
@@ -65,6 +66,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 If you prefer a bundled "pipeline" instead of passing multiple option structs per call, use
 `merman::render::HeadlessRenderer`.
+
+If you already know the diagram type (e.g. from a Markdown fence info string), prefer
+`Engine::parse_diagram_as_sync(...)` to skip type detection.
 
 If your downstream renderer does not support SVG `<foreignObject>` (common for rasterizers),
 prefer `HeadlessRenderer::render_svg_readable_sync()` which adds a best-effort `<text>/<tspan>`
@@ -121,6 +125,13 @@ For a quick “does raster output look sane?” sweep across fixtures:
   - `cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 
 More workflows: `docs/rendering/COMPARE_ALL_SVGS.md`.
+
+## Performance
+
+`merman` is designed for Mermaid parity and deterministic outputs. It is headless and does not
+spawn a browser, so it can be fast, but performance is treated as a tracked metric (not a claim).
+
+To run the local benchmark suite, see `docs/performance/BENCHMARKING.md`.
 
 ## Changelog
 
