@@ -170,8 +170,29 @@ async function main() {
         if (!arr || typeof arr.length !== "number") {
           return orig(arr);
         }
+
+        // Support both Number-typed and BigInt-typed arrays.
+        // Some libraries use BigInt64Array/BigUint64Array for RNG seeding.
+        if (
+          typeof BigInt64Array !== "undefined" &&
+          (arr instanceof BigInt64Array || arr instanceof BigUint64Array)
+        ) {
+          for (let i = 0; i < arr.length; i++) {
+            const u = nextU64();
+            if (arr instanceof BigInt64Array) {
+              // signed
+              arr[i] = BigInt.asIntN(64, u);
+            } else {
+              arr[i] = BigInt.asUintN(64, u);
+            }
+          }
+          return arr;
+        }
+
+        const bits = Number(arr.BYTES_PER_ELEMENT || 1) * 8;
+        const max = bits >= 53 ? 2 ** 32 : 2 ** bits;
         for (let i = 0; i < arr.length; i++) {
-          arr[i] = Math.floor(nextF64() * 256);
+          arr[i] = Math.floor(nextF64() * max);
         }
         return arr;
       };
@@ -188,57 +209,81 @@ async function main() {
 
   const results = {};
   for (const [name, code] of Object.entries(fixtures)) {
-    const timesNs = await page.evaluate(
-      async ({ code2, cfg2, theme2, width2, warmupMs2, measureMs2, name2 }) => {
-        const mermaid = globalThis.mermaid;
-        if (!mermaid) throw new Error("mermaid global not found");
+    let timesNs;
+    try {
+      timesNs = await page.evaluate(
+        async ({ code2, cfg2, theme2, width2, warmupMs2, measureMs2, name2 }) => {
+          const mermaid = globalThis.mermaid;
+          if (!mermaid) throw new Error("mermaid global not found");
 
-        // Initialize once per fixture.
-        mermaid.initialize(Object.assign({ startOnLoad: false, theme: theme2 }, cfg2));
+          // Initialize once per fixture.
+          mermaid.initialize(Object.assign({ startOnLoad: false, theme: theme2 }, cfg2));
 
-        const container = document.getElementById("container") || document.body;
-        container.innerHTML = "";
-        container.style.width = `${Math.max(1, Number(width2) || 1)}px`;
-
-        async function one(i) {
+          const container = document.getElementById("container") || document.body;
           container.innerHTML = "";
-          const { svg } = await mermaid.render(`${name2}-${i}`, code2, container);
-          // prevent accidental DCE
-          return svg.length;
-        }
+          container.style.width = `${Math.max(1, Number(width2) || 1)}px`;
 
-        // Warmup until wall clock threshold.
-        const t0 = performance.now();
-        let i = 0;
-        while (performance.now() - t0 < warmupMs2) {
-          // eslint-disable-next-line no-await-in-loop
-          await one(i++);
-        }
+          async function one(i) {
+            container.innerHTML = "";
+            const { svg } = await mermaid.render(`${name2}-${i}`, code2, container);
+            // prevent accidental DCE
+            return svg.length;
+          }
 
-        // Measure.
-        const samples = [];
-        const m0 = performance.now();
-        let j = 0;
-        while (performance.now() - m0 < measureMs2) {
-          const s0 = performance.now();
-          // eslint-disable-next-line no-await-in-loop
-          await one(j++);
-          const s1 = performance.now();
-          samples.push((s1 - s0) * 1e6); // ms -> ns
-        }
+          // Warmup until wall clock threshold.
+          const t0 = performance.now();
+          let i = 0;
+          while (performance.now() - t0 < warmupMs2) {
+            // eslint-disable-next-line no-await-in-loop
+            await one(i++);
+          }
 
-        return samples;
-      },
-      {
-        code2: String(code),
-        cfg2: cfg,
-        theme2: theme,
-        width2: width,
-        warmupMs2: warmupMs,
-        measureMs2: measureMs,
-        name2: name,
-      }
-    );
+          // Measure.
+          const samples = [];
+          const m0 = performance.now();
+          let j = 0;
+          while (performance.now() - m0 < measureMs2) {
+            const s0 = performance.now();
+            // eslint-disable-next-line no-await-in-loop
+            await one(j++);
+            const s1 = performance.now();
+            samples.push((s1 - s0) * 1e6); // ms -> ns
+          }
+
+          return samples;
+        },
+        {
+          code2: String(code),
+          cfg2: cfg,
+          theme2: theme,
+          width2: width,
+          warmupMs2: warmupMs,
+          measureMs2: measureMs,
+          name2: name,
+        }
+      );
+    } catch (err) {
+      results[name] = {
+        median_ns: null,
+        samples: 0,
+        error: err && err.message ? String(err.message) : String(err),
+      };
+      // eslint-disable-next-line no-console
+      console.error("[mermaid-js-bench] fixture failed:", name, results[name].error);
+      continue;
+    }
+
+    if (!Array.isArray(timesNs)) {
+      const tag = Object.prototype.toString.call(timesNs);
+      results[name] = {
+        median_ns: null,
+        samples: 0,
+        error: `page.evaluate returned a non-array result: ${tag}`,
+      };
+      // eslint-disable-next-line no-console
+      console.error("[mermaid-js-bench] fixture failed:", name, results[name].error);
+      continue;
+    }
 
     results[name] = {
       median_ns: median(timesNs),
