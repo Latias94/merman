@@ -5,6 +5,11 @@
 //! It is pinned to Mermaid `@11.12.2`; upstream Mermaid is treated as the spec. See:
 //! - `docs/adr/0014-upstream-parity-policy.md`
 //! - `docs/alignment/STATUS.md`
+//!
+//! # Features
+//!
+//! - `render`: enable layout + SVG rendering (`merman::render`)
+//! - `raster`: enable PNG/JPG/PDF output via pure-Rust SVG rasterization/conversion
 
 pub use merman_core::*;
 
@@ -195,6 +200,17 @@ pub mod render {
         /// consumers can still display something readable.
         pub fn render_svg_readable_sync(&self, text: &str) -> Result<Option<String>> {
             let Some(svg) = self.render_svg_sync(text)? else {
+                return Ok(None);
+            };
+            Ok(Some(foreign_object_label_fallback_svg_text(&svg)))
+        }
+
+        pub fn render_svg_readable_sync_with_diagram_id(
+            &self,
+            text: &str,
+            diagram_id: &str,
+        ) -> Result<Option<String>> {
+            let Some(svg) = self.render_svg_sync_with_diagram_id(text, diagram_id)? else {
                 return Ok(None);
             };
             Ok(Some(foreign_object_label_fallback_svg_text(&svg)))
