@@ -1,0 +1,85 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": "Plan",
+    "accTitle": null,
+    "accDescr": null,
+    "dateFormat": " YYYY-MM-DD",
+    "axisFormat": "",
+    "tickInterval": null,
+    "todayMarker": "",
+    "includes": [],
+    "excludes": [],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
+    "sections": [
+      "Alpha"
+    ],
+    "tasks": [
+      {
+        "section": "Alpha",
+        "type": "Alpha",
+        "task": "Task A ",
+        "id": "a1",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": true,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": done, a1, 2026-01-01, 5d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2026-01-01"
+          },
+          "endTime": {
+            "data": "5d"
+          }
+        },
+        "startTime": "2026-01-01T00:00:00.000",
+        "endTime": "2026-01-06T00:00:00.000"
+      },
+      {
+        "section": "Alpha",
+        "type": "Alpha",
+        "task": "Task B ",
+        "id": "task1",
+        "prevTaskId": "a1",
+        "order": 1,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": after a1, 3d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after a1"
+          },
+          "endTime": {
+            "data": "3d"
+          }
+        },
+        "startTime": "2026-01-06T00:00:00.000",
+        "endTime": "2026-01-09T00:00:00.000"
+      }
+    ],
+    "links": {},
+    "clickEvents": {}
+  }
+}

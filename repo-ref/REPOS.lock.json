@@ -7,6 +7,12 @@
       "ref": "mermaid@11.12.2",
       "commit": "bd85b51e2404102dbd04613a4891c017b425f803"
     },
+    "mermaid-rs-renderer": {
+      "path": "repo-ref/mermaid-rs-renderer",
+      "url": "https://github.com/1jehuang/mermaid-rs-renderer",
+      "ref": "master",
+      "commit": "859253415e69dce28bd65cd5a7c1d1ae8b39f4a1"
+    },
     "cytoscape": {
       "path": "repo-ref/cytoscape.js",
       "url": "https://github.com/cytoscape/cytoscape.js.git",

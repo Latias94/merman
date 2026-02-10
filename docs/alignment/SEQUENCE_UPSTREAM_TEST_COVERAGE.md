@@ -7,6 +7,15 @@ This document tracks which upstream Mermaid `sequenceDiagram` tests are covered 
 
 Scope: Mermaid tag `@11.12.2`.
 
+## External regression cases
+
+These fixtures are sourced from downstream renderer reports (outside Mermaid's own test suite) and
+are parity-gated against upstream SVG baselines:
+
+- mmdr test fixture (frames): `fixtures/sequence/mmdr_tests_sequence_sequence_frames.mmd`
+
+Reference: `docs/alignment/EXTERNAL_FIXTURES.md`.
+
 ## `sequenceDiagram.spec.js`
 
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceDiagram.spec.js`

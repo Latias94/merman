@@ -8,6 +8,15 @@ This document tracks which upstream Mermaid `classDiagram` tests are covered in 
 
 Scope: Mermaid tag `@11.12.2`.
 
+## External regression cases
+
+These fixtures are sourced from downstream renderer reports (outside Mermaid's own test suite) and
+are parity-gated against upstream SVG baselines:
+
+- mmdr test fixture (basic): `fixtures/class/mmdr_tests_class_class_basic.mmd`
+
+Reference: `docs/alignment/EXTERNAL_FIXTURES.md`.
+
 ## `parser/class.spec.js`
 
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/class/parser/class.spec.js`

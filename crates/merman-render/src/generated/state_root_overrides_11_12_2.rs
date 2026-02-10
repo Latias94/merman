@@ -10,6 +10,7 @@ pub fn lookup_state_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
+        "mmdr_tests_state_state_basic" => Some(("0 0 178.203125 234", "178.203")),
         "upstream_stateDiagram_multiple_recursive_state_definitions_spec" => {
             Some(("0 0 558.40234375 1091", "558.402"))
         }

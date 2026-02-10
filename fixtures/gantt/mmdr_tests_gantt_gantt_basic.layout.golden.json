@@ -1,0 +1,182 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1184.0,
+        "max_y": 148.0
+      },
+      "width": 1184.0,
+      "height": 148.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": " YYYY-MM-DD",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "Alpha"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "Alpha",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 74.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Alpha"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "a1",
+          "task": "Task A ",
+          "section": "Alpha",
+          "task_type": "Alpha",
+          "order": 0.0,
+          "start_ms": 1767196800000.0,
+          "end_ms": 1767628800000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "a1",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 646.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task done0"
+          },
+          "label": {
+            "id": "a1-text",
+            "text": "Task A ",
+            "font_size": 11.0,
+            "width": 32.34,
+            "x": 398.0,
+            "y": 63.5,
+            "class": "taskText taskText0 width-32.339999999999996"
+          }
+        },
+        {
+          "id": "task1",
+          "task": "Task B ",
+          "section": "Alpha",
+          "task_type": "Alpha",
+          "order": 1.0,
+          "start_ms": 1767628800000.0,
+          "end_ms": 1767888000000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task1",
+            "x": 721.0,
+            "y": 74.0,
+            "width": 388.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "task1-text",
+            "text": "Task B ",
+            "font_size": 11.0,
+            "width": 32.34,
+            "x": 915.0,
+            "y": 87.5,
+            "class": "taskText taskText0 width-32.339999999999996"
+          }
+        }
+      ],
+      "excludes": [],
+      "has_excludes_layer": false,
+      "bottom_ticks": [
+        {
+          "time_ms": 1767196800000.0,
+          "x": 75.0,
+          "label": "2026-01-01"
+        },
+        {
+          "time_ms": 1767283200000.0,
+          "x": 204.0,
+          "label": "2026-01-02"
+        },
+        {
+          "time_ms": 1767369600000.0,
+          "x": 334.0,
+          "label": "2026-01-03"
+        },
+        {
+          "time_ms": 1767456000000.0,
+          "x": 463.0,
+          "label": "2026-01-04"
+        },
+        {
+          "time_ms": 1767542400000.0,
+          "x": 592.0,
+          "label": "2026-01-05"
+        },
+        {
+          "time_ms": 1767628800000.0,
+          "x": 721.0,
+          "label": "2026-01-06"
+        },
+        {
+          "time_ms": 1767715200000.0,
+          "x": 851.0,
+          "label": "2026-01-07"
+        },
+        {
+          "time_ms": 1767801600000.0,
+          "x": 980.0,
+          "label": "2026-01-08"
+        },
+        {
+          "time_ms": 1767888000000.0,
+          "x": 1109.0,
+          "label": "2026-01-09"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Plan",
+      "title_x": 592.0,
+      "title_y": 25.0
+    }
+  }
+}

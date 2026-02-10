@@ -7,6 +7,15 @@ This document tracks which upstream Mermaid state diagram parser tests are cover
 
 Scope: Mermaid tag `@11.12.2`.
 
+## External regression cases
+
+These fixtures are sourced from downstream renderer reports (outside Mermaid's own test suite) and
+are parity-gated against upstream SVG baselines:
+
+- mmdr test fixture (basic): `fixtures/state/mmdr_tests_state_state_basic.mmd`
+
+Reference: `docs/alignment/EXTERNAL_FIXTURES.md`.
+
 ## `parser/state-parser.spec.js`
 
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/state/parser/state-parser.spec.js`

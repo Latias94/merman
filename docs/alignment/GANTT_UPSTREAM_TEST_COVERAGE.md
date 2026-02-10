@@ -12,6 +12,15 @@ Headless layout coverage for the same fixture set is tracked via layout snapshot
 
 Scope: Mermaid tag `@11.12.2`.
 
+## External regression cases
+
+These fixtures are sourced from downstream renderer reports (outside Mermaid's own test suite) and
+are parity-gated against upstream SVG baselines:
+
+- mmdr test fixture (basic): `fixtures/gantt/mmdr_tests_gantt_gantt_basic.mmd`
+
+Reference: `docs/alignment/EXTERNAL_FIXTURES.md`.
+
 ## `parser/gantt.spec.js`
 
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/gantt/parser/gantt.spec.js`
