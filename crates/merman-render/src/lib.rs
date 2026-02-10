@@ -84,6 +84,9 @@ impl LayoutOptions {
     pub fn headless_svg_defaults() -> Self {
         Self {
             text_measurer: Arc::new(crate::text::VendoredFontMetricsTextMeasurer::default()),
+            // Mermaid parity fixtures for diagrams like mindmap/architecture rely on the COSE
+            // layout port (manatee). Make the headless defaults "just work" for UI integrations.
+            use_manatee_layout: true,
             ..Default::default()
         }
     }
@@ -154,7 +157,7 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
             &meta.effective_config,
             options.text_measurer.as_ref(),
         )?),
-        "sequence" => LayoutDiagram::SequenceDiagram(sequence::layout_sequence_diagram(
+        "sequence" | "zenuml" => LayoutDiagram::SequenceDiagram(sequence::layout_sequence_diagram(
             &parsed.model,
             &meta.effective_config,
             options.text_measurer.as_ref(),

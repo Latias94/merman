@@ -367,7 +367,9 @@ fn run(args: Args) -> Result<(), CliError> {
                 viewport_width: args.viewport_width,
                 viewport_height: args.viewport_height,
                 text_measurer: measurer,
-                ..Default::default()
+                // Mermaid parity for some diagrams (e.g. mindmap/architecture) relies on
+                // manatee-backed layout engines. Prefer correctness for CLI output.
+                use_manatee_layout: true,
             };
 
             let Some(layouted) =
@@ -392,7 +394,9 @@ fn run(args: Args) -> Result<(), CliError> {
                 viewport_width: args.viewport_width,
                 viewport_height: args.viewport_height,
                 text_measurer: measurer,
-                ..Default::default()
+                // Mermaid parity for some diagrams (e.g. mindmap/architecture) relies on
+                // manatee-backed layout engines. Prefer correctness for CLI output.
+                use_manatee_layout: true,
             };
 
             let svg_opts = SvgRenderOptions {
@@ -417,6 +421,7 @@ fn run(args: Args) -> Result<(), CliError> {
                         background: args.background.clone(),
                         ..Default::default()
                     };
+                    let svg = merman::render::foreign_object_label_fallback_svg_text(&svg);
                     let bytes = merman::render::raster::svg_to_png(&svg, &raster)?;
                     let default_out_path = default_raster_out_path(args.input.as_deref(), "png")
                         .to_string_lossy()
@@ -430,6 +435,7 @@ fn run(args: Args) -> Result<(), CliError> {
                         background: args.background.clone(),
                         ..Default::default()
                     };
+                    let svg = merman::render::foreign_object_label_fallback_svg_text(&svg);
                     let bytes = merman::render::raster::svg_to_jpeg(&svg, &raster)?;
                     let default_out_path = default_raster_out_path(args.input.as_deref(), "jpg")
                         .to_string_lossy()
@@ -438,6 +444,7 @@ fn run(args: Args) -> Result<(), CliError> {
                     write_output(Some(out), &bytes)
                 }
                 RenderFormat::Pdf => {
+                    let svg = merman::render::foreign_object_label_fallback_svg_text(&svg);
                     let bytes = merman::render::raster::svg_to_pdf(&svg)?;
                     let default_out_path = default_raster_out_path(args.input.as_deref(), "pdf")
                         .to_string_lossy()
