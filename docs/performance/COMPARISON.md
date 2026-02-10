@@ -4,7 +4,7 @@
 
 ## Environment
 
-- Timestamp: "2026-02-10 17:00:22 +0800"
+- Timestamp: "2026-02-10 18:00:09 +0800"
 - OS: "Windows-11-10.0.26200-SP0"
 - Machine: "AMD64"
 - CPU: "13th Gen Intel(R) Core(TM) i9-13900KF"
@@ -12,7 +12,7 @@
 - Node: "v24.13.0"
 - Chromium: "HeadlessChrome/131.0.6778.204"
 - mermaid-cli: "11.12.0"
-- merman: `fbd2605e8a2a00eb932dad091406010ea59f4381`
+- merman: `5853894c74c6eeb16aad14b8018f57a06b5575aa`
 - mermaid-rs-renderer: `859253415e69dce28bd65cd5a7c1d1ae8b39f4a1`
 - mermaid-js: `mermaid@11.12.2`
 - Rust:
@@ -38,14 +38,14 @@ LLVM version: 21.1.8
 
 | benchmark | merman | mermaid-rs-renderer | mermaid-js (puppeteer) | ratio (merman / mmdr) | ratio (merman / mermaid-js) |
 |---|---:|---:|---:|---:|---:|
-| end_to_end/class_medium | 19.36 ms | 1.68 ms | 57.25 ms | 11.5x | 0.3x |
-| end_to_end/class_tiny | 901.30 µs | 24.42 µs | 3.60 ms | 36.9x | 0.3x |
-| end_to_end/flowchart_medium | 39.66 ms | 4.25 ms | 75.70 ms | 9.3x | 0.5x |
-| end_to_end/flowchart_tiny | 578.07 µs | 37.15 µs | 4.70 ms | 15.6x | 0.1x |
-| end_to_end/sequence_medium | 282.30 µs | 206.10 µs | 9.50 ms | 1.4x | 0.03x |
-| end_to_end/sequence_tiny | 97.80 µs | 17.86 µs | 3.20 ms | 5.5x | 0.03x |
-| end_to_end/state_medium | 7.88 ms | 1.43 ms | 44.65 ms | 5.5x | 0.2x |
-| end_to_end/state_tiny | 866.14 µs | 30.27 µs | 6.90 ms | 28.6x | 0.1x |
+| end_to_end/class_medium | 23.34 ms | 2.52 ms | 98.40 ms | 9.3x | 0.2x |
+| end_to_end/class_tiny | 777.61 µs | 33.57 µs | 4.30 ms | 23.2x | 0.2x |
+| end_to_end/flowchart_medium | 34.60 ms | 4.62 ms | 72.70 ms | 7.5x | 0.5x |
+| end_to_end/flowchart_tiny | 684.84 µs | 33.54 µs | 5.00 ms | 20.4x | 0.1x |
+| end_to_end/sequence_medium | 315.55 µs | 345.05 µs | 6.30 ms | 0.9x | 0.05x |
+| end_to_end/sequence_tiny | 89.13 µs | 28.08 µs | 3.00 ms | 3.2x | 0.03x |
+| end_to_end/state_medium | 8.13 ms | 1.97 ms | 40.40 ms | 4.1x | 0.2x |
+| end_to_end/state_tiny | 866.34 µs | 34.95 µs | 6.20 ms | 24.8x | 0.1x |
 
 ## Notes
 
@@ -57,4 +57,4 @@ LLVM version: 21.1.8
 
 These fixtures were present but skipped because `merman` returned a parse/layout/render error during the pre-check.
 
-`pie_medium`, `treemap_medium`, `xychart_medium`
+`treemap_medium`, `xychart_medium`
