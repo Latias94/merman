@@ -19,6 +19,12 @@ Source repo: `repo-ref/mermaid-rs-renderer` (see `repo-ref/REPOS.lock.json`).
   - Source: `repo-ref/mermaid-rs-renderer/tests/fixtures/flowchart/ports.mmd`
 - `fixtures/flowchart/mmdr_tests_flowchart_flowchart_styles.mmd`
   - Source: `repo-ref/mermaid-rs-renderer/tests/fixtures/flowchart/styles.mmd`
+- `fixtures/flowchart/mmdr_tests_flowchart_flowchart_edges.mmd`
+  - Source: `repo-ref/mermaid-rs-renderer/tests/fixtures/flowchart/edges.mmd`
+- `fixtures/flowchart/mmdr_tests_flowchart_flowchart_subgraph.mmd`
+  - Source: `repo-ref/mermaid-rs-renderer/tests/fixtures/flowchart/subgraph.mmd`
+- `fixtures/flowchart/mmdr_tests_flowchart_flowchart_subgraph_direction.mmd`
+  - Source: `repo-ref/mermaid-rs-renderer/tests/fixtures/flowchart/subgraph_direction.mmd`
 
 ### Sequence
 

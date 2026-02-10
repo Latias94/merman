@@ -17,6 +17,9 @@ are parity-gated against upstream SVG baselines:
 - mmdr test fixture (complex subgraph layout): `fixtures/flowchart/mmdr_tests_flowchart_flowchart_complex.mmd`
 - mmdr test fixture (ports): `fixtures/flowchart/mmdr_tests_flowchart_flowchart_ports.mmd`
 - mmdr test fixture (styles): `fixtures/flowchart/mmdr_tests_flowchart_flowchart_styles.mmd`
+- mmdr test fixture (edges): `fixtures/flowchart/mmdr_tests_flowchart_flowchart_edges.mmd`
+- mmdr test fixture (subgraphs): `fixtures/flowchart/mmdr_tests_flowchart_flowchart_subgraph.mmd`
+- mmdr test fixture (subgraph direction): `fixtures/flowchart/mmdr_tests_flowchart_flowchart_subgraph_direction.mmd`
 
 Reference: `docs/alignment/EXTERNAL_FIXTURES.md`.
 
