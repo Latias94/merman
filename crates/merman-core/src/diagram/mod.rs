@@ -38,6 +38,7 @@ impl DiagramRegistry {
             crate::diagrams::requirement::parse_requirement,
         );
         reg.insert("sequence", crate::diagrams::sequence::parse_sequence);
+        reg.insert("zenuml", crate::diagrams::zenuml::parse_zenuml);
 
         reg.insert("classDiagram", crate::diagrams::class::parse_class);
         reg.insert("class", crate::diagrams::class::parse_class);

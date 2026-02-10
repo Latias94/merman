@@ -29,7 +29,7 @@ pub use config::MermaidConfig;
 pub use detect::{Detector, DetectorRegistry};
 pub use diagram::{DiagramRegistry, DiagramSemanticParser, ParsedDiagram};
 pub use error::{Error, Result};
-pub use preprocess::{PreprocessResult, preprocess_diagram};
+pub use preprocess::{PreprocessResult, preprocess_diagram, preprocess_diagram_with_known_type};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ParseOptions {
@@ -125,12 +125,64 @@ impl Engine {
         Ok(Some(meta))
     }
 
+    /// Parses metadata for an already-known diagram type (skips type detection).
+    ///
+    /// This is intended for integrations that already know the diagram type, e.g. Markdown fences
+    /// like ````mermaid` / ` ```flowchart` / ` ```sequenceDiagram`.
+    ///
+    /// ## Example (Markdown fence)
+    ///
+    /// ```no_run
+    /// use merman_core::{Engine, ParseOptions};
+    ///
+    /// let engine = Engine::new();
+    ///
+    /// // Your markdown parser provides the fence info string (e.g. "flowchart", "sequenceDiagram").
+    /// let fence = "sequenceDiagram";
+    /// let diagram = r#"sequenceDiagram
+    ///   Alice->>Bob: Hello
+    /// "#;
+    ///
+    /// // Map fence info strings to merman's internal diagram ids.
+    /// let diagram_type = match fence {
+    ///     "sequenceDiagram" => "sequence",
+    ///     "flowchart" | "graph" => "flowchart-v2",
+    ///     "stateDiagram" | "stateDiagram-v2" => "stateDiagram",
+    ///     other => other,
+    /// };
+    ///
+    /// let meta = engine
+    ///     .parse_metadata_as_sync(diagram_type, diagram, ParseOptions::strict())?
+    ///     .expect("diagram detected");
+    /// # Ok::<(), merman_core::Error>(())
+    /// ```
+    pub fn parse_metadata_as_sync(
+        &self,
+        diagram_type: &str,
+        text: &str,
+        options: ParseOptions,
+    ) -> Result<Option<ParseMetadata>> {
+        let Some((_, meta)) = self.preprocess_and_assume_type(diagram_type, text, options)? else {
+            return Ok(None);
+        };
+        Ok(Some(meta))
+    }
+
     pub async fn parse_metadata(
         &self,
         text: &str,
         options: ParseOptions,
     ) -> Result<Option<ParseMetadata>> {
         self.parse_metadata_sync(text, options)
+    }
+
+    pub async fn parse_metadata_as(
+        &self,
+        diagram_type: &str,
+        text: &str,
+        options: ParseOptions,
+    ) -> Result<Option<ParseMetadata>> {
+        self.parse_metadata_as_sync(diagram_type, text, options)
     }
 
     /// Synchronous variant of [`Engine::parse_diagram`].
@@ -183,6 +235,76 @@ impl Engine {
         self.parse_diagram_sync(text, options)
     }
 
+    /// Parses a diagram when the diagram type is already known (skips type detection).
+    ///
+    /// This is the preferred entrypoint for Markdown renderers and editors that already know the
+    /// diagram type from the code fence info string. It avoids the detection pass and can reduce a
+    /// small fixed overhead in tight render loops.
+    ///
+    /// ## Example
+    ///
+    /// ```no_run
+    /// use merman_core::{Engine, ParseOptions};
+    ///
+    /// let engine = Engine::new();
+    /// let input = "flowchart TD; A-->B;";
+    ///
+    /// let parsed = engine
+    ///     .parse_diagram_as_sync("flowchart-v2", input, ParseOptions::strict())?
+    ///     .expect("diagram detected");
+    ///
+    /// assert_eq!(parsed.meta.diagram_type, "flowchart-v2");
+    /// # Ok::<(), merman_core::Error>(())
+    /// ```
+    pub fn parse_diagram_as_sync(
+        &self,
+        diagram_type: &str,
+        text: &str,
+        options: ParseOptions,
+    ) -> Result<Option<ParsedDiagram>> {
+        let Some((code, meta)) = self.preprocess_and_assume_type(diagram_type, text, options)?
+        else {
+            return Ok(None);
+        };
+
+        let mut model = match diagram::parse_or_unsupported(
+            &self.diagram_registry,
+            &meta.diagram_type,
+            &code,
+            &meta,
+        ) {
+            Ok(v) => v,
+            Err(err) => {
+                if !options.suppress_errors {
+                    return Err(err);
+                }
+
+                let mut error_meta = meta.clone();
+                error_meta.diagram_type = "error".to_string();
+                let mut error_model = serde_json::json!({ "type": "error" });
+                common_db::apply_common_db_sanitization(
+                    &mut error_model,
+                    &error_meta.effective_config,
+                );
+                return Ok(Some(ParsedDiagram {
+                    meta: error_meta,
+                    model: error_model,
+                }));
+            }
+        };
+        common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
+        Ok(Some(ParsedDiagram { meta, model }))
+    }
+
+    pub async fn parse_diagram_as(
+        &self,
+        diagram_type: &str,
+        text: &str,
+        options: ParseOptions,
+    ) -> Result<Option<ParsedDiagram>> {
+        self.parse_diagram_as_sync(diagram_type, text, options)
+    }
+
     pub async fn parse(&self, text: &str, options: ParseOptions) -> Result<Option<ParseMetadata>> {
         self.parse_metadata(text, options).await
     }
@@ -227,6 +349,58 @@ impl Engine {
             },
         )))
     }
+
+    fn preprocess_and_assume_type(
+        &self,
+        diagram_type: &str,
+        text: &str,
+        _options: ParseOptions,
+    ) -> Result<Option<(String, ParseMetadata)>> {
+        let pre = preprocess_diagram_with_known_type(text, &self.registry, Some(diagram_type))?;
+        if pre.code.trim_start().starts_with("---") {
+            return Err(Error::MalformedFrontMatter);
+        }
+
+        let mut effective_config = self.site_config.clone();
+        effective_config.deep_merge(pre.config.as_value());
+        apply_detector_side_effects_for_known_type(diagram_type, &mut effective_config);
+        theme::apply_theme_defaults(&mut effective_config);
+
+        let title = pre
+            .title
+            .as_ref()
+            .map(|t| crate::sanitize::sanitize_text(t, &effective_config))
+            .filter(|t| !t.is_empty());
+
+        Ok(Some((
+            pre.code,
+            ParseMetadata {
+                diagram_type: diagram_type.to_string(),
+                config: pre.config,
+                effective_config,
+                title,
+            },
+        )))
+    }
+}
+
+fn apply_detector_side_effects_for_known_type(
+    diagram_type: &str,
+    effective_config: &mut MermaidConfig,
+) {
+    // Some Mermaid detectors have side effects on config (e.g. selecting ELK layout).
+    // When the diagram type is known ahead of time, we must preserve these side effects so the
+    // downstream layout/render pipeline behaves like the auto-detect path.
+    if diagram_type == "flowchart-elk" {
+        effective_config.set_value("layout", serde_json::Value::String("elk".to_string()));
+        return;
+    }
+
+    if matches!(diagram_type, "flowchart-v2" | "flowchart")
+        && effective_config.get_str("flowchart.defaultRenderer") == Some("elk")
+    {
+        effective_config.set_value("layout", serde_json::Value::String("elk".to_string()));
+    }
 }
 
 #[cfg(test)]
@@ -269,6 +443,52 @@ graph TD;A-->B;"#;
                 }
             })
         );
+    }
+
+    #[test]
+    fn parse_diagram_as_sync_matches_auto_detect_for_flowchart_v2() {
+        let engine = Engine::new();
+        let input = "flowchart TD; A[Start]-->B[End];";
+
+        let auto = engine
+            .parse_diagram_sync(input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(auto.meta.diagram_type, "flowchart-v2");
+
+        let known = engine
+            .parse_diagram_as_sync("flowchart-v2", input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(known.meta.diagram_type, "flowchart-v2");
+        assert_eq!(known.model, auto.model);
+    }
+
+    #[test]
+    fn parse_metadata_as_sync_moves_init_config_without_detection() {
+        let engine = Engine::new();
+        let input = "%%{init: {\"config\": {\"htmlLabels\": true}}}%%\nflowchart TD; A-->B;";
+
+        let meta = engine
+            .parse_metadata_as_sync("flowchart-v2", input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        // Mermaid special-case: `flowchart-v2` config is stored under `flowchart`.
+        assert_eq!(meta.config.get_bool("flowchart.htmlLabels"), Some(true));
+    }
+
+    #[test]
+    fn parse_metadata_as_sync_preserves_flowchart_elk_layout_side_effect() {
+        let engine = Engine::new();
+        let input = "flowchart-elk TD\nA-->B;";
+
+        let meta = engine
+            .parse_metadata_as_sync("flowchart-elk", input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(meta.effective_config.get_str("layout"), Some("elk"));
     }
 
     #[test]

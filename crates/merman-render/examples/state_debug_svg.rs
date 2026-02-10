@@ -21,8 +21,10 @@ fn main() {
         panic!("expected StateDiagramV2 layout");
     };
 
-    let mut opts = SvgRenderOptions::default();
-    opts.include_edge_id_labels = true;
+    let opts = SvgRenderOptions {
+        include_edge_id_labels: true,
+        ..SvgRenderOptions::default()
+    };
     let svg = render_state_diagram_v2_debug_svg(&layout, &opts);
     print!("{svg}");
 }
