@@ -18,6 +18,10 @@ pub fn lookup_flowchart_root_viewport_override(
         "mmdr_tests_flowchart_flowchart_complex" => {
             Some(("0 0 978.17578125 1198.28125", "978.176"))
         }
+        "mmdr_tests_flowchart_flowchart_cycles" => Some(("0 0 230.03515625 985.4375", "230.035")),
+        "mmdr_tests_flowchart_flowchart_dense" => {
+            Some(("0 0 1097.734375 495.7659912109375", "1097.73"))
+        }
         "mmdr_tests_flowchart_flowchart_ports" => Some(("0 0 1570.953125 278", "1570.95")),
         "mmdr_tests_flowchart_flowchart_edges" => Some(("0 0 319.703125 486", "319.703")),
         "mmdr_tests_flowchart_flowchart_subgraph" => Some(("0 0 635.484375 140", "635.484")),
