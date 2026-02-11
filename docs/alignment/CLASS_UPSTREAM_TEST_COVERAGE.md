@@ -76,6 +76,27 @@ Source: `repo-ref/mermaid/docs/syntax/classDiagram.md`
 
 - explicit class + relationship definition (`class Animal`, `Vehicle <|-- Car`):
   `fixtures/class/upstream_docs_define_class_relationship.mmd`
+- class labels:
+  `fixtures/class/upstream_docs_classdiagram_class_004.mmd`
+- return types in members/methods:
+  `fixtures/class/upstream_docs_classdiagram_return_type_016.mmd`
+- defining class members:
+  `fixtures/class/upstream_docs_classdiagram_defining_members_of_a_class_012.mmd`,
+  `fixtures/class/upstream_docs_classdiagram_defining_members_of_a_class_014.mmd`
+- defining relationships:
+  `fixtures/class/upstream_docs_classdiagram_defining_relationship_021.mmd`,
+  `fixtures/class/upstream_docs_classdiagram_defining_relationship_023.mmd`
+- lollipop interfaces:
+  `fixtures/class/upstream_docs_classdiagram_lollipop_interfaces_033.mmd`
+- namespaces:
+  `fixtures/class/upstream_docs_classdiagram_define_namespace_035.mmd`
+- annotations on classes:
+  `fixtures/class/upstream_docs_classdiagram_annotations_on_classes_040.mmd`
+- comments (`%% ...`):
+  `fixtures/class/upstream_docs_classdiagram_comments_044.mmd`
+- examples:
+  `fixtures/class/upstream_docs_classdiagram_examples_049.mmd`,
+  `fixtures/class/upstream_docs_classdiagram_examples_051.mmd`
 
 ## Headless layout coverage (Stage A)
 
@@ -98,7 +119,7 @@ Debug SVG exporter:
 
 Stage-B SVG DOM comparison (against upstream baselines):
 
-- `cargo run -p xtask -- compare-class-svgs --dom-mode structure --dom-decimals 3`
+- `cargo run --release -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 - Exclusions (see `docs/rendering/UPSTREAM_SVG_BASELINES.md`):
   - `fixtures/class/upstream_text_label_variants_spec.mmd` (upstream CLI failure at 11.12.2)
   - `fixtures/class/upstream_parser_class_spec.mmd` (upstream prototype-key rendering artifacts)
