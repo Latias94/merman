@@ -14,6 +14,11 @@ require implementing ZenUML’s behavior as observed in Mermaid `@11.12.2` when 
 is registered. Upstream Mermaid’s ZenUML integration renders via `@zenuml/core` inside a browser
 `<foreignObject>`, which is not available in headless pure-Rust contexts.
 
+Reference repos (pinned in this repository for traceability):
+
+- Mermaid external diagram renderer: `repo-ref/mermaid` (see `repo-ref/REPOS.lock.json`)
+- ZenUML implementation: `repo-ref/zenuml-core` (see `repo-ref/REPOS.lock.json`)
+
 ## Decision
 
 - In `merman@0.1.x`, support ZenUML in a headless compatibility mode:

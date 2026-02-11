@@ -67,6 +67,7 @@ Notes:
 - Mermaid `zenuml` is provided as an external diagram plugin upstream and rendered via browser-only `@zenuml/core`.
   `merman` provides a headless compatibility mode that translates a small ZenUML subset into a `sequenceDiagram` model.
   This is not currently covered by upstream SVG baselines.
+  Coverage docs: `docs/alignment/ZENUML_MINIMUM.md`, `docs/alignment/ZENUML_UPSTREAM_TEST_COVERAGE.md`.
 
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
 the dashed separators now use the exact same x-coordinates as the frame edges to match upstream SVG and
@@ -82,7 +83,9 @@ Post-baseline hardening plan (coverage growth + override consolidation + CI guar
 ## Roadmap (selected)
 
 - Performance regression tracking: `docs/performance/BENCHMARKING.md`.
+- Alignment milestones and release targets: `docs/alignment/MILESTONES.md`.
 - ZenUML: headless compatibility mode (ADR 0061).
+- Fixture expansion TODO list: `docs/alignment/FIXTURE_EXPANSION_TODO.md`.
 
 Recent progress (2026-02-08): SVG flowchart renderer implementation was extracted from the monolithic
 `crates/merman-render/src/svg/parity.rs` into `crates/merman-render/src/svg/parity/flowchart.rs` to improve

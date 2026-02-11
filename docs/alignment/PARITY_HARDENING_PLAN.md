@@ -5,7 +5,7 @@ Baseline version: Mermaid `@11.12.2`.
 As of 2026-02-11:
 
 - `parity` full compare: 0 mismatch.
-- `parity-root` full compare: 0 mismatch (607/607 upstream SVG baselines).
+- `parity-root` full compare: 0 mismatch (619/619 upstream SVG baselines).
 
 This document defines the next hardening phases after reaching baseline 100% parity for the
 current fixture set.
@@ -21,7 +21,7 @@ current fixture set.
 ### Upstream SVG Corpus
 
 - Total diagrams covered: 23
-- Total upstream SVG baselines: 607
+- Total upstream SVG baselines: 619
 
 ### Upstream Syntax Docs Inventory (11.12.2)
 
@@ -44,15 +44,17 @@ Largest fixture buckets:
 
 Root viewport overrides:
 
-- `architecture_root_overrides_11_12_2.rs`: 0 entries (all 34 fixtures consolidated)
-- `class_root_overrides_11_12_2.rs`: 0 entries (all 17 fixtures consolidated)
-- `mindmap_root_overrides_11_12_2.rs`: 0 entries (all 13 fixtures consolidated)
+- `architecture_root_overrides_11_12_2.rs`: 9 `Some(...)` entries (fixture-scoped root viewport pins)
+- `class_root_overrides_11_12_2.rs`: 11 `Some(...)` entries (fixture-scoped root viewport pins)
+- `mindmap_root_overrides_11_12_2.rs`: 1 `Some(...)` entry (fixture-scoped root viewport pins)
 
 State text/bbox overrides:
 
 - `state_text_overrides_11_12_2.rs`: 46 `Some(...)` entries across width/height/bbox helpers
 
 ## Phase Plan
+
+For release-oriented milestones (0.1.0/0.1.x), see `docs/alignment/MILESTONES.md`.
 
 ## Phase A: Fixture Expansion (Coverage First)
 
@@ -84,6 +86,28 @@ Policy:
 
 - Remove overrides only when replacement logic is deterministic and keeps all existing fixtures green.
 - If a removal causes regressions, prefer rollback + follow-up ADR rather than partial drift.
+
+## Phase C: External Diagrams (ZenUML Compatibility)
+
+Primary objective: expand practical ZenUML support without compromising the Mermaid parity gates.
+
+Notes:
+
+- Upstream Mermaid renders ZenUML via browser-only `@zenuml/core`. We do not maintain upstream SVG baselines.
+- `merman` implements a headless compatibility mode by translating a ZenUML subset into `sequenceDiagram`.
+
+Actions:
+
+1. Import a small batch of examples from `repo-ref/mermaid/docs/syntax/zenuml.md` into `fixtures/zenuml/`.
+2. Extend the translator in `crates/merman-core/src/diagrams/zenuml.rs` in small, test-driven steps.
+3. Gate ZenUML changes on:
+   - semantic snapshots (`fixtures/zenuml/*.golden.json`)
+   - layout snapshots (`fixtures/zenuml/*.layout.golden.json`)
+   - existing global Mermaid parity gates remaining green.
+
+Exit criteria:
+
+- ZenUML fixture set grows with deterministic snapshots, and Mermaid parity gates remain green.
 
 Class Phase-B spike notes (2026-02-06):
 
