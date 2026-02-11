@@ -1,0 +1,125 @@
+{
+  "diagramType": "zenuml",
+  "model": {
+    "type": "zenuml",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Consumer",
+      "API",
+      "BookingService"
+    ],
+    "actors": {
+      "Consumer": {
+        "name": "Consumer",
+        "description": "Consumer",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "API": {
+        "name": "API",
+        "description": "API",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "BookingService": {
+        "name": "BookingService",
+        "description": "BookingService",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": null,
+        "to": null,
+        "message": "try",
+        "wrap": false,
+        "type": 12,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Consumer",
+        "to": "API",
+        "message": "Book something",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "API",
+        "to": "BookingService",
+        "message": "Start booking process",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": null,
+        "to": null,
+        "message": "catch",
+        "wrap": false,
+        "type": 13,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "API",
+        "to": "Consumer",
+        "message": "show failure",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": null,
+        "to": null,
+        "message": "finally",
+        "wrap": false,
+        "type": 13,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "API",
+        "to": "BookingService",
+        "message": "rollback status",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 14,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "diagramType": "zenuml",
+  "model": {
+    "type": "zenuml",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "BookService"
+    ],
+    "actors": {
+      "BookService": {
+        "name": "BookService",
+        "description": "BookService",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "BookService",
+        "to": "BookService",
+        "message": "a comment on a message.",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "1",
+        "from": "BookService",
+        "to": "BookService",
+        "message": "**Markdown** is supported.",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "2",
+        "from": "BookService",
+        "to": "BookService",
+        "message": "getBook()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": [
+          "BookService",
+          "BookService"
+        ],
+        "placement": 2,
+        "message": "a comment on a message.",
+        "wrap": false
+      },
+      {
+        "actor": [
+          "BookService",
+          "BookService"
+        ],
+        "placement": 2,
+        "message": "**Markdown** is supported.",
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

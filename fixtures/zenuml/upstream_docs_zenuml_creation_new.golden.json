@@ -1,0 +1,46 @@
+{
+  "diagramType": "zenuml",
+  "model": {
+    "type": "zenuml",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "A1",
+      "A2"
+    ],
+    "actors": {
+      "A1": {
+        "name": "A1",
+        "description": "A1",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "A2": {
+        "name": "A2",
+        "description": "A2(with, parameters)",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {
+      "A2": 0,
+      "A1": 0
+    },
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

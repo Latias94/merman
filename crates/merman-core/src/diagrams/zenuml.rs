@@ -22,6 +22,7 @@ pub fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
         Par { branch_started: bool },
         IfAlt,
         TryAlt,
+        SyncCall { actor: String },
     }
 
     fn starts_with_word_ci(haystack: &str, word: &str) -> bool {
@@ -195,11 +196,20 @@ pub fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
                     return;
                 }
             }
+            BlockKind::SyncCall { .. } => {}
             _ => {}
         }
 
-        stack.pop();
-        out.push("end".to_string());
+        let closed = stack.pop();
+        match closed {
+            Some(BlockKind::SyncCall { actor }) => {
+                out.push(format!("deactivate {actor}"));
+            }
+            Some(_) => {
+                out.push("end".to_string());
+            }
+            None => {}
+        }
     }
 
     for raw in code.lines() {
@@ -368,6 +378,66 @@ pub fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
                 pending_comments.clear();
                 continue;
             }
+
+            // Sync message / method-call blocks:
+            //   A.SyncMessage(with, parameters) { ... }
+            //
+            // Translate to a self-message plus explicit activation scope.
+            if let Some((actor, method)) = p.split_once('.') {
+                let actor = actor.trim();
+                let method = method.trim();
+                if !actor.is_empty() && !method.is_empty() {
+                    par_maybe_and(&mut stack, &mut out);
+                    flush_pending_comments_as_notes(&mut pending_comments, &mut out, actor, actor);
+                    out.push(format!("{actor}->>{actor}: {method}"));
+                    out.push(format!("activate {actor}"));
+                    stack.push(BlockKind::SyncCall {
+                        actor: actor.to_string(),
+                    });
+                    continue;
+                }
+            }
+        }
+
+        // Creation messages:
+        //   new A1
+        //   new A2(with, parameters)
+        if let Some(rest) = line.strip_prefix("new ") {
+            let rest = rest.trim();
+            if rest.is_empty() {
+                return Err(Error::DiagramParse {
+                    diagram_type: meta.diagram_type.clone(),
+                    message: format!("unsupported zenuml statement: {line}"),
+                });
+            }
+
+            // Extract a stable id for Mermaid sequence: the leading identifier token.
+            let mut chars = rest.chars();
+            let mut id = String::new();
+            while let Some(ch) = chars.next() {
+                if ch.is_ascii_alphanumeric() || ch == '_' || ch == '.' {
+                    id.push(ch);
+                } else {
+                    break;
+                }
+            }
+            if id.is_empty() {
+                return Err(Error::DiagramParse {
+                    diagram_type: meta.diagram_type.clone(),
+                    message: format!("unsupported zenuml statement: {line}"),
+                });
+            }
+
+            par_maybe_and(&mut stack, &mut out);
+            pending_comments.clear();
+
+            // If the creation has arguments, keep the full text as the label (description).
+            if rest != id {
+                out.push(format!("create participant {id} as {rest}"));
+            } else {
+                out.push(format!("create participant {id}"));
+            }
+            continue;
         }
 
         // Participants.
@@ -377,6 +447,20 @@ pub fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
             // ZenUML comment on a participant is not rendered.
             pending_comments.clear();
             continue;
+        }
+
+        // Sync messages without blocks:
+        //   A.SyncMessage
+        //   A.SyncMessage(with, parameters)
+        if let Some((actor, method)) = line.split_once('.') {
+            let actor = actor.trim();
+            let method = method.trim();
+            if !actor.is_empty() && !method.is_empty() {
+                par_maybe_and(&mut stack, &mut out);
+                flush_pending_comments_as_notes(&mut pending_comments, &mut out, actor, actor);
+                out.push(format!("{actor}->>{actor}: {method}"));
+                continue;
+            }
         }
 
         // Messages.

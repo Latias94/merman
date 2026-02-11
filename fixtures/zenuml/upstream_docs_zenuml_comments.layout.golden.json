@@ -1,0 +1,105 @@
+{
+  "diagramType": "zenuml",
+  "layout": {
+    "SequenceDiagram": {
+      "nodes": [
+        {
+          "id": "actor-top-BookService",
+          "x": 75.0,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "note-0",
+          "x": 93.0,
+          "y": 94.0,
+          "width": 186.0,
+          "height": 38.0,
+          "is_cluster": false
+        },
+        {
+          "id": "note-1",
+          "x": 101.0,
+          "y": 142.0,
+          "width": 202.0,
+          "height": 38.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-BookService",
+          "x": 75.0,
+          "y": 287.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "msg-2",
+          "from": "BookService",
+          "to": "BookService",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 76.0,
+              "y": 205.0
+            },
+            {
+              "x": 76.0,
+              "y": 205.0
+            }
+          ],
+          "label": {
+            "x": 76.0,
+            "y": 176.0,
+            "width": 63.36,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-BookService",
+          "from": "actor-top-BookService",
+          "to": "actor-bottom-BookService",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 75.0,
+              "y": 65.0
+            },
+            {
+              "x": 75.0,
+              "y": 255.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": -50.0,
+        "min_y": -10.0,
+        "max_x": 252.0,
+        "max_y": 331.0
+      }
+    }
+  }
+}
