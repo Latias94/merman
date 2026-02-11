@@ -1,0 +1,73 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Alice",
+      "John"
+    ],
+    "actors": {
+      "Alice": {
+        "name": "Alice",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "John": {
+        "name": "John",
+        "description": "John",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "Alice",
+        "to": "John",
+        "message": "Hello John, how are you?",
+        "wrap": false,
+        "type": 5,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Alice",
+        "to": "John",
+        "message": "A typical interaction",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      }
+    ],
+    "notes": [
+      {
+        "actor": [
+          "Alice",
+          "John"
+        ],
+        "placement": 2,
+        "message": "A typical interaction",
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

@@ -6,41 +6,23 @@
     "accTitle": null,
     "accDescr": null,
     "actorOrder": [
-      "a",
-      "b",
-      "c",
-      "d"
+      "Alice",
+      "John"
     ],
     "actors": {
-      "a": {
-        "name": "a",
+      "Alice": {
+        "name": "Alice",
         "description": "Alice",
         "wrap": false,
         "type": "participant",
         "links": {},
         "properties": {}
       },
-      "b": {
-        "name": "b",
-        "description": "b",
+      "John": {
+        "name": "John",
+        "description": "John",
         "wrap": false,
         "type": "participant",
-        "links": {},
-        "properties": {}
-      },
-      "c": {
-        "name": "c",
-        "description": "c",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
-      "d": {
-        "name": "d",
-        "description": "Donald",
-        "wrap": false,
-        "type": "actor",
         "links": {},
         "properties": {}
       }
@@ -48,47 +30,44 @@
     "messages": [
       {
         "id": "0",
-        "from": "a",
-        "to": "b",
-        "message": "Hello Bob?",
+        "from": "Alice",
+        "to": "John",
+        "message": "Hello John, how are you?",
         "wrap": false,
         "type": 0,
         "activate": false
       },
       {
         "id": "1",
-        "from": "b",
-        "to": "c",
-        "message": "Hello c!",
+        "from": "John",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "John",
+        "to": "Alice",
+        "message": "Great!",
         "wrap": false,
         "type": 1,
         "activate": false
       },
       {
-        "id": "2",
-        "from": "c",
-        "to": "b",
-        "message": "Hello b?",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
         "id": "3",
-        "from": "a",
-        "to": "d",
-        "message": "Hello Donald?",
+        "from": "John",
+        "to": null,
+        "message": "",
         "wrap": false,
-        "type": 0,
+        "type": 18,
         "activate": false
       }
     ],
     "notes": [],
     "boxes": [],
-    "createdActors": {
-      "d": 3,
-      "c": 1
-    },
+    "createdActors": {},
     "destroyedActors": {},
     "constants": {
       "placement": {

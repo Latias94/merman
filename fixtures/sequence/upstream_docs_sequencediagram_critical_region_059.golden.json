@@ -6,30 +6,21 @@
     "accTitle": null,
     "accDescr": null,
     "actorOrder": [
-      "a",
-      "b",
-      "c"
+      "Service",
+      "DB"
     ],
     "actors": {
-      "a": {
-        "name": "a",
-        "description": "Alice",
+      "Service": {
+        "name": "Service",
+        "description": "Service",
         "wrap": false,
         "type": "participant",
         "links": {},
         "properties": {}
       },
-      "b": {
-        "name": "b",
-        "description": "b",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
-      "c": {
-        "name": "c",
-        "description": "c",
+      "DB": {
+        "name": "DB",
+        "description": "DB",
         "wrap": false,
         "type": "participant",
         "links": {},
@@ -39,48 +30,36 @@
     "messages": [
       {
         "id": "0",
-        "from": "a",
-        "to": "b",
-        "message": "Hello Bob?",
+        "from": null,
+        "to": null,
+        "message": "Establish a connection to the DB",
         "wrap": false,
-        "type": 0,
+        "type": 27,
         "activate": false
       },
       {
         "id": "1",
-        "from": "b",
-        "to": "a",
-        "message": "Hello Alice!",
+        "from": "Service",
+        "to": "DB",
+        "message": "connect",
         "wrap": false,
-        "type": 1,
+        "type": 6,
         "activate": false
       },
       {
         "id": "2",
-        "from": "b",
-        "to": "c",
-        "message": "Where is Alice?",
+        "from": null,
+        "to": null,
+        "message": "",
         "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "b",
-        "to": "c",
-        "message": "Where are you?",
-        "wrap": false,
-        "type": 0,
+        "type": 29,
         "activate": false
       }
     ],
     "notes": [],
     "boxes": [],
     "createdActors": {},
-    "destroyedActors": {
-      "a": 1,
-      "c": 3
-    },
+    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,

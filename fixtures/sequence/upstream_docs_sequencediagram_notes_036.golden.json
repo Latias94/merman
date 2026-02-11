@@ -1,0 +1,52 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "John"
+    ],
+    "actors": {
+      "John": {
+        "name": "John",
+        "description": "John",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "John",
+        "to": "John",
+        "message": "Text in note",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 1
+      }
+    ],
+    "notes": [
+      {
+        "actor": "John",
+        "placement": 1,
+        "message": "Text in note",
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

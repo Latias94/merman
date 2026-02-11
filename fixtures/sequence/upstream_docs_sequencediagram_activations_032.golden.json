@@ -6,30 +6,21 @@
     "accTitle": null,
     "accDescr": null,
     "actorOrder": [
-      "a",
-      "b",
-      "c"
+      "Alice",
+      "John"
     ],
     "actors": {
-      "a": {
-        "name": "a",
+      "Alice": {
+        "name": "Alice",
         "description": "Alice",
         "wrap": false,
         "type": "participant",
         "links": {},
         "properties": {}
       },
-      "b": {
-        "name": "b",
-        "description": "b",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
-      "c": {
-        "name": "c",
-        "description": "c",
+      "John": {
+        "name": "John",
+        "description": "John",
         "wrap": false,
         "type": "participant",
         "links": {},
@@ -39,48 +30,45 @@
     "messages": [
       {
         "id": "0",
-        "from": "a",
-        "to": "b",
-        "message": "Hello Bob?",
+        "from": "Alice",
+        "to": "John",
+        "message": "Hello John, how are you?",
         "wrap": false,
         "type": 0,
-        "activate": false
+        "activate": true
       },
       {
         "id": "1",
-        "from": "b",
-        "to": "a",
-        "message": "Hello Alice!",
+        "from": "John",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "John",
+        "to": "Alice",
+        "message": "Great!",
         "wrap": false,
         "type": 1,
         "activate": false
       },
       {
-        "id": "2",
-        "from": "b",
-        "to": "c",
-        "message": "Where is Alice?",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
         "id": "3",
-        "from": "b",
-        "to": "c",
-        "message": "Where are you?",
+        "from": "John",
+        "to": null,
+        "message": "",
         "wrap": false,
-        "type": 0,
+        "type": 18,
         "activate": false
       }
     ],
     "notes": [],
     "boxes": [],
     "createdActors": {},
-    "destroyedActors": {
-      "a": 1,
-      "c": 3
-    },
+    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
