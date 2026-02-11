@@ -1,6 +1,6 @@
 use crate::Result;
 use crate::model::{Bounds, KanbanDiagramLayout, KanbanItemLayout, KanbanSectionLayout};
-use crate::text::{TextMeasurer, TextStyle};
+use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use serde::Deserialize;
 
 const SECTION_LABEL_HEIGHT_BASELINE: f64 = 25.0;
@@ -9,6 +9,7 @@ const SECTION_LABEL_FO_HEIGHT: f64 = 24.0;
 const SECTION_PADDING: f64 = 10.0;
 const ITEM_ONE_ROW_HEIGHT: f64 = 44.0;
 const ITEM_TWO_ROW_HEIGHT: f64 = 56.0;
+const ITEM_LABEL_LINE_HEIGHT: f64 = 24.0;
 
 #[derive(Debug, Clone, Deserialize)]
 struct KanbanNode {
@@ -106,12 +107,34 @@ pub fn layout_kanban_diagram(
             .collect();
 
         for item in section_items {
+            let width = (section_width - 1.5 * padding).max(1.0);
+            let inner_max_w = (width - 10.0).max(0.0);
+
+            // Mermaid's kanban items are rendered via `kanbanItem.ts`, which uses HTML labels for
+            // the title and applies `max-width` clamping when the content needs wrapping. Mirror
+            // that behavior so item heights match the upstream bbox-based layout.
+            let item_label_style = TextStyle::default();
+            let raw_title_metrics =
+                measurer.measure_wrapped(&item.label, &item_label_style, None, WrapMode::HtmlLike);
+            let title_metrics = if inner_max_w > 0.0 && raw_title_metrics.width > inner_max_w {
+                measurer.measure_wrapped(
+                    &item.label,
+                    &item_label_style,
+                    Some(inner_max_w),
+                    WrapMode::HtmlLike,
+                )
+            } else {
+                raw_title_metrics
+            };
+
             let has_details_row = item.ticket.is_some() || item.assigned.is_some();
-            let height = if has_details_row {
+            let base_height = if has_details_row {
                 ITEM_TWO_ROW_HEIGHT
             } else {
                 ITEM_ONE_ROW_HEIGHT
             };
+            let extra_title_height = (title_metrics.height - ITEM_LABEL_LINE_HEIGHT).max(0.0);
+            let height = base_height + extra_title_height;
 
             let center_x = section.center_x;
             let center_y = y + height / 2.0;
@@ -122,7 +145,7 @@ pub fn layout_kanban_diagram(
                 parent_id: section.id.clone(),
                 center_x,
                 center_y,
-                width: (section_width - 1.5 * padding).max(1.0),
+                width,
                 height: height.max(1.0),
                 rx: 5.0,
                 ry: 5.0,
