@@ -16,12 +16,34 @@ pub(super) fn json_f64(v: &serde_json::Value) -> Option<f64> {
         .or_else(|| v.as_u64().map(|n| n as f64))
 }
 
+pub(super) fn json_bool(v: &serde_json::Value) -> Option<bool> {
+    v.as_bool()
+        .or_else(|| v.as_i64().map(|n| n != 0))
+        .or_else(|| v.as_u64().map(|n| n != 0))
+        .or_else(|| {
+            v.as_str()
+                .and_then(|s| match s.trim().to_ascii_lowercase().as_str() {
+                    "true" | "yes" | "on" | "1" => Some(true),
+                    "false" | "no" | "off" | "0" => Some(false),
+                    _ => None,
+                })
+        })
+}
+
 pub(super) fn config_f64(cfg: &serde_json::Value, path: &[&str]) -> Option<f64> {
     let mut cur = cfg;
     for key in path {
         cur = cur.get(*key)?;
     }
     json_f64(cur)
+}
+
+pub(super) fn config_bool(cfg: &serde_json::Value, path: &[&str]) -> Option<bool> {
+    let mut cur = cfg;
+    for key in path {
+        cur = cur.get(*key)?;
+    }
+    json_bool(cur)
 }
 
 pub(super) fn normalize_css_font_family(font_family: &str) -> String {

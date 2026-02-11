@@ -528,16 +528,19 @@ fn render_class_html_label(
     }
 }
 
-fn class_apply_inline_styles(node: &ClassSvgNode) -> (Option<&str>, Option<&str>, Option<&str>) {
+fn class_apply_inline_styles(
+    node: &ClassSvgNode,
+) -> (Option<&str>, Option<&str>, Option<&str>, Option<&str>) {
     let mut fill: Option<&str> = None;
     let mut stroke: Option<&str> = None;
     let mut stroke_width: Option<&str> = None;
+    let mut stroke_dasharray: Option<&str> = None;
     for raw in &node.styles {
         let Some((k, v)) = raw.split_once(':') else {
             continue;
         };
         let key = k.trim();
-        let val = v.trim();
+        let val = v.trim().trim_end_matches(';').trim();
         if key.eq_ignore_ascii_case("fill") && !val.is_empty() {
             fill = Some(val);
         }
@@ -547,8 +550,11 @@ fn class_apply_inline_styles(node: &ClassSvgNode) -> (Option<&str>, Option<&str>
         if key.eq_ignore_ascii_case("stroke-width") && !val.is_empty() {
             stroke_width = Some(val);
         }
+        if key.eq_ignore_ascii_case("stroke-dasharray") && !val.is_empty() {
+            stroke_dasharray = Some(val);
+        }
     }
-    (fill, stroke, stroke_width)
+    (fill, stroke, stroke_width, stroke_dasharray)
 }
 
 fn splitmix64_next(state: &mut u64) -> u64 {
@@ -668,7 +674,7 @@ pub(super) fn render_class_diagram_v2_svg(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let model: ClassSvgModel = serde_json::from_value(semantic.clone())?;
+    let model: ClassSvgModel = crate::json::from_value_ref(semantic)?;
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let aria_roledescription = options.aria_roledescription.as_deref().unwrap_or("class");
@@ -723,6 +729,9 @@ pub(super) fn render_class_diagram_v2_svg(
     const GRAPH_MARGIN_PX: f64 = 8.0;
     let content_tx = GRAPH_MARGIN_PX;
     let content_ty = GRAPH_MARGIN_PX;
+
+    let hide_empty_members_box =
+        config_bool(effective_config, &["class", "hideEmptyMembersBox"]).unwrap_or(false);
 
     // Mermaid derives the final viewport using `svg.getBBox()` (after rendering). We don't have a
     // browser DOM, so approximate the effective bbox by accumulating bounds for the elements we
@@ -1292,13 +1301,15 @@ pub(super) fn render_class_diagram_v2_svg(
             continue;
         };
 
-        let (style_fill, style_stroke, style_stroke_width) = class_apply_inline_styles(node);
+        let (style_fill, style_stroke, style_stroke_width, style_stroke_dasharray) =
+            class_apply_inline_styles(node);
         let node_fill = style_fill.unwrap_or("#ECECFF");
         let node_stroke = style_stroke.unwrap_or("#9370DB");
         let node_stroke_width = style_stroke_width
             .unwrap_or("1.3")
             .trim_end_matches("px")
             .trim();
+        let node_stroke_dasharray = style_stroke_dasharray.unwrap_or("0 0");
 
         let node_classes = format!("node {}", node.css_classes.trim());
         let tooltip = node.tooltip.as_deref().unwrap_or("").trim();
@@ -1389,10 +1400,11 @@ pub(super) fn render_class_diagram_v2_svg(
         );
         let _ = write!(
             &mut out,
-            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
+            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style=""/>"#,
             escape_attr(&stroke_d),
             escape_attr(node_stroke),
             escape_attr(node_stroke_width),
+            escape_attr(node_stroke_dasharray),
         );
         out.push_str("</g>");
 
@@ -1562,19 +1574,25 @@ pub(super) fn render_class_diagram_v2_svg(
             out.push_str("</g>");
         }
 
-        // Dividers (always present in Mermaid output).
-        for y in [divider1_y, divider2_y] {
-            out.push_str(r#"<g class="divider" style="">"#);
-            let d = class_rough_line_double_path(left, y, left + w, y, rough_seed ^ 0x55);
-            include_path_d(&mut content_bounds, &d, node_bounds_tx, node_bounds_ty);
-            let _ = write!(
-                &mut out,
-                r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
-                escape_attr(&d),
-                escape_attr(node_stroke),
-                escape_attr(node_stroke_width),
-            );
-            out.push_str("</g>");
+        // Dividers.
+        //
+        // Mermaid hides them when `class.hideEmptyMembersBox` is enabled and both members/methods
+        // are empty (see upstream docs fixture `members_box`).
+        if !(hide_empty_members_box && members_rows == 0 && methods_rows == 0) {
+            for y in [divider1_y, divider2_y] {
+                out.push_str(r#"<g class="divider" style="">"#);
+                let d = class_rough_line_double_path(left, y, left + w, y, rough_seed ^ 0x55);
+                include_path_d(&mut content_bounds, &d, node_bounds_tx, node_bounds_ty);
+                let _ = write!(
+                    &mut out,
+                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style=""/>"#,
+                    escape_attr(&d),
+                    escape_attr(node_stroke),
+                    escape_attr(node_stroke_width),
+                    escape_attr(node_stroke_dasharray),
+                );
+                out.push_str("</g>");
+            }
         }
 
         out.push_str("</g>");
