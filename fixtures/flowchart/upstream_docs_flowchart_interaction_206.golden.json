@@ -3,17 +3,15 @@
   "model": {
     "type": "flowchart-v2",
     "keyword": "flowchart",
-    "direction": "TB",
+    "direction": "LR",
     "accTitle": null,
     "accDescr": null,
-    "classDefs": {
-      "someclass": [
-        "fill:#f96"
-      ]
-    },
+    "classDefs": {},
     "tooltips": {
-      "A": "link test",
-      "B": "click test"
+      "B": "This is a tooltip for a link",
+      "D": "This is a tooltip for a link",
+      "C": "Tooltip for a callback",
+      "A": "Tooltip for a callback"
     },
     "edgeDefaults": {
       "style": [],
@@ -21,46 +19,19 @@
     },
     "vertexCalls": [
       "A",
-      "A",
       "B",
       "B",
       "C",
       "C",
-      "D",
-      "C",
-      "E",
-      "C",
-      "F"
+      "D"
     ],
     "nodes": [
       {
         "id": "A",
-        "label": "stadium shape test",
+        "label": "A",
         "labelType": "text",
-        "shape": "stadium",
-        "layoutShape": "stadium",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [
-          "clickable",
-          "someclass"
-        ],
-        "link": "index.html#link-clicked",
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "B",
-        "label": "Go shopping",
-        "labelType": "text",
-        "shape": "stadium",
-        "layoutShape": "stadium",
+        "shape": null,
+        "layoutShape": "squareRect",
         "icon": null,
         "form": null,
         "pos": null,
@@ -77,11 +48,11 @@
         "haveCallback": false
       },
       {
-        "id": "C",
-        "label": "Let me think...<br />Do I want something for work,<br />something to spend every free second with,<br />or something to get around?",
+        "id": "B",
+        "label": "B",
         "labelType": "text",
-        "shape": "stadium",
-        "layoutShape": "stadium",
+        "shape": null,
+        "layoutShape": "squareRect",
         "icon": null,
         "form": null,
         "pos": null,
@@ -91,7 +62,28 @@
         "assetHeight": null,
         "styles": [],
         "classes": [
-          "someclass"
+          "clickable"
+        ],
+        "link": "https://www.github.com/",
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "C",
+        "label": "C",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [
+          "clickable"
         ],
         "link": null,
         "linkTarget": null,
@@ -99,10 +91,10 @@
       },
       {
         "id": "D",
-        "label": "Laptop",
+        "label": "D",
         "labelType": "text",
-        "shape": "stadium",
-        "layoutShape": "stadium",
+        "shape": null,
+        "layoutShape": "squareRect",
         "icon": null,
         "form": null,
         "pos": null,
@@ -111,46 +103,10 @@
         "assetWidth": null,
         "assetHeight": null,
         "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "E",
-        "label": "iPhone",
-        "labelType": "text",
-        "shape": "stadium",
-        "layoutShape": "stadium",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "F",
-        "label": "Car<br/>wroom wroom",
-        "labelType": "text",
-        "shape": "stadium",
-        "layoutShape": "stadium",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
+        "classes": [
+          "clickable"
+        ],
+        "link": "https://www.github.com/",
         "linkTarget": null,
         "haveCallback": false
       }
@@ -165,7 +121,7 @@
         "type": "arrow_point",
         "stroke": "normal",
         "length": 1,
-        "label": "Get money",
+        "label": null,
         "labelType": "text",
         "style": [],
         "classes": [],
@@ -199,41 +155,7 @@
         "type": "arrow_point",
         "stroke": "normal",
         "length": 1,
-        "label": "One",
-        "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      },
-      {
-        "from": "C",
-        "to": "E",
-        "id": "L_C_E_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": "Two",
-        "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      },
-      {
-        "from": "C",
-        "to": "F",
-        "id": "L_C_F_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": "Three",
+        "label": null,
         "labelType": "text",
         "style": [],
         "classes": [],

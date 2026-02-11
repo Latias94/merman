@@ -8,10 +8,10 @@
     "accDescr": null,
     "classDefs": {},
     "tooltips": {
-      "A7": "tooltip",
-      "A3": "tooltip",
       "A2": "tooltip",
-      "A6": "tooltip"
+      "A6": "tooltip",
+      "A3": "tooltip",
+      "A7": "tooltip"
     },
     "edgeDefaults": {
       "style": [],

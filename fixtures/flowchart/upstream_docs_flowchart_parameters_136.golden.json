@@ -1,0 +1,43 @@
+{
+  "diagramType": "flowchart-v2",
+  "model": {
+    "type": "flowchart-v2",
+    "keyword": "flowchart",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classDefs": {},
+    "tooltips": {},
+    "edgeDefaults": {
+      "style": [],
+      "interpolate": null
+    },
+    "vertexCalls": [
+      "A",
+      "A"
+    ],
+    "nodes": [
+      {
+        "id": "A",
+        "label": "My example image label",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "imageSquare",
+        "icon": null,
+        "form": null,
+        "pos": "t",
+        "img": "https://mermaid.js.org/favicon.svg",
+        "constraint": "on",
+        "assetWidth": null,
+        "assetHeight": 60.0,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      }
+    ],
+    "edges": [],
+    "subgraphs": []
+  }
+}

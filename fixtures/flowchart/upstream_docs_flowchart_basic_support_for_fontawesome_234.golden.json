@@ -6,61 +6,28 @@
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
-    "classDefs": {
-      "someclass": [
-        "fill:#f96"
-      ]
-    },
-    "tooltips": {
-      "A": "link test",
-      "B": "click test"
-    },
+    "classDefs": {},
+    "tooltips": {},
     "edgeDefaults": {
       "style": [],
       "interpolate": null
     },
     "vertexCalls": [
-      "A",
-      "A",
       "B",
       "B",
       "C",
-      "C",
+      "B",
       "D",
-      "C",
-      "E",
-      "C",
-      "F"
+      "B",
+      "E"
     ],
     "nodes": [
       {
-        "id": "A",
-        "label": "stadium shape test",
-        "labelType": "text",
-        "shape": "stadium",
-        "layoutShape": "stadium",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [
-          "clickable",
-          "someclass"
-        ],
-        "link": "index.html#link-clicked",
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
         "id": "B",
-        "label": "Go shopping",
-        "labelType": "text",
-        "shape": "stadium",
-        "layoutShape": "stadium",
+        "label": "fa:fa-twitter for peace",
+        "labelType": "string",
+        "shape": "square",
+        "layoutShape": "squareRect",
         "icon": null,
         "form": null,
         "pos": null,
@@ -69,19 +36,17 @@
         "assetWidth": null,
         "assetHeight": null,
         "styles": [],
-        "classes": [
-          "clickable"
-        ],
+        "classes": [],
         "link": null,
         "linkTarget": null,
         "haveCallback": false
       },
       {
         "id": "C",
-        "label": "Let me think...<br />Do I want something for work,<br />something to spend every free second with,<br />or something to get around?",
+        "label": "fa:fa-ban forbidden",
         "labelType": "text",
-        "shape": "stadium",
-        "layoutShape": "stadium",
+        "shape": "square",
+        "layoutShape": "squareRect",
         "icon": null,
         "form": null,
         "pos": null,
@@ -90,19 +55,17 @@
         "assetWidth": null,
         "assetHeight": null,
         "styles": [],
-        "classes": [
-          "someclass"
-        ],
+        "classes": [],
         "link": null,
         "linkTarget": null,
         "haveCallback": false
       },
       {
         "id": "D",
-        "label": "Laptop",
+        "label": "fa:fa-spinner",
         "labelType": "text",
-        "shape": "stadium",
-        "layoutShape": "stadium",
+        "shape": "round",
+        "layoutShape": "roundedRect",
         "icon": null,
         "form": null,
         "pos": null,
@@ -118,29 +81,10 @@
       },
       {
         "id": "E",
-        "label": "iPhone",
+        "label": "A fa:fa-camera-retro perhaps?",
         "labelType": "text",
-        "shape": "stadium",
-        "layoutShape": "stadium",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "F",
-        "label": "Car<br/>wroom wroom",
-        "labelType": "text",
-        "shape": "stadium",
-        "layoutShape": "stadium",
+        "shape": "round",
+        "layoutShape": "roundedRect",
         "icon": null,
         "form": null,
         "pos": null,
@@ -156,23 +100,6 @@
       }
     ],
     "edges": [
-      {
-        "from": "A",
-        "to": "B",
-        "id": "L_A_B_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": "Get money",
-        "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      },
       {
         "from": "B",
         "to": "C",
@@ -191,15 +118,15 @@
         "animation": null
       },
       {
-        "from": "C",
+        "from": "B",
         "to": "D",
-        "id": "L_C_D_0",
+        "id": "L_B_D_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
         "stroke": "normal",
         "length": 1,
-        "label": "One",
+        "label": null,
         "labelType": "text",
         "style": [],
         "classes": [],
@@ -208,32 +135,15 @@
         "animation": null
       },
       {
-        "from": "C",
+        "from": "B",
         "to": "E",
-        "id": "L_C_E_0",
+        "id": "L_B_E_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
         "stroke": "normal",
         "length": 1,
-        "label": "Two",
-        "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      },
-      {
-        "from": "C",
-        "to": "F",
-        "id": "L_C_F_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": "Three",
+        "label": null,
         "labelType": "text",
         "style": [],
         "classes": [],
