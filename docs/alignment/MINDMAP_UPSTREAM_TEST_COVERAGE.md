@@ -61,3 +61,11 @@ Source: `repo-ref/mermaid/docs/syntax/mindmap.md`
   `fixtures/mindmap/upstream_docs_example_icons_br.mmd`
 - unclear indentation fallback (node `C` attaches to nearest valid ancestor):
   `fixtures/mindmap/upstream_docs_unclear_indentation.mmd`
+- single-node shape variants (used to validate root viewport + label bbox rules):
+  - `fixtures/mindmap/upstream_docs_mindmap_square_007.mmd`
+  - `fixtures/mindmap/upstream_docs_mindmap_rounded_square_009.mmd`
+  - `fixtures/mindmap/upstream_docs_mindmap_circle_011.mmd`
+  - `fixtures/mindmap/upstream_docs_mindmap_bang_013.mmd`
+  - `fixtures/mindmap/upstream_docs_mindmap_cloud_015.mmd`
+  - `fixtures/mindmap/upstream_docs_mindmap_hexagon_017.mmd`
+  - `fixtures/mindmap/upstream_docs_mindmap_default_019.mmd`

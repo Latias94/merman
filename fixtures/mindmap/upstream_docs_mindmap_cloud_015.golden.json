@@ -6,7 +6,7 @@
       {
         "id": "0",
         "domId": "node_0",
-        "label": "the root",
+        "label": "I am a cloud",
         "isGroup": false,
         "shape": "cloud",
         "width": 200,
@@ -16,7 +16,7 @@
         "cssStyles": [],
         "look": "default",
         "level": 0,
-        "nodeId": "root",
+        "nodeId": "id",
         "type": 4
       }
     ],
@@ -24,9 +24,9 @@
     "diagramId": "<dynamic>",
     "rootNode": {
       "id": 0,
-      "nodeId": "root",
+      "nodeId": "id",
       "level": 0,
-      "descr": "the root",
+      "descr": "I am a cloud",
       "type": 4,
       "children": [],
       "width": 200,

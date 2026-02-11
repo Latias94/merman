@@ -30,6 +30,10 @@ TODO:
 - Add “stress” fixtures:
   - dense graphs, long labels, many clusters, deep nesting, mixed HTML/SVG labels.
 
+Recently imported (keep gates green after each batch):
+
+- 2026-02-11: Mindmap `mindmap.md` single-node shape snippets (square/rounded/circle/bang/cloud/hexagon/default).
+
 ## Medium priority (coverage growth)
 
 TODO:

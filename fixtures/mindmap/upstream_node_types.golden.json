@@ -1,237 +1,237 @@
 {
   "diagramType": "mindmap",
   "model": {
-    "diagramId": "<dynamic>",
-    "direction": "TB",
-    "edges": [
+    "type": "mindmap",
+    "nodes": [
       {
-        "classes": "edge section-edge-0 edge-depth-1",
-        "curve": "basis",
-        "depth": 0,
-        "end": "1",
-        "id": "edge_0_1",
+        "id": "0",
+        "domId": "node_0",
+        "label": "root",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-root section--1",
+        "cssStyles": [],
         "look": "default",
-        "section": 0,
-        "start": "0",
-        "thickness": "normal",
-        "type": "normal"
+        "level": 0,
+        "nodeId": "root",
+        "type": 0
       },
       {
-        "classes": "edge section-edge-1 edge-depth-1",
-        "curve": "basis",
-        "depth": 0,
-        "end": "2",
-        "id": "edge_0_2",
+        "id": "1",
+        "domId": "node_1",
+        "label": "the root",
+        "isGroup": false,
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
         "look": "default",
-        "section": 1,
-        "start": "0",
-        "thickness": "normal",
-        "type": "normal"
+        "level": 2,
+        "nodeId": "circle",
+        "type": 3,
+        "section": 0
       },
       {
-        "classes": "edge section-edge-2 edge-depth-1",
-        "curve": "basis",
-        "depth": 0,
-        "end": "3",
-        "id": "edge_0_3",
+        "id": "2",
+        "domId": "node_2",
+        "label": "the root",
+        "isGroup": false,
+        "shape": "cloud",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
         "look": "default",
-        "section": 2,
-        "start": "0",
-        "thickness": "normal",
-        "type": "normal"
+        "level": 2,
+        "nodeId": "cloud",
+        "type": 4,
+        "section": 1
       },
       {
-        "classes": "edge section-edge-3 edge-depth-1",
-        "curve": "basis",
-        "depth": 0,
-        "end": "4",
-        "id": "edge_0_4",
+        "id": "3",
+        "domId": "node_3",
+        "label": "the root",
+        "isGroup": false,
+        "shape": "bang",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-2",
+        "cssStyles": [],
         "look": "default",
-        "section": 3,
-        "start": "0",
-        "thickness": "normal",
-        "type": "normal"
+        "level": 2,
+        "nodeId": "bang",
+        "type": 5,
+        "section": 2
+      },
+      {
+        "id": "4",
+        "domId": "node_4",
+        "label": "the root",
+        "isGroup": false,
+        "shape": "hexagon",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-3",
+        "cssStyles": [],
+        "look": "default",
+        "level": 2,
+        "nodeId": "hex",
+        "type": 6,
+        "section": 3
       }
     ],
+    "edges": [
+      {
+        "id": "edge_0_1",
+        "start": "0",
+        "end": "1",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-1",
+        "depth": 0,
+        "section": 0
+      },
+      {
+        "id": "edge_0_2",
+        "start": "0",
+        "end": "2",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-1",
+        "depth": 0,
+        "section": 1
+      },
+      {
+        "id": "edge_0_3",
+        "start": "0",
+        "end": "3",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-2 edge-depth-1",
+        "depth": 0,
+        "section": 2
+      },
+      {
+        "id": "edge_0_4",
+        "start": "0",
+        "end": "4",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-3 edge-depth-1",
+        "depth": 0,
+        "section": 3
+      }
+    ],
+    "diagramId": "<dynamic>",
+    "rootNode": {
+      "id": 0,
+      "nodeId": "root",
+      "level": 0,
+      "descr": "root",
+      "type": 0,
+      "children": [
+        {
+          "id": 1,
+          "nodeId": "circle",
+          "level": 2,
+          "descr": "the root",
+          "type": 3,
+          "children": [],
+          "width": 200,
+          "padding": 10,
+          "section": 0
+        },
+        {
+          "id": 2,
+          "nodeId": "cloud",
+          "level": 2,
+          "descr": "the root",
+          "type": 4,
+          "children": [],
+          "width": 200,
+          "padding": 10,
+          "section": 1
+        },
+        {
+          "id": 3,
+          "nodeId": "bang",
+          "level": 2,
+          "descr": "the root",
+          "type": 5,
+          "children": [],
+          "width": 200,
+          "padding": 10,
+          "section": 2
+        },
+        {
+          "id": 4,
+          "nodeId": "hex",
+          "level": 2,
+          "descr": "the root",
+          "type": 6,
+          "children": [],
+          "width": 200,
+          "padding": 20,
+          "section": 3
+        }
+      ],
+      "width": 200,
+      "padding": 10,
+      "isRoot": true
+    },
     "markers": [
       "point"
     ],
+    "direction": "TB",
     "nodeSpacing": 50,
-    "nodes": [
-      {
-        "cssClasses": "mindmap-node section-root section--1",
-        "cssStyles": [],
-        "domId": "node_0",
-        "height": 0,
-        "id": "0",
-        "isGroup": false,
-        "label": "root",
-        "level": 0,
-        "look": "default",
-        "nodeId": "root",
-        "padding": 10,
-        "shape": "defaultMindmapNode",
-        "type": 0,
-        "width": 200
-      },
-      {
-        "cssClasses": "mindmap-node section-0",
-        "cssStyles": [],
-        "domId": "node_1",
-        "height": 0,
-        "id": "1",
-        "isGroup": false,
-        "label": "the root",
-        "level": 2,
-        "look": "default",
-        "nodeId": "circle",
-        "padding": 10,
-        "section": 0,
-        "shape": "mindmapCircle",
-        "type": 3,
-        "width": 200
-      },
-      {
-        "cssClasses": "mindmap-node section-1",
-        "cssStyles": [],
-        "domId": "node_2",
-        "height": 0,
-        "id": "2",
-        "isGroup": false,
-        "label": "the root",
-        "level": 2,
-        "look": "default",
-        "nodeId": "cloud",
-        "padding": 10,
-        "section": 1,
-        "shape": "cloud",
-        "type": 4,
-        "width": 200
-      },
-      {
-        "cssClasses": "mindmap-node section-2",
-        "cssStyles": [],
-        "domId": "node_3",
-        "height": 0,
-        "id": "3",
-        "isGroup": false,
-        "label": "the root",
-        "level": 2,
-        "look": "default",
-        "nodeId": "bang",
-        "padding": 10,
-        "section": 2,
-        "shape": "bang",
-        "type": 5,
-        "width": 200
-      },
-      {
-        "cssClasses": "mindmap-node section-3",
-        "cssStyles": [],
-        "domId": "node_4",
-        "height": 0,
-        "id": "4",
-        "isGroup": false,
-        "label": "the root",
-        "level": 2,
-        "look": "default",
-        "nodeId": "hex",
-        "padding": 20,
-        "section": 3,
-        "shape": "hexagon",
-        "type": 6,
-        "width": 200
-      }
-    ],
     "rankSpacing": 50,
-    "rootNode": {
-      "children": [
-        {
-          "children": [],
-          "descr": "the root",
-          "id": 1,
-          "level": 2,
-          "nodeId": "circle",
-          "padding": 10,
-          "section": 0,
-          "type": 3,
-          "width": 200
-        },
-        {
-          "children": [],
-          "descr": "the root",
-          "id": 2,
-          "level": 2,
-          "nodeId": "cloud",
-          "padding": 10,
-          "section": 1,
-          "type": 4,
-          "width": 200
-        },
-        {
-          "children": [],
-          "descr": "the root",
-          "id": 3,
-          "level": 2,
-          "nodeId": "bang",
-          "padding": 10,
-          "section": 2,
-          "type": 5,
-          "width": 200
-        },
-        {
-          "children": [],
-          "descr": "the root",
-          "id": 4,
-          "level": 2,
-          "nodeId": "hex",
-          "padding": 20,
-          "section": 3,
-          "type": 6,
-          "width": 200
-        }
-      ],
-      "descr": "root",
-      "id": 0,
-      "isRoot": true,
-      "level": 0,
-      "nodeId": "root",
-      "padding": 10,
-      "type": 0,
-      "width": 200
-    },
     "shapes": {
       "0": {
-        "height": 0,
-        "padding": 10,
         "shape": "defaultMindmapNode",
-        "width": 200
+        "width": 200,
+        "height": 0,
+        "padding": 10
       },
       "1": {
-        "height": 0,
-        "padding": 10,
         "shape": "mindmapCircle",
-        "width": 200
+        "width": 200,
+        "height": 0,
+        "padding": 10
       },
       "2": {
-        "height": 0,
-        "padding": 10,
         "shape": "cloud",
-        "width": 200
+        "width": 200,
+        "height": 0,
+        "padding": 10
       },
       "3": {
-        "height": 0,
-        "padding": 10,
         "shape": "bang",
-        "width": 200
+        "width": 200,
+        "height": 0,
+        "padding": 10
       },
       "4": {
-        "height": 0,
-        "padding": 20,
         "shape": "hexagon",
-        "width": 200
+        "width": 200,
+        "height": 0,
+        "padding": 20
       }
-    },
-    "type": "mindmap"
+    }
   }
 }

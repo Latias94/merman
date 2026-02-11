@@ -121,12 +121,14 @@ fn mindmap_node_dimensions_px(
     match node.shape.as_str() {
         // `defaultMindmapNode.ts`: w = bbox.width + 8 * halfPadding; h = bbox.height + 2 * halfPadding
         "" | "defaultMindmapNode" => (bbox_w + 8.0 * half_padding, bbox_h + 2.0 * half_padding),
-        // `squareRect.ts` -> `drawRect.ts`: labelPaddingX = padding*2, labelPaddingY = padding
-        // totalW = bbox.width + 2*labelPaddingX = bbox.width + 4*padding
-        // totalH = bbox.height + 2*labelPaddingY = bbox.height + 2*padding
-        "rect" => (bbox_w + 4.0 * padding, bbox_h + 2.0 * padding),
-        // `roundedRect.ts`: w = bbox.width + 2*padding; h = bbox.height + 2*padding
-        "rounded" => (bbox_w + 2.0 * padding, bbox_h + 2.0 * padding),
+        // Mindmap node shapes use the standard `labelHelper(...)` label bbox, but mindmap DB
+        // adjusts `node.padding` depending on the delimiter type (e.g. `[` / `(` / `{{`).
+        //
+        // Upstream Mermaid@11.12.2 mindmap SVG baselines show:
+        // - rect (`[text]`): w = bbox.width + 2*padding, h = bbox.height + padding
+        // - rounded (`(text)`): w = bbox.width + 1.5*padding, h = bbox.height + 1.5*padding
+        "rect" => (bbox_w + 2.0 * padding, bbox_h + padding),
+        "rounded" => (bbox_w + 1.5 * padding, bbox_h + 1.5 * padding),
         // `mindmapCircle.ts` -> `circle.ts`: radius = bbox.width/2 + padding (mindmap passes full padding)
         "mindmapCircle" => {
             let d = bbox_w + 2.0 * padding;

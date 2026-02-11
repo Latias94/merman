@@ -6,9 +6,9 @@
       {
         "id": "0",
         "domId": "node_0",
-        "label": "the root",
+        "label": "I am the default shape",
         "isGroup": false,
-        "shape": "cloud",
+        "shape": "defaultMindmapNode",
         "width": 200,
         "height": 0,
         "padding": 10,
@@ -16,18 +16,18 @@
         "cssStyles": [],
         "look": "default",
         "level": 0,
-        "nodeId": "root",
-        "type": 4
+        "nodeId": "I am the default shape",
+        "type": 0
       }
     ],
     "edges": [],
     "diagramId": "<dynamic>",
     "rootNode": {
       "id": 0,
-      "nodeId": "root",
+      "nodeId": "I am the default shape",
       "level": 0,
-      "descr": "the root",
-      "type": 4,
+      "descr": "I am the default shape",
+      "type": 0,
       "children": [],
       "width": 200,
       "padding": 10,
@@ -41,7 +41,7 @@
     "rankSpacing": 50,
     "shapes": {
       "0": {
-        "shape": "cloud",
+        "shape": "defaultMindmapNode",
         "width": 200,
         "height": 0,
         "padding": 10
