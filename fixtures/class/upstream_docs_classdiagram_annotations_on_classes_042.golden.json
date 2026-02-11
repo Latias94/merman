@@ -6,6 +6,49 @@
     "accTitle": null,
     "accDescr": null,
     "classes": {
+      "Shape": {
+        "id": "Shape",
+        "type": "",
+        "label": "Shape",
+        "text": "Shape",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "",
+            "id": "draw",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "draw()",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "noOfVertices",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "noOfVertices",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [
+          "interface"
+        ],
+        "styles": [],
+        "domId": "classId-Shape-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
       "Color": {
         "id": "Color",
         "type": "",
@@ -70,49 +113,6 @@
         ],
         "styles": [],
         "domId": "classId-Color-1",
-        "parent": null,
-        "link": null,
-        "linkTarget": null,
-        "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
-      },
-      "Shape": {
-        "id": "Shape",
-        "type": "",
-        "label": "Shape",
-        "text": "Shape",
-        "cssClasses": "default",
-        "methods": [
-          {
-            "memberType": "method",
-            "visibility": "",
-            "id": "draw",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "draw()",
-            "cssStyle": ""
-          }
-        ],
-        "members": [
-          {
-            "memberType": "attribute",
-            "visibility": "",
-            "id": "noOfVertices",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "noOfVertices",
-            "cssStyle": ""
-          }
-        ],
-        "annotations": [
-          "interface"
-        ],
-        "styles": [],
-        "domId": "classId-Shape-0",
         "parent": null,
         "link": null,
         "linkTarget": null,

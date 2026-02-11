@@ -1,213 +1,213 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "accDescr": null,
+    "type": "classDiagram",
+    "direction": "TB",
     "accTitle": null,
+    "accDescr": null,
     "classes": {
+      "Foo1": {
+        "id": "Foo1",
+        "type": "",
+        "label": "Foo1",
+        "text": "Foo1",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "You can use",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "You can use",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "several lines",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "several lines",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "..",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "..",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "as you want",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "as you want",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "and group",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "and group",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "==",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "==",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "things together.",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "things together.",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "__",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "__",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "You can have as many groups",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "You can have as many groups",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "as you want",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "as you want",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "-",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "--",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "End of class",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "End of class",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Foo1-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
       "C1": {
+        "id": "C1",
+        "type": "",
+        "label": "Class 1 with text label",
+        "text": "Class 1 with text label",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "member1",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "member1",
+            "cssStyle": ""
+          }
+        ],
         "annotations": [
           "interface"
         ],
-        "callback": null,
-        "callbackEffective": false,
-        "cssClasses": "default",
+        "styles": [],
         "domId": "classId-C1-1",
-        "haveCallback": false,
-        "id": "C1",
-        "label": "Class 1 with text label",
+        "parent": null,
         "link": null,
         "linkTarget": null,
-        "members": [
-          {
-            "classifier": "",
-            "cssStyle": "",
-            "displayText": "member1",
-            "id": "member1",
-            "memberType": "attribute",
-            "parameters": "",
-            "returnType": "",
-            "visibility": ""
-          }
-        ],
-        "methods": [],
-        "parent": null,
-        "styles": [],
-        "text": "Class 1 with text label",
         "tooltip": null,
-        "type": ""
-      },
-      "Foo1": {
-        "annotations": [],
+        "haveCallback": false,
         "callback": null,
-        "callbackEffective": false,
-        "cssClasses": "default",
-        "domId": "classId-Foo1-0",
-        "haveCallback": false,
-        "id": "Foo1",
-        "label": "Foo1",
-        "link": null,
-        "linkTarget": null,
-        "members": [
-          {
-            "classifier": "",
-            "cssStyle": "",
-            "displayText": "You can use",
-            "id": "You can use",
-            "memberType": "attribute",
-            "parameters": "",
-            "returnType": "",
-            "visibility": ""
-          },
-          {
-            "classifier": "",
-            "cssStyle": "",
-            "displayText": "several lines",
-            "id": "several lines",
-            "memberType": "attribute",
-            "parameters": "",
-            "returnType": "",
-            "visibility": ""
-          },
-          {
-            "classifier": "",
-            "cssStyle": "",
-            "displayText": "..",
-            "id": "..",
-            "memberType": "attribute",
-            "parameters": "",
-            "returnType": "",
-            "visibility": ""
-          },
-          {
-            "classifier": "",
-            "cssStyle": "",
-            "displayText": "as you want",
-            "id": "as you want",
-            "memberType": "attribute",
-            "parameters": "",
-            "returnType": "",
-            "visibility": ""
-          },
-          {
-            "classifier": "",
-            "cssStyle": "",
-            "displayText": "and group",
-            "id": "and group",
-            "memberType": "attribute",
-            "parameters": "",
-            "returnType": "",
-            "visibility": ""
-          },
-          {
-            "classifier": "",
-            "cssStyle": "",
-            "displayText": "==",
-            "id": "==",
-            "memberType": "attribute",
-            "parameters": "",
-            "returnType": "",
-            "visibility": ""
-          },
-          {
-            "classifier": "",
-            "cssStyle": "",
-            "displayText": "things together.",
-            "id": "things together.",
-            "memberType": "attribute",
-            "parameters": "",
-            "returnType": "",
-            "visibility": ""
-          },
-          {
-            "classifier": "",
-            "cssStyle": "",
-            "displayText": "__",
-            "id": "__",
-            "memberType": "attribute",
-            "parameters": "",
-            "returnType": "",
-            "visibility": ""
-          },
-          {
-            "classifier": "",
-            "cssStyle": "",
-            "displayText": "You can have as many groups",
-            "id": "You can have as many groups",
-            "memberType": "attribute",
-            "parameters": "",
-            "returnType": "",
-            "visibility": ""
-          },
-          {
-            "classifier": "",
-            "cssStyle": "",
-            "displayText": "as you want",
-            "id": "as you want",
-            "memberType": "attribute",
-            "parameters": "",
-            "returnType": "",
-            "visibility": ""
-          },
-          {
-            "classifier": "",
-            "cssStyle": "",
-            "displayText": "--",
-            "id": "-",
-            "memberType": "attribute",
-            "parameters": "",
-            "returnType": "",
-            "visibility": "-"
-          },
-          {
-            "classifier": "",
-            "cssStyle": "",
-            "displayText": "End of class",
-            "id": "End of class",
-            "memberType": "attribute",
-            "parameters": "",
-            "returnType": "",
-            "visibility": ""
-          }
-        ],
-        "methods": [],
-        "parent": null,
-        "styles": [],
-        "text": "Foo1",
-        "tooltip": null,
-        "type": ""
+        "callbackEffective": false
       }
     },
-    "constants": {
-      "lineType": {
-        "dottedLine": 1,
-        "line": 0
-      },
-      "relationType": {
-        "aggregation": 0,
-        "composition": 2,
-        "dependency": 3,
-        "extension": 1,
-        "lollipop": 4,
-        "none": -1
-      }
-    },
-    "direction": "TB",
-    "interfaces": [],
-    "namespaces": {},
+    "relations": [],
     "notes": [
       {
-        "class": "C1",
         "id": "note0",
+        "class": "C1",
         "text": "a note"
       },
       {
-        "class": null,
         "id": "note1",
+        "class": null,
         "text": "unattached note"
       }
     ],
-    "relations": [],
+    "interfaces": [],
+    "namespaces": {},
     "styleClasses": {},
-    "type": "classDiagram"
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
   }
 }

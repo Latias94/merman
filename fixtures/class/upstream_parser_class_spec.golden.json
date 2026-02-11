@@ -1,95 +1,95 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "accDescr": null,
+    "type": "classDiagram",
+    "direction": "TB",
     "accTitle": null,
+    "accDescr": null,
     "classes": {
-      "IPC::Sender": {
-        "annotations": [],
-        "callback": null,
-        "callbackEffective": false,
-        "cssClasses": "default",
-        "domId": "classId-IPC::Sender-2",
-        "haveCallback": false,
-        "id": "IPC::Sender",
-        "label": "IPC::Sender",
-        "link": null,
-        "linkTarget": null,
-        "members": [],
-        "methods": [],
-        "parent": "A::B",
-        "styles": [],
-        "text": "IPC::Sender",
-        "tooltip": null,
-        "type": ""
-      },
       "__proto__": {
-        "annotations": [],
-        "callback": null,
-        "callbackEffective": false,
-        "cssClasses": "default",
-        "domId": "classId-__proto__-0",
-        "haveCallback": false,
         "id": "__proto__",
+        "type": "",
         "label": "__proto__",
+        "text": "__proto__",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-__proto__-0",
+        "parent": null,
         "link": null,
         "linkTarget": null,
-        "members": [],
-        "methods": [],
-        "parent": null,
-        "styles": [],
-        "text": "__proto__",
         "tooltip": null,
-        "type": ""
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
       },
       "constructor": {
-        "annotations": [],
-        "callback": null,
-        "callbackEffective": false,
-        "cssClasses": "default",
-        "domId": "classId-constructor-1",
-        "haveCallback": false,
         "id": "constructor",
+        "type": "",
         "label": "constructor",
+        "text": "constructor",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-constructor-1",
+        "parent": null,
         "link": null,
         "linkTarget": null,
-        "members": [],
-        "methods": [],
-        "parent": null,
-        "styles": [],
-        "text": "constructor",
         "tooltip": null,
-        "type": ""
-      }
-    },
-    "constants": {
-      "lineType": {
-        "dottedLine": 1,
-        "line": 0
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
       },
-      "relationType": {
-        "aggregation": 0,
-        "composition": 2,
-        "dependency": 3,
-        "extension": 1,
-        "lollipop": 4,
-        "none": -1
+      "IPC::Sender": {
+        "id": "IPC::Sender",
+        "type": "",
+        "label": "IPC::Sender",
+        "text": "IPC::Sender",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-IPC::Sender-2",
+        "parent": "A::B",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
       }
     },
-    "direction": "TB",
+    "relations": [],
+    "notes": [],
     "interfaces": [],
     "namespaces": {
       "A::B": {
+        "id": "A::B",
+        "domId": "classId-A::B-0",
         "classIds": [
           "IPC::Sender"
-        ],
-        "domId": "classId-A::B-0",
-        "id": "A::B"
+        ]
       }
     },
-    "notes": [],
-    "relations": [],
     "styleClasses": {},
-    "type": "classDiagram"
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
   }
 }

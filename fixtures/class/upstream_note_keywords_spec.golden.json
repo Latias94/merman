@@ -1,81 +1,81 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "accDescr": null,
+    "type": "classDiagram",
+    "direction": "TB",
     "accTitle": null,
+    "accDescr": null,
     "classes": {
       "Something": {
-        "annotations": [],
-        "callback": null,
-        "callbackEffective": false,
-        "cssClasses": "default",
-        "domId": "classId-Something-0",
-        "haveCallback": false,
         "id": "Something",
+        "type": "",
         "label": "Something",
-        "link": null,
-        "linkTarget": null,
+        "text": "Something",
+        "cssClasses": "default",
+        "methods": [],
         "members": [
           {
-            "classifier": "",
-            "cssStyle": "",
-            "displayText": "int id",
-            "id": "int id",
             "memberType": "attribute",
+            "visibility": "",
+            "id": "int id",
+            "classifier": "",
             "parameters": "",
             "returnType": "",
-            "visibility": ""
+            "displayText": "int id",
+            "cssStyle": ""
           },
           {
-            "classifier": "",
-            "cssStyle": "",
-            "displayText": "string name",
-            "id": "string name",
             "memberType": "attribute",
+            "visibility": "",
+            "id": "string name",
+            "classifier": "",
             "parameters": "",
             "returnType": "",
-            "visibility": ""
+            "displayText": "string name",
+            "cssStyle": ""
           }
         ],
-        "methods": [],
-        "parent": null,
+        "annotations": [],
         "styles": [],
-        "text": "Something",
+        "domId": "classId-Something-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
         "tooltip": null,
-        "type": ""
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
       }
     },
-    "constants": {
-      "lineType": {
-        "dottedLine": 1,
-        "line": 0
-      },
-      "relationType": {
-        "aggregation": 0,
-        "composition": 2,
-        "dependency": 3,
-        "extension": 1,
-        "lollipop": 4,
-        "none": -1
-      }
-    },
-    "direction": "TB",
-    "interfaces": [],
-    "namespaces": {},
+    "relations": [],
     "notes": [
       {
-        "class": null,
         "id": "note0",
+        "class": null,
         "text": "This is a keyword: classDiagram-v2. It truly is."
       },
       {
-        "class": "Something",
         "id": "note1",
+        "class": "Something",
         "text": "This is a keyword: click. It truly is."
       }
     ],
-    "relations": [],
+    "interfaces": [],
+    "namespaces": {},
     "styleClasses": {},
-    "type": "classDiagram"
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
   }
 }

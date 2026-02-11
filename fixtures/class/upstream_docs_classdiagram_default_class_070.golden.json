@@ -1,0 +1,95 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Animal": {
+        "id": "Animal",
+        "type": "",
+        "label": "Animal",
+        "text": "Animal",
+        "cssClasses": "default pink",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [
+          "fill:#f96",
+          "color:red",
+          "color:#f9f"
+        ],
+        "domId": "classId-Animal-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Mineral": {
+        "id": "Mineral",
+        "type": "",
+        "label": "Mineral",
+        "text": "Mineral",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [
+          "fill:#f96",
+          "color:red"
+        ],
+        "domId": "classId-Mineral-1",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {
+      "default": {
+        "id": "default",
+        "styles": [
+          "fill:#f96",
+          "color:red"
+        ],
+        "textStyles": [
+          "color:red"
+        ]
+      },
+      "pink": {
+        "id": "pink",
+        "styles": [
+          "color:#f9f"
+        ],
+        "textStyles": [
+          "color:#f9f"
+        ]
+      }
+    },
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

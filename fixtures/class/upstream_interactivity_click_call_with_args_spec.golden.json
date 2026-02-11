@@ -1,52 +1,52 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "accDescr": null,
+    "type": "classDiagram",
+    "direction": "TB",
     "accTitle": null,
+    "accDescr": null,
     "classes": {
       "Class1": {
-        "annotations": [],
-        "callback": {
-          "args": "\"test0\", test1, test2",
-          "function": "functionCall"
-        },
-        "callbackEffective": false,
-        "cssClasses": "default clickable",
-        "domId": "classId-Class1-0",
-        "haveCallback": true,
         "id": "Class1",
+        "type": "",
         "label": "Class1",
+        "text": "Class1",
+        "cssClasses": "default clickable",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Class1-0",
+        "parent": null,
         "link": null,
         "linkTarget": null,
-        "members": [],
-        "methods": [],
-        "parent": null,
-        "styles": [],
-        "text": "Class1",
         "tooltip": "A tooltip",
-        "type": ""
+        "haveCallback": true,
+        "callback": {
+          "function": "functionCall",
+          "args": "\"test0\", test1, test2"
+        },
+        "callbackEffective": false
       }
     },
-    "constants": {
-      "lineType": {
-        "dottedLine": 1,
-        "line": 0
-      },
-      "relationType": {
-        "aggregation": 0,
-        "composition": 2,
-        "dependency": 3,
-        "extension": 1,
-        "lollipop": 4,
-        "none": -1
-      }
-    },
-    "direction": "TB",
+    "relations": [],
+    "notes": [],
     "interfaces": [],
     "namespaces": {},
-    "notes": [],
-    "relations": [],
     "styleClasses": {},
-    "type": "classDiagram"
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
   }
 }

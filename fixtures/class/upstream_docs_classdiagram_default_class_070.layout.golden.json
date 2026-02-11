@@ -1,0 +1,33 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "Animal",
+          "x": 34.4,
+          "y": 42.0,
+          "width": 68.8,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Mineral",
+          "x": 153.84,
+          "y": 42.0,
+          "width": 70.08,
+          "height": 84.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "clusters": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 188.88,
+        "max_y": 84.0
+      }
+    }
+  }
+}

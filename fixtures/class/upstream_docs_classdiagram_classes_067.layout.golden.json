@@ -1,0 +1,25 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "Animal",
+          "x": 71.12,
+          "y": 72.0,
+          "width": 142.24,
+          "height": 144.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "clusters": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 142.24,
+        "max_y": 144.0
+      }
+    }
+  }
+}

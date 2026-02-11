@@ -1,0 +1,81 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Animal": {
+        "id": "Animal",
+        "type": "",
+        "label": "Animal",
+        "text": "Animal",
+        "cssClasses": "default someclass",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "-",
+            "id": "canEat",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-canEat()",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "int sizeInFeet",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-int sizeInFeet",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [
+          "fill:#f96"
+        ],
+        "domId": "classId-Animal-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {
+      "someclass": {
+        "id": "someclass",
+        "styles": [
+          "fill:#f96"
+        ],
+        "textStyles": []
+      }
+    },
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

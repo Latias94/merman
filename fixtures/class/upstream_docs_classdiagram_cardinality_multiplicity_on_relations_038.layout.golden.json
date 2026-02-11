@@ -1,0 +1,183 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "Course",
+          "x": 174.8,
+          "y": 200.0,
+          "width": 68.0,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Customer",
+          "x": 43.68,
+          "y": 42.0,
+          "width": 87.36,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Galaxy",
+          "x": 296.0,
+          "y": 42.0,
+          "width": 67.52,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Star",
+          "x": 296.0,
+          "y": 200.0,
+          "width": 54.24,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Student",
+          "x": 174.8,
+          "y": 42.0,
+          "width": 74.88,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Ticket",
+          "x": 43.68,
+          "y": 200.0,
+          "width": 67.52,
+          "height": 84.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "0",
+          "from": "Customer",
+          "to": "Ticket",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 43.68,
+              "y": 84.0
+            },
+            {
+              "x": 43.68,
+              "y": 121.0
+            },
+            {
+              "x": 43.68,
+              "y": 158.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": {
+            "x": 33.68,
+            "y": 96.5,
+            "width": 8.96,
+            "height": 24.0
+          },
+          "end_label_left": {
+            "x": 53.68,
+            "y": 135.5,
+            "width": 7.2,
+            "height": 24.0
+          },
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "1",
+          "from": "Student",
+          "to": "Course",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 174.8,
+              "y": 84.0
+            },
+            {
+              "x": 174.8,
+              "y": 121.0
+            },
+            {
+              "x": 174.8,
+              "y": 158.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": {
+            "x": 164.8,
+            "y": 96.5,
+            "width": 8.96,
+            "height": 24.0
+          },
+          "end_label_left": {
+            "x": 184.8,
+            "y": 135.5,
+            "width": 25.12,
+            "height": 24.0
+          },
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "2",
+          "from": "Galaxy",
+          "to": "Star",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 296.0,
+              "y": 84.0
+            },
+            {
+              "x": 296.0,
+              "y": 121.0
+            },
+            {
+              "x": 296.0,
+              "y": 158.0
+            }
+          ],
+          "label": {
+            "x": 296.0,
+            "y": 121.0,
+            "width": 55.36,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": {
+            "x": 306.0,
+            "y": 135.5,
+            "width": 35.04,
+            "height": 24.0
+          },
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 329.76,
+        "max_y": 242.0
+      }
+    }
+  }
+}

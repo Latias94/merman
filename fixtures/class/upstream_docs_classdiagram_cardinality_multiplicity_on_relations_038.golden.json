@@ -1,0 +1,184 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Customer": {
+        "id": "Customer",
+        "type": "",
+        "label": "Customer",
+        "text": "Customer",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Customer-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Ticket": {
+        "id": "Ticket",
+        "type": "",
+        "label": "Ticket",
+        "text": "Ticket",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Ticket-1",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Student": {
+        "id": "Student",
+        "type": "",
+        "label": "Student",
+        "text": "Student",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Student-2",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Course": {
+        "id": "Course",
+        "type": "",
+        "label": "Course",
+        "text": "Course",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Course-3",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Galaxy": {
+        "id": "Galaxy",
+        "type": "",
+        "label": "Galaxy",
+        "text": "Galaxy",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Galaxy-4",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Star": {
+        "id": "Star",
+        "type": "",
+        "label": "Star",
+        "text": "Star",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Star-5",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "Customer",
+        "id2": "Ticket",
+        "relationTitle1": "1",
+        "relationTitle2": "*",
+        "title": "",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "1",
+        "id1": "Student",
+        "id2": "Course",
+        "relationTitle1": "1",
+        "relationTitle2": "1..*",
+        "title": "",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "2",
+        "id1": "Galaxy",
+        "id2": "Star",
+        "relationTitle1": "none",
+        "relationTitle2": "many",
+        "title": "Contains",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      }
+    ],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

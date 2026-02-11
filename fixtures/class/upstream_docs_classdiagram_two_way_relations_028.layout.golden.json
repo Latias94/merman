@@ -1,0 +1,63 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "Animal",
+          "x": 34.4,
+          "y": 42.0,
+          "width": 68.8,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Zebra",
+          "x": 34.4,
+          "y": 176.0,
+          "width": 61.12,
+          "height": 84.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "0",
+          "from": "Animal",
+          "to": "Zebra",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 34.4,
+              "y": 84.0
+            },
+            {
+              "x": 34.4,
+              "y": 109.0
+            },
+            {
+              "x": 34.4,
+              "y": 134.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 68.8,
+        "max_y": 218.0
+      }
+    }
+  }
+}

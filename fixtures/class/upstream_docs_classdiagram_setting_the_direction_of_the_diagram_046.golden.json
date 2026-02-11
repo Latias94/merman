@@ -6,38 +6,28 @@
     "accTitle": null,
     "accDescr": null,
     "classes": {
-      "Bike": {
-        "id": "Bike",
+      "Student": {
+        "id": "Student",
         "type": "",
-        "label": "Bike",
-        "text": "Bike",
+        "label": "Student",
+        "text": "Student",
         "cssClasses": "default",
         "methods": [],
         "members": [
           {
             "memberType": "attribute",
             "visibility": "-",
-            "id": "id : int",
+            "id": "idCard : IdCard",
             "classifier": "",
             "parameters": "",
             "returnType": "",
-            "displayText": "-id : int",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "attribute",
-            "visibility": "-",
-            "id": "name : string",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "-name : string",
+            "displayText": "-idCard : IdCard",
             "cssStyle": ""
           }
         ],
         "annotations": [],
         "styles": [],
-        "domId": "classId-Bike-2",
+        "domId": "classId-Student-0",
         "parent": null,
         "link": null,
         "linkTarget": null,
@@ -86,28 +76,38 @@
         "callback": null,
         "callbackEffective": false
       },
-      "Student": {
-        "id": "Student",
+      "Bike": {
+        "id": "Bike",
         "type": "",
-        "label": "Student",
-        "text": "Student",
+        "label": "Bike",
+        "text": "Bike",
         "cssClasses": "default",
         "methods": [],
         "members": [
           {
             "memberType": "attribute",
             "visibility": "-",
-            "id": "idCard : IdCard",
+            "id": "id : int",
             "classifier": "",
             "parameters": "",
             "returnType": "",
-            "displayText": "-idCard : IdCard",
+            "displayText": "-id : int",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "name : string",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-name : string",
             "cssStyle": ""
           }
         ],
         "annotations": [],
         "styles": [],
-        "domId": "classId-Student-0",
+        "domId": "classId-Bike-2",
         "parent": null,
         "link": null,
         "linkTarget": null,

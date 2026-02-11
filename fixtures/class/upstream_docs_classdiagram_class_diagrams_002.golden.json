@@ -6,57 +6,6 @@
     "accTitle": null,
     "accDescr": null,
     "classes": {
-      "Duck": {
-        "id": "Duck",
-        "type": "",
-        "label": "Duck",
-        "text": "Duck",
-        "cssClasses": "default",
-        "methods": [
-          {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "swim",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "+swim()",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "quack",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "+quack()",
-            "cssStyle": ""
-          }
-        ],
-        "members": [
-          {
-            "memberType": "attribute",
-            "visibility": "+",
-            "id": "String beakColor",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "+String beakColor",
-            "cssStyle": ""
-          }
-        ],
-        "annotations": [],
-        "styles": [],
-        "domId": "classId-Duck-1",
-        "parent": null,
-        "link": null,
-        "linkTarget": null,
-        "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
-      },
       "Animal": {
         "id": "Animal",
         "type": "",
@@ -110,6 +59,57 @@
         "annotations": [],
         "styles": [],
         "domId": "classId-Animal-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Duck": {
+        "id": "Duck",
+        "type": "",
+        "label": "Duck",
+        "text": "Duck",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "swim",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+swim()",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "quack",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+quack()",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "String beakColor",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+String beakColor",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Duck-1",
         "parent": null,
         "link": null,
         "linkTarget": null,

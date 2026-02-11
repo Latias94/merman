@@ -97,6 +97,35 @@ Source: `repo-ref/mermaid/docs/syntax/classDiagram.md`
 - examples:
   `fixtures/class/upstream_docs_classdiagram_examples_049.mmd`,
   `fixtures/class/upstream_docs_classdiagram_examples_051.mmd`
+- additional docs examples (imported 2026-02-11; parity-gated against upstream SVG baselines):
+  - diagram overview:
+    `fixtures/class/upstream_docs_classdiagram_class_diagrams_002.mmd`
+  - class labels:
+    `fixtures/class/upstream_docs_classdiagram_class_labels_008.mmd`,
+    `fixtures/class/upstream_docs_classdiagram_class_labels_010.mmd`
+  - relation labels:
+    `fixtures/class/upstream_docs_classdiagram_labels_on_relations_026.mmd`
+  - two-way relations:
+    `fixtures/class/upstream_docs_classdiagram_two_way_relations_028.mmd`
+  - lollipop interfaces (variant):
+    `fixtures/class/upstream_docs_classdiagram_lollipop_interfaces_031.mmd`
+  - cardinality / multiplicity on relations:
+    `fixtures/class/upstream_docs_classdiagram_cardinality_multiplicity_on_relations_038.mmd`
+  - diagram direction:
+    `fixtures/class/upstream_docs_classdiagram_setting_the_direction_of_the_diagram_046.mmd`
+  - examples (additional):
+    `fixtures/class/upstream_docs_classdiagram_examples_053.mmd`,
+    `fixtures/class/upstream_docs_classdiagram_examples_056.mmd`
+  - node styling (inline styles, dasharray):
+    `fixtures/class/upstream_docs_classdiagram_styling_a_node_059.mmd`
+  - class blocks:
+    `fixtures/class/upstream_docs_classdiagram_classes_065.mmd`,
+    `fixtures/class/upstream_docs_classdiagram_classes_067.mmd`
+  - default class and CSS classes:
+    `fixtures/class/upstream_docs_classdiagram_default_class_070.mmd`,
+    `fixtures/class/upstream_docs_classdiagram_css_classes_073.mmd`
+  - hide empty members box:
+    `fixtures/class/upstream_docs_classdiagram_members_box_075.mmd`
 
 ## Headless layout coverage (Stage A)
 
