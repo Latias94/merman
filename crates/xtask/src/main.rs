@@ -222,6 +222,7 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut overwrite: bool = false;
     let mut with_baselines: bool = false;
     let mut install: bool = false;
+    let mut docs_root: Option<PathBuf> = None;
 
     let mut i = 0;
     while i < args.len() {
@@ -248,6 +249,11 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
             "--overwrite" => overwrite = true,
             "--with-baselines" => with_baselines = true,
             "--install" => install = true,
+            "--docs-root" => {
+                i += 1;
+                let raw = args.get(i).ok_or(XtaskError::Usage)?;
+                docs_root = Some(PathBuf::from(raw));
+            }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
         }
@@ -260,14 +266,24 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
         .unwrap_or_else(|| Path::new("."))
         .to_path_buf();
 
-    let docs_root = workspace_root
-        .join("repo-ref")
-        .join("mermaid")
-        .join("docs")
-        .join("syntax");
-    if !docs_root.is_dir() {
+    let docs_root = docs_root
+        .map(|p| {
+            if p.is_absolute() {
+                p
+            } else {
+                workspace_root.join(p)
+            }
+        })
+        .unwrap_or_else(|| {
+            workspace_root
+                .join("repo-ref")
+                .join("mermaid")
+                .join("docs")
+                .join("syntax")
+        });
+    if !docs_root.exists() {
         return Err(XtaskError::SnapshotUpdateFailed(format!(
-            "upstream docs folder not found: {} (expected repo-ref checkout of mermaid@11.12.2)",
+            "upstream docs root not found: {} (expected repo-ref checkout of mermaid@11.12.2)",
             docs_root.display()
         )));
     }
@@ -408,6 +424,40 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
+    fn collect_markdown_files_recursively(
+        root: &Path,
+        out: &mut Vec<PathBuf>,
+    ) -> Result<(), XtaskError> {
+        if root.is_file() {
+            if root.extension().is_some_and(|e| e == "md") {
+                out.push(root.to_path_buf());
+            }
+            return Ok(());
+        }
+        let entries = fs::read_dir(root).map_err(|err| {
+            XtaskError::SnapshotUpdateFailed(format!(
+                "failed to list docs directory {}: {err}",
+                root.display()
+            ))
+        })?;
+        for entry in entries {
+            let path = entry
+                .map_err(|err| {
+                    XtaskError::SnapshotUpdateFailed(format!(
+                        "failed to read docs directory entry under {}: {err}",
+                        root.display()
+                    ))
+                })?
+                .path();
+            if path.is_dir() {
+                collect_markdown_files_recursively(&path, out)?;
+            } else if path.extension().is_some_and(|e| e == "md") {
+                out.push(path);
+            }
+        }
+        Ok(())
+    }
+
     fn normalize_diagram_dir(detected: &str) -> Option<String> {
         match detected {
             "flowchart" | "flowchart-v2" | "flowchart-elk" => Some("flowchart".to_string()),
@@ -429,36 +479,24 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
 
     let mut md_files: Vec<PathBuf> = Vec::new();
     if diagram == "all" {
-        for entry in fs::read_dir(&docs_root).map_err(|err| {
-            XtaskError::SnapshotUpdateFailed(format!(
-                "failed to list docs directory {}: {err}",
-                docs_root.display()
-            ))
-        })? {
-            let path = entry
-                .map_err(|err| {
-                    XtaskError::SnapshotUpdateFailed(format!(
-                        "failed to read docs directory entry under {}: {err}",
-                        docs_root.display()
-                    ))
-                })?
-                .path();
-            if path.extension().is_some_and(|e| e == "md") {
-                md_files.push(path);
-            }
-        }
-    } else {
+        collect_markdown_files_recursively(&docs_root, &mut md_files)?;
+    } else if docs_root.ends_with(PathBuf::from("docs").join("syntax")) {
         let Some(name) = docs_md_for_diagram(&diagram) else {
             return Err(XtaskError::SnapshotUpdateFailed(format!(
                 "unknown diagram: {diagram} (expected one of the fixtures/ subfolders, or 'all')"
             )));
         };
         md_files.push(docs_root.join(name));
+    } else {
+        // When a custom docs root is provided, scan all markdown files under it and rely on diagram detection.
+        collect_markdown_files_recursively(&docs_root, &mut md_files)?;
     }
     md_files.sort();
 
     let allowed_infos = [
         "mermaid",
+        "mermaid-example",
+        "mermaid-nocode",
         "architecture",
         "block",
         "c4",
@@ -642,6 +680,9 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
 
             // External plugin diagrams (like zenuml) are out of scope for now.
             if diagram_dir == "zenuml" {
+                continue;
+            }
+            if diagram != "all" && diagram_dir != diagram {
                 continue;
             }
 
