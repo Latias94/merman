@@ -579,6 +579,62 @@ where
         out
     }
 
+    pub fn first_successor<'a>(&'a self, v: &str) -> Option<&'a str> {
+        if !self.options.directed {
+            return self.adjacent_nodes(v).into_iter().next();
+        }
+        let &v_idx = self.node_index.get(v)?;
+        let w = {
+            let cache = self.ensure_directed_adj();
+            let edge_idx = *cache.out[v_idx].first()?;
+            self.edges[edge_idx].key.w.as_str()
+        };
+        Some(w)
+    }
+
+    pub fn first_predecessor<'a>(&'a self, v: &str) -> Option<&'a str> {
+        if !self.options.directed {
+            return self.adjacent_nodes(v).into_iter().next();
+        }
+        let &v_idx = self.node_index.get(v)?;
+        let u = {
+            let cache = self.ensure_directed_adj();
+            let edge_idx = *cache.in_[v_idx].first()?;
+            self.edges[edge_idx].key.v.as_str()
+        };
+        Some(u)
+    }
+
+    pub fn extend_successors<'a>(&'a self, v: &str, out: &mut Vec<&'a str>) {
+        if !self.options.directed {
+            out.extend(self.adjacent_nodes(v));
+            return;
+        }
+        let Some(&v_idx) = self.node_index.get(v) else {
+            return;
+        };
+        let cache = self.ensure_directed_adj();
+        out.reserve(cache.out[v_idx].len());
+        for &edge_idx in &cache.out[v_idx] {
+            out.push(self.edges[edge_idx].key.w.as_str());
+        }
+    }
+
+    pub fn extend_predecessors<'a>(&'a self, v: &str, out: &mut Vec<&'a str>) {
+        if !self.options.directed {
+            out.extend(self.adjacent_nodes(v));
+            return;
+        }
+        let Some(&v_idx) = self.node_index.get(v) else {
+            return;
+        };
+        let cache = self.ensure_directed_adj();
+        out.reserve(cache.in_[v_idx].len());
+        for &edge_idx in &cache.in_[v_idx] {
+            out.push(self.edges[edge_idx].key.v.as_str());
+        }
+    }
+
     pub fn for_each_successor<'a, F>(&'a self, v: &str, mut f: F)
     where
         F: FnMut(&'a str),

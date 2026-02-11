@@ -377,22 +377,19 @@ where
         out.push(br.clone());
         result.vs = out;
 
-        if !g.predecessors(&bl).is_empty() {
-            let bl_pred = g.predecessors(&bl).first().cloned();
-            let br_pred = g.predecessors(&br).first().cloned();
-            let (Some(bl_pred), Some(br_pred)) = (bl_pred, br_pred) else {
-                return result;
-            };
+        let (Some(bl_pred), Some(br_pred)) = (g.first_predecessor(&bl), g.first_predecessor(&br))
+        else {
+            return result;
+        };
 
-            let bl_order = g.node(bl_pred).and_then(|n| n.order()).unwrap_or(0) as f64;
-            let br_order = g.node(br_pred).and_then(|n| n.order()).unwrap_or(0) as f64;
+        let bl_order = g.node(bl_pred).and_then(|n| n.order()).unwrap_or(0) as f64;
+        let br_order = g.node(br_pred).and_then(|n| n.order()).unwrap_or(0) as f64;
 
-            let bc = result.barycenter.unwrap_or(0.0);
-            let w = result.weight.unwrap_or(0.0);
-            let denom = w + 2.0;
-            result.barycenter = Some((bc * w + bl_order + br_order) / denom);
-            result.weight = Some(denom);
-        }
+        let bc = result.barycenter.unwrap_or(0.0);
+        let w = result.weight.unwrap_or(0.0);
+        let denom = w + 2.0;
+        result.barycenter = Some((bc * w + bl_order + br_order) / denom);
+        result.weight = Some(denom);
     }
 
     result

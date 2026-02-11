@@ -313,10 +313,8 @@ pub fn horizontal_compaction(
     align: &HashMap<String, String>,
     reverse_sep: bool,
 ) -> HashMap<String, f64> {
-    let root_ref: HashMap<&'_ str, &'_ str> = root
-        .iter()
-        .map(|(k, v)| (k.as_str(), v.as_str()))
-        .collect();
+    let root_ref: HashMap<&'_ str, &'_ str> =
+        root.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
     let align_ref: HashMap<&'_ str, &'_ str> = align
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
@@ -572,9 +570,9 @@ pub fn position_x(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> HashMap<String
 
             let neighbor_fn = |v: &str, out: &mut Vec<_>| {
                 if vert == "u" {
-                    g.for_each_predecessor(v, |u| out.push(u));
+                    g.extend_predecessors(v, out);
                 } else {
-                    g.for_each_successor(v, |w| out.push(w));
+                    g.extend_successors(v, out);
                 }
             };
 

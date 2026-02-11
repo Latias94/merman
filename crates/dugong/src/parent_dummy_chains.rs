@@ -72,8 +72,7 @@ pub fn parent_dummy_chains(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
                 }
             }
 
-            let next = g.successors(&v).first().map(|s| s.to_string());
-            let Some(next) = next else {
+            let Some(next) = g.first_successor(&v).map(|s| s.to_string()) else {
                 break;
             };
             v = next;
