@@ -1,0 +1,124 @@
+{
+  "diagramType": "mindmap",
+  "layout": {
+    "MindmapDiagram": {
+      "nodes": [
+        {
+          "id": "0",
+          "x": 59.8,
+          "y": 47.0,
+          "width": 70.24,
+          "height": 34.0,
+          "is_cluster": false
+        },
+        {
+          "id": "1",
+          "x": 59.8,
+          "y": 47.0,
+          "width": 89.6,
+          "height": 64.0,
+          "is_cluster": false
+        },
+        {
+          "id": "2",
+          "x": 59.8,
+          "y": 47.0,
+          "width": 49.6,
+          "height": 64.0,
+          "is_cluster": false
+        },
+        {
+          "id": "3",
+          "x": 59.8,
+          "y": 47.0,
+          "width": 49.6,
+          "height": 34.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge_0_1",
+          "from": "0",
+          "to": "1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 59.8,
+              "y": 47.0
+            },
+            {
+              "x": 59.8,
+              "y": 47.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge_0_2",
+          "from": "0",
+          "to": "2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 59.8,
+              "y": 47.0
+            },
+            {
+              "x": 59.8,
+              "y": 47.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge_0_3",
+          "from": "0",
+          "to": "3",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 59.8,
+              "y": 47.0
+            },
+            {
+              "x": 59.8,
+              "y": 47.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "bounds": {
+        "min_x": 15.0,
+        "min_y": 15.0,
+        "max_x": 104.6,
+        "max_y": 79.0
+      }
+    }
+  }
+}
