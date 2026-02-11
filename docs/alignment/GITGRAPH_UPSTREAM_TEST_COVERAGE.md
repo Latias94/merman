@@ -74,3 +74,15 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/git/gitGraph.spec.ts`
   - `fixtures/gitgraph/upstream_unsafe_id_branch_and_commit_spec.mmd`
 - duplicate commit id warning: unit test `should_log_warning_when_two_commits_have_same_id` in `crates/merman-core/src/diagrams/git_graph.rs` and snapshot:
   - `fixtures/gitgraph/upstream_accessibility_and_warnings.mmd`
+
+## Upstream Syntax Docs
+
+Source: `repo-ref/mermaid/docs/syntax/gitgraph.md`
+
+- hiding branch names and lines:
+  - `fixtures/gitgraph/upstream_docs_gitgraph_hiding_branch_names_and_lines_022.mmd`
+- theme variants (base/default/forest/neutral):
+  - `fixtures/gitgraph/upstream_docs_gitgraph_base_theme_046.mmd`
+  - `fixtures/gitgraph/upstream_docs_gitgraph_forest_theme_048.mmd`
+  - `fixtures/gitgraph/upstream_docs_gitgraph_default_theme_050.mmd`
+  - `fixtures/gitgraph/upstream_docs_gitgraph_neutral_theme_054.mmd`

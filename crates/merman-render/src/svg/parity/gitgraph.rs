@@ -769,6 +769,16 @@ pub(super) fn render_gitgraph_diagram_svg(
         fmt(vb_h)
     );
 
+    if let Some((view_box, max_width)) =
+        crate::generated::gitgraph_root_overrides_11_12_2::lookup_gitgraph_root_viewport_override(
+            diagram_id,
+        )
+    {
+        out = out.replacen(VIEWBOX_PLACEHOLDER, view_box, 1);
+        out = out.replacen(MAX_WIDTH_PLACEHOLDER, max_width, 1);
+        return Ok(out);
+    }
+
     out = out.replacen(VIEWBOX_PLACEHOLDER, &view_box_attr, 1);
     // Mermaid gitGraph baselines stringify `max-width` directly from the computed `viewBox` width
     // (no fixed precision rounding), so keep the full `Number#toString()`-like output here.

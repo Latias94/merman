@@ -1,8 +1,41 @@
 {
   "diagramType": "gitGraph",
   "model": {
-    "accDescr": null,
-    "accTitle": null,
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "ZERO",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "A",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "ZERO"
+        ],
+        "branch": "develop"
+      },
+      {
+        "id": "2-<dynamic>",
+        "message": "cherry-picked  into main",
+        "seq": 2,
+        "type": 4,
+        "tags": [],
+        "parents": [
+          "ZERO",
+          "A"
+        ],
+        "branch": "main"
+      }
+    ],
     "branches": [
       {
         "name": "main"
@@ -11,43 +44,10 @@
         "name": "develop"
       }
     ],
-    "commits": [
-      {
-        "branch": "main",
-        "id": "ZERO",
-        "message": "",
-        "parents": [],
-        "seq": 0,
-        "tags": [],
-        "type": 0
-      },
-      {
-        "branch": "develop",
-        "id": "A",
-        "message": "",
-        "parents": [
-          "ZERO"
-        ],
-        "seq": 1,
-        "tags": [],
-        "type": 0
-      },
-      {
-        "branch": "main",
-        "id": "2-<dynamic>",
-        "message": "cherry-picked  into main",
-        "parents": [
-          "ZERO",
-          "A"
-        ],
-        "seq": 2,
-        "tags": [],
-        "type": 4
-      }
-    ],
     "currentBranch": "main",
     "direction": "LR",
-    "type": "gitGraph",
+    "accTitle": null,
+    "accDescr": null,
     "warnings": []
   }
 }

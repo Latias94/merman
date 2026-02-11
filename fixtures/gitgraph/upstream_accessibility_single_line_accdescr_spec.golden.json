@@ -1,27 +1,27 @@
 {
   "diagramType": "gitGraph",
   "model": {
-    "accDescr": "This is a description",
-    "accTitle": "This is a title",
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "0-<dynamic>",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      }
+    ],
     "branches": [
       {
         "name": "main"
       }
     ],
-    "commits": [
-      {
-        "branch": "main",
-        "id": "0-<dynamic>",
-        "message": "",
-        "parents": [],
-        "seq": 0,
-        "tags": [],
-        "type": 0
-      }
-    ],
     "currentBranch": "main",
     "direction": "LR",
-    "type": "gitGraph",
+    "accTitle": "This is a title",
+    "accDescr": "This is a description",
     "warnings": []
   }
 }
