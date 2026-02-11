@@ -1,8 +1,42 @@
 {
   "diagramType": "gitGraph",
   "model": {
-    "accDescr": null,
-    "accTitle": null,
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "__proto__",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "1-<dynamic>",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "__proto__"
+        ],
+        "branch": "__proto__"
+      },
+      {
+        "id": "2-<dynamic>",
+        "message": "merged branch __proto__ into main",
+        "seq": 2,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "__proto__",
+          "1-<dynamic>"
+        ],
+        "branch": "main",
+        "customId": false
+      }
+    ],
     "branches": [
       {
         "name": "main"
@@ -11,44 +45,10 @@
         "name": "__proto__"
       }
     ],
-    "commits": [
-      {
-        "branch": "main",
-        "id": "__proto__",
-        "message": "",
-        "parents": [],
-        "seq": 0,
-        "tags": [],
-        "type": 0
-      },
-      {
-        "branch": "__proto__",
-        "id": "1-<dynamic>",
-        "message": "",
-        "parents": [
-          "__proto__"
-        ],
-        "seq": 1,
-        "tags": [],
-        "type": 0
-      },
-      {
-        "branch": "main",
-        "customId": false,
-        "id": "2-<dynamic>",
-        "message": "merged branch __proto__ into main",
-        "parents": [
-          "__proto__",
-          "1-<dynamic>"
-        ],
-        "seq": 2,
-        "tags": [],
-        "type": 3
-      }
-    ],
     "currentBranch": "main",
     "direction": "LR",
-    "type": "gitGraph",
+    "accTitle": null,
+    "accDescr": null,
     "warnings": []
   }
 }

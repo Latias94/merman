@@ -74,6 +74,8 @@ the dashed separators now use the exact same x-coordinates as the frame edges to
 avoid sub-pixel gaps at the frame border.
 Recent progress (2026-02-11): imported an additional batch of Class docs fixtures (with upstream SVG baselines),
 keeping the global parity-root gate green.
+Recent progress (2026-02-11): imported an additional batch of GitGraph docs fixtures (with upstream SVG baselines),
+keeping the global parity-root gate green.
 As of 2026-02-10, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
 for the current fixture set (diagram subtree parity).
 As of 2026-02-11, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 0 DOM
