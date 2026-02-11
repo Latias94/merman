@@ -22,6 +22,22 @@ pub fn has_conflict(conflicts: &Conflicts, v: &str, w: &str) -> bool {
     conflicts.get(v).map(|m| m.contains(w)).unwrap_or(false)
 }
 
+fn first_dummy_predecessor<'a>(
+    g: &'a Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    v: &str,
+) -> Option<&'a str> {
+    let mut out: Option<&'a str> = None;
+    g.for_each_predecessor(v, |u| {
+        if out.is_some() {
+            return;
+        }
+        if g.node(u).map(|n| n.dummy.is_some()).unwrap_or(false) {
+            out = Some(u);
+        }
+    });
+    out
+}
+
 pub fn find_type1_conflicts(
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     layering: &[Vec<String>],
@@ -50,21 +66,21 @@ pub fn find_type1_conflicts(
 
             if w.is_some() || last_node == Some(v.as_str()) {
                 for scan_node in layer.iter().skip(scan_pos).take(idx + 1 - scan_pos) {
-                    for u in g.predecessors(scan_node) {
+                    let scan_dummy = g
+                        .node(scan_node)
+                        .map(|n| n.dummy.is_some())
+                        .unwrap_or(false);
+                    g.for_each_predecessor(scan_node, |u| {
                         let Some(u_label) = g.node(u) else {
-                            continue;
+                            return;
                         };
                         let u_pos = u_label.order.unwrap_or(0);
-                        let scan_dummy = g
-                            .node(scan_node)
-                            .map(|n| n.dummy.is_some())
-                            .unwrap_or(false);
                         let u_dummy = u_label.dummy.is_some();
 
                         if (u_pos < k0 || k1 < u_pos) && !(u_dummy && scan_dummy) {
                             add_conflict(&mut conflicts, u, scan_node);
                         }
-                    }
+                    });
                 }
                 scan_pos = idx + 1;
                 k0 = k1;
@@ -96,9 +112,9 @@ pub fn find_type2_conflicts(
         for v in south.iter().take(south_end).skip(south_pos) {
             let v_dummy = g.node(v).and_then(|n| n.dummy.as_deref());
             if v_dummy.is_some() {
-                for u in g.predecessors(v) {
+                g.for_each_predecessor(v, |u| {
                     let Some(u_node) = g.node(u) else {
-                        continue;
+                        return;
                     };
                     if u_node.dummy.is_some() {
                         let u_order = u_node.order.unwrap_or(0) as isize;
@@ -106,7 +122,7 @@ pub fn find_type2_conflicts(
                             add_conflict(conflicts, u, v);
                         }
                     }
-                }
+                });
             }
         }
     }
@@ -125,8 +141,13 @@ pub fn find_type2_conflicts(
                 .and_then(|n| n.dummy.as_deref())
                 .is_some_and(|d| d == "border");
             if is_border {
-                let predecessors = g.predecessors(v);
-                if let Some(u) = predecessors.first() {
+                let mut first: Option<&str> = None;
+                g.for_each_predecessor(v, |u| {
+                    if first.is_none() {
+                        first = Some(u);
+                    }
+                });
+                if let Some(u) = first {
                     next_north_pos = g.node(u).and_then(|n| n.order).map(|n| n as isize);
                     scan(
                         g,
@@ -162,11 +183,7 @@ fn find_other_inner_segment_node(
     v: &str,
 ) -> Option<String> {
     if g.node(v).map(|n| n.dummy.is_some()).unwrap_or(false) {
-        return g
-            .predecessors(v)
-            .into_iter()
-            .find(|u| g.node(u).map(|n| n.dummy.is_some()).unwrap_or(false))
-            .map(|u| u.to_string());
+        return first_dummy_predecessor(g, v).map(|u| u.to_string());
     }
     None
 }
@@ -175,6 +192,12 @@ fn find_other_inner_segment_node(
 pub struct Alignment {
     pub root: HashMap<String, String>,
     pub align: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct AlignmentRef<'a> {
+    root: HashMap<&'a str, &'a str>,
+    align: HashMap<&'a str, &'a str>,
 }
 
 pub fn vertical_alignment<F>(
@@ -228,6 +251,61 @@ where
     Alignment { root, align }
 }
 
+fn vertical_alignment_ref<'a, F>(
+    layering: &'a [Vec<String>],
+    conflicts: &Conflicts,
+    mut neighbor_fn: F,
+) -> AlignmentRef<'a>
+where
+    F: FnMut(&'a str, &mut Vec<&'a str>),
+{
+    let mut root: HashMap<&'a str, &'a str> = HashMap::default();
+    let mut align: HashMap<&'a str, &'a str> = HashMap::default();
+    let mut pos: HashMap<&'a str, usize> = HashMap::default();
+
+    for layer in layering {
+        for (order, v) in layer.iter().enumerate() {
+            let v = v.as_str();
+            root.insert(v, v);
+            align.insert(v, v);
+            pos.insert(v, order);
+        }
+    }
+
+    let mut ws: Vec<&'a str> = Vec::new();
+    for layer in layering {
+        let mut prev_idx: isize = -1;
+        for v in layer {
+            let v = v.as_str();
+            ws.clear();
+            neighbor_fn(v, &mut ws);
+            if ws.is_empty() {
+                continue;
+            }
+            ws.sort_by_key(|w| pos.get(w).copied().unwrap_or(usize::MAX));
+
+            let mp = (ws.len() - 1) as f64 / 2.0;
+            let i0 = mp.floor() as usize;
+            let i1 = mp.ceil() as usize;
+
+            for w in ws.iter().take(i1 + 1).skip(i0) {
+                let w = *w;
+                let v_align = align.get(v).copied().unwrap_or(v);
+                let w_pos = pos.get(w).copied().unwrap_or(usize::MAX) as isize;
+                if v_align == v && prev_idx < w_pos && !has_conflict(conflicts, v, w) {
+                    align.insert(w, v);
+                    let w_root = root.get(w).copied().unwrap_or(w);
+                    align.insert(v, w_root);
+                    root.insert(v, w_root);
+                    prev_idx = w_pos;
+                }
+            }
+        }
+    }
+
+    AlignmentRef { root, align }
+}
+
 pub fn horizontal_compaction(
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     layering: &[Vec<String>],
@@ -235,8 +313,26 @@ pub fn horizontal_compaction(
     align: &HashMap<String, String>,
     reverse_sep: bool,
 ) -> HashMap<String, f64> {
+    let root_ref: HashMap<&'_ str, &'_ str> = root
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    let align_ref: HashMap<&'_ str, &'_ str> = align
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    horizontal_compaction_ref(g, layering, &root_ref, &align_ref, reverse_sep)
+}
+
+fn horizontal_compaction_ref<'a>(
+    g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    layering: &[Vec<String>],
+    root: &HashMap<&'a str, &'a str>,
+    align: &HashMap<&'a str, &'a str>,
+    reverse_sep: bool,
+) -> HashMap<String, f64> {
     let mut xs: HashMap<String, f64> = HashMap::default();
-    let block_g = build_block_graph(g, layering, root, reverse_sep);
+    let block_g = build_block_graph_ref(g, layering, root, reverse_sep);
     let border_type = if reverse_sep {
         "borderLeft"
     } else {
@@ -315,34 +411,42 @@ pub fn horizontal_compaction(
 
     // Assign x coordinates to all nodes based on their block root.
     let mut out: HashMap<String, f64> = HashMap::default();
-    for (v, r) in align {
-        let x = xs.get(root.get(v).unwrap_or(r)).copied().unwrap_or(0.0);
-        out.insert(v.clone(), x);
+    for (&v, &r) in align {
+        let x = xs
+            .get(root.get(v).copied().unwrap_or(r))
+            .copied()
+            .unwrap_or(0.0);
+        out.insert(v.to_string(), x);
     }
     out
 }
 
-fn build_block_graph(
+fn build_block_graph_ref<'a>(
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     layering: &[Vec<String>],
-    root: &HashMap<String, String>,
+    root: &HashMap<&'a str, &'a str>,
     reverse_sep: bool,
 ) -> Graph<(), f64, ()> {
     let mut block_graph: Graph<(), f64, ()> = Graph::new(GraphOptions::default());
     for layer in layering {
         let mut u: Option<&str> = None;
         for v in layer {
-            let v_root = root.get(v).cloned().unwrap_or_else(|| v.clone());
-            block_graph.ensure_node(v_root.clone());
+            let v = v.as_str();
+            let v_root = root.get(v).copied().unwrap_or(v);
+            block_graph.ensure_node(v_root.to_string());
 
             if let Some(u) = u {
-                let u_root = root.get(u).cloned().unwrap_or_else(|| u.to_string());
+                let u_root = root.get(u).copied().unwrap_or(u);
                 let prev_max = block_graph
-                    .edge(&u_root, &v_root, None)
+                    .edge(u_root, v_root, None)
                     .copied()
                     .unwrap_or(0.0);
                 let sep = sep(g, v, u, reverse_sep);
-                block_graph.set_edge_with_label(u_root, v_root, sep.max(prev_max));
+                block_graph.set_edge_with_label(
+                    u_root.to_string(),
+                    v_root.to_string(),
+                    sep.max(prev_max),
+                );
             }
 
             u = Some(v);
@@ -466,19 +570,16 @@ pub fn position_x(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> HashMap<String
                     .collect();
             }
 
-            let neighbor_fn = |v: &str| {
+            let neighbor_fn = |v: &str, out: &mut Vec<_>| {
                 if vert == "u" {
-                    g.predecessors(v)
-                        .into_iter()
-                        .map(|s| s.to_string())
-                        .collect()
+                    g.for_each_predecessor(v, |u| out.push(u));
                 } else {
-                    g.successors(v).into_iter().map(|s| s.to_string()).collect()
+                    g.for_each_successor(v, |w| out.push(w));
                 }
             };
 
-            let align = vertical_alignment(g, &adjusted_layering, &conflicts, neighbor_fn);
-            let mut xs = horizontal_compaction(
+            let align = vertical_alignment_ref(&adjusted_layering, &conflicts, neighbor_fn);
+            let mut xs = horizontal_compaction_ref(
                 g,
                 &adjusted_layering,
                 &align.root,

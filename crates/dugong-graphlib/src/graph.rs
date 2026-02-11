@@ -579,6 +579,44 @@ where
         out
     }
 
+    pub fn for_each_successor<'a, F>(&'a self, v: &str, mut f: F)
+    where
+        F: FnMut(&'a str),
+    {
+        if !self.options.directed {
+            for w in self.adjacent_nodes(v) {
+                f(w);
+            }
+            return;
+        }
+        let Some(&v_idx) = self.node_index.get(v) else {
+            return;
+        };
+        let cache = self.ensure_directed_adj();
+        for &edge_idx in &cache.out[v_idx] {
+            f(self.edges[edge_idx].key.w.as_str());
+        }
+    }
+
+    pub fn for_each_predecessor<'a, F>(&'a self, v: &str, mut f: F)
+    where
+        F: FnMut(&'a str),
+    {
+        if !self.options.directed {
+            for u in self.adjacent_nodes(v) {
+                f(u);
+            }
+            return;
+        }
+        let Some(&v_idx) = self.node_index.get(v) else {
+            return;
+        };
+        let cache = self.ensure_directed_adj();
+        for &edge_idx in &cache.in_[v_idx] {
+            f(self.edges[edge_idx].key.v.as_str());
+        }
+    }
+
     pub fn neighbors(&self, v: &str) -> Vec<&str> {
         if !self.options.directed {
             return self.adjacent_nodes(v);
