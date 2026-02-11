@@ -1391,6 +1391,8 @@ pub(super) fn flowchart_edge_marker_end_base(
 ) -> Option<&'static str> {
     match edge.edge_type.as_deref() {
         Some("double_arrow_point") => Some("flowchart-v2-pointEnd"),
+        Some("double_arrow_circle") => Some("flowchart-v2-circleEnd"),
+        Some("double_arrow_cross") => Some("flowchart-v2-crossEnd"),
         Some("arrow_point") => Some("flowchart-v2-pointEnd"),
         Some("arrow_cross") => Some("flowchart-v2-crossEnd"),
         Some("arrow_circle") => Some("flowchart-v2-circleEnd"),
@@ -1404,6 +1406,8 @@ pub(super) fn flowchart_edge_marker_start_base(
 ) -> Option<&'static str> {
     match edge.edge_type.as_deref() {
         Some("double_arrow_point") => Some("flowchart-v2-pointStart"),
+        Some("double_arrow_circle") => Some("flowchart-v2-circleStart"),
+        Some("double_arrow_cross") => Some("flowchart-v2-crossStart"),
         _ => None,
     }
 }
@@ -1424,7 +1428,28 @@ pub(super) fn flowchart_edge_class_attr(edge: &crate::flowchart::FlowEdge) -> St
         // edges.
         format!("{thickness_1} {pattern_1}")
     } else {
-        format!("{thickness_1} {pattern_1} edge-thickness-normal edge-pattern-solid flowchart-link")
+        let mut out = format!(
+            "{thickness_1} {pattern_1} edge-thickness-normal edge-pattern-solid flowchart-link"
+        );
+
+        // Mermaid attaches animation classes directly on the edge path element when enabled via
+        // edge-id `@{ ... }` blocks (e.g. `e1@{ animate: true }` or `e1@{ animation: fast }`).
+        if edge.animate == Some(false) {
+            return out;
+        }
+        let animation_class = match edge.animation.as_deref() {
+            Some("slow") => Some("edge-animation-slow"),
+            Some(_) => Some("edge-animation-fast"),
+            None => match edge.animate {
+                Some(true) => Some("edge-animation-fast"),
+                _ => None,
+            },
+        };
+        if let Some(cls) = animation_class {
+            out.push(' ');
+            out.push_str(cls);
+        }
+        out
     }
 }
 
@@ -1647,7 +1672,14 @@ pub(super) fn flowchart_edge_path_d_for_bbox(
         .unwrap_or(default_edge_interpolate);
     let is_basis = !matches!(
         interpolate,
-        "linear" | "step" | "stepAfter" | "stepBefore" | "cardinal" | "monotoneX" | "monotoneY"
+        "linear"
+            | "natural"
+            | "step"
+            | "stepAfter"
+            | "stepBefore"
+            | "cardinal"
+            | "monotoneX"
+            | "monotoneY"
     );
 
     let label_text = edge.label.as_deref().unwrap_or_default();
@@ -2099,6 +2131,8 @@ pub(super) fn flowchart_edge_path_d_for_bbox(
 
     let arrow_type_start = match edge.edge_type.as_deref() {
         Some("double_arrow_point") => Some("arrow_point"),
+        Some("double_arrow_circle") => Some("arrow_circle"),
+        Some("double_arrow_cross") => Some("arrow_cross"),
         _ => None,
     };
     let arrow_type_end = match edge.edge_type.as_deref() {
@@ -2106,12 +2140,15 @@ pub(super) fn flowchart_edge_path_d_for_bbox(
         Some("arrow_cross") => Some("arrow_cross"),
         Some("arrow_circle") => Some("arrow_circle"),
         Some("double_arrow_point" | "arrow_point") => Some("arrow_point"),
+        Some("double_arrow_circle") => Some("arrow_circle"),
+        Some("double_arrow_cross") => Some("arrow_cross"),
         _ => Some("arrow_point"),
     };
     let line_data = line_with_offset_points(&line_data, arrow_type_start, arrow_type_end);
 
     let d = match interpolate {
         "linear" => curve_linear_path_d(&line_data),
+        "natural" => curve_natural_path_d(&line_data),
         "step" => curve_step_path_d(&line_data),
         "stepAfter" => curve_step_after_path_d(&line_data),
         "stepBefore" => curve_step_before_path_d(&line_data),
@@ -3889,7 +3926,14 @@ pub(super) fn render_flowchart_edge_path(
         .unwrap_or(ctx.default_edge_interpolate.as_str());
     let is_basis = !matches!(
         interpolate,
-        "linear" | "step" | "stepAfter" | "stepBefore" | "cardinal" | "monotoneX" | "monotoneY"
+        "linear"
+            | "natural"
+            | "step"
+            | "stepAfter"
+            | "stepBefore"
+            | "cardinal"
+            | "monotoneX"
+            | "monotoneY"
     );
 
     let label_text = edge.label.as_deref().unwrap_or_default();
@@ -4370,6 +4414,8 @@ pub(super) fn render_flowchart_edge_path(
 
     let arrow_type_start = match edge.edge_type.as_deref() {
         Some("double_arrow_point") => Some("arrow_point"),
+        Some("double_arrow_circle") => Some("arrow_circle"),
+        Some("double_arrow_cross") => Some("arrow_cross"),
         _ => None,
     };
     let arrow_type_end = match edge.edge_type.as_deref() {
@@ -4377,12 +4423,15 @@ pub(super) fn render_flowchart_edge_path(
         Some("arrow_cross") => Some("arrow_cross"),
         Some("arrow_circle") => Some("arrow_circle"),
         Some("double_arrow_point" | "arrow_point") => Some("arrow_point"),
+        Some("double_arrow_circle") => Some("arrow_circle"),
+        Some("double_arrow_cross") => Some("arrow_cross"),
         _ => Some("arrow_point"),
     };
     let line_data = line_with_offset_points(&line_data, arrow_type_start, arrow_type_end);
 
     let mut d = match interpolate {
         "linear" => curve_linear_path_d(&line_data),
+        "natural" => curve_natural_path_d(&line_data),
         "step" => curve_step_path_d(&line_data),
         "stepAfter" => curve_step_after_path_d(&line_data),
         "stepBefore" => curve_step_before_path_d(&line_data),
@@ -5233,12 +5282,28 @@ pub(super) fn render_flowchart_node(
         label_text,
         label_type,
         shape,
+        node_img,
+        node_pos,
+        node_constraint,
+        node_asset_width,
+        node_asset_height,
         node_styles,
         node_classes,
     ) = match node_kind {
         RenderNodeKind::Normal(node) => {
             let dom_idx = ctx.node_dom_index.get(node_id).copied().unwrap_or(0);
-            let mut class_attr = "node default".to_string();
+            let shape = node
+                .layout_shape
+                .as_deref()
+                .unwrap_or("squareRect")
+                .to_string();
+
+            // Mermaid flowchart-v2 uses a distinct wrapper class for icon/image nodes.
+            let mut class_attr = if shape == "imageSquare" {
+                "image-shape default".to_string()
+            } else {
+                "node default".to_string()
+            };
             for c in &node.classes {
                 if !c.trim().is_empty() {
                     class_attr.push(' ');
@@ -5265,10 +5330,12 @@ pub(super) fn render_flowchart_node(
                 href,
                 node.label.as_deref().unwrap_or(node_id).to_string(),
                 node.label_type.as_deref().unwrap_or("text").to_string(),
-                node.layout_shape
-                    .as_deref()
-                    .unwrap_or("squareRect")
-                    .to_string(),
+                shape,
+                node.img.clone(),
+                node.pos.clone(),
+                node.constraint.clone(),
+                node.asset_width,
+                node.asset_height,
                 node.styles.clone(),
                 node.classes.clone(),
             )
@@ -5291,6 +5358,11 @@ pub(super) fn render_flowchart_node(
                 sg.title.clone(),
                 sg.label_type.as_deref().unwrap_or("text").to_string(),
                 "squareRect".to_string(),
+                None,
+                None,
+                None,
+                None,
+                None,
                 Vec::new(),
                 sg.classes.clone(),
             )
@@ -5391,6 +5463,32 @@ pub(super) fn render_flowchart_node(
         }
         out.push('Z');
         out
+    }
+
+    fn generate_full_sine_wave_points(
+        x1: f64,
+        y1: f64,
+        x2: f64,
+        y2: f64,
+        amplitude: f64,
+        num_cycles: f64,
+    ) -> Vec<(f64, f64)> {
+        // Ported from Mermaid `generateFullSineWavePoints` (50 segments).
+        let steps: usize = 50;
+        let delta_x = x2 - x1;
+        let delta_y = y2 - y1;
+        let cycle_length = delta_x / num_cycles;
+        let frequency = (2.0 * std::f64::consts::PI) / cycle_length;
+        let mid_y = y1 + delta_y / 2.0;
+
+        let mut points: Vec<(f64, f64)> = Vec::with_capacity(steps + 1);
+        for i in 0..=steps {
+            let t = (i as f64) / (steps as f64);
+            let x = x1 + t * delta_x;
+            let y = mid_y + amplitude * (frequency * (x - x1)).sin();
+            points.push((x, y));
+        }
+        points
     }
 
     fn arc_points(
@@ -5566,6 +5664,62 @@ pub(super) fn render_flowchart_node(
         ))
     }
 
+    fn roughjs_stroke_path_for_svg_path(
+        svg_path_data: &str,
+        stroke: &str,
+        stroke_width: f32,
+        stroke_dasharray: &str,
+        seed: u64,
+    ) -> Option<String> {
+        let stroke = parse_hex_color_to_srgba(stroke)?;
+        let dash = stroke_dasharray.trim().replace(',', " ");
+        let nums: Vec<f32> = dash
+            .split_whitespace()
+            .filter_map(|t| t.parse::<f32>().ok())
+            .collect();
+        let (dash0, dash1) = match nums.as_slice() {
+            [a] => (*a, *a),
+            [a, b, ..] => (*a, *b),
+            _ => (0.0, 0.0),
+        };
+        let mut options = roughr::core::OptionsBuilder::default()
+            .seed(seed)
+            .roughness(0.0)
+            .bowing(1.0)
+            .stroke(stroke)
+            .stroke_width(stroke_width)
+            .stroke_line_dash(vec![dash0 as f64, dash1 as f64])
+            .stroke_line_dash_offset(0.0)
+            .disable_multi_stroke(false)
+            .build()
+            .ok()?;
+
+        fn ops_to_svg_path_d(opset: &roughr::core::OpSet<f64>) -> String {
+            let mut out = String::new();
+            for op in &opset.ops {
+                match op.op {
+                    roughr::core::OpType::Move => {
+                        let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
+                    }
+                    roughr::core::OpType::BCurveTo => {
+                        let _ = write!(
+                            &mut out,
+                            "C{} {}, {} {}, {} {} ",
+                            op.data[0], op.data[1], op.data[2], op.data[3], op.data[4], op.data[5]
+                        );
+                    }
+                    roughr::core::OpType::LineTo => {
+                        let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
+                    }
+                }
+            }
+            out.trim_end().to_string()
+        }
+
+        let opset = roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut options);
+        Some(ops_to_svg_path_d(&opset))
+    }
+
     let hand_drawn_seed = ctx
         .config
         .as_value()
@@ -5574,6 +5728,520 @@ pub(super) fn render_flowchart_node(
         .unwrap_or(0);
 
     match shape.as_str() {
+        "imageSquare" => {
+            // Port of Mermaid `imageSquare.ts` (`image-shape default`).
+            if let Some(img_href) = node_img.as_deref().filter(|s| !s.trim().is_empty()) {
+                let label_text_plain =
+                    flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+                let has_label = !label_text_plain.trim().is_empty();
+                let label_padding = if has_label { 8.0 } else { 0.0 };
+                let top_label = node_pos.as_deref() == Some("t");
+
+                let assumed_aspect_ratio = 1.0f64;
+                let asset_h = node_asset_height.unwrap_or(60.0).max(1.0);
+                let asset_w = node_asset_width.unwrap_or(asset_h).max(1.0);
+                let aspect_ratio = if asset_h > 0.0 {
+                    asset_w / asset_h
+                } else {
+                    assumed_aspect_ratio
+                };
+
+                let default_width = ctx.wrapping_width.max(0.0);
+                let image_raw_width = asset_w.max(if has_label { default_width } else { 0.0 });
+
+                let constraint_on = node_constraint.as_deref() == Some("on");
+                let image_width = if constraint_on && node_asset_height.is_some() {
+                    asset_h * aspect_ratio
+                } else {
+                    image_raw_width
+                };
+                let image_height = if constraint_on {
+                    if aspect_ratio != 0.0 {
+                        image_width / aspect_ratio
+                    } else {
+                        asset_h
+                    }
+                } else {
+                    asset_h
+                };
+
+                let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+                    ctx.measurer,
+                    &label_text,
+                    &label_type,
+                    &ctx.text_style,
+                    Some(ctx.wrapping_width),
+                    ctx.node_wrap_mode,
+                );
+                if !has_label {
+                    metrics.width = 0.0;
+                    metrics.height = 0.0;
+                }
+
+                let outer_w = image_width.max(metrics.width);
+                let outer_h = image_height + metrics.height + label_padding;
+
+                let x0 = -image_width / 2.0;
+                let y0 = -image_height / 2.0;
+                // Mermaid `imageSquare` fills with a straight rect (not rough).
+                let rect_fill_path = format!(
+                    "M{} {} L{} {} L{} {} L{} {}",
+                    fmt(x0),
+                    fmt(y0),
+                    fmt(x0 + image_width),
+                    fmt(y0),
+                    fmt(x0 + image_width),
+                    fmt(y0 + image_height),
+                    fmt(x0),
+                    fmt(y0 + image_height)
+                );
+                // Stroke uses RoughJS and must be a closed path so the left edge is included.
+                let rect_stroke_path = format!(
+                    "M{} {} L{} {} L{} {} L{} {} L{} {}",
+                    fmt(x0),
+                    fmt(y0),
+                    fmt(x0 + image_width),
+                    fmt(y0),
+                    fmt(x0 + image_width),
+                    fmt(y0 + image_height),
+                    fmt(x0),
+                    fmt(y0 + image_height),
+                    fmt(x0),
+                    fmt(y0)
+                );
+
+                let icon_dy = if top_label {
+                    metrics.height / 2.0 + label_padding / 2.0
+                } else {
+                    -metrics.height / 2.0 - label_padding / 2.0
+                };
+                let _ = write!(out, r#"<g transform="translate(0,{})">"#, fmt(icon_dy));
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"/>"#,
+                    escape_attr(&rect_fill_path),
+                    escape_attr(fill_color)
+                );
+                if let Some(stroke_d) = roughjs_stroke_path_for_svg_path(
+                    &rect_stroke_path,
+                    stroke_color,
+                    stroke_width,
+                    stroke_dasharray,
+                    hand_drawn_seed,
+                ) {
+                    let _ = write!(
+                        out,
+                        r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
+                        escape_attr(&stroke_d),
+                        escape_attr(stroke_color),
+                        fmt(stroke_width as f64),
+                        escape_attr(stroke_dasharray)
+                    );
+                }
+                out.push_str("</g>");
+
+                // Label group uses a background class in Mermaid's image/icon helpers.
+                let label_html = flowchart_label_html(&label_text, &label_type, &ctx.config);
+                let label_dy = if top_label {
+                    -image_height / 2.0 - metrics.height / 2.0 - label_padding / 2.0
+                } else {
+                    image_height / 2.0 - metrics.height / 2.0 + label_padding / 2.0
+                };
+                let _ = write!(
+                    out,
+                    r#"<g class="label" style="" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g>"#,
+                    fmt(-metrics.width / 2.0),
+                    fmt(label_dy),
+                    fmt(metrics.width),
+                    fmt(metrics.height),
+                    label_html
+                );
+
+                let outer_x0 = -outer_w / 2.0;
+                let outer_y0 = -outer_h / 2.0;
+                let outer_path = format!(
+                    "M{} {} L{} {} L{} {} L{} {}",
+                    outer_x0,
+                    outer_y0,
+                    outer_x0 + outer_w,
+                    outer_y0,
+                    outer_x0 + outer_w,
+                    outer_y0 + outer_h,
+                    outer_x0,
+                    outer_y0 + outer_h
+                );
+                let _ = write!(
+                    out,
+                    r#"<g><path d="{}" stroke="none" stroke-width="0" fill="none"/></g>"#,
+                    escape_attr(&outer_path)
+                );
+
+                let img_translate_y = if top_label {
+                    outer_h / 2.0 - image_height
+                } else {
+                    -outer_h / 2.0
+                };
+                let _ = write!(
+                    out,
+                    r#"<image href="{}" width="{}" height="{}" preserveAspectRatio="none" transform="translate({},{})"/>"#,
+                    escape_attr(img_href),
+                    fmt(image_width),
+                    fmt(image_height),
+                    fmt(-image_width / 2.0),
+                    fmt(img_translate_y)
+                );
+
+                out.push_str("</g>");
+                if wrapped_in_a {
+                    out.push_str("</a>");
+                }
+                return;
+            } else {
+                // Fall back to a normal node if the image URL is missing.
+                let w = layout_node.width.max(1.0);
+                let h = layout_node.height.max(1.0);
+                let _ = write!(
+                    out,
+                    r#"<rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
+                    escape_attr(&style),
+                    fmt(-w / 2.0),
+                    fmt(-h / 2.0),
+                    fmt(w),
+                    fmt(h)
+                );
+                // Keep default label rendering.
+            }
+        }
+        "manual-file" | "flipped-triangle" | "flip-tri" => {
+            let h = layout_node.height.max(1.0);
+            let pts = vec![(0.0, -h), (h, -h), (h / 2.0, 0.0)];
+            let path_data = path_from_points(&pts);
+            if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+                &path_data,
+                fill_color,
+                stroke_color,
+                stroke_width,
+                stroke_dasharray,
+                hand_drawn_seed,
+            ) {
+                let _ = write!(
+                    out,
+                    r#"<g transform="translate({}, {})">"#,
+                    fmt(-h / 2.0),
+                    fmt(h / 2.0)
+                );
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
+                    escape_attr(&fill_d),
+                    escape_attr(fill_color),
+                    escape_attr(&style)
+                );
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
+                    escape_attr(&stroke_d),
+                    escape_attr(stroke_color),
+                    fmt(stroke_width as f64),
+                    escape_attr(stroke_dasharray),
+                    escape_attr(&style)
+                );
+                out.push_str("</g>");
+            }
+        }
+        "manual-input" | "sloped-rectangle" | "sl-rect" => {
+            let w = layout_node.width.max(1.0);
+            let h = layout_node.height.max(1.0);
+            let x = -w / 2.0;
+            let y = -h / 2.0;
+            let points = vec![(x, y), (x, y + h), (x + w, y + h), (x + w, y - h / 2.0)];
+            let path_data = path_from_points(&points);
+            if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+                &path_data,
+                fill_color,
+                stroke_color,
+                stroke_width,
+                stroke_dasharray,
+                hand_drawn_seed,
+            ) {
+                let _ = write!(
+                    out,
+                    r#"<g class="basic label-container" transform="translate(0, {})">"#,
+                    fmt(h / 4.0)
+                );
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
+                    escape_attr(&fill_d),
+                    escape_attr(fill_color),
+                    escape_attr(&style)
+                );
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
+                    escape_attr(&stroke_d),
+                    escape_attr(stroke_color),
+                    fmt(stroke_width as f64),
+                    escape_attr(stroke_dasharray),
+                    escape_attr(&style)
+                );
+                out.push_str("</g>");
+            }
+        }
+        "docs" | "documents" | "st-doc" | "stacked-document" => {
+            let w = layout_node.width.max(1.0);
+            let h = layout_node.height.max(1.0);
+            let wave_amplitude = h / 4.0;
+            let final_h = h + wave_amplitude;
+            let x = -w / 2.0;
+            let y = -final_h / 2.0;
+            let rect_offset = 5.0;
+
+            let wave_points = generate_full_sine_wave_points(
+                x - rect_offset,
+                y + final_h + rect_offset,
+                x + w - rect_offset,
+                y + final_h + rect_offset,
+                wave_amplitude,
+                0.8,
+            );
+            let (_last_x, last_y) = wave_points[wave_points.len() - 1];
+
+            let mut outer_points: Vec<(f64, f64)> = Vec::new();
+            outer_points.push((x - rect_offset, y + rect_offset));
+            outer_points.push((x - rect_offset, y + final_h + rect_offset));
+            outer_points.extend(wave_points.iter().copied());
+            outer_points.push((x + w - rect_offset, last_y - rect_offset));
+            outer_points.push((x + w, last_y - rect_offset));
+            outer_points.push((x + w, last_y - 2.0 * rect_offset));
+            outer_points.push((x + w + rect_offset, last_y - 2.0 * rect_offset));
+            outer_points.push((x + w + rect_offset, y - rect_offset));
+            outer_points.push((x + rect_offset, y - rect_offset));
+            outer_points.push((x + rect_offset, y));
+            outer_points.push((x, y));
+            outer_points.push((x, y + rect_offset));
+
+            let inner_points = vec![
+                (x, y + rect_offset),
+                (x + w - rect_offset, y + rect_offset),
+                (x + w - rect_offset, last_y - rect_offset),
+                (x + w, last_y - rect_offset),
+                (x + w, y),
+                (x, y),
+            ];
+
+            let outer_path = path_from_points(&outer_points);
+            let inner_path = path_from_points(&inner_points);
+
+            let _ = write!(
+                out,
+                r#"<g class="basic label-container" transform="translate(0,{})">"#,
+                fmt(-wave_amplitude / 2.0)
+            );
+            if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+                &outer_path,
+                fill_color,
+                stroke_color,
+                stroke_width,
+                stroke_dasharray,
+                hand_drawn_seed,
+            ) {
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
+                    escape_attr(&fill_d),
+                    escape_attr(fill_color),
+                    escape_attr(&style)
+                );
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
+                    escape_attr(&stroke_d),
+                    escape_attr(stroke_color),
+                    fmt(stroke_width as f64),
+                    escape_attr(stroke_dasharray),
+                    escape_attr(&style)
+                );
+            }
+            out.push_str("<g>");
+            if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+                &inner_path,
+                fill_color,
+                stroke_color,
+                stroke_width,
+                stroke_dasharray,
+                hand_drawn_seed,
+            ) {
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
+                    escape_attr(&fill_d),
+                    escape_attr(fill_color),
+                    escape_attr(&style)
+                );
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
+                    escape_attr(&stroke_d),
+                    escape_attr(stroke_color),
+                    fmt(stroke_width as f64),
+                    escape_attr(stroke_dasharray),
+                    escape_attr(&style)
+                );
+            }
+            out.push_str("</g></g>");
+        }
+        "procs" | "processes" | "st-rect" | "stacked-rectangle" => {
+            let w = layout_node.width.max(1.0);
+            let h = layout_node.height.max(1.0);
+            let rect_offset = 5.0;
+            let x = -w / 2.0;
+            let y = -h / 2.0;
+
+            let outer_points = vec![
+                (x - rect_offset, y + rect_offset),
+                (x - rect_offset, y + h + rect_offset),
+                (x + w - rect_offset, y + h + rect_offset),
+                (x + w - rect_offset, y + h),
+                (x + w, y + h),
+                (x + w, y + h - rect_offset),
+                (x + w + rect_offset, y + h - rect_offset),
+                (x + w + rect_offset, y - rect_offset),
+                (x + rect_offset, y - rect_offset),
+                (x + rect_offset, y),
+                (x, y),
+                (x, y + rect_offset),
+            ];
+
+            let inner_points = vec![
+                (x, y + rect_offset),
+                (x + w - rect_offset, y + rect_offset),
+                (x + w - rect_offset, y + h),
+                (x + w, y + h),
+                (x + w, y),
+                (x, y),
+            ];
+
+            let outer_path = path_from_points(&outer_points);
+            let inner_path = path_from_points(&inner_points);
+
+            out.push_str(r#"<g class="basic label-container">"#);
+            out.push_str("<g>");
+            if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+                &outer_path,
+                fill_color,
+                stroke_color,
+                stroke_width,
+                stroke_dasharray,
+                hand_drawn_seed,
+            ) {
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
+                    escape_attr(&fill_d),
+                    escape_attr(fill_color),
+                    escape_attr(&style)
+                );
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
+                    escape_attr(&stroke_d),
+                    escape_attr(stroke_color),
+                    fmt(stroke_width as f64),
+                    escape_attr(stroke_dasharray),
+                    escape_attr(&style)
+                );
+            }
+            out.push_str("</g>");
+            if let Some(stroke_d) = roughjs_stroke_path_for_svg_path(
+                &inner_path,
+                stroke_color,
+                stroke_width,
+                stroke_dasharray,
+                hand_drawn_seed,
+            ) {
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
+                    escape_attr(&stroke_d),
+                    escape_attr(stroke_color),
+                    fmt(stroke_width as f64),
+                    escape_attr(stroke_dasharray),
+                    escape_attr(&style)
+                );
+            }
+            out.push_str("</g>");
+        }
+        "paper-tape" | "flag" => {
+            let min_width = 100.0;
+            let min_height = 50.0;
+
+            let base_width = layout_node.width.max(1.0);
+            let base_height = layout_node.height.max(1.0);
+            let aspect_ratio = base_width / base_height.max(1e-9);
+
+            let mut w = base_width;
+            let mut h = base_height;
+            if w > h * aspect_ratio {
+                h = w / aspect_ratio;
+            } else {
+                w = h * aspect_ratio;
+            }
+            w = w.max(min_width);
+            h = h.max(min_height);
+
+            let wave_amplitude = (h * 0.2).min(h / 4.0);
+            let final_h = h + wave_amplitude * 2.0;
+
+            let mut points: Vec<(f64, f64)> = Vec::new();
+            points.push((-w / 2.0, final_h / 2.0));
+            points.extend(generate_full_sine_wave_points(
+                -w / 2.0,
+                final_h / 2.0,
+                w / 2.0,
+                final_h / 2.0,
+                wave_amplitude,
+                1.0,
+            ));
+            points.push((w / 2.0, -final_h / 2.0));
+            points.extend(generate_full_sine_wave_points(
+                w / 2.0,
+                -final_h / 2.0,
+                -w / 2.0,
+                -final_h / 2.0,
+                wave_amplitude,
+                -1.0,
+            ));
+
+            let path_data = path_from_points(&points);
+            if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+                &path_data,
+                fill_color,
+                stroke_color,
+                stroke_width,
+                stroke_dasharray,
+                hand_drawn_seed,
+            ) {
+                out.push_str(r#"<g class="basic label-container">"#);
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
+                    escape_attr(&fill_d),
+                    escape_attr(fill_color),
+                    escape_attr(&style)
+                );
+                let _ = write!(
+                    out,
+                    r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
+                    escape_attr(&stroke_d),
+                    escape_attr(stroke_color),
+                    fmt(stroke_width as f64),
+                    escape_attr(stroke_dasharray),
+                    escape_attr(&style)
+                );
+                out.push_str("</g>");
+            }
+        }
         "subroutine" | "fr-rect" => {
             // Mermaid `subroutine.ts` (non-handDrawn): polygon via `insertPolygonShape(...)`.
             let total_w = layout_node.width.max(1.0);
@@ -7054,6 +7722,13 @@ pub(super) fn render_flowchart_v2_svg(
                 label: Some(String::new()),
                 label_type: None,
                 layout_shape: None,
+                icon: None,
+                form: None,
+                pos: None,
+                img: None,
+                constraint: None,
+                asset_width: None,
+                asset_height: None,
                 classes: Vec::new(),
                 styles: Vec::new(),
                 have_callback: false,

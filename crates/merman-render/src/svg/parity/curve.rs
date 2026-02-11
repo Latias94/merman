@@ -276,6 +276,107 @@ pub(super) fn curve_linear_path_d(points: &[crate::model::LayoutPoint]) -> Strin
     out
 }
 
+// Ported from D3 `curveNatural` (d3-shape v3.x).
+//
+// This is used by Mermaid flowchart edge-id curve overrides (e.g. `e1@{ curve: natural }`).
+pub(super) fn curve_natural_path_d(points: &[crate::model::LayoutPoint]) -> String {
+    fn compute_control_points(coords: &[f64]) -> (Vec<f64>, Vec<f64>) {
+        // `coords` contains the knot coordinates for points[0..=n], where n = segment count.
+        let n = coords.len().saturating_sub(1);
+        let mut c1 = vec![0.0f64; n];
+        let mut c2 = vec![0.0f64; n];
+        if n == 0 {
+            return (c1, c2);
+        }
+
+        // Tridiagonal solve for first control points (Thomas algorithm).
+        let mut a = vec![0.0f64; n];
+        let mut b = vec![0.0f64; n];
+        let mut c = vec![0.0f64; n];
+        let mut rhs = vec![0.0f64; n];
+
+        b[0] = 2.0;
+        c[0] = 1.0;
+        rhs[0] = coords[0] + 2.0 * coords[1];
+
+        for i in 1..n.saturating_sub(1) {
+            a[i] = 1.0;
+            b[i] = 4.0;
+            c[i] = 1.0;
+            rhs[i] = 4.0 * coords[i] + 2.0 * coords[i + 1];
+        }
+
+        if n > 1 {
+            a[n - 1] = 2.0;
+            b[n - 1] = 7.0;
+            rhs[n - 1] = 8.0 * coords[n - 1] + coords[n];
+        } else {
+            // Single segment (2 points): not used (caller returns a line), but keep the solver
+            // stable anyway.
+            b[0] = 2.0;
+            rhs[0] = coords[0] + coords[1];
+        }
+
+        for i in 1..n {
+            let m = a[i] / b[i - 1];
+            b[i] -= m * c[i - 1];
+            rhs[i] -= m * rhs[i - 1];
+        }
+
+        c1[n - 1] = rhs[n - 1] / b[n - 1];
+        for i in (0..n.saturating_sub(1)).rev() {
+            c1[i] = (rhs[i] - c[i] * c1[i + 1]) / b[i];
+        }
+
+        for i in 0..n.saturating_sub(1) {
+            c2[i] = 2.0 * coords[i + 1] - c1[i + 1];
+        }
+        c2[n - 1] = (coords[n] + c1[n - 1]) / 2.0;
+
+        (c1, c2)
+    }
+
+    let mut out = String::new();
+    let Some(first) = points.first() else {
+        return out;
+    };
+    let _ = write!(&mut out, "M{},{}", fmt_path(first.x), fmt_path(first.y));
+    if points.len() == 1 {
+        return out;
+    }
+    if points.len() == 2 {
+        let p1 = &points[1];
+        let _ = write!(&mut out, "L{},{}", fmt_path(p1.x), fmt_path(p1.y));
+        return out;
+    }
+
+    let mut xs: Vec<f64> = Vec::with_capacity(points.len());
+    let mut ys: Vec<f64> = Vec::with_capacity(points.len());
+    for p in points {
+        xs.push(p.x);
+        ys.push(p.y);
+    }
+
+    let (x1, x2) = compute_control_points(&xs);
+    let (y1, y2) = compute_control_points(&ys);
+
+    for i in 0..points.len().saturating_sub(1) {
+        let p = &points[i + 1];
+        let _ = write!(
+            &mut out,
+            "C{},{},{},{},{},{}",
+            fmt_path(x1[i]),
+            fmt_path(y1[i]),
+            fmt_path(x2[i]),
+            fmt_path(y2[i]),
+            fmt_path(p.x),
+            fmt_path(p.y)
+        );
+    }
+
+    out
+}
+
 // Ported from D3 `curveStepAfter` (d3-shape v3.x).
 pub(super) fn curve_step_after_path_d(points: &[crate::model::LayoutPoint]) -> String {
     let mut out = String::new();

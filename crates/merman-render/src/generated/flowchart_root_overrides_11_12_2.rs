@@ -29,6 +29,24 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_docs_flowchart_markdown_formatting_008" => {
             Some(("0 0 353.203125 118", "353.203"))
         }
+        "upstream_docs_flowchart_a_node_with_text_004" => Some(("0 -50 260.90625 120", "260.906")),
+        "upstream_docs_flowchart_basic_support_for_fontawesome_234" => {
+            Some(("0 0 438.78125 174", "438.781"))
+        }
+        "upstream_docs_flowchart_css_classes_231" => Some(("0 0 370.734375 70", "370.734")),
+        "upstream_docs_flowchart_example_flowchart_with_new_shapes_041" => {
+            Some(("0 0 197.53125 681.9603271484375", "197.531"))
+        }
+        "upstream_docs_flowchart_graph_declarations_with_spaces_between_vertices_and_link_and_without_semicolon_240" => {
+            Some(("0 0 752.8125 174", "752.812"))
+        }
+        "upstream_docs_flowchart_minimum_length_of_a_link_182" => {
+            Some(("0 0 234.78125 566.53125", "234.781"))
+        }
+        "upstream_docs_flowchart_minimum_length_of_a_link_184" => {
+            Some(("0 0 234.78125 566.53125", "234.781"))
+        }
+        "upstream_docs_flowchart_parameters_136" => Some(("0 0 192.984375 112", "192.984")),
         "upstream_flowchart_v2_stadium_shape_spec" => {
             Some(("-96.54400634765625 -48 610.109375 606", "610.109"))
         }

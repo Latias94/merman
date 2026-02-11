@@ -176,6 +176,20 @@ pub(crate) struct FlowNode {
     #[serde(rename = "layoutShape")]
     pub layout_shape: Option<String>,
     #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub form: Option<String>,
+    #[serde(default)]
+    pub pos: Option<String>,
+    #[serde(default)]
+    pub img: Option<String>,
+    #[serde(default)]
+    pub constraint: Option<String>,
+    #[serde(default, rename = "assetWidth")]
+    pub asset_width: Option<f64>,
+    #[serde(default, rename = "assetHeight")]
+    pub asset_height: Option<f64>,
+    #[serde(default)]
     pub classes: Vec<String>,
     #[serde(default)]
     pub styles: Vec<String>,
@@ -207,6 +221,10 @@ pub(crate) struct FlowEdge {
     pub classes: Vec<String>,
     #[serde(default)]
     pub style: Vec<String>,
+    #[serde(default)]
+    pub animate: Option<bool>,
+    #[serde(default)]
+    pub animation: Option<String>,
     pub length: usize,
 }
 

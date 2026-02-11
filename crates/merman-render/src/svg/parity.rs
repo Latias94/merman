@@ -708,6 +708,10 @@ fn curve_linear_path_d(points: &[crate::model::LayoutPoint]) -> String {
     curve::curve_linear_path_d(points)
 }
 
+fn curve_natural_path_d(points: &[crate::model::LayoutPoint]) -> String {
+    curve::curve_natural_path_d(points)
+}
+
 // Ported from D3 `curveStepAfter` (d3-shape v3.x).
 fn curve_step_after_path_d(points: &[crate::model::LayoutPoint]) -> String {
     curve::curve_step_after_path_d(points)
