@@ -78,6 +78,18 @@
       "url": "https://github.com/braintree/sanitize-url.git",
       "ref": "v7.1.1",
       "commit": "b1e8d50e4066a9af00fa042176676374747f754b"
+    },
+    "mermaid-cli": {
+      "path": "repo-ref/mermaid-cli",
+      "url": "https://github.com/mermaid-js/mermaid-cli",
+      "ref": "master",
+      "commit": "f87dcd0c9049a58ba75eda6d6dc890e2285be850"
+    },
+    "zenuml-core": {
+      "path": "repo-ref/zenuml-core",
+      "url": "https://github.com/mermaid-js/zenuml-core",
+      "ref": "v3.45.4",
+      "commit": "2b0847a22ba0e95c1c70877af4c04e4e6c51c8b6"
     }
   }
 }
