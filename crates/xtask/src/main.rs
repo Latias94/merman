@@ -10970,16 +10970,21 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         } else {
             "install"
         };
-        let status = Command::new("npm")
-            .arg(npm_cmd)
-            .current_dir(&tools_root)
-            .status()
-            .map_err(|err| {
-                XtaskError::UpstreamSvgFailed(format!(
-                    "failed to run `npm {npm_cmd}` in {}: {err}",
-                    tools_root.display()
-                ))
-            })?;
+        let mut cmd = if cfg!(windows) {
+            let mut cmd = Command::new("cmd");
+            cmd.arg("/c").arg("npm").arg(npm_cmd);
+            cmd
+        } else {
+            let mut cmd = Command::new("npm");
+            cmd.arg(npm_cmd);
+            cmd
+        };
+        let status = cmd.current_dir(&tools_root).status().map_err(|err| {
+            XtaskError::UpstreamSvgFailed(format!(
+                "failed to run `npm {npm_cmd}` in {}: {err}",
+                tools_root.display()
+            ))
+        })?;
         if !status.success() {
             return Err(XtaskError::UpstreamSvgFailed(format!(
                 "npm {npm_cmd} failed in {}",
@@ -11190,7 +11195,30 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 }
                 child.wait()
             } else {
-                let mut cmd = Command::new(mmdc);
+                let mut cmd = if cfg!(windows) {
+                    match mmdc.extension().and_then(|s| s.to_str()) {
+                        Some(ext)
+                            if ext.eq_ignore_ascii_case("cmd")
+                                || ext.eq_ignore_ascii_case("bat") =>
+                        {
+                            let mut cmd = Command::new("cmd");
+                            cmd.arg("/c").arg(mmdc);
+                            cmd
+                        }
+                        Some(ext) if ext.eq_ignore_ascii_case("ps1") => {
+                            let mut cmd = Command::new("powershell");
+                            cmd.arg("-NoProfile")
+                                .arg("-ExecutionPolicy")
+                                .arg("Bypass")
+                                .arg("-File")
+                                .arg(mmdc);
+                            cmd
+                        }
+                        _ => Command::new(mmdc),
+                    }
+                } else {
+                    Command::new(mmdc)
+                };
                 cmd.arg("-i")
                     .arg(&mmd_path)
                     .arg("-o")

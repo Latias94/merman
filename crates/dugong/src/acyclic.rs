@@ -98,10 +98,9 @@ fn dfs_fas(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<EdgeKey> {
         stack.remove(v);
     }
 
-    let node_ids = g.node_ids();
     // Dagre's `dfsFAS` iterates nodes in `g.nodes()` order (insertion order).
-    for v in node_ids {
-        dfs(g, &v, &mut visited, &mut stack, &mut fas);
+    for v in g.nodes() {
+        dfs(g, v, &mut visited, &mut stack, &mut fas);
     }
     fas
 }

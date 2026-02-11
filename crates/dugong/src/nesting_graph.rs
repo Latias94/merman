@@ -66,11 +66,9 @@ fn tree_depths(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> BTreeMap<String, 
 }
 
 fn sum_weights(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> f64 {
-    g.edge_keys()
-        .iter()
-        .filter_map(|k| g.edge_by_key(k))
-        .map(|e| e.weight)
-        .sum()
+    let mut out: f64 = 0.0;
+    g.for_each_edge(|_k, e| out += e.weight);
+    out
 }
 
 fn dfs(
@@ -196,11 +194,9 @@ pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         let _ = gl;
     }
 
-    for k in g.edge_keys() {
-        if let Some(e) = g.edge_mut_by_key(&k) {
-            e.minlen *= node_sep.max(1);
-        }
-    }
+    g.for_each_edge_mut(|_k, e| {
+        e.minlen *= node_sep.max(1);
+    });
 
     let weight = sum_weights(g) + 1.0;
 
@@ -258,12 +254,13 @@ pub fn cleanup(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         g.graph_mut().nesting_root = None;
     }
 
-    let keys: Vec<EdgeKey> = g.edge_keys();
-    for k in keys {
-        if let Some(e) = g.edge_by_key(&k) {
-            if e.nesting_edge {
-                let _ = g.remove_edge_key(&k);
-            }
+    let mut to_remove: Vec<EdgeKey> = Vec::new();
+    g.for_each_edge(|k, e| {
+        if e.nesting_edge {
+            to_remove.push(k.clone());
         }
+    });
+    for k in to_remove {
+        let _ = g.remove_edge_key(&k);
     }
 }

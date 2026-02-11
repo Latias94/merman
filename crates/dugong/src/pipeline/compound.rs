@@ -5,11 +5,12 @@ use crate::{EdgeLabel, GraphLabel, NodeLabel};
 
 pub(super) fn remove_border_nodes(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     // First pass: update compound-node geometry from its border nodes.
-    let node_ids = g.node_ids();
-    for v in &node_ids {
-        if g.children(v).is_empty() {
-            continue;
-        }
+    let compound_nodes: Vec<String> = g
+        .nodes()
+        .filter(|v| !g.children(v).is_empty())
+        .map(|s| s.to_string())
+        .collect();
+    for v in &compound_nodes {
         let Some(node) = g.node(v).cloned() else {
             continue;
         };
@@ -66,14 +67,11 @@ pub(super) fn remove_border_nodes(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, 
 
     // Second pass: remove all border dummy nodes.
     let mut to_remove: Vec<String> = Vec::new();
-    for v in g.node_ids() {
-        let Some(node) = g.node(&v) else {
-            continue;
-        };
-        if node.dummy.as_deref() == Some("border") {
-            to_remove.push(v);
+    g.for_each_node(|id, n| {
+        if n.dummy.as_deref() == Some("border") {
+            to_remove.push(id.to_string());
         }
-    }
+    });
     for v in to_remove {
         let _ = g.remove_node(&v);
     }

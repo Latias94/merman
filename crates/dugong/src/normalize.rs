@@ -28,8 +28,16 @@ fn add_dummy_node(
 
 pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     g.graph_mut().dummy_chains.clear();
-    let edge_keys = g.edge_keys();
-    for e in edge_keys {
+    let to_normalize: Vec<_> = g
+        .edges()
+        .filter(|e| {
+            let v_rank = g.node(&e.v).and_then(|n| n.rank).unwrap_or(0);
+            let w_rank = g.node(&e.w).and_then(|n| n.rank).unwrap_or(0);
+            w_rank != v_rank + 1
+        })
+        .cloned()
+        .collect();
+    for e in to_normalize {
         normalize_edge(g, e);
     }
 }

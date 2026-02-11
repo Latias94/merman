@@ -8,8 +8,8 @@ use crate::graphlib::Graph;
 use crate::{EdgeLabel, GraphLabel, NodeLabel, Point, SelfEdge};
 
 pub fn remove_self_edges(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
-    let edge_keys = g.edge_keys();
-    for ek in edge_keys {
+    let self_loop_keys: Vec<_> = g.edges().filter(|ek| ek.v == ek.w).cloned().collect();
+    for ek in self_loop_keys {
         if ek.v != ek.w {
             continue;
         }
@@ -72,8 +72,13 @@ pub fn insert_self_edges(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
 }
 
 pub fn position_self_edges(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
-    let node_ids = g.node_ids();
-    for id in node_ids {
+    let mut ids: Vec<String> = Vec::new();
+    g.for_each_node(|id, n| {
+        if n.dummy.as_deref() == Some("selfedge") {
+            ids.push(id.to_string());
+        }
+    });
+    for id in ids {
         let Some(node) = g.node(&id).cloned() else {
             continue;
         };

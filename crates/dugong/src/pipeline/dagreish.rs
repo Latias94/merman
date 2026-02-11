@@ -15,17 +15,15 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     // (we later materialize label nodes in `normalize::run`).
     g.graph_mut().ranksep /= 2.0;
     let rankdir = g.graph().rankdir;
-    for ek in g.edge_keys() {
-        if let Some(e) = g.edge_mut_by_key(&ek) {
-            e.minlen = e.minlen.max(1).saturating_mul(2);
-            if !matches!(e.labelpos, LabelPos::C) {
-                match rankdir {
-                    RankDir::TB | RankDir::BT => e.width += e.labeloffset,
-                    RankDir::LR | RankDir::RL => e.height += e.labeloffset,
-                }
+    g.for_each_edge_mut(|_ek, e| {
+        e.minlen = e.minlen.max(1).saturating_mul(2);
+        if !matches!(e.labelpos, LabelPos::C) {
+            match rankdir {
+                RankDir::TB | RankDir::BT => e.width += e.labeloffset,
+                RankDir::LR | RankDir::RL => e.height += e.labeloffset,
             }
         }
-    }
+    });
 
     // Dagre removes self-loops before ranking/normalization and re-inserts them during positioning
     // via dummy "selfedge" nodes. This avoids invalid rank constraints and gives self-loops a
@@ -210,20 +208,14 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     // `translateGraph(...)` behavior.
     let mut min_x: f64 = f64::INFINITY;
     let mut min_y: f64 = f64::INFINITY;
-    for id in g.node_ids() {
-        let Some(n) = g.node(&id) else {
-            continue;
-        };
+    g.for_each_node(|_id, n| {
         let (Some(x), Some(y)) = (n.x, n.y) else {
-            continue;
+            return;
         };
         min_x = min_x.min(x - n.width / 2.0);
         min_y = min_y.min(y - n.height / 2.0);
-    }
-    for ek in g.edge_keys() {
-        let Some(lbl) = g.edge_by_key(&ek) else {
-            continue;
-        };
+    });
+    g.for_each_edge(|_ek, lbl| {
         // Match Dagre's `translateGraph(...)`: it computes min/max based on nodes and edge-label
         // boxes, but does not include intermediate edge points. This can leave some internal spline
         // control points with negative coordinates (which Mermaid preserves in `data-points`), while
@@ -233,7 +225,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
             min_x = min_x.min(x - lbl.width / 2.0);
             min_y = min_y.min(y - lbl.height / 2.0);
         }
-    }
+    });
 
     if min_x.is_finite() && min_y.is_finite() {
         // Dagre shifts the graph by `-(min - margin)` so the smallest x/y becomes `margin`.
@@ -243,30 +235,26 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
         min_y -= g.graph().marginy;
         let dx = -min_x;
         let dy = -min_y;
-        for id in g.node_ids() {
-            if let Some(n) = g.node_mut(&id) {
-                if let Some(x) = n.x {
-                    n.x = Some(x + dx);
-                }
-                if let Some(y) = n.y {
-                    n.y = Some(y + dy);
-                }
+        g.for_each_node_mut(|_id, n| {
+            if let Some(x) = n.x {
+                n.x = Some(x + dx);
             }
-        }
-        for ek in g.edge_keys() {
-            if let Some(lbl) = g.edge_mut_by_key(&ek) {
-                for p in &mut lbl.points {
-                    p.x += dx;
-                    p.y += dy;
-                }
-                if let Some(x) = lbl.x {
-                    lbl.x = Some(x + dx);
-                }
-                if let Some(y) = lbl.y {
-                    lbl.y = Some(y + dy);
-                }
+            if let Some(y) = n.y {
+                n.y = Some(y + dy);
             }
-        }
+        });
+        g.for_each_edge_mut(|_ek, lbl| {
+            for p in &mut lbl.points {
+                p.x += dx;
+                p.y += dy;
+            }
+            if let Some(x) = lbl.x {
+                lbl.x = Some(x + dx);
+            }
+            if let Some(y) = lbl.y {
+                lbl.y = Some(y + dy);
+            }
+        });
     }
 
     // Ensure every edge has at least one internal point (so D3 `curveBasis` emits cubic beziers),

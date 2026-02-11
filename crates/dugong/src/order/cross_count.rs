@@ -38,15 +38,16 @@ where
 
     let mut south_entries: Vec<SouthEntry> = Vec::new();
     for v in north {
-        let mut entries: Vec<SouthEntry> = g
-            .out_edges(v, None)
-            .into_iter()
-            .filter_map(|e| {
-                let pos = *south_pos.get(e.w.as_str())?;
-                let weight = g.edge_by_key(&e).map(|e| e.weight()).unwrap_or(0.0);
-                Some(SouthEntry { pos, weight })
-            })
-            .collect();
+        let mut entries: Vec<SouthEntry> = Vec::new();
+        g.for_each_out_edge(v, None, |ek, lbl| {
+            let Some(&pos) = south_pos.get(ek.w.as_str()) else {
+                return;
+            };
+            entries.push(SouthEntry {
+                pos,
+                weight: lbl.weight(),
+            });
+        });
         entries.sort_by_key(|e| e.pos);
         south_entries.extend(entries);
     }

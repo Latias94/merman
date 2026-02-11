@@ -165,31 +165,44 @@ where
     E: Default + 'static,
     G: Default,
 {
+    let mut min_rank: i32 = i32::MAX;
     let mut max_rank: i32 = i32::MIN;
-    let mut ranks: BTreeMap<i32, Vec<(usize, String)>> = BTreeMap::new();
-    for v in g.node_ids() {
-        let Some(node) = g.node(&v) else {
+    let mut entries: Vec<(i32, usize, String)> = Vec::new();
+
+    for id in g.nodes() {
+        let Some(node) = g.node(id) else {
             continue;
         };
         let Some(rank) = node.rank else {
             continue;
         };
-        let order = node.order.unwrap_or(0);
-        ranks.entry(rank).or_default().push((order, v.clone()));
+        min_rank = min_rank.min(rank);
         max_rank = max_rank.max(rank);
+        entries.push((rank, node.order.unwrap_or(0), id.to_string()));
     }
 
     if max_rank == i32::MIN {
         return Vec::new();
     }
 
-    let mut out: Vec<Vec<String>> = Vec::with_capacity((max_rank + 1).max(0) as usize);
-    for rank in 0..=max_rank {
-        let mut entries = ranks.remove(&rank).unwrap_or_default();
-        entries.sort_by_key(|(o, _)| *o);
-        out.push(entries.into_iter().map(|(_, v)| v).collect());
+    let shift = if min_rank < 0 { -min_rank } else { 0 };
+    let len = (max_rank + shift + 1).max(0) as usize;
+    let mut layers: Vec<Vec<(usize, String)>> = vec![Vec::new(); len];
+
+    for (rank, order, id) in entries {
+        let idx = (rank + shift).max(0) as usize;
+        if idx < layers.len() {
+            layers[idx].push((order, id));
+        }
     }
-    out
+
+    layers
+        .into_iter()
+        .map(|mut layer| {
+            layer.sort_by_key(|(o, _)| *o);
+            layer.into_iter().map(|(_, id)| id).collect()
+        })
+        .collect()
 }
 
 pub fn time_to_writer<T>(name: &str, writer: &mut dyn std::io::Write, f: impl FnOnce() -> T) -> T {
@@ -212,21 +225,19 @@ where
     G: Default,
 {
     let mut min_rank: i32 = i32::MAX;
-    for v in g.node_ids() {
-        if let Some(rank) = g.node(&v).and_then(|n| n.rank) {
+    g.for_each_node(|_id, n| {
+        if let Some(rank) = n.rank {
             min_rank = min_rank.min(rank);
         }
-    }
+    });
     if min_rank == i32::MAX {
         return;
     }
-    for v in g.node_ids() {
-        if let Some(n) = g.node_mut(&v) {
-            if let Some(rank) = n.rank {
-                n.rank = Some(rank - min_rank);
-            }
+    g.for_each_node_mut(|_id, n| {
+        if let Some(rank) = n.rank {
+            n.rank = Some(rank - min_rank);
         }
-    }
+    });
 }
 
 pub fn remove_empty_ranks(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
@@ -234,27 +245,26 @@ pub fn remove_empty_ranks(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         return;
     };
 
-    let mut ranks: Vec<i32> = Vec::new();
-    for v in g.node_ids() {
-        if let Some(rank) = g.node(&v).and_then(|n| n.rank) {
-            ranks.push(rank);
+    let mut offset: i32 = i32::MAX;
+    g.for_each_node(|_id, n| {
+        if let Some(rank) = n.rank {
+            offset = offset.min(rank);
         }
-    }
-    if ranks.is_empty() {
+    });
+    if offset == i32::MAX {
         return;
     }
-    let offset = ranks.iter().min().copied().unwrap_or(0);
 
     let mut max_idx: usize = 0;
     let mut layers: BTreeMap<usize, Vec<String>> = BTreeMap::new();
-    for v in g.node_ids() {
-        let Some(rank) = g.node(&v).and_then(|n| n.rank) else {
-            continue;
+    g.for_each_node(|id, n| {
+        let Some(rank) = n.rank else {
+            return;
         };
         let idx = (rank - offset).max(0) as usize;
         max_idx = max_idx.max(idx);
-        layers.entry(idx).or_default().push(v);
-    }
+        layers.entry(idx).or_default().push(id.to_string());
+    });
 
     let mut delta: i32 = 0;
     for i in 0..=max_idx {

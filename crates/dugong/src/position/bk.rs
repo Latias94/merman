@@ -269,11 +269,10 @@ pub fn horizontal_compaction(
     {
         let mut set = |elem: &str| {
             let mut best: f64 = 0.0;
-            for e in block_g.in_edges(elem, None) {
-                let w = *block_g.edge_by_key(&e).unwrap_or(&0.0);
-                let x_v = xs.get(&e.v).copied().unwrap_or(0.0);
-                best = best.max(x_v + w);
-            }
+            block_g.for_each_in_edge(elem, None, |ek, w| {
+                let x_v = xs.get(&ek.v).copied().unwrap_or(0.0);
+                best = best.max(x_v + *w);
+            });
             xs.insert(elem.to_string(), best);
         };
         let next = |elem: &str| {
@@ -290,11 +289,10 @@ pub fn horizontal_compaction(
     {
         let mut set = |elem: &str| {
             let mut min: f64 = f64::INFINITY;
-            for e in block_g.out_edges(elem, None) {
-                let w = *block_g.edge_by_key(&e).unwrap_or(&0.0);
-                let x_w = xs.get(&e.w).copied().unwrap_or(0.0);
-                min = min.min(x_w - w);
-            }
+            block_g.for_each_out_edge(elem, None, |ek, w| {
+                let x_w = xs.get(&ek.w).copied().unwrap_or(0.0);
+                min = min.min(x_w - *w);
+            });
 
             let node = g.node(elem);
             let Some(node) = node else {
