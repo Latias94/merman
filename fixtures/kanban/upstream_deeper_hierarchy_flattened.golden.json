@@ -1,80 +1,80 @@
 {
   "diagramType": "kanban",
   "model": {
-    "edges": [],
-    "nodes": [
-      {
-        "id": "root",
-        "isGroup": true,
-        "label": "root",
-        "level": 2,
-        "look": "classic",
-        "shape": "kanbanSection",
-        "ticket": null
-      },
-      {
-        "assigned": null,
-        "cssStyles": [
-          "text-align: left"
-        ],
-        "icon": null,
-        "id": "child1",
-        "isGroup": false,
-        "label": "child1",
-        "level": 4,
-        "parentId": "root",
-        "priority": null,
-        "rx": 5,
-        "ry": 5,
-        "shape": "kanbanItem",
-        "ticket": null
-      },
-      {
-        "assigned": null,
-        "cssStyles": [
-          "text-align: left"
-        ],
-        "icon": null,
-        "id": "leaf1",
-        "isGroup": false,
-        "label": "leaf1",
-        "level": 6,
-        "parentId": "root",
-        "priority": null,
-        "rx": 5,
-        "ry": 5,
-        "shape": "kanbanItem",
-        "ticket": null
-      },
-      {
-        "assigned": null,
-        "cssStyles": [
-          "text-align: left"
-        ],
-        "icon": null,
-        "id": "child2",
-        "isGroup": false,
-        "label": "child2",
-        "level": 4,
-        "parentId": "root",
-        "priority": null,
-        "rx": 5,
-        "ry": 5,
-        "shape": "kanbanItem",
-        "ticket": null
-      }
-    ],
-    "other": {},
+    "type": "kanban",
     "sections": [
       {
         "id": "root",
-        "isGroup": false,
         "label": "root",
         "level": 2,
+        "width": 200,
         "padding": 10,
-        "width": 200
+        "isGroup": false
       }
     ],
-    "type": "kanban"
+    "nodes": [
+      {
+        "id": "root",
+        "label": "root",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "child1",
+        "parentId": "root",
+        "label": "child1",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "leaf1",
+        "parentId": "root",
+        "label": "leaf1",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 6,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "child2",
+        "parentId": "root",
+        "label": "child2",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      }
+    ],
+    "edges": [],
+    "other": {}
   }
 }

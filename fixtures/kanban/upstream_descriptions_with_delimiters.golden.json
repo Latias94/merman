@@ -1,46 +1,46 @@
 {
   "diagramType": "kanban",
   "model": {
-    "edges": [],
-    "nodes": [
-      {
-        "id": "root",
-        "isGroup": true,
-        "label": "String containing []",
-        "level": 2,
-        "look": "classic",
-        "shape": "kanbanSection",
-        "ticket": null
-      },
-      {
-        "assigned": null,
-        "cssStyles": [
-          "text-align: left"
-        ],
-        "icon": null,
-        "id": "child1",
-        "isGroup": false,
-        "label": "String containing ()",
-        "level": 4,
-        "parentId": "root",
-        "priority": null,
-        "rx": 5,
-        "ry": 5,
-        "shape": "kanbanItem",
-        "ticket": null
-      }
-    ],
-    "other": {},
+    "type": "kanban",
     "sections": [
       {
         "id": "root",
-        "isGroup": false,
         "label": "String containing []",
         "level": 2,
+        "width": 200,
         "padding": 20,
-        "width": 200
+        "isGroup": false
       }
     ],
-    "type": "kanban"
+    "nodes": [
+      {
+        "id": "root",
+        "label": "String containing []",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "child1",
+        "parentId": "root",
+        "label": "String containing ()",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      }
+    ],
+    "edges": [],
+    "other": {}
   }
 }

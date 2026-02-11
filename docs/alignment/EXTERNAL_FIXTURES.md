@@ -42,6 +42,11 @@ Source repo: `repo-ref/mermaid-rs-renderer` (see `repo-ref/REPOS.lock.json`).
 - `fixtures/state/mmdr_tests_state_state_note.mmd`
   - Source: `repo-ref/mermaid-rs-renderer/tests/fixtures/state/note.mmd`
 
+### Mindmap
+
+- `fixtures/mindmap/mmdr_tests_mindmap_basic.mmd`
+  - Source: `repo-ref/mermaid-rs-renderer/tests/fixtures/mindmap/basic.mmd`
+
 ### Class
 
 - `fixtures/class/mmdr_tests_class_class_basic.mmd`
@@ -53,6 +58,11 @@ Source repo: `repo-ref/mermaid-rs-renderer` (see `repo-ref/REPOS.lock.json`).
 
 - `fixtures/gantt/mmdr_tests_gantt_gantt_basic.mmd`
   - Source: `repo-ref/mermaid-rs-renderer/tests/fixtures/gantt/basic.mmd`
+
+### Kanban
+
+- `fixtures/kanban/mmdr_tests_kanban_basic.mmd`
+  - Source: `repo-ref/mermaid-rs-renderer/tests/fixtures/kanban/basic.mmd`
 
 ## mermaid-rs-renderer issue reproductions
 

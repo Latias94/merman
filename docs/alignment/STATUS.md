@@ -76,10 +76,12 @@ Recent progress (2026-02-11): imported an additional batch of Class docs fixture
 keeping the global parity-root gate green.
 Recent progress (2026-02-11): imported an additional batch of GitGraph docs fixtures (with upstream SVG baselines),
 keeping the global parity-root gate green.
+Recent progress (2026-02-11): imported external fixtures from `mermaid-rs-renderer` for Mindmap and Kanban
+(with upstream SVG baselines), keeping the global parity-root gate green.
 As of 2026-02-10, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
 for the current fixture set (diagram subtree parity).
 As of 2026-02-11, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 0 DOM
-mismatches for the current fixture set (688/688 upstream SVG baselines, including root viewport parity).
+mismatches for the current fixture set (695/695 upstream SVG baselines, including root viewport parity).
 
 Post-baseline hardening plan (coverage growth + override consolidation + CI guardrails) is tracked in
 `docs/alignment/PARITY_HARDENING_PLAN.md`.

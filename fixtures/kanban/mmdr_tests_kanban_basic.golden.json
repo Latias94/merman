@@ -4,18 +4,26 @@
     "type": "kanban",
     "sections": [
       {
-        "id": "root",
-        "label": "root",
+        "id": "todo",
+        "label": "To Do",
         "level": 2,
         "width": 200,
-        "padding": 10,
+        "padding": 20,
+        "isGroup": false
+      },
+      {
+        "id": "done",
+        "label": "Done",
+        "level": 2,
+        "width": 200,
+        "padding": 20,
         "isGroup": false
       }
     ],
     "nodes": [
       {
-        "id": "root",
-        "label": "root",
+        "id": "todo",
+        "label": "To Do",
         "isGroup": true,
         "ticket": null,
         "shape": "kanbanSection",
@@ -23,9 +31,9 @@
         "look": "classic"
       },
       {
-        "id": "child1",
-        "parentId": "root",
-        "label": "child1",
+        "id": "t1",
+        "parentId": "todo",
+        "label": "Task 1",
         "isGroup": false,
         "ticket": null,
         "priority": null,
@@ -40,9 +48,18 @@
         ]
       },
       {
-        "id": "child2",
-        "parentId": "root",
-        "label": "child2",
+        "id": "done",
+        "label": "Done",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "t2",
+        "parentId": "done",
+        "label": "Task 2",
         "isGroup": false,
         "ticket": null,
         "priority": null,
