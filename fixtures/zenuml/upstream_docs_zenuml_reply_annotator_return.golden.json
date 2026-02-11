@@ -6,34 +6,41 @@
     "accTitle": null,
     "accDescr": null,
     "actorOrder": [
-      "A1",
-      "A2"
+      "A",
+      "B"
     ],
     "actors": {
-      "A1": {
-        "name": "A1",
-        "description": "A1",
+      "A": {
+        "name": "A",
+        "description": "A",
         "wrap": false,
         "type": "participant",
         "links": {},
         "properties": {}
       },
-      "A2": {
-        "name": "A2",
-        "description": "A2(with, parameters)",
+      "B": {
+        "name": "B",
+        "description": "B",
         "wrap": false,
         "type": "participant",
         "links": {},
         "properties": {}
       }
     },
-    "messages": [],
+    "messages": [
+      {
+        "id": "0",
+        "from": "A",
+        "to": "B",
+        "message": "result",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      }
+    ],
     "notes": [],
     "boxes": [],
-    "createdActors": {
-      "A1": 0,
-      "A2": 0
-    },
+    "createdActors": {},
     "destroyedActors": {},
     "constants": {
       "placement": {

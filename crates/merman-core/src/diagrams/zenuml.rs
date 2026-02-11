@@ -14,6 +14,7 @@ pub fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
 
     let mut saw_header = false;
     let mut pending_comments: Vec<String> = Vec::new();
+    let mut pending_return_annotator: bool = false;
 
     #[derive(Debug, Clone)]
     enum BlockKind {
@@ -98,6 +99,34 @@ pub fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
         }
 
         None
+    }
+
+    fn translate_assignment(line: &str) -> Option<(String, String, String)> {
+        // Minimal supported syntax (ZenUML docs "Reply message"):
+        //   a = A.SyncMessage()
+        //   SomeType a = A.SyncMessage()
+        //
+        // Returns (var, actor, call_text).
+        let (lhs, rhs) = line.split_once('=')?;
+        let lhs = lhs.trim();
+        let rhs = rhs.trim();
+        if lhs.is_empty() || rhs.is_empty() {
+            return None;
+        }
+
+        let var = lhs.split_whitespace().last()?.trim();
+        if var.is_empty() {
+            return None;
+        }
+
+        let (actor, call) = rhs.split_once('.')?;
+        let actor = actor.trim();
+        let call = call.trim();
+        if actor.is_empty() || call.is_empty() {
+            return None;
+        }
+
+        Some((var.to_string(), actor.to_string(), call.to_string()))
     }
 
     fn translate_message_line(line: &str) -> Option<String> {
@@ -228,6 +257,17 @@ pub fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
         // - a comment on a message should be rendered
         if let Some(c) = line.strip_prefix("//") {
             pending_comments.push(c.trim().to_string());
+            continue;
+        }
+
+        // ZenUML reply annotators:
+        //   @return
+        //   @reply
+        //
+        // These affect the next message. We approximate this by forcing the next message to use
+        // a Mermaid-style "return" arrow (`-->>`) regardless of the original arrow.
+        if line.eq_ignore_ascii_case("@return") || line.eq_ignore_ascii_case("@reply") {
+            pending_return_annotator = true;
             continue;
         }
 
@@ -449,6 +489,16 @@ pub fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
             continue;
         }
 
+        // Reply assignments must be handled before generic `Actor.Method(...)` parsing, because
+        // an assignment line contains a `.` and would otherwise be misinterpreted as a sync call.
+        if let Some((var, actor, call)) = translate_assignment(line) {
+            par_maybe_and(&mut stack, &mut out);
+            flush_pending_comments_as_notes(&mut pending_comments, &mut out, &actor, &actor);
+            out.push(format!("{actor}->>{actor}: {call} => {var}"));
+            pending_return_annotator = false;
+            continue;
+        }
+
         // Sync messages without blocks:
         //   A.SyncMessage
         //   A.SyncMessage(with, parameters)
@@ -463,8 +513,25 @@ pub fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
             }
         }
 
-        // Messages.
-        if let Some(seq_line) = translate_message_line(line) {
+        // Return statements inside sync call blocks.
+        if let Some(rest) = line.strip_prefix("return ") {
+            let Some(actor) = stack.last().and_then(|b| match b {
+                BlockKind::SyncCall { actor } => Some(actor.clone()),
+                _ => None,
+            }) else {
+                return Err(Error::DiagramParse {
+                    diagram_type: meta.diagram_type.clone(),
+                    message: format!("unsupported zenuml statement: {line}"),
+                });
+            };
+            par_maybe_and(&mut stack, &mut out);
+            flush_pending_comments_as_notes(&mut pending_comments, &mut out, &actor, &actor);
+            out.push(format!("{actor}-->>{actor}: {}", rest.trim()));
+            pending_return_annotator = false;
+            continue;
+        }
+
+        if let Some(mut seq_line) = translate_message_line(line) {
             par_maybe_and(&mut stack, &mut out);
             let (lhs, _) = if let Some((a, b)) = line.split_once(':') {
                 (a.trim(), Some(b.trim()))
@@ -479,6 +546,11 @@ pub fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
                 ("", "")
             };
             flush_pending_comments_as_notes(&mut pending_comments, &mut out, from, to);
+            if pending_return_annotator {
+                // Convert `->>` to `-->>` for return/reply.
+                seq_line = seq_line.replace("->>", "-->>");
+                pending_return_annotator = false;
+            }
             out.push(seq_line);
             continue;
         }
@@ -531,6 +603,26 @@ par {
   Alice->Bob: Hello guys!
   Alice->John: Hello guys!
 }
+"#;
+        let parsed =
+            futures::executor::block_on(engine.parse_diagram(input, ParseOptions::lenient()))
+                .unwrap()
+                .unwrap();
+        assert_eq!(parsed.meta.diagram_type, "zenuml");
+        assert!(parsed.model.get("messages").is_some());
+    }
+
+    #[test]
+    fn zenuml_reply_message_forms_translate() {
+        let engine = Engine::new();
+        let input = r#"zenuml
+SomeType a = A.SyncMessage()
+a = A.SyncMessage()
+A.SyncMessage() {
+  return result
+}
+@return
+A->B: ok
 "#;
         let parsed =
             futures::executor::block_on(engine.parse_diagram(input, ParseOptions::lenient()))

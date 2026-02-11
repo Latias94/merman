@@ -57,24 +57,22 @@ Current status:
 - Translation-based compatibility mode implemented in:
   - `crates/merman-core/src/diagrams/zenuml.rs`
 
-TODO (incremental batches from docs):
+Imported from docs (snapshot-gated):
 
-- Sync message / method-call syntax:
-  - `A.SyncMessage(...) { ... }`
-- Creation messages:
-  - `new A1`
-  - `new A2(with, parameters)`
-- Reply messages:
-  - assignment (`a = A.SyncMessage()`)
-  - `return result`
-  - `@return` / `@reply`
-- Nesting semantics for sync blocks and mixed async messages inside them.
+- Sync message / method-call syntax (`A.SyncMessage(...) { ... }`)
+- Creation messages (`new A1`, `new A2(with, parameters)`)
+- Reply messages (assignment, `return result`, `@return` / `@reply`)
+- `try/catch/finally`
+
+TODO (next incremental batches from docs):
+
+- Nesting semantics for sync blocks and mixed message types inside them.
 - Rendered comments semantics (`// ...`) beyond “comment above next message”.
-- `try/catch/finally` (currently not imported as fixtures).
+- Participant annotators beyond `@Actor` (document the mapping / degradation policy).
+- Negative fixtures: known-unsupported statements should fail deterministically in strict mode.
 
 ## Bookkeeping
 
 - If a fixture batch changes the upstream SVG corpus size, update:
   - `docs/alignment/STATUS.md`
   - `docs/alignment/PARITY_HARDENING_PLAN.md`
-

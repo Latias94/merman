@@ -57,3 +57,9 @@ added, so regressions remain attributable.
   - Source: `repo-ref/mermaid/docs/syntax/zenuml.md` (“Parallel / par”).
 - `fixtures/zenuml/upstream_docs_zenuml_try_catch_finally.mmd`
   - Source: `repo-ref/mermaid/docs/syntax/zenuml.md` (“Try/Catch/Finally”).
+- `fixtures/zenuml/upstream_docs_zenuml_reply_assignments.mmd`
+  - Source: `repo-ref/mermaid/docs/syntax/zenuml.md` (“Reply message / assignment”).
+- `fixtures/zenuml/upstream_docs_zenuml_reply_return_keyword.mmd`
+  - Source: `repo-ref/mermaid/docs/syntax/zenuml.md` (“Reply message / return keyword”).
+- `fixtures/zenuml/upstream_docs_zenuml_reply_annotator_return.mmd`
+  - Source: `repo-ref/mermaid/docs/syntax/zenuml.md` (“Reply message / @return annotator”).
