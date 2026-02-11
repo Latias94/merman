@@ -6,13 +6,13 @@
       {
         "labelStyle": "",
         "shape": "rect",
-        "label": "S1",
+        "label": "s1",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "S1",
+        "id": "s1",
         "dir": null,
-        "domId": "state-S1-0",
+        "domId": "state-s1-0",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -25,13 +25,13 @@
       {
         "labelStyle": "",
         "shape": "rect",
-        "label": "S2",
+        "label": "s2",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "S2",
+        "id": "s2",
         "dir": null,
-        "domId": "state-S2-0",
+        "domId": "state-s2-0",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -42,24 +42,32 @@
         "centerLabel": true
       }
     ],
-    "edges": [],
-    "other": {},
-    "links": {
-      "S2": {
-        "url": "https://example.com",
-        "tooltip": ""
-      },
-      "S1": {
-        "url": "https://example.com",
-        "tooltip": "Go to Example"
+    "edges": [
+      {
+        "id": "edge0",
+        "start": "s1",
+        "end": "s2",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
       }
-    },
+    ],
+    "other": {},
+    "links": {},
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
     "states": {
-      "S1": {
-        "id": "S1",
+      "s1": {
+        "id": "s1",
         "type": "default",
         "descriptions": [],
         "doc": null,
@@ -69,8 +77,8 @@
         "textStyles": [],
         "start": null
       },
-      "S2": {
-        "id": "S2",
+      "s2": {
+        "id": "s2",
         "type": "default",
         "descriptions": [],
         "doc": null,
@@ -81,7 +89,13 @@
         "start": null
       }
     },
-    "relations": [],
+    "relations": [
+      {
+        "id1": "s1",
+        "id2": "s2",
+        "relationTitle": null
+      }
+    ],
     "styleClasses": {}
   }
 }
