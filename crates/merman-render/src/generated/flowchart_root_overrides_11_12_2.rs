@@ -53,6 +53,40 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_flowchart_v2_styled_subgraphs_spec" => {
             Some(("-96.59170532226562 -50 477.859375 844", "477.859"))
         }
+        "upstream_docs_contributing_checkout_a_new_branch_020" => {
+            Some(("0 0 819.421875 382", "819.422"))
+        }
+        "upstream_docs_directives_changing_fontfamily_via_directive_010" => {
+            Some(("0 0 333.03125 224", "333.031"))
+        }
+        "upstream_docs_directives_changing_loglevel_via_directive_011" => {
+            Some(("0 0 333.03125 224", "333.031"))
+        }
+        "upstream_docs_flowchart_custom_icons_238" => Some(("0 0 180.03125 174", "180.031")),
+        "upstream_docs_theming_customizing_themes_with_themevariables_003" => {
+            Some(("0 0 529.14453125 571.28125", "529.145"))
+        }
+        "upstream_docs_flowchart_unicode_text_005" => Some(("0 0 188.09375 70", "188.094")),
+        "upstream_docs_flowchart_a_node_with_round_edges_013" => {
+            Some(("0 0 230.90625 70", "230.906"))
+        }
+        "upstream_docs_flowchart_a_stadium_shaped_node_015" => {
+            Some(("0 0 225.63621520996094 55", "225.636"))
+        }
+        "upstream_docs_flowchart_a_node_in_a_subroutine_shape_017" => {
+            Some(("0 0 231.90625 55", "231.906"))
+        }
+        "upstream_docs_flowchart_a_node_in_a_cylindrical_shape_019" => Some((
+            "0 -0.000003814697265625 96.5 84.37955474853516",
+            "96.5",
+        )),
+        "upstream_docs_flowchart_a_node_in_the_form_of_a_circle_021" => {
+            Some(("0 0 230.46875 230.46875", "230.469"))
+        }
+        "upstream_docs_flowchart_a_node_in_an_asymmetric_shape_023" => {
+            Some(("0 0 225.65625 55", "225.656"))
+        }
+        "upstream_docs_flowchart_a_node_rhombus_025" => Some(("0.5 0 254.90625 254.90625", "254.906")),
         _ => None,
     }
 }
