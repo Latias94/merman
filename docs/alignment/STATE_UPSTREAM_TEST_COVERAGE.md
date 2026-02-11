@@ -113,3 +113,17 @@ Source: `repo-ref/mermaid/packages/mermaid/src/docs/syntax/stateDiagram.md`
 - spaces in state names (`id: description` + later references): `fixtures/state/upstream_stateDiagram_spaces_in_state_names_docs.mmd`
 - `classDef` + `class` statements big example: `fixtures/state/upstream_stateDiagram_docs_classdef_and_class_statements.mmd`
 - frontmatter title (`---\\ntitle: ...\\n---`): `fixtures/state/upstream_stateDiagram_v2_frontmatter_title_docs.mmd`
+
+## `repo-ref/mermaid/docs/syntax/stateDiagram.md`
+
+Source: `repo-ref/mermaid/docs/syntax/stateDiagram.md`
+
+- Imported syntax-doc fixtures (complex blocks, CLI baselines enabled):
+  - `fixtures/state/upstream_docs_statediagram_state_diagrams_002.mmd`
+  - `fixtures/state/upstream_docs_statediagram_composite_states_018.mmd`
+  - `fixtures/state/upstream_docs_statediagram_composite_states_020.mmd`
+  - `fixtures/state/upstream_docs_statediagram_composite_states_022.mmd`
+  - `fixtures/state/upstream_docs_statediagram_forks_026.mmd`
+  - `fixtures/state/upstream_docs_statediagram_concurrency_030.mmd`
+  - `fixtures/state/upstream_docs_statediagram_setting_the_direction_of_the_diagram_032.mmd`
+  - `fixtures/state/upstream_docs_statediagram_2_operator_to_apply_a_style_to_a_state_044.mmd`
