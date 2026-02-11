@@ -1,0 +1,98 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Triangle": {
+        "id": "Triangle",
+        "type": "",
+        "label": "Triangle",
+        "text": "Triangle",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Triangle-0",
+        "parent": "BaseShapes",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Rectangle": {
+        "id": "Rectangle",
+        "type": "",
+        "label": "Rectangle",
+        "text": "Rectangle",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "double width",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "double width",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "double height",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "double height",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Rectangle-1",
+        "parent": "BaseShapes",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {
+      "BaseShapes": {
+        "id": "BaseShapes",
+        "domId": "classId-BaseShapes-0",
+        "classIds": [
+          "Triangle",
+          "Rectangle"
+        ]
+      }
+    },
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

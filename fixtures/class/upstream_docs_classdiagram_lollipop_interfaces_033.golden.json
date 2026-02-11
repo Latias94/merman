@@ -1,0 +1,146 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Class01": {
+        "id": "Class01",
+        "type": "",
+        "label": "Class01",
+        "text": "Class01",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "",
+            "id": "draw",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "draw()",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "int amount",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "int amount",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Class01-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Class02": {
+        "id": "Class02",
+        "type": "",
+        "label": "Class02",
+        "text": "Class02",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Class02-1",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "Class01",
+        "id2": "interface0",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "",
+        "relation": {
+          "type1": -1,
+          "type2": 4,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "1",
+        "id1": "Class02",
+        "id2": "interface1",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "",
+        "relation": {
+          "type1": -1,
+          "type2": 4,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "2",
+        "id1": "interface2",
+        "id2": "Class01",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "",
+        "relation": {
+          "type1": 4,
+          "type2": -1,
+          "lineType": 0
+        }
+      }
+    ],
+    "notes": [],
+    "interfaces": [
+      {
+        "id": "interface0",
+        "label": "bar",
+        "classId": "Class01"
+      },
+      {
+        "id": "interface1",
+        "label": "bar",
+        "classId": "Class02"
+      },
+      {
+        "id": "interface2",
+        "label": "foo",
+        "classId": "Class01"
+      }
+    ],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Shape": {
+        "id": "Shape",
+        "type": "",
+        "label": "Shape",
+        "text": "Shape",
+        "cssClasses": "default clickable",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Shape-0",
+        "parent": null,
+        "link": "https://www.github.com/",
+        "linkTarget": "_blank",
+        "tooltip": "This is a tooltip for a link",
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Shape2": {
+        "id": "Shape2",
+        "type": "",
+        "label": "Shape2",
+        "text": "Shape2",
+        "cssClasses": "default clickable",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Shape2-1",
+        "parent": null,
+        "link": "https://www.github.com/",
+        "linkTarget": "_blank",
+        "tooltip": "This is a tooltip for a link",
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

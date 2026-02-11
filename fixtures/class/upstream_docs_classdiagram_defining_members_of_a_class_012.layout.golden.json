@@ -1,0 +1,25 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "BankAccount",
+          "x": 102.68,
+          "y": 96.0,
+          "width": 205.36,
+          "height": 192.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "clusters": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 205.36,
+        "max_y": 192.0
+      }
+    }
+  }
+}

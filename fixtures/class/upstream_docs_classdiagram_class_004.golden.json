@@ -1,0 +1,91 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "BankAccount": {
+        "id": "BankAccount",
+        "type": "",
+        "label": "BankAccount",
+        "text": "BankAccount",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "deposit",
+            "classifier": "",
+            "parameters": "amount",
+            "returnType": "",
+            "displayText": "+deposit(amount)",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "withdrawal",
+            "classifier": "",
+            "parameters": "amount",
+            "returnType": "",
+            "displayText": "+withdrawal(amount)",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "String owner",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+String owner",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "Bigdecimal balance",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+Bigdecimal balance",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-BankAccount-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}
