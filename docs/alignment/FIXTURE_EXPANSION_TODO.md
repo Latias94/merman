@@ -33,6 +33,7 @@ TODO:
 Recently imported (keep gates green after each batch):
 
 - 2026-02-11: Mindmap `mindmap.md` single-node shape snippets (square/rounded/circle/bang/cloud/hexagon/default).
+- 2026-02-11: Architecture `architecture.md` docs examples (`example_002`, `icons_018`).
 
 ## Medium priority (coverage growth)
 

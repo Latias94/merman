@@ -100,3 +100,6 @@ Source: `repo-ref/mermaid/docs/syntax/architecture.md`
 
 - icon-pack example (logos namespace) promoted as parity fixture:
   `fixtures/architecture/upstream_architecture_docs_icons_example.mmd`
+- docs code blocks imported with index-based naming (content-equivalent to the non-indexed docs fixtures):
+  - `fixtures/architecture/upstream_docs_architecture_example_002.mmd`
+  - `fixtures/architecture/upstream_docs_architecture_icons_018.mmd`
