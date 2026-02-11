@@ -54,3 +54,9 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/kanban/kanban.spec.ts`
 - KNBN-30..37 metadata keys (`priority`, `assigned`, `icon`, multi-line and single-line blocks, `label`, `ticket`):
   - `fixtures/kanban/upstream_metadata_variants.mmd`
 
+## Upstream Syntax Docs
+
+Source: `repo-ref/mermaid/docs/syntax/kanban.md`
+
+- Full-featured example from the official docs (includes `ticketBaseUrl`, ticket links, and wrapped titles):
+  - `fixtures/kanban/upstream_docs_kanban_full_example_012.mmd`
