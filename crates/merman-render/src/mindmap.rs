@@ -26,6 +26,8 @@ fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
 struct MindmapNodeModel {
     id: String,
     label: String,
+    #[serde(default, rename = "labelType")]
+    label_type: String,
     #[serde(default)]
     shape: String,
     #[serde(default)]
@@ -72,6 +74,7 @@ fn mindmap_text_style(effective_config: &Value) -> TextStyle {
 
 fn mindmap_label_bbox_px(
     text: &str,
+    label_type: &str,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     max_node_width_px: f64,
@@ -83,7 +86,17 @@ fn mindmap_label_bbox_px(
     //
     // Mirror that by measuring with an explicit max width in HTML-like mode.
     let max_node_width_px = max_node_width_px.max(1.0);
-    let m = measurer.measure_wrapped(text, style, Some(max_node_width_px), WrapMode::HtmlLike);
+    let m = if label_type == "markdown" {
+        crate::text::measure_markdown_with_flowchart_bold_deltas(
+            measurer,
+            text,
+            style,
+            Some(max_node_width_px),
+            WrapMode::HtmlLike,
+        )
+    } else {
+        measurer.measure_wrapped(text, style, Some(max_node_width_px), WrapMode::HtmlLike)
+    };
     (m.width.max(0.0), m.height.max(0.0))
 }
 
@@ -93,7 +106,13 @@ fn mindmap_node_dimensions_px(
     style: &TextStyle,
     max_node_width_px: f64,
 ) -> (f64, f64) {
-    let (bbox_w, bbox_h) = mindmap_label_bbox_px(&node.label, measurer, style, max_node_width_px);
+    let (bbox_w, bbox_h) = mindmap_label_bbox_px(
+        &node.label,
+        &node.label_type,
+        measurer,
+        style,
+        max_node_width_px,
+    );
     let padding = node.padding.max(0.0);
     let half_padding = padding / 2.0;
 

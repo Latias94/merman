@@ -17,6 +17,7 @@ struct MindmapNode {
     node_id: String,
     level: i32,
     descr: String,
+    is_markdown: bool,
     ty: i32,
     children: Vec<i32>,
     width: i64,
@@ -55,6 +56,7 @@ impl MindmapDb {
         indent_level: i32,
         id_raw: &str,
         descr_raw: &str,
+        descr_is_markdown: bool,
         ty: i32,
         diagram_type: &str,
         config: &MermaidConfig,
@@ -87,7 +89,12 @@ impl MindmapDb {
             id,
             node_id: sanitize_text(id_raw, config),
             level,
-            descr: sanitize_text(descr_raw, config),
+            descr: if descr_is_markdown {
+                descr_raw.to_string()
+            } else {
+                sanitize_text(descr_raw, config)
+            },
+            is_markdown: descr_is_markdown,
             ty,
             children: Vec::new(),
             width,
@@ -252,6 +259,9 @@ impl MindmapDb {
             map.insert("id".to_string(), json!(node.id.to_string()));
             map.insert("domId".to_string(), json!(format!("node_{}", node.id)));
             map.insert("label".to_string(), json!(node.descr));
+            if node.is_markdown {
+                map.insert("labelType".to_string(), json!("markdown"));
+            }
             map.insert("isGroup".to_string(), json!(false));
             map.insert("shape".to_string(), json!(shape_from_type(node.ty)));
             map.insert("width".to_string(), json!(node.width));
@@ -387,54 +397,96 @@ pub fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
         });
     }
 
-    let mut handle_line = |line: &str| -> Result<()> {
+    enum HandleOutcome {
+        Done,
+        NeedMoreInput,
+    }
+
+    let mut handle_line = |line: &str| -> Result<HandleOutcome> {
         let line = strip_inline_comment(line);
         if line.trim().is_empty() {
-            return Ok(());
+            return Ok(HandleOutcome::Done);
         }
 
         let (indent, rest) = split_indent(line);
         let rest = rest.trim_end();
         if rest.is_empty() {
-            return Ok(());
+            return Ok(HandleOutcome::Done);
         }
 
         if starts_with_case_insensitive(rest, "::icon(") {
             let after = &rest["::icon(".len()..];
             let Some(end) = after.find(')') else {
-                return Ok(());
+                return Ok(HandleOutcome::Done);
             };
             let icon = after[..end].to_string();
             db.decorate_last(None, Some(icon), &meta.effective_config);
-            return Ok(());
+            return Ok(HandleOutcome::Done);
         }
 
         if let Some(after) = rest.strip_prefix(":::") {
             db.decorate_last(Some(after.trim().to_string()), None, &meta.effective_config);
-            return Ok(());
+            return Ok(HandleOutcome::Done);
         }
 
-        let (id_raw, descr_raw, ty) =
-            parse_node_spec(rest).map_err(|message| Error::DiagramParse {
-                diagram_type: meta.diagram_type.clone(),
-                message,
-            })?;
+        let (id_raw, descr_raw, ty, descr_is_markdown) = match parse_node_spec(rest) {
+            Ok(v) => v,
+            Err(message) if message == "unterminated node delimiter" => {
+                return Ok(HandleOutcome::NeedMoreInput);
+            }
+            Err(message) => {
+                return Err(Error::DiagramParse {
+                    diagram_type: meta.diagram_type.clone(),
+                    message,
+                });
+            }
+        };
         db.add_node(
             indent as i32,
             &id_raw,
             &descr_raw,
+            descr_is_markdown,
             ty,
             &meta.diagram_type,
             &meta.effective_config,
         )?;
+        Ok(HandleOutcome::Done)
+    };
+
+    let mut pending: Option<String> = None;
+    let mut push_and_try = |physical_line: &str| -> Result<()> {
+        match pending.as_mut() {
+            Some(buf) => {
+                buf.push('\n');
+                buf.push_str(physical_line);
+            }
+            None => pending = Some(physical_line.to_string()),
+        }
+
+        let current = pending.as_deref().unwrap_or_default();
+        match handle_line(current)? {
+            HandleOutcome::Done => {
+                pending = None;
+            }
+            HandleOutcome::NeedMoreInput => {}
+        }
         Ok(())
     };
 
     if let Some(tail) = &header_tail {
-        handle_line(tail)?;
+        push_and_try(tail)?;
     }
     for line in lines {
-        handle_line(line)?;
+        push_and_try(line)?;
+    }
+    if let Some(buf) = pending {
+        let line = strip_inline_comment(&buf);
+        if !line.trim().is_empty() {
+            return Err(Error::DiagramParse {
+                diagram_type: meta.diagram_type.clone(),
+                message: "unterminated node delimiter".to_string(),
+            });
+        }
     }
 
     let mut final_config = meta.effective_config.as_value().clone();
@@ -573,7 +625,7 @@ fn strip_inline_comment(line: &str) -> &str {
     line
 }
 
-fn parse_node_spec(input: &str) -> std::result::Result<(String, String, i32), String> {
+fn parse_node_spec(input: &str) -> std::result::Result<(String, String, i32, bool), String> {
     let input = input.trim_end();
     if input.is_empty() {
         return Err("expected node".to_string());
@@ -584,16 +636,16 @@ fn parse_node_spec(input: &str) -> std::result::Result<(String, String, i32), St
         if !tail.trim().is_empty() {
             return Err("unexpected trailing input".to_string());
         }
-        let descr = unquote_node_descr(inner);
+        let (descr, descr_is_markdown) = unquote_node_descr(inner);
         let ty = node_type_for(start, end);
-        return Ok((descr.clone(), descr, ty));
+        return Ok((descr.clone(), descr, ty, descr_is_markdown));
     }
 
     let (id_raw, rest) = split_node_id(input);
     let id_raw = id_raw.to_string();
     let rest = rest.trim_end();
     if rest.is_empty() {
-        return Ok((id_raw.clone(), id_raw, NODE_TYPE_DEFAULT));
+        return Ok((id_raw.clone(), id_raw, NODE_TYPE_DEFAULT, false));
     }
 
     let Some((start, end)) = node_delimiter_pair_at_start(rest) else {
@@ -605,9 +657,9 @@ fn parse_node_spec(input: &str) -> std::result::Result<(String, String, i32), St
         return Err("unexpected trailing input".to_string());
     }
 
-    let descr = unquote_node_descr(inner);
+    let (descr, descr_is_markdown) = unquote_node_descr(inner);
     let ty = node_type_for(start, end);
-    Ok((id_raw, descr, ty))
+    Ok((id_raw, descr, ty, descr_is_markdown))
 }
 
 fn split_node_id(input: &str) -> (&str, &str) {
@@ -692,14 +744,16 @@ fn extract_delimited<'a>(
     Err("unterminated node delimiter".to_string())
 }
 
-fn unquote_node_descr(raw: &str) -> String {
+fn unquote_node_descr(raw: &str) -> (String, bool) {
+    // Mermaid mindmap uses a special `"` + backtick quote form for Markdown strings, e.g.:
+    //   id1["`**Root** with\nsecond line`"]
     if let Some(inner) = raw.strip_prefix("\"`").and_then(|s| s.strip_suffix("`\"")) {
-        return inner.to_string();
+        return (inner.to_string(), true);
     }
     if let Some(inner) = raw.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
-        return inner.to_string();
+        return (inner.to_string(), false);
     }
-    raw.to_string()
+    (raw.to_string(), false)
 }
 
 fn node_type_for(start: &str, end: &str) -> i32 {
@@ -985,6 +1039,21 @@ mod tests {
         assert_eq!(mm["descr"].as_str().unwrap(), "root");
         assert_eq!(mm["children"].as_array().unwrap().len(), 1);
         assert_eq!(mm["children"][0]["descr"].as_str().unwrap(), "child1");
+    }
+
+    #[test]
+    fn mindmap_multiline_markdown_string_node_description_is_parsed() {
+        let model = parse(
+            "mindmap\n    id1[\"`**Root** with\n\
+a second line\n\
+Unicode works too: 🤓`\"]\n      id2[\"`The dog in **the** hog... a *very long text* that wraps to a new line`\"]\n      id3[Regular labels still works]\n",
+        );
+        let root = &model["rootNode"];
+        assert_eq!(root["nodeId"].as_str().unwrap(), "id1");
+        let descr = root["descr"].as_str().unwrap();
+        assert!(descr.contains("Root"));
+        assert!(descr.contains("a second line"));
+        assert!(descr.contains("🤓"));
     }
 
     #[test]

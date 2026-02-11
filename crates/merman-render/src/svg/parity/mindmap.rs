@@ -128,8 +128,12 @@ pub(super) fn render_mindmap_diagram_svg(
         dom_id: String,
         #[serde(rename = "cssClasses")]
         css_classes: String,
+        #[serde(default, rename = "labelType")]
+        label_type: String,
         label: String,
         shape: String,
+        #[serde(default)]
+        width: f64,
         #[serde(default)]
         padding: f64,
         #[serde(default)]
@@ -166,28 +170,79 @@ pub(super) fn render_mindmap_diagram_svg(
     fn mk_label(
         out: &mut String,
         text: &str,
+        label_type: &str,
         label_bkg: bool,
         width: f64,
         height: f64,
         tx: f64,
         ty: f64,
+        max_node_width_px: f64,
+        config: &merman_core::MermaidConfig,
     ) {
         let div_class = if label_bkg {
             r#" class="labelBkg""#
         } else {
             ""
         };
+
+        let max_node_width_px = if max_node_width_px.is_finite() && max_node_width_px > 0.0 {
+            max_node_width_px
+        } else {
+            200.0
+        };
+
+        let wrap_container = (width - max_node_width_px).abs() <= 1e-3;
+        let div_style = if wrap_container {
+            format!(
+                "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
+                mw = fmt(max_node_width_px),
+            )
+        } else {
+            format!(
+                "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px; text-align: center;",
+                mw = fmt(max_node_width_px),
+            )
+        };
+
+        let label_body = if label_type == "markdown" {
+            let mut html_out = String::new();
+            let parser = pulldown_cmark::Parser::new_ext(
+                text,
+                pulldown_cmark::Options::ENABLE_TABLES
+                    | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
+                    | pulldown_cmark::Options::ENABLE_TASKLISTS,
+            )
+            .map(|ev| match ev {
+                pulldown_cmark::Event::SoftBreak => pulldown_cmark::Event::HardBreak,
+                other => other,
+            });
+            pulldown_cmark::html::push_html(&mut html_out, parser);
+            let html_out = html_out.trim().to_string();
+            let html_out = crate::text::replace_fontawesome_icons(&html_out);
+            let html_out = merman_core::sanitize::sanitize_text(&html_out, config);
+            html_out
+                .replace("<br>", "<br />")
+                .replace("<br/>", "<br />")
+                .trim()
+                .to_string()
+        } else {
+            let text = text
+                .replace("<br>", "<br />")
+                .replace("<br/>", "<br />")
+                .trim()
+                .to_string();
+            format!("<p>{text}</p>")
+        };
         let _ = write!(
             out,
-            r#"<g class="label" style="" transform="translate({tx}, {ty})"><rect/><foreignObject width="{w}" height="{h}"><div xmlns="http://www.w3.org/1999/xhtml"{div_class} style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>{text}</p></span></div></foreignObject></g>"#,
+            r#"<g class="label" style="" transform="translate({tx}, {ty})"><rect/><foreignObject width="{w}" height="{h}"><div xmlns="http://www.w3.org/1999/xhtml"{div_class} style="{div_style}"><span class="nodeLabel">{label_body}</span></div></foreignObject></g>"#,
             tx = fmt(tx),
             ty = fmt(ty),
             w = fmt(width.max(1.0)),
             h = fmt(height.max(1.0)),
             div_class = div_class,
-            // Mindmap node labels come from `sanitize_text` (Mermaid's DOMPurify-style config),
-            // so we must preserve safe inline HTML such as `<br/>` for parity-root.
-            text = text
+            div_style = escape_attr(&div_style),
+            label_body = label_body,
         );
     }
 
@@ -203,6 +258,7 @@ pub(super) fn render_mindmap_diagram_svg(
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("mindmap");
     let diagram_id_esc = escape_xml(diagram_id);
+    let config = merman_core::MermaidConfig::from_value(_effective_config.clone());
 
     let mut node_by_id: std::collections::BTreeMap<String, &crate::model::LayoutNode> =
         std::collections::BTreeMap::new();
@@ -720,11 +776,14 @@ pub(super) fn render_mindmap_diagram_svg(
                 mk_label(
                     &mut out,
                     &n.label,
+                    &n.label_type,
                     n.icon.is_some(),
                     bbox_w,
                     bbox_h,
                     -bbox_w / 2.0,
                     -bbox_h / 2.0,
+                    n.width,
+                    &config,
                 );
             }
             "rect" => {
@@ -739,11 +798,14 @@ pub(super) fn render_mindmap_diagram_svg(
                 mk_label(
                     &mut out,
                     &n.label,
+                    &n.label_type,
                     n.icon.is_some(),
                     bbox_w,
                     bbox_h,
                     -bbox_w / 2.0,
                     -bbox_h / 2.0,
+                    n.width,
+                    &config,
                 );
             }
             "rounded" => {
@@ -757,11 +819,14 @@ pub(super) fn render_mindmap_diagram_svg(
                 mk_label(
                     &mut out,
                     &n.label,
+                    &n.label_type,
                     n.icon.is_some(),
                     bbox_w,
                     bbox_h,
                     -bbox_w / 2.0,
                     -bbox_h / 2.0,
+                    n.width,
+                    &config,
                 );
             }
             "mindmapCircle" => {
@@ -776,11 +841,14 @@ pub(super) fn render_mindmap_diagram_svg(
                 mk_label(
                     &mut out,
                     &n.label,
+                    &n.label_type,
                     n.icon.is_some(),
                     bbox_w,
                     bbox_h,
                     -bbox_w / 2.0,
                     -bbox_h / 2.0,
+                    n.width,
+                    &config,
                 );
             }
             "cloud" => {
@@ -792,11 +860,14 @@ pub(super) fn render_mindmap_diagram_svg(
                 mk_label(
                     &mut out,
                     &n.label,
+                    &n.label_type,
                     n.icon.is_some(),
                     bbox_w,
                     bbox_h,
                     -bbox_w / 2.0,
                     -bbox_h / 2.0,
+                    n.width,
+                    &config,
                 );
             }
             "hexagon" => {
@@ -811,11 +882,14 @@ pub(super) fn render_mindmap_diagram_svg(
                 mk_label(
                     &mut out,
                     &n.label,
+                    &n.label_type,
                     n.icon.is_some(),
                     w.max(1.0),
                     h.max(1.0),
                     -w / 2.0,
                     -h / 2.0,
+                    n.width,
+                    &config,
                 );
             }
             "bang" => {
@@ -827,11 +901,14 @@ pub(super) fn render_mindmap_diagram_svg(
                 mk_label(
                     &mut out,
                     &n.label,
+                    &n.label_type,
                     n.icon.is_some(),
                     bbox_w,
                     bbox_h,
                     -bbox_w / 2.0,
                     -bbox_h / 2.0,
+                    n.width,
+                    &config,
                 );
             }
             _ => {
@@ -844,11 +921,14 @@ pub(super) fn render_mindmap_diagram_svg(
                 mk_label(
                     &mut out,
                     &n.label,
+                    &n.label_type,
                     n.icon.is_some(),
                     w.max(1.0),
                     h.max(1.0),
                     -w / 2.0,
                     -h / 2.0,
+                    n.width,
+                    &config,
                 );
             }
         }
