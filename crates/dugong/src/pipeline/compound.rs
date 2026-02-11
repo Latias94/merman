@@ -17,31 +17,42 @@ pub(super) fn remove_border_nodes(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, 
             continue;
         };
 
-        let bl = node.border_left.last().and_then(|v| v.as_ref()).cloned();
-        let br = node.border_right.last().and_then(|v| v.as_ref()).cloned();
-        let (Some(bl), Some(br)) = (bl, br) else {
-            continue;
-        };
-
         let Some(t) = g.node(&bt) else {
             continue;
         };
         let Some(b) = g.node(&bb) else {
             continue;
         };
-        let Some(l) = g.node(&bl) else {
-            continue;
-        };
-        let Some(r) = g.node(&br) else {
-            continue;
-        };
-
         let (Some(ty), Some(by)) = (t.y, b.y) else {
             continue;
         };
-        let (Some(lx), Some(rx)) = (l.x, r.x) else {
+
+        // Dagre derives cluster width from the span of border segments across *all* ranks.
+        // Using only the last border node can over-estimate geometry when border nodes drift
+        // across ranks (notably in extracted subgraphs without external edges).
+        let mut lx: f64 = f64::INFINITY;
+        for id in node.border_left.iter().filter_map(|v| v.as_ref()) {
+            let Some(n) = g.node(id) else {
+                continue;
+            };
+            let Some(x) = n.x else {
+                continue;
+            };
+            lx = lx.min(x);
+        }
+        let mut rx: f64 = f64::NEG_INFINITY;
+        for id in node.border_right.iter().filter_map(|v| v.as_ref()) {
+            let Some(n) = g.node(id) else {
+                continue;
+            };
+            let Some(x) = n.x else {
+                continue;
+            };
+            rx = rx.max(x);
+        }
+        if !lx.is_finite() || !rx.is_finite() {
             continue;
-        };
+        }
 
         let width = (rx - lx).abs();
         let height = (by - ty).abs();

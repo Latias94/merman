@@ -5,56 +5,40 @@
       "nodes": [
         {
           "id": "Admin",
-          "x": 75.0,
-          "y": 103.28,
+          "x": 128.28,
+          "y": 310.0,
           "width": 206.56,
           "height": 150.0,
           "is_cluster": false
         },
         {
           "id": "Company.Project",
-          "x": 302.76,
-          "y": 228.04,
-          "width": 350.24,
-          "height": 180.0,
-          "is_cluster": true
-        },
-        {
-          "id": "Company.Project",
-          "x": 0.0,
-          "y": 0.0,
-          "width": 143.76,
-          "height": 54.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Company.Project.Module",
-          "x": 75.0,
-          "y": 229.8,
-          "width": 236.56,
-          "height": 433.04,
+          "x": 545.44,
+          "y": 310.0,
+          "width": 370.24,
+          "height": 220.0,
           "is_cluster": true
         },
         {
           "id": "Company.Project.Module",
-          "x": 0.0,
-          "y": 0.0,
-          "width": 189.84,
-          "height": 54.0,
-          "is_cluster": false
+          "x": 128.28,
+          "y": 210.0,
+          "width": 256.56,
+          "height": 420.0,
+          "is_cluster": true
         },
         {
           "id": "GenericClass",
-          "x": 75.0,
-          "y": 356.32,
+          "x": 128.28,
+          "y": 110.0,
           "width": 199.52,
           "height": 150.0,
           "is_cluster": false
         },
         {
           "id": "User",
-          "x": 302.76,
-          "y": 228.04,
+          "x": 545.44,
+          "y": 310.0,
           "width": 320.24,
           "height": 150.0,
           "is_cluster": false
@@ -69,21 +53,29 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 150.0,
-              "y": 103.28
+              "x": 231.56,
+              "y": 310.0
             },
             {
-              "x": 188.88,
-              "y": 165.66
+              "x": 256.56,
+              "y": 310.0
             },
             {
-              "x": 227.76,
-              "y": 228.04
+              "x": 308.44,
+              "y": 310.0
+            },
+            {
+              "x": 360.32,
+              "y": 310.0
+            },
+            {
+              "x": 385.32,
+              "y": 310.0
             }
           ],
           "label": {
-            "x": 188.88,
-            "y": 165.66,
+            "x": 308.44,
+            "y": 310.0,
             "width": 53.76,
             "height": 24.0
           },
@@ -99,16 +91,16 @@
       "clusters": [
         {
           "id": "Company.Project",
-          "x": 302.76,
-          "y": 228.04,
-          "width": 350.24,
-          "height": 180.0,
-          "diff": -7.5,
+          "x": 545.44,
+          "y": 310.0,
+          "width": 370.24,
+          "height": 220.0,
+          "diff": -15.0,
           "offset_y": 16.5,
           "title": "Company.Project",
           "title_label": {
-            "x": 302.76,
-            "y": 150.04,
+            "x": 545.44,
+            "y": 212.0,
             "width": 113.76,
             "height": 24.0
           },
@@ -120,16 +112,16 @@
         },
         {
           "id": "Company.Project.Module",
-          "x": 75.0,
-          "y": 229.8,
-          "width": 236.56,
-          "height": 433.04,
-          "diff": -7.5,
+          "x": 128.28,
+          "y": 210.0,
+          "width": 256.56,
+          "height": 420.0,
+          "diff": -15.0,
           "offset_y": 16.5,
           "title": "Company.Project.Module",
           "title_label": {
-            "x": 75.0,
-            "y": 25.28,
+            "x": 128.28,
+            "y": 12.0,
             "width": 159.84,
             "height": 24.0
           },
@@ -141,10 +133,10 @@
         }
       ],
       "bounds": {
-        "min_x": -94.92,
-        "min_y": -27.0,
-        "max_x": 477.88,
-        "max_y": 446.32
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 730.56,
+        "max_y": 420.0
       }
     }
   }

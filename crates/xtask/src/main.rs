@@ -9433,9 +9433,9 @@ fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskError> {
     })?;
 
     // Match compare-svg-xml defaults (handDrawnSeed ensures deterministic output).
-    let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
-        serde_json::json!({ "handDrawnSeed": 1 }),
-    ));
+    // Keep layout snapshots consistent with the in-repo `layout_snapshots_test` harness, which
+    // uses the default engine configuration.
+    let engine = merman::Engine::new();
     let measurer: std::sync::Arc<dyn merman_render::text::TextMeasurer + Send + Sync> =
         std::sync::Arc::new(merman_render::text::VendoredFontMetricsTextMeasurer::default());
     let layout_opts = merman_render::LayoutOptions {
@@ -10020,9 +10020,9 @@ fn gen_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         source,
     })?;
 
-    let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
-        serde_json::json!({ "handDrawnSeed": 1 }),
-    ));
+    // Keep this aligned with `crates/merman-render/tests/layout_snapshots_test.rs` so the
+    // `update-layout-snapshots` output matches the test's computed layouts.
+    let engine = merman_core::Engine::new();
     let layout_opts = merman_render::LayoutOptions::default();
     let mut failures: Vec<String> = Vec::new();
 
@@ -10037,7 +10037,7 @@ fn gen_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
         let parsed = match futures::executor::block_on(engine.parse_diagram(
             &text,
-            merman::ParseOptions {
+            merman_core::ParseOptions {
                 suppress_errors: true,
             },
         )) {

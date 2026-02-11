@@ -15,6 +15,7 @@ base64.workspace = true
 futures.workspace = true
 dugong = { path = "../dugong" }
 merman = { path = "../merman" }
+merman-core = { path = "../merman-core" }
 merman-render = { path = "../merman-render" }
 regex.workspace = true
 roxmltree.workspace = true

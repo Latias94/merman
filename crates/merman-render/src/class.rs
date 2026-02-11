@@ -6,6 +6,7 @@ use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
+use indexmap::IndexMap;
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -13,13 +14,15 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 #[derive(Debug, Clone, Deserialize)]
 struct ClassDiagramModel {
     pub direction: String,
-    pub classes: BTreeMap<String, ClassNode>,
+    pub classes: IndexMap<String, ClassNode>,
     #[serde(default)]
     pub relations: Vec<ClassRelation>,
     #[serde(default)]
     pub notes: Vec<ClassNote>,
     #[serde(default)]
-    pub namespaces: BTreeMap<String, Namespace>,
+    pub interfaces: Vec<ClassInterface>,
+    #[serde(default)]
+    pub namespaces: IndexMap<String, Namespace>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -72,6 +75,14 @@ struct ClassNote {
     #[serde(rename = "class")]
     pub class_id: Option<String>,
     pub text: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ClassInterface {
+    pub id: String,
+    pub label: String,
+    #[serde(rename = "classId")]
+    pub class_id: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -137,6 +148,7 @@ type Rect = merman_core::geom::Box2;
 struct PreparedGraph {
     graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
     extracted: BTreeMap<String, PreparedGraph>,
+    prefer_dagreish_disconnected: bool,
 }
 
 fn extract_descendants(
@@ -159,13 +171,25 @@ fn is_descendant(descendants: &HashMap<String, HashSet<String>>, id: &str, ances
 fn prepare_graph(
     mut graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
     depth: usize,
+    prefer_dagreish_disconnected: bool,
 ) -> Result<PreparedGraph> {
     if depth > 10 {
         return Ok(PreparedGraph {
             graph,
             extracted: BTreeMap::new(),
+            prefer_dagreish_disconnected,
         });
     }
+
+    // Mermaid's dagre-wrapper performs a pre-pass that extracts clusters *without* external
+    // connections into their own subgraphs, toggles their rankdir (TB <-> LR), and renders them
+    // recursively to obtain concrete cluster geometry before laying out the parent graph.
+    //
+    // Reference: Mermaid@11.12.2 `mermaid-graphlib.js` extractor + `recursiveRender`:
+    // - eligible cluster: has children, and no edge crosses its descendant boundary
+    // - extracted subgraph gets `rankdir = parent.rankdir === 'TB' ? 'LR' : 'TB'`
+    // - subgraph rank spacing uses `ranksep = parent.ranksep + 25`
+    // - margins are fixed at 8
 
     let cluster_ids: Vec<String> = graph
         .node_ids()
@@ -184,6 +208,12 @@ fn prepare_graph(
         cluster_ids.iter().map(|id| (id.clone(), false)).collect();
     for id in &cluster_ids {
         for e in graph.edge_keys() {
+            // Mermaid's `edgeInCluster` treats edges incident on the cluster node itself as
+            // non-descendant edges. Class diagrams do not normally connect edges to namespaces,
+            // but keep the guard to mirror upstream behavior.
+            if e.v == *id || e.w == *id {
+                continue;
+            }
             let d1 = is_descendant(&descendants, &e.v, id);
             let d2 = is_descendant(&descendants, &e.w, id);
             if d1 ^ d2 {
@@ -194,41 +224,42 @@ fn prepare_graph(
     }
 
     let mut extracted: BTreeMap<String, PreparedGraph> = BTreeMap::new();
-    let mut candidate_roots: Vec<String> = Vec::new();
-    for id in graph.node_ids() {
-        if graph.children(&id).is_empty() {
-            continue;
-        }
-        if graph.parent(&id).is_some() {
-            continue;
-        }
-        if *external.get(&id).unwrap_or(&false) {
-            continue;
-        }
-        candidate_roots.push(id);
-    }
-    candidate_roots.sort();
+    let candidate_clusters: Vec<String> = graph
+        .node_ids()
+        .into_iter()
+        .filter(|id| !graph.children(id).is_empty() && !external.get(id).copied().unwrap_or(false))
+        .collect();
 
-    for cluster_id in candidate_roots {
+    for cluster_id in candidate_clusters {
+        if graph.children(&cluster_id).is_empty() {
+            continue;
+        }
         let parent_dir = graph.graph().rankdir;
         let dir = if parent_dir == RankDir::TB {
             RankDir::LR
         } else {
             RankDir::TB
         };
+
         let nodesep = graph.graph().nodesep;
         let ranksep = graph.graph().ranksep;
 
         let mut subgraph = extract_cluster_graph(&cluster_id, &mut graph)?;
         subgraph.graph_mut().rankdir = dir;
         subgraph.graph_mut().nodesep = nodesep;
-        subgraph.graph_mut().ranksep = ranksep;
+        subgraph.graph_mut().ranksep = ranksep + 25.0;
+        subgraph.graph_mut().marginx = 8.0;
+        subgraph.graph_mut().marginy = 8.0;
 
-        let prepared = prepare_graph(subgraph, depth + 1)?;
+        let prepared = prepare_graph(subgraph, depth + 1, prefer_dagreish_disconnected)?;
         extracted.insert(cluster_id, prepared);
     }
 
-    Ok(PreparedGraph { graph, extracted })
+    Ok(PreparedGraph {
+        graph,
+        extracted,
+        prefer_dagreish_disconnected,
+    })
 }
 
 fn extract_cluster_graph(
@@ -254,6 +285,9 @@ fn extract_cluster_graph(
         compound: true,
     });
 
+    // Preserve parent graph settings as a base.
+    sub.set_graph(graph.graph().clone());
+
     for id in &descendants {
         let Some(label) = graph.node(id).cloned() else {
             continue;
@@ -273,9 +307,6 @@ fn extract_cluster_graph(
         let Some(parent) = graph.parent(id) else {
             continue;
         };
-        if parent == cluster_id {
-            continue;
-        }
         if moved_set.contains(parent) {
             sub.set_parent(id.clone(), parent.to_string());
         }
@@ -331,7 +362,7 @@ fn edge_terminal_metrics_from_extras(e: &EdgeLabel) -> EdgeTerminalMetrics {
 
 #[derive(Debug, Clone)]
 struct LayoutFragments {
-    nodes: HashMap<String, LayoutNode>,
+    nodes: IndexMap<String, LayoutNode>,
     edges: Vec<(LayoutEdge, Option<EdgeTerminalMetrics>)>,
 }
 
@@ -560,15 +591,32 @@ fn terminal_path_for_edge(
 
 fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rect)> {
     let mut fragments = LayoutFragments {
-        nodes: HashMap::new(),
+        nodes: IndexMap::new(),
         edges: Vec::new(),
     };
 
     let extracted_ids: Vec<String> = prepared.extracted.keys().cloned().collect();
-    let mut extracted_fragments: HashMap<String, (LayoutFragments, Rect)> = HashMap::new();
+    let mut extracted_fragments: BTreeMap<String, (LayoutFragments, Rect)> = BTreeMap::new();
     for id in extracted_ids {
         let sub = prepared.extracted.get_mut(&id).expect("exists");
         let (sub_frag, sub_bounds) = layout_prepared(sub)?;
+
+        // Mermaid sizes extracted cluster placeholders using the rendered SVG bbox of the
+        // recursively rendered cluster (`updateNodeBounds`). That bbox includes Dagre's implicit
+        // "cluster padding" around the laid out content. In Dagre, this padding is effectively
+        // `ranksep` (after `makeSpaceForEdgeLabels`), split across both sides.
+        //
+        // Our headless pipeline does not render extracted clusters as a separate SVG subtree, so
+        // inflate the computed bounds to match the padding that Mermaid's renderer bakes into the
+        // placeholder node size.
+        let pad = sub.graph.graph().ranksep.max(0.0);
+        let sub_bounds = Rect::from_min_max(
+            sub_bounds.min_x() - pad,
+            sub_bounds.min_y() - pad,
+            sub_bounds.max_x() + pad,
+            sub_bounds.max_y() + pad,
+        );
+
         extracted_fragments.insert(id, (sub_frag, sub_bounds));
     }
 
@@ -582,12 +630,25 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
         n.height = bounds.height().max(1.0);
     }
 
-    dugong::layout(&mut prepared.graph);
+    // Mermaid's dagre wrapper always sets `compound: true`, and Dagre's ranker expects a connected
+    // graph. `dugong::layout_dagreish` mirrors Dagre's full pipeline (including `nestingGraph`)
+    // and should be used for class diagrams even when there are no explicit clusters.
+    dugong::layout_dagreish(&mut prepared.graph);
 
+    // Mermaid does not render Dagre's internal dummy nodes/edges (border nodes, edge label nodes,
+    // nesting artifacts). Filter them out before computing bounds and before merging extracted
+    // layouts back into the parent.
+    let mut dummy_nodes: HashSet<String> = HashSet::new();
     for id in prepared.graph.node_ids() {
         let Some(n) = prepared.graph.node(&id) else {
             continue;
         };
+        if n.dummy.is_some() {
+            dummy_nodes.insert(id);
+            continue;
+        }
+        let is_cluster =
+            !prepared.graph.children(&id).is_empty() || prepared.extracted.contains_key(&id);
         fragments.nodes.insert(
             id.clone(),
             LayoutNode {
@@ -596,7 +657,7 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
                 y: n.y.unwrap_or(0.0),
                 width: n.width,
                 height: n.height,
-                is_cluster: false,
+                is_cluster,
             },
         );
     }
@@ -605,6 +666,15 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
         let Some(e) = prepared.graph.edge_by_key(&key) else {
             continue;
         };
+        if e.nesting_edge {
+            continue;
+        }
+        if dummy_nodes.contains(&key.v) || dummy_nodes.contains(&key.w) {
+            continue;
+        }
+        if !fragments.nodes.contains_key(&key.v) || !fragments.nodes.contains_key(&key.w) {
+            continue;
+        }
         let id = key
             .name
             .clone()
@@ -678,6 +748,11 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
                 l.y += dy;
             }
         }
+
+        // The extracted subgraph includes its own copy of the cluster root node so bounds match
+        // Mermaid's `updateNodeBounds(...)`. Do not merge that node back into the parent layout,
+        // otherwise we'd overwrite the placeholder position computed by the parent graph layout.
+        let _ = sub_frag.nodes.remove(&cluster_id);
 
         fragments.nodes.extend(sub_frag.nodes);
         fragments.edges.extend(sub_frag.edges);
@@ -1003,9 +1078,11 @@ pub fn layout_class_diagram_v2(
         rankdir: diagram_dir,
         nodesep,
         ranksep,
-        // Mermaid uses fixed graph margins in its Dagre wrapper for class diagrams.
-        marginx: 8.0,
-        marginy: 8.0,
+        // Mermaid uses fixed graph margins in its Dagre wrapper for class diagrams, but our SVG
+        // renderer re-introduces that margin when computing the viewport. Keep layout coordinates
+        // margin-free here to avoid double counting.
+        marginx: 0.0,
+        marginy: 0.0,
         ..Default::default()
     });
 
@@ -1046,6 +1123,20 @@ pub fn layout_class_diagram_v2(
         );
     }
 
+    // Interface nodes (lollipop syntax).
+    for iface in &model.interfaces {
+        let label = decode_entities_minimal(iface.label.trim());
+        let (tw, th) = label_metrics(&label, measurer, &text_style, wrap_mode_label);
+        g.set_node(
+            iface.id.clone(),
+            NodeLabel {
+                width: tw.max(1.0),
+                height: th.max(1.0),
+                ..Default::default()
+            },
+        );
+    }
+
     for n in &model.notes {
         let (w, h) = note_dimensions(
             &n.text,
@@ -1077,6 +1168,24 @@ pub fn layout_class_diagram_v2(
                 if model.namespaces.contains_key(parent) {
                     g.set_parent(c.id.clone(), parent.to_string());
                 }
+            }
+        }
+
+        // Keep interface nodes inside the same namespace cluster as their owning class.
+        for iface in &model.interfaces {
+            let Some(cls) = model.classes.get(iface.class_id.as_str()) else {
+                continue;
+            };
+            let Some(parent) = cls
+                .parent
+                .as_ref()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            else {
+                continue;
+            };
+            if model.namespaces.contains_key(parent) {
+                g.set_parent(iface.id.clone(), parent.to_string());
             }
         }
     }
@@ -1149,7 +1258,8 @@ pub fn layout_class_diagram_v2(
         g.set_edge_named(note.id.clone(), class_id.clone(), Some(edge_id), Some(el));
     }
 
-    let mut prepared = prepare_graph(g, 0)?;
+    let prefer_dagreish_disconnected = !model.interfaces.is_empty();
+    let mut prepared = prepare_graph(g, 0, prefer_dagreish_disconnected)?;
     let (mut fragments, _bounds) = layout_prepared(&mut prepared)?;
 
     let mut node_rect_by_id: HashMap<String, Rect> = HashMap::new();
@@ -1248,39 +1358,35 @@ pub fn layout_class_diagram_v2(
     .unwrap_or(0.0);
 
     let mut clusters: Vec<LayoutCluster> = Vec::new();
-    let mut cluster_nodes: Vec<LayoutNode> = Vec::new();
-    for (id, ns) in &model.namespaces {
-        let mut rect_opt: Option<Rect> = None;
-        for class_id in &ns.class_ids {
-            if let Some(r) = node_rect_by_id.get(class_id).copied() {
-                if let Some(ref mut cur) = rect_opt {
-                    cur.union(r);
-                } else {
-                    rect_opt = Some(r);
-                }
-            }
-        }
-        let Some(mut rect) = rect_opt else {
+    // Mermaid renders namespaces as Dagre clusters. The cluster geometry comes from the Dagre
+    // compound layout (not a post-hoc union of class-node bboxes). Use the computed namespace
+    // node x/y/width/height and mirror `clusters.js` sizing tweaks for title width.
+    for id in model.namespaces.keys() {
+        let Some(ns_node) = fragments.nodes.get(id.as_str()) else {
             continue;
         };
-        rect.pad(namespace_padding);
-        let (cx, cy) = rect.center();
+        let cx = ns_node.x;
+        let cy = ns_node.y;
+        let base_w = ns_node.width.max(1.0);
+        let base_h = ns_node.height.max(1.0);
 
         let title = id.clone();
         let (tw, th) = label_metrics(&title, measurer, &text_style, wrap_mode_label);
-
-        let base_width = rect.width();
-        let width = base_width.max(tw);
-        let diff = if base_width <= tw {
-            (tw - base_width) / 2.0 - namespace_padding / 2.0
+        let min_title_w = (tw + namespace_padding).max(1.0);
+        let width = if base_w <= min_title_w {
+            min_title_w
         } else {
-            -namespace_padding / 2.0
+            base_w
+        };
+        let diff = if base_w <= min_title_w {
+            (width - base_w) / 2.0 - namespace_padding
+        } else {
+            -namespace_padding
         };
         let offset_y = th - namespace_padding / 2.0;
-
         let title_label = LayoutLabel {
             x: cx,
-            y: (cy - rect.height() / 2.0) + title_margin_top + th / 2.0,
+            y: (cy - base_h / 2.0) + title_margin_top + th / 2.0,
             width: tw,
             height: th,
         };
@@ -1290,7 +1396,7 @@ pub fn layout_class_diagram_v2(
             x: cx,
             y: cy,
             width,
-            height: rect.height(),
+            height: base_h,
             diff,
             offset_y,
             title: title.clone(),
@@ -1301,26 +1407,17 @@ pub fn layout_class_diagram_v2(
             title_margin_top,
             title_margin_bottom,
         });
-        cluster_nodes.push(LayoutNode {
-            id: id.clone(),
-            x: cx,
-            y: cy,
-            width,
-            height: rect.height(),
-            is_cluster: true,
-        });
     }
-    clusters.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let mut nodes: Vec<LayoutNode> = Vec::new();
-    nodes.extend(cluster_nodes);
-    for n in fragments.nodes.values() {
-        nodes.push(n.clone());
-    }
+    // Keep snapshots deterministic. The Dagre-ish pipeline may insert dummy nodes/edges in
+    // iteration-dependent order, so sort the emitted layout lists by stable identifiers.
+    let mut nodes: Vec<LayoutNode> = fragments.nodes.into_values().collect();
     nodes.sort_by(|a, b| a.id.cmp(&b.id));
 
     let mut edges: Vec<LayoutEdge> = fragments.edges.into_iter().map(|(e, _)| e).collect();
     edges.sort_by(|a, b| a.id.cmp(&b.id));
+
+    clusters.sort_by(|a, b| a.id.cmp(&b.id));
 
     let bounds = compute_bounds(&nodes, &edges, &clusters);
 

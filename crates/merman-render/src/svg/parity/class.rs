@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::entities::decode_entities_minimal;
+use indexmap::IndexMap;
 
 // Class diagram SVG renderer implementation (split from parity.rs).
 
@@ -155,13 +156,15 @@ struct ClassSvgModel {
     acc_descr: Option<String>,
     #[allow(dead_code)]
     direction: String,
-    classes: std::collections::BTreeMap<String, ClassSvgNode>,
+    classes: IndexMap<String, ClassSvgNode>,
     #[serde(default)]
     relations: Vec<ClassSvgRelation>,
     #[serde(default)]
     notes: Vec<ClassSvgNote>,
     #[serde(default)]
-    namespaces: std::collections::BTreeMap<String, serde_json::Value>,
+    interfaces: Vec<ClassSvgInterface>,
+    #[serde(default)]
+    namespaces: IndexMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -229,6 +232,15 @@ struct ClassSvgNote {
     #[serde(rename = "class")]
     #[allow(dead_code)]
     class_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ClassSvgInterface {
+    id: String,
+    label: String,
+    #[serde(rename = "classId")]
+    #[allow(dead_code)]
+    class_id: String,
 }
 
 fn class_marker_name(ty: i32, is_start: bool) -> Option<&'static str> {
@@ -702,13 +714,12 @@ pub(super) fn render_class_diagram_v2_svg(
     let viewport_padding = config_f64(conf, &["diagramPadding"])
         .unwrap_or(8.0)
         .max(0.0);
-    // Mermaid's classRenderer-v2 uses a Dagre wrapper configured with fixed `marginx/marginy=8`.
-    // Mermaid then calls `setupGraphViewbox(svg, padding=conf.diagramPadding)`, which computes a
-    // bbox from the rendered DOM. With Dagre margins enabled, that bbox starts at x/y=8; the
-    // viewBox is then set to `bbox.x - padding` / `bbox.y - padding`.
+    // Mermaid's class renderer uses Dagre with fixed `marginx/marginy=8`, then calls
+    // `setupGraphViewbox(svg, padding=conf.diagramPadding)` which computes the final SVG viewBox
+    // from `svg.getBBox()`.
     //
-    // Our headless layout is normalized (often min_x/min_y=0), so re-introduce the Dagre margin
-    // at render time to match upstream SVG coordinates and viewport sizing.
+    // Our headless layout output is margin-free, so re-introduce Dagre's margin at render time to
+    // match upstream SVG coordinates and viewport sizing.
     const GRAPH_MARGIN_PX: f64 = 8.0;
     let content_tx = GRAPH_MARGIN_PX;
     let content_ty = GRAPH_MARGIN_PX;
@@ -833,246 +844,331 @@ pub(super) fn render_class_diagram_v2_svg(
         note_by_id.insert(n.id.as_str(), n);
     }
 
+    let mut iface_by_id: std::collections::HashMap<&str, &ClassSvgInterface> =
+        std::collections::HashMap::new();
+    for i in &model.interfaces {
+        iface_by_id.insert(i.id.as_str(), i);
+    }
+
     out.push_str(r#"<g class="root">"#);
 
-    // Clusters (namespaces).
-    out.push_str(r#"<g class="clusters">"#);
-    let mut clusters = layout.clusters.clone();
-    clusters.sort_by(|a, b| a.id.cmp(&b.id));
-    for c in &clusters {
-        let w = c.width.max(1.0);
-        let h = c.height.max(1.0);
-        let left = c.x - w / 2.0 + content_tx;
-        let top = c.y - h / 2.0 + content_ty;
-        include_xywh(&mut content_bounds, left, top, w, h);
+    // Mermaid only emits the nested dagre-d3 `root` wrapper (translated by -8px on the x-axis)
+    // for namespace-only diagrams (no relations/notes). When relations exist, namespaces are
+    // rendered as normal clusters without the extra wrapper.
+    let wrap_nodes_root =
+        model.relations.is_empty() && model.notes.is_empty() && !model.namespaces.is_empty();
+    let nodes_root_dx = if wrap_nodes_root {
+        -GRAPH_MARGIN_PX
+    } else {
+        0.0
+    };
+    let nodes_root_dy = 0.0;
 
-        let label_w = c.title_label.width.max(0.0);
-        let label_h = 24.0;
-        let label_x = left + (w - label_w) / 2.0;
-        let label_y = top;
-        include_xywh(&mut content_bounds, label_x, label_y, label_w, label_h);
+    let render_clusters_edges_and_labels =
+        |out: &mut String, content_bounds: &mut Option<Bounds>, bounds_dx: f64, bounds_dy: f64| {
+            // Clusters (namespaces).
+            out.push_str(r#"<g class="clusters">"#);
+            for c in &layout.clusters {
+                let w = c.width.max(1.0);
+                let h = c.height.max(1.0);
+                let left = c.x - w / 2.0 + content_tx;
+                let top = c.y - h / 2.0 + content_ty;
+                include_xywh(content_bounds, left + bounds_dx, top + bounds_dy, w, h);
 
-        let _ = write!(
-            &mut out,
-            r#"<g class="cluster undefined" id="{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
-            escape_attr(&c.id),
-            fmt(left),
-            fmt(top),
-            fmt(w),
-            fmt(h),
-            fmt(label_x),
-            fmt(top),
-            fmt(label_w),
-            escape_xml(&c.title)
-        );
-    }
-    out.push_str("</g>");
-
-    // Edge paths.
-    out.push_str(r#"<g class="edgePaths">"#);
-    let mut edges = layout.edges.clone();
-    edges.sort_by(|a, b| a.id.cmp(&b.id));
-    for e in &edges {
-        if e.points.len() < 2 {
-            continue;
-        }
-
-        let dom_id = class_edge_dom_id(e, &relation_index_by_id);
-
-        let mut raw_points = e.points.clone();
-        for p in &mut raw_points {
-            p.x += content_tx;
-            p.y += content_ty;
-        }
-
-        let mut curve_points = raw_points.clone();
-        if curve_points.len() == 2 {
-            let a = &curve_points[0];
-            let b = &curve_points[1];
-            curve_points.insert(
-                1,
-                crate::model::LayoutPoint {
-                    x: (a.x + b.x) / 2.0,
-                    y: (a.y + b.y) / 2.0,
-                },
-            );
-        }
-        let d = curve_basis_path_d(&curve_points);
-        include_path_d(&mut content_bounds, &d, 0.0, 0.0);
-        let points_b64 = base64::engine::general_purpose::STANDARD
-            .encode(serde_json::to_vec(&raw_points).unwrap_or_default());
-
-        let mut class = String::from("edge-thickness-normal ");
-        if e.id.starts_with("edgeNote") {
-            class.push_str(class_note_edge_pattern());
-        } else if let Some(rel) = relations_by_id.get(e.id.as_str()) {
-            class.push_str(class_edge_pattern(rel.relation.line_type));
-        } else {
-            class.push_str("edge-pattern-solid");
-        }
-        class.push_str(" relation");
-
-        let mut marker_start: Option<String> = None;
-        let mut marker_end: Option<String> = None;
-        if !e.id.starts_with("edgeNote") {
-            if let Some(rel) = relations_by_id.get(e.id.as_str()) {
-                if let Some(name) = class_marker_name(rel.relation.type1, true) {
-                    marker_start = Some(format!(
-                        "url(#{}_{aria_roledescription}-{name})",
-                        diagram_id
-                    ));
-                }
-                if let Some(name) = class_marker_name(rel.relation.type2, false) {
-                    marker_end = Some(format!(
-                        "url(#{}_{aria_roledescription}-{name})",
-                        diagram_id
-                    ));
-                }
-            }
-        }
-
-        let _ = write!(
-            &mut out,
-            r#"<path d="{}" id="{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
-            escape_attr(&d),
-            escape_attr(&dom_id),
-            escape_attr(&class),
-            escape_attr(&dom_id),
-            escape_attr(&points_b64),
-        );
-        if let Some(url) = marker_start {
-            let _ = write!(&mut out, r#" marker-start="{}""#, escape_attr(&url));
-        }
-        if let Some(url) = marker_end {
-            let _ = write!(&mut out, r#" marker-end="{}""#, escape_attr(&url));
-        }
-        out.push_str("/>");
-    }
-    out.push_str("</g>");
-
-    // Edge labels + terminals.
-    out.push_str(r#"<g class="edgeLabels">"#);
-    // Mermaid renders all edge terminal labels first, then edge labels.
-    for e in &edges {
-        let Some(rel) = relations_by_id.get(e.id.as_str()).copied() else {
-            continue;
-        };
-        let start_text = if rel.relation_title_1 == "none" {
-            ""
-        } else {
-            rel.relation_title_1.as_str()
-        };
-        if start_text.trim().is_empty() {
-            continue;
-        }
-        for lbl in [&e.start_label_left, &e.start_label_right] {
-            if let Some(lbl) = lbl.as_ref() {
+                let label_w = c.title_label.width.max(0.0);
+                let label_h = 24.0;
+                let label_x = left + (w - label_w) / 2.0;
+                let label_y = top + c.title_margin_top;
                 include_xywh(
-                    &mut content_bounds,
-                    lbl.x + content_tx,
-                    lbl.y + content_ty,
-                    9.0,
-                    12.0,
+                    content_bounds,
+                    label_x + bounds_dx,
+                    label_y + bounds_dy,
+                    label_w,
+                    label_h,
                 );
+
                 let _ = write!(
-                    &mut out,
-                    r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
-                    fmt(lbl.x + content_tx),
-                    fmt(lbl.y + content_ty),
-                    escape_xml(start_text.trim())
+                    out,
+                    r#"<g class="cluster undefined" id="{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+                    escape_attr(&c.id),
+                    fmt(left),
+                    fmt(top),
+                    fmt(w),
+                    fmt(h),
+                    fmt(label_x),
+                    fmt(label_y),
+                    fmt(label_w),
+                    escape_xml(&c.title)
                 );
             }
-        }
-    }
-    for e in &edges {
-        let Some(rel) = relations_by_id.get(e.id.as_str()).copied() else {
-            continue;
-        };
-        let end_text = if rel.relation_title_2 == "none" {
-            ""
-        } else {
-            rel.relation_title_2.as_str()
-        };
-        if end_text.trim().is_empty() {
-            continue;
-        }
-        for lbl in [&e.end_label_left, &e.end_label_right] {
-            if let Some(lbl) = lbl.as_ref() {
-                include_xywh(
-                    &mut content_bounds,
-                    lbl.x + content_tx,
-                    lbl.y + content_ty,
-                    9.0,
-                    12.0,
-                );
+            out.push_str("</g>");
+
+            // Edge paths.
+            out.push_str(r#"<g class="edgePaths">"#);
+            for e in &layout.edges {
+                if e.points.len() < 2 {
+                    continue;
+                }
+
+                let dom_id = class_edge_dom_id(e, &relation_index_by_id);
+
+                let mut raw_points = e.points.clone();
+                for p in &mut raw_points {
+                    p.x += content_tx;
+                    p.y += content_ty;
+                }
+
+                let mut curve_points = raw_points.clone();
+                if curve_points.len() == 2 {
+                    let a = &curve_points[0];
+                    let b = &curve_points[1];
+                    curve_points.insert(
+                        1,
+                        crate::model::LayoutPoint {
+                            x: (a.x + b.x) / 2.0,
+                            y: (a.y + b.y) / 2.0,
+                        },
+                    );
+                }
+                let d = curve_basis_path_d(&curve_points);
+                include_path_d(content_bounds, &d, bounds_dx, bounds_dy);
+                let points_b64 = base64::engine::general_purpose::STANDARD
+                    .encode(serde_json::to_vec(&raw_points).unwrap_or_default());
+
+                let mut class = String::from("edge-thickness-normal ");
+                if e.id.starts_with("edgeNote") {
+                    class.push_str(class_note_edge_pattern());
+                } else if let Some(rel) = relations_by_id.get(e.id.as_str()) {
+                    class.push_str(class_edge_pattern(rel.relation.line_type));
+                } else {
+                    class.push_str("edge-pattern-solid");
+                }
+                class.push_str(" relation");
+
+                let mut marker_start: Option<String> = None;
+                let mut marker_end: Option<String> = None;
+                if !e.id.starts_with("edgeNote") {
+                    if let Some(rel) = relations_by_id.get(e.id.as_str()) {
+                        if let Some(name) = class_marker_name(rel.relation.type1, true) {
+                            marker_start = Some(format!(
+                                "url(#{}_{aria_roledescription}-{name})",
+                                diagram_id
+                            ));
+                        }
+                        if let Some(name) = class_marker_name(rel.relation.type2, false) {
+                            marker_end = Some(format!(
+                                "url(#{}_{aria_roledescription}-{name})",
+                                diagram_id
+                            ));
+                        }
+                    }
+                }
+
                 let _ = write!(
-                    &mut out,
-                    r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"/><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g>"#,
-                    fmt(lbl.x + content_tx),
-                    fmt(lbl.y + content_ty),
-                    escape_xml(end_text.trim())
+                    out,
+                    r#"<path d="{}" id="{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
+                    escape_attr(&d),
+                    escape_attr(&dom_id),
+                    escape_attr(&class),
+                    escape_attr(&dom_id),
+                    escape_attr(&points_b64),
                 );
+                if let Some(url) = marker_start {
+                    let _ = write!(out, r#" marker-start="{}""#, escape_attr(&url));
+                }
+                if let Some(url) = marker_end {
+                    let _ = write!(out, r#" marker-end="{}""#, escape_attr(&url));
+                }
+                out.push_str("/>");
             }
-        }
-    }
-    for e in &edges {
-        let dom_id = class_edge_dom_id(e, &relation_index_by_id);
-        let label_text = if e.id.starts_with("edgeNote") {
-            String::new()
-        } else {
-            relations_by_id
-                .get(e.id.as_str())
-                .map(|r| r.title.clone())
-                .unwrap_or_default()
+            out.push_str("</g>");
+
+            // Edge labels + terminals.
+            out.push_str(r#"<g class="edgeLabels">"#);
+            // Mermaid renders all edge terminal labels first, then edge labels.
+            for e in &layout.edges {
+                let Some(rel) = relations_by_id.get(e.id.as_str()).copied() else {
+                    continue;
+                };
+                let start_text = if rel.relation_title_1 == "none" {
+                    ""
+                } else {
+                    rel.relation_title_1.as_str()
+                };
+                if start_text.trim().is_empty() {
+                    continue;
+                }
+                for lbl in [&e.start_label_left, &e.start_label_right] {
+                    if let Some(lbl) = lbl.as_ref() {
+                        include_xywh(
+                            content_bounds,
+                            lbl.x + content_tx + bounds_dx,
+                            lbl.y + content_ty + bounds_dy,
+                            9.0,
+                            12.0,
+                        );
+                        let _ = write!(
+                            out,
+                            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
+                            fmt(lbl.x + content_tx),
+                            fmt(lbl.y + content_ty),
+                            escape_xml(start_text.trim())
+                        );
+                    }
+                }
+            }
+            for e in &layout.edges {
+                let Some(rel) = relations_by_id.get(e.id.as_str()).copied() else {
+                    continue;
+                };
+                let end_text = if rel.relation_title_2 == "none" {
+                    ""
+                } else {
+                    rel.relation_title_2.as_str()
+                };
+                if end_text.trim().is_empty() {
+                    continue;
+                }
+                for lbl in [&e.end_label_left, &e.end_label_right] {
+                    if let Some(lbl) = lbl.as_ref() {
+                        include_xywh(
+                            content_bounds,
+                            lbl.x + content_tx + bounds_dx,
+                            lbl.y + content_ty + bounds_dy,
+                            9.0,
+                            12.0,
+                        );
+                        let _ = write!(
+                            out,
+                            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"/><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g>"#,
+                            fmt(lbl.x + content_tx),
+                            fmt(lbl.y + content_ty),
+                            escape_xml(end_text.trim())
+                        );
+                    }
+                }
+            }
+            for e in &layout.edges {
+                let dom_id = class_edge_dom_id(e, &relation_index_by_id);
+                let label_text = if e.id.starts_with("edgeNote") {
+                    String::new()
+                } else {
+                    relations_by_id
+                        .get(e.id.as_str())
+                        .map(|r| r.title.clone())
+                        .unwrap_or_default()
+                };
+
+                if label_text.trim().is_empty() {
+                    let _ = write!(
+                        out,
+                        r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+                        escape_attr(&dom_id)
+                    );
+                } else if let Some(lbl) = e.label.as_ref() {
+                    include_xywh(
+                        content_bounds,
+                        lbl.x + content_tx - lbl.width / 2.0 + bounds_dx,
+                        lbl.y + content_ty - lbl.height / 2.0 + bounds_dy,
+                        lbl.width.max(0.0),
+                        lbl.height.max(0.0),
+                    );
+                    let _ = write!(
+                        out,
+                        r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
+                        fmt(lbl.x + content_tx),
+                        fmt(lbl.y + content_ty),
+                        escape_attr(&dom_id),
+                        fmt(-lbl.width / 2.0),
+                        fmt(-lbl.height / 2.0),
+                        fmt(lbl.width.max(0.0)),
+                        fmt(lbl.height.max(0.0)),
+                    );
+                    render_class_html_label(out, "edgeLabel", label_text.trim(), true, None);
+                    out.push_str("</div></foreignObject></g></g>");
+                } else {
+                    let _ = write!(
+                        out,
+                        r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+                        escape_attr(&dom_id)
+                    );
+                }
+            }
+            out.push_str("</g>");
         };
 
-        if label_text.trim().is_empty() {
-            let _ = write!(
-                &mut out,
-                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-                escape_attr(&dom_id)
-            );
-        } else if let Some(lbl) = e.label.as_ref() {
-            include_xywh(
-                &mut content_bounds,
-                lbl.x + content_tx - lbl.width / 2.0,
-                lbl.y + content_ty - lbl.height / 2.0,
-                lbl.width.max(0.0),
-                lbl.height.max(0.0),
-            );
-            let _ = write!(
-                &mut out,
-                r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
-                fmt(lbl.x + content_tx),
-                fmt(lbl.y + content_ty),
-                escape_attr(&dom_id),
-                fmt(-lbl.width / 2.0),
-                fmt(-lbl.height / 2.0),
-                fmt(lbl.width.max(0.0)),
-                fmt(lbl.height.max(0.0)),
-            );
-            render_class_html_label(&mut out, "edgeLabel", label_text.trim(), true, None);
-            out.push_str("</div></foreignObject></g></g>");
-        } else {
-            let _ = write!(
-                &mut out,
-                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-                escape_attr(&dom_id)
-            );
-        }
+    if wrap_nodes_root {
+        out.push_str(r#"<g class="clusters"/><g class="edgePaths"/><g class="edgeLabels"/>"#);
+    } else {
+        render_clusters_edges_and_labels(&mut out, &mut content_bounds, 0.0, 0.0);
     }
-    out.push_str("</g>");
 
     // Nodes.
     out.push_str(r#"<g class="nodes">"#);
 
-    // Render all non-cluster nodes, using the semantic model to decide node type/labels.
-    let mut nodes = layout.nodes.clone();
-    nodes.sort_by(|a, b| a.id.cmp(&b.id));
-    for n in &nodes {
+    if wrap_nodes_root {
+        let _ = write!(
+            &mut out,
+            r#"<g class="root" transform="translate({}, {})">"#,
+            fmt(nodes_root_dx),
+            fmt(nodes_root_dy)
+        );
+        render_clusters_edges_and_labels(
+            &mut out,
+            &mut content_bounds,
+            nodes_root_dx,
+            nodes_root_dy,
+        );
+        out.push_str(r#"<g class="nodes">"#);
+    }
+
+    // Render all non-cluster nodes. Mermaid's class renderer inserts nodes in semantic order
+    // (namespaces, then classes, then notes). Using the raw layout node iteration order can drift
+    // when the layout pipeline injects and removes internal dummy nodes. Build a stable rendering
+    // order from the semantic model and fall back to any remaining nodes in layout order.
+    let mut layout_nodes_by_id: std::collections::HashMap<&str, &crate::model::LayoutNode> =
+        std::collections::HashMap::new();
+    for n in &layout.nodes {
         if n.is_cluster {
             continue;
         }
+        layout_nodes_by_id.insert(n.id.as_str(), n);
+    }
+
+    let mut ordered_ids: Vec<&str> = Vec::new();
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    for cls in model.classes.values() {
+        let id = cls.id.as_str();
+        if seen.insert(id) {
+            ordered_ids.push(id);
+        }
+    }
+    for note in &model.notes {
+        let id = note.id.as_str();
+        if seen.insert(id) {
+            ordered_ids.push(id);
+        }
+    }
+    for iface in &model.interfaces {
+        let id = iface.id.as_str();
+        if seen.insert(id) {
+            ordered_ids.push(id);
+        }
+    }
+    for n in &layout.nodes {
+        if n.is_cluster {
+            continue;
+        }
+        let id = n.id.as_str();
+        if seen.insert(id) {
+            ordered_ids.push(id);
+        }
+    }
+
+    for id in ordered_ids {
+        let Some(n) = layout_nodes_by_id.get(id).copied() else {
+            continue;
+        };
 
         if let Some(note) = note_by_id.get(n.id.as_str()).copied() {
             let note_text = decode_entities_minimal(note.text.trim());
@@ -1095,15 +1191,28 @@ pub(super) fn render_class_diagram_v2_svg(
             );
             let node_tx = n.x + content_tx;
             let node_ty = n.y + content_ty;
-            include_xywh(&mut content_bounds, node_tx + left, node_ty + top, w, h);
+            let node_bounds_tx = node_tx + nodes_root_dx;
+            let node_bounds_ty = node_ty + nodes_root_dy;
             include_xywh(
                 &mut content_bounds,
-                node_tx + label_x,
-                node_ty + label_y,
+                node_bounds_tx + left,
+                node_bounds_ty + top,
+                w,
+                h,
+            );
+            include_xywh(
+                &mut content_bounds,
+                node_bounds_tx + label_x,
+                node_bounds_ty + label_y,
                 fo_w,
                 fo_h,
             );
-            include_path_d(&mut content_bounds, &note_stroke_d, node_tx, node_ty);
+            include_path_d(
+                &mut content_bounds,
+                &note_stroke_d,
+                node_bounds_tx,
+                node_bounds_ty,
+            );
             let _ = write!(
                 &mut out,
                 r##"<g class="node undefined" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/></g><g class="label" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="text-align: center; white-space: nowrap; display: table-cell; line-height: 1.5; max-width: 200px;" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"##,
@@ -1124,6 +1233,57 @@ pub(super) fn render_class_diagram_v2_svg(
                 fmt(fo_w),
                 fmt(fo_h),
                 escape_xml(&note_text)
+            );
+            continue;
+        }
+
+        if let Some(iface) = iface_by_id.get(n.id.as_str()).copied() {
+            let label_text = decode_entities_minimal(iface.label.trim());
+            let metrics =
+                measurer.measure_wrapped(&label_text, &text_style, None, WrapMode::HtmlLike);
+            let fo_w = metrics.width.max(1.0);
+            let fo_h = metrics.height.max(line_height).max(1.0);
+
+            let w = fo_w;
+            let h = fo_h;
+            let left = -w / 2.0;
+            let top = -h / 2.0;
+
+            let node_tx = n.x + content_tx;
+            let node_ty = n.y + content_ty;
+            let node_bounds_tx = node_tx + nodes_root_dx;
+            let node_bounds_ty = node_ty + nodes_root_dy;
+
+            include_xywh(
+                &mut content_bounds,
+                node_bounds_tx + left,
+                node_bounds_ty + top,
+                w,
+                h,
+            );
+            include_xywh(
+                &mut content_bounds,
+                node_bounds_tx + left,
+                node_bounds_ty + top,
+                fo_w,
+                fo_h,
+            );
+
+            let _ = write!(
+                &mut out,
+                r#"<g class="node undefined" id="{}" transform="translate({}, {})"><rect class="basic label-container" style="opacity:0; !important" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+                escape_attr(&iface.id),
+                fmt(node_tx),
+                fmt(node_ty),
+                fmt(left),
+                fmt(top),
+                fmt(w),
+                fmt(h),
+                fmt(left),
+                fmt(top),
+                fmt(fo_w),
+                fmt(fo_h),
+                escape_xml(&label_text)
             );
             continue;
         }
@@ -1153,6 +1313,8 @@ pub(super) fn render_class_diagram_v2_svg(
         let have_callback = node.have_callback;
         let node_tx = n.x + content_tx;
         let node_ty = n.y + content_ty;
+        let node_bounds_tx = node_tx + nodes_root_dx;
+        let node_bounds_ty = node_ty + nodes_root_dy;
 
         if let Some(link) = link {
             let _ = write!(
@@ -1212,8 +1374,19 @@ pub(super) fn render_class_diagram_v2_svg(
             escape_attr(node_fill)
         );
         let stroke_d = class_rough_rect_stroke_path(left, top, w, h, rough_seed);
-        include_xywh(&mut content_bounds, node_tx + left, node_ty + top, w, h);
-        include_path_d(&mut content_bounds, &stroke_d, node_tx, node_ty);
+        include_xywh(
+            &mut content_bounds,
+            node_bounds_tx + left,
+            node_bounds_ty + top,
+            w,
+            h,
+        );
+        include_path_d(
+            &mut content_bounds,
+            &stroke_d,
+            node_bounds_tx,
+            node_bounds_ty,
+        );
         let _ = write!(
             &mut out,
             r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
@@ -1393,7 +1566,7 @@ pub(super) fn render_class_diagram_v2_svg(
         for y in [divider1_y, divider2_y] {
             out.push_str(r#"<g class="divider" style="">"#);
             let d = class_rough_line_double_path(left, y, left + w, y, rough_seed ^ 0x55);
-            include_path_d(&mut content_bounds, &d, node_tx, node_ty);
+            include_path_d(&mut content_bounds, &d, node_bounds_tx, node_bounds_ty);
             let _ = write!(
                 &mut out,
                 r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style=""/>"#,
@@ -1410,7 +1583,11 @@ pub(super) fn render_class_diagram_v2_svg(
         }
     }
 
-    out.push_str("</g>"); // nodes
+    if wrap_nodes_root {
+        out.push_str("</g>"); // inner nodes
+        out.push_str("</g>"); // inner root
+    }
+    out.push_str("</g>"); // outer nodes
     out.push_str("</g>"); // root
     out.push_str("</g>"); // wrapper
 

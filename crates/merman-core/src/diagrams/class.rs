@@ -2,9 +2,10 @@ use crate::common::parse_generic_types;
 use crate::sanitize::sanitize_text;
 use crate::utils::format_url;
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
+use indexmap::IndexMap;
 use regex::Regex;
 use serde_json::{Value, json};
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
 lalrpop_util::lalrpop_mod!(class_grammar, "/diagrams/class_grammar.rs");
 
@@ -345,12 +346,12 @@ struct StyleClass {
 #[derive(Debug, Default)]
 struct ClassDb {
     direction: String,
-    classes: HashMap<String, ClassNode>,
+    classes: IndexMap<String, ClassNode>,
     relations: Vec<RelationData>,
     notes: Vec<ClassNote>,
     interfaces: Vec<Interface>,
-    namespaces: HashMap<String, Namespace>,
-    style_classes: HashMap<String, StyleClass>,
+    namespaces: IndexMap<String, Namespace>,
+    style_classes: IndexMap<String, StyleClass>,
     class_counter: usize,
     namespace_counter: usize,
     acc_title: Option<String>,
