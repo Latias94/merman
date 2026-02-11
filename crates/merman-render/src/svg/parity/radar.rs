@@ -255,7 +255,7 @@ pub(super) fn render_radar_diagram_svg(
         label: String,
     }
 
-    let model: RadarSvgModel = serde_json::from_value(semantic.clone())?;
+    let model: RadarSvgModel = crate::json::from_value_ref(semantic)?;
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("radar");
     let diagram_id_esc = escape_xml(diagram_id);

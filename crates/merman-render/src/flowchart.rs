@@ -1081,7 +1081,7 @@ pub fn layout_flowchart_v2(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<FlowchartV2Layout> {
-    let model: FlowchartV2Model = serde_json::from_value(semantic.clone())?;
+    let model: FlowchartV2Model = crate::json::from_value_ref(semantic)?;
 
     // Mermaid's dagre adapter expands self-loop edges into a chain of two special label nodes plus
     // three edges. This avoids `v == w` edges in Dagre and is required for SVG parity (Mermaid

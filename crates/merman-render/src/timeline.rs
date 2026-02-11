@@ -299,7 +299,7 @@ pub fn layout_timeline_diagram(
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<TimelineDiagramLayout> {
-    let model: TimelineModel = serde_json::from_value(semantic.clone())?;
+    let model: TimelineModel = crate::json::from_value_ref(semantic)?;
     let _ = (
         model.acc_title.as_deref(),
         model.acc_descr.as_deref(),

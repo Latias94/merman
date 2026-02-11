@@ -67,7 +67,7 @@ pub(super) fn render_packet_diagram_svg(
     diagram_title: Option<&str>,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let model: PacketSvgModel = serde_json::from_value(semantic.clone())?;
+    let model: PacketSvgModel = crate::json::from_value_ref(semantic)?;
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);

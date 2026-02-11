@@ -42,7 +42,7 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         .filter(|id| !g.options().compound || g.children(id).is_empty())
         .collect();
 
-    let mut indegree: std::collections::HashMap<String, usize> =
+    let mut indegree: rustc_hash::FxHashMap<String, usize> =
         node_ids.iter().map(|id| (id.clone(), 0)).collect();
     for e in g.edges() {
         if e.v == e.w {
@@ -89,7 +89,7 @@ pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         topo = node_ids.clone();
     }
 
-    let mut rank: std::collections::HashMap<String, usize> =
+    let mut rank: rustc_hash::FxHashMap<String, usize> =
         node_ids.iter().map(|id| (id.clone(), 0)).collect();
     for n in &topo {
         let r = rank.get(n).copied().unwrap_or(0);

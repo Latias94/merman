@@ -20,7 +20,7 @@ pub fn rank(g: &mut crate::graphlib::Graph<crate::NodeLabel, crate::EdgeLabel, c
 pub mod util {
     use crate::graphlib::{EdgeKey, Graph};
     use crate::{EdgeLabel, GraphLabel, NodeLabel};
-    use std::collections::HashMap;
+    use rustc_hash::FxHashMap as HashMap;
 
     pub fn longest_path(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         fn dfs(
@@ -51,7 +51,7 @@ pub mod util {
         }
 
         let sources: Vec<String> = g.sources().into_iter().map(|s| s.to_string()).collect();
-        let mut visited: HashMap<String, i32> = HashMap::new();
+        let mut visited: HashMap<String, i32> = HashMap::default();
         for v in sources {
             dfs(&v, g, &mut visited);
         }

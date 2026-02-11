@@ -131,7 +131,7 @@ pub(super) fn render_journey_diagram_svg(
     _measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let model: JourneySvgModel = serde_json::from_value(semantic.clone())?;
+    let model: JourneySvgModel = crate::json::from_value_ref(semantic)?;
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);

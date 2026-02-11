@@ -164,7 +164,7 @@ pub(super) fn render_gantt_diagram_svg(
     _effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let model: GanttSemanticModel = serde_json::from_value(semantic.clone())?;
+    let model: GanttSemanticModel = crate::json::from_value_ref(semantic)?;
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);

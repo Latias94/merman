@@ -189,7 +189,7 @@ pub fn layout_sequence_diagram(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<SequenceDiagramLayout> {
-    let model: SequenceModel = serde_json::from_value(semantic.clone())?;
+    let model: SequenceModel = crate::json::from_value_ref(semantic)?;
 
     let seq_cfg = effective_config.get("sequence").unwrap_or(&Value::Null);
     let diagram_margin_x = config_f64(seq_cfg, &["diagramMarginX"]).unwrap_or(50.0);

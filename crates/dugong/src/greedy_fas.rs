@@ -3,7 +3,8 @@
 //! Ported from Dagre's `greedy-fas.js`. This is used by `acyclic` when `acyclicer=greedy`.
 
 use crate::graphlib::{EdgeKey, Graph};
-use std::collections::{HashMap, HashSet, VecDeque, hash_map::Entry};
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
+use std::collections::{VecDeque, hash_map::Entry};
 
 pub fn greedy_fas<N, E, G>(g: &Graph<N, E, G>) -> Vec<EdgeKey>
 where
@@ -36,14 +37,14 @@ where
     // For parity, keep node initialization in `g.node_ids()` order and keep the aggregated
     // adjacency order based on the *first occurrence* of each `(v, w)` in `g.edges()`.
     let node_ids = g.node_ids();
-    let mut in_w: HashMap<String, i64> = HashMap::new();
-    let mut out_w: HashMap<String, i64> = HashMap::new();
+    let mut in_w: HashMap<String, i64> = HashMap::default();
+    let mut out_w: HashMap<String, i64> = HashMap::default();
     for v in &node_ids {
         in_w.insert(v.clone(), 0);
         out_w.insert(v.clone(), 0);
     }
 
-    let mut edge_w: HashMap<(String, String), i64> = HashMap::new();
+    let mut edge_w: HashMap<(String, String), i64> = HashMap::default();
     let mut edge_order: Vec<(String, String)> = Vec::new();
     let mut max_in: i64 = 0;
     let mut max_out: i64 = 0;
@@ -71,15 +72,15 @@ where
     let bucket_len: usize = (max_out + max_in + 3).max(3) as usize;
     let zero_idx: i64 = max_in + 1;
     let mut buckets: Vec<VecDeque<String>> = (0..bucket_len).map(|_| VecDeque::new()).collect();
-    let mut bucket_of: HashMap<String, usize> = HashMap::new();
+    let mut bucket_of: HashMap<String, usize> = HashMap::default();
 
     for v in &node_ids {
         assign_bucket(v, &in_w, &out_w, &mut buckets, zero_idx, &mut bucket_of);
     }
 
     // Build adjacency for the aggregated graph (for efficient updates).
-    let mut in_edges: HashMap<String, Vec<(String, i64)>> = HashMap::new();
-    let mut out_edges: HashMap<String, Vec<(String, i64)>> = HashMap::new();
+    let mut in_edges: HashMap<String, Vec<(String, i64)>> = HashMap::default();
+    let mut out_edges: HashMap<String, Vec<(String, i64)>> = HashMap::default();
     for (v, w) in &edge_order {
         let wgt = edge_w.get(&(v.clone(), w.clone())).copied().unwrap_or(0);
         out_edges

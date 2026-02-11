@@ -1,5 +1,5 @@
 use crate::graphlib::Graph;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap as HashMap;
 
 pub fn add_subgraph_constraints<N, E, G, CN, CE, CG>(
     g: &Graph<N, E, G>,
@@ -13,7 +13,7 @@ pub fn add_subgraph_constraints<N, E, G, CN, CE, CG>(
     CE: Default + 'static,
     CG: Default,
 {
-    let mut prev: HashMap<String, String> = HashMap::new();
+    let mut prev: HashMap<String, String> = HashMap::default();
     let mut root_prev: Option<String> = None;
 
     for v in vs {

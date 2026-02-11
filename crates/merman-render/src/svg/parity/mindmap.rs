@@ -254,7 +254,7 @@ pub(super) fn render_mindmap_diagram_svg(
         );
     }
 
-    let model: MindmapSemanticModel = serde_json::from_value(semantic.clone())?;
+    let model: MindmapSemanticModel = crate::json::from_value_ref(semantic)?;
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("mindmap");
     let diagram_id_esc = escape_xml(diagram_id);

@@ -25,7 +25,7 @@ pub(super) fn render_pie_diagram_svg(
     _effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let model: super::PieSvgModel = serde_json::from_value(semantic.clone())?;
+    let model: super::PieSvgModel = crate::json::from_value_ref(semantic)?;
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = super::escape_xml(diagram_id);

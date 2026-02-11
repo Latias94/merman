@@ -366,7 +366,7 @@ pub fn layout_block_diagram(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<BlockDiagramLayout> {
-    let model: BlockDiagramModel = serde_json::from_value(semantic.clone())?;
+    let model: BlockDiagramModel = crate::json::from_value_ref(semantic)?;
 
     let padding = config_f64(effective_config, &["block", "padding"]).unwrap_or(8.0);
     let text_style = crate::text::TextStyle {

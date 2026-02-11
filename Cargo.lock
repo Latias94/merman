@@ -591,6 +591,7 @@ version = "0.1.0"
 dependencies = [
  "dugong-graphlib",
  "gag",
+ "rustc-hash",
  "serde",
  "serde_json",
 ]
@@ -598,6 +599,9 @@ dependencies = [
 [[package]]
 name = "dugong-graphlib"
 version = "0.1.0"
+dependencies = [
+ "rustc-hash",
+]
 
 [[package]]
 name = "either"

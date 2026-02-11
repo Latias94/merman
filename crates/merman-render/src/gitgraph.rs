@@ -557,7 +557,7 @@ pub fn layout_gitgraph_diagram(
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<GitGraphDiagramLayout> {
-    let model: GitGraphModel = serde_json::from_value(semantic.clone())?;
+    let model: GitGraphModel = crate::json::from_value_ref(semantic)?;
     let _ = model.diagram_type.as_str();
 
     let direction = if model.direction.trim().is_empty() {

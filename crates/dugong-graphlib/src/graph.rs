@@ -5,7 +5,7 @@
 //! This module contains the core `Graph` container plus a small set of helper algorithms
 //! re-exported as `dugong_graphlib::alg` for Dagre compatibility.
 
-use std::collections::HashMap;
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone, Copy)]
@@ -129,11 +129,11 @@ where
             default_node_label: Box::new(N::default),
             default_edge_label: Box::new(E::default),
             nodes: Vec::new(),
-            node_index: HashMap::new(),
+            node_index: HashMap::default(),
             edges: Vec::new(),
-            edge_index: HashMap::new(),
-            parent: HashMap::new(),
-            children: HashMap::new(),
+            edge_index: HashMap::default(),
+            parent: HashMap::default(),
+            children: HashMap::default(),
         }
     }
 
@@ -352,9 +352,13 @@ where
             return false;
         };
         self.edges.remove(idx);
-        self.edge_index.clear();
-        for (i, e) in self.edges.iter().enumerate() {
-            self.edge_index.insert(e.key.clone(), i);
+        for i in idx..self.edges.len() {
+            let k = &self.edges[i].key;
+            if let Some(v) = self.edge_index.get_mut(k) {
+                *v = i;
+                continue;
+            }
+            self.edge_index.insert(k.clone(), i);
         }
         true
     }
@@ -375,9 +379,13 @@ where
         };
 
         self.nodes.remove(idx);
-        self.node_index.clear();
-        for (i, n) in self.nodes.iter().enumerate() {
-            self.node_index.insert(n.id.clone(), i);
+        for i in idx..self.nodes.len() {
+            let id = self.nodes[i].id.as_str();
+            if let Some(v) = self.node_index.get_mut(id) {
+                *v = i;
+                continue;
+            }
+            self.node_index.insert(self.nodes[i].id.clone(), i);
         }
 
         // Remove incident edges.
@@ -574,7 +582,7 @@ where
 
     pub fn node_edges(&self, v: &str) -> Vec<EdgeKey> {
         let mut out: Vec<EdgeKey> = Vec::new();
-        let mut seen: std::collections::HashSet<EdgeKey> = std::collections::HashSet::new();
+        let mut seen: HashSet<EdgeKey> = HashSet::default();
         for e in &self.edges {
             if (e.key.v == v || e.key.w == v) && seen.insert(e.key.clone()) {
                 out.push(e.key.clone());

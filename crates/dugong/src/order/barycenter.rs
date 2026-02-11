@@ -4,7 +4,7 @@
 
 use super::{OrderEdgeWeight, OrderNodeLabel};
 use crate::graphlib::Graph;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap as HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BarycenterEntry {
@@ -82,7 +82,7 @@ where
     E: Default + 'static,
     G: Default,
 {
-    let mut mapped: HashMap<String, ConflictEntry> = HashMap::new();
+    let mut mapped: HashMap<String, ConflictEntry> = HashMap::default();
     for (i, entry) in entries.iter().enumerate() {
         mapped.insert(
             entry.v.clone(),
@@ -352,7 +352,7 @@ where
         movable.retain(|w| w != bl && w != br);
     }
 
-    let mut subgraphs: HashMap<String, SortResult> = HashMap::new();
+    let mut subgraphs: HashMap<String, SortResult> = HashMap::default();
 
     let mut barycenters = barycenter(g, &movable);
     for entry in &mut barycenters {

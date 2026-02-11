@@ -652,7 +652,7 @@ pub fn layout_er_diagram(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<ErDiagramLayout> {
-    let model: ErModel = serde_json::from_value(semantic.clone())?;
+    let model: ErModel = crate::json::from_value_ref(semantic)?;
 
     let nodesep = config_f64(effective_config, &["er", "nodeSpacing"]).unwrap_or(140.0);
     let ranksep = config_f64(effective_config, &["er", "rankSpacing"]).unwrap_or(80.0);

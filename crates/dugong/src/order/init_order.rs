@@ -1,6 +1,6 @@
 use super::OrderNodeRange;
 use crate::graphlib::Graph;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap as HashMap;
 
 pub fn init_order<N, E, G>(g: &Graph<N, E, G>) -> Vec<Vec<String>>
 where
@@ -8,7 +8,7 @@ where
     E: Default + 'static,
     G: Default,
 {
-    let mut visited: HashMap<String, bool> = HashMap::new();
+    let mut visited: HashMap<String, bool> = HashMap::default();
 
     let simple_nodes: Vec<String> = g
         .nodes()
@@ -61,7 +61,7 @@ where
 
     let mut ordered_vs = simple_nodes.clone();
 
-    let mut insertion_idx: HashMap<String, usize> = HashMap::new();
+    let mut insertion_idx: HashMap<String, usize> = HashMap::default();
     for (idx, v) in simple_nodes.iter().enumerate() {
         insertion_idx.insert(v.to_string(), idx);
     }

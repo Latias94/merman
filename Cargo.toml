@@ -34,6 +34,7 @@ nalgebra = { version = "0.34.1", default-features = false, features = ["std"] }
 pulldown-cmark = "0.12.2"
 regex = "1.11.1"
 roxmltree = "0.20.0"
+rustc-hash = "2.1.1"
 ryu-js = "1.0.2"
 roughr = "0.12.0"
 serde = { version = "1.0.217", features = ["derive"] }

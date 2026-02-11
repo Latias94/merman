@@ -163,7 +163,7 @@ pub fn layout_journey_diagram(
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<JourneyDiagramLayout> {
-    let model: JourneyModel = serde_json::from_value(semantic.clone())?;
+    let model: JourneyModel = crate::json::from_value_ref(semantic)?;
     let _ = (
         model.acc_title.as_deref(),
         model.acc_descr.as_deref(),

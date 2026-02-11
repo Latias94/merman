@@ -124,7 +124,7 @@ pub fn layout_pie_diagram(
     _effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<PieDiagramLayout> {
-    let model: PieModel = serde_json::from_value(semantic.clone())?;
+    let model: PieModel = crate::json::from_value_ref(semantic)?;
     let _ = (
         model.title.as_deref(),
         model.acc_title.as_deref(),

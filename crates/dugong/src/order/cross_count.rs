@@ -1,6 +1,6 @@
 use super::OrderEdgeWeight;
 use crate::graphlib::Graph;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap as HashMap;
 
 pub fn cross_count<N, E, G>(g: &Graph<N, E, G>, layering: &[Vec<String>]) -> f64
 where
@@ -25,7 +25,7 @@ where
         return 0.0;
     }
 
-    let mut south_pos: HashMap<&str, usize> = HashMap::new();
+    let mut south_pos: HashMap<&str, usize> = HashMap::default();
     for (i, v) in south.iter().enumerate() {
         south_pos.insert(v.as_str(), i);
     }

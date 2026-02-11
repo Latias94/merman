@@ -208,7 +208,7 @@ pub(super) fn render_sequence_diagram_svg(
     _measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let model: SequenceSvgModel = serde_json::from_value(semantic.clone())?;
+    let model: SequenceSvgModel = crate::json::from_value_ref(semantic)?;
 
     let seq_cfg = effective_config
         .get("sequence")

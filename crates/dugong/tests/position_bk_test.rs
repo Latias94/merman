@@ -2,7 +2,7 @@ use dugong::graphlib::{Graph, GraphOptions};
 use dugong::position::bk;
 use dugong::util;
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel};
-use std::collections::HashMap;
+use rustc_hash::FxHashMap as HashMap;
 
 fn new_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions::default());
@@ -53,6 +53,13 @@ fn hm(pairs: &[(&str, &str)]) -> HashMap<String, String> {
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect()
+}
+
+fn map_from<K, V>(pairs: impl IntoIterator<Item = (K, V)>) -> HashMap<K, V>
+where
+    K: std::hash::Hash + Eq,
+{
+    pairs.into_iter().collect()
 }
 
 fn set_path(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, path: &[&str]) {
@@ -787,11 +794,11 @@ fn horizontal_compaction_handles_labelpos_r() {
 
 #[test]
 fn align_coordinates_aligns_a_single_node() {
-    let mut xss: HashMap<String, HashMap<String, f64>> = HashMap::new();
-    xss.insert("ul".to_string(), HashMap::from([("a".to_string(), 50.0)]));
-    xss.insert("ur".to_string(), HashMap::from([("a".to_string(), 100.0)]));
-    xss.insert("dl".to_string(), HashMap::from([("a".to_string(), 50.0)]));
-    xss.insert("dr".to_string(), HashMap::from([("a".to_string(), 200.0)]));
+    let mut xss: HashMap<String, HashMap<String, f64>> = HashMap::default();
+    xss.insert("ul".to_string(), map_from([("a".to_string(), 50.0)]));
+    xss.insert("ur".to_string(), map_from([("a".to_string(), 100.0)]));
+    xss.insert("dl".to_string(), map_from([("a".to_string(), 50.0)]));
+    xss.insert("dr".to_string(), map_from([("a".to_string(), 200.0)]));
 
     let align_to = xss.get("ul").unwrap().clone();
     bk::align_coordinates(&mut xss, &align_to);
@@ -804,22 +811,22 @@ fn align_coordinates_aligns_a_single_node() {
 
 #[test]
 fn align_coordinates_aligns_multiple_nodes() {
-    let mut xss: HashMap<String, HashMap<String, f64>> = HashMap::new();
+    let mut xss: HashMap<String, HashMap<String, f64>> = HashMap::default();
     xss.insert(
         "ul".to_string(),
-        HashMap::from([("a".to_string(), 50.0), ("b".to_string(), 1000.0)]),
+        map_from([("a".to_string(), 50.0), ("b".to_string(), 1000.0)]),
     );
     xss.insert(
         "ur".to_string(),
-        HashMap::from([("a".to_string(), 100.0), ("b".to_string(), 900.0)]),
+        map_from([("a".to_string(), 100.0), ("b".to_string(), 900.0)]),
     );
     xss.insert(
         "dl".to_string(),
-        HashMap::from([("a".to_string(), 150.0), ("b".to_string(), 800.0)]),
+        map_from([("a".to_string(), 150.0), ("b".to_string(), 800.0)]),
     );
     xss.insert(
         "dr".to_string(),
-        HashMap::from([("a".to_string(), 200.0), ("b".to_string(), 700.0)]),
+        map_from([("a".to_string(), 200.0), ("b".to_string(), 700.0)]),
     );
 
     let align_to = xss.get("ul").unwrap().clone();
@@ -853,22 +860,22 @@ fn find_smallest_width_alignment_finds_the_alignment_with_the_smallest_width() {
         },
     );
 
-    let xss: HashMap<String, HashMap<String, f64>> = HashMap::from([
+    let xss: HashMap<String, HashMap<String, f64>> = map_from([
         (
             "ul".to_string(),
-            HashMap::from([("a".to_string(), 0.0), ("b".to_string(), 1000.0)]),
+            map_from([("a".to_string(), 0.0), ("b".to_string(), 1000.0)]),
         ),
         (
             "ur".to_string(),
-            HashMap::from([("a".to_string(), -5.0), ("b".to_string(), 1000.0)]),
+            map_from([("a".to_string(), -5.0), ("b".to_string(), 1000.0)]),
         ),
         (
             "dl".to_string(),
-            HashMap::from([("a".to_string(), 5.0), ("b".to_string(), 2000.0)]),
+            map_from([("a".to_string(), 5.0), ("b".to_string(), 2000.0)]),
         ),
         (
             "dr".to_string(),
-            HashMap::from([("a".to_string(), 0.0), ("b".to_string(), 200.0)]),
+            map_from([("a".to_string(), 0.0), ("b".to_string(), 200.0)]),
         ),
     ]);
 
@@ -900,10 +907,10 @@ fn find_smallest_width_alignment_takes_node_width_into_account() {
         },
     );
 
-    let xss: HashMap<String, HashMap<String, f64>> = HashMap::from([
+    let xss: HashMap<String, HashMap<String, f64>> = map_from([
         (
             "ul".to_string(),
-            HashMap::from([
+            map_from([
                 ("a".to_string(), 0.0),
                 ("b".to_string(), 100.0),
                 ("c".to_string(), 75.0),
@@ -911,7 +918,7 @@ fn find_smallest_width_alignment_takes_node_width_into_account() {
         ),
         (
             "ur".to_string(),
-            HashMap::from([
+            map_from([
                 ("a".to_string(), 0.0),
                 ("b".to_string(), 100.0),
                 ("c".to_string(), 80.0),
@@ -919,7 +926,7 @@ fn find_smallest_width_alignment_takes_node_width_into_account() {
         ),
         (
             "dl".to_string(),
-            HashMap::from([
+            map_from([
                 ("a".to_string(), 0.0),
                 ("b".to_string(), 100.0),
                 ("c".to_string(), 85.0),
@@ -927,7 +934,7 @@ fn find_smallest_width_alignment_takes_node_width_into_account() {
         ),
         (
             "dr".to_string(),
-            HashMap::from([
+            map_from([
                 ("a".to_string(), 0.0),
                 ("b".to_string(), 100.0),
                 ("c".to_string(), 90.0),
@@ -940,55 +947,55 @@ fn find_smallest_width_alignment_takes_node_width_into_account() {
 
 #[test]
 fn balance_aligns_a_single_node_to_the_shared_median_value() {
-    let xss: HashMap<String, HashMap<String, f64>> = HashMap::from([
-        ("ul".to_string(), HashMap::from([("a".to_string(), 0.0)])),
-        ("ur".to_string(), HashMap::from([("a".to_string(), 100.0)])),
-        ("dl".to_string(), HashMap::from([("a".to_string(), 100.0)])),
-        ("dr".to_string(), HashMap::from([("a".to_string(), 200.0)])),
+    let xss: HashMap<String, HashMap<String, f64>> = map_from([
+        ("ul".to_string(), map_from([("a".to_string(), 0.0)])),
+        ("ur".to_string(), map_from([("a".to_string(), 100.0)])),
+        ("dl".to_string(), map_from([("a".to_string(), 100.0)])),
+        ("dr".to_string(), map_from([("a".to_string(), 200.0)])),
     ]);
     assert_eq!(
         bk::balance(&xss, None),
-        HashMap::from([("a".to_string(), 100.0)])
+        map_from([("a".to_string(), 100.0)])
     );
 }
 
 #[test]
 fn balance_aligns_a_single_node_to_the_average_of_different_median_values() {
-    let xss: HashMap<String, HashMap<String, f64>> = HashMap::from([
-        ("ul".to_string(), HashMap::from([("a".to_string(), 0.0)])),
-        ("ur".to_string(), HashMap::from([("a".to_string(), 75.0)])),
-        ("dl".to_string(), HashMap::from([("a".to_string(), 125.0)])),
-        ("dr".to_string(), HashMap::from([("a".to_string(), 200.0)])),
+    let xss: HashMap<String, HashMap<String, f64>> = map_from([
+        ("ul".to_string(), map_from([("a".to_string(), 0.0)])),
+        ("ur".to_string(), map_from([("a".to_string(), 75.0)])),
+        ("dl".to_string(), map_from([("a".to_string(), 125.0)])),
+        ("dr".to_string(), map_from([("a".to_string(), 200.0)])),
     ]);
     assert_eq!(
         bk::balance(&xss, None),
-        HashMap::from([("a".to_string(), 100.0)])
+        map_from([("a".to_string(), 100.0)])
     );
 }
 
 #[test]
 fn balance_balances_multiple_nodes() {
-    let xss: HashMap<String, HashMap<String, f64>> = HashMap::from([
+    let xss: HashMap<String, HashMap<String, f64>> = map_from([
         (
             "ul".to_string(),
-            HashMap::from([("a".to_string(), 0.0), ("b".to_string(), 50.0)]),
+            map_from([("a".to_string(), 0.0), ("b".to_string(), 50.0)]),
         ),
         (
             "ur".to_string(),
-            HashMap::from([("a".to_string(), 75.0), ("b".to_string(), 0.0)]),
+            map_from([("a".to_string(), 75.0), ("b".to_string(), 0.0)]),
         ),
         (
             "dl".to_string(),
-            HashMap::from([("a".to_string(), 125.0), ("b".to_string(), 60.0)]),
+            map_from([("a".to_string(), 125.0), ("b".to_string(), 60.0)]),
         ),
         (
             "dr".to_string(),
-            HashMap::from([("a".to_string(), 200.0), ("b".to_string(), 75.0)]),
+            map_from([("a".to_string(), 200.0), ("b".to_string(), 75.0)]),
         ),
     ]);
     assert_eq!(
         bk::balance(&xss, None),
-        HashMap::from([("a".to_string(), 100.0), ("b".to_string(), 55.0)])
+        map_from([("a".to_string(), 100.0), ("b".to_string(), 55.0)])
     );
 }
 
@@ -996,7 +1003,7 @@ fn balance_balances_multiple_nodes() {
 fn position_x_positions_a_single_node_at_origin() {
     let mut g = new_graph();
     set_node_with(&mut g, "a", 0, 0, 100.0, None, None);
-    assert_eq!(bk::position_x(&g), HashMap::from([("a".to_string(), 0.0)]));
+    assert_eq!(bk::position_x(&g), map_from([("a".to_string(), 0.0)]));
 }
 
 #[test]
@@ -1007,7 +1014,7 @@ fn position_x_positions_a_single_node_block_at_origin() {
     g.set_edge("a", "b");
     assert_eq!(
         bk::position_x(&g),
-        HashMap::from([("a".to_string(), 0.0), ("b".to_string(), 0.0)])
+        map_from([("a".to_string(), 0.0), ("b".to_string(), 0.0)])
     );
 }
 
@@ -1020,7 +1027,7 @@ fn position_x_positions_a_single_node_block_at_origin_even_when_their_sizes_diff
     set_path(&mut g, &["a", "b", "c"]);
     assert_eq!(
         bk::position_x(&g),
-        HashMap::from([
+        map_from([
             ("a".to_string(), 0.0),
             ("b".to_string(), 0.0),
             ("c".to_string(), 0.0)

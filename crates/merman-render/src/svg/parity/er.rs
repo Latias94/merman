@@ -377,7 +377,7 @@ pub(super) fn render_er_diagram_svg(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let model: crate::er::ErModel = serde_json::from_value(semantic.clone())?;
+    let model: crate::er::ErModel = crate::json::from_value_ref(semantic)?;
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     // Mermaid's internal diagram type for ER is `er` (not `erDiagram`), and marker ids are derived

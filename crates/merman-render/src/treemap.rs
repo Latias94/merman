@@ -426,7 +426,7 @@ pub fn layout_treemap_diagram(
     effective_config: &Value,
     _measurer: &dyn crate::text::TextMeasurer,
 ) -> Result<TreemapDiagramLayout> {
-    let model: TreemapModel = serde_json::from_value(semantic.clone())?;
+    let model: TreemapModel = crate::json::from_value_ref(semantic)?;
     let cfg = treemap_config(effective_config);
 
     let title_height = if model.title.as_deref().is_some_and(|t| !t.trim().is_empty()) {

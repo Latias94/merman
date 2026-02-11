@@ -135,7 +135,7 @@ pub fn layout_radar_diagram(
     effective_config: &serde_json::Value,
     _measurer: &dyn TextMeasurer,
 ) -> Result<RadarDiagramLayout> {
-    let model: RadarModel = serde_json::from_value(semantic.clone())?;
+    let model: RadarModel = crate::json::from_value_ref(semantic)?;
     let _ = (
         model.acc_title.as_deref(),
         model.acc_descr.as_deref(),

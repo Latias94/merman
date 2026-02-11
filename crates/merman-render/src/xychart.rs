@@ -1021,7 +1021,7 @@ pub(crate) fn layout_xychart_diagram(
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
 ) -> Result<XyChartDiagramLayout> {
-    let model: XyChartModel = serde_json::from_value(semantic.clone()).map_err(Error::Json)?;
+    let model: XyChartModel = crate::json::from_value_ref(semantic).map_err(Error::Json)?;
 
     if model
         .orientation

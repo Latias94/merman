@@ -1127,7 +1127,7 @@ pub fn layout_state_diagram_v2(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<StateDiagramV2Layout> {
-    let model: StateDiagramModel = serde_json::from_value(semantic.clone())?;
+    let model: StateDiagramModel = crate::json::from_value_ref(semantic)?;
 
     // Mermaid accepts some historical "floating note" syntaxes in the parser but does not render them.
     // Keep them in the semantic model/snapshots, but exclude them from layout so they do not shift
@@ -2047,7 +2047,7 @@ pub fn debug_build_state_diagram_v2_dagre_graph(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<Graph<NodeLabel, EdgeLabel, GraphLabel>> {
-    let model: StateDiagramModel = serde_json::from_value(semantic.clone())?;
+    let model: StateDiagramModel = crate::json::from_value_ref(semantic)?;
 
     let mut hidden_prefixes: Vec<String> = Vec::new();
     for (id, st) in &model.states {

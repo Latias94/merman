@@ -254,7 +254,7 @@ pub(super) fn render_requirement_diagram_svg(
     let diagram_id = options.diagram_id.as_deref().unwrap_or("requirement");
     let diagram_id_esc = escape_xml(diagram_id);
 
-    let model: RequirementSemanticModel = serde_json::from_value(semantic.clone())?;
+    let model: RequirementSemanticModel = crate::json::from_value_ref(semantic)?;
     let relationships = model.relationships.clone();
     let req_by_id: std::collections::BTreeMap<String, RequirementSemanticNode> = model
         .requirements

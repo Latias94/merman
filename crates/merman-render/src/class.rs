@@ -1037,7 +1037,7 @@ pub fn layout_class_diagram_v2(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<ClassDiagramV2Layout> {
-    let model: ClassDiagramModel = serde_json::from_value(semantic.clone())?;
+    let model: ClassDiagramModel = crate::json::from_value_ref(semantic)?;
 
     let diagram_dir = rank_dir_from(&model.direction);
     let conf = effective_config

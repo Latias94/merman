@@ -7578,7 +7578,7 @@ pub(super) fn render_flowchart_v2_svg(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let model: crate::flowchart::FlowchartV2Model = serde_json::from_value(semantic.clone())?;
+    let model: crate::flowchart::FlowchartV2Model = crate::json::from_value_ref(semantic)?;
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_type = "flowchart-v2";

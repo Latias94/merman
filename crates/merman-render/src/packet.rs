@@ -26,7 +26,7 @@ pub fn layout_packet_diagram(
     _effective_config: &serde_json::Value,
     _measurer: &dyn TextMeasurer,
 ) -> Result<PacketDiagramLayout> {
-    let model: PacketModel = serde_json::from_value(semantic.clone())?;
+    let model: PacketModel = crate::json::from_value_ref(semantic)?;
     let _ = (model.acc_title.as_deref(), model.acc_descr.as_deref());
 
     // Mermaid 11.12.2 defaults (see `repo-ref/mermaid/.../packet/db.ts` + `DEFAULT_CONFIG.packet`).

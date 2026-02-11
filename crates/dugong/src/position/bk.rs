@@ -4,7 +4,8 @@
 
 use crate::graphlib::{EdgeKey, Graph, GraphOptions};
 use crate::{EdgeLabel, GraphLabel, LabelPos, NodeLabel};
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use rustc_hash::FxHashMap as HashMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub type Conflicts = BTreeMap<String, BTreeSet<String>>;
 
@@ -185,9 +186,9 @@ pub fn vertical_alignment<F>(
 where
     F: Fn(&str) -> Vec<String>,
 {
-    let mut root: HashMap<String, String> = HashMap::new();
-    let mut align: HashMap<String, String> = HashMap::new();
-    let mut pos: HashMap<String, usize> = HashMap::new();
+    let mut root: HashMap<String, String> = HashMap::default();
+    let mut align: HashMap<String, String> = HashMap::default();
+    let mut pos: HashMap<String, usize> = HashMap::default();
 
     for layer in layering {
         for (order, v) in layer.iter().enumerate() {
@@ -234,7 +235,7 @@ pub fn horizontal_compaction(
     align: &HashMap<String, String>,
     reverse_sep: bool,
 ) -> HashMap<String, f64> {
-    let mut xs: HashMap<String, f64> = HashMap::new();
+    let mut xs: HashMap<String, f64> = HashMap::default();
     let block_g = build_block_graph(g, layering, root, reverse_sep);
     let border_type = if reverse_sep {
         "borderLeft"
@@ -248,7 +249,7 @@ pub fn horizontal_compaction(
         N: FnMut(&str) -> Vec<String>,
     {
         let mut stack: Vec<String> = block_g.nodes().map(|n| n.to_string()).collect();
-        let mut visited: HashMap<String, bool> = HashMap::new();
+        let mut visited: HashMap<String, bool> = HashMap::default();
 
         while let Some(elem) = stack.pop() {
             if visited.get(&elem).copied().unwrap_or(false) {
@@ -315,7 +316,7 @@ pub fn horizontal_compaction(
     }
 
     // Assign x coordinates to all nodes based on their block root.
-    let mut out: HashMap<String, f64> = HashMap::new();
+    let mut out: HashMap<String, f64> = HashMap::default();
     for (v, r) in align {
         let x = xs.get(root.get(v).unwrap_or(r)).copied().unwrap_or(0.0);
         out.insert(v.clone(), x);
@@ -357,7 +358,7 @@ pub fn find_smallest_width_alignment(
     xss: &HashMap<String, HashMap<String, f64>>,
 ) -> HashMap<String, f64> {
     let mut best_width: f64 = f64::INFINITY;
-    let mut best: HashMap<String, f64> = HashMap::new();
+    let mut best: HashMap<String, f64> = HashMap::default();
 
     // Match upstream dagre: ties are resolved by a stable iteration order over alignments.
     // The canonical order is: `ul`, `ur`, `dl`, `dr` (insertion order in upstream).
@@ -414,12 +415,12 @@ pub fn balance(
     align: Option<&str>,
 ) -> HashMap<String, f64> {
     let Some(xs_ul) = xss.get("ul") else {
-        return HashMap::new();
+        return HashMap::default();
     };
 
     let align_key = align.map(|a| a.to_ascii_lowercase());
 
-    let mut out: HashMap<String, f64> = HashMap::new();
+    let mut out: HashMap<String, f64> = HashMap::default();
     for v in xs_ul.keys() {
         if let Some(key) = align_key.as_deref() {
             let x = xss
@@ -450,7 +451,7 @@ pub fn position_x(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> HashMap<String
         }
     }
 
-    let mut xss: HashMap<String, HashMap<String, f64>> = HashMap::new();
+    let mut xss: HashMap<String, HashMap<String, f64>> = HashMap::default();
 
     for vert in ["u", "d"] {
         let mut adjusted_layering = if vert == "u" {

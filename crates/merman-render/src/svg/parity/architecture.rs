@@ -219,7 +219,7 @@ pub(super) fn render_architecture_diagram_svg(
         edges: Vec<ArchitectureEdge>,
     }
 
-    let model: ArchitectureModel = serde_json::from_value(semantic.clone())?;
+    let model: ArchitectureModel = crate::json::from_value_ref(semantic)?;
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("architecture");
     let diagram_id_esc = escape_xml(diagram_id);

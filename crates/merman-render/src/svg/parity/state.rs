@@ -12,7 +12,7 @@ pub(super) fn render_state_diagram_v2_svg(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let model: StateSvgModel = serde_json::from_value(semantic.clone())?;
+    let model: StateSvgModel = crate::json::from_value_ref(semantic)?;
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
 

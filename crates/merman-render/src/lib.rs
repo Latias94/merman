@@ -19,6 +19,7 @@ mod generated;
 pub mod gitgraph;
 pub mod info;
 pub mod journey;
+mod json;
 pub mod kanban;
 pub mod mindmap;
 pub mod model;

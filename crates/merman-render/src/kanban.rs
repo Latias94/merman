@@ -50,7 +50,7 @@ pub fn layout_kanban_diagram(
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<KanbanDiagramLayout> {
-    let model: KanbanModel = serde_json::from_value(semantic.clone())?;
+    let model: KanbanModel = crate::json::from_value_ref(semantic)?;
     let _ = model.diagram_type.as_str();
 
     let section_width = cfg_f64(effective_config, &["kanban", "sectionWidth"])

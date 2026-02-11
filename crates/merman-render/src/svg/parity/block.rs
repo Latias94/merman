@@ -37,7 +37,7 @@ pub(super) fn render_block_diagram_svg(
         }
     }
 
-    let model: crate::block::BlockDiagramModel = serde_json::from_value(semantic.clone())?;
+    let model: crate::block::BlockDiagramModel = crate::json::from_value_ref(semantic)?;
     let mut nodes_by_id: std::collections::HashMap<String, RenderNode> =
         std::collections::HashMap::new();
     for n in &model.blocks_flat {
