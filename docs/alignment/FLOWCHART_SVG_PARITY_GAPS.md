@@ -11,6 +11,15 @@ Reproduce:
 
 None (last checked 2026-01-20).
 
+## Deferred fixtures (not yet parity-gated)
+
+The upstream docs include directive-driven examples that currently would not pass Stage B DOM parity
+if imported as fixtures, so they are intentionally deferred until full support is implemented:
+
+- `repo-ref/mermaid/packages/mermaid/src/docs/config/directives.md`
+  - legacy `graph TD` example with `%%{init: { "flowchart": { "curve": "linear" } } }%%`
+  - legacy `graph TD` example with `%%{init: { "theme": "forest" } }%%`
+
 ## Next steps
 
 - Keep `compare-flowchart-svgs` in CI (or run it locally) to catch regressions when expanding the
