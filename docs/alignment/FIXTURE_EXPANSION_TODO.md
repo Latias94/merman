@@ -36,6 +36,7 @@ Recently imported (keep gates green after each batch):
 - 2026-02-11: Architecture `architecture.md` docs examples (`example_002`, `icons_018`).
 - 2026-02-11: Flowchart `flowchart.md` docs examples batch import (20 fixtures, including new shapes, image nodes, animations, and curve-style variants).
 - 2026-02-11: State `stateDiagram.md` docs examples batch import (11 new fixtures; additional blocks were skipped as duplicates).
+- 2026-02-11: Sequence `sequenceDiagram.md` docs examples batch import (16 new fixtures; additional blocks were skipped as duplicates).
 
 ## Medium priority (coverage growth)
 

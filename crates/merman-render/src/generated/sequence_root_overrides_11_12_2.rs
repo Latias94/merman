@@ -10,6 +10,8 @@ pub fn lookup_sequence_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
+        "upstream_docs_sequencediagram_boundary_008" => Some(("-50 -10 473 274", "473")),
+        "upstream_docs_sequencediagram_collections_016" => Some(("-50 -10 453 259", "453")),
         "upstream_docs_sequencediagram_parallel_054" => Some(("-50 -10 1062 547", "1062")),
         "upstream_extended_participant_quote_styles_spec" => {
             Some(("-50 -10 1250 251.49998474121094", "1250"))
