@@ -50,6 +50,17 @@ fn ns(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     util::normalize_ranks(g);
 }
 
+fn rank_by_ix(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<i32> {
+    let mut out: Vec<i32> = Vec::new();
+    g.for_each_node_ix(|ix, _id, lbl| {
+        if ix >= out.len() {
+            out.resize(ix + 1, 0);
+        }
+        out[ix] = lbl.rank.unwrap_or(0);
+    });
+    out
+}
+
 fn undirected_edge(e: &EdgeKey) -> (String, String) {
     if e.v <= e.w {
         (e.v.clone(), e.w.clone())
@@ -218,7 +229,8 @@ fn enter_edge_finds_an_edge_from_the_head_to_tail_component() {
     t.set_path(&["b", "c", "a"]);
     rank::network_simplex::init_low_lim_values(&mut t, Some("c"));
 
-    let f = rank::network_simplex::enter_edge(&t, &g, &ek("b", "c"));
+    let rank_by_ix = rank_by_ix(&g);
+    let f = rank::network_simplex::enter_edge(&t, &g, &rank_by_ix, &ek("b", "c"));
     assert_eq!(undirected_edge(&f), undirected_edge(&ek("a", "b")));
 }
 
@@ -256,7 +268,8 @@ fn enter_edge_works_when_the_root_of_the_tree_is_in_the_tail_component() {
     t.set_path(&["b", "c", "a"]);
     rank::network_simplex::init_low_lim_values(&mut t, Some("b"));
 
-    let f = rank::network_simplex::enter_edge(&t, &g, &ek("b", "c"));
+    let rank_by_ix = rank_by_ix(&g);
+    let f = rank::network_simplex::enter_edge(&t, &g, &rank_by_ix, &ek("b", "c"));
     assert_eq!(undirected_edge(&f), undirected_edge(&ek("a", "b")));
 }
 
@@ -302,7 +315,8 @@ fn enter_edge_finds_the_edge_with_the_least_slack() {
     t.set_path(&["c", "d", "a", "b"]);
     rank::network_simplex::init_low_lim_values(&mut t, Some("a"));
 
-    let f = rank::network_simplex::enter_edge(&t, &g, &ek("c", "d"));
+    let rank_by_ix = rank_by_ix(&g);
+    let f = rank::network_simplex::enter_edge(&t, &g, &rank_by_ix, &ek("c", "d"));
     assert_eq!(undirected_edge(&f), undirected_edge(&ek("b", "c")));
 }
 
@@ -313,7 +327,8 @@ fn enter_edge_finds_an_appropriate_edge_for_gansner_graph_1() {
     rank::util::longest_path(&mut g);
     rank::network_simplex::init_low_lim_values(&mut t, Some("a"));
 
-    let f = rank::network_simplex::enter_edge(&t, &g, &ek("g", "h"));
+    let rank_by_ix = rank_by_ix(&g);
+    let f = rank::network_simplex::enter_edge(&t, &g, &rank_by_ix, &ek("g", "h"));
     let (u, v) = undirected_edge(&f);
     assert_eq!(u, "a");
     assert!(v == "e" || v == "f");
@@ -326,7 +341,8 @@ fn enter_edge_finds_an_appropriate_edge_for_gansner_graph_2() {
     rank::util::longest_path(&mut g);
     rank::network_simplex::init_low_lim_values(&mut t, Some("e"));
 
-    let f = rank::network_simplex::enter_edge(&t, &g, &ek("g", "h"));
+    let rank_by_ix = rank_by_ix(&g);
+    let f = rank::network_simplex::enter_edge(&t, &g, &rank_by_ix, &ek("g", "h"));
     let (u, v) = undirected_edge(&f);
     assert_eq!(u, "a");
     assert!(v == "e" || v == "f");
@@ -339,7 +355,8 @@ fn enter_edge_finds_an_appropriate_edge_for_gansner_graph_3() {
     rank::util::longest_path(&mut g);
     rank::network_simplex::init_low_lim_values(&mut t, Some("a"));
 
-    let f = rank::network_simplex::enter_edge(&t, &g, &ek("h", "g"));
+    let rank_by_ix = rank_by_ix(&g);
+    let f = rank::network_simplex::enter_edge(&t, &g, &rank_by_ix, &ek("h", "g"));
     let (u, v) = undirected_edge(&f);
     assert_eq!(u, "a");
     assert!(v == "e" || v == "f");
@@ -352,7 +369,8 @@ fn enter_edge_finds_an_appropriate_edge_for_gansner_graph_4() {
     rank::util::longest_path(&mut g);
     rank::network_simplex::init_low_lim_values(&mut t, Some("e"));
 
-    let f = rank::network_simplex::enter_edge(&t, &g, &ek("h", "g"));
+    let rank_by_ix = rank_by_ix(&g);
+    let f = rank::network_simplex::enter_edge(&t, &g, &rank_by_ix, &ek("h", "g"));
     let (u, v) = undirected_edge(&f);
     assert_eq!(u, "a");
     assert!(v == "e" || v == "f");
@@ -410,7 +428,14 @@ fn exchange_edges_exchanges_edges_and_updates_cut_values_and_low_lim_numbers() {
     rank::util::longest_path(&mut g);
     rank::network_simplex::init_low_lim_values(&mut t, None);
 
-    rank::network_simplex::exchange_edges(&mut t, &mut g, &ek("g", "h"), &ek("a", "e"));
+    let mut rank_by_ix = rank_by_ix(&g);
+    rank::network_simplex::exchange_edges(
+        &mut t,
+        &mut g,
+        &mut rank_by_ix,
+        &ek("g", "h"),
+        &ek("a", "e"),
+    );
 
     assert_eq!(t.edge("a", "b", None).unwrap().cutvalue, 2.0);
     assert_eq!(t.edge("b", "c", None).unwrap().cutvalue, 2.0);
@@ -436,7 +461,14 @@ fn exchange_edges_updates_ranks() {
     rank::util::longest_path(&mut g);
     rank::network_simplex::init_low_lim_values(&mut t, None);
 
-    rank::network_simplex::exchange_edges(&mut t, &mut g, &ek("g", "h"), &ek("a", "e"));
+    let mut rank_by_ix = rank_by_ix(&g);
+    rank::network_simplex::exchange_edges(
+        &mut t,
+        &mut g,
+        &mut rank_by_ix,
+        &ek("g", "h"),
+        &ek("a", "e"),
+    );
     util::normalize_ranks(&mut g);
 
     assert_eq!(g.node("a").unwrap().rank, Some(0));

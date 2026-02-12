@@ -302,9 +302,17 @@ pub mod network_simplex {
         init_low_lim_values(&mut t, None);
         init_cut_values(&mut t, &simplified);
 
+        let mut rank_by_ix: Vec<i32> = Vec::new();
+        simplified.for_each_node_ix(|g_ix, _id, lbl| {
+            if g_ix >= rank_by_ix.len() {
+                rank_by_ix.resize(g_ix + 1, 0);
+            }
+            rank_by_ix[g_ix] = lbl.rank.unwrap_or(0);
+        });
+
         while let Some(e) = leave_edge(&t) {
-            let f = enter_edge(&t, &simplified, &e);
-            exchange_edges(&mut t, &mut simplified, &e, &f);
+            let f = enter_edge(&t, &simplified, &rank_by_ix, &e);
+            exchange_edges(&mut t, &mut simplified, &mut rank_by_ix, &e, &f);
         }
 
         for v in g.node_ids() {
@@ -537,6 +545,7 @@ pub mod network_simplex {
     pub fn enter_edge(
         t: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
         g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        rank_by_ix: &[i32],
         edge: &EdgeKey,
     ) -> EdgeKey {
         let (v, w) = if g.has_edge(&edge.v, &edge.w, None) {
@@ -590,14 +599,6 @@ pub mod network_simplex {
             ((v_low, v_lim), false)
         };
 
-        let mut g_rank: Vec<i32> = Vec::new();
-        g.for_each_node_ix(|g_ix, _, lbl| {
-            if g_ix >= g_rank.len() {
-                g_rank.resize(g_ix + 1, 0);
-            }
-            g_rank[g_ix] = lbl.rank.unwrap_or(0);
-        });
-
         let mut best: Option<(i32, EdgeKey)> = None;
         g.for_each_edge_ix(|g_v_ix, g_w_ix, key, lbl| {
             if !t_has_by_gix.get(g_v_ix).copied().unwrap_or(false) {
@@ -612,8 +613,8 @@ pub mod network_simplex {
             let w_desc = tail_low <= w_lim && w_lim <= tail_lim;
 
             if flip == v_desc && flip != w_desc {
-                let v_rank = g_rank.get(g_v_ix).copied().unwrap_or(0);
-                let w_rank = g_rank.get(g_w_ix).copied().unwrap_or(0);
+                let v_rank = rank_by_ix.get(g_v_ix).copied().unwrap_or(0);
+                let w_rank = rank_by_ix.get(g_w_ix).copied().unwrap_or(0);
                 let minlen: i32 = (lbl.minlen.max(1)) as i32;
                 let slack = w_rank - v_rank - minlen;
 
@@ -630,6 +631,7 @@ pub mod network_simplex {
     pub fn exchange_edges(
         t: &mut Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
         g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        rank_by_ix: &mut Vec<i32>,
         e: &EdgeKey,
         f: &EdgeKey,
     ) {
@@ -637,12 +639,13 @@ pub mod network_simplex {
         t.set_edge(f.v.clone(), f.w.clone());
         init_low_lim_values(t, None);
         init_cut_values(t, g);
-        update_ranks(t, g);
+        update_ranks(t, g, rank_by_ix);
     }
 
     fn update_ranks(
         t: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
         g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        rank_by_ix: &mut Vec<i32>,
     ) {
         let Some(root) = t
             .nodes()
@@ -678,6 +681,12 @@ pub mod network_simplex {
             };
             if let Some(node) = g.node_mut(&v) {
                 node.rank = Some(rank);
+            }
+            if let Some(ix) = g.node_ix(&v) {
+                if ix >= rank_by_ix.len() {
+                    rank_by_ix.resize(ix + 1, 0);
+                }
+                rank_by_ix[ix] = rank;
             }
         }
     }
