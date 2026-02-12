@@ -471,45 +471,54 @@ def main(argv: list[str]) -> int:
 
         script = repo_root / "tools" / "bench" / "mermaid_js_bench.cjs"
         print("[bench] mermaid-js (puppeteer): node", script)
-        run(
-            [
-                "node",
-                str(script),
-                "--in",
-                str(bench_in),
-                "--out",
-                str(bench_out),
-            ],
-            cwd=mermaid_cli_dir,
-        )
+        try:
+            run(
+                [
+                    "node",
+                    str(script),
+                    "--in",
+                    str(bench_in),
+                    "--out",
+                    str(bench_out),
+                ],
+                cwd=mermaid_cli_dir,
+            )
+        except Exception as e:
+            print("[bench] mermaid-js: skipped (benchmark failed)")
+            print("reason:", str(e).splitlines()[0] if str(e) else repr(e))
+            mermaid_js_results = {}
+            mermaid_js_rev = None
+            mermaid_js_meta = {}
+            bench_out = None
 
-        data = json.loads(bench_out.read_text(encoding="utf-8", errors="replace"))
-        if isinstance(data.get("meta"), dict):
-            mermaid_js_meta = {
-                k: str(v) for k, v in data.get("meta").items() if isinstance(k, str)
-            }
-        for name, v in (data.get("results") or {}).items():
-            med = v.get("median_ns")
-            if isinstance(med, (int, float)) and med > 0:
-                mermaid_js_results[name] = float(med)
+        if bench_out is not None and bench_out.exists():
+            data = json.loads(bench_out.read_text(encoding="utf-8", errors="replace"))
+            if isinstance(data.get("meta"), dict):
+                mermaid_js_meta = {
+                    k: str(v) for k, v in data.get("meta").items() if isinstance(k, str)
+                }
+            for name, v in (data.get("results") or {}).items():
+                med = v.get("median_ns")
+                if isinstance(med, (int, float)) and med > 0:
+                    mermaid_js_results[name] = float(med)
 
-        # Prefer meta, then fall back to package-lock parsing.
-        if mermaid_js_meta.get("mermaid"):
-            mermaid_js_rev = "mermaid@" + mermaid_js_meta["mermaid"]
-        else:
-            lock = mermaid_cli_dir / "package-lock.json"
-            if lock.exists():
-                try:
-                    lock_data = json.loads(lock.read_text(encoding="utf-8", errors="replace"))
-                    ver = (
-                        (lock_data.get("packages") or {})
-                        .get("node_modules/mermaid", {})
-                        .get("version")
-                    )
-                    if isinstance(ver, str) and ver.strip():
-                        mermaid_js_rev = "mermaid@" + ver.strip()
-                except Exception:
-                    mermaid_js_rev = None
+            # Prefer meta, then fall back to package-lock parsing.
+            if mermaid_js_meta.get("mermaid"):
+                mermaid_js_rev = "mermaid@" + mermaid_js_meta["mermaid"]
+            else:
+                lock = mermaid_cli_dir / "package-lock.json"
+                if lock.exists():
+                    try:
+                        lock_data = json.loads(lock.read_text(encoding="utf-8", errors="replace"))
+                        ver = (
+                            (lock_data.get("packages") or {})
+                            .get("node_modules/mermaid", {})
+                            .get("version")
+                        )
+                        if isinstance(ver, str) and ver.strip():
+                            mermaid_js_rev = "mermaid@" + ver.strip()
+                    except Exception:
+                        mermaid_js_rev = None
     else:
         print("[bench] mermaid-js: skipped (missing tools/mermaid-cli)")
 
