@@ -31,3 +31,7 @@ gag = "1.0.0"
 [[bench]]
 name = "network_simplex"
 harness = false
+
+[[bench]]
+name = "feasible_tree"
+harness = false
