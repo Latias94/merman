@@ -200,51 +200,120 @@ impl ClassMember {
         m
     }
 
+    fn parse_method_signature_fast(input: &str) -> Option<(&str, &str, &str, &str, &str)> {
+        // Fast-path for the common Mermaid method member forms:
+        //
+        //   ([#+~-])? <name> "(" <params> ")" <classifier?> <return_type?>
+        //
+        // where classifier is `$` (underline) or `*` (italic) and can appear either:
+        // - immediately after `)` (e.g. `foo()$`)
+        // - at the end of the return type payload (e.g. `foo() : i32$`), in which case Mermaid's
+        //   upstream parsing treats it as the classifier (see legacy regex logic below).
+        //
+        // We return borrowed slices and let the caller allocate as needed.
+        let s = input.trim();
+        if s.is_empty() {
+            return None;
+        }
+
+        let (visibility, rest) = match s.as_bytes()[0] {
+            b'#' | b'+' | b'~' | b'-' => (&s[..1], &s[1..]),
+            _ => ("", s),
+        };
+
+        let Some(paren_open_rel) = rest.find('(') else {
+            return None;
+        };
+        let Some(paren_close_rel) = rest.rfind(')') else {
+            return None;
+        };
+        if paren_close_rel < paren_open_rel {
+            return None;
+        }
+
+        let name = rest[..paren_open_rel].trim();
+        let params = rest[paren_open_rel + 1..paren_close_rel].trim();
+        let after_paren = rest[paren_close_rel + 1..].trim_start();
+
+        let mut classifier = "";
+        let mut return_type = after_paren.trim();
+
+        if let Some(first) = after_paren.as_bytes().first().copied() {
+            if first == b'$' || first == b'*' {
+                classifier = &after_paren[..1];
+                return_type = after_paren[1..].trim();
+            }
+        }
+
+        if classifier.is_empty() {
+            if let Some(last) = return_type.as_bytes().last().copied() {
+                if last == b'$' || last == b'*' {
+                    classifier = &return_type[return_type.len() - 1..];
+                    return_type = return_type[..return_type.len() - 1].trim();
+                }
+            }
+        }
+
+        Some((visibility, name, params, classifier, return_type))
+    }
+
     fn parse_member(&mut self, input: &str, member_type: &str) {
         let input = input.trim();
         if member_type == "method" {
-            let method_re = METHOD_RE.get_or_init(|| {
-                Regex::new(r"^([#+~-])?(.+)\((.*)\)([\s$*])?(.*)([$*])?$")
-                    .expect("class method regex must compile")
-            });
-            if let Some(caps) = method_re.captures(input) {
-                if let Some(v) = caps.get(1).map(|m| m.as_str().trim()) {
-                    if matches!(v, "#" | "+" | "~" | "-" | "") {
-                        self.visibility = v.to_string();
-                    }
+            if let Some((visibility, id, params, classifier, return_type)) =
+                Self::parse_method_signature_fast(input)
+            {
+                if matches!(visibility, "#" | "+" | "~" | "-") {
+                    self.visibility = visibility.to_string();
                 }
-                self.id = caps
-                    .get(2)
-                    .map(|m| m.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                self.parameters = caps
-                    .get(3)
-                    .map(|m| m.as_str().trim())
-                    .unwrap_or_default()
-                    .to_string();
-                let mut classifier = caps
-                    .get(4)
-                    .map(|m| m.as_str().trim())
-                    .unwrap_or_default()
-                    .to_string();
-                self.return_type = caps
-                    .get(5)
-                    .map(|m| m.as_str().trim())
-                    .unwrap_or_default()
-                    .to_string();
-
-                if classifier.is_empty() {
-                    if let Some(last) = self.return_type.chars().last() {
-                        if last == '$' || last == '*' {
-                            classifier = last.to_string();
-                            self.return_type.pop();
-                            self.return_type = self.return_type.trim().to_string();
+                self.id = id.to_string();
+                self.parameters = params.to_string();
+                self.classifier = classifier.to_string();
+                self.return_type = return_type.to_string();
+            } else {
+                let method_re = METHOD_RE.get_or_init(|| {
+                    Regex::new(r"^([#+~-])?(.+)\((.*)\)([\s$*])?(.*)([$*])?$")
+                        .expect("class method regex must compile")
+                });
+                if let Some(caps) = method_re.captures(input) {
+                    if let Some(v) = caps.get(1).map(|m| m.as_str().trim()) {
+                        if matches!(v, "#" | "+" | "~" | "-" | "") {
+                            self.visibility = v.to_string();
                         }
                     }
-                }
+                    self.id = caps
+                        .get(2)
+                        .map(|m| m.as_str())
+                        .unwrap_or_default()
+                        .to_string();
+                    self.parameters = caps
+                        .get(3)
+                        .map(|m| m.as_str().trim())
+                        .unwrap_or_default()
+                        .to_string();
+                    let mut classifier = caps
+                        .get(4)
+                        .map(|m| m.as_str().trim())
+                        .unwrap_or_default()
+                        .to_string();
+                    self.return_type = caps
+                        .get(5)
+                        .map(|m| m.as_str().trim())
+                        .unwrap_or_default()
+                        .to_string();
 
-                self.classifier = classifier;
+                    if classifier.is_empty() {
+                        if let Some(last) = self.return_type.chars().last() {
+                            if last == '$' || last == '*' {
+                                classifier = last.to_string();
+                                self.return_type.pop();
+                                self.return_type = self.return_type.trim().to_string();
+                            }
+                        }
+                    }
+
+                    self.classifier = classifier;
+                }
             }
         } else {
             let first = input.chars().next().unwrap_or('\0');
