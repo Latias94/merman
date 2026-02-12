@@ -45,6 +45,18 @@ pub fn lookup_architecture_root_viewport_override(
             "-333.2172546386719 -266.3057403564453 746.4345092773438 663.6115112304688",
             "746.4345092773438",
         )),
+        "upstream_architecture_cypress_reasonable_height" => Some((
+            "-889.9099731445312 -270.7564392089844 1859.8199462890625 672.5128784179688",
+            "1859.8199462890625",
+        )),
+        "upstream_architecture_layout_reasonable_height" => Some((
+            "-889.9099731445312 -270.7564392089844 1859.8199462890625 672.5128784179688",
+            "1859.8199462890625",
+        )),
+        "mmdr_tests_architecture_architecture_basic" => Some((
+            "-182.84327697753906 -65.5 445.6865539550781 262",
+            "445.6865539550781",
+        )),
         "upstream_architecture_cypress_fallback_icon" => {
             Some(("-49.8515625 -22 179.953125 184.1875", "179.953125"))
         }

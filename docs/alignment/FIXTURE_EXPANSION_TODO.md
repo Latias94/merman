@@ -43,11 +43,12 @@ Recently imported (keep gates green after each batch):
 - 2026-02-12: More `packages/mermaid/src/docs/*` fixtures batch import (25 fixtures; ER/Gantt/GitGraph/XYChart) with upstream SVG baselines.
 - 2026-02-12: Flowchart docs batch stabilization: Flowchart-v2 rendering-elements parity fixes (curly brace shapes + SVG-label escaped tag spacing) and a small refresh of root viewport overrides (State/Class/GitGraph/Mindmap/Architecture) to keep the global `parity-root` gate green.
 - 2026-02-12: Imported a small set of additional docs-site fixtures (intro/examples) for Mindmap/Class/Sequence/Flowchart and refreshed root viewport overrides as needed to keep the global `parity-root` gate green.
+- 2026-02-12: Imported additional Mermaid docs fixtures from `repo-ref/mermaid/docs/*` (Contributing flowcharts + `docs/diagrams/*` code-flow + mermaid-api sequence) and a small Mindmap syntax delta; refreshed Flowchart/Sequence root viewport overrides to keep the global `parity-root` gate green. (Skipped/deleted `layout: elk` / `look: ...` / math examples per deferred parity items.)
 - 2026-02-11: State `stateDiagram.md` docs examples batch import (11 new fixtures; additional blocks were skipped as duplicates).
 - 2026-02-11: Sequence `sequenceDiagram.md` docs examples batch import (16 new fixtures; additional blocks were skipped as duplicates).
 - 2026-02-11: Class `classDiagram.md` docs examples batch import (13 new fixtures, including `hideEmptyMembersBox` and inline style variants).
 - 2026-02-11: GitGraph `gitgraph.md` docs examples batch import (5 new fixtures: branch/line hiding and theme variants).
-- 2026-02-11: External fixtures from `mermaid-rs-renderer` (Mindmap + Kanban: 2 fixtures).
+- 2026-02-11: External fixtures from `mermaid-rs-renderer` (Mindmap + Kanban + Flowchart + Sequence + Architecture: 5 fixtures).
 
 ## Medium priority (coverage growth)
 

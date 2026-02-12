@@ -303,6 +303,10 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
         diagram_dir: String,
         stem: String,
         path: PathBuf,
+        source_md: PathBuf,
+        source_idx_in_file: usize,
+        source_info: String,
+        source_heading: Option<String>,
     }
 
     fn slugify(s: &str) -> String {
@@ -328,6 +332,21 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
             "untitled".to_string()
         } else {
             out
+        }
+    }
+
+    fn clamp_slug(mut s: String, max_len: usize) -> String {
+        if s.len() <= max_len {
+            return s;
+        }
+        s.truncate(max_len);
+        while s.ends_with('_') {
+            s.pop();
+        }
+        if s.is_empty() {
+            "untitled".to_string()
+        } else {
+            s
         }
     }
 
@@ -636,7 +655,7 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown");
-        let source_slug = slugify(source_stem);
+        let source_slug = clamp_slug(slugify(source_stem), 48);
 
         for b in blocks {
             if !allowed_infos.iter().any(|v| *v == b.info) {
@@ -697,7 +716,8 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
                 continue;
             }
 
-            let heading_slug = slugify(b.heading.as_deref().unwrap_or("example"));
+            let heading_slug =
+                clamp_slug(slugify(b.heading.as_deref().unwrap_or("example")), 64);
             let stem = format!(
                 "upstream_docs_{source_slug}_{heading_slug}_{idx:03}",
                 idx = b.idx_in_file + 1
@@ -751,6 +771,10 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
             diagram_dir: c.diagram_dir,
             stem: c.stem,
             path: out_path,
+            source_md: c.md_block.source_md.clone(),
+            source_idx_in_file: c.md_block.idx_in_file,
+            source_info: c.md_block.info.clone(),
+            source_heading: c.md_block.heading.clone(),
         });
 
         imported += 1;
@@ -779,8 +803,128 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
         //
         // This is intentionally per-fixture (filter=stem) so we don't accidentally regenerate or
         // fail on unrelated upstream fixtures in the same folder.
+        let report_path = workspace_root
+            .join("target")
+            .join("import-upstream-docs.report.txt");
+        let mut report_lines: Vec<String> = Vec::new();
+
+        fn deferred_with_baselines_reason(diagram_dir: &str, fixture_text: &str) -> Option<&'static str> {
+            // Keep `--with-baselines` aligned with the current parity hardening scope.
+            //
+            // Some examples require upstream (browser) features we have not yet replicated in the
+            // headless pipeline. Import them later in dedicated parity work items (tracked in
+            // `docs/alignment/FIXTURE_EXPANSION_TODO.md`).
+            match diagram_dir {
+                "flowchart" => {
+                    // ELK layout is currently out of scope for the headless layout engine.
+                    if fixture_text.contains("\n  layout: elk") || fixture_text.contains("\nlayout: elk") {
+                        return Some("flowchart frontmatter config.layout=elk (deferred)");
+                    }
+                    // Flowchart "look" variants change DOM structure and markers; only classic is in scope.
+                    if fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:") {
+                        if !fixture_text.contains("\n  look: classic") && !fixture_text.contains("\nlook: classic") {
+                            return Some("flowchart frontmatter config.look!=classic (deferred)");
+                        }
+                    }
+                    // Math rendering depends on browser KaTeX + foreignObject details.
+                    if fixture_text.contains("$$") {
+                        return Some("flowchart math (deferred)");
+                    }
+                }
+                "sequence" => {
+                    // Math rendering depends on browser KaTeX + font metrics.
+                    if fixture_text.contains("$$") {
+                        return Some("sequence math (deferred)");
+                    }
+                    // Some docs examples rely on wrap/width behavior not yet matched in headless layout.
+                    if fixture_text.contains("%%{init:") && (fixture_text.contains("\"wrap\": true") || fixture_text.contains("\"width\"")) {
+                        return Some("sequence wrap/width directive (deferred)");
+                    }
+                }
+                _ => {}
+            }
+            None
+        }
+
+        fn is_suspicious_blank_svg(svg_path: &Path) -> bool {
+            // Mermaid CLI often emits a tiny 16x16 SVG for "empty" diagrams (e.g. `graph LR` with
+            // no nodes/edges). These are usually unhelpful as parity fixtures and tend to create
+            // noisy root viewport diffs.
+            //
+            // Treat them as "output anomalies" for fixture import purposes: keep the candidate
+            // traceable via the report and skip importing it for now.
+            let Ok(head) = fs::read_to_string(svg_path) else {
+                return false;
+            };
+            let first = head.lines().next().unwrap_or_default();
+            first.contains(r#"viewBox="-8 -8 16 16""#)
+                || first.contains(r#"viewBox="0 0 16 16""#)
+                || first.contains(r#"style="max-width: 16px"#)
+        }
+
+        fn cleanup_fixture_files(workspace_root: &Path, f: &CreatedFixture) {
+            let _ = fs::remove_file(&f.path);
+            let _ = fs::remove_file(
+                workspace_root
+                    .join("fixtures")
+                    .join("upstream-svgs")
+                    .join(&f.diagram_dir)
+                    .join(format!("{}.svg", f.stem)),
+            );
+            let _ = fs::remove_file(
+                workspace_root
+                    .join("fixtures")
+                    .join(&f.diagram_dir)
+                    .join(format!("{}.golden.json", f.stem)),
+            );
+            let _ = fs::remove_file(
+                workspace_root
+                    .join("fixtures")
+                    .join(&f.diagram_dir)
+                    .join(format!("{}.layout.golden.json", f.stem)),
+            );
+        }
+
         let mut kept: Vec<CreatedFixture> = Vec::with_capacity(created.len());
         for f in &created {
+            let fixture_text = match fs::read_to_string(&f.path) {
+                Ok(v) => v,
+                Err(err) => {
+                    report_lines.push(format!(
+                        "READ_FIXTURE_FAILED\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}\terr={err}",
+                        f.diagram_dir,
+                        f.stem,
+                        f.source_md.display(),
+                        f.source_idx_in_file,
+                        f.source_info,
+                        f.source_heading.clone().unwrap_or_default(),
+                    ));
+                    skipped.push(format!(
+                        "skip (failed to read imported fixture): {} ({err})",
+                        f.path.display(),
+                    ));
+                    cleanup_fixture_files(&workspace_root, f);
+                    continue;
+                }
+            };
+            if let Some(reason) = deferred_with_baselines_reason(&f.diagram_dir, &fixture_text) {
+                report_lines.push(format!(
+                    "DEFERRED_WITH_BASELINES\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}\treason={reason}",
+                    f.diagram_dir,
+                    f.stem,
+                    f.source_md.display(),
+                    f.source_idx_in_file,
+                    f.source_info,
+                    f.source_heading.clone().unwrap_or_default(),
+                ));
+                skipped.push(format!(
+                    "skip (deferred for --with-baselines): {} ({reason})",
+                    f.path.display(),
+                ));
+                cleanup_fixture_files(&workspace_root, f);
+                continue;
+            }
+
             let mut svg_args = vec![
                 "--diagram".to_string(),
                 f.diagram_dir.clone(),
@@ -793,6 +937,16 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
             match gen_upstream_svgs(svg_args) {
                 Ok(()) => {}
                 Err(XtaskError::UpstreamSvgFailed(msg)) => {
+                    report_lines.push(format!(
+                        "UPSTREAM_SVG_FAILED\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}\tmsg={}",
+                        f.diagram_dir,
+                        f.stem,
+                        f.source_md.display(),
+                        f.source_idx_in_file,
+                        f.source_info,
+                        f.source_heading.clone().unwrap_or_default(),
+                        msg.lines().next().unwrap_or("unknown upstream error"),
+                    ));
                     skipped.push(format!(
                         "skip (upstream svg failed): {} ({})",
                         f.path.display(),
@@ -800,46 +954,99 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
                     ));
 
                     // Best-effort cleanup: do not leave half-imported fixtures behind.
-                    let _ = fs::remove_file(&f.path);
-                    let _ = fs::remove_file(
-                        workspace_root
-                            .join("fixtures")
-                            .join("upstream-svgs")
-                            .join(&f.diagram_dir)
-                            .join(format!("{}.svg", f.stem)),
-                    );
-                    let _ = fs::remove_file(
-                        workspace_root
-                            .join("fixtures")
-                            .join(&f.diagram_dir)
-                            .join(format!("{}.golden.json", f.stem)),
-                    );
-                    let _ = fs::remove_file(
-                        workspace_root
-                            .join("fixtures")
-                            .join(&f.diagram_dir)
-                            .join(format!("{}.layout.golden.json", f.stem)),
-                    );
+                    cleanup_fixture_files(&workspace_root, f);
                     continue;
                 }
                 Err(other) => return Err(other),
             }
-            update_snapshots(vec![
+
+            let svg_path = workspace_root
+                .join("fixtures")
+                .join("upstream-svgs")
+                .join(&f.diagram_dir)
+                .join(format!("{}.svg", f.stem));
+            if is_suspicious_blank_svg(&svg_path) {
+                report_lines.push(format!(
+                    "UPSTREAM_SVG_SUSPICIOUS_BLANK\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}",
+                    f.diagram_dir,
+                    f.stem,
+                    f.source_md.display(),
+                    f.source_idx_in_file,
+                    f.source_info,
+                    f.source_heading.clone().unwrap_or_default(),
+                ));
+                skipped.push(format!(
+                    "skip (suspicious upstream svg output): {} (blank 16x16-like svg)",
+                    f.path.display(),
+                ));
+                cleanup_fixture_files(&workspace_root, f);
+                continue;
+            }
+
+            if let Err(err) = update_snapshots(vec![
                 "--diagram".to_string(),
                 f.diagram_dir.clone(),
                 "--filter".to_string(),
                 f.stem.clone(),
-            ])?;
-            update_layout_snapshots(vec![
+            ]) {
+                report_lines.push(format!(
+                    "SNAPSHOT_UPDATE_FAILED\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}\terr={err}",
+                    f.diagram_dir,
+                    f.stem,
+                    f.source_md.display(),
+                    f.source_idx_in_file,
+                    f.source_info,
+                    f.source_heading.clone().unwrap_or_default(),
+                ));
+                skipped.push(format!(
+                    "skip (snapshot update failed): {} ({err})",
+                    f.path.display(),
+                ));
+                cleanup_fixture_files(&workspace_root, f);
+                continue;
+            }
+            if let Err(err) = update_layout_snapshots(vec![
                 "--diagram".to_string(),
                 f.diagram_dir.clone(),
                 "--filter".to_string(),
                 f.stem.clone(),
-            ])?;
+            ]) {
+                report_lines.push(format!(
+                    "LAYOUT_SNAPSHOT_UPDATE_FAILED\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}\terr={err}",
+                    f.diagram_dir,
+                    f.stem,
+                    f.source_md.display(),
+                    f.source_idx_in_file,
+                    f.source_info,
+                    f.source_heading.clone().unwrap_or_default(),
+                ));
+                skipped.push(format!(
+                    "skip (layout snapshot update failed): {} ({err})",
+                    f.path.display(),
+                ));
+                cleanup_fixture_files(&workspace_root, f);
+                continue;
+            }
 
             kept.push(f.clone());
         }
         created = kept;
+
+        if !report_lines.is_empty() {
+            if let Some(parent) = report_path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            let header = format!(
+                "# import-upstream-docs report (Mermaid@11.12.2)\n# generated_at={}\n",
+                chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%z")
+            );
+            let mut out = String::new();
+            out.push_str(&header);
+            out.push_str(&report_lines.join("\n"));
+            out.push('\n');
+            let _ = fs::write(&report_path, out);
+            eprintln!("Wrote import report: {}", report_path.display());
+        }
 
         if created.is_empty() {
             return Err(XtaskError::SnapshotUpdateFailed(
@@ -11339,7 +11546,26 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             };
 
             match status {
-                Ok(s) if s.success() => {}
+                Ok(s) if s.success() => {
+                    // Some upstream renderer failures surface only as console errors while still
+                    // returning a successful exit code. Treat missing/empty outputs as failures so
+                    // we don't silently accept a broken baseline corpus.
+                    match fs::metadata(&out_path) {
+                        Ok(meta) if meta.is_file() && meta.len() > 0 => {}
+                        Ok(meta) => failures.push(format!(
+                            "mmdc succeeded but output is empty for {} (out={}, bytes={})",
+                            mmd_path.display(),
+                            out_path.display(),
+                            meta.len()
+                        )),
+                        Err(err) => failures.push(format!(
+                            "mmdc succeeded but output is missing for {} (out={}, err={})",
+                            mmd_path.display(),
+                            out_path.display(),
+                            err
+                        )),
+                    }
+                }
                 Ok(s) => failures.push(format!(
                     "mmdc failed for {} (exit={})",
                     mmd_path.display(),

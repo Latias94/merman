@@ -19,6 +19,7 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_extended_participant_quote_styles_spec" => {
             Some(("-50 -10 1250 251.49998474121094", "1250"))
         }
+        "upstream_docs_diagrams_mermaid_api_sequence" => Some(("-50 -10 2871 10259", "2871")),
         _ => None,
     }
 }

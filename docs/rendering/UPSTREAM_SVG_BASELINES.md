@@ -65,6 +65,10 @@ Notes:
 - Import uses Mermaid-like type detection for ` ```mermaid` fences, so mixed-diagram pages can be
   imported into the correct `fixtures/<diagram>/` folder.
 - External plugin docs like `zenuml.md` are currently ignored (out of scope for pinned SVG parity).
+- When using `--with-baselines`, the import will **skip** candidates that:
+  - fail upstream CLI rendering, or
+  - produce a suspicious "blank" upstream SVG (commonly a 16×16 `viewBox` for empty diagrams).
+  Skips are logged to `target/import-upstream-docs.report.txt` for later triage.
 
 ## Generate (ER only)
 
