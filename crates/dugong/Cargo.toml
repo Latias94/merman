@@ -25,4 +25,9 @@ serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
+criterion = "0.5.1"
 gag = "1.0.0"
+
+[[bench]]
+name = "network_simplex"
+harness = false
