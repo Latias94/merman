@@ -468,6 +468,9 @@ pub fn remove_script(text: &str) -> String {
     if text.is_empty() {
         return text.to_string();
     }
+    if !text.contains('<') {
+        return text.to_string();
+    }
     let cfg = dompurify_effective_config(
         &MermaidConfig::from_value(serde_json::Value::Object(serde_json::Map::new())),
         false,
