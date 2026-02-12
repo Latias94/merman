@@ -82,13 +82,22 @@ pub mod tree {
 }
 
 pub mod feasible_tree {
-    use super::{tree, util};
+    use super::tree;
     use crate::graphlib::{EdgeKey, Graph, GraphOptions};
     use crate::{EdgeLabel, GraphLabel, NodeLabel};
 
     pub fn feasible_tree(
         g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     ) -> Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()> {
+        let mut rank_by_ix: Vec<i32> = Vec::new();
+        g.for_each_node_ix(|ix, _id, lbl| {
+            if ix >= rank_by_ix.len() {
+                rank_by_ix.resize(ix + 1, 0);
+            }
+            rank_by_ix[ix] = lbl.rank.unwrap_or(0);
+        });
+        let mut in_tree_by_ix: Vec<bool> = vec![false; rank_by_ix.len()];
+
         let mut t: Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()> = Graph::new(GraphOptions {
             directed: false,
             ..Default::default()
@@ -99,21 +108,34 @@ pub mod feasible_tree {
         };
         let size = g.node_count();
         t.set_node(start, tree::TreeNodeLabel::default());
+        if let Some(ix) = g.node_ix(t.nodes().next().expect("start node should exist")) {
+            if ix >= in_tree_by_ix.len() {
+                in_tree_by_ix.resize(ix + 1, false);
+                rank_by_ix.resize(ix + 1, 0);
+            }
+            in_tree_by_ix[ix] = true;
+        }
 
-        while tight_tree(&mut t, g) < size {
-            let Some(edge) = find_min_slack_edge(&t, g) else {
+        while tight_tree(&mut t, g, &rank_by_ix, &mut in_tree_by_ix) < size {
+            let Some((slack, in_v)) = find_min_slack_edge(g, &rank_by_ix, &in_tree_by_ix) else {
                 // Disconnected graphs can occur in downstream usage. Dagre effectively works
                 // per component; here we create a forest by starting a new component root.
                 let Some(next_root) = g.nodes().find(|v| !t.has_node(v)).map(|s| s.to_string())
                 else {
                     break;
                 };
+                if let Some(ix) = g.node_ix(&next_root) {
+                    if ix >= in_tree_by_ix.len() {
+                        in_tree_by_ix.resize(ix + 1, false);
+                        rank_by_ix.resize(ix + 1, 0);
+                    }
+                    in_tree_by_ix[ix] = true;
+                }
                 t.set_node(next_root, tree::TreeNodeLabel::default());
                 continue;
             };
-            let slack = util::slack(g, &edge);
-            let delta = if t.has_node(&edge.v) { slack } else { -slack };
-            shift_ranks(&t, g, delta);
+            let delta = if in_v { slack } else { -slack };
+            shift_ranks(&t, g, &mut rank_by_ix, delta);
         }
 
         t
@@ -122,6 +144,8 @@ pub mod feasible_tree {
     fn tight_tree(
         t: &mut Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
         g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        rank_by_ix: &[i32],
+        in_tree_by_ix: &mut Vec<bool>,
     ) -> usize {
         let roots: Vec<String> = t.node_ids();
         for root in roots {
@@ -138,15 +162,28 @@ pub mod feasible_tree {
                         return;
                     }
 
-                    let tail_rank = g.node(&ek.v).and_then(|n| n.rank).unwrap_or(0);
-                    let head_rank = g.node(&ek.w).and_then(|n| n.rank).unwrap_or(0);
                     let minlen: i32 = lbl.minlen.max(1) as i32;
+
+                    let Some(tail_ix) = g.node_ix(&ek.v) else {
+                        return;
+                    };
+                    let Some(head_ix) = g.node_ix(&ek.w) else {
+                        return;
+                    };
+                    let tail_rank = rank_by_ix.get(tail_ix).copied().unwrap_or(0);
+                    let head_rank = rank_by_ix.get(head_ix).copied().unwrap_or(0);
 
                     // Compute slack for the directed edge `(ek.v -> ek.w)`.
                     let slack = head_rank - tail_rank - minlen;
                     if slack == 0 {
                         let w = w.to_string();
                         stack.push(w.clone());
+                        if let Some(w_ix) = g.node_ix(&w) {
+                            if w_ix >= in_tree_by_ix.len() {
+                                in_tree_by_ix.resize(w_ix + 1, false);
+                            }
+                            in_tree_by_ix[w_ix] = true;
+                        }
                         t.set_edge(v.clone(), w);
                     }
                 };
@@ -161,38 +198,52 @@ pub mod feasible_tree {
     }
 
     fn find_min_slack_edge(
-        t: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
         g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    ) -> Option<EdgeKey> {
-        let mut best: Option<(i32, EdgeKey)> = None;
-        for e in g.edges() {
-            let in_v = t.has_node(&e.v);
-            let in_w = t.has_node(&e.w);
+        rank_by_ix: &[i32],
+        in_tree_by_ix: &[bool],
+    ) -> Option<(i32, bool)> {
+        let mut best: Option<(i32, bool)> = None;
+        g.for_each_edge_ix(|v_ix, w_ix, _key, lbl| {
+            let in_v = in_tree_by_ix.get(v_ix).copied().unwrap_or(false);
+            let in_w = in_tree_by_ix.get(w_ix).copied().unwrap_or(false);
             if in_v == in_w {
-                continue;
+                return;
             }
-            let edge_slack = util::slack(g, e);
+
+            let v_rank = rank_by_ix.get(v_ix).copied().unwrap_or(0);
+            let w_rank = rank_by_ix.get(w_ix).copied().unwrap_or(0);
+            let minlen: i32 = lbl.minlen.max(1) as i32;
+            let slack = w_rank - v_rank - minlen;
+
             match &best {
-                Some((best_slack, _)) if edge_slack >= *best_slack => {}
-                _ => best = Some((edge_slack, e.clone())),
+                Some((best_slack, _)) if slack >= *best_slack => {}
+                _ => best = Some((slack, in_v)),
             }
-        }
-        best.map(|(_, e)| e)
+        });
+        best
     }
 
     fn shift_ranks(
         t: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
         g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        rank_by_ix: &mut Vec<i32>,
         delta: i32,
     ) {
-        for v in t.node_ids() {
-            let Some(label) = g.node_mut(&v) else {
+        for v in t.nodes() {
+            let Some(label) = g.node_mut(v) else {
                 continue;
             };
             let Some(rank) = label.rank else {
                 continue;
             };
-            label.rank = Some(rank + delta);
+            let new_rank = rank + delta;
+            label.rank = Some(new_rank);
+            if let Some(ix) = g.node_ix(v) {
+                if ix >= rank_by_ix.len() {
+                    rank_by_ix.resize(ix + 1, 0);
+                }
+                rank_by_ix[ix] = new_rank;
+            }
         }
     }
 }
