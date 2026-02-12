@@ -99,36 +99,55 @@ pub(super) fn theme_color(
 }
 
 pub(super) fn fmt_debug_3dp(v: f64) -> String {
-    if !v.is_finite() {
-        return "0".to_string();
-    }
-    if v.abs() < 0.0005 {
-        return "0".to_string();
-    }
-    let mut r = (v * 1000.0).round() / 1000.0;
-    if r.abs() < 0.0005 {
-        r = 0.0;
-    }
-    let mut s = format!("{r:.3}");
-    if s.contains('.') {
-        while s.ends_with('0') {
-            s.pop();
-        }
-        if s.ends_with('.') {
-            s.pop();
-        }
-    }
-    if s == "-0" { "0".to_string() } else { s }
+    let mut out = String::new();
+    fmt_debug_3dp_into(&mut out, v);
+    out
 }
 
 use std::fmt::Write as _;
 
+fn trim_trailing_zeros_and_dot(out: &mut String, start: usize) {
+    while out.len() > start && out.as_bytes()[out.len() - 1] == b'0' {
+        out.pop();
+    }
+    if out.len() > start && out.as_bytes()[out.len() - 1] == b'.' {
+        out.pop();
+    }
+}
+
+pub(super) fn fmt_debug_3dp_into(out: &mut String, v: f64) {
+    if !v.is_finite() || v.abs() < 0.0005 {
+        out.push_str("0");
+        return;
+    }
+
+    let mut r = (v * 1000.0).round() / 1000.0;
+    if r.abs() < 0.0005 {
+        r = 0.0;
+    }
+
+    let start = out.len();
+    let _ = write!(out, "{r:.3}");
+    trim_trailing_zeros_and_dot(out, start);
+    if out.len() == start + 2 && &out[start..] == "-0" {
+        out.truncate(start);
+        out.push_str("0");
+    }
+}
+
 pub(super) fn fmt(v: f64) -> String {
+    let mut out = String::new();
+    fmt_into(&mut out, v);
+    out
+}
+
+pub(super) fn fmt_into(out: &mut String, v: f64) {
     // Match how Mermaid/D3 generally stringify numbers for SVG attributes:
     // use a round-trippable decimal form (similar to JS `Number#toString()`),
     // but avoid `-0` and tiny float noise from our own calculations.
     if !v.is_finite() {
-        return "0".to_string();
+        out.push_str("0");
+        return;
     }
 
     let mut v = if v.abs() < 1e-9 { 0.0 } else { v };
@@ -136,18 +155,25 @@ pub(super) fn fmt(v: f64) -> String {
     if (v - nearest).abs() < 1e-6 {
         v = nearest;
     }
-    let s = v.to_string();
-    if s == "-0" { "0".to_string() } else { s }
+    if v == -0.0 {
+        v = 0.0;
+    }
+
+    let _ = write!(out, "{v}");
 }
 
 pub(super) fn fmt_path(v: f64) -> String {
+    let mut out = String::new();
+    fmt_path_into(&mut out, v);
+    out
+}
+
+pub(super) fn fmt_path_into(out: &mut String, v: f64) {
     // D3's `d3-path` defaults to 3 fractional digits when stringifying path commands.
     // D3 uses `Math.round(x * 1000) / 1000` (ties half-up, including for negatives).
-    if !v.is_finite() {
-        return "0".to_string();
-    }
-    if v.abs() < 0.0005 {
-        return "0".to_string();
+    if !v.is_finite() || v.abs() < 0.0005 {
+        out.push_str("0");
+        return;
     }
 
     let scaled = v * 1000.0;
@@ -156,16 +182,13 @@ pub(super) fn fmt_path(v: f64) -> String {
         r = 0.0;
     }
 
-    let mut s = format!("{r:.3}");
-    if s.contains('.') {
-        while s.ends_with('0') {
-            s.pop();
-        }
-        if s.ends_with('.') {
-            s.pop();
-        }
+    let start = out.len();
+    let _ = write!(out, "{r:.3}");
+    trim_trailing_zeros_and_dot(out, start);
+    if out.len() == start + 2 && &out[start..] == "-0" {
+        out.truncate(start);
+        out.push_str("0");
     }
-    if s == "-0" { "0".to_string() } else { s }
 }
 
 pub(super) fn json_stringify_points(points: &[crate::model::LayoutPoint]) -> String {
@@ -203,13 +226,17 @@ pub(super) fn json_stringify_points(points: &[crate::model::LayoutPoint]) -> Str
 }
 
 pub(super) fn fmt_max_width_px(v: f64) -> String {
+    let mut out = String::new();
+    fmt_max_width_px_into(&mut out, v);
+    out
+}
+
+pub(super) fn fmt_max_width_px_into(out: &mut String, v: f64) {
     // Mermaid's `max-width: ...px` strings are effectively rendered with ~6 significant digits,
     // trimming trailing zeros (see upstream fixtures: `1184.88`, `432.812`, `85.4375`, `2019.2`).
-    if !v.is_finite() {
-        return "0".to_string();
-    }
-    if v.abs() < 0.0005 {
-        return "0".to_string();
+    if !v.is_finite() || v.abs() < 0.0005 {
+        out.push_str("0");
+        return;
     }
 
     let abs = v.abs().max(0.0005);
@@ -243,16 +270,15 @@ pub(super) fn fmt_max_width_px(v: f64) -> String {
         rounded = 0.0;
     }
 
-    let mut s = format!("{:.*}", decimals, rounded);
-    if s.contains('.') {
-        while s.ends_with('0') {
-            s.pop();
-        }
-        if s.ends_with('.') {
-            s.pop();
-        }
+    let start = out.len();
+    let _ = write!(out, "{:.*}", decimals, rounded);
+    if out.as_bytes()[start..].contains(&b'.') {
+        trim_trailing_zeros_and_dot(out, start);
     }
-    if s == "-0" { "0".to_string() } else { s }
+    if out.len() == start + 2 && &out[start..] == "-0" {
+        out.truncate(start);
+        out.push_str("0");
+    }
 }
 
 pub(super) fn escape_xml(text: &str) -> String {
@@ -297,4 +323,72 @@ impl std::fmt::Display for EscapeXmlDisplay<'_> {
 pub(super) fn escape_attr(text: &str) -> String {
     // Attributes in our debug SVG only use escaped XML. No URL encoding here.
     escape_xml(text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fmt_into_matches_expected() {
+        fn fmt_into_string(v: f64) -> String {
+            let mut s = String::new();
+            fmt_into(&mut s, v);
+            s
+        }
+
+        assert_eq!(fmt_into_string(f64::NAN), "0");
+        assert_eq!(fmt_into_string(f64::INFINITY), "0");
+        assert_eq!(fmt_into_string(-0.0), "0");
+        assert_eq!(fmt_into_string(0.0), "0");
+        assert_eq!(fmt_into_string(1.0), "1");
+        assert_eq!(fmt_into_string(1.0000004), "1");
+        assert_eq!(fmt_into_string(-1.0000004), "-1");
+    }
+
+    #[test]
+    fn fmt_path_into_matches_expected() {
+        fn fmt_path_into_string(v: f64) -> String {
+            let mut s = String::new();
+            fmt_path_into(&mut s, v);
+            s
+        }
+
+        assert_eq!(fmt_path_into_string(f64::NAN), "0");
+        assert_eq!(fmt_path_into_string(f64::INFINITY), "0");
+        assert_eq!(fmt_path_into_string(0.0004), "0");
+        assert_eq!(fmt_path_into_string(-0.0004), "0");
+        assert_eq!(fmt_path_into_string(1.23456), "1.235");
+        assert_eq!(fmt_path_into_string(1.0), "1");
+        assert_eq!(fmt_path_into_string(-1.2345), "-1.234");
+    }
+
+    #[test]
+    fn fmt_debug_3dp_into_matches_expected() {
+        fn fmt_debug_3dp_into_string(v: f64) -> String {
+            let mut s = String::new();
+            fmt_debug_3dp_into(&mut s, v);
+            s
+        }
+
+        assert_eq!(fmt_debug_3dp_into_string(f64::NAN), "0");
+        assert_eq!(fmt_debug_3dp_into_string(0.0004), "0");
+        assert_eq!(fmt_debug_3dp_into_string(1.0), "1");
+        assert_eq!(fmt_debug_3dp_into_string(1.23), "1.23");
+        assert_eq!(fmt_debug_3dp_into_string(1.2346), "1.235");
+    }
+
+    #[test]
+    fn fmt_max_width_px_into_matches_expected() {
+        fn fmt_max_width_px_into_string(v: f64) -> String {
+            let mut s = String::new();
+            fmt_max_width_px_into(&mut s, v);
+            s
+        }
+
+        assert_eq!(fmt_max_width_px_into_string(f64::NAN), "0");
+        assert_eq!(fmt_max_width_px_into_string(0.0004), "0");
+        assert_eq!(fmt_max_width_px_into_string(1184.88), "1184.88");
+        assert_eq!(fmt_max_width_px_into_string(2019.2), "2019.2");
+    }
 }

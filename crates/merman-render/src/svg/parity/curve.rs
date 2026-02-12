@@ -2,6 +2,28 @@
 
 use super::*;
 
+fn emit_cmd_pair(out: &mut String, cmd: char, x: f64, y: f64) {
+    out.push(cmd);
+    fmt_path_into(out, x);
+    out.push(',');
+    fmt_path_into(out, y);
+}
+
+fn emit_cmd_cubic(out: &mut String, x1: f64, y1: f64, x2: f64, y2: f64, x: f64, y: f64) {
+    out.push('C');
+    fmt_path_into(out, x1);
+    out.push(',');
+    fmt_path_into(out, y1);
+    out.push(',');
+    fmt_path_into(out, x2);
+    out.push(',');
+    fmt_path_into(out, y2);
+    out.push(',');
+    fmt_path_into(out, x);
+    out.push(',');
+    fmt_path_into(out, y);
+}
+
 pub(super) fn curve_monotone_path_d(points: &[crate::model::LayoutPoint], swap_xy: bool) -> String {
     fn sign(v: f64) -> f64 {
         if v < 0.0 { -1.0 } else { 1.0 }
@@ -16,16 +38,16 @@ pub(super) fn curve_monotone_path_d(points: &[crate::model::LayoutPoint], swap_x
 
     fn emit_move_to(out: &mut String, x: f64, y: f64, swap_xy: bool) {
         if swap_xy {
-            let _ = write!(out, "M{},{}", fmt_path(y), fmt_path(x));
+            emit_cmd_pair(out, 'M', y, x);
         } else {
-            let _ = write!(out, "M{},{}", fmt_path(x), fmt_path(y));
+            emit_cmd_pair(out, 'M', x, y);
         }
     }
     fn emit_line_to(out: &mut String, x: f64, y: f64, swap_xy: bool) {
         if swap_xy {
-            let _ = write!(out, "L{},{}", fmt_path(y), fmt_path(x));
+            emit_cmd_pair(out, 'L', y, x);
         } else {
-            let _ = write!(out, "L{},{}", fmt_path(x), fmt_path(y));
+            emit_cmd_pair(out, 'L', x, y);
         }
     }
     fn emit_cubic_to(
@@ -39,27 +61,9 @@ pub(super) fn curve_monotone_path_d(points: &[crate::model::LayoutPoint], swap_x
         swap_xy: bool,
     ) {
         if swap_xy {
-            let _ = write!(
-                out,
-                "C{},{},{},{},{},{}",
-                fmt_path(y1),
-                fmt_path(x1),
-                fmt_path(y2),
-                fmt_path(x2),
-                fmt_path(y),
-                fmt_path(x)
-            );
+            emit_cmd_cubic(out, y1, x1, y2, x2, y, x);
         } else {
-            let _ = write!(
-                out,
-                "C{},{},{},{},{},{}",
-                fmt_path(x1),
-                fmt_path(y1),
-                fmt_path(x2),
-                fmt_path(y2),
-                fmt_path(x),
-                fmt_path(y)
-            );
+            emit_cmd_cubic(out, x1, y1, x2, y2, x, y);
         }
     }
 
@@ -210,16 +214,7 @@ pub(super) fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String
         let c2y = (y0 + 2.0 * y1) / 3.0;
         let ex = (x0 + 4.0 * x1 + x) / 6.0;
         let ey = (y0 + 4.0 * y1 + y) / 6.0;
-        let _ = write!(
-            out,
-            "C{},{},{},{},{},{}",
-            fmt_path(c1x),
-            fmt_path(c1y),
-            fmt_path(c2x),
-            fmt_path(c2y),
-            fmt_path(ex),
-            fmt_path(ey)
-        );
+        emit_cmd_cubic(out, c1x, c1y, c2x, c2y, ex, ey);
     }
 
     for pt in points {
@@ -228,7 +223,7 @@ pub(super) fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String
         match p {
             0 => {
                 p = 1;
-                let _ = write!(&mut out, "M{},{}", fmt_path(x), fmt_path(y));
+                emit_cmd_pair(&mut out, 'M', x, y);
             }
             1 => {
                 p = 2;
@@ -237,7 +232,7 @@ pub(super) fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String
                 p = 3;
                 let lx = (5.0 * x0 + x1) / 6.0;
                 let ly = (5.0 * y0 + y1) / 6.0;
-                let _ = write!(&mut out, "L{},{}", fmt_path(lx), fmt_path(ly));
+                emit_cmd_pair(&mut out, 'L', lx, ly);
                 basis_point(&mut out, x0, y0, x1, y1, x, y);
             }
             _ => {
@@ -253,10 +248,10 @@ pub(super) fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String
     match p {
         3 => {
             basis_point(&mut out, x0, y0, x1, y1, x1, y1);
-            let _ = write!(&mut out, "L{},{}", fmt_path(x1), fmt_path(y1));
+            emit_cmd_pair(&mut out, 'L', x1, y1);
         }
         2 => {
-            let _ = write!(&mut out, "L{},{}", fmt_path(x1), fmt_path(y1));
+            emit_cmd_pair(&mut out, 'L', x1, y1);
         }
         _ => {}
     }
@@ -269,9 +264,9 @@ pub(super) fn curve_linear_path_d(points: &[crate::model::LayoutPoint]) -> Strin
     let Some(first) = points.first() else {
         return out;
     };
-    let _ = write!(&mut out, "M{},{}", fmt_path(first.x), fmt_path(first.y));
+    emit_cmd_pair(&mut out, 'M', first.x, first.y);
     for p in points.iter().skip(1) {
-        let _ = write!(&mut out, "L{},{}", fmt_path(p.x), fmt_path(p.y));
+        emit_cmd_pair(&mut out, 'L', p.x, p.y);
     }
     out
 }
@@ -340,13 +335,13 @@ pub(super) fn curve_natural_path_d(points: &[crate::model::LayoutPoint]) -> Stri
     let Some(first) = points.first() else {
         return out;
     };
-    let _ = write!(&mut out, "M{},{}", fmt_path(first.x), fmt_path(first.y));
+    emit_cmd_pair(&mut out, 'M', first.x, first.y);
     if points.len() == 1 {
         return out;
     }
     if points.len() == 2 {
         let p1 = &points[1];
-        let _ = write!(&mut out, "L{},{}", fmt_path(p1.x), fmt_path(p1.y));
+        emit_cmd_pair(&mut out, 'L', p1.x, p1.y);
         return out;
     }
 
@@ -362,16 +357,7 @@ pub(super) fn curve_natural_path_d(points: &[crate::model::LayoutPoint]) -> Stri
 
     for i in 0..points.len().saturating_sub(1) {
         let p = &points[i + 1];
-        let _ = write!(
-            &mut out,
-            "C{},{},{},{},{},{}",
-            fmt_path(x1[i]),
-            fmt_path(y1[i]),
-            fmt_path(x2[i]),
-            fmt_path(y2[i]),
-            fmt_path(p.x),
-            fmt_path(p.y)
-        );
+        emit_cmd_cubic(&mut out, x1[i], y1[i], x2[i], y2[i], p.x, p.y);
     }
 
     out
@@ -384,10 +370,10 @@ pub(super) fn curve_step_after_path_d(points: &[crate::model::LayoutPoint]) -> S
         return out;
     };
     let mut prev_y = first.y;
-    let _ = write!(&mut out, "M{},{}", fmt_path(first.x), fmt_path(first.y));
+    emit_cmd_pair(&mut out, 'M', first.x, first.y);
     for p in points.iter().skip(1) {
-        let _ = write!(&mut out, "L{},{}", fmt_path(p.x), fmt_path(prev_y));
-        let _ = write!(&mut out, "L{},{}", fmt_path(p.x), fmt_path(p.y));
+        emit_cmd_pair(&mut out, 'L', p.x, prev_y);
+        emit_cmd_pair(&mut out, 'L', p.x, p.y);
         prev_y = p.y;
     }
     out
@@ -400,10 +386,10 @@ pub(super) fn curve_step_before_path_d(points: &[crate::model::LayoutPoint]) -> 
         return out;
     };
     let mut prev_x = first.x;
-    let _ = write!(&mut out, "M{},{}", fmt_path(first.x), fmt_path(first.y));
+    emit_cmd_pair(&mut out, 'M', first.x, first.y);
     for p in points.iter().skip(1) {
-        let _ = write!(&mut out, "L{},{}", fmt_path(prev_x), fmt_path(p.y));
-        let _ = write!(&mut out, "L{},{}", fmt_path(p.x), fmt_path(p.y));
+        emit_cmd_pair(&mut out, 'L', prev_x, p.y);
+        emit_cmd_pair(&mut out, 'L', p.x, p.y);
         prev_x = p.x;
     }
     out
@@ -415,13 +401,13 @@ pub(super) fn curve_step_path_d(points: &[crate::model::LayoutPoint]) -> String 
     let Some(first) = points.first() else {
         return out;
     };
-    let _ = write!(&mut out, "M{},{}", fmt_path(first.x), fmt_path(first.y));
+    emit_cmd_pair(&mut out, 'M', first.x, first.y);
     let mut prev = first;
     for p in points.iter().skip(1) {
         let mid_x = (prev.x + p.x) / 2.0;
-        let _ = write!(&mut out, "L{},{}", fmt_path(mid_x), fmt_path(prev.y));
-        let _ = write!(&mut out, "L{},{}", fmt_path(mid_x), fmt_path(p.y));
-        let _ = write!(&mut out, "L{},{}", fmt_path(p.x), fmt_path(p.y));
+        emit_cmd_pair(&mut out, 'L', mid_x, prev.y);
+        emit_cmd_pair(&mut out, 'L', mid_x, p.y);
+        emit_cmd_pair(&mut out, 'L', p.x, p.y);
         prev = p;
     }
     out
@@ -460,16 +446,7 @@ pub(super) fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tensio
         let c1y = y1 + k * (y2 - y0);
         let c2x = x2 + k * (x1 - x);
         let c2y = y2 + k * (y1 - y);
-        let _ = write!(
-            out,
-            "C{},{},{},{},{},{}",
-            fmt_path(c1x),
-            fmt_path(c1y),
-            fmt_path(c2x),
-            fmt_path(c2y),
-            fmt_path(x2),
-            fmt_path(y2)
-        );
+        emit_cmd_cubic(out, c1x, c1y, c2x, c2y, x2, y2);
     }
 
     for pt in points {
@@ -478,7 +455,7 @@ pub(super) fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tensio
         match p {
             0 => {
                 p = 1;
-                let _ = write!(&mut out, "M{},{}", fmt_path(x), fmt_path(y));
+                emit_cmd_pair(&mut out, 'M', x, y);
             }
             1 => {
                 p = 2;
@@ -504,7 +481,7 @@ pub(super) fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tensio
 
     match p {
         2 => {
-            let _ = write!(&mut out, "L{},{}", fmt_path(x2), fmt_path(y2));
+            emit_cmd_pair(&mut out, 'L', x2, y2);
         }
         3 => {
             cardinal_point(&mut out, k, x0, y0, x1, y1, x2, y2, x1, y1);

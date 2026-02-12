@@ -56,7 +56,7 @@ use state::{
 use style::{is_rect_style_key, is_text_style_key, parse_style_decl};
 use util::{
     config_bool, config_f64, config_string, escape_attr, escape_xml, escape_xml_display,
-    escape_xml_into, fmt, fmt_debug_3dp, fmt_max_width_px, fmt_path, json_f64,
+    escape_xml_into, fmt, fmt_debug_3dp, fmt_max_width_px, fmt_path, fmt_path_into, json_f64,
     json_stringify_points, normalize_css_font_family, theme_color,
 };
 
