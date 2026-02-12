@@ -732,24 +732,24 @@ pub mod network_simplex {
         leave_u_tix: usize,
         leave_v_tix: usize,
     ) -> EdgeKey {
-        let fallback = {
-            let v = t_state
+        let fallback = EdgeKey {
+            v: t_state
                 .g_ix_by_t_ix
                 .get(leave_u_tix)
                 .copied()
                 .flatten()
                 .and_then(|ix| g.node_id_by_ix(ix))
                 .unwrap_or("")
-                .to_string();
-            let w = t_state
+                .to_string(),
+            w: t_state
                 .g_ix_by_t_ix
                 .get(leave_v_tix)
                 .copied()
                 .flatten()
                 .and_then(|ix| g.node_id_by_ix(ix))
                 .unwrap_or("")
-                .to_string();
-            EdgeKey { v, w, name: None }
+                .to_string(),
+            name: None,
         };
         let Some(leave_u_gix) = t_state.g_ix_by_t_ix.get(leave_u_tix).copied().flatten() else {
             return fallback;
@@ -778,8 +778,8 @@ pub mod network_simplex {
             ((v_low, v_lim), false)
         };
 
-        let mut best: Option<(i32, EdgeKey)> = None;
-        g.for_each_edge_ix(|g_v_ix, g_w_ix, key, lbl| {
+        let mut best: Option<(i32, (usize, usize))> = None;
+        g.for_each_edge_ix(|g_v_ix, g_w_ix, _key, lbl| {
             let Some((_vl, v_lim)) = t_state.node_low_lim_by_gix(g_v_ix) else {
                 return;
             };
@@ -797,12 +797,18 @@ pub mod network_simplex {
 
                 match &best {
                     Some((best_slack, _)) if slack >= *best_slack => {}
-                    _ => best = Some((slack, key.clone())),
+                    _ => best = Some((slack, (g_v_ix, g_w_ix))),
                 }
             }
         });
 
-        best.map(|(_, e)| e).unwrap_or(fallback)
+        let (best_v_ix, best_w_ix) = best.map(|(_, e)| e).unwrap_or((v_gix, w_gix));
+        let v = g.node_id_by_ix(best_v_ix).unwrap_or("").to_string();
+        let w = g.node_id_by_ix(best_w_ix).unwrap_or("").to_string();
+        if v.is_empty() || w.is_empty() {
+            return fallback;
+        }
+        EdgeKey { v, w, name: None }
     }
 
     fn update_ranks_fast(
@@ -822,9 +828,15 @@ pub mod network_simplex {
         }
 
         for &root_tix in &t_state.roots {
-            let Some(root_gix) = t_state.g_ix_by_t_ix.get(root_tix).copied().flatten() else {
+            if t_state
+                .g_ix_by_t_ix
+                .get(root_tix)
+                .copied()
+                .flatten()
+                .is_none()
+            {
                 continue;
-            };
+            }
 
             let mut stack: Vec<usize> = Vec::new();
             stack.push(root_tix);
@@ -870,14 +882,6 @@ pub mod network_simplex {
                     rank_by_ix[child_gix] = rank;
                     stack.push(child_tix);
                 }
-            }
-
-            // Ensure the root's rank cache is populated too (it may have been grown).
-            if root_gix >= rank_by_ix.len() {
-                rank_by_ix.resize(root_gix + 1, 0);
-            }
-            if let Some(node) = g.node_id_by_ix(root_gix).and_then(|id| g.node(id)) {
-                rank_by_ix[root_gix] = node.rank.unwrap_or(0);
             }
         }
     }
