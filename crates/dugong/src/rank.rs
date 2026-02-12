@@ -350,6 +350,9 @@ pub mod network_simplex {
         lim_by_g_ix: Vec<i32>,
         parent_g_ix_by_g_ix: Vec<Option<usize>>,
         cut_to_parent_by_g_ix: Vec<f64>,
+        parent_edge_present_by_t_ix: Vec<bool>,
+        parent_edge_weight_by_t_ix: Vec<f64>,
+        child_is_tail_to_parent_by_t_ix: Vec<bool>,
         g_ix_by_lim: Vec<Option<usize>>,
         tail_g_ixs: Vec<usize>,
 
@@ -413,6 +416,9 @@ pub mod network_simplex {
                 lim_by_g_ix: vec![0; g_len],
                 parent_g_ix_by_g_ix: vec![None; g_len],
                 cut_to_parent_by_g_ix: vec![0.0; g_len],
+                parent_edge_present_by_t_ix: vec![false; t_len],
+                parent_edge_weight_by_t_ix: vec![0.0; t_len],
+                child_is_tail_to_parent_by_t_ix: vec![true; t_len],
                 g_ix_by_lim: vec![None; t_len + 1],
                 tail_g_ixs: Vec::new(),
                 children: vec![Vec::new(); t_len],
@@ -592,6 +598,13 @@ pub mod network_simplex {
                 self.lim_by_g_ix[g_ix] = self.lim.get(t_ix).copied().unwrap_or(0);
             }
 
+            self.parent_edge_present_by_t_ix.resize(t_len, false);
+            self.parent_edge_weight_by_t_ix.resize(t_len, 0.0);
+            self.child_is_tail_to_parent_by_t_ix.resize(t_len, true);
+            self.parent_edge_present_by_t_ix.fill(false);
+            self.parent_edge_weight_by_t_ix.fill(0.0);
+            self.child_is_tail_to_parent_by_t_ix.fill(true);
+
             for (child_tix, parent_tix) in self.parent_t_ix.iter().copied().enumerate() {
                 let Some(parent_tix) = parent_tix else {
                     continue;
@@ -604,6 +617,21 @@ pub mod network_simplex {
                 };
                 if child_gix < self.parent_g_ix_by_g_ix.len() {
                     self.parent_g_ix_by_g_ix[child_gix] = Some(parent_gix);
+                }
+
+                let (present, weight, child_is_tail) =
+                    if let Some(e) = g.edge_by_endpoints_ix(child_gix, parent_gix) {
+                        (true, e.weight, true)
+                    } else if let Some(e) = g.edge_by_endpoints_ix(parent_gix, child_gix) {
+                        (true, e.weight, false)
+                    } else {
+                        (false, 0.0, true)
+                    };
+
+                if child_tix < self.parent_edge_present_by_t_ix.len() {
+                    self.parent_edge_present_by_t_ix[child_tix] = present;
+                    self.parent_edge_weight_by_t_ix[child_tix] = weight;
+                    self.child_is_tail_to_parent_by_t_ix[child_tix] = child_is_tail;
                 }
             }
 
@@ -727,30 +755,24 @@ pub mod network_simplex {
                 return 0.0;
             };
 
-            let mut child_is_tail = true;
-            let graph_edge = if g.is_directed() {
-                if let Some(e) = g.edge_by_endpoints_ix(child_gix, parent_gix) {
-                    e
-                } else {
-                    child_is_tail = false;
-                    let Some(e) = g.edge_by_endpoints_ix(parent_gix, child_gix) else {
-                        return 0.0;
-                    };
-                    e
-                }
-            } else {
-                let mut graph_edge = g.edge_by_endpoints_ix(child_gix, parent_gix);
-                if graph_edge.is_none() {
-                    child_is_tail = false;
-                    graph_edge = g.edge_by_endpoints_ix(parent_gix, child_gix);
-                }
-                let Some(graph_edge) = graph_edge else {
-                    return 0.0;
-                };
-                graph_edge
-            };
-
-            let mut cut_value = graph_edge.weight;
+            if !self
+                .parent_edge_present_by_t_ix
+                .get(child_tix)
+                .copied()
+                .unwrap_or(false)
+            {
+                return 0.0;
+            }
+            let child_is_tail = self
+                .child_is_tail_to_parent_by_t_ix
+                .get(child_tix)
+                .copied()
+                .unwrap_or(true);
+            let mut cut_value = self
+                .parent_edge_weight_by_t_ix
+                .get(child_tix)
+                .copied()
+                .unwrap_or(0.0);
 
             if g.is_directed() {
                 g.for_each_out_edge_ix(child_gix, None, |_tail_ix, head_ix, _ek, lbl| {
