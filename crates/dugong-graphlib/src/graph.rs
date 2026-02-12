@@ -138,6 +138,97 @@ where
     E: Default + 'static,
     G: Default,
 {
+    pub fn compact_if_sparse(&mut self, max_capacity_factor: f64) -> bool {
+        // Note: `nodes.len()` / `edges.len()` are slot capacities; `node_len` / `edge_len` are
+        // live counts. When a graph is built once and then repeatedly mutated (layout pipelines
+        // add/remove dummy nodes), tombstones can accumulate. Callers that reuse graphs can
+        // periodically compact to keep memory and cache rebuild costs bounded.
+        let nodes_sparse = if self.node_len == 0 {
+            !self.nodes.is_empty()
+        } else {
+            max_capacity_factor > 1.0
+                && (self.nodes.len() as f64) > (self.node_len as f64) * max_capacity_factor
+        };
+        let edges_sparse = if self.edge_len == 0 {
+            !self.edges.is_empty()
+        } else {
+            max_capacity_factor > 1.0
+                && (self.edges.len() as f64) > (self.edge_len as f64) * max_capacity_factor
+        };
+
+        if !(nodes_sparse || edges_sparse) {
+            return false;
+        }
+
+        self.compact();
+        true
+    }
+
+    fn compact(&mut self) {
+        self.invalidate_directed_adj();
+
+        if self.node_len == 0 {
+            self.nodes.clear();
+            self.node_index.clear();
+            self.node_len = 0;
+
+            self.edges.clear();
+            self.edge_index.clear();
+            self.edge_len = 0;
+
+            self.parent.clear();
+            self.children.clear();
+            return;
+        }
+
+        let old_nodes = std::mem::take(&mut self.nodes);
+        let mut node_remap: Vec<Option<usize>> = vec![None; old_nodes.len()];
+
+        let mut new_nodes: Vec<Option<NodeEntry<N>>> = Vec::with_capacity(self.node_len);
+        let mut new_node_index: HashMap<String, usize> = HashMap::default();
+        for (old_ix, slot) in old_nodes.into_iter().enumerate() {
+            let Some(node) = slot else {
+                continue;
+            };
+            let new_ix = new_nodes.len();
+            new_node_index.insert(node.id.clone(), new_ix);
+            node_remap[old_ix] = Some(new_ix);
+            new_nodes.push(Some(node));
+        }
+
+        self.nodes = new_nodes;
+        self.node_index = new_node_index;
+        self.node_len = self.nodes.len();
+
+        let old_edges = std::mem::take(&mut self.edges);
+        let mut new_edges: Vec<Option<EdgeEntry<E>>> = Vec::with_capacity(self.edge_len);
+        let mut new_edge_index: HashMap<EdgeKey, usize> = HashMap::default();
+        let mut new_edge_len: usize = 0;
+
+        for slot in old_edges.into_iter() {
+            let Some(mut edge) = slot else {
+                continue;
+            };
+            let Some(v_ix) = node_remap.get(edge.v_ix).copied().flatten() else {
+                continue;
+            };
+            let Some(w_ix) = node_remap.get(edge.w_ix).copied().flatten() else {
+                continue;
+            };
+            edge.v_ix = v_ix;
+            edge.w_ix = w_ix;
+
+            let new_ix = new_edges.len();
+            new_edge_index.insert(edge.key.clone(), new_ix);
+            new_edges.push(Some(edge));
+            new_edge_len += 1;
+        }
+
+        self.edges = new_edges;
+        self.edge_index = new_edge_index;
+        self.edge_len = new_edge_len;
+    }
+
     fn invalidate_directed_adj(&mut self) {
         if !self.options.directed {
             return;
