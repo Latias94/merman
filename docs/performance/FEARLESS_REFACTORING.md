@@ -41,14 +41,25 @@ From `target/bench/COMPARISON.latest.md` (generated locally via
 - Medium fixtures (4): ~`4.79x` slower than mmdr.
 - Tiny fixtures (4): ~`17.55x` slower than mmdr.
 
-Stage spot-checks (same machine, Criterion, mid estimates):
+Stage spot-checks (same machine, Criterion, mid estimates; see `target/bench/stage_spotcheck.md`):
 
-- `flowchart_medium`:
-  - merman: `parse ~7.4ms`, `layout ~31ms`, `render ~10.8ms`, `end_to_end ~49ms`
-  - mmdr: `parse ~0.42ms`, `layout ~6.77ms`, `render_svg ~0.24ms`, `end_to_end ~9.7ms`
-- `class_medium`:
-  - mmdr: `parse ~0.11ms`, `layout ~4.19ms`, `render_svg ~0.20ms`, `end_to_end ~4.11ms`
-  - merman remains dominated by parse + SVG emission overhead (see comparison report).
+| fixture | stage | ratio (merman / mmdr) |
+|---|---|---:|
+| `flowchart_medium` | `parse` | `17.80x` |
+| `flowchart_medium` | `layout` | `4.84x` |
+| `flowchart_medium` | `render` | `35.95x` |
+| `flowchart_medium` | `end_to_end` | `6.99x` |
+| `class_medium` | `parse` | `413.12x` |
+| `class_medium` | `layout` | `0.69x` |
+| `class_medium` | `render` | `7.26x` |
+| `class_medium` | `end_to_end` | `10.90x` |
+
+Geometric mean of stage ratios (same report):
+
+- `parse`: `85.76x`
+- `layout`: `1.83x`
+- `render`: `16.15x`
+- `end_to_end`: `8.73x`
 
 Interpretation:
 
@@ -85,15 +96,14 @@ Focus:
 
 Candidates:
 
-- Precompile *all* remaining per-call regexes across diagrams and preprocess/detect.
-- Reduce `detect_type` preprocessing allocations (prefer `Cow<'_, str>` / single-buffer builds).
+- Reduce preprocess/detect allocation churn (prefer `Cow<'_, str>` / single-buffer builds where safe).
 - Avoid repeated `String` clones in hot “scan the whole graph” loops.
 
 Exit criteria:
 
 - Tiny geometric mean ratio improves materially (goal: cut tiny gmean by 2–3x from baseline).
 
-### M2: Make SVG emission cheap (high leverage, medium risk) (4–10 days)
+### M2: Make SVG emission cheap (highest leverage, medium risk) (4–10 days)
 
 Focus:
 
@@ -101,8 +111,8 @@ Focus:
 
 Candidates:
 
-- Replace ad-hoc `format!` / intermediate `String`s with a dedicated writer (`fmt::Write`) and
-  preallocation.
+- Eliminate per-number `String` allocations in path/points emission (write directly into the output buffer).
+- Replace hot `format!` / intermediate `String`s with a dedicated writer (`fmt::Write`) and preallocation.
 - Centralize attribute escaping/formatting into a small, reusable “SVG writer” utility.
 - Minimize JSON roundtrips in render paths (avoid `serde_json::Value` construction during render).
 
@@ -111,7 +121,7 @@ Exit criteria:
 - `render/*` times for flowchart/state/class drop substantially (goal: 2–5x for medium fixtures),
   with DOM parity gate still green.
 
-### M3: Fix class parse as a first-class perf target (high leverage, medium–high risk) (1–3 weeks)
+### M3: Fix class parse as a first-class perf target (highest leverage, medium–high risk) (1–3 weeks)
 
 Focus:
 
@@ -163,60 +173,37 @@ Legend:
 
 ### P0 (High impact, low risk)
 
-1) Precompile detector regexes (no per-call `Regex::new`)
-   - Why: current detection compiles regexes on every parse; this dominates tiny diagrams.
+1) Make SVG number emission allocation-free in hot paths
+   - Why: `render/*` is dominated by repeated `fmt_path(...)`/`fmt(...)` calls that allocate a fresh `String`.
    - Change:
-     - Replace per-call `Regex::new(...).unwrap().is_match(txt)` with static `OnceLock<Regex>` (or
-       equivalent) initialized once per process.
-     - Keep detector order and patterns identical to upstream.
-   - Impact: very high for `parse_only` on tiny inputs.
-   - Effort: low.
-   - Risk: low (behavior remains the same).
-   - Validation: all guardrails + re-run `cargo bench -p merman --features render --bench pipeline`.
-
-2) Precompile preprocess regexes (no per-call `Regex::new` in preprocessing)
-   - Why: preprocessing runs on every parse and historically compiled multiple regexes per call
-     (line ending normalization, HTML tag rewrites, entity encoding, frontmatter parsing).
-     This is pure fixed overhead on tiny diagrams.
-   - Change:
-     - Replace per-call `Regex::new(...)` with `OnceLock<Regex>` initialized once per process.
-     - Keep preprocessing behavior identical to upstream Mermaid.
-   - Impact: very high for `parse_only` on tiny inputs.
-   - Effort: low.
-   - Risk: low (behavior remains the same).
-   - Validation: all guardrails + re-run `cargo bench -p merman --features render --bench pipeline`.
-
-3) Reduce allocations in `detect_type` preprocessing
-   - Why: detection currently builds multiple intermediate `String`s (`replace` + directive removal).
-   - Change:
-     - Avoid unconditional `.to_string()` where possible.
-     - Consider a single-pass “clean view” builder into one buffer, or a `Cow<'_, str>` strategy
-       that only allocates when needed.
-   - Impact: high for tiny/small diagrams.
+     - Add `fmt_path_into(&mut String, f64)` / `fmt_into(&mut String, f64)` (and friends) and migrate
+       hot render loops (especially path `d` emission) to write directly into the output buffer.
+   - Impact: very high for `render/*` on flowchart/state/ER (and any diagram that emits many path segments).
    - Effort: low–medium.
-   - Risk: low–medium (directive/comment stripping must remain identical).
-   - Validation: add focused unit tests for directive/frontmatter/comment stripping + all guardrails.
+   - Risk: low (pure refactor if output is byte-identical).
+   - Validation: DOM parity gate + `cargo bench -p merman --features render --bench pipeline -- --exact render/*`.
 
-4) Add “known diagram type” parse entrypoints (skip detection)
-   - Why: many integrations already know the diagram type (e.g. Markdown fence info string).
+2) Reduce preprocess/detect allocation churn (single-buffer strategy)
+   - Why: preprocess currently performs multiple whole-string passes (`replace_all(...).to_string()`),
+     which becomes fixed overhead for small diagrams and non-trivial overhead for medium ones.
    - Change:
-     - Provide `Engine::parse_diagram_as_sync(diagram_type, text, opts)` (and async wrapper).
-     - Keep existing `parse_diagram*` behavior unchanged.
-   - Impact: high for UI/Markdown use cases; no effect for “auto detect” paths.
+     - Prefer `Cow<'_, str>` / “only allocate when needed” transforms.
+     - When allocation is required, build into a single buffer per stage (avoid 2–4 full copies).
+   - Impact: high for `parse/*` on tiny/small; medium for medium fixtures.
+   - Effort: low–medium.
+   - Risk: low–medium (must preserve upstream quirks).
+   - Validation: focused unit tests for preprocess (entities/directives/frontmatter) + guardrails.
+
+3) Keep “known diagram type” fast-path healthy (already exists)
+   - Why: many integrations know the diagram type (Markdown fences).
+   - Change:
+     - Maintain and benchmark `parse_known_type/*` alongside `parse/*`.
+     - If regressions appear, consider API layering changes so `parse_diagram_as_sync` avoids any
+       detection-only setup work.
+   - Impact: medium (integration-dependent).
    - Effort: low.
-   - Risk: low (additive API).
-   - Validation: add tests for identical outputs vs. auto-detect when type matches.
-   - Notes (measured):
-     - After detector + preprocess regexes were precompiled (P0.1–P0.2), skipping detection has a
-       small effect for the current tiny fixtures (mostly removing a small fixed overhead).
-     - Command:
-       - `cargo bench -p merman --features render --bench pipeline -- --noplot --sample-size 50 --warm-up-time 1 --measurement-time 3 --discard-baseline --exact parse_only_sync/<name>`
-       - `cargo bench -p merman --features render --bench pipeline -- --noplot --sample-size 50 --warm-up-time 1 --measurement-time 3 --discard-baseline --exact parse_only_known_type_sync/<name>`
-     - Observed medians (2026-02-10, local machine; exact runs):
-       - flowchart: `~413 µs` (auto) vs `~407 µs` (known type)
-       - sequence: `~56 µs` (auto) vs `~55 µs` (known type)
-       - state: `~395 µs` (auto) vs `~416 µs` (known type)
-       - class: `~1.347 ms` (auto) vs `~1.423 ms` (known type)
+   - Risk: low.
+   - Validation: `parse_known_type/*` benches + golden/parity.
 
 ### P1 (Medium impact, low–medium risk)
 
@@ -278,4 +265,5 @@ Legend:
 
 ## Recommended Next Step
 
-Do M0 (stage spot-check + triage workflow), then start M1 (tiny fixed costs).
+Keep M0 tooling green (comparison + stage spot-check), then start M2 (SVG emission) in small,
+mechanical refactors that preserve byte-identical output.

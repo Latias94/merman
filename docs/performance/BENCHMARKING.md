@@ -47,7 +47,7 @@ report:
 python tools/bench/compare_mermaid_renderers.py
 ```
 
-This writes `docs/performance/COMPARISON.md` with mid-point `end_to_end/*` estimates and ratios.
+This writes `target/bench/COMPARISON.latest.md` with mid-point `end_to_end/*` estimates and ratios.
 
 ## Stage spot-check (recommended for triage)
 
