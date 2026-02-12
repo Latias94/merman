@@ -294,6 +294,14 @@ pub mod network_simplex {
     use crate::graphlib::{EdgeKey, Graph, alg};
     use crate::{EdgeLabel, GraphLabel, NodeLabel};
 
+    #[derive(Debug, Clone, Copy)]
+    struct DfsFrame {
+        v_ix: usize,
+        parent_ix: Option<usize>,
+        low: i32,
+        next_neighbor: usize,
+    }
+
     #[derive(Debug, Clone)]
     struct TreeState {
         /// Tree node index -> graph node index.
@@ -309,6 +317,17 @@ pub mod network_simplex {
         cut_to_parent: Vec<f64>,
 
         roots: Vec<usize>,
+
+        // Reused scratch buffers to avoid repeated allocations in the simplex loop.
+        node_ixs: Vec<usize>,
+        roots_to_visit: Vec<usize>,
+        visited: Vec<bool>,
+        neighbors: Vec<Vec<usize>>,
+        dfs_stack: Vec<DfsFrame>,
+
+        children: Vec<Vec<usize>>,
+        postorder: Vec<usize>,
+        post_stack: Vec<(usize, usize)>,
     }
 
     impl TreeState {
@@ -352,6 +371,14 @@ pub mod network_simplex {
                 lim: vec![0; t_len],
                 cut_to_parent: vec![0.0; t_len],
                 roots: Vec::new(),
+                node_ixs: Vec::new(),
+                roots_to_visit: Vec::new(),
+                visited: vec![false; t_len],
+                neighbors: vec![Vec::new(); t_len],
+                dfs_stack: Vec::new(),
+                children: vec![Vec::new(); t_len],
+                postorder: Vec::new(),
+                post_stack: Vec::new(),
             }
         }
 
@@ -373,24 +400,23 @@ pub mod network_simplex {
             });
             let t_len = max_t_ix.saturating_add(1);
 
-            self.parent_t_ix.clear();
             self.parent_t_ix.resize(t_len, None);
-            self.low.clear();
             self.low.resize(t_len, 0);
-            self.lim.clear();
             self.lim.resize(t_len, 0);
-            self.cut_to_parent.clear();
             self.cut_to_parent.resize(t_len, 0.0);
             self.roots.clear();
+            self.parent_t_ix.fill(None);
+            self.low.fill(0);
+            self.lim.fill(0);
+            self.cut_to_parent.fill(0.0);
 
             // Rebuild index mappings defensively in case `t` changed shape.
-            if self.g_ix_by_t_ix.len() != t_len {
-                self.g_ix_by_t_ix.resize(t_len, None);
-            }
+            self.g_ix_by_t_ix.resize(t_len, None);
+            self.g_ix_by_t_ix.fill(None);
+            self.t_ix_by_g_ix.fill(None);
+
+            self.node_ixs.clear();
             t.for_each_node_ix(|t_ix, id, _lbl| {
-                if t_ix >= self.g_ix_by_t_ix.len() {
-                    self.g_ix_by_t_ix.resize(t_ix + 1, None);
-                }
                 let g_ix = g.node_ix(id);
                 self.g_ix_by_t_ix[t_ix] = g_ix;
                 if let Some(g_ix) = g_ix {
@@ -399,71 +425,59 @@ pub mod network_simplex {
                     }
                     self.t_ix_by_g_ix[g_ix] = Some(t_ix);
                 }
+                self.node_ixs.push(t_ix);
             });
 
             // Build a stable adjacency list for the current tree edges.
-            let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); t_len];
+            self.neighbors.resize_with(t_len, Vec::new);
+            self.neighbors.truncate(t_len);
+            for ns in &mut self.neighbors {
+                ns.clear();
+            }
             t.for_each_edge_ix(|v_ix, w_ix, _key, _lbl| {
-                if v_ix >= neighbors.len() || w_ix >= neighbors.len() {
+                if v_ix >= self.neighbors.len() || w_ix >= self.neighbors.len() {
                     return;
                 }
-                neighbors[v_ix].push(w_ix);
-                neighbors[w_ix].push(v_ix);
+                self.neighbors[v_ix].push(w_ix);
+                self.neighbors[w_ix].push(v_ix);
             });
 
-            let mut visited: Vec<bool> = vec![false; t_len];
+            self.visited.resize(t_len, false);
+            self.visited.fill(false);
             let mut next_lim: i32 = 1;
 
-            #[derive(Debug)]
-            struct Frame {
-                v_ix: usize,
-                parent_ix: Option<usize>,
-                low: i32,
-                next_neighbor: usize,
-            }
+            let preferred_root_ix: Option<usize> = root
+                .and_then(|id| t.node_ix(id))
+                .or_else(|| self.node_ixs.first().copied());
 
-            let preferred_root_ix: Option<usize> =
-                root.and_then(|id| t.node_ix(id)).or_else(|| {
-                    let mut out: Option<usize> = None;
-                    t.for_each_node_ix(|t_ix, _id, _lbl| {
-                        if out.is_none() {
-                            out = Some(t_ix);
-                        }
-                    });
-                    out
-                });
-
-            let mut roots_to_visit: Vec<usize> = Vec::new();
+            self.roots_to_visit.clear();
             if let Some(ix) = preferred_root_ix {
-                roots_to_visit.push(ix);
+                self.roots_to_visit.push(ix);
             }
-            for t_ix in 0..t_len {
-                if t.node_id_by_ix(t_ix).is_some() {
-                    roots_to_visit.push(t_ix);
-                }
-            }
+            self.roots_to_visit.extend(self.node_ixs.iter().copied());
 
-            for start_ix in roots_to_visit {
-                if start_ix >= visited.len() || visited[start_ix] {
+            for &start_ix in &self.roots_to_visit {
+                if start_ix >= self.visited.len() || self.visited[start_ix] {
                     continue;
                 }
                 if t.node_id_by_ix(start_ix).is_none() {
                     continue;
                 }
                 self.roots.push(start_ix);
-                visited[start_ix] = true;
+                self.visited[start_ix] = true;
 
-                let mut stack: Vec<Frame> = vec![Frame {
+                self.dfs_stack.clear();
+                self.dfs_stack.push(DfsFrame {
                     v_ix: start_ix,
                     parent_ix: None,
                     low: next_lim,
                     next_neighbor: 0,
-                }];
+                });
 
-                while !stack.is_empty() {
+                while !self.dfs_stack.is_empty() {
                     let next_child = {
-                        let top = stack.last_mut().expect("stack is non-empty");
-                        neighbors
+                        let top = self.dfs_stack.last_mut().expect("stack is non-empty");
+                        self.neighbors
                             .get(top.v_ix)
                             .and_then(|ns| ns.get(top.next_neighbor))
                             .copied()
@@ -475,12 +489,12 @@ pub mod network_simplex {
                         if parent_ix.is_some_and(|p| p == w_ix) {
                             continue;
                         }
-                        if w_ix >= visited.len() || visited[w_ix] {
+                        if w_ix >= self.visited.len() || self.visited[w_ix] {
                             continue;
                         }
-                        visited[w_ix] = true;
+                        self.visited[w_ix] = true;
                         self.parent_t_ix[w_ix] = Some(parent_v_ix);
-                        stack.push(Frame {
+                        self.dfs_stack.push(DfsFrame {
                             v_ix: w_ix,
                             parent_ix: Some(parent_v_ix),
                             low: next_lim,
@@ -489,12 +503,12 @@ pub mod network_simplex {
                         continue;
                     }
 
-                    let Frame {
+                    let DfsFrame {
                         v_ix,
                         parent_ix: _,
                         low,
                         next_neighbor: _,
-                    } = stack.pop().expect("stack is non-empty");
+                    } = self.dfs_stack.pop().expect("stack is non-empty");
                     self.low[v_ix] = low;
                     self.lim[v_ix] = next_lim;
                     next_lim += 1;
@@ -520,18 +534,22 @@ pub mod network_simplex {
             g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
         ) {
             let t_len = self.parent_t_ix.len();
-            let mut children: Vec<Vec<usize>> = vec![Vec::new(); t_len];
+            self.children.resize_with(t_len, Vec::new);
+            self.children.truncate(t_len);
+            for ch in &mut self.children {
+                ch.clear();
+            }
             for (child_ix, parent_ix) in self.parent_t_ix.iter().copied().enumerate() {
                 let Some(parent_ix) = parent_ix else {
                     continue;
                 };
-                if parent_ix < children.len() {
-                    children[parent_ix].push(child_ix);
+                if parent_ix < self.children.len() {
+                    self.children[parent_ix].push(child_ix);
                 }
             }
 
             // Postorder traversal for each tree component.
-            let mut postorder: Vec<usize> = Vec::new();
+            self.postorder.clear();
             for &root_ix in &self.roots {
                 if root_ix >= t_len {
                     continue;
@@ -540,20 +558,25 @@ pub mod network_simplex {
                     continue;
                 }
 
-                let mut stack: Vec<(usize, usize)> = vec![(root_ix, 0)];
-                while let Some((v_ix, idx)) = stack.last_mut() {
-                    let next_child = children.get(*v_ix).and_then(|ch| ch.get(*idx)).copied();
+                self.post_stack.clear();
+                self.post_stack.push((root_ix, 0));
+                while let Some((v_ix, idx)) = self.post_stack.last_mut() {
+                    let next_child = self
+                        .children
+                        .get(*v_ix)
+                        .and_then(|ch| ch.get(*idx))
+                        .copied();
                     if let Some(w_ix) = next_child {
                         *idx += 1;
-                        stack.push((w_ix, 0));
+                        self.post_stack.push((w_ix, 0));
                         continue;
                     }
-                    let (v_ix, _idx) = stack.pop().expect("stack is non-empty");
-                    postorder.push(v_ix);
+                    let (v_ix, _idx) = self.post_stack.pop().expect("stack is non-empty");
+                    self.postorder.push(v_ix);
                 }
             }
 
-            for child_tix in postorder {
+            for &child_tix in &self.postorder {
                 if self.parent_t_ix.get(child_tix).copied().flatten().is_none() {
                     continue;
                 }
