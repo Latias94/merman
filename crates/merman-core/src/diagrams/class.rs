@@ -4,7 +4,7 @@ use crate::utils::format_url;
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
 use indexmap::IndexMap;
 use regex::Regex;
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::collections::VecDeque;
 use std::sync::OnceLock;
 
@@ -356,17 +356,17 @@ impl ClassMember {
         self.display_text = display.trim().to_string();
     }
 
-    fn to_json(&self) -> Value {
-        json!({
-            "memberType": self.member_type,
-            "visibility": self.visibility,
-            "id": self.id,
-            "classifier": self.classifier,
-            "parameters": self.parameters,
-            "returnType": self.return_type,
-            "displayText": self.display_text,
-            "cssStyle": self.css_style,
-        })
+    fn into_value(self) -> Value {
+        let mut obj = serde_json::Map::with_capacity(8);
+        obj.insert("memberType".to_string(), Value::String(self.member_type));
+        obj.insert("visibility".to_string(), Value::String(self.visibility));
+        obj.insert("id".to_string(), Value::String(self.id));
+        obj.insert("classifier".to_string(), Value::String(self.classifier));
+        obj.insert("parameters".to_string(), Value::String(self.parameters));
+        obj.insert("returnType".to_string(), Value::String(self.return_type));
+        obj.insert("displayText".to_string(), Value::String(self.display_text));
+        obj.insert("cssStyle".to_string(), Value::String(self.css_style));
+        Value::Object(obj)
     }
 }
 
@@ -447,7 +447,14 @@ impl ClassDb {
     }
 }
 
-pub fn parse_class(code: &str, meta: &ParseMetadata) -> Result<Value> {
+fn prefer_fast_class_parser() -> bool {
+    match std::env::var("MERMAN_CLASS_PARSER").as_deref() {
+        Ok("fast") | Ok("1") | Ok("true") => true,
+        _ => false,
+    }
+}
+
+fn parse_class_via_lalrpop(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let actions = class_grammar::ActionsParser::new()
         .parse(Lexer::new(code))
         .map_err(|e| Error::DiagramParse {
@@ -462,7 +469,331 @@ pub fn parse_class(code: &str, meta: &ParseMetadata) -> Result<Value> {
             message: e,
         })?;
     }
-    Ok(db.to_model(meta))
+    Ok(db.into_model(meta))
+}
+
+pub fn parse_class(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    if prefer_fast_class_parser() {
+        if let Some(v) = parse_class_fast(code, meta)? {
+            return Ok(v);
+        }
+    }
+
+    parse_class_via_lalrpop(code, meta)
+}
+
+fn parse_class_fast(code: &str, meta: &ParseMetadata) -> Result<Option<Value>> {
+    fn parse_quoted_str(rest: &str) -> Option<(String, &str)> {
+        let rest = rest.trim_start();
+        if !rest.starts_with('"') {
+            return None;
+        }
+        let inner = &rest[1..];
+        let end = inner.find('"')?;
+        let s = inner[..end].to_string();
+        Some((s, &inner[end + 1..]))
+    }
+
+    fn parse_name(rest: &str) -> Option<(String, &str)> {
+        let rest = rest.trim_start();
+        if rest.is_empty() {
+            return None;
+        }
+
+        if rest.as_bytes()[0] == b'`' {
+            let inner = &rest[1..];
+            let (name, after) = if let Some(end) = inner.find('`') {
+                (&inner[..end], &inner[end + 1..])
+            } else {
+                (inner, "")
+            };
+            let name = if name.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+                format!("{MERMAID_DOM_ID_PREFIX}{name}")
+            } else {
+                name.to_string()
+            };
+            return Some((name, after));
+        }
+
+        let bytes = rest.as_bytes();
+        let mut end = 0usize;
+        while end < rest.len() {
+            let b = bytes[end];
+            if b.is_ascii_whitespace()
+                || b == b'\n'
+                || b == b'{'
+                || b == b'}'
+                || b == b'['
+                || b == b']'
+                || b == b'"'
+                || b == b','
+                || b == b':'
+                || b == b'<'
+                || b == b'>'
+            {
+                break;
+            }
+            if b == b'.' && end + 1 < bytes.len() && bytes[end + 1] == b'.' {
+                break;
+            }
+            if b == b'-' && end + 1 < bytes.len() && bytes[end + 1] == b'-' {
+                break;
+            }
+            end += 1;
+        }
+        if end == 0 {
+            return None;
+        }
+        let mut name = rest[..end].to_string();
+        if name.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+            name = format!("{MERMAID_DOM_ID_PREFIX}{name}");
+        }
+        Some((name, &rest[end..]))
+    }
+
+    fn parse_relation_tokens(rest: &str) -> Option<(Relation, &str)> {
+        let rest = rest.trim_start();
+        if rest.is_empty() {
+            return None;
+        }
+
+        fn parse_relation_type(rest: &str) -> (i32, &str) {
+            let rest = rest.trim_start();
+            if rest.starts_with("<|") {
+                return (REL_EXTENSION, &rest[2..]);
+            }
+            if rest.starts_with("|>") {
+                return (REL_EXTENSION, &rest[2..]);
+            }
+            if rest.starts_with("()") {
+                return (REL_LOLLIPOP, &rest[2..]);
+            }
+            if rest.starts_with('*') {
+                return (REL_COMPOSITION, &rest[1..]);
+            }
+            if rest.starts_with('o') {
+                return (REL_AGGREGATION, &rest[1..]);
+            }
+            if rest.starts_with('<') || rest.starts_with('>') {
+                return (REL_DEPENDENCY, &rest[1..]);
+            }
+            (REL_NONE, rest)
+        }
+
+        let (type1, after_t1) = parse_relation_type(rest);
+        let after_t1 = after_t1.trim_start();
+
+        let (line_type, after_line) = if after_t1.starts_with("--") {
+            (LINE_SOLID, &after_t1[2..])
+        } else if after_t1.starts_with("..") {
+            (LINE_DOTTED, &after_t1[2..])
+        } else {
+            return None;
+        };
+
+        let (type2, after_t2) = parse_relation_type(after_line);
+        Some((
+            Relation {
+                type1,
+                type2,
+                line_type,
+            },
+            after_t2,
+        ))
+    }
+
+    let mut db = ClassDb::new(meta.effective_config.clone());
+    let mut saw_header = false;
+    let mut current_class: Option<String> = None;
+
+    for raw in code.lines() {
+        let line = raw.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with("%%") {
+            continue;
+        }
+
+        if !saw_header {
+            if line.starts_with("classDiagram") {
+                saw_header = true;
+                continue;
+            }
+            return Ok(None);
+        }
+
+        if let Some(class_id) = current_class.as_deref() {
+            if line == "}" {
+                current_class = None;
+                continue;
+            }
+            db.add_member(class_id, line);
+            continue;
+        }
+
+        if line.starts_with("direction") {
+            let rest = line["direction".len()..].trim_start();
+            let dir = rest.split_whitespace().next().unwrap_or_default().trim();
+            if matches!(dir, "TB" | "BT" | "LR" | "RL") {
+                db.set_direction(dir);
+                continue;
+            }
+            return Ok(None);
+        }
+
+        if line.starts_with("class ") || line == "class" || line.starts_with("class\t") {
+            let mut rest = &line["class".len()..];
+            let Some((class_id, after_id)) = parse_name(rest) else {
+                return Ok(None);
+            };
+            rest = after_id.trim_start();
+
+            // Optional label: ["..."]
+            let mut label: Option<String> = None;
+            if rest.starts_with('[') {
+                let after = rest[1..].trim_start();
+                let Some((lab, after_lab)) = parse_quoted_str(after) else {
+                    return Ok(None);
+                };
+                let after_lab = after_lab.trim_start();
+                if !after_lab.starts_with(']') {
+                    return Ok(None);
+                }
+                label = Some(lab);
+                rest = after_lab[1..].trim_start();
+            }
+
+            // Optional css shorthand: :::name
+            let mut css: Option<String> = None;
+            if rest.starts_with(":::") {
+                let after = &rest[3..];
+                let Some((css_name, after_css)) = parse_name(after) else {
+                    return Ok(None);
+                };
+                css = Some(css_name);
+                rest = after_css.trim_start();
+            }
+
+            let mut has_body = false;
+            if rest.starts_with('{') {
+                has_body = true;
+                rest = rest[1..].trim_start();
+                if !rest.is_empty() {
+                    return Ok(None);
+                }
+            }
+            if !rest.is_empty() {
+                return Ok(None);
+            }
+
+            db.add_class(&class_id);
+            if let Some(lab) = label {
+                db.set_class_label(&class_id, &lab);
+            }
+            if let Some(css) = css {
+                db.set_css_class(&class_id, &css);
+            }
+            if has_body {
+                current_class = Some(class_id);
+            }
+            continue;
+        }
+
+        // Relation statement (optionally with label).
+        if let Some((a, rest)) = parse_name(line) {
+            let mut rest = rest.trim_start();
+            let (t1, after_t1) = if let Some((t1, after)) = parse_quoted_str(rest) {
+                (Some(t1), after)
+            } else {
+                (None, rest)
+            };
+            rest = after_t1.trim_start();
+
+            let Some((relation, after_rel)) = parse_relation_tokens(rest) else {
+                return Ok(None);
+            };
+            rest = after_rel.trim_start();
+
+            let (t2, after_t2) = if let Some((t2, after)) = parse_quoted_str(rest) {
+                (Some(t2), after)
+            } else {
+                (None, rest)
+            };
+            rest = after_t2.trim_start();
+
+            let Some((b, after_b)) = parse_name(rest) else {
+                return Ok(None);
+            };
+            let after_b = after_b.trim_start();
+
+            let label = if after_b.starts_with(':') && !after_b.starts_with(":::") {
+                Some(after_b.to_string())
+            } else if after_b.is_empty() {
+                None
+            } else {
+                return Ok(None);
+            };
+
+            let data = RelationData {
+                id1: a,
+                id2: b,
+                relation,
+                relation_title1: t1,
+                relation_title2: t2,
+                title: label,
+            };
+            // Mirror the grammar path (Action::AddRelation + optional Label) via `apply`.
+            db.apply(Action::AddRelation { data })
+                .map_err(|e| Error::DiagramParse {
+                    diagram_type: meta.diagram_type.clone(),
+                    message: e,
+                })?;
+            continue;
+        }
+
+        return Ok(None);
+    }
+
+    if !saw_header {
+        return Ok(None);
+    }
+    if current_class.is_some() {
+        return Ok(None);
+    }
+
+    Ok(Some(db.into_model(meta)))
+}
+
+#[cfg(test)]
+mod fast_parser_tests {
+    use super::*;
+
+    fn meta() -> ParseMetadata {
+        ParseMetadata {
+            diagram_type: "classDiagram".to_string(),
+            config: MermaidConfig::default(),
+            effective_config: MermaidConfig::default(),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn fast_parser_matches_lalrpop_for_basic_class_diagram() {
+        let code = r#"classDiagram
+class C1 {
+  +String field1
+  +method1()
+}
+C1 <|-- C2 : inherits
+"#;
+        let meta = meta();
+        let slow = parse_class_via_lalrpop(code, &meta).expect("slow parse");
+        let fast = parse_class_fast(code, &meta)
+            .expect("fast parse")
+            .expect("fast parser applicable");
+        assert_eq!(fast, slow);
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1520,132 +1851,181 @@ impl ClassDb {
         }
     }
 
-    fn to_model(&self, meta: &ParseMetadata) -> Value {
-        let classes_json: serde_json::Map<String, Value> = self
-            .classes
-            .iter()
-            .map(|(id, c)| {
-                let methods: Vec<Value> = c.methods.iter().map(|m| m.to_json()).collect();
-                let members: Vec<Value> = c.members.iter().map(|m| m.to_json()).collect();
-                (
-                    id.clone(),
-                    json!({
-                        "id": c.id,
-                        "type": c.type_param,
-                        "label": c.label,
-                        "text": c.text,
-                        "cssClasses": c.css_classes,
-                        "methods": methods,
-                        "members": members,
-                        "annotations": c.annotations,
-                        "styles": c.styles,
-                        "domId": c.dom_id,
-                        "parent": c.parent,
-                        "link": c.link,
-                        "linkTarget": c.link_target,
-                        "tooltip": c.tooltip,
-                        "haveCallback": c.have_callback,
-                        "callback": c.callback,
-                        "callbackEffective": c.callback_effective,
-                    }),
-                )
-            })
-            .collect();
+    fn into_model(self, meta: &ParseMetadata) -> Value {
+        let mut classes_json = serde_json::Map::with_capacity(self.classes.len());
+        for (id, c) in self.classes {
+            let methods: Vec<Value> = c.methods.into_iter().map(ClassMember::into_value).collect();
+            let members: Vec<Value> = c.members.into_iter().map(ClassMember::into_value).collect();
 
-        let relations_json: Vec<Value> = self
-            .relations
-            .iter()
-            .enumerate()
-            .map(|(idx, r)| {
-                json!({
-                    "id": idx.to_string(),
-                    "id1": r.id1,
-                    "id2": r.id2,
-                    "relationTitle1": r.relation_title1.clone().unwrap_or_else(|| "none".to_string()),
-                    "relationTitle2": r.relation_title2.clone().unwrap_or_else(|| "none".to_string()),
-                    "title": r.title.clone().unwrap_or_default(),
-                    "relation": {
-                        "type1": r.relation.type1,
-                        "type2": r.relation.type2,
-                        "lineType": r.relation.line_type,
-                    }
-                })
-            })
-            .collect();
+            let mut obj = serde_json::Map::with_capacity(16);
+            obj.insert("id".to_string(), Value::String(c.id));
+            obj.insert("type".to_string(), Value::String(c.type_param));
+            obj.insert("label".to_string(), Value::String(c.label));
+            obj.insert("text".to_string(), Value::String(c.text));
+            obj.insert("cssClasses".to_string(), Value::String(c.css_classes));
+            obj.insert("methods".to_string(), Value::Array(methods));
+            obj.insert("members".to_string(), Value::Array(members));
+            obj.insert(
+                "annotations".to_string(),
+                Value::Array(c.annotations.into_iter().map(Value::String).collect()),
+            );
+            obj.insert(
+                "styles".to_string(),
+                Value::Array(c.styles.into_iter().map(Value::String).collect()),
+            );
+            obj.insert("domId".to_string(), Value::String(c.dom_id));
+            obj.insert(
+                "parent".to_string(),
+                c.parent.map(Value::String).unwrap_or(Value::Null),
+            );
+            obj.insert(
+                "link".to_string(),
+                c.link.map(Value::String).unwrap_or(Value::Null),
+            );
+            obj.insert(
+                "linkTarget".to_string(),
+                c.link_target.map(Value::String).unwrap_or(Value::Null),
+            );
+            obj.insert(
+                "tooltip".to_string(),
+                c.tooltip.map(Value::String).unwrap_or(Value::Null),
+            );
+            obj.insert("haveCallback".to_string(), Value::Bool(c.have_callback));
+            obj.insert(
+                "callback".to_string(),
+                c.callback.map(Value::Object).unwrap_or(Value::Null),
+            );
+            obj.insert(
+                "callbackEffective".to_string(),
+                Value::Bool(c.callback_effective),
+            );
+            classes_json.insert(id, Value::Object(obj));
+        }
 
-        let notes_json: Vec<Value> = self
-            .notes
-            .iter()
-            .map(|n| {
-                json!({
-                    "id": n.id,
-                    "class": n.class_id,
-                    "text": n.text,
-                })
-            })
-            .collect();
+        let mut relations_json = Vec::with_capacity(self.relations.len());
+        for (idx, r) in self.relations.into_iter().enumerate() {
+            let mut rel_obj = serde_json::Map::with_capacity(3);
+            rel_obj.insert("type1".to_string(), Value::Number(r.relation.type1.into()));
+            rel_obj.insert("type2".to_string(), Value::Number(r.relation.type2.into()));
+            rel_obj.insert(
+                "lineType".to_string(),
+                Value::Number(r.relation.line_type.into()),
+            );
 
-        let interfaces_json: Vec<Value> = self
-            .interfaces
-            .iter()
-            .map(|i| json!({"id": i.id, "label": i.label, "classId": i.class_id }))
-            .collect();
+            let mut obj = serde_json::Map::with_capacity(7);
+            obj.insert("id".to_string(), Value::String(idx.to_string()));
+            obj.insert("id1".to_string(), Value::String(r.id1));
+            obj.insert("id2".to_string(), Value::String(r.id2));
+            obj.insert(
+                "relationTitle1".to_string(),
+                Value::String(r.relation_title1.unwrap_or_else(|| "none".to_string())),
+            );
+            obj.insert(
+                "relationTitle2".to_string(),
+                Value::String(r.relation_title2.unwrap_or_else(|| "none".to_string())),
+            );
+            obj.insert(
+                "title".to_string(),
+                Value::String(r.title.unwrap_or_default()),
+            );
+            obj.insert("relation".to_string(), Value::Object(rel_obj));
+            relations_json.push(Value::Object(obj));
+        }
 
-        let namespaces_json: serde_json::Map<String, Value> = self
-            .namespaces
-            .iter()
-            .map(|(k, ns)| {
-                (
-                    k.clone(),
-                    json!({
-                        "id": ns.id,
-                        "domId": ns.dom_id,
-                        "classIds": ns.class_ids,
-                    }),
-                )
-            })
-            .collect();
+        let mut notes_json = Vec::with_capacity(self.notes.len());
+        for n in self.notes {
+            let mut obj = serde_json::Map::with_capacity(3);
+            obj.insert("id".to_string(), Value::String(n.id));
+            obj.insert(
+                "class".to_string(),
+                n.class_id.map(Value::String).unwrap_or(Value::Null),
+            );
+            obj.insert("text".to_string(), Value::String(n.text));
+            notes_json.push(Value::Object(obj));
+        }
 
-        let style_classes_json: serde_json::Map<String, Value> = self
-            .style_classes
-            .iter()
-            .map(|(k, sc)| {
-                (
-                    k.clone(),
-                    json!({
-                        "id": sc.id,
-                        "styles": sc.styles,
-                        "textStyles": sc.text_styles,
-                    }),
-                )
-            })
-            .collect();
+        let mut interfaces_json = Vec::with_capacity(self.interfaces.len());
+        for i in self.interfaces {
+            let mut obj = serde_json::Map::with_capacity(3);
+            obj.insert("id".to_string(), Value::String(i.id));
+            obj.insert("label".to_string(), Value::String(i.label));
+            obj.insert("classId".to_string(), Value::String(i.class_id));
+            interfaces_json.push(Value::Object(obj));
+        }
 
-        json!({
-            "type": meta.diagram_type,
-            "direction": self.direction,
-            "accTitle": self.acc_title,
-            "accDescr": self.acc_descr,
-            "classes": Value::Object(classes_json),
-            "relations": relations_json,
-            "notes": notes_json,
-            "interfaces": interfaces_json,
-            "namespaces": Value::Object(namespaces_json),
-            "styleClasses": Value::Object(style_classes_json),
-            "constants": {
-                "lineType": {
-                    "line": LINE_SOLID,
-                    "dottedLine": LINE_DOTTED,
-                },
-                "relationType": {
-                    "none": REL_NONE,
-                    "aggregation": REL_AGGREGATION,
-                    "extension": REL_EXTENSION,
-                    "composition": REL_COMPOSITION,
-                    "dependency": REL_DEPENDENCY,
-                    "lollipop": REL_LOLLIPOP,
-                }
-            }
-        })
+        let mut namespaces_json = serde_json::Map::with_capacity(self.namespaces.len());
+        for (k, ns) in self.namespaces {
+            let mut obj = serde_json::Map::with_capacity(3);
+            obj.insert("id".to_string(), Value::String(ns.id));
+            obj.insert("domId".to_string(), Value::String(ns.dom_id));
+            obj.insert(
+                "classIds".to_string(),
+                Value::Array(ns.class_ids.into_iter().map(Value::String).collect()),
+            );
+            namespaces_json.insert(k, Value::Object(obj));
+        }
+
+        let mut style_classes_json = serde_json::Map::with_capacity(self.style_classes.len());
+        for (k, sc) in self.style_classes {
+            let mut obj = serde_json::Map::with_capacity(3);
+            obj.insert("id".to_string(), Value::String(sc.id));
+            obj.insert(
+                "styles".to_string(),
+                Value::Array(sc.styles.into_iter().map(Value::String).collect()),
+            );
+            obj.insert(
+                "textStyles".to_string(),
+                Value::Array(sc.text_styles.into_iter().map(Value::String).collect()),
+            );
+            style_classes_json.insert(k, Value::Object(obj));
+        }
+
+        let mut line_type_obj = serde_json::Map::with_capacity(2);
+        line_type_obj.insert("line".to_string(), Value::Number(LINE_SOLID.into()));
+        line_type_obj.insert("dottedLine".to_string(), Value::Number(LINE_DOTTED.into()));
+
+        let mut relation_type_obj = serde_json::Map::with_capacity(6);
+        relation_type_obj.insert("none".to_string(), Value::Number(REL_NONE.into()));
+        relation_type_obj.insert(
+            "aggregation".to_string(),
+            Value::Number(REL_AGGREGATION.into()),
+        );
+        relation_type_obj.insert("extension".to_string(), Value::Number(REL_EXTENSION.into()));
+        relation_type_obj.insert(
+            "composition".to_string(),
+            Value::Number(REL_COMPOSITION.into()),
+        );
+        relation_type_obj.insert(
+            "dependency".to_string(),
+            Value::Number(REL_DEPENDENCY.into()),
+        );
+        relation_type_obj.insert("lollipop".to_string(), Value::Number(REL_LOLLIPOP.into()));
+
+        let mut constants_obj = serde_json::Map::with_capacity(2);
+        constants_obj.insert("lineType".to_string(), Value::Object(line_type_obj));
+        constants_obj.insert("relationType".to_string(), Value::Object(relation_type_obj));
+
+        let mut obj = serde_json::Map::with_capacity(10);
+        obj.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+        obj.insert("direction".to_string(), Value::String(self.direction));
+        obj.insert(
+            "accTitle".to_string(),
+            self.acc_title.map(Value::String).unwrap_or(Value::Null),
+        );
+        obj.insert(
+            "accDescr".to_string(),
+            self.acc_descr.map(Value::String).unwrap_or(Value::Null),
+        );
+        obj.insert("classes".to_string(), Value::Object(classes_json));
+        obj.insert("relations".to_string(), Value::Array(relations_json));
+        obj.insert("notes".to_string(), Value::Array(notes_json));
+        obj.insert("interfaces".to_string(), Value::Array(interfaces_json));
+        obj.insert("namespaces".to_string(), Value::Object(namespaces_json));
+        obj.insert(
+            "styleClasses".to_string(),
+            Value::Object(style_classes_json),
+        );
+        obj.insert("constants".to_string(), Value::Object(constants_obj));
+        Value::Object(obj)
     }
 }
