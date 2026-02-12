@@ -442,6 +442,13 @@ where
         self.node_index.get(id).copied()
     }
 
+    pub fn node_id_by_ix(&self, ix: usize) -> Option<&str> {
+        self.nodes
+            .get(ix)
+            .and_then(|n| n.as_ref())
+            .map(|n| n.id.as_str())
+    }
+
     pub fn set_node(&mut self, id: impl Into<String>, label: N) -> &mut Self {
         let id = id.into();
         if let Some(&idx) = self.node_index.get(&id) {

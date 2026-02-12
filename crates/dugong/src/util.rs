@@ -36,15 +36,27 @@ where
         }
     }
 
-    let mut merged: BTreeMap<(String, String), (f64, usize)> = BTreeMap::new();
-    for e in g.edges() {
-        let lbl = g.edge_by_key(e).cloned().unwrap_or_default();
-        let entry = merged.entry((e.v.clone(), e.w.clone())).or_insert((0.0, 1));
+    // Merge multi-edges deterministically while avoiding per-edge String clones.
+    let mut merged: BTreeMap<(usize, usize), (f64, usize)> = BTreeMap::new();
+    g.for_each_edge_ix(|v_ix, w_ix, _key, lbl| {
+        let entry = merged.entry((v_ix, w_ix)).or_insert((0.0, 1));
         entry.0 += lbl.weight;
         entry.1 = entry.1.max(lbl.minlen.max(1));
-    }
+    });
 
-    for ((v, w), (weight, minlen)) in merged {
+    let mut merged_edges: Vec<(String, String, f64, usize)> = Vec::with_capacity(merged.len());
+    for ((v_ix, w_ix), (weight, minlen)) in merged {
+        let Some(v) = g.node_id_by_ix(v_ix) else {
+            continue;
+        };
+        let Some(w) = g.node_id_by_ix(w_ix) else {
+            continue;
+        };
+        merged_edges.push((v.to_string(), w.to_string(), weight, minlen));
+    }
+    merged_edges.sort_by(|a, b| (a.0.as_str(), a.1.as_str()).cmp(&(b.0.as_str(), b.1.as_str())));
+
+    for (v, w, weight, minlen) in merged_edges {
         simplified.set_edge_with_label(
             v,
             w,
