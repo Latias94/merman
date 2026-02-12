@@ -1051,6 +1051,25 @@ where
         }
     }
 
+    pub fn for_each_out_edge_ix<F>(&self, v_ix: usize, w_ix: Option<usize>, mut f: F)
+    where
+        F: FnMut(usize, usize, &EdgeKey, &E),
+    {
+        if !self.options.directed {
+            return;
+        }
+        let cache = self.ensure_directed_adj();
+        for &edge_idx in cache.out_edges(v_ix) {
+            let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
+                continue;
+            };
+            debug_assert_eq!(e.v_ix, v_ix);
+            if w_ix.is_none_or(|w_ix| e.w_ix == w_ix) {
+                f(e.v_ix, e.w_ix, &e.key, &e.label);
+            }
+        }
+    }
+
     pub fn for_each_in_edge<F>(&self, v: &str, w: Option<&str>, mut f: F)
     where
         F: FnMut(&EdgeKey, &E),
@@ -1072,6 +1091,25 @@ where
         }
 
         self.for_each_out_edge(v, w, f);
+    }
+
+    pub fn for_each_in_edge_ix<F>(&self, v_ix: usize, w_ix: Option<usize>, mut f: F)
+    where
+        F: FnMut(usize, usize, &EdgeKey, &E),
+    {
+        if !self.options.directed {
+            return;
+        }
+        let cache = self.ensure_directed_adj();
+        for &edge_idx in cache.in_edges(v_ix) {
+            let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
+                continue;
+            };
+            debug_assert_eq!(e.w_ix, v_ix);
+            if w_ix.is_none_or(|w_ix| e.v_ix == w_ix) {
+                f(e.v_ix, e.w_ix, &e.key, &e.label);
+            }
+        }
     }
 
     pub fn set_edge_key(&mut self, key: EdgeKey, label: E) -> &mut Self {

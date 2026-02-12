@@ -83,7 +83,7 @@ pub mod tree {
 
 pub mod feasible_tree {
     use super::tree;
-    use crate::graphlib::{EdgeKey, Graph, GraphOptions};
+    use crate::graphlib::{Graph, GraphOptions};
     use crate::{EdgeLabel, GraphLabel, NodeLabel};
 
     pub fn feasible_tree(
@@ -152,46 +152,51 @@ pub mod feasible_tree {
             let mut stack: Vec<String> = vec![root];
 
             while let Some(v) = stack.pop() {
-                let mut handle_incident_edge = |ek: &EdgeKey, lbl: &EdgeLabel| {
-                    let w = if v == ek.v {
-                        ek.w.as_str()
-                    } else {
-                        ek.v.as_str()
-                    };
+                let Some(v_ix) = g.node_ix(&v) else {
+                    continue;
+                };
+
+                g.for_each_out_edge_ix(v_ix, None, |tail_ix, head_ix, ek, lbl| {
+                    let w = ek.w.as_str();
                     if t.has_node(w) {
                         return;
                     }
 
-                    let minlen: i32 = lbl.minlen.max(1) as i32;
-
-                    let Some(tail_ix) = g.node_ix(&ek.v) else {
-                        return;
-                    };
-                    let Some(head_ix) = g.node_ix(&ek.w) else {
-                        return;
-                    };
                     let tail_rank = rank_by_ix.get(tail_ix).copied().unwrap_or(0);
                     let head_rank = rank_by_ix.get(head_ix).copied().unwrap_or(0);
-
-                    // Compute slack for the directed edge `(ek.v -> ek.w)`.
+                    let minlen: i32 = lbl.minlen.max(1) as i32;
                     let slack = head_rank - tail_rank - minlen;
                     if slack == 0 {
                         let w = w.to_string();
                         stack.push(w.clone());
-                        if let Some(w_ix) = g.node_ix(&w) {
-                            if w_ix >= in_tree_by_ix.len() {
-                                in_tree_by_ix.resize(w_ix + 1, false);
-                            }
-                            in_tree_by_ix[w_ix] = true;
+                        if head_ix >= in_tree_by_ix.len() {
+                            in_tree_by_ix.resize(head_ix + 1, false);
                         }
+                        in_tree_by_ix[head_ix] = true;
                         t.set_edge(v.clone(), w);
                     }
-                };
+                });
 
-                g.for_each_out_edge(&v, None, |ek, lbl| handle_incident_edge(ek, lbl));
-                if g.is_directed() {
-                    g.for_each_in_edge(&v, None, |ek, lbl| handle_incident_edge(ek, lbl));
-                }
+                g.for_each_in_edge_ix(v_ix, None, |tail_ix, head_ix, ek, lbl| {
+                    let w = ek.v.as_str();
+                    if t.has_node(w) {
+                        return;
+                    }
+
+                    let tail_rank = rank_by_ix.get(tail_ix).copied().unwrap_or(0);
+                    let head_rank = rank_by_ix.get(head_ix).copied().unwrap_or(0);
+                    let minlen: i32 = lbl.minlen.max(1) as i32;
+                    let slack = head_rank - tail_rank - minlen;
+                    if slack == 0 {
+                        let w = w.to_string();
+                        stack.push(w.clone());
+                        if tail_ix >= in_tree_by_ix.len() {
+                            in_tree_by_ix.resize(tail_ix + 1, false);
+                        }
+                        in_tree_by_ix[tail_ix] = true;
+                        t.set_edge(v.clone(), w);
+                    }
+                });
             }
         }
         t.node_count()
