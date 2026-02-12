@@ -775,32 +775,27 @@ pub mod network_simplex {
                 .unwrap_or(0.0);
 
             if g.is_directed() {
+                let parent_g_ix_by_g_ix = &self.parent_g_ix_by_g_ix;
+                let cut_to_parent_by_g_ix = &self.cut_to_parent_by_g_ix;
+                let out_sign: f64 = if child_is_tail { 1.0 } else { -1.0 };
+                let in_sign: f64 = -out_sign;
+
                 g.for_each_out_edge_ix(child_gix, None, |_tail_ix, head_ix, _ek, lbl| {
                     if head_ix == parent_gix {
                         return;
                     }
 
-                    let points_to_head = child_is_tail;
-                    cut_value += if points_to_head {
-                        lbl.weight
-                    } else {
-                        -lbl.weight
-                    };
+                    cut_value += out_sign * lbl.weight;
 
-                    if self.parent_g_ix_by_g_ix.get(head_ix).copied().flatten() != Some(child_gix) {
+                    let (Some(parent), Some(other_cut_value)) = (
+                        parent_g_ix_by_g_ix.get(head_ix),
+                        cut_to_parent_by_g_ix.get(head_ix),
+                    ) else {
                         return;
-                    }
-
-                    let other_cut_value = self
-                        .cut_to_parent_by_g_ix
-                        .get(head_ix)
-                        .copied()
-                        .unwrap_or(0.0);
-                    cut_value += if points_to_head {
-                        -other_cut_value
-                    } else {
-                        other_cut_value
                     };
+                    if *parent == Some(child_gix) {
+                        cut_value += -out_sign * *other_cut_value;
+                    }
                 });
 
                 g.for_each_in_edge_ix(child_gix, None, |tail_ix, _head_ix, _ek, lbl| {
@@ -808,27 +803,17 @@ pub mod network_simplex {
                         return;
                     }
 
-                    let points_to_head = !child_is_tail;
-                    cut_value += if points_to_head {
-                        lbl.weight
-                    } else {
-                        -lbl.weight
-                    };
+                    cut_value += in_sign * lbl.weight;
 
-                    if self.parent_g_ix_by_g_ix.get(tail_ix).copied().flatten() != Some(child_gix) {
+                    let (Some(parent), Some(other_cut_value)) = (
+                        parent_g_ix_by_g_ix.get(tail_ix),
+                        cut_to_parent_by_g_ix.get(tail_ix),
+                    ) else {
                         return;
-                    }
-
-                    let other_cut_value = self
-                        .cut_to_parent_by_g_ix
-                        .get(tail_ix)
-                        .copied()
-                        .unwrap_or(0.0);
-                    cut_value += if points_to_head {
-                        -other_cut_value
-                    } else {
-                        other_cut_value
                     };
+                    if *parent == Some(child_gix) {
+                        cut_value += -in_sign * *other_cut_value;
+                    }
                 });
             }
 
