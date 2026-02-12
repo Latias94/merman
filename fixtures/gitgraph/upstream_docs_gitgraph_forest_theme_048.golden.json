@@ -1,0 +1,241 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "0-<dynamic>",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "1-<dynamic>",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "0-<dynamic>"
+        ],
+        "branch": "hotfix"
+      },
+      {
+        "id": "ash",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [
+          "abc"
+        ],
+        "parents": [
+          "1-<dynamic>"
+        ],
+        "branch": "develop"
+      },
+      {
+        "id": "3-<dynamic>",
+        "message": "",
+        "seq": 3,
+        "type": 2,
+        "tags": [],
+        "parents": [
+          "ash"
+        ],
+        "branch": "featureB"
+      },
+      {
+        "id": "4-<dynamic>",
+        "message": "",
+        "seq": 4,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "1-<dynamic>"
+        ],
+        "branch": "hotfix"
+      },
+      {
+        "id": "5-<dynamic>",
+        "message": "",
+        "seq": 5,
+        "type": 1,
+        "tags": [],
+        "parents": [
+          "ash"
+        ],
+        "branch": "develop"
+      },
+      {
+        "id": "6-<dynamic>",
+        "message": "",
+        "seq": 6,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "3-<dynamic>"
+        ],
+        "branch": "featureB"
+      },
+      {
+        "id": "7-<dynamic>",
+        "message": "merged branch hotfix into main",
+        "seq": 7,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "0-<dynamic>",
+          "4-<dynamic>"
+        ],
+        "branch": "main",
+        "customId": false
+      },
+      {
+        "id": "8-<dynamic>",
+        "message": "",
+        "seq": 8,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "6-<dynamic>"
+        ],
+        "branch": "featureB"
+      },
+      {
+        "id": "9-<dynamic>",
+        "message": "",
+        "seq": 9,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "5-<dynamic>"
+        ],
+        "branch": "featureA"
+      },
+      {
+        "id": "10-<dynamic>",
+        "message": "merged branch hotfix into develop",
+        "seq": 10,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "5-<dynamic>",
+          "4-<dynamic>"
+        ],
+        "branch": "develop",
+        "customId": false
+      },
+      {
+        "id": "11-<dynamic>",
+        "message": "",
+        "seq": 11,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "9-<dynamic>"
+        ],
+        "branch": "featureA"
+      },
+      {
+        "id": "12-<dynamic>",
+        "message": "",
+        "seq": 12,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "8-<dynamic>"
+        ],
+        "branch": "featureB"
+      },
+      {
+        "id": "13-<dynamic>",
+        "message": "merged branch featureA into develop",
+        "seq": 13,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "10-<dynamic>",
+          "11-<dynamic>"
+        ],
+        "branch": "develop",
+        "customId": false
+      },
+      {
+        "id": "14-<dynamic>",
+        "message": "",
+        "seq": 14,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "13-<dynamic>"
+        ],
+        "branch": "release"
+      },
+      {
+        "id": "15-<dynamic>",
+        "message": "",
+        "seq": 15,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "7-<dynamic>"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "16-<dynamic>",
+        "message": "merged branch main into release",
+        "seq": 16,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "14-<dynamic>",
+          "15-<dynamic>"
+        ],
+        "branch": "release",
+        "customId": false
+      },
+      {
+        "id": "17-<dynamic>",
+        "message": "merged branch release into develop",
+        "seq": 17,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "13-<dynamic>",
+          "16-<dynamic>"
+        ],
+        "branch": "develop",
+        "customId": false
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "hotfix"
+      },
+      {
+        "name": "develop"
+      },
+      {
+        "name": "featureB"
+      },
+      {
+        "name": "featureA"
+      },
+      {
+        "name": "release"
+      }
+    ],
+    "currentBranch": "develop",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}

@@ -5,11 +5,11 @@ flowchart renderer.
 
 Reproduce:
 
-- `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- `cargo run -p xtask -- compare-flowchart-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 
 ## Known mismatches
 
-None (last checked 2026-01-20).
+None (last checked 2026-02-12).
 
 ## Next steps
 

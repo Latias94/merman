@@ -42,6 +42,8 @@ All override maps live in `crates/merman-render/src/generated/`:
   - `lookup_sequence_root_viewport_override(diagram_id)`
 - `state_root_overrides_11_12_2.rs`
   - `lookup_state_root_viewport_override(diagram_id)`
+- `gitgraph_root_overrides_11_12_2.rs`
+  - `lookup_gitgraph_root_viewport_override(diagram_id)`
 - `timeline_root_overrides_11_12_2.rs`
   - `lookup_timeline_root_viewport_override(diagram_id)`
 
@@ -68,6 +70,7 @@ Current integration points:
 - Sankey renderer: `render_sankey_diagram_svg`
 - Sequence renderer: `render_sequence_diagram_svg`
 - State renderer: `render_state_diagram_v2_svg`
+- GitGraph renderer: `render_gitgraph_diagram_svg`
 - Timeline renderer: `render_timeline_diagram_svg`
 
 In upstream parity compares, `xtask` sets `diagram_id` to fixture stem, so these keys match.

@@ -1,8 +1,113 @@
 {
   "diagramType": "gitGraph",
   "model": {
-    "accDescr": null,
-    "accTitle": null,
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "ZERO",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "A",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "ZERO"
+        ],
+        "branch": "feature"
+      },
+      {
+        "id": "B",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "A"
+        ],
+        "branch": "feature"
+      },
+      {
+        "id": "M",
+        "message": "merged branch feature into main",
+        "seq": 3,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "ZERO",
+          "B"
+        ],
+        "branch": "main",
+        "customId": true
+      },
+      {
+        "id": "C",
+        "message": "",
+        "seq": 4,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "ZERO"
+        ],
+        "branch": "release"
+      },
+      {
+        "id": "5-<dynamic>",
+        "message": "cherry-picked merged branch feature into main into release",
+        "seq": 5,
+        "type": 4,
+        "tags": [
+          "v2.1:ZERO"
+        ],
+        "parents": [
+          "C",
+          "M"
+        ],
+        "branch": "release"
+      },
+      {
+        "id": "D",
+        "message": "",
+        "seq": 6,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "5-<dynamic>"
+        ],
+        "branch": "release"
+      },
+      {
+        "id": "7-<dynamic>",
+        "message": "cherry-picked merged branch feature into main into release",
+        "seq": 7,
+        "type": 4,
+        "tags": [],
+        "parents": [
+          "D",
+          "M"
+        ],
+        "branch": "release"
+      },
+      {
+        "id": "8-<dynamic>",
+        "message": "cherry-picked merged branch feature into main into release",
+        "seq": 8,
+        "type": 4,
+        "tags": [],
+        "parents": [
+          "7-<dynamic>",
+          "M"
+        ],
+        "branch": "release"
+      }
+    ],
     "branches": [
       {
         "name": "main"
@@ -14,115 +119,10 @@
         "name": "release"
       }
     ],
-    "commits": [
-      {
-        "branch": "main",
-        "id": "ZERO",
-        "message": "",
-        "parents": [],
-        "seq": 0,
-        "tags": [],
-        "type": 0
-      },
-      {
-        "branch": "feature",
-        "id": "A",
-        "message": "",
-        "parents": [
-          "ZERO"
-        ],
-        "seq": 1,
-        "tags": [],
-        "type": 0
-      },
-      {
-        "branch": "feature",
-        "id": "B",
-        "message": "",
-        "parents": [
-          "A"
-        ],
-        "seq": 2,
-        "tags": [],
-        "type": 0
-      },
-      {
-        "branch": "main",
-        "customId": true,
-        "id": "M",
-        "message": "merged branch feature into main",
-        "parents": [
-          "ZERO",
-          "B"
-        ],
-        "seq": 3,
-        "tags": [],
-        "type": 3
-      },
-      {
-        "branch": "release",
-        "id": "C",
-        "message": "",
-        "parents": [
-          "ZERO"
-        ],
-        "seq": 4,
-        "tags": [],
-        "type": 0
-      },
-      {
-        "branch": "release",
-        "id": "5-<dynamic>",
-        "message": "cherry-picked merged branch feature into main into release",
-        "parents": [
-          "C",
-          "M"
-        ],
-        "seq": 5,
-        "tags": [
-          "v2.1:ZERO"
-        ],
-        "type": 4
-      },
-      {
-        "branch": "release",
-        "id": "D",
-        "message": "",
-        "parents": [
-          "5-<dynamic>"
-        ],
-        "seq": 6,
-        "tags": [],
-        "type": 0
-      },
-      {
-        "branch": "release",
-        "id": "7-<dynamic>",
-        "message": "cherry-picked merged branch feature into main into release",
-        "parents": [
-          "D",
-          "M"
-        ],
-        "seq": 7,
-        "tags": [],
-        "type": 4
-      },
-      {
-        "branch": "release",
-        "id": "8-<dynamic>",
-        "message": "cherry-picked merged branch feature into main into release",
-        "parents": [
-          "7-<dynamic>",
-          "M"
-        ],
-        "seq": 8,
-        "tags": [],
-        "type": 4
-      }
-    ],
     "currentBranch": "release",
     "direction": "LR",
-    "type": "gitGraph",
+    "accTitle": null,
+    "accDescr": null,
     "warnings": []
   }
 }

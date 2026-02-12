@@ -1,8 +1,42 @@
 {
   "diagramType": "gitGraph",
   "model": {
-    "accDescr": null,
-    "accTitle": null,
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "ZERO",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "B1",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "ZERO"
+        ],
+        "branch": "branch"
+      },
+      {
+        "id": "M_QUOTED",
+        "message": "merged branch branch into main",
+        "seq": 2,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "ZERO",
+          "B1"
+        ],
+        "branch": "main",
+        "customId": true
+      }
+    ],
     "branches": [
       {
         "name": "main"
@@ -44,44 +78,10 @@
         "name": "test1"
       }
     ],
-    "commits": [
-      {
-        "branch": "main",
-        "id": "ZERO",
-        "message": "",
-        "parents": [],
-        "seq": 0,
-        "tags": [],
-        "type": 0
-      },
-      {
-        "branch": "branch",
-        "id": "B1",
-        "message": "",
-        "parents": [
-          "ZERO"
-        ],
-        "seq": 1,
-        "tags": [],
-        "type": 0
-      },
-      {
-        "branch": "main",
-        "customId": true,
-        "id": "M_QUOTED",
-        "message": "merged branch branch into main",
-        "parents": [
-          "ZERO",
-          "B1"
-        ],
-        "seq": 2,
-        "tags": [],
-        "type": 3
-      }
-    ],
     "currentBranch": "test3",
     "direction": "LR",
-    "type": "gitGraph",
+    "accTitle": null,
+    "accDescr": null,
     "warnings": []
   }
 }

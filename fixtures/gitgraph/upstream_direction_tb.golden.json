@@ -1,27 +1,27 @@
 {
   "diagramType": "gitGraph",
   "model": {
-    "accDescr": null,
-    "accTitle": null,
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "0-<dynamic>",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      }
+    ],
     "branches": [
       {
         "name": "main"
       }
     ],
-    "commits": [
-      {
-        "branch": "main",
-        "id": "0-<dynamic>",
-        "message": "",
-        "parents": [],
-        "seq": 0,
-        "tags": [],
-        "type": 0
-      }
-    ],
     "currentBranch": "main",
     "direction": "TB",
-    "type": "gitGraph",
+    "accTitle": null,
+    "accDescr": null,
     "warnings": []
   }
 }

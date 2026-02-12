@@ -1,46 +1,46 @@
 {
   "diagramType": "kanban",
   "model": {
-    "edges": [],
-    "nodes": [
-      {
-        "id": "section1",
-        "isGroup": true,
-        "label": "section1",
-        "level": 2,
-        "look": "classic",
-        "shape": "kanbanSection",
-        "ticket": null
-      },
-      {
-        "id": "section2",
-        "isGroup": true,
-        "label": "section2",
-        "level": 2,
-        "look": "classic",
-        "shape": "kanbanSection",
-        "ticket": null
-      }
-    ],
-    "other": {},
+    "type": "kanban",
     "sections": [
       {
         "id": "section1",
-        "isGroup": false,
         "label": "section1",
         "level": 2,
+        "width": 200,
         "padding": 10,
-        "width": 200
+        "isGroup": false
       },
       {
         "id": "section2",
-        "isGroup": false,
         "label": "section2",
         "level": 2,
+        "width": 200,
         "padding": 10,
-        "width": 200
+        "isGroup": false
       }
     ],
-    "type": "kanban"
+    "nodes": [
+      {
+        "id": "section1",
+        "label": "section1",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "section2",
+        "label": "section2",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      }
+    ],
+    "edges": [],
+    "other": {}
   }
 }
