@@ -219,18 +219,24 @@ pub(super) fn render_state_diagram_v2_svg(
     out.push_str("<g>");
     state_markers(&mut out, diagram_id);
 
+    // `svg.getBBox()` does not include `<style>` and typically excludes non-rendered `<defs>`
+    // content from the rendered bbox. Scan only the rendered graph payload to reduce overhead
+    // in our SVG bounds approximation.
+    let bounds_scan_start = out.len();
     render_state_root(&mut out, &ctx, None, origin_x, origin_y);
+    let bounds_scan_end = out.len();
 
     out.push_str("</g>");
     let _ = write!(&mut out, "<!--{}-->", TITLE_PLACEHOLDER);
     out.push_str("</svg>\n");
 
-    let mut content_bounds = svg_emitted_bounds_from_svg(&out).unwrap_or(Bounds {
-        min_x: 0.0,
-        min_y: 0.0,
-        max_x: 100.0,
-        max_y: 100.0,
-    });
+    let mut content_bounds = svg_emitted_bounds_from_svg(&out[bounds_scan_start..bounds_scan_end])
+        .unwrap_or(Bounds {
+            min_x: 0.0,
+            min_y: 0.0,
+            max_x: 100.0,
+            max_y: 100.0,
+        });
     // Note: Chromium `getBBox()` values are not always exact `f32`-lattice outputs. Some Mermaid
     // state diagram fixtures show sub-ulp deltas in `x/y` that survive into the serialized root
     // `viewBox`. Avoid forcing `f32` quantization here; we keep `max-width` stable via the
@@ -439,18 +445,23 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
         // Important: the naive `attrs.find(r#"{key}=""#)` is *not* safe for 1-letter keys like
         // `d` because it can match inside other attribute names (e.g. `id="..."` contains `d="`).
         // That would break path bbox parsing and, in turn, root viewBox parity.
-        let needle = format!(r#"{key}=""#);
         let bytes = attrs.as_bytes();
         let mut from = 0usize;
         while from < attrs.len() {
-            let rel = attrs[from..].find(&needle)?;
+            let rel = attrs[from..].find(key)?;
             let pos = from + rel;
             let ok_prefix = pos == 0 || bytes[pos.saturating_sub(1)].is_ascii_whitespace();
             if ok_prefix {
-                let start = pos + needle.len();
-                let rest = &attrs[start..];
-                let end = rest.find('"')?;
-                return Some(&rest[..end]);
+                let after_key = pos + key.len();
+                if after_key + 1 < attrs.len()
+                    && bytes[after_key] == b'='
+                    && bytes[after_key + 1] == b'"'
+                {
+                    let start = after_key + 2;
+                    let rest = &attrs[start..];
+                    let end = rest.find('"')?;
+                    return Some(&rest[..end]);
+                }
             }
             from = pos + 1;
         }
