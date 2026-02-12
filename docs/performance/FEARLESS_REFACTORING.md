@@ -34,28 +34,26 @@ while preserving correctness.
 
 ## Current Gap (as of 2026-02-12)
 
-From `docs/performance/COMPARISON.md` (generated locally via
-`tools/bench/compare_mermaid_renderers.py`; last refreshed on
-`2026-02-12 16:34 +0800`):
+From a local comparison run on a single machine (see `docs/performance/COMPARISON.md`,
+generated via `tools/bench/compare_mermaid_renderers.py`):
 
-- End-to-end geometric mean (8 fixtures): ~`6.39x` slower than `mermaid-rs-renderer` (mmdr).
-- Medium fixtures (4): ~`3.43x` slower than mmdr.
-- Tiny fixtures (4): ~`11.89x` slower than mmdr.
+- End-to-end geometric mean (8 fixtures): ~`6.5x` slower than `mermaid-rs-renderer` (mmdr).
+- Medium fixtures (4): ~`3.2x` slower than mmdr.
+- Tiny fixtures (4): ~`13.1x` slower than mmdr.
 
-Stage spot-checks (same machine, Criterion, mid estimates):
+Stage spot-checks (same machine, Criterion, mid estimates; generate via
+`python tools/bench/stage_spotcheck.py --fixtures flowchart_tiny,flowchart_medium,state_tiny,state_medium,class_tiny,class_medium,sequence_tiny,sequence_medium --out target/bench/stage_spotcheck.md`):
 
-- Run `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,class_medium --out target/bench/stage_spotcheck.md`.
-- Recent runs consistently show:
-  - `class_medium`: parse is the outlier (hundreds of x slower than mmdr), layout is not the bottleneck.
-  - `flowchart_medium`: render is extremely expensive vs mmdr (tens of x), layout is mid single-digit x.
+- `parse`: ~`56.0x` geometric mean slower than mmdr.
+- `layout`: ~`2.9x` geometric mean slower than mmdr.
+- `render`: ~`14.3x` geometric mean slower than mmdr.
 
 Interpretation:
 
-- For `tiny/*`, fixed overhead dominates (allocation churn, detection/preprocess, JSON/string
-  building, SVG emission scaffolding).
-- For `flowchart_*`, we pay heavily in all three stages, but SVG emission is especially expensive
-  relative to mmdr.
-- For `class_*`, parse is the primary outlier (layout is not the bottleneck).
+- `parse/*` is the primary global outlier (especially `class_*` and `state_*`).
+- `render/*` is a major outlier for `state_*` and `flowchart_*` (string emission + bbox/parity work).
+- `layout/*` is not the dominant stage overall, but it is the largest absolute cost for `flowchart_medium`
+  and therefore still a worthwhile target after the parser/render hotspots are under control.
 
 ## Milestones (revised)
 
@@ -76,20 +74,22 @@ Exit criteria:
 
 - We can attribute each top regression to a specific stage within minutes.
 
-### M1: Kill tiny fixed costs (P0/P1, low risk) (2–5 days)
+### M1: Fix parser fixed costs (highest leverage, medium risk) (1–3 weeks)
 
 Focus:
 
-- Remove per-call setup costs that dominate `tiny/*`.
+- Make `parse/*` competitive for `class_*` and `state_*` without relaxing strictness.
 
 Candidates:
 
 - Reduce preprocess/detect allocation churn (prefer `Cow<'_, str>` / single-buffer builds where safe).
-- Avoid repeated `String` clones in hot “scan the whole graph” loops.
+- Stop using large `serde_json::Value` trees as the primary internal representation for hot parsers.
+- Introduce typed IR for `class` and `state` parsers (diagram-scoped, incremental), and only convert
+  to JSON at the fixture/parity boundary.
 
 Exit criteria:
 
-- Tiny geometric mean ratio improves materially (goal: cut tiny gmean by 2–3x from baseline).
+- `parse/class_medium` and `parse/state_medium` improve by an order of magnitude vs baseline.
 
 ### M2: Make SVG emission cheap (highest leverage, medium risk) (4–10 days)
 
@@ -109,23 +109,21 @@ Exit criteria:
 - `render/*` times for flowchart/state/class drop substantially (goal: 2–5x for medium fixtures),
   with DOM parity gate still green.
 
-### M3: Fix class parse as a first-class perf target (highest leverage, medium–high risk) (1–3 weeks)
+### M3: Reduce flowchart layout overhead (high impact, medium risk) (4–10 days)
 
 Focus:
 
-- Reduce allocations and data shuffling in the `class` parser and semantic model building.
+- Cut `layout/flowchart_medium` absolute time (it dominates flowchart end-to-end).
 
 Candidates:
 
-- Reduce `String` churn (prefer borrowing slices during tokenization where possible).
-- Avoid building large `serde_json::Value` trees as the primary internal representation.
-- Introduce a typed internal IR for class diagrams, and only convert to JSON at the boundary for
-  fixtures/parity (diagram-scoped, incremental).
+- Reuse buffers between passes (crossing minimization / ordering / routing).
+- Reduce `HashMap` churn in inner loops (prefer `IndexMap`/stable indexing where possible).
+- Use profiling to identify the top per-pass offenders before attempting large refactors.
 
 Exit criteria:
 
-- `parse/class_*` improves by an order of magnitude relative to the current baseline, and
-  end-to-end ratio for `class_*` moves closer to the `flowchart_*` ratio band.
+- `layout/flowchart_medium` ratio improves materially (goal: 2x+), without correctness regressions.
 
 ### M4: Make dugong’s dagreish pipeline index-based (highest potential, highest risk) (2–6 weeks)
 
@@ -150,6 +148,9 @@ Exit criteria:
 
 - Cached hot regexes in class/gantt parsers (`perf(core): cache hot regexes in class/gantt`).
 - Reduced dagreish edge-proxy overhead in dugong (`perf(dugong): cut dagreish edge-proxy overhead`).
+- Made SVG number/path formatting allocation-free (`fmt_display`, `fmt_path_into`, curve/path emit refactors).
+- Reduced allocations in flowchart/state SVG emission (escape display wrappers, fewer intermediate `String`s).
+- Optimized state `parity-root` bbox scan to skip `<style>/<defs>` and reuse transform parse buffers.
 
 ## Prioritized Backlog
 
@@ -161,17 +162,7 @@ Legend:
 
 ### P0 (High impact, low risk)
 
-1) Make SVG number emission allocation-free in hot paths
-   - Why: `render/*` is dominated by repeated `fmt_path(...)`/`fmt(...)` calls that allocate a fresh `String`.
-   - Change:
-     - Add `fmt_path_into(&mut String, f64)` / `fmt_into(&mut String, f64)` (and friends) and migrate
-       hot render loops (especially path `d` emission) to write directly into the output buffer.
-   - Impact: very high for `render/*` on flowchart/state/ER (and any diagram that emits many path segments).
-   - Effort: low–medium.
-   - Risk: low (pure refactor if output is byte-identical).
-   - Validation: DOM parity gate + `cargo bench -p merman --features render --bench pipeline -- --exact render/*`.
-
-2) Reduce preprocess/detect allocation churn (single-buffer strategy)
+1) Reduce preprocess/detect allocation churn (single-buffer strategy)
    - Why: preprocess currently performs multiple whole-string passes (`replace_all(...).to_string()`),
      which becomes fixed overhead for small diagrams and non-trivial overhead for medium ones.
    - Change:
@@ -182,7 +173,7 @@ Legend:
    - Risk: low–medium (must preserve upstream quirks).
    - Validation: focused unit tests for preprocess (entities/directives/frontmatter) + guardrails.
 
-3) Keep “known diagram type” fast-path healthy (already exists)
+2) Keep “known diagram type” fast-path healthy (already exists)
    - Why: many integrations know the diagram type (Markdown fences).
    - Change:
      - Maintain and benchmark `parse_known_type/*` alongside `parse/*`.
@@ -253,5 +244,5 @@ Legend:
 
 ## Recommended Next Step
 
-Keep M0 tooling green (comparison + stage spot-check), then start M2 (SVG emission) in small,
-mechanical refactors that preserve byte-identical output.
+Keep M0 tooling green (comparison + stage spot-check), then prioritize M1 (parser fixed costs),
+starting with `class_*` and `state_*` typed IR work while keeping fixture/golden boundaries intact.

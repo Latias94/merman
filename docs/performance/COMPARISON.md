@@ -4,12 +4,12 @@
 
 ## Environment
 
-- Timestamp: "2026-02-12 16:34:50 +0800"
+- Timestamp: "2026-02-12 18:19:37 +0800"
 - OS: "Windows-11-10.0.26200-SP0"
 - Machine: "AMD64"
 - CPU: "13th Gen Intel(R) Core(TM) i9-13900KF"
 - Python: "3.13.11"
-- merman: `3bc1cac8e9afb82a3533ab864b9069c48c731810`
+- merman: `054ec9fd879c8181b61489bf06e1836c21861cf3`
 - mermaid-rs-renderer: `859253415e69dce28bd65cd5a7c1d1ae8b39f4a1`
 - mermaid-js: unknown
 - Rust:
@@ -29,20 +29,20 @@ LLVM version: 21.1.8
 - `merman`: `cargo bench -p merman --features render --bench pipeline -- ...`
 - `mermaid-rs-renderer` (mmdr): `cargo bench --bench renderer -- ...`
 - Filter: "end_to_end/(flowchart_tiny|flowchart_medium|flowchart_large|sequence_tiny|sequence_medium|state_tiny|state_medium|class_tiny|class_medium)"
-- Sample size: 20, warm-up: 1s, measurement: 1s
+- Sample size: 10, warm-up: 1s, measurement: 1s
 
 ## Results (end_to_end, mid estimate)
 
 | benchmark | merman | mermaid-rs-renderer | mermaid-js (puppeteer) | ratio (merman / mmdr) | ratio (merman / mermaid-js) |
 |---|---:|---:|---:|---:|---:|
-| end_to_end/class_medium | 23.10 ms | 2.92 ms | - | 7.9x | - |
-| end_to_end/class_tiny | 773.31 µs | 39.73 µs | - | 19.5x | - |
-| end_to_end/flowchart_medium | 28.31 ms | 5.62 ms | - | 5.0x | - |
-| end_to_end/flowchart_tiny | 725.30 µs | 44.51 µs | - | 16.3x | - |
-| end_to_end/sequence_medium | 275.56 µs | 321.35 µs | - | 0.9x | - |
-| end_to_end/sequence_tiny | 82.67 µs | 28.13 µs | - | 2.9x | - |
-| end_to_end/state_medium | 7.97 ms | 2.03 ms | - | 3.9x | - |
-| end_to_end/state_tiny | 962.61 µs | 44.42 µs | - | 21.7x | - |
+| end_to_end/class_medium | 32.13 ms | 3.85 ms | - | 8.3x | - |
+| end_to_end/class_tiny | 1.01 ms | 39.68 µs | - | 25.5x | - |
+| end_to_end/flowchart_medium | 26.06 ms | 6.46 ms | - | 4.0x | - |
+| end_to_end/flowchart_tiny | 527.96 µs | 42.21 µs | - | 12.5x | - |
+| end_to_end/sequence_medium | 340.27 µs | 431.99 µs | - | 0.8x | - |
+| end_to_end/sequence_tiny | 122.20 µs | 30.87 µs | - | 4.0x | - |
+| end_to_end/state_medium | 9.85 ms | 2.38 ms | - | 4.1x | - |
+| end_to_end/state_tiny | 1.19 ms | 52.15 µs | - | 22.9x | - |
 
 ## Notes
 
