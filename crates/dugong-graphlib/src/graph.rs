@@ -154,6 +154,18 @@ where
     E: Default + 'static,
     G: Default,
 {
+    fn trim_trailing_node_tombstones(&mut self) {
+        while matches!(self.nodes.last(), Some(None)) {
+            self.nodes.pop();
+        }
+    }
+
+    fn trim_trailing_edge_tombstones(&mut self) {
+        while matches!(self.edges.last(), Some(None)) {
+            self.edges.pop();
+        }
+    }
+
     pub fn compact_if_sparse(&mut self, max_capacity_factor: f64) -> bool {
         // Note: `nodes.len()` / `edges.len()` are slot capacities; `node_len` / `edge_len` are
         // live counts. When a graph is built once and then repeatedly mutated (layout pipelines
@@ -668,6 +680,7 @@ where
         let _ = self.edge_index.remove_entry(&edge.key);
         self.edges[idx] = None;
         self.edge_len = self.edge_len.saturating_sub(1);
+        self.trim_trailing_edge_tombstones();
     }
 
     pub fn remove_edge_key(&mut self, key: &EdgeKey) -> bool {
@@ -713,6 +726,9 @@ where
                 self.edge_len = self.edge_len.saturating_sub(1);
             }
         }
+
+        self.trim_trailing_edge_tombstones();
+        self.trim_trailing_node_tombstones();
 
         // Remove parent links.
         if let Some(parent) = self.parent.remove(id) {
