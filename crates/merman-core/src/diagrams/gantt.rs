@@ -5,8 +5,15 @@ use chrono::{
 use regex::Regex;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 type DateTimeFixed = chrono::DateTime<FixedOffset>;
+
+static DIGITS_RE: OnceLock<Regex> = OnceLock::new();
+static AFTER_RE: OnceLock<Regex> = OnceLock::new();
+static UNTIL_RE: OnceLock<Regex> = OnceLock::new();
+static DURATION_RE: OnceLock<Regex> = OnceLock::new();
+static STRICT_YYYY_MM_DD_RE: OnceLock<Regex> = OnceLock::new();
 
 #[derive(Debug, Clone)]
 enum StartTimeRaw {
@@ -1132,7 +1139,9 @@ fn parse_js_date_fallback(s: &str) -> Result<DateTimeFixed> {
         return Ok(dt);
     }
 
-    if Regex::new(r"^\d+$").unwrap().is_match(s) {
+    let digits_re =
+        DIGITS_RE.get_or_init(|| Regex::new(r"^\d+$").expect("gantt digits regex must compile"));
+    if digits_re.is_match(s) {
         let n: i32 = s.parse().map_err(|_| Error::DiagramParse {
             diagram_type: "gantt".to_string(),
             message: format!("Invalid date:{s}"),
@@ -1330,7 +1339,9 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
 fn get_start_date(db: &GanttDb, date_format: &str, raw: &str) -> Result<Option<DateTimeFixed>> {
     let s = raw.trim();
 
-    let after_re = Regex::new(r"(?i)^after\s+(?<ids>[\d\w -]+)").unwrap();
+    let after_re = AFTER_RE.get_or_init(|| {
+        Regex::new(r"(?i)^after\s+(?<ids>[\d\w -]+)").expect("gantt after regex must compile")
+    });
     if let Some(caps) = after_re.captures(s) {
         let ids = caps.name("ids").map(|m| m.as_str()).unwrap_or("");
         let mut latest: Option<Option<DateTimeFixed>> = None;
@@ -1390,7 +1401,9 @@ fn get_start_date(db: &GanttDb, date_format: &str, raw: &str) -> Result<Option<D
 }
 
 fn parse_duration(str_: &str) -> (f64, String) {
-    let re = Regex::new(r"^(\d+(?:\.\d+)?)([Mdhmswy]|ms)$").unwrap();
+    let re = DURATION_RE.get_or_init(|| {
+        Regex::new(r"^(\d+(?:\.\d+)?)([Mdhmswy]|ms)$").expect("gantt duration regex must compile")
+    });
     let Some(caps) = re.captures(str_.trim()) else {
         return (f64::NAN, "ms".to_string());
     };
@@ -1449,7 +1462,9 @@ fn get_end_date(
 ) -> Result<Option<DateTimeFixed>> {
     let s = raw.trim();
 
-    let until_re = Regex::new(r"(?i)^until\s+(?<ids>[\d\w -]+)").unwrap();
+    let until_re = UNTIL_RE.get_or_init(|| {
+        Regex::new(r"(?i)^until\s+(?<ids>[\d\w -]+)").expect("gantt until regex must compile")
+    });
     if let Some(caps) = until_re.captures(s) {
         let ids = caps.name("ids").map(|m| m.as_str()).unwrap_or("");
         let mut earliest: Option<Option<DateTimeFixed>> = None;
@@ -1500,7 +1515,10 @@ fn get_end_date(
 
 fn is_strict_yyyy_mm_dd(s: &str) -> bool {
     let s = s.trim();
-    if !Regex::new(r"^\d{4}-\d{2}-\d{2}$").unwrap().is_match(s) {
+    let re = STRICT_YYYY_MM_DD_RE.get_or_init(|| {
+        Regex::new(r"^\d{4}-\d{2}-\d{2}$").expect("gantt strict date regex must compile")
+    });
+    if !re.is_match(s) {
         return false;
     }
     NaiveDate::parse_from_str(s, "%Y-%m-%d").is_ok()

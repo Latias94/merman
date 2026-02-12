@@ -6,6 +6,7 @@ use indexmap::IndexMap;
 use regex::Regex;
 use serde_json::{Value, json};
 use std::collections::VecDeque;
+use std::sync::OnceLock;
 
 lalrpop_util::lalrpop_mod!(class_grammar, "/diagrams/class_grammar.rs");
 
@@ -20,6 +21,9 @@ pub(crate) const REL_LOLLIPOP: i32 = 4;
 pub(crate) const REL_NONE: i32 = -1;
 
 const MERMAID_DOM_ID_PREFIX: &str = "classId-";
+
+static METHOD_RE: OnceLock<Regex> = OnceLock::new();
+static ACC_DESCR_RE: OnceLock<Regex> = OnceLock::new();
 
 #[derive(Debug, Clone)]
 pub(crate) enum Tok {
@@ -199,7 +203,10 @@ impl ClassMember {
     fn parse_member(&mut self, input: &str, member_type: &str) {
         let input = input.trim();
         if member_type == "method" {
-            let method_re = Regex::new(r"^([#+~-])?(.+)\((.*)\)([\s$*])?(.*)([$*])?$").unwrap();
+            let method_re = METHOD_RE.get_or_init(|| {
+                Regex::new(r"^([#+~-])?(.+)\((.*)\)([\s$*])?(.*)([$*])?$")
+                    .expect("class method regex must compile")
+            });
             if let Some(caps) = method_re.captures(input) {
                 if let Some(v) = caps.get(1).map(|m| m.as_str().trim()) {
                     if matches!(v, "#" | "+" | "~" | "-" | "") {
@@ -1358,7 +1365,9 @@ impl ClassDb {
             }
             Action::SetAccDescr(t) => {
                 let trimmed = t.trim().to_string();
-                let re = Regex::new(r"\n\s+").map_err(|e| e.to_string())?;
+                let re = ACC_DESCR_RE.get_or_init(|| {
+                    Regex::new(r"\n\s+").expect("class acc descr regex must compile")
+                });
                 self.acc_descr = Some(re.replace_all(&trimmed, "\n").to_string());
                 Ok(())
             }
