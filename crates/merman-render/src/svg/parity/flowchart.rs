@@ -5340,42 +5340,40 @@ pub(super) fn render_flowchart_node(
         format!(r#" title="{}""#, escape_attr(tooltip))
     };
 
-    let (
-        dom_idx,
-        class_attr,
-        wrapped_in_a,
-        href,
-        mut label_text,
-        mut label_type,
-        shape,
-        node_img,
-        node_pos,
-        node_constraint,
-        node_asset_width,
-        node_asset_height,
-        node_styles,
-        node_classes,
-    ) = match node_kind {
+    let dom_idx: Option<usize>;
+    let class_attr: String;
+    let wrapped_in_a: bool;
+    let href: Option<&str>;
+    let mut label_text: String;
+    let mut label_type: String;
+    let shape: &str;
+    let node_img: Option<&str>;
+    let node_pos: Option<&str>;
+    let node_constraint: Option<&str>;
+    let node_asset_width: Option<f64>;
+    let node_asset_height: Option<f64>;
+    let node_styles: &[String];
+    let node_classes: &[String];
+
+    match node_kind {
         RenderNodeKind::Normal(node) => {
-            let dom_idx = ctx.node_dom_index.get(node_id).copied().unwrap_or(0);
-            let shape = node
-                .layout_shape
-                .as_deref()
-                .unwrap_or("squareRect")
-                .to_string();
+            dom_idx = Some(ctx.node_dom_index.get(node_id).copied().unwrap_or(0));
+            shape = node.layout_shape.as_deref().unwrap_or("squareRect");
 
             // Mermaid flowchart-v2 uses a distinct wrapper class for icon/image nodes.
-            let mut class_attr = if shape == "imageSquare" {
+            let mut cls = if shape == "imageSquare" {
                 "image-shape default".to_string()
             } else {
                 "node default".to_string()
             };
             for c in &node.classes {
                 if !c.trim().is_empty() {
-                    class_attr.push(' ');
-                    class_attr.push_str(c.trim());
+                    cls.push(' ');
+                    cls.push_str(c.trim());
                 }
             }
+            class_attr = cls;
+
             let link = node
                 .link
                 .as_deref()
@@ -5384,56 +5382,50 @@ pub(super) fn render_flowchart_node(
             let link_present = link.is_some();
             // Mermaid sanitizes unsafe URLs (e.g. `javascript:` in strict mode) into
             // `about:blank`, but the resulting SVG `<a>` carries no `xlink:href` attribute.
-            let href = link.filter(|u| *u != "about:blank");
+            href = link.filter(|u| *u != "about:blank");
             // Mermaid wraps nodes in `<a>` only when a link is present. Callback-based
             // interactions (`click A someFn`) still mark the node as clickable, but do not
             // emit an anchor element in the SVG.
-            let wrapped_in_a = link_present;
-            (
-                Some(dom_idx),
-                class_attr,
-                wrapped_in_a,
-                href,
-                node.label.as_deref().unwrap_or(node_id).to_string(),
-                node.label_type.as_deref().unwrap_or("text").to_string(),
-                shape,
-                node.img.clone(),
-                node.pos.clone(),
-                node.constraint.clone(),
-                node.asset_width,
-                node.asset_height,
-                node.styles.clone(),
-                node.classes.clone(),
-            )
+            wrapped_in_a = link_present;
+
+            label_text = node.label.as_deref().unwrap_or(node_id).to_string();
+            label_type = node.label_type.as_deref().unwrap_or("text").to_string();
+            node_img = node.img.as_deref();
+            node_pos = node.pos.as_deref();
+            node_constraint = node.constraint.as_deref();
+            node_asset_width = node.asset_width;
+            node_asset_height = node.asset_height;
+            node_styles = &node.styles;
+            node_classes = &node.classes;
         }
         RenderNodeKind::EmptySubgraph(sg) => {
-            let mut class_attr = "node".to_string();
+            dom_idx = None;
+            shape = "squareRect";
+            wrapped_in_a = false;
+            href = None;
+
+            let mut cls = "node".to_string();
             for c in &sg.classes {
                 let c = c.trim();
                 if c.is_empty() {
                     continue;
                 }
-                class_attr.push(' ');
-                class_attr.push_str(c);
+                cls.push(' ');
+                cls.push_str(c);
             }
-            (
-                None,
-                class_attr,
-                false,
-                None,
-                sg.title.clone(),
-                sg.label_type.as_deref().unwrap_or("text").to_string(),
-                "squareRect".to_string(),
-                None,
-                None,
-                None,
-                None,
-                None,
-                Vec::new(),
-                sg.classes.clone(),
-            )
+            class_attr = cls;
+
+            label_text = sg.title.clone();
+            label_type = sg.label_type.as_deref().unwrap_or("text").to_string();
+            node_img = None;
+            node_pos = None;
+            node_constraint = None;
+            node_asset_width = None;
+            node_asset_height = None;
+            node_styles = &[];
+            node_classes = &sg.classes;
         }
-    };
+    }
 
     let group_id = if let Some(dom_idx) = dom_idx {
         format!("flowchart-{node_id}-{dom_idx}")
@@ -5477,8 +5469,8 @@ pub(super) fn render_flowchart_node(
         );
     }
 
-    let compiled_styles = flowchart_compile_styles(&ctx.class_defs, &node_classes, &node_styles);
-    let style = compiled_styles.node_style.clone();
+    let mut compiled_styles = flowchart_compile_styles(&ctx.class_defs, node_classes, node_styles);
+    let style = std::mem::take(&mut compiled_styles.node_style);
     let mut label_dx: f64 = 0.0;
     let mut label_dy: f64 = 0.0;
     let mut compact_label_translate: bool = false;
@@ -5982,7 +5974,7 @@ pub(super) fn render_flowchart_node(
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
 
-    match shape.as_str() {
+    match shape {
         // Flowchart v2 "rendering-elements" aliases for state diagram start/end nodes.
         // Mermaid ignores `node.label` for these shapes and does not emit a label group.
         "sm-circ" | "small-circle" | "start" => {
@@ -6260,8 +6252,8 @@ pub(super) fn render_flowchart_node(
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
                 &ctx.class_defs,
-                &node_classes,
-                &node_styles,
+                node_classes,
+                node_styles,
             );
             let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
                 ctx.measurer,
@@ -6372,8 +6364,8 @@ pub(super) fn render_flowchart_node(
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
                 &ctx.class_defs,
-                &node_classes,
-                &node_styles,
+                node_classes,
+                node_styles,
             );
             let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
                 ctx.measurer,
@@ -6499,8 +6491,8 @@ pub(super) fn render_flowchart_node(
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
                 &ctx.class_defs,
-                &node_classes,
-                &node_styles,
+                node_classes,
+                node_styles,
             );
             let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
                 ctx.measurer,
@@ -6573,8 +6565,8 @@ pub(super) fn render_flowchart_node(
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
                 &ctx.class_defs,
-                &node_classes,
-                &node_styles,
+                node_classes,
+                node_styles,
             );
             let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
                 ctx.measurer,
@@ -6665,8 +6657,8 @@ pub(super) fn render_flowchart_node(
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
                 &ctx.class_defs,
-                &node_classes,
-                &node_styles,
+                node_classes,
+                node_styles,
             );
             let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
                 ctx.measurer,
@@ -6764,8 +6756,8 @@ pub(super) fn render_flowchart_node(
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
                 &ctx.class_defs,
-                &node_classes,
-                &node_styles,
+                node_classes,
+                node_styles,
             );
             let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
                 ctx.measurer,
@@ -6855,8 +6847,8 @@ pub(super) fn render_flowchart_node(
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
                 &ctx.class_defs,
-                &node_classes,
-                &node_styles,
+                node_classes,
+                node_styles,
             );
             let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
                 ctx.measurer,
@@ -6940,8 +6932,8 @@ pub(super) fn render_flowchart_node(
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
                 &ctx.class_defs,
-                &node_classes,
-                &node_styles,
+                node_classes,
+                node_styles,
             );
             let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
                 ctx.measurer,
@@ -7059,8 +7051,8 @@ pub(super) fn render_flowchart_node(
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
                 &ctx.class_defs,
-                &node_classes,
-                &node_styles,
+                node_classes,
+                node_styles,
             );
             let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
                 ctx.measurer,
@@ -7211,13 +7203,13 @@ pub(super) fn render_flowchart_node(
             }
             let h = (out_h - 2.0 * radius).max(0.0);
 
-            let w = match shape.as_str() {
+            let w = match shape {
                 "comment" | "brace" | "brace-l" => (out_w - 2.0 * radius) / 1.1,
                 "brace-r" | "braces" => out_w - 3.0 * radius,
                 _ => out_w - 3.0 * radius,
             };
 
-            let (group_tx, local_label_dx) = match shape.as_str() {
+            let (group_tx, local_label_dx) = match shape {
                 "comment" | "brace" | "brace-l" => (radius, -radius / 2.0),
                 "brace-r" => (-radius, 0.0),
                 "braces" => (radius - radius / 4.0, 0.0),
@@ -8684,8 +8676,8 @@ pub(super) fn render_flowchart_node(
     let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
         &ctx.text_style,
         &ctx.class_defs,
-        &node_classes,
-        &node_styles,
+        node_classes,
+        node_styles,
     );
     let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
         ctx.measurer,
