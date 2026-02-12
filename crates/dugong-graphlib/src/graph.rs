@@ -35,6 +35,21 @@ impl DirectedAdjCache {
     }
 }
 
+#[derive(Debug, Clone)]
+struct UndirectedAdjCache {
+    generation: u64,
+    offsets: Vec<usize>,
+    edges: Vec<usize>,
+}
+
+impl UndirectedAdjCache {
+    fn edges(&self, v_ix: usize) -> &[usize] {
+        let start = self.offsets[v_ix];
+        let end = self.offsets[v_ix + 1];
+        &self.edges[start..end]
+    }
+}
+
 #[derive(Clone, Copy, Hash)]
 struct EdgeKeyView<'a> {
     v: &'a str,
@@ -146,6 +161,11 @@ where
     // Note: This uses interior mutability to keep query APIs on `&self`.
     directed_adj_gen: u64,
     directed_adj_cache: RefCell<Option<DirectedAdjCache>>,
+
+    // Some Dagre helpers (especially `network-simplex`) use undirected trees. Make adjacency
+    // queries for undirected graphs fast as well.
+    undirected_adj_gen: u64,
+    undirected_adj_cache: RefCell<Option<UndirectedAdjCache>>,
 }
 
 impl<N, E, G> Graph<N, E, G>
@@ -193,7 +213,7 @@ where
     }
 
     fn compact(&mut self) {
-        self.invalidate_directed_adj();
+        self.invalidate_adj();
 
         if self.node_len == 0 {
             self.nodes.clear();
@@ -265,6 +285,19 @@ where
         *self.directed_adj_cache.get_mut() = None;
     }
 
+    fn invalidate_undirected_adj(&mut self) {
+        if self.options.directed {
+            return;
+        }
+        self.undirected_adj_gen = self.undirected_adj_gen.wrapping_add(1);
+        *self.undirected_adj_cache.get_mut() = None;
+    }
+
+    fn invalidate_adj(&mut self) {
+        self.invalidate_directed_adj();
+        self.invalidate_undirected_adj();
+    }
+
     fn ensure_directed_adj<'a>(&'a self) -> std::cell::RefMut<'a, DirectedAdjCache> {
         debug_assert!(self.options.directed);
         let generation = self.directed_adj_gen;
@@ -319,6 +352,55 @@ where
         std::cell::RefMut::map(cache, |c| {
             c.as_mut()
                 .expect("directed adjacency cache should be present after ensure")
+        })
+    }
+
+    fn ensure_undirected_adj<'a>(&'a self) -> std::cell::RefMut<'a, UndirectedAdjCache> {
+        debug_assert!(!self.options.directed);
+        let generation = self.undirected_adj_gen;
+        let mut cache = self.undirected_adj_cache.borrow_mut();
+        let stale = cache
+            .as_ref()
+            .map(|c| c.generation != generation)
+            .unwrap_or(true);
+        if stale {
+            let node_slots = self.nodes.len();
+            let mut offsets: Vec<usize> = vec![0; node_slots + 1];
+
+            for e in self.edges.iter().filter_map(|e| e.as_ref()) {
+                offsets[e.v_ix + 1] += 1;
+                offsets[e.w_ix + 1] += 1;
+            }
+
+            for i in 1..=node_slots {
+                offsets[i] += offsets[i - 1];
+            }
+
+            let mut edges: Vec<usize> = vec![0; offsets[node_slots]];
+            let mut cursors = offsets.clone();
+            for (edge_idx, e) in self.edges.iter().enumerate() {
+                let Some(e) = e.as_ref() else {
+                    continue;
+                };
+                let v_pos = cursors[e.v_ix];
+                edges[v_pos] = edge_idx;
+                cursors[e.v_ix] += 1;
+
+                let w_pos = cursors[e.w_ix];
+                edges[w_pos] = edge_idx;
+                cursors[e.w_ix] += 1;
+            }
+
+            *cache = Some(UndirectedAdjCache {
+                generation,
+                offsets,
+                edges,
+            });
+        }
+
+        std::cell::RefMut::map(cache, |c| {
+            c.as_mut()
+                .expect("undirected adjacency cache should be present after ensure")
         })
     }
 
@@ -386,6 +468,8 @@ where
             children: HashMap::default(),
             directed_adj_gen: 0,
             directed_adj_cache: RefCell::new(None),
+            undirected_adj_gen: 0,
+            undirected_adj_cache: RefCell::new(None),
         }
     }
 
@@ -484,7 +568,7 @@ where
             }
             return self;
         }
-        self.invalidate_directed_adj();
+        self.invalidate_adj();
         let idx = self.nodes.len();
         self.nodes.push(Some(NodeEntry {
             id: id.clone(),
@@ -660,7 +744,7 @@ where
             return self;
         }
 
-        self.invalidate_directed_adj();
+        self.invalidate_adj();
         let v_ix = *self
             .node_index
             .get(&key.v)
@@ -735,7 +819,7 @@ where
     }
 
     fn remove_edge_at_index(&mut self, idx: usize) {
-        self.invalidate_directed_adj();
+        self.invalidate_adj();
         let Some(edge) = self.edges.get(idx).and_then(|e| e.as_ref()) else {
             return;
         };
@@ -768,7 +852,7 @@ where
             return false;
         };
 
-        self.invalidate_directed_adj();
+        self.invalidate_adj();
         if let Some(slot) = self.nodes.get_mut(idx) {
             if slot.is_some() {
                 *slot = None;
@@ -973,22 +1057,25 @@ where
     }
 
     fn adjacent_nodes(&self, v: &str) -> Vec<&str> {
+        debug_assert!(!self.options.directed);
+        let Some(&v_ix) = self.node_index.get(v) else {
+            return Vec::new();
+        };
+        let cache = self.ensure_undirected_adj();
+        let mut seen: HashSet<usize> = HashSet::default();
         let mut out: Vec<&str> = Vec::new();
-        for e in &self.edges {
-            let Some(e) = e.as_ref() else {
+        for &edge_idx in cache.edges(v_ix) {
+            let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
                 continue;
             };
-            if e.key.v == v {
-                let w = e.key.w.as_str();
-                if !out.iter().any(|x| x == &w) {
-                    out.push(w);
-                }
-            } else if e.key.w == v {
-                let u = e.key.v.as_str();
-                if !out.iter().any(|x| x == &u) {
-                    out.push(u);
-                }
+            let other_ix = if e.v_ix == v_ix { e.w_ix } else { e.v_ix };
+            if !seen.insert(other_ix) {
+                continue;
             }
+            let Some(other) = self.node_id_by_ix(other_ix) else {
+                continue;
+            };
+            out.push(other);
         }
         out
     }
@@ -1012,20 +1099,25 @@ where
             return out;
         }
 
-        self.edges
-            .iter()
-            .filter_map(|e| e.as_ref())
-            .filter(|e| {
-                if e.key.v == v {
-                    w.is_none_or(|w| e.key.w == w)
-                } else if e.key.w == v {
-                    w.is_none_or(|w| e.key.v == w)
-                } else {
-                    false
+        let Some(&v_ix) = self.node_index.get(v) else {
+            return Vec::new();
+        };
+        let cache = self.ensure_undirected_adj();
+        let mut out: Vec<EdgeKey> = Vec::new();
+        for &edge_idx in cache.edges(v_ix) {
+            let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
+                continue;
+            };
+            if let Some(w) = w {
+                let other_ix = if e.v_ix == v_ix { e.w_ix } else { e.v_ix };
+                if self.node_id_by_ix(other_ix).is_some_and(|id| id == w) {
+                    out.push(e.key.clone());
                 }
-            })
-            .map(|e| e.key.clone())
-            .collect()
+            } else {
+                out.push(e.key.clone());
+            }
+        }
+        out
     }
 
     pub fn in_edges(&self, v: &str, w: Option<&str>) -> Vec<EdgeKey> {
@@ -1069,37 +1161,21 @@ where
             return;
         }
 
-        for e in &self.edges {
-            let Some(e) = e.as_ref() else {
-                continue;
-            };
-            if e.key.v == v {
-                if w.is_none_or(|w| e.key.w == w) {
-                    f(&e.key, &e.label);
-                }
-            } else if e.key.w == v {
-                if w.is_none_or(|w| e.key.v == w) {
-                    f(&e.key, &e.label);
-                }
-            }
-        }
-    }
-
-    pub fn for_each_out_edge_ix<F>(&self, v_ix: usize, w_ix: Option<usize>, mut f: F)
-    where
-        F: FnMut(usize, usize, &EdgeKey, &E),
-    {
-        if !self.options.directed {
+        let Some(&v_ix) = self.node_index.get(v) else {
             return;
-        }
-        let cache = self.ensure_directed_adj();
-        for &edge_idx in cache.out_edges(v_ix) {
+        };
+        let cache = self.ensure_undirected_adj();
+        for &edge_idx in cache.edges(v_ix) {
             let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
                 continue;
             };
-            debug_assert_eq!(e.v_ix, v_ix);
-            if w_ix.is_none_or(|w_ix| e.w_ix == w_ix) {
-                f(e.v_ix, e.w_ix, &e.key, &e.label);
+            if let Some(w) = w {
+                let other_ix = if e.v_ix == v_ix { e.w_ix } else { e.v_ix };
+                if self.node_id_by_ix(other_ix).is_some_and(|id| id == w) {
+                    f(&e.key, &e.label);
+                }
+            } else {
+                f(&e.key, &e.label);
             }
         }
     }
@@ -1127,6 +1203,30 @@ where
         self.for_each_out_edge(v, w, f);
     }
 
+    pub fn set_edge_key(&mut self, key: EdgeKey, label: E) -> &mut Self {
+        let key = self.canonicalize_key(key);
+        self.set_edge_named(key.v, key.w, key.name, Some(label))
+    }
+
+    pub fn for_each_out_edge_ix<F>(&self, v_ix: usize, w_ix: Option<usize>, mut f: F)
+    where
+        F: FnMut(usize, usize, &EdgeKey, &E),
+    {
+        if !self.options.directed {
+            return;
+        }
+        let cache = self.ensure_directed_adj();
+        for &edge_idx in cache.out_edges(v_ix) {
+            let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
+                continue;
+            };
+            debug_assert_eq!(e.v_ix, v_ix);
+            if w_ix.is_none_or(|w_ix| e.w_ix == w_ix) {
+                f(e.v_ix, e.w_ix, &e.key, &e.label);
+            }
+        }
+    }
+
     pub fn for_each_in_edge_ix<F>(&self, v_ix: usize, w_ix: Option<usize>, mut f: F)
     where
         F: FnMut(usize, usize, &EdgeKey, &E),
@@ -1144,11 +1244,6 @@ where
                 f(e.v_ix, e.w_ix, &e.key, &e.label);
             }
         }
-    }
-
-    pub fn set_edge_key(&mut self, key: EdgeKey, label: E) -> &mut Self {
-        let key = self.canonicalize_key(key);
-        self.set_edge_named(key.v, key.w, key.name, Some(label))
     }
 
     pub fn set_parent(&mut self, child: impl Into<String>, parent: impl Into<String>) -> &mut Self {
