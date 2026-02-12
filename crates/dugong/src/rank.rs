@@ -121,27 +121,41 @@ pub mod feasible_tree {
 
     fn tight_tree(
         t: &mut Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
-        g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     ) -> usize {
-        fn dfs(
-            v: &str,
-            t: &mut Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
-            g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        ) {
-            let edges: Vec<EdgeKey> = g.node_edges(v);
-            for e in edges {
-                let w = if v == e.v { e.w.as_str() } else { e.v.as_str() };
-                if !t.has_node(w) && util::slack(g, &e) == 0 {
-                    t.set_node(w.to_string(), tree::TreeNodeLabel::default());
-                    t.set_edge(v.to_string(), w.to_string());
-                    dfs(w, t, g);
+        let roots: Vec<String> = t.node_ids();
+        for root in roots {
+            let mut stack: Vec<String> = vec![root];
+
+            while let Some(v) = stack.pop() {
+                let mut handle_incident_edge = |ek: &EdgeKey, lbl: &EdgeLabel| {
+                    let w = if v == ek.v {
+                        ek.w.as_str()
+                    } else {
+                        ek.v.as_str()
+                    };
+                    if t.has_node(w) {
+                        return;
+                    }
+
+                    let tail_rank = g.node(&ek.v).and_then(|n| n.rank).unwrap_or(0);
+                    let head_rank = g.node(&ek.w).and_then(|n| n.rank).unwrap_or(0);
+                    let minlen: i32 = lbl.minlen.max(1) as i32;
+
+                    // Compute slack for the directed edge `(ek.v -> ek.w)`.
+                    let slack = head_rank - tail_rank - minlen;
+                    if slack == 0 {
+                        let w = w.to_string();
+                        stack.push(w.clone());
+                        t.set_edge(v.clone(), w);
+                    }
+                };
+
+                g.for_each_out_edge(&v, None, |ek, lbl| handle_incident_edge(ek, lbl));
+                if g.is_directed() {
+                    g.for_each_in_edge(&v, None, |ek, lbl| handle_incident_edge(ek, lbl));
                 }
             }
-        }
-
-        let roots: Vec<String> = t.node_ids();
-        for v in roots {
-            dfs(&v, t, g);
         }
         t.node_count()
     }
