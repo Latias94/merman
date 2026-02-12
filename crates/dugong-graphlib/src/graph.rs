@@ -438,6 +438,10 @@ where
         self.node_index.contains_key(id)
     }
 
+    pub fn node_ix(&self, id: &str) -> Option<usize> {
+        self.node_index.get(id).copied()
+    }
+
     pub fn set_node(&mut self, id: impl Into<String>, label: N) -> &mut Self {
         let id = id.into();
         if let Some(&idx) = self.node_index.get(&id) {
@@ -519,6 +523,18 @@ where
         }
     }
 
+    pub fn for_each_edge_ix<F>(&self, mut f: F)
+    where
+        F: FnMut(usize, usize, &EdgeKey, &E),
+    {
+        for e in &self.edges {
+            let Some(e) = e.as_ref() else {
+                continue;
+            };
+            f(e.v_ix, e.w_ix, &e.key, &e.label);
+        }
+    }
+
     pub fn for_each_edge_mut<F>(&mut self, mut f: F)
     where
         F: FnMut(&EdgeKey, &mut E),
@@ -540,6 +556,18 @@ where
                 continue;
             };
             f(&n.id, &n.label);
+        }
+    }
+
+    pub fn for_each_node_ix<F>(&self, mut f: F)
+    where
+        F: FnMut(usize, &str, &N),
+    {
+        for (idx, n) in self.nodes.iter().enumerate() {
+            let Some(n) = n.as_ref() else {
+                continue;
+            };
+            f(idx, &n.id, &n.label);
         }
     }
 
