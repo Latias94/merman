@@ -449,6 +449,33 @@ where
             .map(|n| n.id.as_str())
     }
 
+    pub fn has_edge_ix(&self, v_ix: usize, w_ix: usize) -> bool {
+        self.edge_by_endpoints_ix(v_ix, w_ix).is_some()
+    }
+
+    pub fn edge_by_endpoints_ix(&self, v_ix: usize, w_ix: usize) -> Option<&E> {
+        if self.options.directed {
+            let cache = self.ensure_directed_adj();
+            for &edge_idx in cache.out_edges(v_ix) {
+                let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
+                    continue;
+                };
+                debug_assert_eq!(e.v_ix, v_ix);
+                if e.w_ix == w_ix {
+                    return Some(&e.label);
+                }
+            }
+            return None;
+        }
+
+        for e in self.edges.iter().filter_map(|e| e.as_ref()) {
+            if (e.v_ix == v_ix && e.w_ix == w_ix) || (e.v_ix == w_ix && e.w_ix == v_ix) {
+                return Some(&e.label);
+            }
+        }
+        None
+    }
+
     pub fn set_node(&mut self, id: impl Into<String>, label: N) -> &mut Self {
         let id = id.into();
         if let Some(&idx) = self.node_index.get(&id) {
