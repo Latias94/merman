@@ -42,6 +42,26 @@ pub(super) struct FlowchartRenderCtx<'a> {
     pub(super) diagram_title: Option<String>,
 }
 
+#[derive(Debug, Default, Clone)]
+struct FlowchartRenderDetails {
+    root_calls: u32,
+    clusters: std::time::Duration,
+    edges_select: std::time::Duration,
+    edge_paths: std::time::Duration,
+    edge_labels: std::time::Duration,
+    dom_order: std::time::Duration,
+    nodes: std::time::Duration,
+    nested_roots: std::time::Duration,
+}
+
+#[inline]
+fn detail_guard<'a>(
+    enabled: bool,
+    dst: &'a mut std::time::Duration,
+) -> Option<super::timing::TimingGuard<'a>> {
+    enabled.then(|| super::timing::TimingGuard::new(dst))
+}
+
 pub(super) fn flowchart_node_dom_indices<'a>(
     model: &'a crate::flowchart::FlowchartV2Model,
 ) -> std::collections::HashMap<&'a str, usize> {
@@ -933,13 +953,17 @@ pub(super) fn flowchart_edges_for_root<'a>(
     out
 }
 
-pub(super) fn render_flowchart_root(
+fn render_flowchart_root(
     out: &mut String,
     ctx: &FlowchartRenderCtx<'_>,
     cluster_id: Option<&str>,
     parent_origin_x: f64,
     parent_origin_y: f64,
+    timing_enabled: bool,
+    details: &mut FlowchartRenderDetails,
 ) {
+    details.root_calls += 1;
+
     // Mermaid flowchart-v2 uses nested `.root` groups for extracted clusters. The `<g class="root">`
     // is positioned by the cluster node transform, and its internal content starts at a fixed 8px
     // margin (graph marginx/marginy in Mermaid's Dagre config).
@@ -994,6 +1018,7 @@ pub(super) fn render_flowchart_root(
     let _ = write!(out, r#"<g class="root"{}>"#, transform_attr);
     let content_origin_y = origin_y;
 
+    let _g_clusters = detail_guard(timing_enabled, &mut details.clusters);
     let mut clusters_to_draw: Vec<&LayoutCluster> = Vec::new();
     if let Some(cid) = cluster_id {
         if ctx
@@ -1094,8 +1119,13 @@ pub(super) fn render_flowchart_root(
         }
         out.push_str("</g>");
     }
+    drop(_g_clusters);
 
+    let _g_edges_select = detail_guard(timing_enabled, &mut details.edges_select);
     let edges = flowchart_edges_for_root(ctx, cluster_id);
+    drop(_g_edges_select);
+
+    let _g_edge_paths = detail_guard(timing_enabled, &mut details.edge_paths);
     if edges.is_empty() {
         out.push_str(r#"<g class="edgePaths"/>"#);
     } else {
@@ -1105,7 +1135,9 @@ pub(super) fn render_flowchart_root(
         }
         out.push_str("</g>");
     }
+    drop(_g_edge_paths);
 
+    let _g_edge_labels = detail_guard(timing_enabled, &mut details.edge_labels);
     if edges.is_empty() {
         out.push_str(r#"<g class="edgeLabels"/>"#);
     } else {
@@ -1129,11 +1161,13 @@ pub(super) fn render_flowchart_root(
         }
         out.push_str("</g>");
     }
+    drop(_g_edge_labels);
 
     out.push_str(r#"<g class="nodes">"#);
 
     // Mermaid inserts node DOM elements in `graph.nodes()` insertion order while recursively
     // rendering extracted cluster graphs. Our layout captures that order per extracted root.
+    let _g_dom_order = detail_guard(timing_enabled, &mut details.dom_order);
     let mut dom_order: Vec<&str> = ctx
         .dom_node_order_by_root
         .get(cluster_id.unwrap_or(""))
@@ -1145,6 +1179,7 @@ pub(super) fn render_flowchart_root(
         dom_order = flowchart_root_children_nodes(ctx, cluster_id);
         dom_order.extend(flowchart_root_children_clusters(ctx, cluster_id));
     }
+    drop(_g_dom_order);
 
     for id in dom_order {
         if ctx
@@ -1155,11 +1190,24 @@ pub(super) fn render_flowchart_root(
             // Non-recursive clusters render as cluster boxes (in `.clusters`) and do not emit a
             // node DOM element. Recursive clusters render as nested `.root` groups.
             if ctx.recursive_clusters.contains(id) {
-                render_flowchart_root(out, ctx, Some(id), origin_x, origin_y);
+                let nested_start = timing_enabled.then(std::time::Instant::now);
+                render_flowchart_root(
+                    out,
+                    ctx,
+                    Some(id),
+                    origin_x,
+                    origin_y,
+                    timing_enabled,
+                    details,
+                );
+                if let Some(s) = nested_start {
+                    details.nested_roots += s.elapsed();
+                }
             }
             continue;
         }
 
+        let _g_node = detail_guard(timing_enabled, &mut details.nodes);
         render_flowchart_node(out, ctx, id, origin_x, content_origin_y);
     }
 
@@ -9359,10 +9407,25 @@ pub(super) fn render_flowchart_v2_svg(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    let model: crate::flowchart::FlowchartV2Model = crate::json::from_value_ref(semantic)?;
+    let timing_enabled = super::timing::render_timing_enabled();
+    let mut timings = super::timing::RenderTimings::default();
+    let total_start = std::time::Instant::now();
+    fn section<'a>(
+        enabled: bool,
+        dst: &'a mut std::time::Duration,
+    ) -> Option<super::timing::TimingGuard<'a>> {
+        enabled.then(|| super::timing::TimingGuard::new(dst))
+    }
+
+    let model: crate::flowchart::FlowchartV2Model = {
+        let _g = section(timing_enabled, &mut timings.deserialize_model);
+        crate::json::from_value_ref(semantic)?
+    };
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_type = "flowchart-v2";
+
+    let _g_build_ctx = section(timing_enabled, &mut timings.build_ctx);
 
     // Mermaid expands self-loop edges into a chain of helper nodes plus `*-cyclic-special-*` edge
     // segments during Dagre layout. Replicate that expansion here so rendered SVG ids match.
@@ -9633,6 +9696,11 @@ pub(super) fn render_flowchart_v2_svg(
         }
         Some(a)
     }
+
+    drop(_g_build_ctx);
+
+    let mut viewbox_edge_curve_bounds = std::time::Duration::ZERO;
+    let _g_viewbox = section(timing_enabled, &mut timings.viewbox);
 
     let effective_parent_for_id = |id: &str| -> Option<&str> {
         let mut cur = parent.get(id).copied();
@@ -9966,25 +10034,28 @@ pub(super) fn render_flowchart_v2_svg(
     // this includes the actual curve geometry generated by D3 (which can extend beyond the routed
     // polyline points). Headlessly, approximate that by unioning a tight bbox over each rendered
     // edge path `d` into our base bbox.
-    for e in &render_edges {
-        let edge_root = lca_for_ids(&e.from, &e.to);
-        let edge_y_off = y_offset_for_root(edge_root.as_deref());
-        let Some(d) = flowchart_edge_path_d_for_bbox(
-            &layout_edges_by_id,
-            &layout_clusters_by_id,
-            tx,
-            ty + edge_y_off,
-            default_edge_interpolate_for_bbox,
-            edge_html_labels,
-            e,
-        ) else {
-            continue;
-        };
-        if let Some(pb) = svg_path_bounds_from_d(&d) {
-            bbox_min_x = bbox_min_x.min(pb.min_x);
-            bbox_min_y = bbox_min_y.min(pb.min_y);
-            bbox_max_x = bbox_max_x.max(pb.max_x);
-            bbox_max_y = bbox_max_y.max(pb.max_y);
+    {
+        let _g = section(timing_enabled, &mut viewbox_edge_curve_bounds);
+        for e in &render_edges {
+            let edge_root = lca_for_ids(&e.from, &e.to);
+            let edge_y_off = y_offset_for_root(edge_root.as_deref());
+            let Some(d) = flowchart_edge_path_d_for_bbox(
+                &layout_edges_by_id,
+                &layout_clusters_by_id,
+                tx,
+                ty + edge_y_off,
+                default_edge_interpolate_for_bbox,
+                edge_html_labels,
+                e,
+            ) else {
+                continue;
+            };
+            if let Some(pb) = svg_path_bounds_from_d(&d) {
+                bbox_min_x = bbox_min_x.min(pb.min_x);
+                bbox_min_y = bbox_min_y.min(pb.min_y);
+                bbox_max_x = bbox_max_x.max(pb.max_x);
+                bbox_max_y = bbox_max_y.max(pb.max_y);
+            }
         }
     }
 
@@ -10041,6 +10112,9 @@ pub(super) fn render_flowchart_v2_svg(
     let vb_min_y = (bbox_min_y_f32 as f64) - diagram_padding;
     let vb_w = (bbox_w_f32 as f64) + diagram_padding * 2.0;
     let vb_h = (bbox_h_f32 as f64) + diagram_padding * 2.0;
+
+    drop(_g_viewbox);
+    let _g_render_svg = section(timing_enabled, &mut timings.render_svg);
 
     let css = flowchart_css(
         diagram_id,
@@ -10198,7 +10272,8 @@ pub(super) fn render_flowchart_v2_svg(
     };
 
     let extra_marker_colors = flowchart_collect_edge_marker_colors(&ctx);
-    render_flowchart_root(&mut out, &ctx, None, 0.0, 0.0);
+    let mut detail = FlowchartRenderDetails::default();
+    render_flowchart_root(&mut out, &ctx, None, 0.0, 0.0, timing_enabled, &mut detail);
 
     flowchart_extra_markers(&mut out, diagram_id, &extra_marker_colors);
     out.push_str("</g>");
@@ -10214,5 +10289,28 @@ pub(super) fn render_flowchart_v2_svg(
         );
     }
     out.push_str("</svg>\n");
+
+    drop(_g_render_svg);
+    timings.total = total_start.elapsed();
+    if timing_enabled {
+        eprintln!(
+            "[render-timing] diagram=flowchart-v2 total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} viewbox_edge_curve_bounds={:?} render_svg={:?} finalize={:?} root_calls={} clusters={:?} edges_select={:?} edge_paths={:?} edge_labels={:?} dom_order={:?} nodes={:?} nested_roots={:?}",
+            timings.total,
+            timings.deserialize_model,
+            timings.build_ctx,
+            timings.viewbox,
+            viewbox_edge_curve_bounds,
+            timings.render_svg,
+            timings.finalize_svg,
+            detail.root_calls,
+            detail.clusters,
+            detail.edges_select,
+            detail.edge_paths,
+            detail.edge_labels,
+            detail.dom_order,
+            detail.nodes,
+            detail.nested_roots,
+        );
+    }
     Ok(out)
 }

@@ -40,6 +40,7 @@ mod sequence;
 mod state;
 mod style;
 mod timeline;
+mod timing;
 mod treemap;
 mod util;
 mod xychart;
