@@ -15,8 +15,24 @@ type HashSet<T> = hashbrown::HashSet<T, FxBuildHasher>;
 #[derive(Debug, Clone)]
 struct DirectedAdjCache {
     generation: u64,
-    out: Vec<Vec<usize>>,
-    in_: Vec<Vec<usize>>,
+    out_offsets: Vec<usize>,
+    out_edges: Vec<usize>,
+    in_offsets: Vec<usize>,
+    in_edges: Vec<usize>,
+}
+
+impl DirectedAdjCache {
+    fn out_edges(&self, v_ix: usize) -> &[usize] {
+        let start = self.out_offsets[v_ix];
+        let end = self.out_offsets[v_ix + 1];
+        &self.out_edges[start..end]
+    }
+
+    fn in_edges(&self, v_ix: usize) -> &[usize] {
+        let start = self.in_offsets[v_ix];
+        let end = self.in_offsets[v_ix + 1];
+        &self.in_edges[start..end]
+    }
 }
 
 #[derive(Clone, Copy, Hash)]
@@ -246,19 +262,46 @@ where
             .map(|c| c.generation != generation)
             .unwrap_or(true);
         if stale {
-            let mut out: Vec<Vec<usize>> = vec![Vec::new(); self.nodes.len()];
-            let mut in_: Vec<Vec<usize>> = vec![Vec::new(); self.nodes.len()];
+            // Build a CSR-like adjacency index to avoid allocating many small `Vec`s
+            // and to keep adjacency queries cache-friendly.
+            let node_slots = self.nodes.len();
+            let mut out_offsets: Vec<usize> = vec![0; node_slots + 1];
+            let mut in_offsets: Vec<usize> = vec![0; node_slots + 1];
+
+            for e in self.edges.iter().filter_map(|e| e.as_ref()) {
+                out_offsets[e.v_ix + 1] += 1;
+                in_offsets[e.w_ix + 1] += 1;
+            }
+
+            for i in 1..=node_slots {
+                out_offsets[i] += out_offsets[i - 1];
+                in_offsets[i] += in_offsets[i - 1];
+            }
+
+            let mut out_edges: Vec<usize> = vec![0; out_offsets[node_slots]];
+            let mut in_edges: Vec<usize> = vec![0; in_offsets[node_slots]];
+            let mut out_cursors = out_offsets.clone();
+            let mut in_cursors = in_offsets.clone();
+
             for (edge_idx, e) in self.edges.iter().enumerate() {
                 let Some(e) = e.as_ref() else {
                     continue;
                 };
-                out[e.v_ix].push(edge_idx);
-                in_[e.w_ix].push(edge_idx);
+                let out_pos = out_cursors[e.v_ix];
+                out_edges[out_pos] = edge_idx;
+                out_cursors[e.v_ix] += 1;
+
+                let in_pos = in_cursors[e.w_ix];
+                in_edges[in_pos] = edge_idx;
+                in_cursors[e.w_ix] += 1;
             }
+
             *cache = Some(DirectedAdjCache {
                 generation,
-                out,
-                in_,
+                out_offsets,
+                out_edges,
+                in_offsets,
+                in_edges,
             });
         }
         std::cell::RefMut::map(cache, |c| {
@@ -695,7 +738,7 @@ where
             return Vec::new();
         };
         let cache = self.ensure_directed_adj();
-        let out_edges = &cache.out[v_idx];
+        let out_edges = cache.out_edges(v_idx);
         let mut out: Vec<&str> = Vec::with_capacity(out_edges.len());
         for &edge_idx in out_edges {
             let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
@@ -714,7 +757,7 @@ where
             return Vec::new();
         };
         let cache = self.ensure_directed_adj();
-        let in_edges = &cache.in_[v_idx];
+        let in_edges = cache.in_edges(v_idx);
         let mut out: Vec<&str> = Vec::with_capacity(in_edges.len());
         for &edge_idx in in_edges {
             let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
@@ -732,7 +775,7 @@ where
         let &v_idx = self.node_index.get(v)?;
         let w = {
             let cache = self.ensure_directed_adj();
-            let edge_idx = *cache.out[v_idx].first()?;
+            let edge_idx = *cache.out_edges(v_idx).first()?;
             self.edges.get(edge_idx)?.as_ref()?.key.w.as_str()
         };
         Some(w)
@@ -745,7 +788,7 @@ where
         let &v_idx = self.node_index.get(v)?;
         let u = {
             let cache = self.ensure_directed_adj();
-            let edge_idx = *cache.in_[v_idx].first()?;
+            let edge_idx = *cache.in_edges(v_idx).first()?;
             self.edges.get(edge_idx)?.as_ref()?.key.v.as_str()
         };
         Some(u)
@@ -760,8 +803,9 @@ where
             return;
         };
         let cache = self.ensure_directed_adj();
-        out.reserve(cache.out[v_idx].len());
-        for &edge_idx in &cache.out[v_idx] {
+        let out_edges = cache.out_edges(v_idx);
+        out.reserve(out_edges.len());
+        for &edge_idx in out_edges {
             let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
                 continue;
             };
@@ -778,8 +822,9 @@ where
             return;
         };
         let cache = self.ensure_directed_adj();
-        out.reserve(cache.in_[v_idx].len());
-        for &edge_idx in &cache.in_[v_idx] {
+        let in_edges = cache.in_edges(v_idx);
+        out.reserve(in_edges.len());
+        for &edge_idx in in_edges {
             let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
                 continue;
             };
@@ -801,7 +846,7 @@ where
             return;
         };
         let cache = self.ensure_directed_adj();
-        for &edge_idx in &cache.out[v_idx] {
+        for &edge_idx in cache.out_edges(v_idx) {
             let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
                 continue;
             };
@@ -823,7 +868,7 @@ where
             return;
         };
         let cache = self.ensure_directed_adj();
-        for &edge_idx in &cache.in_[v_idx] {
+        for &edge_idx in cache.in_edges(v_idx) {
             let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
                 continue;
             };
@@ -876,7 +921,7 @@ where
                 return Vec::new();
             };
             let cache = self.ensure_directed_adj();
-            let out_edges = &cache.out[v_idx];
+            let out_edges = cache.out_edges(v_idx);
             let mut out: Vec<EdgeKey> = Vec::with_capacity(out_edges.len());
             for &edge_idx in out_edges {
                 let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
@@ -911,7 +956,7 @@ where
                 return Vec::new();
             };
             let cache = self.ensure_directed_adj();
-            let in_edges = &cache.in_[v_idx];
+            let in_edges = cache.in_edges(v_idx);
             let mut out: Vec<EdgeKey> = Vec::with_capacity(in_edges.len());
             for &edge_idx in in_edges {
                 let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
@@ -935,7 +980,7 @@ where
                 return;
             };
             let cache = self.ensure_directed_adj();
-            for &edge_idx in &cache.out[v_idx] {
+            for &edge_idx in cache.out_edges(v_idx) {
                 let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
                     continue;
                 };
@@ -971,7 +1016,7 @@ where
                 return;
             };
             let cache = self.ensure_directed_adj();
-            for &edge_idx in &cache.in_[v_idx] {
+            for &edge_idx in cache.in_edges(v_idx) {
                 let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
                     continue;
                 };
