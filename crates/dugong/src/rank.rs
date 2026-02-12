@@ -187,6 +187,8 @@ pub mod network_simplex {
     use super::{feasible_tree, tree, util};
     use crate::graphlib::{EdgeKey, Graph, alg};
     use crate::{EdgeLabel, GraphLabel, NodeLabel};
+    use rustc_hash::FxHashMap as HashMap;
+    use rustc_hash::FxHashSet as HashSet;
 
     pub fn network_simplex(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         let mut simplified = crate::util::simplify(g);
@@ -220,13 +222,13 @@ pub mod network_simplex {
             return;
         };
 
-        let mut visited: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        let mut visited: HashSet<String> = HashSet::default();
         let _ = dfs_assign_low_lim(tree, &mut visited, 1, &root, None);
     }
 
     fn dfs_assign_low_lim(
         tree: &mut Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
-        visited: &mut std::collections::BTreeSet<String>,
+        visited: &mut HashSet<String>,
         next_lim: i32,
         v: &str,
         parent: Option<&str>,
@@ -303,23 +305,17 @@ pub mod network_simplex {
 
         let mut cut_value = graph_edge.weight;
 
-        for e in g.node_edges(child) {
-            let is_out_edge = e.v == child;
-            let other = if is_out_edge {
-                e.w.as_str()
-            } else {
-                e.v.as_str()
-            };
+        g.for_each_out_edge(child, None, |ek, lbl| {
+            let other = ek.w.as_str();
             if other == parent {
-                continue;
+                return;
             }
 
-            let points_to_head = is_out_edge == child_is_tail;
-            let other_weight = g.edge_by_key(&e).map(|lbl| lbl.weight).unwrap_or_default();
+            let points_to_head = child_is_tail;
             cut_value += if points_to_head {
-                other_weight
+                lbl.weight
             } else {
-                -other_weight
+                -lbl.weight
             };
 
             if is_tree_edge(t, child, other) {
@@ -332,7 +328,32 @@ pub mod network_simplex {
                     };
                 }
             }
-        }
+        });
+
+        g.for_each_in_edge(child, None, |ek, lbl| {
+            let other = ek.v.as_str();
+            if other == parent {
+                return;
+            }
+
+            let points_to_head = !child_is_tail;
+            cut_value += if points_to_head {
+                lbl.weight
+            } else {
+                -lbl.weight
+            };
+
+            if is_tree_edge(t, child, other) {
+                if let Some(other_edge) = t.edge(child, other, None) {
+                    let other_cut_value = other_edge.cutvalue;
+                    cut_value += if points_to_head {
+                        -other_cut_value
+                    } else {
+                        other_cut_value
+                    };
+                }
+            }
+        });
 
         cut_value
     }
@@ -352,40 +373,61 @@ pub mod network_simplex {
         g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
         edge: &EdgeKey,
     ) -> EdgeKey {
-        let mut v = edge.v.clone();
-        let mut w = edge.w.clone();
-        if !g.has_edge(&v, &w, None) {
-            std::mem::swap(&mut v, &mut w);
+        let (v, w) = if g.has_edge(&edge.v, &edge.w, None) {
+            (edge.v.as_str(), edge.w.as_str())
+        } else {
+            (edge.w.as_str(), edge.v.as_str())
+        };
+
+        let mut t_labels: HashMap<&str, (i32, i32)> = HashMap::default(); // id -> (low, lim)
+        for id in t.nodes() {
+            let Some(lbl) = t.node(id) else {
+                continue;
+            };
+            t_labels.insert(id, (lbl.low, lbl.lim));
         }
 
-        let Some(v_label) = t.node(&v) else {
+        let Some(&(v_low, v_lim)) = t_labels.get(v) else {
             return edge.clone();
         };
-        let Some(w_label) = t.node(&w) else {
+        let Some(&(w_low, w_lim)) = t_labels.get(w) else {
             return edge.clone();
         };
-        let (tail_label, flip) = if v_label.lim > w_label.lim {
-            (w_label, true)
+        let ((tail_low, tail_lim), flip) = if v_lim > w_lim {
+            ((w_low, w_lim), true)
         } else {
-            (v_label, false)
+            ((v_low, v_lim), false)
         };
+
+        let mut ranks: HashMap<&str, i32> = HashMap::default();
+        for id in g.nodes() {
+            let rank = g.node(id).and_then(|lbl| lbl.rank).unwrap_or(0);
+            ranks.insert(id, rank);
+        }
 
         let mut best: Option<(i32, EdgeKey)> = None;
         for e in g.edges() {
-            let Some(v_node) = t.node(&e.v) else {
+            let Some(&(_, v_lim)) = t_labels.get(e.v.as_str()) else {
                 continue;
             };
-            let Some(w_node) = t.node(&e.w) else {
+            let Some(&(_, w_lim)) = t_labels.get(e.w.as_str()) else {
                 continue;
             };
-            let v_desc = is_descendant(t, v_node, tail_label);
-            let w_desc = is_descendant(t, w_node, tail_label);
+            let v_desc = tail_low <= v_lim && v_lim <= tail_lim;
+            let w_desc = tail_low <= w_lim && w_lim <= tail_lim;
 
             if flip == v_desc && flip != w_desc {
-                let s = util::slack(g, e);
+                let v_rank = ranks.get(e.v.as_str()).copied().unwrap_or(0);
+                let w_rank = ranks.get(e.w.as_str()).copied().unwrap_or(0);
+                let minlen: i32 = g
+                    .edge_by_key(e)
+                    .map(|lbl| lbl.minlen.max(1) as i32)
+                    .unwrap_or(1);
+                let slack = w_rank - v_rank - minlen;
+
                 match &best {
-                    Some((best_slack, _)) if s >= *best_slack => {}
-                    _ => best = Some((s, e.clone())),
+                    Some((best_slack, _)) if slack >= *best_slack => {}
+                    _ => best = Some((slack, e.clone())),
                 }
             }
         }
@@ -411,15 +453,14 @@ pub mod network_simplex {
         g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     ) {
         let Some(root) = t
-            .node_ids()
-            .into_iter()
+            .nodes()
             .find(|v| t.node(v).map(|lbl| lbl.parent.is_none()).unwrap_or(false))
-            .or_else(|| t.nodes().next().map(|v| v.to_string()))
+            .or_else(|| t.nodes().next())
         else {
             return;
         };
 
-        let vs = alg::preorder(t, &[root.as_str()]);
+        let vs = alg::preorder(t, &[root]);
         for v in vs.into_iter().skip(1) {
             let Some(parent) = t.node(&v).and_then(|lbl| lbl.parent.clone()) else {
                 continue;
@@ -455,13 +496,5 @@ pub mod network_simplex {
         v: &str,
     ) -> bool {
         tree.has_edge(u, v, None)
-    }
-
-    fn is_descendant(
-        _tree: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
-        v_label: &tree::TreeNodeLabel,
-        root_label: &tree::TreeNodeLabel,
-    ) -> bool {
-        root_label.low <= v_label.lim && v_label.lim <= root_label.lim
     }
 }
