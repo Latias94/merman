@@ -293,7 +293,6 @@ pub mod network_simplex {
     use super::{feasible_tree, tree, util};
     use crate::graphlib::{EdgeKey, Graph, alg};
     use crate::{EdgeLabel, GraphLabel, NodeLabel};
-    use rustc_hash::FxHashMap as HashMap;
     use rustc_hash::FxHashSet as HashSet;
 
     pub fn network_simplex(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
@@ -546,20 +545,45 @@ pub mod network_simplex {
             (edge.w.as_str(), edge.v.as_str())
         };
 
-        let mut t_labels: HashMap<&str, (i32, i32)> = HashMap::default(); // id -> (low, lim)
+        let mut t_low_by_gix: Vec<i32> = Vec::new();
+        let mut t_lim_by_gix: Vec<i32> = Vec::new();
+        let mut t_has_by_gix: Vec<bool> = Vec::new();
         for id in t.nodes() {
             let Some(lbl) = t.node(id) else {
                 continue;
             };
-            t_labels.insert(id, (lbl.low, lbl.lim));
+            let Some(g_ix) = g.node_ix(id) else {
+                continue;
+            };
+            if g_ix >= t_has_by_gix.len() {
+                t_has_by_gix.resize(g_ix + 1, false);
+                t_low_by_gix.resize(g_ix + 1, 0);
+                t_lim_by_gix.resize(g_ix + 1, 0);
+            }
+            t_has_by_gix[g_ix] = true;
+            t_low_by_gix[g_ix] = lbl.low;
+            t_lim_by_gix[g_ix] = lbl.lim;
         }
 
-        let Some(&(v_low, v_lim)) = t_labels.get(v) else {
+        let Some(v_gix) = g.node_ix(v) else {
             return edge.clone();
         };
-        let Some(&(w_low, w_lim)) = t_labels.get(w) else {
+        let Some(w_gix) = g.node_ix(w) else {
             return edge.clone();
         };
+
+        if !t_has_by_gix.get(v_gix).copied().unwrap_or(false) {
+            return edge.clone();
+        }
+        if !t_has_by_gix.get(w_gix).copied().unwrap_or(false) {
+            return edge.clone();
+        }
+
+        let v_low = t_low_by_gix.get(v_gix).copied().unwrap_or(0);
+        let v_lim = t_lim_by_gix.get(v_gix).copied().unwrap_or(0);
+        let w_low = t_low_by_gix.get(w_gix).copied().unwrap_or(0);
+        let w_lim = t_lim_by_gix.get(w_gix).copied().unwrap_or(0);
+
         let ((tail_low, tail_lim), flip) = if v_lim > w_lim {
             ((w_low, w_lim), true)
         } else {
@@ -576,12 +600,14 @@ pub mod network_simplex {
 
         let mut best: Option<(i32, EdgeKey)> = None;
         g.for_each_edge_ix(|g_v_ix, g_w_ix, key, lbl| {
-            let Some(&(_, v_lim)) = t_labels.get(key.v.as_str()) else {
+            if !t_has_by_gix.get(g_v_ix).copied().unwrap_or(false) {
                 return;
             };
-            let Some(&(_, w_lim)) = t_labels.get(key.w.as_str()) else {
+            if !t_has_by_gix.get(g_w_ix).copied().unwrap_or(false) {
                 return;
             };
+            let v_lim = t_lim_by_gix.get(g_v_ix).copied().unwrap_or(0);
+            let w_lim = t_lim_by_gix.get(g_w_ix).copied().unwrap_or(0);
             let v_desc = tail_low <= v_lim && v_lim <= tail_lim;
             let w_desc = tail_low <= w_lim && w_lim <= tail_lim;
 
