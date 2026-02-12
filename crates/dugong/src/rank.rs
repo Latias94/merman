@@ -357,6 +357,9 @@ pub mod network_simplex {
         postorder: Vec<usize>,
         post_stack: Vec<(usize, usize)>,
         rank_stack: Vec<usize>,
+
+        tree_edge_ends_in_order: Vec<(usize, usize)>,
+        leave_edge_ends_in_order: Option<(usize, usize)>,
     }
 
     impl TreeState {
@@ -416,6 +419,8 @@ pub mod network_simplex {
                 postorder: Vec::new(),
                 post_stack: Vec::new(),
                 rank_stack: Vec::new(),
+                tree_edge_ends_in_order: Vec::new(),
+                leave_edge_ends_in_order: None,
             }
         }
 
@@ -476,12 +481,15 @@ pub mod network_simplex {
             for ns in &mut self.neighbors {
                 ns.clear();
             }
+            self.tree_edge_ends_in_order.clear();
+            self.tree_edge_ends_in_order.reserve(t.edge_count());
             t.for_each_edge_ix(|v_ix, w_ix, _key, _lbl| {
                 if v_ix >= self.neighbors.len() || w_ix >= self.neighbors.len() {
                     return;
                 }
                 self.neighbors[v_ix].push(w_ix);
                 self.neighbors[w_ix].push(v_ix);
+                self.tree_edge_ends_in_order.push((v_ix, w_ix));
             });
 
             self.visited.resize(t_len, false);
@@ -617,16 +625,6 @@ pub mod network_simplex {
             self.rebuild_cut_values(t, g);
         }
 
-        fn edge_cutvalue(&self, a_tix: usize, b_tix: usize) -> f64 {
-            if self.parent_t_ix.get(a_tix).copied().flatten() == Some(b_tix) {
-                return self.cut_to_parent.get(a_tix).copied().unwrap_or(0.0);
-            }
-            if self.parent_t_ix.get(b_tix).copied().flatten() == Some(a_tix) {
-                return self.cut_to_parent.get(b_tix).copied().unwrap_or(0.0);
-            }
-            0.0
-        }
-
         fn rebuild_cut_values(
             &mut self,
             t: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
@@ -691,6 +689,24 @@ pub mod network_simplex {
                     if child_gix < self.cut_to_parent_by_g_ix.len() {
                         self.cut_to_parent_by_g_ix[child_gix] = cut;
                     }
+                }
+            }
+
+            self.leave_edge_ends_in_order = None;
+            for &(u_ix, v_ix) in &self.tree_edge_ends_in_order {
+                let child_tix = if self.parent_t_ix.get(u_ix).copied().flatten() == Some(v_ix) {
+                    Some(u_ix)
+                } else if self.parent_t_ix.get(v_ix).copied().flatten() == Some(u_ix) {
+                    Some(v_ix)
+                } else {
+                    None
+                };
+                let Some(child_tix) = child_tix else {
+                    continue;
+                };
+                if self.cut_to_parent.get(child_tix).copied().unwrap_or(0.0) < 0.0 {
+                    self.leave_edge_ends_in_order = Some((u_ix, v_ix));
+                    break;
                 }
             }
         }
@@ -799,18 +815,9 @@ pub mod network_simplex {
 
         fn find_leave_edge_in_insertion_order(
             &self,
-            t: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
+            _t: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
         ) -> Option<(usize, usize)> {
-            let mut out: Option<(usize, usize)> = None;
-            t.for_each_edge_ix(|u_ix, v_ix, _key, _lbl| {
-                if out.is_some() {
-                    return;
-                }
-                if self.edge_cutvalue(u_ix, v_ix) < 0.0 {
-                    out = Some((u_ix, v_ix));
-                }
-            });
-            out
+            self.leave_edge_ends_in_order
         }
     }
 
