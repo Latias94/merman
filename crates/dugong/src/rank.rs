@@ -325,6 +325,11 @@ pub mod network_simplex {
         neighbors: Vec<Vec<usize>>,
         dfs_stack: Vec<DfsFrame>,
 
+        in_tree_by_g_ix: Vec<bool>,
+        low_by_g_ix: Vec<i32>,
+        lim_by_g_ix: Vec<i32>,
+        tail_g_ixs: Vec<usize>,
+
         children: Vec<Vec<usize>>,
         postorder: Vec<usize>,
         post_stack: Vec<(usize, usize)>,
@@ -376,6 +381,10 @@ pub mod network_simplex {
                 visited: vec![false; t_len],
                 neighbors: vec![Vec::new(); t_len],
                 dfs_stack: Vec::new(),
+                in_tree_by_g_ix: vec![false; g_len],
+                low_by_g_ix: vec![0; g_len],
+                lim_by_g_ix: vec![0; g_len],
+                tail_g_ixs: Vec::new(),
                 children: vec![Vec::new(); t_len],
                 postorder: Vec::new(),
                 post_stack: Vec::new(),
@@ -383,8 +392,13 @@ pub mod network_simplex {
         }
 
         fn node_low_lim_by_gix(&self, g_ix: usize) -> Option<(i32, i32)> {
-            let t_ix = self.t_ix_by_g_ix.get(g_ix).copied().flatten()?;
-            Some((self.low.get(t_ix).copied()?, self.lim.get(t_ix).copied()?))
+            if !self.in_tree_by_g_ix.get(g_ix).copied().unwrap_or(false) {
+                return None;
+            }
+            Some((
+                self.low_by_g_ix.get(g_ix).copied()?,
+                self.lim_by_g_ix.get(g_ix).copied()?,
+            ))
         }
 
         fn rebuild(
@@ -513,6 +527,25 @@ pub mod network_simplex {
                     self.lim[v_ix] = next_lim;
                     next_lim += 1;
                 }
+            }
+
+            self.in_tree_by_g_ix.resize(self.t_ix_by_g_ix.len(), false);
+            self.low_by_g_ix.resize(self.t_ix_by_g_ix.len(), 0);
+            self.lim_by_g_ix.resize(self.t_ix_by_g_ix.len(), 0);
+            self.in_tree_by_g_ix.fill(false);
+            self.low_by_g_ix.fill(0);
+            self.lim_by_g_ix.fill(0);
+
+            for &t_ix in &self.node_ixs {
+                let Some(g_ix) = self.g_ix_by_t_ix.get(t_ix).copied().flatten() else {
+                    continue;
+                };
+                if g_ix >= self.in_tree_by_g_ix.len() {
+                    continue;
+                }
+                self.in_tree_by_g_ix[g_ix] = true;
+                self.low_by_g_ix[g_ix] = self.low.get(t_ix).copied().unwrap_or(0);
+                self.lim_by_g_ix[g_ix] = self.lim.get(t_ix).copied().unwrap_or(0);
             }
 
             self.rebuild_cut_values(t, g);
@@ -730,7 +763,13 @@ pub mod network_simplex {
             };
             let leave_u_id = leave_u_id.to_string();
             let leave_v_id = leave_v_id.to_string();
-            let f = enter_edge_fast(&t_state, &simplified, &rank_by_ix, leave_u_tix, leave_v_tix);
+            let f = enter_edge_fast(
+                &mut t_state,
+                &simplified,
+                &rank_by_ix,
+                leave_u_tix,
+                leave_v_tix,
+            );
 
             let _ = t.remove_edge(&leave_u_id, &leave_v_id, None);
             t.set_edge(f.v.clone(), f.w.clone());
@@ -749,7 +788,7 @@ pub mod network_simplex {
     }
 
     fn enter_edge_fast(
-        t_state: &TreeState,
+        t_state: &mut TreeState,
         g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
         rank_by_ix: &[i32],
         leave_u_tix: usize,
@@ -801,37 +840,115 @@ pub mod network_simplex {
             ((v_low, v_lim), false)
         };
 
-        let mut best: Option<(i32, (usize, usize))> = None;
-        g.for_each_edge_ix(|g_v_ix, g_w_ix, _key, lbl| {
-            let Some((_vl, v_lim)) = t_state.node_low_lim_by_gix(g_v_ix) else {
-                return;
-            };
-            let Some((_wl, w_lim)) = t_state.node_low_lim_by_gix(g_w_ix) else {
-                return;
-            };
-            let v_desc = tail_low <= v_lim && v_lim <= tail_lim;
-            let w_desc = tail_low <= w_lim && w_lim <= tail_lim;
+        let is_in_tail = |t_state: &TreeState, g_ix: usize| -> bool {
+            if !t_state.in_tree_by_g_ix.get(g_ix).copied().unwrap_or(false) {
+                return false;
+            }
+            let lim = t_state.lim_by_g_ix.get(g_ix).copied().unwrap_or(0);
+            tail_low <= lim && lim <= tail_lim
+        };
 
-            if flip == v_desc && flip != w_desc {
-                let v_rank = rank_by_ix.get(g_v_ix).copied().unwrap_or(0);
-                let w_rank = rank_by_ix.get(g_w_ix).copied().unwrap_or(0);
-                let minlen: i32 = (lbl.minlen.max(1)) as i32;
-                let slack = w_rank - v_rank - minlen;
+        t_state.tail_g_ixs.clear();
+        t_state.tail_g_ixs.reserve(t_state.node_ixs.len());
+        for &t_ix in &t_state.node_ixs {
+            let lim = t_state.lim.get(t_ix).copied().unwrap_or(0);
+            if !(tail_low <= lim && lim <= tail_lim) {
+                continue;
+            }
+            let Some(g_ix) = t_state.g_ix_by_t_ix.get(t_ix).copied().flatten() else {
+                continue;
+            };
+            if t_state.in_tree_by_g_ix.get(g_ix).copied().unwrap_or(false) {
+                t_state.tail_g_ixs.push(g_ix);
+            }
+        }
 
-                match &best {
-                    Some((best_slack, _)) if slack >= *best_slack => {}
-                    _ => best = Some((slack, (g_v_ix, g_w_ix))),
+        let mut best: Option<(i32, EdgeKey)> = None;
+
+        if g.is_directed() {
+            if !flip {
+                for &head_gix in &t_state.tail_g_ixs {
+                    g.for_each_in_edge_ix(head_gix, None, |tail_ix, head_ix, key, lbl| {
+                        debug_assert_eq!(head_ix, head_gix);
+                        // Skip re-adding the leaving edge.
+                        if (tail_ix == leave_u_gix && head_ix == leave_v_gix)
+                            || (tail_ix == leave_v_gix && head_ix == leave_u_gix)
+                        {
+                            return;
+                        }
+                        if is_in_tail(&*t_state, tail_ix) {
+                            return;
+                        }
+                        if !t_state
+                            .in_tree_by_g_ix
+                            .get(tail_ix)
+                            .copied()
+                            .unwrap_or(false)
+                        {
+                            return;
+                        }
+
+                        let v_rank = rank_by_ix.get(tail_ix).copied().unwrap_or(0);
+                        let w_rank = rank_by_ix.get(head_ix).copied().unwrap_or(0);
+                        let minlen: i32 = (lbl.minlen.max(1)) as i32;
+                        let slack = w_rank - v_rank - minlen;
+                        match &best {
+                            Some((best_slack, _)) if slack >= *best_slack => {}
+                            _ => best = Some((slack, key.clone())),
+                        }
+                    });
+                }
+            } else {
+                for &tail_gix in &t_state.tail_g_ixs {
+                    g.for_each_out_edge_ix(tail_gix, None, |tail_ix, head_ix, key, lbl| {
+                        debug_assert_eq!(tail_ix, tail_gix);
+                        // Skip re-adding the leaving edge.
+                        if (tail_ix == leave_u_gix && head_ix == leave_v_gix)
+                            || (tail_ix == leave_v_gix && head_ix == leave_u_gix)
+                        {
+                            return;
+                        }
+                        if is_in_tail(&*t_state, head_ix) {
+                            return;
+                        }
+                        if !t_state
+                            .in_tree_by_g_ix
+                            .get(head_ix)
+                            .copied()
+                            .unwrap_or(false)
+                        {
+                            return;
+                        }
+
+                        let v_rank = rank_by_ix.get(tail_ix).copied().unwrap_or(0);
+                        let w_rank = rank_by_ix.get(head_ix).copied().unwrap_or(0);
+                        let minlen: i32 = (lbl.minlen.max(1)) as i32;
+                        let slack = w_rank - v_rank - minlen;
+                        match &best {
+                            Some((best_slack, _)) if slack >= *best_slack => {}
+                            _ => best = Some((slack, key.clone())),
+                        }
+                    });
                 }
             }
-        });
-
-        let (best_v_ix, best_w_ix) = best.map(|(_, e)| e).unwrap_or((v_gix, w_gix));
-        let v = g.node_id_by_ix(best_v_ix).unwrap_or("").to_string();
-        let w = g.node_id_by_ix(best_w_ix).unwrap_or("").to_string();
-        if v.is_empty() || w.is_empty() {
-            return fallback;
+        } else {
+            g.for_each_edge_ix(|g_v_ix, g_w_ix, key, lbl| {
+                let v_desc = is_in_tail(&*t_state, g_v_ix);
+                let w_desc = is_in_tail(&*t_state, g_w_ix);
+                if flip == v_desc && flip != w_desc {
+                    let v_rank = rank_by_ix.get(g_v_ix).copied().unwrap_or(0);
+                    let w_rank = rank_by_ix.get(g_w_ix).copied().unwrap_or(0);
+                    let minlen: i32 = (lbl.minlen.max(1)) as i32;
+                    let slack = w_rank - v_rank - minlen;
+                    match &best {
+                        Some((best_slack, _)) if slack >= *best_slack => {}
+                        _ => best = Some((slack, key.clone())),
+                    }
+                }
+            });
         }
-        EdgeKey { v, w, name: None }
+
+        best.map(|(_, e)| e).unwrap_or(fallback)
     }
 
     fn update_ranks_fast(
@@ -839,17 +956,6 @@ pub mod network_simplex {
         g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
         rank_by_ix: &mut Vec<i32>,
     ) {
-        let t_len = t_state.parent_t_ix.len();
-        let mut children: Vec<Vec<usize>> = vec![Vec::new(); t_len];
-        for (child_ix, parent_ix) in t_state.parent_t_ix.iter().copied().enumerate() {
-            let Some(parent_ix) = parent_ix else {
-                continue;
-            };
-            if parent_ix < children.len() {
-                children[parent_ix].push(child_ix);
-            }
-        }
-
         for &root_tix in &t_state.roots {
             if t_state
                 .g_ix_by_t_ix
@@ -871,7 +977,7 @@ pub mod network_simplex {
                 };
 
                 let parent_rank = rank_by_ix.get(parent_gix).copied().unwrap_or(0);
-                let Some(ch) = children.get(parent_tix) else {
+                let Some(ch) = t_state.children.get(parent_tix) else {
                     continue;
                 };
                 for &child_tix in ch {
