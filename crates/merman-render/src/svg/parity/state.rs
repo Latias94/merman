@@ -71,6 +71,13 @@ struct StateRenderDetails {
     edge_paths: std::time::Duration,
     edge_labels: std::time::Duration,
     leaf_nodes: std::time::Duration,
+    leaf_nodes_style_parse: std::time::Duration,
+    leaf_nodes_roughjs: std::time::Duration,
+    leaf_roughjs_calls: u32,
+    leaf_roughjs_unique: std::collections::HashSet<u64>,
+    leaf_nodes_measure: std::time::Duration,
+    leaf_nodes_label_html: std::time::Duration,
+    leaf_nodes_emit: std::time::Duration,
     nested_roots: std::time::Duration,
     self_loop_placeholders: std::time::Duration,
 }
@@ -214,6 +221,8 @@ pub(super) fn render_state_diagram_v2_svg(
         include_nodes: options.include_nodes,
         measurer,
         text_style,
+        rough_circle_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
+        rough_paths_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
     };
 
     fn compute_state_nested_roots(ctx: &StateRenderCtx<'_>) -> std::collections::BTreeSet<String> {
@@ -440,7 +449,7 @@ pub(super) fn render_state_diagram_v2_svg(
     timings.total = total_start.elapsed();
     if timing_enabled {
         eprintln!(
-            "[render-timing] diagram=stateDiagram total={:?} deserialize={:?} build_ctx={:?} render_svg={:?} viewbox={:?} viewbox_svg_scan={:?} finalize={:?} fast_viewport={} root_calls={} clusters={:?} edge_paths={:?} edge_labels={:?} leaf_nodes={:?} nested_roots={:?} self_loop_placeholders={:?}",
+            "[render-timing] diagram=stateDiagram total={:?} deserialize={:?} build_ctx={:?} render_svg={:?} viewbox={:?} viewbox_svg_scan={:?} finalize={:?} fast_viewport={} root_calls={} clusters={:?} edge_paths={:?} edge_labels={:?} leaf_nodes={:?} leaf_style_parse={:?} leaf_roughjs={:?} leaf_roughjs_calls={} leaf_roughjs_unique={} leaf_measure={:?} leaf_label_html={:?} leaf_emit={:?} nested_roots={:?} self_loop_placeholders={:?}",
             timings.total,
             timings.deserialize_model,
             timings.build_ctx,
@@ -454,6 +463,13 @@ pub(super) fn render_state_diagram_v2_svg(
             detail.edge_paths,
             detail.edge_labels,
             detail.leaf_nodes,
+            detail.leaf_nodes_style_parse,
+            detail.leaf_nodes_roughjs,
+            detail.leaf_roughjs_calls,
+            detail.leaf_roughjs_unique.len(),
+            detail.leaf_nodes_measure,
+            detail.leaf_nodes_label_html,
+            detail.leaf_nodes_emit,
             detail.nested_roots,
             detail.self_loop_placeholders,
         );
@@ -2006,6 +2022,10 @@ struct StateRenderCtx<'a> {
     include_nodes: bool,
     measurer: &'a dyn TextMeasurer,
     text_style: crate::text::TextStyle,
+    rough_circle_cache: std::cell::RefCell<std::collections::HashMap<u64, std::rc::Rc<String>>>,
+    rough_paths_cache: std::cell::RefCell<
+        std::collections::HashMap<u64, (std::rc::Rc<String>, std::rc::Rc<String>)>,
+    >,
 }
 
 fn state_markers(out: &mut String, diagram_id: &str) {
@@ -3038,7 +3058,7 @@ fn render_state_root(
     }
 
     if ctx.include_nodes {
-        let _g_leaf = detail_guard(timing_enabled, &mut details.leaf_nodes);
+        let leaf_start = timing_enabled.then(std::time::Instant::now);
         for &id in &ctx.node_order {
             let Some(n) = ctx.layout_nodes_by_id.get(id).copied() else {
                 continue;
@@ -3052,9 +3072,11 @@ fn render_state_root(
             if state_leaf_context(ctx, id) != root {
                 continue;
             }
-            render_state_node_svg(out, ctx, id, origin_x, origin_y);
+            render_state_node_svg(out, ctx, id, origin_x, origin_y, timing_enabled, details);
         }
-        drop(_g_leaf);
+        if let Some(s) = leaf_start {
+            details.leaf_nodes += s.elapsed();
+        }
     }
 
     for child_root in nested {
@@ -4082,6 +4104,8 @@ fn render_state_node_svg(
     node_id: &str,
     origin_x: f64,
     origin_y: f64,
+    timing_enabled: bool,
+    details: &mut StateRenderDetails,
 ) {
     let Some(node) = ctx.nodes_by_id.get(node_id).copied() else {
         return;
@@ -4097,12 +4121,61 @@ fn render_state_node_svg(
     let w = ln.width.max(1.0);
     let h = ln.height.max(1.0);
 
+    #[inline]
+    fn rough_key(tag: u64, a: u64, b: u64, seed: u64) -> u64 {
+        // Cheap reversible-ish mixing for debug counters (not cryptographic).
+        let mut x = tag ^ seed.rotate_left(17) ^ a.rotate_left(7) ^ b.rotate_left(29);
+        x = x.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        x ^= x >> 33;
+        x = x.wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
+        x ^= x >> 29;
+        x
+    }
+
+    #[inline]
+    fn cached_circle(
+        ctx: &StateRenderCtx<'_>,
+        key: u64,
+        build: impl FnOnce() -> String,
+    ) -> std::rc::Rc<String> {
+        let existing = { ctx.rough_circle_cache.borrow().get(&key).cloned() };
+        if let Some(v) = existing {
+            return v;
+        }
+        let d = std::rc::Rc::new(build());
+        ctx.rough_circle_cache
+            .borrow_mut()
+            .insert(key, std::rc::Rc::clone(&d));
+        d
+    }
+
+    #[inline]
+    fn cached_paths(
+        ctx: &StateRenderCtx<'_>,
+        key: u64,
+        build: impl FnOnce() -> (String, String),
+    ) -> (std::rc::Rc<String>, std::rc::Rc<String>) {
+        let existing = { ctx.rough_paths_cache.borrow().get(&key).cloned() };
+        if let Some(v) = existing {
+            return v;
+        }
+        let (fill_d, stroke_d) = build();
+        let fill_d = std::rc::Rc::new(fill_d);
+        let stroke_d = std::rc::Rc::new(stroke_d);
+        ctx.rough_paths_cache.borrow_mut().insert(
+            key,
+            (std::rc::Rc::clone(&fill_d), std::rc::Rc::clone(&stroke_d)),
+        );
+        (fill_d, stroke_d)
+    }
+
     let node_class = if node.css_classes.trim().is_empty() {
         "node".to_string()
     } else {
         format!("node {}", node.css_classes.trim())
     };
 
+    let style_parse_start = timing_enabled.then(std::time::Instant::now);
     let mut shape_decls: Vec<StateInlineDecl<'_>> = Vec::new();
     let mut text_decls: Vec<StateInlineDecl<'_>> = Vec::new();
     let mut fill_override: Option<&str> = None;
@@ -4137,9 +4210,13 @@ fn render_state_node_svg(
     let shape_style_attr = state_compact_style_attr(&shape_decls);
     let text_style_attr = state_compact_style_attr(&text_decls);
     let div_style_prefix = state_div_style_prefix(&text_decls);
+    if let Some(s) = style_parse_start {
+        details.leaf_nodes_style_parse += s.elapsed();
+    }
 
     match node.shape.as_str() {
         "stateStart" => {
+            let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
                 r#"<g class="node default" id="{}" transform="translate({}, {})"><circle class="state-start" r="7" width="14" height="14"/></g>"#,
@@ -4147,36 +4224,77 @@ fn render_state_node_svg(
                 fmt_display(cx),
                 fmt_display(cy)
             );
+            drop(_g_emit);
         }
         "stateEnd" => {
-            let outer_d = roughjs_circle_path_d(14.0, ctx.hand_drawn_seed)
-                .unwrap_or_else(|| "M0,0".to_string());
-            let inner_d = roughjs_circle_path_d(5.0, ctx.hand_drawn_seed)
-                .unwrap_or_else(|| "M0,0".to_string());
+            let rough_start = timing_enabled.then(std::time::Instant::now);
+            if timing_enabled {
+                details.leaf_roughjs_calls += 2;
+                details.leaf_roughjs_unique.insert(rough_key(
+                    1,
+                    14.0f64.to_bits(),
+                    0,
+                    ctx.hand_drawn_seed,
+                ));
+                details.leaf_roughjs_unique.insert(rough_key(
+                    2,
+                    5.0f64.to_bits(),
+                    0,
+                    ctx.hand_drawn_seed,
+                ));
+            }
+            let outer_key = rough_key(1, 14.0f64.to_bits(), 0, ctx.hand_drawn_seed);
+            let inner_key = rough_key(2, 5.0f64.to_bits(), 0, ctx.hand_drawn_seed);
+
+            let outer_d = cached_circle(ctx, outer_key, || {
+                roughjs_circle_path_d(14.0, ctx.hand_drawn_seed)
+                    .unwrap_or_else(|| "M0,0".to_string())
+            });
+            let inner_d = cached_circle(ctx, inner_key, || {
+                roughjs_circle_path_d(5.0, ctx.hand_drawn_seed)
+                    .unwrap_or_else(|| "M0,0".to_string())
+            });
+            if let Some(s) = rough_start {
+                details.leaf_nodes_roughjs += s.elapsed();
+            }
+            let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
                 r##"<g class="node default" id="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="#ECECFF" style=""/><path d="{}" stroke="#333333" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/><g><path d="{}" stroke="none" stroke-width="0" fill="#9370DB" style=""/><path d="{}" stroke="#9370DB" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/></g></g></g>"##,
                 escape_xml_display(&node.dom_id),
                 fmt_display(cx),
                 fmt_display(cy),
-                outer_d,
-                outer_d,
-                inner_d,
-                inner_d
+                outer_d.as_str(),
+                outer_d.as_str(),
+                inner_d.as_str(),
+                inner_d.as_str()
             );
+            drop(_g_emit);
         }
         "fork" | "join" => {
-            let (fill_d, stroke_d) = roughjs_paths_for_rect(
-                -w / 2.0,
-                -h / 2.0,
-                w,
-                h,
-                "#333333",
-                "#333333",
-                1.3,
-                ctx.hand_drawn_seed,
-            )
-            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+            let rough_start = timing_enabled.then(std::time::Instant::now);
+            let key = rough_key(3, w.to_bits(), h.to_bits(), ctx.hand_drawn_seed);
+            if timing_enabled {
+                details.leaf_roughjs_calls += 1;
+                details.leaf_roughjs_unique.insert(key);
+            }
+            let (fill_d, stroke_d) = cached_paths(ctx, key, || {
+                roughjs_paths_for_rect(
+                    -w / 2.0,
+                    -h / 2.0,
+                    w,
+                    h,
+                    "#333333",
+                    "#333333",
+                    1.3,
+                    ctx.hand_drawn_seed,
+                )
+                .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()))
+            });
+            if let Some(s) = rough_start {
+                details.leaf_nodes_roughjs += s.elapsed();
+            }
+            let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
                 r##"<g class="{}" id="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="#333333" style=""/><path d="{}" stroke="#333333" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g></g>"##,
@@ -4184,21 +4302,34 @@ fn render_state_node_svg(
                 escape_xml_display(&node.dom_id),
                 fmt_display(cx),
                 fmt_display(cy),
-                fill_d,
-                stroke_d
+                fill_d.as_str(),
+                stroke_d.as_str()
             );
+            drop(_g_emit);
         }
         "choice" => {
-            let (fill_d, stroke_d) = roughjs_paths_for_svg_path(
-                &mermaid_choice_diamond_path_data(w, h),
-                "#ECECFF",
-                "#9370DB",
-                1.3,
-                "0 0",
-                ctx.hand_drawn_seed,
-            )
-            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+            let rough_start = timing_enabled.then(std::time::Instant::now);
+            let key = rough_key(4, w.to_bits(), h.to_bits(), ctx.hand_drawn_seed);
+            if timing_enabled {
+                details.leaf_roughjs_calls += 1;
+                details.leaf_roughjs_unique.insert(key);
+            }
+            let (fill_d, stroke_d) = cached_paths(ctx, key, || {
+                roughjs_paths_for_svg_path(
+                    &mermaid_choice_diamond_path_data(w, h),
+                    "#ECECFF",
+                    "#9370DB",
+                    1.3,
+                    "0 0",
+                    ctx.hand_drawn_seed,
+                )
+                .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()))
+            });
+            if let Some(s) = rough_start {
+                details.leaf_nodes_roughjs += s.elapsed();
+            }
 
+            let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
                 r##"<g class="{}" id="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="#ECECFF" style=""/><path d="{}" stroke="#9370DB" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g></g>"##,
@@ -4206,31 +4337,53 @@ fn render_state_node_svg(
                 escape_xml_display(&node.dom_id),
                 fmt_display(cx),
                 fmt_display(cy),
-                fill_d,
-                stroke_d
+                fill_d.as_str(),
+                stroke_d.as_str()
             );
+            drop(_g_emit);
         }
         "note" => {
             let label = state_node_label_text(node);
+            let measure_start = timing_enabled.then(std::time::Instant::now);
             let metrics = ctx.measurer.measure_wrapped(
                 &label,
                 &ctx.text_style,
                 Some(200.0),
                 WrapMode::HtmlLike,
             );
+            if let Some(s) = measure_start {
+                details.leaf_nodes_measure += s.elapsed();
+            }
             let lw = metrics.width.max(0.0);
             let lh = metrics.height.max(0.0);
-            let (fill_d, stroke_d) = roughjs_paths_for_rect(
-                -w / 2.0,
-                -h / 2.0,
-                w,
-                h,
-                "#fff5ad",
-                "#aaaa33",
-                1.3,
-                ctx.hand_drawn_seed,
-            )
-            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+            let rough_start = timing_enabled.then(std::time::Instant::now);
+            let key = rough_key(5, w.to_bits(), h.to_bits(), ctx.hand_drawn_seed);
+            if timing_enabled {
+                details.leaf_roughjs_calls += 1;
+                details.leaf_roughjs_unique.insert(key);
+            }
+            let (fill_d, stroke_d) = cached_paths(ctx, key, || {
+                roughjs_paths_for_rect(
+                    -w / 2.0,
+                    -h / 2.0,
+                    w,
+                    h,
+                    "#fff5ad",
+                    "#aaaa33",
+                    1.3,
+                    ctx.hand_drawn_seed,
+                )
+                .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()))
+            });
+            if let Some(s) = rough_start {
+                details.leaf_nodes_roughjs += s.elapsed();
+            }
+            let label_html_start = timing_enabled.then(std::time::Instant::now);
+            let label_html = state_node_label_html(&label);
+            if let Some(s) = label_html_start {
+                details.leaf_nodes_label_html += s.elapsed();
+            }
+            let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
                 r##"<g class="{}" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="{}" stroke="none" stroke-width="0" fill="#fff5ad"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">{}</div></foreignObject></g></g>"##,
@@ -4238,14 +4391,15 @@ fn render_state_node_svg(
                 escape_xml_display(&node.dom_id),
                 fmt_display(cx),
                 fmt_display(cy),
-                fill_d,
-                stroke_d,
+                fill_d.as_str(),
+                stroke_d.as_str(),
                 fmt_display(-lw / 2.0),
                 fmt_display(-lh / 2.0),
                 fmt_display(lw),
                 fmt_display(lh),
-                state_node_label_html(&label)
+                label_html
             );
+            drop(_g_emit);
         }
         "rectWithTitle" => {
             let title = node
@@ -4261,12 +4415,16 @@ fn render_state_node_svg(
             // Mermaid renders `rectWithTitle` labels as HTML `<span>` (nowrap) with
             // `padding-right: 1px` and no explicit `line-height`, so their measured height matches
             // SVG `getBBox()` (19px at 16px font size) rather than the 1.5em HTML `<p>` height.
+            let measure_start = timing_enabled.then(std::time::Instant::now);
             let title_metrics =
                 ctx.measurer
                     .measure_wrapped(&title, &ctx.text_style, None, WrapMode::SvgLike);
             let desc_metrics =
                 ctx.measurer
                     .measure_wrapped(&desc, &ctx.text_style, None, WrapMode::SvgLike);
+            if let Some(s) = measure_start {
+                details.leaf_nodes_measure += s.elapsed();
+            }
 
             let padding = ctx.state_padding;
             let half_pad = (padding / 2.0).max(0.0);
@@ -4291,6 +4449,13 @@ fn render_state_node_svg(
             let desc_x = ((inner_w - desc_w) / 2.0).max(0.0);
             let desc_y = title_h + gap;
             let divider_y = -h / 2.0 + top_pad + title_h + 1.0;
+            let label_html_start = timing_enabled.then(std::time::Instant::now);
+            let title_html = state_node_label_inline_html(&title);
+            let desc_html = state_node_label_inline_html(&desc);
+            if let Some(s) = label_html_start {
+                details.leaf_nodes_label_html += s.elapsed();
+            }
+            let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
             let _ = write!(
                 out,
                 r#"<g class="{}" id="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="" x="{}" y="{}" width="{}" height="{}"/><line class="divider" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="" transform="translate({}, {})"><foreignObject width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;">{}</div></foreignObject><foreignObject width="{}" height="{}" transform="translate( {}, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;">{}</div></foreignObject></g></g>"#,
@@ -4311,13 +4476,14 @@ fn render_state_node_svg(
                 fmt_display(title_w),
                 fmt_display(title_h),
                 fmt_display(title_x),
-                state_node_label_inline_html(&title),
+                title_html,
                 fmt_display(desc_w),
                 fmt_display(desc_h),
                 fmt_display(desc_x),
                 fmt_display(desc_y),
-                state_node_label_inline_html(&desc)
+                desc_html
             );
+            drop(_g_emit);
         }
         _ => {
             let label = state_node_label_text(node);
@@ -4370,12 +4536,16 @@ fn render_state_node_svg(
                 }
             }
 
+            let measure_start = timing_enabled.then(std::time::Instant::now);
             let mut metrics = ctx.measurer.measure_wrapped(
                 &label,
                 &measure_style,
                 Some(200.0),
                 WrapMode::HtmlLike,
             );
+            if let Some(s) = measure_start {
+                details.leaf_nodes_measure += s.elapsed();
+            }
 
             if italic {
                 metrics.width +=
@@ -4465,22 +4635,37 @@ fn render_state_node_svg(
             let stroke_attr = stroke_override.unwrap_or("#9370DB");
             let stroke_width_attr = stroke_width_override.unwrap_or(1.3).max(0.0);
 
-            let (fill_d, stroke_d) = roughjs_paths_for_svg_path(
-                &mermaid_rounded_rect_path_data(w, h),
-                "#ECECFF",
-                "#9370DB",
-                1.3,
-                "0 0",
-                ctx.hand_drawn_seed,
-            )
-            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+            let rough_start = timing_enabled.then(std::time::Instant::now);
+            let key = rough_key(6, w.to_bits(), h.to_bits(), ctx.hand_drawn_seed);
+            if timing_enabled {
+                details.leaf_roughjs_calls += 1;
+                details.leaf_roughjs_unique.insert(key);
+            }
+            let (fill_d, stroke_d) = cached_paths(ctx, key, || {
+                roughjs_paths_for_svg_path(
+                    &mermaid_rounded_rect_path_data(w, h),
+                    "#ECECFF",
+                    "#9370DB",
+                    1.3,
+                    "0 0",
+                    ctx.hand_drawn_seed,
+                )
+                .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()))
+            });
+            if let Some(s) = rough_start {
+                details.leaf_nodes_roughjs += s.elapsed();
+            }
 
             let label_span_style = if text_style_attr.is_empty() {
                 None
             } else {
                 Some(text_style_attr.as_str())
             };
+            let label_html_start = timing_enabled.then(std::time::Instant::now);
             let label_html = state_node_label_html_with_style(&label, label_span_style);
+            if let Some(s) = label_html_start {
+                details.leaf_nodes_label_html += s.elapsed();
+            }
 
             let div_style = if metrics.line_count > 1 {
                 format!(
@@ -4495,16 +4680,17 @@ fn render_state_node_svg(
                 )
             };
 
+            let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
             out.push_str(&format!(
                 r##"<g class="{}" id="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g>{}<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g>{}</g>"##,
                 escape_xml_display(&node_class),
                 escape_xml_display(&node.dom_id),
                 fmt_display(cx),
                 fmt_display(cy),
-                fill_d,
+                fill_d.as_str(),
                 escape_xml_display(fill_attr),
                 escape_xml_display(&shape_style_attr),
-                stroke_d,
+                stroke_d.as_str(),
                 escape_xml_display(stroke_attr),
                 fmt_display(stroke_width_attr),
                 escape_xml_display(&shape_style_attr),
@@ -4518,6 +4704,7 @@ fn render_state_node_svg(
                 label_html,
                 link_close
             ));
+            drop(_g_emit);
         }
     }
 }
