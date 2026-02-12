@@ -32,6 +32,127 @@ while preserving correctness.
 - Compare revisions on the same machine; avoid cross-machine comparisons.
 - Prefer stage breakdown (parse vs layout vs SVG emission), then end-to-end.
 
+## Current Gap (as of 2026-02-12)
+
+From `target/bench/COMPARISON.latest.md` (generated locally via
+`tools/bench/compare_mermaid_renderers.py`):
+
+- End-to-end geometric mean (8 fixtures): ~`9.17x` slower than `mermaid-rs-renderer` (mmdr).
+- Medium fixtures (4): ~`4.79x` slower than mmdr.
+- Tiny fixtures (4): ~`17.55x` slower than mmdr.
+
+Stage spot-checks (same machine, Criterion, mid estimates):
+
+- `flowchart_medium`:
+  - merman: `parse ~7.4ms`, `layout ~31ms`, `render ~10.8ms`, `end_to_end ~49ms`
+  - mmdr: `parse ~0.42ms`, `layout ~6.77ms`, `render_svg ~0.24ms`, `end_to_end ~9.7ms`
+- `class_medium`:
+  - mmdr: `parse ~0.11ms`, `layout ~4.19ms`, `render_svg ~0.20ms`, `end_to_end ~4.11ms`
+  - merman remains dominated by parse + SVG emission overhead (see comparison report).
+
+Interpretation:
+
+- For `tiny/*`, fixed overhead dominates (allocation churn, detection/preprocess, JSON/string
+  building, SVG emission scaffolding).
+- For `flowchart_*`, we pay heavily in all three stages, but SVG emission is especially expensive
+  relative to mmdr.
+- For `class_*`, parse is the primary outlier (layout is not the bottleneck).
+
+## Milestones (revised)
+
+These milestones are designed to steadily reduce the merman/mmdr ratio while preserving parity
+guardrails. Each milestone should be done as a small series of PRs/commits, with a comparison
+report refreshed at the end.
+
+### M0: Make hotspot evidence cheap (1–2 days)
+
+Deliverables:
+
+- A documented “stage spot-check” command set (flowchart_medium + class_medium) that runs:
+  `parse/*`, `layout/*`, `render/*`, `end_to_end/*` for merman and mmdr.
+- A repeatable “perf triage” workflow (Criterion filter + stable params) so we can answer:
+  “which stage got faster/slower?” quickly.
+
+Exit criteria:
+
+- We can attribute each top regression to a specific stage within minutes.
+
+### M1: Kill tiny fixed costs (P0/P1, low risk) (2–5 days)
+
+Focus:
+
+- Remove per-call setup costs that dominate `tiny/*`.
+
+Candidates:
+
+- Precompile *all* remaining per-call regexes across diagrams and preprocess/detect.
+- Reduce `detect_type` preprocessing allocations (prefer `Cow<'_, str>` / single-buffer builds).
+- Avoid repeated `String` clones in hot “scan the whole graph” loops.
+
+Exit criteria:
+
+- Tiny geometric mean ratio improves materially (goal: cut tiny gmean by 2–3x from baseline).
+
+### M2: Make SVG emission cheap (high leverage, medium risk) (4–10 days)
+
+Focus:
+
+- Preserve exact output/DOM parity but reduce allocation + formatting overhead.
+
+Candidates:
+
+- Replace ad-hoc `format!` / intermediate `String`s with a dedicated writer (`fmt::Write`) and
+  preallocation.
+- Centralize attribute escaping/formatting into a small, reusable “SVG writer” utility.
+- Minimize JSON roundtrips in render paths (avoid `serde_json::Value` construction during render).
+
+Exit criteria:
+
+- `render/*` times for flowchart/state/class drop substantially (goal: 2–5x for medium fixtures),
+  with DOM parity gate still green.
+
+### M3: Fix class parse as a first-class perf target (high leverage, medium–high risk) (1–3 weeks)
+
+Focus:
+
+- Reduce allocations and data shuffling in the `class` parser and semantic model building.
+
+Candidates:
+
+- Reduce `String` churn (prefer borrowing slices during tokenization where possible).
+- Avoid building large `serde_json::Value` trees as the primary internal representation.
+- Introduce a typed internal IR for class diagrams, and only convert to JSON at the boundary for
+  fixtures/parity (diagram-scoped, incremental).
+
+Exit criteria:
+
+- `parse/class_*` improves by an order of magnitude relative to the current baseline, and
+  end-to-end ratio for `class_*` moves closer to the `flowchart_*` ratio band.
+
+### M4: Make dugong’s dagreish pipeline index-based (highest potential, highest risk) (2–6 weeks)
+
+Focus:
+
+- Keep the external API keyed by `String` IDs for compatibility/parity, but run heavy layout
+  algorithms on compact indices to eliminate hash map lookups and string cloning in inner loops.
+
+Strategy:
+
+- Add a `GraphView`/`GraphIndex` layer:
+  - map `node_id: String -> NodeIx(u32)` once per layout run
+  - store adjacency as `Vec<Vec<NodeIx>>`/CSR and store labels in parallel arrays
+  - translate results back to the external graph at the end
+- Start with the most expensive subpipeline (ordering / crossing minimization), then expand.
+
+Exit criteria:
+
+- `layout/flowchart_medium` ratio improves materially (goal: 2x+), without correctness regressions.
+
+## Completed (recent)
+
+- Cached hot regexes in class/gantt parsers (`perf(core): cache hot regexes in class/gantt`).
+- Reduced dagreish edge-proxy overhead in dugong (`perf(dugong): cut dagreish edge-proxy overhead`).
+
 ## Prioritized Backlog
 
 Legend:
@@ -157,5 +278,4 @@ Legend:
 
 ## Recommended Next Step
 
-Do P0.1 (precompile detector regexes) first.
-It is the largest “free” win and should immediately reduce the ms-level fixed cost on tiny diagrams.
+Do M0 (stage spot-check + triage workflow), then start M1 (tiny fixed costs).
