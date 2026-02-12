@@ -1342,15 +1342,15 @@ pub(super) fn render_flowchart_cluster(
         let _ = write!(
             out,
             r#"<g class="{}" id="{}" data-look="classic"><rect style="{}" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><g><rect class="background" style="stroke: none"/>"#,
-            escape_attr(&class_attr),
-            escape_attr(&cluster.id),
-            escape_attr(rect_style),
-            fmt(left),
-            fmt(top),
-            fmt(rect_w),
-            fmt(rect_h),
-            fmt(label_left),
-            fmt(label_top)
+            escape_xml_display(&class_attr),
+            escape_xml_display(&cluster.id),
+            escape_xml_display(rect_style),
+            fmt_display(left),
+            fmt_display(top),
+            fmt_display(rect_w),
+            fmt_display(rect_h),
+            fmt_display(label_left),
+            fmt_display(label_top)
         );
         if label_type == "markdown" {
             write_flowchart_svg_text_markdown(out, &cluster.title, true);
@@ -1369,23 +1369,23 @@ pub(super) fn render_flowchart_cluster(
     let span_style_attr = if label_style.is_empty() {
         String::new()
     } else {
-        format!(r#" style="{}""#, escape_attr(label_style))
+        format!(r#" style="{}""#, escape_xml_display(label_style))
     };
 
     let _ = write!(
         out,
         r#"<g class="{}" id="{}" data-look="classic"><rect style="{}" x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
-        escape_attr(&class_attr),
-        escape_attr(&cluster.id),
-        escape_attr(rect_style),
-        fmt(left),
-        fmt(top),
-        fmt(rect_w),
-        fmt(rect_h),
-        fmt(label_left),
-        fmt(label_top),
-        fmt(label_w),
-        fmt(label_h),
+        escape_xml_display(&class_attr),
+        escape_xml_display(&cluster.id),
+        escape_xml_display(rect_style),
+        fmt_display(left),
+        fmt_display(top),
+        fmt_display(rect_w),
+        fmt_display(rect_h),
+        fmt_display(label_left),
+        fmt_display(label_top),
+        fmt_display(label_w),
+        fmt_display(label_h),
         span_style_attr,
         title_html
     );
@@ -5250,9 +5250,9 @@ pub(super) fn render_flowchart_node(
         let _ = write!(
             out,
             r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0, 0)"><rect/><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 10px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g>"#,
-            escape_attr(node_id),
-            fmt(x),
-            fmt(y)
+            escape_xml_display(node_id),
+            fmt_display(x),
+            fmt_display(y)
         );
         return;
     }
@@ -5889,7 +5889,7 @@ pub(super) fn render_flowchart_node(
                 let _ = write!(
                     out,
                     r#"<g><path d="{}" stroke="none" stroke-width="0" fill="none"/></g>"#,
-                    escape_attr(&outer_path)
+                    escape_xml_display(&outer_path)
                 );
 
                 let img_translate_y = if top_label {
@@ -5900,11 +5900,11 @@ pub(super) fn render_flowchart_node(
                 let _ = write!(
                     out,
                     r#"<image href="{}" width="{}" height="{}" preserveAspectRatio="none" transform="translate({},{})"/>"#,
-                    escape_attr(img_href),
-                    fmt(image_width),
-                    fmt(image_height),
-                    fmt(-image_width / 2.0),
-                    fmt(img_translate_y)
+                    escape_xml_display(img_href),
+                    fmt_display(image_width),
+                    fmt_display(image_height),
+                    fmt_display(-image_width / 2.0),
+                    fmt_display(img_translate_y)
                 );
 
                 out.push_str("</g>");
@@ -5919,11 +5919,11 @@ pub(super) fn render_flowchart_node(
                 let _ = write!(
                     out,
                     r#"<rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
-                    escape_attr(&style),
-                    fmt(-w / 2.0),
-                    fmt(-h / 2.0),
-                    fmt(w),
-                    fmt(h)
+                    escape_xml_display(&style),
+                    fmt_display(-w / 2.0),
+                    fmt_display(-h / 2.0),
+                    fmt_display(w),
+                    fmt_display(h)
                 );
                 // Keep default label rendering.
             }
@@ -5943,24 +5943,24 @@ pub(super) fn render_flowchart_node(
                 let _ = write!(
                     out,
                     r#"<g transform="translate({}, {})">"#,
-                    fmt(-h / 2.0),
-                    fmt(h / 2.0)
+                    fmt_display(-h / 2.0),
+                    fmt_display(h / 2.0)
                 );
                 let _ = write!(
                     out,
                     r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
-                    escape_attr(&fill_d),
-                    escape_attr(fill_color),
-                    escape_attr(&style)
+                    escape_xml_display(&fill_d),
+                    escape_xml_display(fill_color),
+                    escape_xml_display(&style)
                 );
                 let _ = write!(
                     out,
                     r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
-                    escape_attr(&stroke_d),
-                    escape_attr(stroke_color),
+                    escape_xml_display(&stroke_d),
+                    escape_xml_display(stroke_color),
                     fmt_display(stroke_width as f64),
-                    escape_attr(stroke_dasharray),
-                    escape_attr(&style)
+                    escape_xml_display(stroke_dasharray),
+                    escape_xml_display(&style)
                 );
                 out.push_str("</g>");
             }
@@ -5988,18 +5988,18 @@ pub(super) fn render_flowchart_node(
                 let _ = write!(
                     out,
                     r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
-                    escape_attr(&fill_d),
-                    escape_attr(fill_color),
-                    escape_attr(&style)
+                    escape_xml_display(&fill_d),
+                    escape_xml_display(fill_color),
+                    escape_xml_display(&style)
                 );
                 let _ = write!(
                     out,
                     r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
-                    escape_attr(&stroke_d),
-                    escape_attr(stroke_color),
-                    fmt(stroke_width as f64),
-                    escape_attr(stroke_dasharray),
-                    escape_attr(&style)
+                    escape_xml_display(&stroke_d),
+                    escape_xml_display(stroke_color),
+                    fmt_display(stroke_width as f64),
+                    escape_xml_display(stroke_dasharray),
+                    escape_xml_display(&style)
                 );
                 out.push_str("</g>");
             }
@@ -6052,7 +6052,7 @@ pub(super) fn render_flowchart_node(
             let _ = write!(
                 out,
                 r#"<g class="basic label-container" transform="translate(0,{})">"#,
-                fmt(-wave_amplitude / 2.0)
+                fmt_display(-wave_amplitude / 2.0)
             );
             if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
                 &outer_path,
@@ -6065,18 +6065,18 @@ pub(super) fn render_flowchart_node(
                 let _ = write!(
                     out,
                     r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
-                    escape_attr(&fill_d),
-                    escape_attr(fill_color),
-                    escape_attr(&style)
+                    escape_xml_display(&fill_d),
+                    escape_xml_display(fill_color),
+                    escape_xml_display(&style)
                 );
                 let _ = write!(
                     out,
                     r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
-                    escape_attr(&stroke_d),
-                    escape_attr(stroke_color),
-                    fmt(stroke_width as f64),
-                    escape_attr(stroke_dasharray),
-                    escape_attr(&style)
+                    escape_xml_display(&stroke_d),
+                    escape_xml_display(stroke_color),
+                    fmt_display(stroke_width as f64),
+                    escape_xml_display(stroke_dasharray),
+                    escape_xml_display(&style)
                 );
             }
             out.push_str("<g>");
@@ -6091,18 +6091,18 @@ pub(super) fn render_flowchart_node(
                 let _ = write!(
                     out,
                     r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
-                    escape_attr(&fill_d),
-                    escape_attr(fill_color),
-                    escape_attr(&style)
+                    escape_xml_display(&fill_d),
+                    escape_xml_display(fill_color),
+                    escape_xml_display(&style)
                 );
                 let _ = write!(
                     out,
                     r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
-                    escape_attr(&stroke_d),
-                    escape_attr(stroke_color),
-                    fmt(stroke_width as f64),
-                    escape_attr(stroke_dasharray),
-                    escape_attr(&style)
+                    escape_xml_display(&stroke_d),
+                    escape_xml_display(stroke_color),
+                    fmt_display(stroke_width as f64),
+                    escape_xml_display(stroke_dasharray),
+                    escape_xml_display(&style)
                 );
             }
             out.push_str("</g></g>");
@@ -6163,7 +6163,7 @@ pub(super) fn render_flowchart_node(
                     r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
                     escape_attr(&stroke_d),
                     escape_attr(stroke_color),
-                    fmt(stroke_width as f64),
+                    fmt_display(stroke_width as f64),
                     escape_attr(stroke_dasharray),
                     escape_attr(&style)
                 );
@@ -6181,7 +6181,7 @@ pub(super) fn render_flowchart_node(
                     r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
                     escape_attr(&stroke_d),
                     escape_attr(stroke_color),
-                    fmt(stroke_width as f64),
+                    fmt_display(stroke_width as f64),
                     escape_attr(stroke_dasharray),
                     escape_attr(&style)
                 );
@@ -6251,7 +6251,7 @@ pub(super) fn render_flowchart_node(
                     r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
                     escape_attr(&stroke_d),
                     escape_attr(stroke_color),
-                    fmt(stroke_width as f64),
+                    fmt_display(stroke_width as f64),
                     escape_attr(stroke_dasharray),
                     escape_attr(&style)
                 );
@@ -6447,7 +6447,7 @@ pub(super) fn render_flowchart_node(
                     r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
                     escape_attr(&stroke_d),
                     escape_attr(stroke_color),
-                    fmt(stroke_width as f64),
+                    fmt_display(stroke_width as f64),
                     escape_attr(stroke_dasharray),
                     escape_attr(&style)
                 );
@@ -6570,7 +6570,7 @@ pub(super) fn render_flowchart_node(
                     r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
                     escape_attr(&stroke_d),
                     escape_attr(stroke_color),
-                    fmt(stroke_width as f64),
+                    fmt_display(stroke_width as f64),
                     escape_attr(stroke_dasharray),
                     escape_attr(&style)
                 );
@@ -6812,7 +6812,7 @@ pub(super) fn render_flowchart_node(
                     r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
                     escape_attr(&stroke_d),
                     escape_attr(stroke_color),
-                    fmt(stroke_width as f64),
+                    fmt_display(stroke_width as f64),
                     escape_attr(stroke_dasharray),
                     escape_attr(&style)
                 );
@@ -6930,9 +6930,9 @@ pub(super) fn render_flowchart_node(
         let _ = write!(
             out,
             r#"<g class="label" style="{}" transform="translate({}, {})"><rect/><g><rect class="background" style="stroke: none"/>"#,
-            escape_attr(&compiled_styles.label_style),
-            fmt(label_dx),
-            fmt(-metrics.height / 2.0 + label_dy)
+            escape_xml_display(&compiled_styles.label_style),
+            fmt_display(label_dx),
+            fmt_display(-metrics.height / 2.0 + label_dy)
         );
         let wrapped = flowchart_wrap_svg_text_lines(
             ctx.measurer,
@@ -6948,7 +6948,10 @@ pub(super) fn render_flowchart_node(
         let label_html = flowchart_label_html(&label_text, &label_type, &ctx.config);
         let mut span_style_attr = String::new();
         if !compiled_styles.label_style.trim().is_empty() {
-            span_style_attr = format!(r#" style="{}""#, escape_attr(&compiled_styles.label_style));
+            span_style_attr = format!(
+                r#" style="{}""#,
+                escape_xml_display(&compiled_styles.label_style)
+            );
         }
         let needs_wrap = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
             let has_inline_style_tags = ctx.node_html_labels && label_type != "markdown" && {
@@ -7032,7 +7035,7 @@ pub(super) fn render_flowchart_node(
         if needs_wrap {
             div_style.push_str(&format!(
                 "display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: {}px;",
-                fmt(ctx.wrapping_width)
+                fmt_display(ctx.wrapping_width)
             ));
         } else {
             div_style.push_str(
@@ -7042,12 +7045,12 @@ pub(super) fn render_flowchart_node(
         let _ = write!(
             out,
             r#"<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
-            escape_attr(&compiled_styles.label_style),
-            fmt(-metrics.width / 2.0 + label_dx),
-            fmt(-metrics.height / 2.0 + label_dy),
-            fmt(metrics.width),
-            fmt(metrics.height),
-            escape_attr(&div_style),
+            escape_xml_display(&compiled_styles.label_style),
+            fmt_display(-metrics.width / 2.0 + label_dx),
+            fmt_display(-metrics.height / 2.0 + label_dy),
+            fmt_display(metrics.width),
+            fmt_display(metrics.height),
+            escape_xml_display(&div_style),
             span_style_attr,
             label_html
         );
