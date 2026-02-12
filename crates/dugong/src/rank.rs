@@ -328,6 +328,7 @@ pub mod network_simplex {
         in_tree_by_g_ix: Vec<bool>,
         low_by_g_ix: Vec<i32>,
         lim_by_g_ix: Vec<i32>,
+        g_ix_by_lim: Vec<Option<usize>>,
         tail_g_ixs: Vec<usize>,
 
         children: Vec<Vec<usize>>,
@@ -384,6 +385,7 @@ pub mod network_simplex {
                 in_tree_by_g_ix: vec![false; g_len],
                 low_by_g_ix: vec![0; g_len],
                 lim_by_g_ix: vec![0; g_len],
+                g_ix_by_lim: vec![None; t_len + 1],
                 tail_g_ixs: Vec::new(),
                 children: vec![Vec::new(); t_len],
                 postorder: Vec::new(),
@@ -546,6 +548,21 @@ pub mod network_simplex {
                 self.in_tree_by_g_ix[g_ix] = true;
                 self.low_by_g_ix[g_ix] = self.low.get(t_ix).copied().unwrap_or(0);
                 self.lim_by_g_ix[g_ix] = self.lim.get(t_ix).copied().unwrap_or(0);
+            }
+
+            self.g_ix_by_lim.resize(t_len + 1, None);
+            self.g_ix_by_lim.fill(None);
+            for &t_ix in &self.node_ixs {
+                let Some(g_ix) = self.g_ix_by_t_ix.get(t_ix).copied().flatten() else {
+                    continue;
+                };
+                let lim = self.lim.get(t_ix).copied().unwrap_or(0);
+                let Ok(lim) = usize::try_from(lim) else {
+                    continue;
+                };
+                if lim < self.g_ix_by_lim.len() {
+                    self.g_ix_by_lim[lim] = Some(g_ix);
+                }
             }
 
             self.rebuild_cut_values(t, g);
@@ -849,18 +866,26 @@ pub mod network_simplex {
         };
 
         t_state.tail_g_ixs.clear();
-        t_state.tail_g_ixs.reserve(t_state.node_ixs.len());
-        for &t_ix in &t_state.node_ixs {
-            let lim = t_state.lim.get(t_ix).copied().unwrap_or(0);
-            if !(tail_low <= lim && lim <= tail_lim) {
-                continue;
-            }
-            let Some(g_ix) = t_state.g_ix_by_t_ix.get(t_ix).copied().flatten() else {
+        let Ok(tail_low) = usize::try_from(tail_low) else {
+            return fallback;
+        };
+        let Ok(tail_lim) = usize::try_from(tail_lim) else {
+            return fallback;
+        };
+        if tail_low == 0 || tail_low > tail_lim {
+            return fallback;
+        }
+        let max_lim = t_state.g_ix_by_lim.len().saturating_sub(1);
+        let tail_lim = tail_lim.min(max_lim);
+
+        t_state
+            .tail_g_ixs
+            .reserve(tail_lim.saturating_sub(tail_low) + 1);
+        for lim in tail_low..=tail_lim {
+            let Some(g_ix) = t_state.g_ix_by_lim.get(lim).copied().flatten() else {
                 continue;
             };
-            if t_state.in_tree_by_g_ix.get(g_ix).copied().unwrap_or(false) {
-                t_state.tail_g_ixs.push(g_ix);
-            }
+            t_state.tail_g_ixs.push(g_ix);
         }
 
         let mut best: Option<(i32, EdgeKey)> = None;
