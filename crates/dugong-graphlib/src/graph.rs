@@ -632,6 +632,13 @@ where
         self.edge_len
     }
 
+    pub fn edge_key_by_ix(&self, edge_ix: usize) -> Option<&EdgeKey> {
+        self.edges
+            .get(edge_ix)
+            .and_then(|e| e.as_ref())
+            .map(|e| &e.key)
+    }
+
     pub fn edges(&self) -> impl Iterator<Item = &EdgeKey> {
         self.edges.iter().filter_map(|e| e.as_ref().map(|e| &e.key))
     }
@@ -657,6 +664,18 @@ where
                 continue;
             };
             f(e.v_ix, e.w_ix, &e.key, &e.label);
+        }
+    }
+
+    pub fn for_each_edge_entry_ix<F>(&self, mut f: F)
+    where
+        F: FnMut(usize, usize, usize, &EdgeKey, &E),
+    {
+        for (edge_ix, e) in self.edges.iter().enumerate() {
+            let Some(e) = e.as_ref() else {
+                continue;
+            };
+            f(edge_ix, e.v_ix, e.w_ix, &e.key, &e.label);
         }
     }
 
@@ -1234,6 +1253,25 @@ where
         }
     }
 
+    pub fn for_each_out_edge_entry_ix<F>(&self, v_ix: usize, w_ix: Option<usize>, mut f: F)
+    where
+        F: FnMut(usize, usize, usize, &EdgeKey, &E),
+    {
+        if !self.options.directed {
+            return;
+        }
+        let cache = self.ensure_directed_adj();
+        for &edge_ix in cache.out_edges(v_ix) {
+            let Some(e) = self.edges.get(edge_ix).and_then(|e| e.as_ref()) else {
+                continue;
+            };
+            debug_assert_eq!(e.v_ix, v_ix);
+            if w_ix.is_none_or(|w_ix| e.w_ix == w_ix) {
+                f(edge_ix, e.v_ix, e.w_ix, &e.key, &e.label);
+            }
+        }
+    }
+
     pub fn for_each_neighbor_ix<F>(&self, v_ix: usize, mut f: F)
     where
         F: FnMut(usize),
@@ -1282,6 +1320,25 @@ where
             debug_assert_eq!(e.w_ix, v_ix);
             if w_ix.is_none_or(|w_ix| e.v_ix == w_ix) {
                 f(e.v_ix, e.w_ix, &e.key, &e.label);
+            }
+        }
+    }
+
+    pub fn for_each_in_edge_entry_ix<F>(&self, v_ix: usize, w_ix: Option<usize>, mut f: F)
+    where
+        F: FnMut(usize, usize, usize, &EdgeKey, &E),
+    {
+        if !self.options.directed {
+            return;
+        }
+        let cache = self.ensure_directed_adj();
+        for &edge_ix in cache.in_edges(v_ix) {
+            let Some(e) = self.edges.get(edge_ix).and_then(|e| e.as_ref()) else {
+                continue;
+            };
+            debug_assert_eq!(e.w_ix, v_ix);
+            if w_ix.is_none_or(|w_ix| e.v_ix == w_ix) {
+                f(edge_ix, e.v_ix, e.w_ix, &e.key, &e.label);
             }
         }
     }
