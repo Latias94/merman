@@ -1,0 +1,93 @@
+{
+  "diagramType": "er",
+  "model": {
+    "type": "er",
+    "direction": "TB",
+    "accTitle": "My Entity Relationship Diagram",
+    "accDescr": "My Entity Relationship Diagram Description",
+    "entities": {
+      "LINE-ITEM": {
+        "id": "entity-LINE-ITEM-2",
+        "label": "LINE-ITEM",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "DELIVERY-ADDRESS": {
+        "id": "entity-DELIVERY-ADDRESS-3",
+        "label": "DELIVERY-ADDRESS",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "CUSTOMER": {
+        "id": "entity-CUSTOMER-0",
+        "label": "CUSTOMER",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "ORDER": {
+        "id": "entity-ORDER-1",
+        "label": "ORDER",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-CUSTOMER-0",
+        "roleA": "places",
+        "entityB": "entity-ORDER-1",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-ORDER-1",
+        "roleA": "contains",
+        "entityB": "entity-LINE-ITEM-2",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-CUSTOMER-0",
+        "roleA": "uses",
+        "entityB": "entity-DELIVERY-ADDRESS-3",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONE_OR_MORE",
+          "relType": "NON_IDENTIFYING"
+        }
+      }
+    ],
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}

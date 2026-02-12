@@ -1,0 +1,80 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Alice",
+      "Bob"
+    ],
+    "actors": {
+      "Alice": {
+        "name": "Alice",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Bob": {
+        "name": "Bob",
+        "description": "Bob",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "Alice",
+        "to": "Bob",
+        "message": "Hello Bob, how are you?",
+        "wrap": false,
+        "type": 5,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Bob",
+        "to": "Alice",
+        "message": "Fine, how did your mother like the book I suggested? And did you catch the new book about alien invasion?",
+        "wrap": false,
+        "type": 5,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "Alice",
+        "to": "Bob",
+        "message": "Good.",
+        "wrap": false,
+        "type": 5,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "Bob",
+        "to": "Alice",
+        "message": "Cool",
+        "wrap": false,
+        "type": 5,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

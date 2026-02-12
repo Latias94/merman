@@ -34,6 +34,12 @@ pub fn lookup_mindmap_root_viewport_override(
             Some(("5 5 317.027587890625 345.3640441894531", "317.028"))
         }
         "mmdr_tests_mindmap_basic" => Some(("5 5 530.9208984375 72.1875", "530.921")),
+        "upstream_docs_tidy_tree_example_usage_001" => {
+            Some(("5 5 409.72393798828125 373.72052001953125", "409.724"))
+        }
+        "upstream_docs_tidy_tree_example_usage_002" => {
+            Some(("5 5 796.6170043945312 671.435546875", "796.617"))
+        }
         _ => None,
     }
 }

@@ -1,6 +1,7 @@
 use crate::Result;
 use crate::model::{Bounds, PieDiagramLayout, PieLegendItemLayout, PieSliceLayout};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use ryu_js::Buffer;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -28,14 +29,187 @@ struct ColorScale {
     next: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct Rgb01 {
+    r: f64,
+    g: f64,
+    b: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Hsl {
+    h_deg: f64,
+    s_pct: f64,
+    l_pct: f64,
+}
+
+fn round_1e10(v: f64) -> f64 {
+    let v = (v * 1e10).round() / 1e10;
+    if v == -0.0 { 0.0 } else { v }
+}
+
+fn fmt_js_1e10(v: f64) -> String {
+    let v = round_1e10(v);
+    let mut b = Buffer::new();
+    b.format_finite(v).to_string()
+}
+
+fn round_hsl_1e10(mut hsl: Hsl) -> Hsl {
+    // Match Mermaid's base theme output: wrap using remainder without forcing positive hue.
+    // (JS `%` keeps the sign, so negative hues remain negative.)
+    hsl.h_deg = round_1e10(hsl.h_deg) % 360.0;
+    hsl.s_pct = round_1e10(hsl.s_pct).clamp(0.0, 100.0);
+    hsl.l_pct = round_1e10(hsl.l_pct).clamp(0.0, 100.0);
+    hsl
+}
+
+fn parse_hex_rgb01(s: &str) -> Option<Rgb01> {
+    let s = s.trim();
+    let s = s.strip_prefix('#')?;
+    if s.len() != 6 {
+        return None;
+    }
+    let r = u8::from_str_radix(&s[0..2], 16).ok()? as f64 / 255.0;
+    let g = u8::from_str_radix(&s[2..4], 16).ok()? as f64 / 255.0;
+    let b = u8::from_str_radix(&s[4..6], 16).ok()? as f64 / 255.0;
+    Some(Rgb01 { r, g, b })
+}
+
+fn rgb01_to_hsl(rgb: Rgb01) -> Hsl {
+    let r = rgb.r;
+    let g = rgb.g;
+    let b = rgb.b;
+
+    let max = r.max(g.max(b));
+    let min = r.min(g.min(b));
+    let mut h = 0.0;
+    let mut s = 0.0;
+    let l = (max + min) / 2.0;
+
+    if max != min {
+        let d = max - min;
+        s = if l > 0.5 {
+            d / (2.0 - max - min)
+        } else {
+            d / (max + min)
+        };
+
+        h = if max == r {
+            (g - b) / d + if g < b { 6.0 } else { 0.0 }
+        } else if max == g {
+            (b - r) / d + 2.0
+        } else {
+            (r - g) / d + 4.0
+        };
+        h /= 6.0;
+    }
+
+    round_hsl_1e10(Hsl {
+        h_deg: h * 360.0,
+        s_pct: s * 100.0,
+        l_pct: l * 100.0,
+    })
+}
+
+fn parse_hsl(s: &str) -> Option<Hsl> {
+    let s = s.trim();
+    let inner = s.strip_prefix("hsl(")?.strip_suffix(')')?;
+    let parts: Vec<&str> = inner.split(',').map(|p| p.trim()).collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    let h = parts[0].parse::<f64>().ok()?;
+    let s_pct = parts[1].trim_end_matches('%').parse::<f64>().ok()?;
+    let l_pct = parts[2].trim_end_matches('%').parse::<f64>().ok()?;
+    Some(round_hsl_1e10(Hsl {
+        h_deg: h,
+        s_pct,
+        l_pct,
+    }))
+}
+
+fn adjust_hsl(mut hsl: Hsl, h_delta: f64, s_delta: f64, l_delta: f64) -> Hsl {
+    hsl.h_deg = (hsl.h_deg + h_delta) % 360.0;
+    hsl.s_pct = (hsl.s_pct + s_delta).clamp(0.0, 100.0);
+    hsl.l_pct = (hsl.l_pct + l_delta).clamp(0.0, 100.0);
+    round_hsl_1e10(hsl)
+}
+
+fn fmt_hsl(hsl: Hsl) -> String {
+    format!(
+        "hsl({}, {}%, {}%)",
+        fmt_js_1e10(hsl.h_deg),
+        fmt_js_1e10(hsl.s_pct),
+        fmt_js_1e10(hsl.l_pct)
+    )
+}
+
+fn adjust_color_to_hsl_string(
+    color: &str,
+    h_delta: f64,
+    s_delta: f64,
+    l_delta: f64,
+) -> Option<String> {
+    let base = if let Some(rgb) = parse_hex_rgb01(color) {
+        rgb01_to_hsl(rgb)
+    } else if let Some(hsl) = parse_hsl(color) {
+        hsl
+    } else {
+        return None;
+    };
+    Some(fmt_hsl(adjust_hsl(base, h_delta, s_delta, l_delta)))
+}
+
 impl ColorScale {
     fn new_default() -> Self {
         // Default theme colors as emitted by Mermaid 11.12.2 in SVG.
+        //
+        // Mermaid derives this palette from `theme-default.js` `pie1..pie12` (using `adjust()`),
+        // where the base colors are:
+        // - primaryColor = "#ECECFF"
+        // - secondaryColor = "#ffffde"
+        // - tertiaryColor = "hsl(80, 100%, 96.2745098039%)"
+        //
+        // Note: `adjust(...)` serializes as `hsl(...)` (not hex), so the palette contains a mix.
+        const PRIMARY: &str = "#ECECFF";
+        const SECONDARY: &str = "#ffffde";
+        const TERTIARY: &str = "hsl(80, 100%, 96.2745098039%)";
+
+        let pie3 = adjust_color_to_hsl_string(TERTIARY, 0.0, 0.0, -40.0)
+            .unwrap_or_else(|| "hsl(80, 100%, 56.2745098039%)".to_string());
+        let pie4 = adjust_color_to_hsl_string(PRIMARY, 0.0, 0.0, -10.0)
+            .unwrap_or_else(|| "hsl(240, 100%, 86.2745098039%)".to_string());
+        let pie5 = adjust_color_to_hsl_string(SECONDARY, 0.0, 0.0, -30.0)
+            .unwrap_or_else(|| "hsl(60, 100%, 57.0588235294%)".to_string());
+        let pie6 = adjust_color_to_hsl_string(TERTIARY, 0.0, 0.0, -20.0)
+            .unwrap_or_else(|| "hsl(80, 100%, 76.2745098039%)".to_string());
+        let pie7 = adjust_color_to_hsl_string(PRIMARY, 60.0, 0.0, -20.0)
+            .unwrap_or_else(|| "hsl(300, 100%, 76.2745098039%)".to_string());
+        let pie8 = adjust_color_to_hsl_string(PRIMARY, -60.0, 0.0, -40.0)
+            .unwrap_or_else(|| "hsl(180, 100%, 56.2745098039%)".to_string());
+        let pie9 = adjust_color_to_hsl_string(PRIMARY, 120.0, 0.0, -40.0)
+            .unwrap_or_else(|| "hsl(0, 100%, 56.2745098039%)".to_string());
+        let pie10 = adjust_color_to_hsl_string(PRIMARY, 60.0, 0.0, -40.0)
+            .unwrap_or_else(|| "hsl(300, 100%, 56.2745098039%)".to_string());
+        let pie11 = adjust_color_to_hsl_string(PRIMARY, -90.0, 0.0, -40.0)
+            .unwrap_or_else(|| "hsl(150, 100%, 56.2745098039%)".to_string());
+        let pie12 = adjust_color_to_hsl_string(PRIMARY, 120.0, 0.0, -30.0)
+            .unwrap_or_else(|| "hsl(0, 100%, 66.2745098039%)".to_string());
+
         Self {
             palette: vec![
-                "#ECECFF".to_string(),
-                "#ffffde".to_string(),
-                "hsl(80, 100%, 56.2745098039%)".to_string(),
+                PRIMARY.to_string(),
+                SECONDARY.to_string(),
+                pie3,
+                pie4,
+                pie5,
+                pie6,
+                pie7,
+                pie8,
+                pie9,
+                pie10,
+                pie11,
+                pie12,
             ],
             mapping: std::collections::HashMap::new(),
             next: 0,

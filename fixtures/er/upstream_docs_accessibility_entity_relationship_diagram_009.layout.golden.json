@@ -1,0 +1,151 @@
+{
+  "diagramType": "er",
+  "layout": {
+    "ErDiagram": {
+      "nodes": [
+        {
+          "id": "entity-CUSTOMER-0",
+          "x": 197.36,
+          "y": 42.0,
+          "width": 116.063,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-DELIVERY-ADDRESS-3",
+          "x": 338.48,
+          "y": 227.0,
+          "width": 184.48,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-LINE-ITEM-2",
+          "x": 56.24,
+          "y": 412.0,
+          "width": 112.48,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-ORDER-1",
+          "x": 56.24,
+          "y": 227.0,
+          "width": 100.0,
+          "height": 84.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "er-rel-0",
+          "from": "entity-CUSTOMER-0",
+          "to": "entity-ORDER-1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 139.329,
+              "y": 80.038
+            },
+            {
+              "x": 56.24,
+              "y": 134.5
+            },
+            {
+              "x": 56.24,
+              "y": 185.0
+            }
+          ],
+          "label": {
+            "x": 56.24,
+            "y": 134.5,
+            "width": 39.531,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ZERO_OR_MORE_END",
+          "stroke_dasharray": null
+        },
+        {
+          "id": "er-rel-1",
+          "from": "entity-ORDER-1",
+          "to": "entity-LINE-ITEM-2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 56.24,
+              "y": 269.0
+            },
+            {
+              "x": 56.24,
+              "y": 319.5
+            },
+            {
+              "x": 56.24,
+              "y": 370.0
+            }
+          ],
+          "label": {
+            "x": 56.24,
+            "y": 319.5,
+            "width": 52.313,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ONE_OR_MORE_END",
+          "stroke_dasharray": null
+        },
+        {
+          "id": "er-rel-2",
+          "from": "entity-CUSTOMER-0",
+          "to": "entity-DELIVERY-ADDRESS-3",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 255.391,
+              "y": 80.038
+            },
+            {
+              "x": 338.48,
+              "y": 134.5
+            },
+            {
+              "x": 338.48,
+              "y": 185.0
+            }
+          ],
+          "label": {
+            "x": 338.48,
+            "y": 134.5,
+            "width": 26.625,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONE_OR_MORE_START",
+          "end_marker": "ONE_OR_MORE_END",
+          "stroke_dasharray": "8,8"
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 430.72,
+        "max_y": 454.0
+      }
+    }
+  }
+}

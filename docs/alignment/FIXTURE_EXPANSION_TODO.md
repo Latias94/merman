@@ -39,6 +39,7 @@ Recently imported (keep gates green after each batch):
   `packages/mermaid/src/docs/*` covering directives/theming/contributing examples).
 - 2026-02-12: Flowchart directives docs (`directives.md`) legacy `graph TD` directive examples (theme `forest`, `flowchart.curve=linear`).
 - 2026-02-12: Flowchart additional shape fixtures from `docs/syntax/flowchart.md` (hexagon/parallelogram/trapezoids/double-circle + process/event/terminal/subprocess).
+- 2026-02-12: Mermaid config docs batch import from `packages/mermaid/src/docs/config/*.md` (accessibility + directives + theming + tidy-tree), keeping the global `parity-root` gate green.
 - 2026-02-11: State `stateDiagram.md` docs examples batch import (11 new fixtures; additional blocks were skipped as duplicates).
 - 2026-02-11: Sequence `sequenceDiagram.md` docs examples batch import (16 new fixtures; additional blocks were skipped as duplicates).
 - 2026-02-11: Class `classDiagram.md` docs examples batch import (13 new fixtures, including `hideEmptyMembersBox` and inline style variants).
@@ -58,6 +59,12 @@ Focus areas:
 - edge-case parsing (escaping, unicode/punctuation)
 - config variants that change layout/labels
 - error-handling surfaces (without weakening Mermaid parity contract)
+
+Deferred (tracked for future import / parity work):
+
+- Flowchart frontmatter config `layout: elk` (requires ELK layout parity support; current headless layout is dagre-ish).
+- Sequence config directive examples that require `sequence.wrap=true` and `sequence.width` layout parity.
+- Sequence math rendering (`$$...$$`) parity (upstream uses browser math rendering and `<foreignObject>` output).
 
 ## Special case: ZenUML (external diagram)
 

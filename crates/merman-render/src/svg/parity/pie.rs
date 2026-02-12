@@ -8,6 +8,7 @@ fn pie_legend_rect_style(fill: &str) -> String {
         "#ECECFF" => "rgb(236, 236, 255)",
         "#ffffde" => "rgb(255, 255, 222)",
         "hsl(80, 100%, 56.2745098039%)" => "rgb(181, 255, 32)",
+        "hsl(240, 100%, 86.2745098039%)" => "rgb(185, 185, 255)",
         other => other,
     };
     format!("fill: {rgb}; stroke: {rgb};")
