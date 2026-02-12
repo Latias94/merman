@@ -34,32 +34,20 @@ while preserving correctness.
 
 ## Current Gap (as of 2026-02-12)
 
-From `target/bench/COMPARISON.latest.md` (generated locally via
-`tools/bench/compare_mermaid_renderers.py`):
+From `docs/performance/COMPARISON.md` (generated locally via
+`tools/bench/compare_mermaid_renderers.py`; last refreshed on
+`2026-02-12 16:34 +0800`):
 
-- End-to-end geometric mean (8 fixtures): ~`9.17x` slower than `mermaid-rs-renderer` (mmdr).
-- Medium fixtures (4): ~`4.79x` slower than mmdr.
-- Tiny fixtures (4): ~`17.55x` slower than mmdr.
+- End-to-end geometric mean (8 fixtures): ~`6.39x` slower than `mermaid-rs-renderer` (mmdr).
+- Medium fixtures (4): ~`3.43x` slower than mmdr.
+- Tiny fixtures (4): ~`11.89x` slower than mmdr.
 
-Stage spot-checks (same machine, Criterion, mid estimates; see `target/bench/stage_spotcheck.md`):
+Stage spot-checks (same machine, Criterion, mid estimates):
 
-| fixture | stage | ratio (merman / mmdr) |
-|---|---|---:|
-| `flowchart_medium` | `parse` | `17.80x` |
-| `flowchart_medium` | `layout` | `4.84x` |
-| `flowchart_medium` | `render` | `35.95x` |
-| `flowchart_medium` | `end_to_end` | `6.99x` |
-| `class_medium` | `parse` | `413.12x` |
-| `class_medium` | `layout` | `0.69x` |
-| `class_medium` | `render` | `7.26x` |
-| `class_medium` | `end_to_end` | `10.90x` |
-
-Geometric mean of stage ratios (same report):
-
-- `parse`: `85.76x`
-- `layout`: `1.83x`
-- `render`: `16.15x`
-- `end_to_end`: `8.73x`
+- Run `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,class_medium --out target/bench/stage_spotcheck.md`.
+- Recent runs consistently show:
+  - `class_medium`: parse is the outlier (hundreds of x slower than mmdr), layout is not the bottleneck.
+  - `flowchart_medium`: render is extremely expensive vs mmdr (tens of x), layout is mid single-digit x.
 
 Interpretation:
 

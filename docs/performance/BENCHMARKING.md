@@ -47,7 +47,13 @@ report:
 python tools/bench/compare_mermaid_renderers.py
 ```
 
-This writes `target/bench/COMPARISON.latest.md` with mid-point `end_to_end/*` estimates and ratios.
+By default this writes `docs/performance/COMPARISON.md` with mid-point `end_to_end/*` estimates and ratios.
+
+If you prefer keeping comparison artifacts out of the docs tree, pass `--out` explicitly, e.g.:
+
+```bash
+python tools/bench/compare_mermaid_renderers.py --out target/bench/COMPARISON.latest.md
+```
 
 ## Stage spot-check (recommended for triage)
 
