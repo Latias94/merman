@@ -716,8 +716,7 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
                 continue;
             }
 
-            let heading_slug =
-                clamp_slug(slugify(b.heading.as_deref().unwrap_or("example")), 64);
+            let heading_slug = clamp_slug(slugify(b.heading.as_deref().unwrap_or("example")), 64);
             let stem = format!(
                 "upstream_docs_{source_slug}_{heading_slug}_{idx:03}",
                 idx = b.idx_in_file + 1
@@ -808,7 +807,10 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
             .join("import-upstream-docs.report.txt");
         let mut report_lines: Vec<String> = Vec::new();
 
-        fn deferred_with_baselines_reason(diagram_dir: &str, fixture_text: &str) -> Option<&'static str> {
+        fn deferred_with_baselines_reason(
+            diagram_dir: &str,
+            fixture_text: &str,
+        ) -> Option<&'static str> {
             // Keep `--with-baselines` aligned with the current parity hardening scope.
             //
             // Some examples require upstream (browser) features we have not yet replicated in the
@@ -817,12 +819,16 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
             match diagram_dir {
                 "flowchart" => {
                     // ELK layout is currently out of scope for the headless layout engine.
-                    if fixture_text.contains("\n  layout: elk") || fixture_text.contains("\nlayout: elk") {
+                    if fixture_text.contains("\n  layout: elk")
+                        || fixture_text.contains("\nlayout: elk")
+                    {
                         return Some("flowchart frontmatter config.layout=elk (deferred)");
                     }
                     // Flowchart "look" variants change DOM structure and markers; only classic is in scope.
                     if fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:") {
-                        if !fixture_text.contains("\n  look: classic") && !fixture_text.contains("\nlook: classic") {
+                        if !fixture_text.contains("\n  look: classic")
+                            && !fixture_text.contains("\nlook: classic")
+                        {
                             return Some("flowchart frontmatter config.look!=classic (deferred)");
                         }
                     }
@@ -837,7 +843,10 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
                         return Some("sequence math (deferred)");
                     }
                     // Some docs examples rely on wrap/width behavior not yet matched in headless layout.
-                    if fixture_text.contains("%%{init:") && (fixture_text.contains("\"wrap\": true") || fixture_text.contains("\"width\"")) {
+                    if fixture_text.contains("%%{init:")
+                        && (fixture_text.contains("\"wrap\": true")
+                            || fixture_text.contains("\"width\""))
+                    {
                         return Some("sequence wrap/width directive (deferred)");
                     }
                 }

@@ -3392,8 +3392,8 @@ fn node_render_dimensions(
             ));
             points.push((w / 2.0 - radius, h / 2.0));
             points.push((-w / 2.0, h / 2.0));
-            let (min_x, min_y, max_x, max_y) = bbox_of_points(&points)
-                .unwrap_or((-w / 2.0, -h / 2.0, w / 2.0, h / 2.0));
+            let (min_x, min_y, max_x, max_y) =
+                bbox_of_points(&points).unwrap_or((-w / 2.0, -h / 2.0, w / 2.0, h / 2.0));
             f32_dims((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
 
@@ -3455,8 +3455,7 @@ fn node_render_dimensions(
                 (-x, y),
                 (-x, y + rect_offset),
             ];
-            let (min_x, min_y, max_x, max_y) =
-                bbox_of_points(&points).unwrap_or((x, y, -x, -y));
+            let (min_x, min_y, max_x, max_y) = bbox_of_points(&points).unwrap_or((x, y, -x, -y));
             f32_dims((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
 
@@ -3488,7 +3487,11 @@ fn node_render_dimensions(
             let wave_amplitude = h / 8.0;
             let final_h = h + wave_amplitude;
             let min_width = 70.0;
-            let extra_w = if w < min_width { (min_width - w) / 2.0 } else { 0.0 };
+            let extra_w = if w < min_width {
+                (min_width - w) / 2.0
+            } else {
+                0.0
+            };
 
             let mut points: Vec<(f64, f64)> = Vec::new();
             points.push((-w / 2.0 - extra_w, final_h / 2.0));
@@ -3503,8 +3506,12 @@ fn node_render_dimensions(
             points.push((w / 2.0 + extra_w, -final_h / 2.0));
             points.push((-w / 2.0 - extra_w, -final_h / 2.0));
 
-            let (min_x, min_y, max_x, max_y) =
-                bbox_of_points(&points).unwrap_or((-w / 2.0, -final_h / 2.0, w / 2.0, final_h / 2.0));
+            let (min_x, min_y, max_x, max_y) = bbox_of_points(&points).unwrap_or((
+                -w / 2.0,
+                -final_h / 2.0,
+                w / 2.0,
+                final_h / 2.0,
+            ));
             f32_dims((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
 
@@ -3575,8 +3582,12 @@ fn node_render_dimensions(
                 wave_amplitude,
                 -1.0,
             ));
-            let (min_x, min_y, max_x, max_y) =
-                bbox_of_points(&points).unwrap_or((-w / 2.0, -final_h / 2.0, w / 2.0, final_h / 2.0));
+            let (min_x, min_y, max_x, max_y) = bbox_of_points(&points).unwrap_or((
+                -w / 2.0,
+                -final_h / 2.0,
+                w / 2.0,
+                final_h / 2.0,
+            ));
             f32_dims((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
 
@@ -3605,8 +3616,12 @@ fn node_render_dimensions(
             points.push((-w / 2.0, (final_h / 2.0) * 1.1));
             points.push((-w / 2.0, -final_h / 2.0));
 
-            let (min_x, min_y, max_x, max_y) =
-                bbox_of_points(&points).unwrap_or((-w / 2.0, -final_h / 2.0, w / 2.0, final_h / 2.0));
+            let (min_x, min_y, max_x, max_y) = bbox_of_points(&points).unwrap_or((
+                -w / 2.0,
+                -final_h / 2.0,
+                w / 2.0,
+                final_h / 2.0,
+            ));
             f32_dims((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
 
@@ -3631,8 +3646,7 @@ fn node_render_dimensions(
             ];
             let mut pts = rect_points;
             pts.extend(tag_points);
-            let (min_x, min_y, max_x, max_y) =
-                bbox_of_points(&pts).unwrap_or((x, y, x + w, y + h));
+            let (min_x, min_y, max_x, max_y) = bbox_of_points(&pts).unwrap_or((x, y, x + w, y + h));
             f32_dims((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
 
@@ -3675,8 +3689,12 @@ fn node_render_dimensions(
             ));
 
             points.extend(tag_points);
-            let (min_x, min_y, max_x, max_y) =
-                bbox_of_points(&points).unwrap_or((-w / 2.0, -final_h / 2.0, w / 2.0, final_h / 2.0));
+            let (min_x, min_y, max_x, max_y) = bbox_of_points(&points).unwrap_or((
+                -w / 2.0,
+                -final_h / 2.0,
+                w / 2.0,
+                final_h / 2.0,
+            ));
             f32_dims((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
         }
 
