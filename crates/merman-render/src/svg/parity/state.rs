@@ -2311,7 +2311,7 @@ fn state_div_style_prefix(decls: &[StateInlineDecl<'_>]) -> String {
 fn state_node_label_html_with_style(raw: &str, span_style: Option<&str>) -> String {
     let style_attr = span_style
         .filter(|s| !s.is_empty())
-        .map(|s| format!(r#" style="{}""#, escape_attr(s)))
+        .map(|s| format!(r#" style="{}""#, escape_xml_display(s)))
         .unwrap_or_default();
     format!(
         r#"<span{} class="nodeLabel">{}</span>"#,
@@ -2324,7 +2324,7 @@ fn state_node_label_html_with_style(raw: &str, span_style: Option<&str>) -> Stri
 fn state_node_label_inline_html_with_style(raw: &str, span_style: Option<&str>) -> String {
     let style_attr = span_style
         .filter(|s| !s.is_empty())
-        .map(|s| format!(r#" style="{}""#, escape_attr(s)))
+        .map(|s| format!(r#" style="{}""#, escape_xml_display(s)))
         .unwrap_or_default();
     format!(
         r#"<span{} class="nodeLabel">{}</span>"#,
@@ -2808,11 +2808,11 @@ fn render_state_root(
         let _ = write!(
             out,
             r#"<g id="{}" class="note-cluster"><rect x="{}" y="{}" width="{}" height="{}" fill="none"/></g>"#,
-            escape_attr(cluster_id),
-            fmt(x),
-            fmt(y),
-            fmt(cluster.width.max(1.0)),
-            fmt(cluster.height.max(1.0))
+            escape_xml_display(cluster_id),
+            fmt_display(x),
+            fmt_display(y),
+            fmt_display(cluster.width.max(1.0)),
+            fmt_display(cluster.height.max(1.0))
         );
     }
     out.push_str("</g>");
@@ -2934,9 +2934,9 @@ fn render_state_root(
                 let _ = write!(
                     out,
                     r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0, 0)"><rect/><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 10px; text-align: center;"><span class="nodeLabel"></span></div></foreignObject></g></g>"#,
-                    escape_attr(&id),
-                    fmt(cx),
-                    fmt(cy),
+                    escape_xml_display(&id),
+                    fmt_display(cx),
+                    fmt_display(cy),
                 );
             }
         }
@@ -2981,12 +2981,12 @@ fn render_state_cluster(
         let _ = write!(
             out,
             r#"<g class="{}" id="{}" data-look="classic"><g><rect class="divider" x="{}" y="{}" width="{}" height="{}" data-look="classic"/></g></g>"#,
-            escape_attr(class),
-            escape_attr(cluster_id),
-            fmt(x),
-            fmt(y),
-            fmt(cluster.width.max(1.0)),
-            fmt(cluster.height.max(1.0))
+            escape_xml_display(class),
+            escape_xml_display(cluster_id),
+            fmt_display(x),
+            fmt_display(y),
+            fmt_display(cluster.width.max(1.0)),
+            fmt_display(cluster.height.max(1.0))
         );
         return;
     }
@@ -3001,21 +3001,21 @@ fn render_state_cluster(
     let _ = write!(
         out,
         r#"<g class="{}" id="{}" data-id="{}" data-look="classic"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="classic"/></g><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="19"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="nodeLabel">{}</span></div></foreignObject></g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
-        escape_attr(class),
-        escape_attr(cluster_id),
-        escape_attr(cluster_id),
-        fmt(x),
-        fmt(y),
-        fmt(cluster.width.max(1.0)),
-        fmt(cluster.height.max(1.0)),
-        fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
-        fmt(y + 1.0),
-        fmt(cluster.title_label.width.max(0.0)),
-        escape_xml(&title),
-        fmt(x),
-        fmt(y + 21.0),
-        fmt(cluster.width.max(1.0)),
-        fmt((cluster.height - 29.0).max(1.0))
+        escape_xml_display(class),
+        escape_xml_display(cluster_id),
+        escape_xml_display(cluster_id),
+        fmt_display(x),
+        fmt_display(y),
+        fmt_display(cluster.width.max(1.0)),
+        fmt_display(cluster.height.max(1.0)),
+        fmt_display(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
+        fmt_display(y + 1.0),
+        fmt_display(cluster.title_label.width.max(0.0)),
+        escape_xml_display(&title),
+        fmt_display(x),
+        fmt_display(y + 21.0),
+        fmt_display(cluster.width.max(1.0)),
+        fmt_display((cluster.height - 29.0).max(1.0))
     );
 }
 
@@ -3311,14 +3311,14 @@ fn render_state_edge_path(
             let _ = write!(
                 out,
                 r#"<path d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
-                escape_attr(&d),
-                escape_attr(sid),
-                escape_attr(&classes),
-                escape_attr(sid),
-                escape_attr(&data_points)
+                escape_xml_display(&d),
+                escape_xml_display(sid),
+                escape_xml_display(&classes),
+                escape_xml_display(sid),
+                escape_xml_display(&data_points)
             );
             if let Some(m) = marker {
-                let _ = write!(out, r#" marker-end="{}""#, escape_attr(m));
+                let _ = write!(out, r#" marker-end="{}""#, escape_xml_display(m));
             }
             out.push_str("/>");
         }
@@ -3337,14 +3337,14 @@ fn render_state_edge_path(
     let _ = write!(
         out,
         r#"<path d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
-        escape_attr(&d),
-        escape_attr(&edge.id),
-        escape_attr(&classes),
-        escape_attr(&edge.id),
-        escape_attr(&data_points)
+        escape_xml_display(&d),
+        escape_xml_display(&edge.id),
+        escape_xml_display(&classes),
+        escape_xml_display(&edge.id),
+        escape_xml_display(&data_points)
     );
     if let Some(m) = marker_end {
-        let _ = write!(out, r#" marker-end="{}""#, escape_attr(&m));
+        let _ = write!(out, r#" marker-end="{}""#, escape_xml_display(&m));
     }
     out.push_str("/>");
 }
@@ -3451,13 +3451,13 @@ fn render_state_edge_label(
                     let _ = write!(
                         out,
                         r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
-                        fmt(cx),
-                        fmt(cy),
-                        escape_attr(&idm),
-                        fmt(-w / 2.0),
-                        fmt(-h / 2.0),
-                        fmt(w),
-                        fmt(h),
+                        fmt_display(cx),
+                        fmt_display(cy),
+                        escape_xml_display(&idm),
+                        fmt_display(-w / 2.0),
+                        fmt_display(-h / 2.0),
+                        fmt_display(w),
+                        fmt_display(h),
                         state_edge_label_html(label_text)
                     );
                 }
@@ -3466,7 +3466,7 @@ fn render_state_edge_label(
             let _ = write!(
                 out,
                 r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-                escape_attr(&idm)
+                escape_xml_display(&idm)
             );
         }
 
@@ -3474,7 +3474,7 @@ fn render_state_edge_label(
             let _ = write!(
                 out,
                 r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-                escape_attr(&sid)
+                escape_xml_display(&sid)
             );
         }
         return;
@@ -3484,7 +3484,7 @@ fn render_state_edge_label(
         let _ = write!(
             out,
             r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-            escape_attr(&edge.id)
+            escape_xml_display(&edge.id)
         );
         return;
     }
@@ -3558,13 +3558,13 @@ fn render_state_edge_label(
     let _ = write!(
         out,
         r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
-        fmt(cx),
-        fmt(cy),
-        escape_attr(&edge.id),
-        fmt(-w / 2.0),
-        fmt(-h / 2.0),
-        fmt(w),
-        fmt(h),
+        fmt_display(cx),
+        fmt_display(cy),
+        escape_xml_display(&edge.id),
+        fmt_display(-w / 2.0),
+        fmt_display(-h / 2.0),
+        fmt_display(w),
+        fmt_display(h),
         state_edge_label_html(label_text)
     );
 }
@@ -3962,9 +3962,9 @@ fn render_state_node_svg(
             let _ = write!(
                 out,
                 r#"<g class="node default" id="{}" transform="translate({}, {})"><circle class="state-start" r="7" width="14" height="14"/></g>"#,
-                escape_attr(&node.dom_id),
-                fmt(cx),
-                fmt(cy)
+                escape_xml_display(&node.dom_id),
+                fmt_display(cx),
+                fmt_display(cy)
             );
         }
         "stateEnd" => {
@@ -3975,9 +3975,9 @@ fn render_state_node_svg(
             let _ = write!(
                 out,
                 r##"<g class="node default" id="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="#ECECFF" style=""/><path d="{}" stroke="#333333" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/><g><path d="{}" stroke="none" stroke-width="0" fill="#9370DB" style=""/><path d="{}" stroke="#9370DB" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/></g></g></g>"##,
-                escape_attr(&node.dom_id),
-                fmt(cx),
-                fmt(cy),
+                escape_xml_display(&node.dom_id),
+                fmt_display(cx),
+                fmt_display(cy),
                 outer_d,
                 outer_d,
                 inner_d,
@@ -3999,10 +3999,10 @@ fn render_state_node_svg(
             let _ = write!(
                 out,
                 r##"<g class="{}" id="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="#333333" style=""/><path d="{}" stroke="#333333" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g></g>"##,
-                escape_attr(&node_class),
-                escape_attr(&node.dom_id),
-                fmt(cx),
-                fmt(cy),
+                escape_xml_display(&node_class),
+                escape_xml_display(&node.dom_id),
+                fmt_display(cx),
+                fmt_display(cy),
                 fill_d,
                 stroke_d
             );
@@ -4021,10 +4021,10 @@ fn render_state_node_svg(
             let _ = write!(
                 out,
                 r##"<g class="{}" id="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="#ECECFF" style=""/><path d="{}" stroke="#9370DB" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g></g>"##,
-                escape_attr(&node_class),
-                escape_attr(&node.dom_id),
-                fmt(cx),
-                fmt(cy),
+                escape_xml_display(&node_class),
+                escape_xml_display(&node.dom_id),
+                fmt_display(cx),
+                fmt_display(cy),
                 fill_d,
                 stroke_d
             );
@@ -4053,16 +4053,16 @@ fn render_state_node_svg(
             let _ = write!(
                 out,
                 r##"<g class="{}" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="{}" stroke="none" stroke-width="0" fill="#fff5ad"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">{}</div></foreignObject></g></g>"##,
-                escape_attr(&node_class),
-                escape_attr(&node.dom_id),
-                fmt(cx),
-                fmt(cy),
+                escape_xml_display(&node_class),
+                escape_xml_display(&node.dom_id),
+                fmt_display(cx),
+                fmt_display(cy),
                 fill_d,
                 stroke_d,
-                fmt(-lw / 2.0),
-                fmt(-lh / 2.0),
-                fmt(lw),
-                fmt(lh),
+                fmt_display(-lw / 2.0),
+                fmt_display(-lh / 2.0),
+                fmt_display(lw),
+                fmt_display(lh),
                 state_node_label_html(&label)
             );
         }
@@ -4113,28 +4113,28 @@ fn render_state_node_svg(
             let _ = write!(
                 out,
                 r#"<g class="{}" id="{}" transform="translate({}, {})"><g><rect class="outer title-state" style="" x="{}" y="{}" width="{}" height="{}"/><line class="divider" x1="{}" x2="{}" y1="{}" y2="{}"/></g><g class="label" style="" transform="translate({}, {})"><foreignObject width="{}" height="{}" transform="translate( {}, 0)"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;">{}</div></foreignObject><foreignObject width="{}" height="{}" transform="translate( {}, {})"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;">{}</div></foreignObject></g></g>"#,
-                escape_attr(&node_class),
-                escape_attr(&node.dom_id),
-                fmt(cx),
-                fmt(cy),
-                fmt(-w / 2.0),
-                fmt(-h / 2.0),
-                fmt(w),
-                fmt(h),
-                fmt(-w / 2.0),
-                fmt(w / 2.0),
-                fmt(divider_y),
-                fmt(divider_y),
-                fmt(-w / 2.0 + half_pad),
-                fmt(-h / 2.0 + top_pad),
-                fmt(title_w),
-                fmt(title_h),
-                fmt(title_x),
+                escape_xml_display(&node_class),
+                escape_xml_display(&node.dom_id),
+                fmt_display(cx),
+                fmt_display(cy),
+                fmt_display(-w / 2.0),
+                fmt_display(-h / 2.0),
+                fmt_display(w),
+                fmt_display(h),
+                fmt_display(-w / 2.0),
+                fmt_display(w / 2.0),
+                fmt_display(divider_y),
+                fmt_display(divider_y),
+                fmt_display(-w / 2.0 + half_pad),
+                fmt_display(-h / 2.0 + top_pad),
+                fmt_display(title_w),
+                fmt_display(title_h),
+                fmt_display(title_x),
                 state_node_label_inline_html(&title),
-                fmt(desc_w),
-                fmt(desc_h),
-                fmt(desc_x),
-                fmt(desc_y),
+                fmt_display(desc_w),
+                fmt_display(desc_h),
+                fmt_display(desc_x),
+                fmt_display(desc_y),
                 state_node_label_inline_html(&desc)
             );
         }
@@ -4265,11 +4265,15 @@ fn render_state_node_svg(
                     String::new()
                 } else {
                     let title_attr = if !link.tooltip.trim().is_empty() {
-                        format!(r#" title="{}""#, escape_attr(link.tooltip.trim()))
+                        format!(r#" title="{}""#, escape_xml_display(link.tooltip.trim()))
                     } else {
                         String::new()
                     };
-                    format!(r#"<a xlink:href="{}"{}>"#, escape_attr(url), title_attr)
+                    format!(
+                        r#"<a xlink:href="{}"{}>"#,
+                        escape_xml_display(url),
+                        title_attr
+                    )
                 }
             } else {
                 String::new()
@@ -4290,11 +4294,6 @@ fn render_state_node_svg(
             )
             .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
 
-            let label_group_style = if text_style_attr.is_empty() {
-                String::new()
-            } else {
-                escape_attr(&text_style_attr)
-            };
             let label_span_style = if text_style_attr.is_empty() {
                 None
             } else {
@@ -4314,27 +4313,26 @@ fn render_state_node_svg(
                     div_style_prefix
                 )
             };
-            let shape_style_escaped = escape_attr(&shape_style_attr);
 
             out.push_str(&format!(
                 r##"<g class="{}" id="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g>{}<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g>{}</g>"##,
-                escape_attr(&node_class),
-                escape_attr(&node.dom_id),
-                fmt(cx),
-                fmt(cy),
+                escape_xml_display(&node_class),
+                escape_xml_display(&node.dom_id),
+                fmt_display(cx),
+                fmt_display(cy),
                 fill_d,
-                escape_attr(fill_attr),
-                shape_style_escaped,
+                escape_xml_display(fill_attr),
+                escape_xml_display(&shape_style_attr),
                 stroke_d,
-                escape_attr(stroke_attr),
-                fmt(stroke_width_attr),
-                shape_style_escaped,
+                escape_xml_display(stroke_attr),
+                fmt_display(stroke_width_attr),
+                escape_xml_display(&shape_style_attr),
                 link_open,
-                label_group_style,
-                fmt(-lw / 2.0),
-                fmt(-lh / 2.0),
-                fmt(lw),
-                fmt(lh),
+                escape_xml_display(&text_style_attr),
+                fmt_display(-lw / 2.0),
+                fmt_display(-lh / 2.0),
+                fmt_display(lw),
+                fmt_display(lh),
                 div_style,
                 label_html,
                 link_close
@@ -4414,8 +4412,8 @@ pub(super) fn render_state_diagram_v2_debug_svg(
                 let _ = write!(
                     &mut out,
                     r#"" data-from-cluster="{}" data-to-cluster="{}" />"#,
-                    escape_attr(e.from_cluster.as_deref().unwrap_or_default()),
-                    escape_attr(e.to_cluster.as_deref().unwrap_or_default())
+                    escape_xml_display(e.from_cluster.as_deref().unwrap_or_default()),
+                    escape_xml_display(e.to_cluster.as_deref().unwrap_or_default())
                 );
             }
 
