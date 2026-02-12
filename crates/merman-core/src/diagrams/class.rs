@@ -1,4 +1,5 @@
 use crate::common::parse_generic_types;
+use crate::models::class_diagram as class_typed;
 use crate::sanitize::sanitize_text;
 use crate::utils::format_url;
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
@@ -368,6 +369,19 @@ impl ClassMember {
         obj.insert("cssStyle".to_string(), Value::String(self.css_style));
         Value::Object(obj)
     }
+
+    fn into_typed(self) -> class_typed::ClassMember {
+        class_typed::ClassMember {
+            member_type: self.member_type,
+            visibility: self.visibility,
+            id: self.id,
+            classifier: self.classifier,
+            parameters: self.parameters,
+            return_type: self.return_type,
+            display_text: self.display_text,
+            css_style: self.css_style,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -391,11 +405,53 @@ struct ClassNode {
     callback_effective: bool,
 }
 
+impl ClassNode {
+    fn into_typed(self) -> class_typed::ClassNode {
+        class_typed::ClassNode {
+            id: self.id,
+            type_param: self.type_param,
+            label: self.label,
+            text: self.text,
+            css_classes: self.css_classes,
+            methods: self
+                .methods
+                .into_iter()
+                .map(ClassMember::into_typed)
+                .collect(),
+            members: self
+                .members
+                .into_iter()
+                .map(ClassMember::into_typed)
+                .collect(),
+            annotations: self.annotations,
+            styles: self.styles,
+            dom_id: self.dom_id,
+            parent: self.parent,
+            link: self.link,
+            link_target: self.link_target,
+            tooltip: self.tooltip,
+            have_callback: self.have_callback,
+            callback: self.callback,
+            callback_effective: self.callback_effective,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct ClassNote {
     id: String,
     class_id: Option<String>,
     text: String,
+}
+
+impl ClassNote {
+    fn into_typed(self) -> class_typed::ClassNote {
+        class_typed::ClassNote {
+            id: self.id,
+            class_id: self.class_id,
+            text: self.text,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -405,11 +461,31 @@ struct Interface {
     class_id: String,
 }
 
+impl Interface {
+    fn into_typed(self) -> class_typed::ClassInterface {
+        class_typed::ClassInterface {
+            id: self.id,
+            label: self.label,
+            class_id: self.class_id,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Namespace {
     id: String,
     dom_id: String,
     class_ids: Vec<String>,
+}
+
+impl Namespace {
+    fn into_typed(self) -> class_typed::Namespace {
+        class_typed::Namespace {
+            id: self.id,
+            dom_id: self.dom_id,
+            class_ids: self.class_ids,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -419,8 +495,18 @@ struct StyleClass {
     text_styles: Vec<String>,
 }
 
-#[derive(Debug, Default)]
-struct ClassDb {
+impl StyleClass {
+    fn into_typed(self) -> class_typed::StyleClass {
+        class_typed::StyleClass {
+            id: self.id,
+            styles: self.styles,
+            text_styles: self.text_styles,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct ClassDb<'a> {
     direction: String,
     classes: IndexMap<String, ClassNode>,
     relations: Vec<RelationData>,
@@ -432,29 +518,40 @@ struct ClassDb {
     namespace_counter: usize,
     acc_title: Option<String>,
     acc_descr: Option<String>,
-    security_level: Option<String>,
-    config: MermaidConfig,
+    security_level: Option<&'a str>,
+    config: &'a MermaidConfig,
 }
 
-impl ClassDb {
-    fn new(config: MermaidConfig) -> Self {
+impl<'a> ClassDb<'a> {
+    fn new(config: &'a MermaidConfig) -> Self {
         Self {
             direction: "TB".to_string(),
-            security_level: config.get_str("securityLevel").map(|s| s.to_string()),
+            classes: IndexMap::new(),
+            relations: Vec::new(),
+            notes: Vec::new(),
+            interfaces: Vec::new(),
+            namespaces: IndexMap::new(),
+            style_classes: IndexMap::new(),
+            class_counter: 0,
+            namespace_counter: 0,
+            acc_title: None,
+            acc_descr: None,
+            security_level: config.get_str("securityLevel"),
             config,
-            ..Default::default()
         }
     }
 }
 
 fn prefer_fast_class_parser() -> bool {
     match std::env::var("MERMAN_CLASS_PARSER").as_deref() {
+        Ok("slow") | Ok("0") | Ok("false") => false,
         Ok("fast") | Ok("1") | Ok("true") => true,
-        _ => false,
+        // Default to "auto": attempt the fast parser and fall back to LALRPOP when it declines.
+        _ => true,
     }
 }
 
-fn parse_class_via_lalrpop(code: &str, meta: &ParseMetadata) -> Result<Value> {
+fn parse_class_via_lalrpop_db<'a>(code: &str, meta: &'a ParseMetadata) -> Result<ClassDb<'a>> {
     let actions = class_grammar::ActionsParser::new()
         .parse(Lexer::new(code))
         .map_err(|e| Error::DiagramParse {
@@ -462,27 +559,48 @@ fn parse_class_via_lalrpop(code: &str, meta: &ParseMetadata) -> Result<Value> {
             message: format!("{e:?}"),
         })?;
 
-    let mut db = ClassDb::new(meta.effective_config.clone());
+    let mut db = ClassDb::new(&meta.effective_config);
     for a in actions {
         db.apply(a).map_err(|e| Error::DiagramParse {
             diagram_type: meta.diagram_type.clone(),
             message: e,
         })?;
     }
+    Ok(db)
+}
+
+fn parse_class_via_lalrpop(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    let db = parse_class_via_lalrpop_db(code, meta)?;
     Ok(db.into_model(meta))
 }
 
 pub fn parse_class(code: &str, meta: &ParseMetadata) -> Result<Value> {
     if prefer_fast_class_parser() {
-        if let Some(v) = parse_class_fast(code, meta)? {
-            return Ok(v);
+        if let Some(db) = parse_class_fast_db(code, meta)? {
+            return Ok(db.into_model(meta));
         }
     }
 
     parse_class_via_lalrpop(code, meta)
 }
 
+pub fn parse_class_typed(code: &str, meta: &ParseMetadata) -> Result<class_typed::ClassDiagram> {
+    if prefer_fast_class_parser() {
+        if let Some(db) = parse_class_fast_db(code, meta)? {
+            return Ok(db.into_typed_model(meta));
+        }
+    }
+
+    let db = parse_class_via_lalrpop_db(code, meta)?;
+    Ok(db.into_typed_model(meta))
+}
+
+#[cfg(test)]
 fn parse_class_fast(code: &str, meta: &ParseMetadata) -> Result<Option<Value>> {
+    Ok(parse_class_fast_db(code, meta)?.map(|db| db.into_model(meta)))
+}
+
+fn parse_class_fast_db<'a>(code: &str, meta: &'a ParseMetadata) -> Result<Option<ClassDb<'a>>> {
     fn parse_quoted_str(rest: &str) -> Option<(String, &str)> {
         let rest = rest.trim_start();
         if !rest.starts_with('"') {
@@ -602,7 +720,7 @@ fn parse_class_fast(code: &str, meta: &ParseMetadata) -> Result<Option<Value>> {
         ))
     }
 
-    let mut db = ClassDb::new(meta.effective_config.clone());
+    let mut db = ClassDb::new(&meta.effective_config);
     let mut saw_header = false;
     let mut current_class: Option<String> = None;
 
@@ -762,7 +880,7 @@ fn parse_class_fast(code: &str, meta: &ParseMetadata) -> Result<Option<Value>> {
         return Ok(None);
     }
 
-    Ok(Some(db.into_model(meta)))
+    Ok(Some(db))
 }
 
 #[cfg(test)]
@@ -1432,9 +1550,9 @@ impl<'input> Iterator for Lexer<'input> {
     }
 }
 
-impl ClassDb {
+impl<'a> ClassDb<'a> {
     fn split_class_name_and_type(&self, id: &str) -> (String, String) {
-        let id = sanitize_text(id, &self.config);
+        let id = sanitize_text(id, self.config);
         let (left, right) = if let Some((left, right)) = id.split_once('~') {
             (
                 left.to_string(),
@@ -1444,11 +1562,11 @@ impl ClassDb {
             (id, String::new())
         };
 
-        let class_name = sanitize_text(&left, &self.config);
+        let class_name = sanitize_text(&left, self.config);
         let type_param = if right.is_empty() {
             right
         } else {
-            sanitize_text(&right, &self.config)
+            sanitize_text(&right, self.config)
         };
 
         (class_name, type_param)
@@ -1496,7 +1614,7 @@ impl ClassDb {
         let Some(c) = self.classes.get_mut(&class_name) else {
             return;
         };
-        let label = sanitize_text(label, &self.config);
+        let label = sanitize_text(label, self.config);
         c.label = label.clone();
         c.text = if type_param.is_empty() {
             label
@@ -1512,7 +1630,7 @@ impl ClassDb {
     fn cleanup_label(&self, label: &str) -> String {
         let t = label.trim();
         let t = t.strip_prefix(':').unwrap_or(t);
-        sanitize_text(t.trim(), &self.config)
+        sanitize_text(t.trim(), self.config)
     }
 
     fn add_member(&mut self, class_name: &str, member: &str) {
@@ -1531,17 +1649,17 @@ impl ClassDb {
                 member_string
                     .trim_start_matches("<<")
                     .trim_end_matches(">>"),
-                &self.config,
+                self.config,
             ));
             return;
         }
         if member_string.contains(')') {
             c.methods
-                .push(ClassMember::new(member_string, "method", &self.config));
+                .push(ClassMember::new(member_string, "method", self.config));
             return;
         }
         c.members
-            .push(ClassMember::new(member_string, "attribute", &self.config));
+            .push(ClassMember::new(member_string, "attribute", self.config));
     }
 
     fn add_members(&mut self, class_name: &str, mut members: Vec<String>) {
@@ -1555,7 +1673,7 @@ impl ClassDb {
         self.add_class(class_name);
         let (class_name, _) = self.split_class_name_and_type(class_name);
         if let Some(c) = self.classes.get_mut(&class_name) {
-            c.annotations.push(sanitize_text(annotation, &self.config));
+            c.annotations.push(sanitize_text(annotation, self.config));
         }
     }
 
@@ -1576,19 +1694,19 @@ impl ClassDb {
     fn set_tooltip(&mut self, id: &str, tooltip: &str) {
         let (class_name, _) = self.split_class_name_and_type(id);
         if let Some(c) = self.classes.get_mut(&class_name) {
-            c.tooltip = Some(sanitize_text(tooltip, &self.config));
+            c.tooltip = Some(sanitize_text(tooltip, self.config));
         }
     }
 
     fn set_link(&mut self, id: &str, url: &str, target: Option<String>) {
         let (class_name, _) = self.split_class_name_and_type(id);
         if let Some(c) = self.classes.get_mut(&class_name) {
-            c.link = format_url(url, &self.config);
+            c.link = format_url(url, self.config);
 
-            let final_target = if self.security_level.as_deref() == Some("sandbox") {
+            let final_target = if self.security_level == Some("sandbox") {
                 "_top".to_string()
             } else if let Some(t) = target.clone() {
-                sanitize_text(&t, &self.config)
+                sanitize_text(&t, self.config)
             } else {
                 "_blank".to_string()
             };
@@ -1611,7 +1729,7 @@ impl ClassDb {
                 map.insert("args".to_string(), Value::String(args.clone()));
             }
             c.callback = Some(map);
-            c.callback_effective = self.security_level.as_deref() == Some("loose");
+            c.callback_effective = self.security_level == Some("loose");
         }
         self.set_css_class(&class_name, "clickable");
     }
@@ -1836,10 +1954,10 @@ impl ClassDb {
                     data.title = Some(self.cleanup_label(&t));
                 }
                 if let Some(t) = data.relation_title1.take() {
-                    data.relation_title1 = Some(sanitize_text(t.trim(), &self.config));
+                    data.relation_title1 = Some(sanitize_text(t.trim(), self.config));
                 }
                 if let Some(t) = data.relation_title2.take() {
-                    data.relation_title2 = Some(sanitize_text(t.trim(), &self.config));
+                    data.relation_title2 = Some(sanitize_text(t.trim(), self.config));
                 }
                 self.add_relation(data);
                 Ok(())
@@ -2027,5 +2145,76 @@ impl ClassDb {
         );
         obj.insert("constants".to_string(), Value::Object(constants_obj));
         Value::Object(obj)
+    }
+
+    fn into_typed_model(self, meta: &ParseMetadata) -> class_typed::ClassDiagram {
+        let classes = self
+            .classes
+            .into_iter()
+            .map(|(id, c)| (id, c.into_typed()))
+            .collect();
+
+        let relations = self
+            .relations
+            .into_iter()
+            .enumerate()
+            .map(|(idx, r)| class_typed::ClassRelation {
+                id: idx.to_string(),
+                id1: r.id1,
+                id2: r.id2,
+                relation_title_1: r.relation_title1.unwrap_or_else(|| "none".to_string()),
+                relation_title_2: r.relation_title2.unwrap_or_else(|| "none".to_string()),
+                title: r.title.unwrap_or_default(),
+                relation: class_typed::RelationShape {
+                    type1: r.relation.type1,
+                    type2: r.relation.type2,
+                    line_type: r.relation.line_type,
+                },
+            })
+            .collect();
+
+        let notes = self.notes.into_iter().map(ClassNote::into_typed).collect();
+        let interfaces = self
+            .interfaces
+            .into_iter()
+            .map(Interface::into_typed)
+            .collect();
+        let namespaces = self
+            .namespaces
+            .into_iter()
+            .map(|(k, ns)| (k, ns.into_typed()))
+            .collect();
+        let style_classes = self
+            .style_classes
+            .into_iter()
+            .map(|(k, sc)| (k, sc.into_typed()))
+            .collect();
+
+        class_typed::ClassDiagram {
+            diagram_type: meta.diagram_type.clone(),
+            direction: self.direction,
+            acc_title: self.acc_title,
+            acc_descr: self.acc_descr,
+            classes,
+            relations,
+            notes,
+            interfaces,
+            namespaces,
+            style_classes,
+            constants: class_typed::ClassConstants {
+                line_type: class_typed::ClassLineTypeConstants {
+                    line: LINE_SOLID,
+                    dotted_line: LINE_DOTTED,
+                },
+                relation_type: class_typed::ClassRelationTypeConstants {
+                    none: REL_NONE,
+                    aggregation: REL_AGGREGATION,
+                    extension: REL_EXTENSION,
+                    composition: REL_COMPOSITION,
+                    dependency: REL_DEPENDENCY,
+                    lollipop: REL_LOLLIPOP,
+                },
+            },
+        }
     }
 }

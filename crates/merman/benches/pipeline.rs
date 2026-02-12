@@ -2,7 +2,7 @@ use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_ma
 use merman::render::{
     LayoutOptions, SvgRenderOptions, headless_layout_options, render_layouted_svg,
 };
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, ParseMetadata, ParseOptions};
 use std::hint::black_box;
 
 fn fixtures() -> Vec<(&'static str, &'static str)> {
@@ -374,10 +374,146 @@ fn bench_end_to_end(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_parse_typed(c: &mut Criterion) {
+    let registry = merman_core::DetectorRegistry::default_mermaid_11_12_2();
+
+    let mut group = c.benchmark_group("parse_typed");
+    for (name, input) in fixtures() {
+        if !name.starts_with("class_") {
+            continue;
+        }
+
+        // Pre-check typed parse viability once to keep the bench stable.
+        let pre = match merman_core::preprocess_diagram_with_known_type(
+            input,
+            &registry,
+            Some("classDiagram"),
+        ) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        let mut effective_config = merman_core::generated::default_site_config();
+        effective_config.deep_merge(pre.config.as_value());
+        let title = pre
+            .title
+            .as_ref()
+            .map(|t| merman_core::sanitize::sanitize_text(t, &effective_config))
+            .filter(|t| !t.is_empty());
+
+        let meta = ParseMetadata {
+            diagram_type: "classDiagram".to_string(),
+            config: pre.config.clone(),
+            effective_config,
+            title,
+        };
+
+        if merman_core::diagrams::class::parse_class_typed(&pre.code, &meta).is_err() {
+            eprintln!("[bench][skip][parse_typed] {name}: parse_class_typed error");
+            continue;
+        }
+
+        group.bench_with_input(BenchmarkId::from_parameter(name), input, |b, data| {
+            b.iter(|| {
+                let pre = match merman_core::preprocess_diagram_with_known_type(
+                    black_box(data),
+                    &registry,
+                    Some("classDiagram"),
+                ) {
+                    Ok(v) => v,
+                    Err(_) => return,
+                };
+
+                let mut effective_config = merman_core::generated::default_site_config();
+                effective_config.deep_merge(pre.config.as_value());
+                let title = pre
+                    .title
+                    .as_ref()
+                    .map(|t| merman_core::sanitize::sanitize_text(t, &effective_config))
+                    .filter(|t| !t.is_empty());
+
+                let meta = ParseMetadata {
+                    diagram_type: "classDiagram".to_string(),
+                    config: pre.config,
+                    effective_config,
+                    title,
+                };
+
+                let parsed = merman_core::diagrams::class::parse_class_typed(&pre.code, &meta);
+                let parsed = match parsed {
+                    Ok(v) => v,
+                    Err(_) => return,
+                };
+
+                black_box(parsed.classes.len());
+            })
+        });
+    }
+    group.finish();
+}
+
+fn bench_parse_typed_only(c: &mut Criterion) {
+    let registry = merman_core::DetectorRegistry::default_mermaid_11_12_2();
+
+    let mut group = c.benchmark_group("parse_typed_only");
+    for (name, input) in fixtures() {
+        if !name.starts_with("class_") {
+            continue;
+        }
+
+        let pre = match merman_core::preprocess_diagram_with_known_type(
+            input,
+            &registry,
+            Some("classDiagram"),
+        ) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        let mut effective_config = merman_core::generated::default_site_config();
+        effective_config.deep_merge(pre.config.as_value());
+        let title = pre
+            .title
+            .as_ref()
+            .map(|t| merman_core::sanitize::sanitize_text(t, &effective_config))
+            .filter(|t| !t.is_empty());
+
+        let meta = ParseMetadata {
+            diagram_type: "classDiagram".to_string(),
+            config: pre.config,
+            effective_config,
+            title,
+        };
+
+        // Pre-check typed parse viability once to keep the bench stable.
+        if merman_core::diagrams::class::parse_class_typed(&pre.code, &meta).is_err() {
+            eprintln!("[bench][skip][parse_typed_only] {name}: parse_class_typed error");
+            continue;
+        }
+
+        let code = pre.code;
+        let meta = meta;
+        group.bench_function(BenchmarkId::from_parameter(name), move |b| {
+            b.iter(|| {
+                let parsed =
+                    merman_core::diagrams::class::parse_class_typed(black_box(&code), &meta);
+                let parsed = match parsed {
+                    Ok(v) => v,
+                    Err(_) => return,
+                };
+                black_box(parsed.classes.len());
+            })
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_parse,
     bench_parse_known_type,
+    bench_parse_typed,
+    bench_parse_typed_only,
     bench_layout,
     bench_render,
     bench_end_to_end

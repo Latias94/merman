@@ -37,23 +37,24 @@ while preserving correctness.
 From a local comparison run on a single machine (see `docs/performance/COMPARISON.md`,
 generated via `tools/bench/compare_mermaid_renderers.py`):
 
-- End-to-end geometric mean (8 fixtures): ~`6.9x` slower than `mermaid-rs-renderer` (mmdr).
+- End-to-end geometric mean (8 fixtures): ~`6.8–6.9x` slower than `mermaid-rs-renderer` (mmdr).
 - Medium fixtures (4): ~`3.1x` slower than mmdr.
 - Tiny fixtures (4): ~`15.2x` slower than mmdr.
 
 Stage spot-checks (same machine, Criterion, mid estimates; generate via
 `python tools/bench/stage_spotcheck.py --fixtures flowchart_tiny,flowchart_medium,state_tiny,state_medium,class_tiny,class_medium,sequence_tiny,sequence_medium --out target/bench/stage_spotcheck.md`):
 
-- `parse`: ~`38.0x` geometric mean slower than mmdr.
-- `layout`: ~`2.6x` geometric mean slower than mmdr.
-- `render`: ~`12.7x` geometric mean slower than mmdr.
+- `parse`: ~`10x` geometric mean slower than mmdr.
+- `layout`: ~`2.9x` geometric mean slower than mmdr.
+- `render`: ~`12–13x` geometric mean slower than mmdr.
+- `end_to_end`: ~`4.8x` geometric mean slower than mmdr.
 
 Interpretation:
 
-- `parse/*` is the primary global outlier (especially `class_*` and `state_*`).
-- `render/*` is a major outlier for `state_*` and `flowchart_*` (string emission + bbox/parity work).
+- `render/*` is now the primary global outlier (especially `state_*` and `flowchart_*`).
+- `parse/*` still has outliers for some tiny fixtures, but is no longer the dominant medium-fixture cost.
 - `layout/*` is not the dominant stage overall, but it is the largest absolute cost for `flowchart_medium`
-  and therefore still a worthwhile target after the parser/render hotspots are under control.
+  and therefore still a worthwhile target after the SVG emitter hotspots are under control.
 
 ## Milestones (revised)
 
@@ -86,6 +87,8 @@ Candidates:
 - Stop using large `serde_json::Value` trees as the primary internal representation for hot parsers.
 - Introduce typed IR for `class` and `state` parsers (diagram-scoped, incremental), and only convert
   to JSON at the fixture/parity boundary.
+- Enable a conservative “fast parser” by default where it can safely decline and fall back to the
+  strict parser (keep an escape hatch like `MERMAN_CLASS_PARSER=slow` for bisect/debug).
 
 Exit criteria:
 
@@ -146,6 +149,7 @@ Exit criteria:
 
 ## Completed (recent)
 
+- Skip expensive HTML-sanitizer passes for strict-mode plain text (`sanitize::remove_script` fast-path).
 - Cached hot regexes in class/gantt parsers (`perf(core): cache hot regexes in class/gantt`).
 - Reduced dagreish edge-proxy overhead in dugong (`perf(dugong): cut dagreish edge-proxy overhead`).
 - Made SVG number/path formatting allocation-free (`fmt_display`, `fmt_path_into`, curve/path emit refactors).

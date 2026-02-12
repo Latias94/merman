@@ -20,6 +20,7 @@ pub mod entities;
 pub mod error;
 pub mod generated;
 pub mod geom;
+pub mod models;
 pub mod preprocess;
 pub mod sanitize;
 mod theme;
