@@ -120,17 +120,24 @@ pub mod feasible_tree {
             let Some((slack, in_v)) = find_min_slack_edge(g, &rank_by_ix, &in_tree_by_ix) else {
                 // Disconnected graphs can occur in downstream usage. Dagre effectively works
                 // per component; here we create a forest by starting a new component root.
-                let Some(next_root) = g.nodes().find(|v| !t.has_node(v)).map(|s| s.to_string())
-                else {
+                let mut next_root: Option<(usize, String)> = None;
+                g.for_each_node_ix(|ix, id, _lbl| {
+                    if next_root.is_some() {
+                        return;
+                    }
+                    if in_tree_by_ix.get(ix).copied().unwrap_or(false) {
+                        return;
+                    }
+                    next_root = Some((ix, id.to_string()));
+                });
+                let Some((ix, next_root)) = next_root else {
                     break;
                 };
-                if let Some(ix) = g.node_ix(&next_root) {
-                    if ix >= in_tree_by_ix.len() {
-                        in_tree_by_ix.resize(ix + 1, false);
-                        rank_by_ix.resize(ix + 1, 0);
-                    }
-                    in_tree_by_ix[ix] = true;
+                if ix >= in_tree_by_ix.len() {
+                    in_tree_by_ix.resize(ix + 1, false);
+                    rank_by_ix.resize(ix + 1, 0);
                 }
+                in_tree_by_ix[ix] = true;
                 t.set_node(next_root, tree::TreeNodeLabel::default());
                 continue;
             };
@@ -147,19 +154,31 @@ pub mod feasible_tree {
         rank_by_ix: &[i32],
         in_tree_by_ix: &mut Vec<bool>,
     ) -> usize {
-        let roots: Vec<String> = t.node_ids();
-        for root in roots {
-            let mut stack: Vec<String> = vec![root];
-
-            while let Some(v) = stack.pop() {
-                let Some(v_ix) = g.node_ix(&v) else {
-                    continue;
+        if g.is_directed() {
+            let mut roots_ix: Vec<usize> = Vec::new();
+            t.for_each_node(|id, _lbl| {
+                let Some(ix) = g.node_ix(id) else {
+                    return;
                 };
+                if ix >= in_tree_by_ix.len() {
+                    in_tree_by_ix.resize(ix + 1, false);
+                }
+                in_tree_by_ix[ix] = true;
+                roots_ix.push(ix);
+            });
 
-                if g.is_directed() {
-                    g.for_each_out_edge_ix(v_ix, None, |tail_ix, head_ix, ek, lbl| {
-                        let w = ek.w.as_str();
-                        if t.has_node(w) {
+            let mut stack_ix: Vec<usize> = Vec::new();
+            for root_ix in roots_ix {
+                stack_ix.clear();
+                stack_ix.push(root_ix);
+                while let Some(v_ix) = stack_ix.pop() {
+                    let Some(v_id) = g.node_id_by_ix(v_ix) else {
+                        continue;
+                    };
+                    let v = v_id.to_string();
+
+                    g.for_each_out_edge_ix(v_ix, None, |tail_ix, head_ix, _ek, lbl| {
+                        if in_tree_by_ix.get(head_ix).copied().unwrap_or(false) {
                             return;
                         }
 
@@ -168,8 +187,12 @@ pub mod feasible_tree {
                         let minlen: i32 = lbl.minlen.max(1) as i32;
                         let slack = head_rank - tail_rank - minlen;
                         if slack == 0 {
-                            let w = w.to_string();
-                            stack.push(w.clone());
+                            let Some(w_id) = g.node_id_by_ix(head_ix) else {
+                                return;
+                            };
+                            let w = w_id.to_string();
+
+                            stack_ix.push(head_ix);
                             if head_ix >= in_tree_by_ix.len() {
                                 in_tree_by_ix.resize(head_ix + 1, false);
                             }
@@ -178,9 +201,9 @@ pub mod feasible_tree {
                         }
                     });
 
-                    g.for_each_in_edge_ix(v_ix, None, |tail_ix, head_ix, ek, lbl| {
-                        let w = ek.v.as_str();
-                        if t.has_node(w) {
+                    g.for_each_in_edge_ix(v_ix, None, |tail_ix, head_ix, _ek, lbl| {
+                        debug_assert_eq!(head_ix, v_ix);
+                        if in_tree_by_ix.get(tail_ix).copied().unwrap_or(false) {
                             return;
                         }
 
@@ -189,8 +212,12 @@ pub mod feasible_tree {
                         let minlen: i32 = lbl.minlen.max(1) as i32;
                         let slack = head_rank - tail_rank - minlen;
                         if slack == 0 {
-                            let w = w.to_string();
-                            stack.push(w.clone());
+                            let Some(w_id) = g.node_id_by_ix(tail_ix) else {
+                                return;
+                            };
+                            let w = w_id.to_string();
+
+                            stack_ix.push(tail_ix);
                             if tail_ix >= in_tree_by_ix.len() {
                                 in_tree_by_ix.resize(tail_ix + 1, false);
                             }
@@ -198,7 +225,14 @@ pub mod feasible_tree {
                             t.set_edge(v.clone(), w);
                         }
                     });
-                } else {
+                }
+            }
+        } else {
+            let roots: Vec<String> = t.node_ids();
+            for root in roots {
+                let mut stack: Vec<String> = vec![root];
+
+                while let Some(v) = stack.pop() {
                     g.for_each_out_edge(&v, None, |ek, lbl| {
                         let w = if v == ek.v {
                             ek.w.as_str()
