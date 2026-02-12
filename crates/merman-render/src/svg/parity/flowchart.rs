@@ -188,6 +188,7 @@ pub(super) fn flowchart_css(
 ) -> String {
     let id = escape_xml(diagram_id);
     let stroke = theme_color(effective_config, "lineColor", "#333333");
+    let arrowhead_color = theme_color(effective_config, "arrowheadColor", stroke.as_str());
     let node_border = theme_color(effective_config, "nodeBorder", "#9370DB");
     let main_bkg = theme_color(effective_config, "mainBkg", "#ECECFF");
     let text_color = theme_color(effective_config, "textColor", "#333");
@@ -405,7 +406,7 @@ pub(super) fn flowchart_css(
         stroke,
         stroke,
         escape_xml(diagram_id),
-        stroke,
+        arrowhead_color,
         escape_xml(diagram_id),
         stroke,
         escape_xml(diagram_id),
@@ -2436,6 +2437,8 @@ pub(super) fn render_flowchart_edge_path(
                     | "rect_left_inv_arrow"
                     | "stadium"
                     | "subroutine"
+                    | "subproc"
+                    | "subprocess"
                     | "lean_right"
                     | "lean-r"
                     | "lean-right"
@@ -2725,7 +2728,7 @@ pub(super) fn render_flowchart_edge_path(
                     crate::model::LayoutPoint { x: -x, y },
                 ])
             }
-            "subroutine" => {
+            "subroutine" | "subproc" | "subprocess" => {
                 // Port of Mermaid@11.12.2 `subroutine.ts` points used for polygon intersection.
                 //
                 // Mermaid's insertPolygonShape(...) uses `w = bbox.width + padding` but the
@@ -6242,7 +6245,7 @@ pub(super) fn render_flowchart_node(
                 out.push_str("</g>");
             }
         }
-        "subroutine" | "fr-rect" => {
+        "subroutine" | "fr-rect" | "subproc" | "subprocess" => {
             // Mermaid `subroutine.ts` (non-handDrawn): polygon via `insertPolygonShape(...)`.
             let total_w = layout_node.width.max(1.0);
             let h = layout_node.height.max(1.0);
@@ -8254,10 +8257,12 @@ pub(super) fn render_flowchart_v2_svg(
     out.push_str("<g>");
     flowchart_markers(&mut out, diagram_id);
 
+    let cfg_curve = config_string(effective_config, &["flowchart", "curve"]);
     let default_edge_interpolate = model
         .edge_defaults
         .as_ref()
         .and_then(|d| d.interpolate.as_deref())
+        .or(cfg_curve.as_deref())
         .unwrap_or("basis")
         .to_string();
     let default_edge_style = model

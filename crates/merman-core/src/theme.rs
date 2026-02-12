@@ -290,6 +290,10 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
 
     // Mermaid 11.12.2: `theme-forest` base colors.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-forest.js`.
+    //
+    // NOTE: `theme-forest` is not a thin palette override. It sets several diagram-facing
+    // variables (flowchart/state/sequence/...) in its `constructor()` + `updateColors()`.
+    // We explicitly seed those values here so headless SVG rendering can match upstream.
     set_if_missing(
         &mut tv,
         "primaryColor",
@@ -299,6 +303,36 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
         &mut tv,
         "secondaryColor",
         Value::String("#cdffb2".to_string()),
+    );
+    set_if_missing(&mut tv, "background", Value::String("white".to_string()));
+    set_if_missing(&mut tv, "border1", Value::String("#13540c".to_string()));
+    set_if_missing(&mut tv, "border2", Value::String("#6eaa49".to_string()));
+    set_if_missing(
+        &mut tv,
+        "arrowheadColor",
+        Value::String("green".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "fontFamily",
+        Value::String("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+    );
+    set_if_missing(&mut tv, "fontSize", Value::String("16px".to_string()));
+    set_if_missing(&mut tv, "titleColor", Value::String("#333".to_string()));
+    set_if_missing(
+        &mut tv,
+        "edgeLabelBackground",
+        Value::String("#e8e8e8".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "errorBkgColor",
+        Value::String("#552222".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "errorTextColor",
+        Value::String("#552222".to_string()),
     );
 
     let Some(primary_color) = get_truthy_string(&tv, "primaryColor") else {
@@ -317,6 +351,61 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
         .map(rgb01_to_hsl)
         .unwrap_or(primary_hsl);
 
+    // `theme-forest` diagram-facing surfaces.
+    // Source: `theme-forest.js` constructor + `updateColors()`.
+    set_if_missing(&mut tv, "mainBkg", Value::String(primary_color.clone()));
+    set_if_missing(&mut tv, "secondBkg", Value::String(secondary_color.clone()));
+
+    // `invert('white')` in `khroma` ends up as a pure black in Mermaid's serialized SVG output.
+    set_if_missing(&mut tv, "lineColor", Value::String("#000000".to_string()));
+    set_if_missing(&mut tv, "textColor", Value::String("#000000".to_string()));
+
+    // Flowchart variables (after `updateColors()`).
+    set_if_missing(&mut tv, "nodeBkg", Value::String(primary_color.clone()));
+    set_if_missing(&mut tv, "nodeBorder", Value::String("#13540c".to_string()));
+    set_if_missing(
+        &mut tv,
+        "clusterBkg",
+        Value::String(secondary_color.clone()),
+    );
+    set_if_missing(
+        &mut tv,
+        "clusterBorder",
+        Value::String("#6eaa49".to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "defaultLinkColor",
+        Value::String("#000000".to_string()),
+    );
+
+    // mkBorder(...) helper (shared across themes).
+    let dark_mode = tv
+        .get("darkMode")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let mk_border_delta_l = if dark_mode { 10.0 } else { -10.0 };
+    set_if_missing(
+        &mut tv,
+        "primaryBorderColor",
+        Value::String(fmt_hsl(adjust_hsl(
+            primary_hsl,
+            0.0,
+            -40.0,
+            mk_border_delta_l,
+        ))),
+    );
+    set_if_missing(
+        &mut tv,
+        "secondaryBorderColor",
+        Value::String(fmt_hsl(adjust_hsl(
+            secondary_hsl,
+            0.0,
+            -40.0,
+            mk_border_delta_l,
+        ))),
+    );
+
     // `theme-forest` sets: `tertiaryColor = lighten(primaryColor, 10)`.
     let tertiary_hsl = if let Some(v) =
         get_truthy_string(&tv, "tertiaryColor").and_then(|s| parse_hex_rgb01(&s).map(rgb01_to_hsl))
@@ -329,6 +418,16 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
         &mut tv,
         "tertiaryColor",
         Value::String(fmt_hsl(tertiary_hsl)),
+    );
+    set_if_missing(
+        &mut tv,
+        "tertiaryBorderColor",
+        Value::String(fmt_hsl(adjust_hsl(
+            tertiary_hsl,
+            0.0,
+            -40.0,
+            mk_border_delta_l,
+        ))),
     );
 
     // `theme-forest` ends up using black label text (via `actorTextColor`).

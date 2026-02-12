@@ -3150,8 +3150,8 @@ fn node_render_dimensions(
             (w, h)
         }
 
-        // Subroutine (framed rectangle): adds an 8px "frame" on both sides.
-        "subroutine" | "fr-rect" => {
+        // Subroutine/subprocess (framed rectangle): adds an 8px "frame" on both sides.
+        "subroutine" | "fr-rect" | "subproc" | "subprocess" => {
             let w = text_w + p;
             let h = text_h + p;
             (w + 16.0, h)
