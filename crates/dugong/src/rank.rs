@@ -407,13 +407,33 @@ pub mod network_simplex {
         };
 
         let mut child_is_tail = true;
-        let mut graph_edge = g.edge(child, parent, None);
-        if graph_edge.is_none() {
-            child_is_tail = false;
-            graph_edge = g.edge(parent, child, None);
-        }
-        let Some(graph_edge) = graph_edge else {
-            return 0.0;
+        let graph_edge = if g.is_directed() {
+            let Some(child_ix) = g.node_ix(child) else {
+                return 0.0;
+            };
+            let Some(parent_ix) = g.node_ix(parent) else {
+                return 0.0;
+            };
+
+            if let Some(e) = g.edge_by_endpoints_ix(child_ix, parent_ix) {
+                e
+            } else {
+                child_is_tail = false;
+                let Some(e) = g.edge_by_endpoints_ix(parent_ix, child_ix) else {
+                    return 0.0;
+                };
+                e
+            }
+        } else {
+            let mut graph_edge = g.edge(child, parent, None);
+            if graph_edge.is_none() {
+                child_is_tail = false;
+                graph_edge = g.edge(parent, child, None);
+            }
+            let Some(graph_edge) = graph_edge else {
+                return 0.0;
+            };
+            graph_edge
         };
 
         let mut cut_value = graph_edge.weight;
@@ -548,7 +568,13 @@ pub mod network_simplex {
         rank_by_ix: &[i32],
         edge: &EdgeKey,
     ) -> EdgeKey {
-        let (v, w) = if g.has_edge(&edge.v, &edge.w, None) {
+        let (v, w) = if let (Some(v_ix), Some(w_ix)) = (g.node_ix(&edge.v), g.node_ix(&edge.w)) {
+            if g.has_edge_ix(v_ix, w_ix) {
+                (edge.v.as_str(), edge.w.as_str())
+            } else {
+                (edge.w.as_str(), edge.v.as_str())
+            }
+        } else if g.has_edge(&edge.v, &edge.w, None) {
             (edge.v.as_str(), edge.w.as_str())
         } else {
             (edge.w.as_str(), edge.v.as_str())
@@ -661,24 +687,21 @@ pub mod network_simplex {
                 continue;
             };
 
-            let (minlen, flipped) = match g.edge(&v, &parent, None) {
-                Some(e) => (e.minlen as i32, false),
-                None => {
-                    let Some(e) = g.edge(&parent, &v, None) else {
-                        continue;
-                    };
-                    (e.minlen as i32, true)
-                }
+            let Some(v_ix) = g.node_ix(&v) else {
+                continue;
+            };
+            let Some(parent_ix) = g.node_ix(&parent) else {
+                continue;
+            };
+            let (minlen, flipped) = if let Some(e) = g.edge_by_endpoints_ix(v_ix, parent_ix) {
+                (e.minlen as i32, false)
+            } else if let Some(e) = g.edge_by_endpoints_ix(parent_ix, v_ix) {
+                (e.minlen as i32, true)
+            } else {
+                continue;
             };
 
-            let parent_rank = if let Some(parent_ix) = g.node_ix(&parent) {
-                rank_by_ix.get(parent_ix).copied().unwrap_or(0)
-            } else {
-                let Some(parent_rank) = g.node(&parent).and_then(|n| n.rank) else {
-                    continue;
-                };
-                parent_rank
-            };
+            let parent_rank = rank_by_ix.get(parent_ix).copied().unwrap_or(0);
             let rank = if flipped {
                 parent_rank + minlen
             } else {
