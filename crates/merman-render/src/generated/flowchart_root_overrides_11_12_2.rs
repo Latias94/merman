@@ -106,6 +106,15 @@ pub fn lookup_flowchart_root_viewport_override(
             Some(("0 0 144.65184020996094 55", "144.652"))
         }
         "upstream_docs_flowchart_subprocess_048" => Some(("0 0 187.4375 55", "187.438")),
+        "upstream_docs_accessibility_acctitle_and_accdescr_usage_examples_004" => {
+            Some(("0 0 621.046875 197.234375", "621.047"))
+        }
+        "upstream_docs_accessibility_acctitle_and_accdescr_usage_examples_006" => {
+            Some(("0 0 621.046875 197.234375", "621.047"))
+        }
+        "upstream_docs_configuration_frontmatter_config_001" => {
+            Some(("0 -50 117.34375 224", "117.344"))
+        }
         _ => None,
     }
 }

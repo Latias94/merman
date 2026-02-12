@@ -17,6 +17,9 @@ pub fn lookup_er_root_viewport_override(diagram_id: &str) -> Option<(&'static st
         "upstream_docs_entityrelationshipdiagram_attribute_keys_and_comments_020" => {
             Some(("0 0 954.203125 686.75", "954.203"))
         }
+        "upstream_docs_accessibility_entity_relationship_diagram_009" => {
+            Some(("0 0 434.015625 470", "434.016"))
+        }
         _ => None,
     }
 }

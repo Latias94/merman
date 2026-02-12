@@ -69,3 +69,20 @@ Source: `repo-ref/mermaid/docs/syntax/mindmap.md`
   - `fixtures/mindmap/upstream_docs_mindmap_cloud_015.mmd`
   - `fixtures/mindmap/upstream_docs_mindmap_hexagon_017.mmd`
   - `fixtures/mindmap/upstream_docs_mindmap_default_019.mmd`
+- syntax example:
+  `fixtures/mindmap/upstream_docs_mindmap_syntax_005.mmd`
+- icons example:
+  `fixtures/mindmap/upstream_docs_mindmap_icons_021.mmd`
+- classes example:
+  `fixtures/mindmap/upstream_docs_mindmap_classes_023.mmd`
+- markdown strings example:
+  `fixtures/mindmap/upstream_docs_mindmap_markdown_strings_028.mmd`
+
+## Config docs-derived mindmap fixtures
+
+Source: `repo-ref/mermaid/packages/mermaid/src/docs/config/tidy-tree.md`
+
+- tidy-tree layout example (minimal):
+  `fixtures/mindmap/upstream_docs_tidy_tree_example_usage_001.mmd`
+- tidy-tree layout example (nested + icons + `<br/>`):
+  `fixtures/mindmap/upstream_docs_tidy_tree_example_usage_002.mmd`

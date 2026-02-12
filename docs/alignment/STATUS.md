@@ -80,10 +80,12 @@ Recent progress (2026-02-11): imported external fixtures from `mermaid-rs-render
 (with upstream SVG baselines), keeping the global parity-root gate green.
 Recent progress (2026-02-11): imported additional Flowchart docs fixtures (shapes + unicode + comments + custom icons
 + small directive examples) with upstream SVG baselines, keeping the global parity-root gate green.
+Recent progress (2026-02-12): imported additional fixtures from Mermaid config docs (`packages/mermaid/src/docs/config/*.md`),
+including accessibility examples and mindmap `tidy-tree`, keeping `parity-root` green.
 As of 2026-02-10, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
 for the current fixture set (diagram subtree parity).
 As of 2026-02-12, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 0 DOM
-mismatches for the current fixture set (723/723 upstream SVG baselines, including root viewport parity).
+mismatches for the current fixture set (739/739 upstream SVG baselines, including root viewport parity).
 
 Post-baseline hardening plan (coverage growth + override consolidation + CI guardrails) is tracked in
 `docs/alignment/PARITY_HARDENING_PLAN.md`.

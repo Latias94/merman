@@ -67,6 +67,7 @@ pub fn lookup_class_root_viewport_override(
         "upstream_relation_types_and_cardinalities_spec" => {
             Some(("0 0 1704.16015625 416", "1704.16"))
         }
+        "upstream_docs_accessibility_class_diagram_008" => Some(("0 0 94.625 234", "94.625")),
         _ => None,
     }
 }

@@ -11,6 +11,7 @@ pub fn lookup_pie_root_viewport_override(diagram_id: &str) -> Option<(&'static s
         "upstream_docs_examples_basic_pie_chart_002" => {
             Some(("0 0 735.45849609375 450", "735.458"))
         }
+        "upstream_docs_accessibility_pie_chart_012" => Some(("0 0 596.21875 450", "596.219")),
         "upstream_pie_acc_descr_multiline_spec" => Some(("0 0 537.40283203125 450", "537.403")),
         "upstream_pie_acc_descr_spec" => Some(("0 0 537.40283203125 450", "537.403")),
         "upstream_pie_acc_title_spec" => Some(("0 0 537.40283203125 450", "537.403")),

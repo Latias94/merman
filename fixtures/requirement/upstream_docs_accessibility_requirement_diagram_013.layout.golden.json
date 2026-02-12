@@ -1,0 +1,67 @@
+{
+  "diagramType": "requirement",
+  "layout": {
+    "RequirementDiagram": {
+      "nodes": [
+        {
+          "id": "test_req",
+          "x": 8.0,
+          "y": 194.0,
+          "width": 157.734,
+          "height": 184.0,
+          "is_cluster": false
+        },
+        {
+          "id": "test_entity",
+          "x": 17.82,
+          "y": 8.0,
+          "width": 138.094,
+          "height": 112.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "test_entity-test_req-0",
+          "from": "test_entity",
+          "to": "test_req",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 86.867,
+              "y": 120.0
+            },
+            {
+              "x": 86.867,
+              "y": 157.0
+            },
+            {
+              "x": 86.867,
+              "y": 194.0
+            }
+          ],
+          "label": {
+            "x": 86.867,
+            "y": 157.0,
+            "width": 91.516,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 165.734,
+        "max_y": 378.0
+      }
+    }
+  }
+}
