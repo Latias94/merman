@@ -608,8 +608,8 @@ pub(super) fn flowchart_extra_markers(out: &mut String, diagram_id: &str, colors
             r#"<marker id="{}_flowchart-v2-pointEnd__{}" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;" stroke="{}" fill="{}"/></marker>"#,
             escape_xml(diagram_id),
             escape_xml(&cid),
-            escape_attr(c.trim()),
-            escape_attr(c.trim())
+            escape_xml_display(c.trim()),
+            escape_xml_display(c.trim())
         );
     }
 }
@@ -4554,22 +4554,22 @@ pub(super) fn render_flowchart_edge_path(
 
     let marker_start_attr = marker_start
         .as_deref()
-        .map(|m| format!(r#" marker-start="url(#{})""#, escape_attr(m)))
+        .map(|m| format!(r#" marker-start="url(#{})""#, escape_xml_display(m)))
         .unwrap_or_default();
     let marker_end_attr = marker_end
         .as_deref()
-        .map(|m| format!(r#" marker-end="url(#{})""#, escape_attr(m)))
+        .map(|m| format!(r#" marker-end="url(#{})""#, escape_xml_display(m)))
         .unwrap_or_default();
 
     let _ = write!(
         out,
         r#"<path d="{}" id="{}" class="{}" style="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}"{}{} />"#,
         d,
-        escape_attr(&edge.id),
-        escape_attr(&class_attr),
-        escape_attr(&style_attr_value),
-        escape_attr(&edge.id),
-        escape_attr(&points_b64),
+        escape_xml_display(&edge.id),
+        escape_xml_display(&class_attr),
+        escape_xml_display(&style_attr_value),
+        escape_xml_display(&edge.id),
+        escape_xml_display(&points_b64),
         marker_start_attr,
         marker_end_attr
     );
@@ -4594,7 +4594,7 @@ pub(super) fn render_flowchart_edge_label(
     } else {
         format!(
             r#" style="{}""#,
-            escape_attr(compiled_label_styles.label_style.trim())
+            escape_xml_display(compiled_label_styles.label_style.trim())
         )
     };
     let div_color_prefix = {
@@ -5387,7 +5387,7 @@ pub(super) fn render_flowchart_node(
             let _ = write!(
                 out,
                 r#"<a xlink:href="{}" transform="translate({}, {})">"#,
-                escape_attr(href),
+                escape_xml_display(href),
                 fmt_display(x),
                 fmt_display(y)
             );
@@ -5402,16 +5402,16 @@ pub(super) fn render_flowchart_node(
         let _ = write!(
             out,
             r#"<g class="{}" id="{}"{}>"#,
-            escape_attr(&class_attr),
-            escape_attr(&group_id),
+            escape_xml_display(&class_attr),
+            escape_xml_display(&group_id),
             tooltip_attr
         );
     } else {
         let _ = write!(
             out,
             r#"<g class="{}" id="{}" transform="translate({}, {})"{}>"#,
-            escape_attr(&class_attr),
-            escape_attr(&group_id),
+            escape_xml_display(&class_attr),
+            escape_xml_display(&group_id),
             fmt_display(x),
             fmt_display(y),
             tooltip_attr
@@ -5835,8 +5835,8 @@ pub(super) fn render_flowchart_node(
                 let _ = write!(
                     out,
                     r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"/>"#,
-                    escape_attr(&rect_fill_path),
-                    escape_attr(fill_color)
+                    escape_xml_display(&rect_fill_path),
+                    escape_xml_display(fill_color)
                 );
                 if let Some(stroke_d) = roughjs_stroke_path_for_svg_path(
                     &rect_stroke_path,
@@ -5848,10 +5848,10 @@ pub(super) fn render_flowchart_node(
                     let _ = write!(
                         out,
                         r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
-                        escape_attr(&stroke_d),
-                        escape_attr(stroke_color),
+                        escape_xml_display(&stroke_d),
+                        escape_xml_display(stroke_color),
                         fmt_display(stroke_width as f64),
-                        escape_attr(stroke_dasharray)
+                        escape_xml_display(stroke_dasharray)
                     );
                 }
                 out.push_str("</g>");
@@ -5866,10 +5866,10 @@ pub(super) fn render_flowchart_node(
                 let _ = write!(
                     out,
                     r#"<g class="label" style="" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel">{}</span></div></foreignObject></g>"#,
-                    fmt(-metrics.width / 2.0),
-                    fmt(label_dy),
-                    fmt(metrics.width),
-                    fmt(metrics.height),
+                    fmt_display(-metrics.width / 2.0),
+                    fmt_display(label_dy),
+                    fmt_display(metrics.width),
+                    fmt_display(metrics.height),
                     label_html
                 );
 
