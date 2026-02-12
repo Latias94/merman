@@ -4711,13 +4711,13 @@ pub(super) fn render_flowchart_edge_label(
                     let _ = write!(
                         out,
                         r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="" x="-2" y="1" width="{}" height="{}"/>"#,
-                        fmt(x),
-                        fmt(y),
-                        escape_attr(&edge.id),
-                        fmt(dx),
-                        fmt(dy),
-                        fmt(w),
-                        fmt(h)
+                        fmt_display(x),
+                        fmt_display(y),
+                        escape_xml_display(&edge.id),
+                        fmt_display(dx),
+                        fmt_display(dy),
+                        fmt_display(w),
+                        fmt_display(h)
                     );
                     let wrapped = flowchart_wrap_svg_text_lines(
                         ctx.measurer,
@@ -4750,13 +4750,13 @@ pub(super) fn render_flowchart_edge_label(
                 let _ = write!(
                     out,
                     r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><g><rect class="background" style="" x="-2" y="1" width="{}" height="{}"/>"#,
-                    fmt(x),
-                    fmt(y),
-                    escape_attr(&edge.id),
-                    fmt(-w / 2.0),
-                    fmt(-h / 2.0),
-                    fmt(w),
-                    fmt(h)
+                    fmt_display(x),
+                    fmt_display(y),
+                    escape_xml_display(&edge.id),
+                    fmt_display(-w / 2.0),
+                    fmt_display(-h / 2.0),
+                    fmt_display(w),
+                    fmt_display(h)
                 );
                 let wrapped = flowchart_wrap_svg_text_lines(
                     ctx.measurer,
@@ -4779,7 +4779,7 @@ pub(super) fn render_flowchart_edge_label(
         let _ = write!(
             out,
             r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)">"#,
-            escape_attr(&edge.id)
+            escape_xml_display(&edge.id)
         );
         write_flowchart_svg_text(out, "", false);
         out.push_str("</g></g>");
@@ -5003,7 +5003,7 @@ pub(super) fn render_flowchart_edge_label(
             {
                 format!(
                     "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
-                    mw = fmt(ctx.wrapping_width)
+                    mw = fmt_display(ctx.wrapping_width)
                 )
             } else {
                 "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;".to_string()
@@ -5016,14 +5016,14 @@ pub(super) fn render_flowchart_edge_label(
             let _ = write!(
                 out,
                 r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g></g>"#,
-                fmt(x),
-                fmt(y),
-                escape_attr(&edge.id),
-                fmt(-w / 2.0),
-                fmt(-h / 2.0),
-                fmt(w),
-                fmt(h),
-                escape_attr(&div_style),
+                fmt_display(x),
+                fmt_display(y),
+                escape_xml_display(&edge.id),
+                fmt_display(-w / 2.0),
+                fmt_display(-h / 2.0),
+                fmt_display(w),
+                fmt_display(h),
+                escape_xml_display(&div_style),
                 span_style_attr,
                 label_html
             );
@@ -5070,7 +5070,7 @@ pub(super) fn render_flowchart_edge_label(
             {
                 format!(
                     "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
-                    mw = fmt(ctx.wrapping_width)
+                    mw = fmt_display(ctx.wrapping_width)
                 )
             } else {
                 "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;".to_string()
@@ -5083,14 +5083,14 @@ pub(super) fn render_flowchart_edge_label(
             let _ = write!(
                 out,
                 r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g></g>"#,
-                fmt(x),
-                fmt(y),
-                escape_attr(&edge.id),
-                fmt(-w / 2.0),
-                fmt(-h / 2.0),
-                fmt(w.max(0.0)),
-                fmt(h.max(0.0)),
-                escape_attr(&div_style),
+                fmt_display(x),
+                fmt_display(y),
+                escape_xml_display(&edge.id),
+                fmt_display(-w / 2.0),
+                fmt_display(-h / 2.0),
+                fmt_display(w.max(0.0)),
+                fmt_display(h.max(0.0)),
+                escape_xml_display(&div_style),
                 span_style_attr,
                 label_html
             );
@@ -5101,8 +5101,8 @@ pub(super) fn render_flowchart_edge_label(
     let _ = write!(
         out,
         r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}></span></div></foreignObject></g></g>"#,
-        escape_attr(&edge.id),
-        escape_attr(&format!(
+        escape_xml_display(&edge.id),
+        escape_xml_display(&format!(
             "{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;",
             div_color_prefix
         )),
