@@ -97,6 +97,7 @@ pub mod feasible_tree {
             rank_by_ix[ix] = lbl.rank.unwrap_or(0);
         });
         let mut in_tree_by_ix: Vec<bool> = vec![false; rank_by_ix.len()];
+        let mut tree_g_ixs: Vec<usize> = Vec::new();
 
         let mut t: Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()> = Graph::new(GraphOptions {
             directed: false,
@@ -114,9 +115,10 @@ pub mod feasible_tree {
                 rank_by_ix.resize(ix + 1, 0);
             }
             in_tree_by_ix[ix] = true;
+            tree_g_ixs.push(ix);
         }
 
-        while tight_tree(&mut t, g, &rank_by_ix, &mut in_tree_by_ix) < size {
+        while tight_tree(&mut t, g, &rank_by_ix, &mut in_tree_by_ix, &mut tree_g_ixs) < size {
             let Some((slack, in_v)) = find_min_slack_edge(g, &rank_by_ix, &in_tree_by_ix) else {
                 // Disconnected graphs can occur in downstream usage. Dagre effectively works
                 // per component; here we create a forest by starting a new component root.
@@ -138,11 +140,12 @@ pub mod feasible_tree {
                     rank_by_ix.resize(ix + 1, 0);
                 }
                 in_tree_by_ix[ix] = true;
+                tree_g_ixs.push(ix);
                 t.set_node(next_root, tree::TreeNodeLabel::default());
                 continue;
             };
             let delta = if in_v { slack } else { -slack };
-            shift_ranks(&t, g, &mut rank_by_ix, delta);
+            shift_ranks(g, &mut rank_by_ix, &tree_g_ixs, delta);
         }
 
         t
@@ -153,79 +156,67 @@ pub mod feasible_tree {
         g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
         rank_by_ix: &[i32],
         in_tree_by_ix: &mut Vec<bool>,
+        tree_g_ixs: &mut Vec<usize>,
     ) -> usize {
         if g.is_directed() {
-            let mut roots_ix: Vec<usize> = Vec::new();
-            t.for_each_node(|id, _lbl| {
-                let Some(ix) = g.node_ix(id) else {
-                    return;
-                };
-                if ix >= in_tree_by_ix.len() {
-                    in_tree_by_ix.resize(ix + 1, false);
-                }
-                in_tree_by_ix[ix] = true;
-                roots_ix.push(ix);
-            });
-
             let mut stack_ix: Vec<usize> = Vec::new();
-            for root_ix in roots_ix {
-                stack_ix.clear();
-                stack_ix.push(root_ix);
-                while let Some(v_ix) = stack_ix.pop() {
-                    let Some(v_id) = g.node_id_by_ix(v_ix) else {
-                        continue;
-                    };
-                    let v = v_id.to_string();
+            stack_ix.extend(tree_g_ixs.iter().copied());
+            while let Some(v_ix) = stack_ix.pop() {
+                let Some(v_id) = g.node_id_by_ix(v_ix) else {
+                    continue;
+                };
+                let v = v_id.to_string();
 
-                    g.for_each_out_edge_ix(v_ix, None, |tail_ix, head_ix, _ek, lbl| {
-                        if in_tree_by_ix.get(head_ix).copied().unwrap_or(false) {
+                g.for_each_out_edge_ix(v_ix, None, |tail_ix, head_ix, _ek, lbl| {
+                    if in_tree_by_ix.get(head_ix).copied().unwrap_or(false) {
+                        return;
+                    }
+
+                    let tail_rank = rank_by_ix.get(tail_ix).copied().unwrap_or(0);
+                    let head_rank = rank_by_ix.get(head_ix).copied().unwrap_or(0);
+                    let minlen: i32 = lbl.minlen.max(1) as i32;
+                    let slack = head_rank - tail_rank - minlen;
+                    if slack == 0 {
+                        let Some(w_id) = g.node_id_by_ix(head_ix) else {
                             return;
+                        };
+                        let w = w_id.to_string();
+
+                        stack_ix.push(head_ix);
+                        if head_ix >= in_tree_by_ix.len() {
+                            in_tree_by_ix.resize(head_ix + 1, false);
                         }
+                        in_tree_by_ix[head_ix] = true;
+                        tree_g_ixs.push(head_ix);
+                        t.set_edge(v.clone(), w);
+                    }
+                });
 
-                        let tail_rank = rank_by_ix.get(tail_ix).copied().unwrap_or(0);
-                        let head_rank = rank_by_ix.get(head_ix).copied().unwrap_or(0);
-                        let minlen: i32 = lbl.minlen.max(1) as i32;
-                        let slack = head_rank - tail_rank - minlen;
-                        if slack == 0 {
-                            let Some(w_id) = g.node_id_by_ix(head_ix) else {
-                                return;
-                            };
-                            let w = w_id.to_string();
+                g.for_each_in_edge_ix(v_ix, None, |tail_ix, head_ix, _ek, lbl| {
+                    debug_assert_eq!(head_ix, v_ix);
+                    if in_tree_by_ix.get(tail_ix).copied().unwrap_or(false) {
+                        return;
+                    }
 
-                            stack_ix.push(head_ix);
-                            if head_ix >= in_tree_by_ix.len() {
-                                in_tree_by_ix.resize(head_ix + 1, false);
-                            }
-                            in_tree_by_ix[head_ix] = true;
-                            t.set_edge(v.clone(), w);
-                        }
-                    });
-
-                    g.for_each_in_edge_ix(v_ix, None, |tail_ix, head_ix, _ek, lbl| {
-                        debug_assert_eq!(head_ix, v_ix);
-                        if in_tree_by_ix.get(tail_ix).copied().unwrap_or(false) {
+                    let tail_rank = rank_by_ix.get(tail_ix).copied().unwrap_or(0);
+                    let head_rank = rank_by_ix.get(head_ix).copied().unwrap_or(0);
+                    let minlen: i32 = lbl.minlen.max(1) as i32;
+                    let slack = head_rank - tail_rank - minlen;
+                    if slack == 0 {
+                        let Some(w_id) = g.node_id_by_ix(tail_ix) else {
                             return;
-                        }
+                        };
+                        let w = w_id.to_string();
 
-                        let tail_rank = rank_by_ix.get(tail_ix).copied().unwrap_or(0);
-                        let head_rank = rank_by_ix.get(head_ix).copied().unwrap_or(0);
-                        let minlen: i32 = lbl.minlen.max(1) as i32;
-                        let slack = head_rank - tail_rank - minlen;
-                        if slack == 0 {
-                            let Some(w_id) = g.node_id_by_ix(tail_ix) else {
-                                return;
-                            };
-                            let w = w_id.to_string();
-
-                            stack_ix.push(tail_ix);
-                            if tail_ix >= in_tree_by_ix.len() {
-                                in_tree_by_ix.resize(tail_ix + 1, false);
-                            }
-                            in_tree_by_ix[tail_ix] = true;
-                            t.set_edge(v.clone(), w);
+                        stack_ix.push(tail_ix);
+                        if tail_ix >= in_tree_by_ix.len() {
+                            in_tree_by_ix.resize(tail_ix + 1, false);
                         }
-                    });
-                }
+                        in_tree_by_ix[tail_ix] = true;
+                        tree_g_ixs.push(tail_ix);
+                        t.set_edge(v.clone(), w);
+                    }
+                });
             }
         } else {
             let roots: Vec<String> = t.node_ids();
@@ -262,6 +253,7 @@ pub mod feasible_tree {
                                     in_tree_by_ix.resize(w_ix + 1, false);
                                 }
                                 in_tree_by_ix[w_ix] = true;
+                                tree_g_ixs.push(w_ix);
                             }
                             t.set_edge(v.clone(), w);
                         }
@@ -299,25 +291,19 @@ pub mod feasible_tree {
     }
 
     fn shift_ranks(
-        t: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
         g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
         rank_by_ix: &mut Vec<i32>,
+        tree_g_ixs: &[usize],
         delta: i32,
     ) {
-        for v in t.nodes() {
-            let Some(label) = g.node_mut(v) else {
-                continue;
-            };
-            let Some(rank) = label.rank else {
-                continue;
-            };
-            let new_rank = rank + delta;
-            label.rank = Some(new_rank);
-            if let Some(ix) = g.node_ix(v) {
-                if ix >= rank_by_ix.len() {
-                    rank_by_ix.resize(ix + 1, 0);
-                }
-                rank_by_ix[ix] = new_rank;
+        for &ix in tree_g_ixs {
+            if ix >= rank_by_ix.len() {
+                rank_by_ix.resize(ix + 1, 0);
+            }
+            let new_rank = rank_by_ix[ix] + delta;
+            rank_by_ix[ix] = new_rank;
+            if let Some(label) = g.node_label_mut_by_ix(ix) {
+                label.rank = Some(new_rank);
             }
         }
     }
