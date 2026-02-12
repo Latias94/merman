@@ -1,0 +1,109 @@
+{
+  "diagramType": "er",
+  "layout": {
+    "ErDiagram": {
+      "nodes": [
+        {
+          "id": "entity-CAR-0",
+          "x": 108.867,
+          "y": 357.5,
+          "width": 217.735,
+          "height": 171.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-HOUSE-2",
+          "x": 407.735,
+          "y": 357.5,
+          "width": 100.0,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-PERSON-1",
+          "x": 258.301,
+          "y": 85.5,
+          "width": 158.215,
+          "height": 171.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "er-rel-0",
+          "from": "entity-PERSON-1",
+          "to": "entity-CAR-0",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 179.194,
+              "y": 157.496
+            },
+            {
+              "x": 108.867,
+              "y": 221.5
+            },
+            {
+              "x": 108.867,
+              "y": 272.0
+            }
+          ],
+          "label": {
+            "x": 108.867,
+            "y": 221.5,
+            "width": 31.25,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ONLY_ONE_END",
+          "stroke_dasharray": null
+        },
+        {
+          "id": "er-rel-1",
+          "from": "entity-PERSON-1",
+          "to": "entity-HOUSE-2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 337.409,
+              "y": 157.496
+            },
+            {
+              "x": 407.735,
+              "y": 221.5
+            },
+            {
+              "x": 407.735,
+              "y": 315.5
+            }
+          ],
+          "label": {
+            "x": 407.735,
+            "y": 221.5,
+            "width": 20.672,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ZERO_OR_MORE_START",
+          "end_marker": "ONLY_ONE_END",
+          "stroke_dasharray": null
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 457.735,
+        "max_y": 443.0
+      }
+    }
+  }
+}

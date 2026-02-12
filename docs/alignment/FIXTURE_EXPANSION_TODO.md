@@ -40,6 +40,9 @@ Recently imported (keep gates green after each batch):
 - 2026-02-12: Flowchart directives docs (`directives.md`) legacy `graph TD` directive examples (theme `forest`, `flowchart.curve=linear`).
 - 2026-02-12: Flowchart additional shape fixtures from `docs/syntax/flowchart.md` (hexagon/parallelogram/trapezoids/double-circle + process/event/terminal/subprocess).
 - 2026-02-12: Mermaid config docs batch import from `packages/mermaid/src/docs/config/*.md` (accessibility + directives + theming + tidy-tree), keeping the global `parity-root` gate green.
+- 2026-02-12: More `packages/mermaid/src/docs/*` fixtures batch import (25 fixtures; ER/Gantt/GitGraph/XYChart) with upstream SVG baselines.
+- 2026-02-12: Flowchart docs batch stabilization: Flowchart-v2 rendering-elements parity fixes (curly brace shapes + SVG-label escaped tag spacing) and a small refresh of root viewport overrides (State/Class/GitGraph/Mindmap/Architecture) to keep the global `parity-root` gate green.
+- 2026-02-12: Imported a small set of additional docs-site fixtures (intro/examples) for Mindmap/Class/Sequence/Flowchart and refreshed root viewport overrides as needed to keep the global `parity-root` gate green.
 - 2026-02-11: State `stateDiagram.md` docs examples batch import (11 new fixtures; additional blocks were skipped as duplicates).
 - 2026-02-11: Sequence `sequenceDiagram.md` docs examples batch import (16 new fixtures; additional blocks were skipped as duplicates).
 - 2026-02-11: Class `classDiagram.md` docs examples batch import (13 new fixtures, including `hideEmptyMembersBox` and inline style variants).
@@ -63,8 +66,13 @@ Focus areas:
 Deferred (tracked for future import / parity work):
 
 - Flowchart frontmatter config `layout: elk` (requires ELK layout parity support; current headless layout is dagre-ish).
+- Flowchart "layout and look" syntax reference examples (frontmatter `config: { look: ..., layout: ... }`) were briefly imported but removed due to deeper SVG DOM structure deltas (marker grouping / root wrappers / transition class). Track these as a dedicated Flowchart "layout+look" parity work item.
 - Sequence config directive examples that require `sequence.wrap=true` and `sequence.width` layout parity.
 - Sequence math rendering (`$$...$$`) parity (upstream uses browser math rendering and `<foreignObject>` output).
+- C4 docs fixtures imported from Mermaid docs were temporarily tried and then removed because they require deeper SVG DOM parity
+  beyond root viewport overrides (e.g. `textLength` and `tspan dy` behavior). Track these as a dedicated C4 parity work item.
+- A complex Gantt docs fixture (`timeline with comments + frontmatter config`) was skipped due to non-trivial DOM deltas; revisit
+  as a dedicated Gantt parity item after additional renderer hardening.
 
 ## Special case: ZenUML (external diagram)
 

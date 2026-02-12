@@ -85,7 +85,7 @@ including accessibility examples and mindmap `tidy-tree`, keeping `parity-root` 
 As of 2026-02-10, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
 for the current fixture set (diagram subtree parity).
 As of 2026-02-12, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 0 DOM
-mismatches for the current fixture set (739/739 upstream SVG baselines, including root viewport parity).
+mismatches for the current fixture set (783/783 upstream SVG baselines, including root viewport parity).
 
 Post-baseline hardening plan (coverage growth + override consolidation + CI guardrails) is tracked in
 `docs/alignment/PARITY_HARDENING_PLAN.md`.

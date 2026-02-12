@@ -1204,7 +1204,9 @@ pub fn layout_gantt_diagram(
             format!("{} ", t.classes.join(" "))
         };
 
-        let class_overflows = !t.vert && text_width > (end_x_for_class - start_x_for_class).abs();
+        // Mermaid checks overflow for both horizontal and vertical labels:
+        // `if (textWidth > endX - startX) { ... }` (Mermaid@11.12.2 ganttRenderer.js).
+        let class_overflows = text_width > (end_x_for_class - start_x_for_class).abs();
         let outside_left =
             class_overflows && (end_x_for_class + text_width + 1.5 * left_padding > width);
         let outside_right = class_overflows && !outside_left;

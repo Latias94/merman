@@ -67,7 +67,13 @@ pub fn lookup_class_root_viewport_override(
         "upstream_relation_types_and_cardinalities_spec" => {
             Some(("0 0 1704.16015625 416", "1704.16"))
         }
+        "upstream_annotations_in_brackets_spec" => Some(("0 0 335.125 184", "335.125")),
+        "upstream_note_keywords_spec" => Some(("0 0 669.90625 246", "669.906")),
+        "upstream_separators_labels_notes" => Some(("0 0 553.8515625 594", "553.852")),
         "upstream_docs_accessibility_class_diagram_008" => Some(("0 0 94.625 234", "94.625")),
+        "upstream_docs_examples_class_diagram_syntax_classdiagram_md_004" => {
+            Some(("0 0 786.484375 718", "786.484"))
+        }
         _ => None,
     }
 }

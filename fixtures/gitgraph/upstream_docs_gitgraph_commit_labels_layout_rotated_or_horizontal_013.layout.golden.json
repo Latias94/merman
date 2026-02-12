@@ -1,0 +1,276 @@
+{
+  "diagramType": "gitGraph",
+  "layout": {
+    "GitGraphDiagram": {
+      "bounds": {
+        "min_x": -61.719,
+        "min_y": -18.0,
+        "max_x": 508.0,
+        "max_y": 168.0
+      },
+      "direction": "LR",
+      "rotate_commit_label": false,
+      "show_branches": true,
+      "show_commit_label": true,
+      "parallel_commits": false,
+      "diagram_padding": 8.0,
+      "max_pos": 500.0,
+      "branches": [
+        {
+          "name": "main",
+          "index": 0.0,
+          "pos": 0.0,
+          "bbox_width": 30.719,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "c2",
+          "index": 1.0,
+          "pos": 50.0,
+          "bbox_width": 15.844,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "b1",
+          "index": 2.0,
+          "pos": 100.0,
+          "bbox_width": 15.844,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "b2",
+          "index": 3.0,
+          "pos": 150.0,
+          "bbox_width": 15.844,
+          "bbox_height": 17.6
+        }
+      ],
+      "commits": [
+        {
+          "id": "feat(api): ...",
+          "message": "",
+          "seq": 0.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [],
+          "branch": "main",
+          "pos": 0.0,
+          "pos_with_offset": 10.0,
+          "x": 10.0,
+          "y": 0.0
+        },
+        {
+          "id": "a",
+          "message": "",
+          "seq": 1.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "feat(api): ..."
+          ],
+          "branch": "main",
+          "pos": 50.0,
+          "pos_with_offset": 60.0,
+          "x": 60.0,
+          "y": 0.0
+        },
+        {
+          "id": "b",
+          "message": "",
+          "seq": 2.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "a"
+          ],
+          "branch": "main",
+          "pos": 100.0,
+          "pos_with_offset": 110.0,
+          "x": 110.0,
+          "y": 0.0
+        },
+        {
+          "id": "fix(client): .extra long label..",
+          "message": "",
+          "seq": 3.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "b"
+          ],
+          "branch": "main",
+          "pos": 150.0,
+          "pos_with_offset": 160.0,
+          "x": 160.0,
+          "y": 0.0
+        },
+        {
+          "id": "feat(modules): ...",
+          "message": "",
+          "seq": 4.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "fix(client): .extra long label.."
+          ],
+          "branch": "c2",
+          "pos": 200.0,
+          "pos_with_offset": 210.0,
+          "x": 210.0,
+          "y": 50.0
+        },
+        {
+          "id": "test(client): ...",
+          "message": "",
+          "seq": 5.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "feat(modules): ..."
+          ],
+          "branch": "c2",
+          "pos": 250.0,
+          "pos_with_offset": 260.0,
+          "x": 260.0,
+          "y": 50.0
+        },
+        {
+          "id": "fix(api): ...",
+          "message": "",
+          "seq": 6.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "fix(client): .extra long label.."
+          ],
+          "branch": "main",
+          "pos": 300.0,
+          "pos_with_offset": 310.0,
+          "x": 310.0,
+          "y": 0.0
+        },
+        {
+          "id": "ci: ...",
+          "message": "",
+          "seq": 7.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "fix(api): ..."
+          ],
+          "branch": "main",
+          "pos": 350.0,
+          "pos_with_offset": 360.0,
+          "x": 360.0,
+          "y": 0.0
+        },
+        {
+          "id": "8-<dynamic>",
+          "message": "",
+          "seq": 8.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "ci: ..."
+          ],
+          "branch": "b1",
+          "pos": 400.0,
+          "pos_with_offset": 410.0,
+          "x": 410.0,
+          "y": 100.0
+        },
+        {
+          "id": "9-<dynamic>",
+          "message": "",
+          "seq": 9.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "8-<dynamic>"
+          ],
+          "branch": "b2",
+          "pos": 450.0,
+          "pos_with_offset": 460.0,
+          "x": 460.0,
+          "y": 150.0
+        }
+      ],
+      "arrows": [
+        {
+          "from": "feat(api): ...",
+          "to": "a",
+          "class_index": 0.0,
+          "d": "M 10 0 L 60 0"
+        },
+        {
+          "from": "a",
+          "to": "b",
+          "class_index": 0.0,
+          "d": "M 60 0 L 110 0"
+        },
+        {
+          "from": "b",
+          "to": "fix(client): .extra long label..",
+          "class_index": 0.0,
+          "d": "M 110 0 L 160 0"
+        },
+        {
+          "from": "fix(client): .extra long label..",
+          "to": "feat(modules): ...",
+          "class_index": 1.0,
+          "d": "M 160 0 L 160 30 A 20 20, 0, 0, 0, 180 50 L 210 50"
+        },
+        {
+          "from": "feat(modules): ...",
+          "to": "test(client): ...",
+          "class_index": 1.0,
+          "d": "M 210 50 L 260 50"
+        },
+        {
+          "from": "fix(client): .extra long label..",
+          "to": "fix(api): ...",
+          "class_index": 0.0,
+          "d": "M 160 0 L 310 0"
+        },
+        {
+          "from": "fix(api): ...",
+          "to": "ci: ...",
+          "class_index": 0.0,
+          "d": "M 310 0 L 360 0"
+        },
+        {
+          "from": "ci: ...",
+          "to": "8-<dynamic>",
+          "class_index": 2.0,
+          "d": "M 360 0 L 360 80 A 20 20, 0, 0, 0, 380 100 L 410 100"
+        },
+        {
+          "from": "8-<dynamic>",
+          "to": "9-<dynamic>",
+          "class_index": 3.0,
+          "d": "M 410 100 L 410 130 A 20 20, 0, 0, 0, 430 150 L 460 150"
+        }
+      ]
+    }
+  }
+}
