@@ -41,6 +41,9 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_docs_flowchart_example_flowchart_with_new_shapes_041" => {
             Some(("0 0 197.53125 681.9603271484375", "197.531"))
         }
+        "upstream_docs_diagrams_flowchart_code_flow" => {
+            Some(("0 0 10468.515625 3129.234375", "10468.5"))
+        }
         "upstream_docs_flowchart_graph_declarations_with_spaces_between_vertices_and_link_and_without_semicolon_240" => {
             Some(("0 0 752.8125 174", "752.812"))
         }
@@ -60,6 +63,15 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_docs_contributing_checkout_a_new_branch_020" => {
             Some(("0 0 819.421875 382", "819.422"))
         }
+        "upstream_docs_contributing_initial_setup_001" => {
+            Some(("0 0 732.1875 70", "732.188"))
+        }
+        "upstream_docs_contributing_where_is_the_documentation_located_026" => {
+            Some(("0 0 752.5 118", "752.5"))
+        }
+        "upstream_docs_contributing_workflow_011" => {
+            Some(("0 0 651.40625 70", "651.406"))
+        }
         "upstream_docs_directives_changing_fontfamily_via_directive_010" => {
             Some(("0 0 333.03125 224", "333.031"))
         }
@@ -75,6 +87,7 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_docs_getting_started_diagram_code_001" => {
             Some(("0 0 400.44140625 533.765625", "400.441"))
         }
+        "upstream_docs_mermaid_run_003" => Some(("0 0 529.953125 174", "529.953")),
         "upstream_docs_flowchart_custom_icons_238" => Some(("0 0 180.03125 174", "180.031")),
         "upstream_docs_theming_customizing_themes_with_themevariables_003" => {
             Some(("0 0 529.14453125 571.28125", "529.145"))

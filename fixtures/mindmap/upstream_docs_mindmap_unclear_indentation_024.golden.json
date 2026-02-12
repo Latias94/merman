@@ -1,0 +1,192 @@
+{
+  "diagramType": "mindmap",
+  "model": {
+    "type": "mindmap",
+    "nodes": [
+      {
+        "id": "0",
+        "domId": "node_0",
+        "label": "Root",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-root section--1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 0,
+        "nodeId": "Root",
+        "type": 0
+      },
+      {
+        "id": "1",
+        "domId": "node_1",
+        "label": "A",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "A",
+        "type": 0,
+        "section": 0
+      },
+      {
+        "id": "2",
+        "domId": "node_2",
+        "label": "B",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 8,
+        "nodeId": "B",
+        "type": 0,
+        "section": 0
+      },
+      {
+        "id": "3",
+        "domId": "node_3",
+        "label": "C",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 6,
+        "nodeId": "C",
+        "type": 0,
+        "section": 0
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge_0_1",
+        "start": "0",
+        "end": "1",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-1",
+        "depth": 0,
+        "section": 0
+      },
+      {
+        "id": "edge_1_2",
+        "start": "1",
+        "end": "2",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-5",
+        "depth": 4,
+        "section": 0
+      },
+      {
+        "id": "edge_1_3",
+        "start": "1",
+        "end": "3",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-5",
+        "depth": 4,
+        "section": 0
+      }
+    ],
+    "diagramId": "<dynamic>",
+    "rootNode": {
+      "id": 0,
+      "nodeId": "Root",
+      "level": 0,
+      "descr": "Root",
+      "type": 0,
+      "children": [
+        {
+          "id": 1,
+          "nodeId": "A",
+          "level": 4,
+          "descr": "A",
+          "type": 0,
+          "children": [
+            {
+              "id": 2,
+              "nodeId": "B",
+              "level": 8,
+              "descr": "B",
+              "type": 0,
+              "children": [],
+              "width": 200,
+              "padding": 10,
+              "section": 0
+            },
+            {
+              "id": 3,
+              "nodeId": "C",
+              "level": 6,
+              "descr": "C",
+              "type": 0,
+              "children": [],
+              "width": 200,
+              "padding": 10,
+              "section": 0
+            }
+          ],
+          "width": 200,
+          "padding": 10,
+          "section": 0
+        }
+      ],
+      "width": 200,
+      "padding": 10,
+      "isRoot": true
+    },
+    "markers": [
+      "point"
+    ],
+    "direction": "TB",
+    "nodeSpacing": 50,
+    "rankSpacing": 50,
+    "shapes": {
+      "0": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "1": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "2": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "3": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      }
+    }
+  }
+}

@@ -1,0 +1,2374 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "User",
+      "Mermaid",
+      "Queue",
+      "API",
+      "Config",
+      "Preprocessor",
+      "DiagramAPI",
+      "Diagram",
+      "Renderer",
+      "Styles",
+      "DOM"
+    ],
+    "actors": {
+      "User": {
+        "name": "User",
+        "description": "User/Browser",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Mermaid": {
+        "name": "Mermaid",
+        "description": "mermaid.ts",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Queue": {
+        "name": "Queue",
+        "description": "executionQueue",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "API": {
+        "name": "API",
+        "description": "mermaidAPI.ts",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Config": {
+        "name": "Config",
+        "description": "configApi",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Preprocessor": {
+        "name": "Preprocessor",
+        "description": "preprocessDiagram",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "DiagramAPI": {
+        "name": "DiagramAPI",
+        "description": "diagram-api",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Diagram": {
+        "name": "Diagram",
+        "description": "Diagram.fromText",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Renderer": {
+        "name": "Renderer",
+        "description": "diagram.renderer",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Styles": {
+        "name": "Styles",
+        "description": "Styling System",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "DOM": {
+        "name": "DOM",
+        "description": "DOM/SVG",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "User",
+        "to": "DOM",
+        "message": "Mermaid Complete API Flow",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "1",
+        "from": "User",
+        "to": "Mermaid",
+        "message": "mermaid.initialize(config)",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "2",
+        "from": "Mermaid",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "Mermaid",
+        "to": "API",
+        "message": "mermaidAPI.initialize(config)",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "4",
+        "from": "API",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "API",
+        "to": "API",
+        "message": "assignWithDepth({}, userOptions)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "API",
+        "to": "API",
+        "message": "handle legacy fontFamily config",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "API",
+        "to": "Config",
+        "message": "saveConfigFromInitialize(options)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": null,
+        "to": null,
+        "message": "Theme Configuration Available",
+        "wrap": false,
+        "type": 12,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": "API",
+        "to": "API",
+        "message": "check if theme in theme object",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": "API",
+        "to": "API",
+        "message": "set themeVariables from theme",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "11",
+        "from": null,
+        "to": null,
+        "message": "Default Theme",
+        "wrap": false,
+        "type": 13,
+        "activate": false
+      },
+      {
+        "id": "12",
+        "from": "API",
+        "to": "API",
+        "message": "use default theme variables",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "13",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 14,
+        "activate": false
+      },
+      {
+        "id": "14",
+        "from": "API",
+        "to": "Config",
+        "message": "setSiteConfig(options) or getSiteConfig()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "15",
+        "from": "API",
+        "to": "API",
+        "message": "setLogLevel(config.logLevel)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "16",
+        "from": "API",
+        "to": "DiagramAPI",
+        "message": "addDiagrams()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "17",
+        "from": "API",
+        "to": "Mermaid",
+        "message": "initialization complete",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "18",
+        "from": "API",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "19",
+        "from": "Mermaid",
+        "to": "User",
+        "message": "ready to render",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "20",
+        "from": "Mermaid",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "21",
+        "from": "User",
+        "to": "DOM",
+        "message": "document.load event",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "22",
+        "from": "DOM",
+        "to": "Mermaid",
+        "message": "contentLoaded()",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "23",
+        "from": "Mermaid",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "24",
+        "from": null,
+        "to": null,
+        "message": "startOnLoad is true",
+        "wrap": false,
+        "type": 15,
+        "activate": false
+      },
+      {
+        "id": "25",
+        "from": "Mermaid",
+        "to": "Config",
+        "message": "getConfig()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "26",
+        "from": "Config",
+        "to": "Mermaid",
+        "message": "{ startOnLoad: true }",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "27",
+        "from": "Mermaid",
+        "to": "Mermaid",
+        "message": "run()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "28",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 16,
+        "activate": false
+      },
+      {
+        "id": "29",
+        "from": "Mermaid",
+        "to": "DOM",
+        "message": "event handling complete",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "30",
+        "from": "Mermaid",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "31",
+        "from": "User",
+        "to": "Mermaid",
+        "message": "mermaid.run(options)",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "32",
+        "from": "Mermaid",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "33",
+        "from": "Mermaid",
+        "to": "Mermaid",
+        "message": "runThrowsErrors(options)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "34",
+        "from": "Mermaid",
+        "to": "Config",
+        "message": "getConfig()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "35",
+        "from": "Config",
+        "to": "Mermaid",
+        "message": "configuration object",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "36",
+        "from": null,
+        "to": null,
+        "message": "nodes provided",
+        "wrap": false,
+        "type": 12,
+        "activate": false
+      },
+      {
+        "id": "37",
+        "from": "Mermaid",
+        "to": "Mermaid",
+        "message": "use provided nodes",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "38",
+        "from": null,
+        "to": null,
+        "message": "querySelector provided",
+        "wrap": false,
+        "type": 13,
+        "activate": false
+      },
+      {
+        "id": "39",
+        "from": "Mermaid",
+        "to": "DOM",
+        "message": "document.querySelectorAll(querySelector)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "40",
+        "from": "DOM",
+        "to": "Mermaid",
+        "message": "nodesToProcess",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "41",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 14,
+        "activate": false
+      },
+      {
+        "id": "42",
+        "from": "Mermaid",
+        "to": "Mermaid",
+        "message": "new InitIDGenerator(deterministicIds, seed)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "43",
+        "from": null,
+        "to": null,
+        "message": "For each diagram element",
+        "wrap": false,
+        "type": 10,
+        "activate": false
+      },
+      {
+        "id": "44",
+        "from": "Mermaid",
+        "to": "DOM",
+        "message": "check element.getAttribute('data-processed')",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "45",
+        "from": null,
+        "to": null,
+        "message": "not processed",
+        "wrap": false,
+        "type": 15,
+        "activate": false
+      },
+      {
+        "id": "46",
+        "from": "Mermaid",
+        "to": "DOM",
+        "message": "element.setAttribute('data-processed', 'true')",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "47",
+        "from": "Mermaid",
+        "to": "Mermaid",
+        "message": "generate unique id",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "48",
+        "from": "Mermaid",
+        "to": "DOM",
+        "message": "get element.innerHTML",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "49",
+        "from": "Mermaid",
+        "to": "Mermaid",
+        "message": "entityDecode and clean text",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "50",
+        "from": "Mermaid",
+        "to": "Mermaid",
+        "message": "detectInit(txt)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "51",
+        "from": "Mermaid",
+        "to": "Queue",
+        "message": "render(id, txt, element)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "52",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 16,
+        "activate": false
+      },
+      {
+        "id": "53",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 11,
+        "activate": false
+      },
+      {
+        "id": "54",
+        "from": "Mermaid",
+        "to": "User",
+        "message": "processing initiated",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "55",
+        "from": "Mermaid",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "56",
+        "from": "Queue",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "57",
+        "from": "Queue",
+        "to": "API",
+        "message": "mermaidAPI.render(id, text, container)",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "58",
+        "from": "API",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "59",
+        "from": "API",
+        "to": "DiagramAPI",
+        "message": "addDiagrams()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "60",
+        "from": "API",
+        "to": "Preprocessor",
+        "message": "processAndSetConfigs(text)",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "61",
+        "from": "Preprocessor",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "62",
+        "from": "Preprocessor",
+        "to": "Preprocessor",
+        "message": "preprocessDiagram(text)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "63",
+        "from": "Preprocessor",
+        "to": "Config",
+        "message": "reset()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "64",
+        "from": "Preprocessor",
+        "to": "Config",
+        "message": "addDirective(processed.config)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "65",
+        "from": "Preprocessor",
+        "to": "API",
+        "message": "{ code, config }",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "66",
+        "from": "Preprocessor",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "67",
+        "from": "API",
+        "to": "Config",
+        "message": "getConfig()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "68",
+        "from": "Config",
+        "to": "API",
+        "message": "current configuration",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "69",
+        "from": null,
+        "to": null,
+        "message": "text length > maxTextSize",
+        "wrap": false,
+        "type": 15,
+        "activate": false
+      },
+      {
+        "id": "70",
+        "from": "API",
+        "to": "API",
+        "message": "text = MAX_TEXTLENGTH_EXCEEDED_MSG",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "71",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 16,
+        "activate": false
+      },
+      {
+        "id": "72",
+        "from": "API",
+        "to": "API",
+        "message": "setup id selectors and element IDs",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "73",
+        "from": "API",
+        "to": "API",
+        "message": "determine security level (sandbox/loose)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "74",
+        "from": null,
+        "to": null,
+        "message": "svgContainingElement provided",
+        "wrap": false,
+        "type": 12,
+        "activate": false
+      },
+      {
+        "id": "75",
+        "from": null,
+        "to": null,
+        "message": "isSandboxed",
+        "wrap": false,
+        "type": 12,
+        "activate": false
+      },
+      {
+        "id": "76",
+        "from": "API",
+        "to": "DOM",
+        "message": "sandboxedIframe(select(svgContainingElement), iFrameID)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "77",
+        "from": "API",
+        "to": "DOM",
+        "message": "select iframe contentDocument body",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "78",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 13,
+        "activate": false
+      },
+      {
+        "id": "79",
+        "from": "API",
+        "to": "DOM",
+        "message": "select(svgContainingElement)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "80",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 14,
+        "activate": false
+      },
+      {
+        "id": "81",
+        "from": null,
+        "to": null,
+        "message": "no container",
+        "wrap": false,
+        "type": 13,
+        "activate": false
+      },
+      {
+        "id": "82",
+        "from": "API",
+        "to": "API",
+        "message": "removeExistingElements(document, id, divId, iFrameId)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "83",
+        "from": null,
+        "to": null,
+        "message": "isSandboxed",
+        "wrap": false,
+        "type": 12,
+        "activate": false
+      },
+      {
+        "id": "84",
+        "from": "API",
+        "to": "DOM",
+        "message": "sandboxedIframe(select('body'), iFrameID)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "85",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 13,
+        "activate": false
+      },
+      {
+        "id": "86",
+        "from": "API",
+        "to": "DOM",
+        "message": "select('body')",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "87",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 14,
+        "activate": false
+      },
+      {
+        "id": "88",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 14,
+        "activate": false
+      },
+      {
+        "id": "89",
+        "from": "API",
+        "to": "DOM",
+        "message": "appendDivSvgG(root, id, enclosingDivID, fontFamily, XMLNS_XLINK_STD)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "90",
+        "from": "API",
+        "to": "Diagram",
+        "message": "Diagram.fromText(text, { title: processed.title })",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "91",
+        "from": "Diagram",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "92",
+        "from": "Diagram",
+        "to": "DiagramAPI",
+        "message": "detect diagram type",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "93",
+        "from": "Diagram",
+        "to": "DiagramAPI",
+        "message": "load appropriate diagram",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "94",
+        "from": "Diagram",
+        "to": "API",
+        "message": "diagram instance",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "95",
+        "from": "Diagram",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "96",
+        "from": null,
+        "to": null,
+        "message": "parsing error occurred",
+        "wrap": false,
+        "type": 15,
+        "activate": false
+      },
+      {
+        "id": "97",
+        "from": "API",
+        "to": "Diagram",
+        "message": "Diagram.fromText('error')",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "98",
+        "from": "Diagram",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "99",
+        "from": "Diagram",
+        "to": "API",
+        "message": "error diagram",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "100",
+        "from": "Diagram",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "101",
+        "from": "API",
+        "to": "API",
+        "message": "store parseEncounteredException",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "102",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 16,
+        "activate": false
+      },
+      {
+        "id": "103",
+        "from": "API",
+        "to": "DOM",
+        "message": "get svg element and firstChild",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "104",
+        "from": "API",
+        "to": "Renderer",
+        "message": "diag.renderer.getClasses(text, diag)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "105",
+        "from": "Renderer",
+        "to": "API",
+        "message": "diagramClassDefs",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "106",
+        "from": "API",
+        "to": "Styles",
+        "message": "createUserStyles(config, diagramType, diagramClassDefs, idSelector)",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "107",
+        "from": "Styles",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "108",
+        "from": "Styles",
+        "to": "Styles",
+        "message": "createCssStyles(config, classDefs)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "109",
+        "from": null,
+        "to": null,
+        "message": "config.themeCSS defined",
+        "wrap": false,
+        "type": 15,
+        "activate": false
+      },
+      {
+        "id": "110",
+        "from": "Styles",
+        "to": "Styles",
+        "message": "append themeCSS",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "111",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 16,
+        "activate": false
+      },
+      {
+        "id": "112",
+        "from": null,
+        "to": null,
+        "message": "fontFamily configured",
+        "wrap": false,
+        "type": 15,
+        "activate": false
+      },
+      {
+        "id": "113",
+        "from": "Styles",
+        "to": "Styles",
+        "message": "add CSS variables for fonts",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "114",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 16,
+        "activate": false
+      },
+      {
+        "id": "115",
+        "from": null,
+        "to": null,
+        "message": "classDefs exist",
+        "wrap": false,
+        "type": 15,
+        "activate": false
+      },
+      {
+        "id": "116",
+        "from": null,
+        "to": null,
+        "message": "For each styleClassDef",
+        "wrap": false,
+        "type": 10,
+        "activate": false
+      },
+      {
+        "id": "117",
+        "from": null,
+        "to": null,
+        "message": "has styles",
+        "wrap": false,
+        "type": 15,
+        "activate": false
+      },
+      {
+        "id": "118",
+        "from": "Styles",
+        "to": "Styles",
+        "message": "cssImportantStyles for each CSS element",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "119",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 16,
+        "activate": false
+      },
+      {
+        "id": "120",
+        "from": null,
+        "to": null,
+        "message": "has textStyles",
+        "wrap": false,
+        "type": 15,
+        "activate": false
+      },
+      {
+        "id": "121",
+        "from": "Styles",
+        "to": "Styles",
+        "message": "cssImportantStyles for tspan elements",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "122",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 16,
+        "activate": false
+      },
+      {
+        "id": "123",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 11,
+        "activate": false
+      },
+      {
+        "id": "124",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 16,
+        "activate": false
+      },
+      {
+        "id": "125",
+        "from": "Styles",
+        "to": "Styles",
+        "message": "getStyles(graphType, userCSSstyles, themeVariables)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "126",
+        "from": "Styles",
+        "to": "Styles",
+        "message": "serialize(compile(svgId{allStyles}), stringify)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "127",
+        "from": "Styles",
+        "to": "API",
+        "message": "compiled CSS rules",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "128",
+        "from": "Styles",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "129",
+        "from": "API",
+        "to": "DOM",
+        "message": "create style element",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "130",
+        "from": "API",
+        "to": "DOM",
+        "message": "style.innerHTML = rules",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "131",
+        "from": "API",
+        "to": "DOM",
+        "message": "svg.insertBefore(style, firstChild)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "132",
+        "from": "API",
+        "to": "Renderer",
+        "message": "diag.renderer.draw(text, id, version, diag)",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "133",
+        "from": "Renderer",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "134",
+        "from": "Renderer",
+        "to": "Renderer",
+        "message": "diagram-specific rendering logic",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "135",
+        "from": "Renderer",
+        "to": "DOM",
+        "message": "create SVG elements",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "136",
+        "from": "Renderer",
+        "to": "DOM",
+        "message": "apply positioning and styling",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "137",
+        "from": "Renderer",
+        "to": "API",
+        "message": "rendered diagram",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "138",
+        "from": "Renderer",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "139",
+        "from": null,
+        "to": null,
+        "message": "rendering error",
+        "wrap": false,
+        "type": 15,
+        "activate": false
+      },
+      {
+        "id": "140",
+        "from": null,
+        "to": null,
+        "message": "suppressErrorRendering",
+        "wrap": false,
+        "type": 12,
+        "activate": false
+      },
+      {
+        "id": "141",
+        "from": "API",
+        "to": "API",
+        "message": "removeTempElements()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "142",
+        "from": "API",
+        "to": "Mermaid",
+        "message": "throw error",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "143",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 13,
+        "activate": false
+      },
+      {
+        "id": "144",
+        "from": "API",
+        "to": "Renderer",
+        "message": "errorRenderer.draw(text, id, version)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "145",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 14,
+        "activate": false
+      },
+      {
+        "id": "146",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 16,
+        "activate": false
+      },
+      {
+        "id": "147",
+        "from": "API",
+        "to": "DOM",
+        "message": "select svg element",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "148",
+        "from": "API",
+        "to": "Diagram",
+        "message": "diag.db.getAccTitle()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "149",
+        "from": "API",
+        "to": "Diagram",
+        "message": "diag.db.getAccDescription()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "150",
+        "from": "API",
+        "to": "API",
+        "message": "addA11yInfo(diagramType, svgNode, a11yTitle, a11yDescr)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "151",
+        "from": "API",
+        "to": "DOM",
+        "message": "set xmlns for foreignobject elements",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "152",
+        "from": "API",
+        "to": "DOM",
+        "message": "get innerHTML from enclosing div",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "153",
+        "from": "API",
+        "to": "API",
+        "message": "cleanUpSvgCode(svgCode, isSandboxed, arrowMarkerAbsolute)",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "154",
+        "from": "API",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "155",
+        "from": null,
+        "to": null,
+        "message": "not useArrowMarkerUrls and not sandboxed",
+        "wrap": false,
+        "type": 15,
+        "activate": false
+      },
+      {
+        "id": "156",
+        "from": "API",
+        "to": "API",
+        "message": "replace marker-end URLs with anchors",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "157",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 16,
+        "activate": false
+      },
+      {
+        "id": "158",
+        "from": "API",
+        "to": "API",
+        "message": "decodeEntities(svgCode)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "159",
+        "from": "API",
+        "to": "API",
+        "message": "replace <br> with <br/>",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "160",
+        "from": "API",
+        "to": "API",
+        "message": "cleaned SVG code",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "161",
+        "from": "API",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "162",
+        "from": null,
+        "to": null,
+        "message": "isSandboxed",
+        "wrap": false,
+        "type": 12,
+        "activate": false
+      },
+      {
+        "id": "163",
+        "from": "API",
+        "to": "API",
+        "message": "putIntoIFrame(svgCode, svgEl)",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "164",
+        "from": "API",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "165",
+        "from": "API",
+        "to": "API",
+        "message": "calculate iframe height",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "166",
+        "from": "API",
+        "to": "API",
+        "message": "toBase64 encode SVG content",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "167",
+        "from": "API",
+        "to": "API",
+        "message": "create iframe with sandbox attributes",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "168",
+        "from": "API",
+        "to": "API",
+        "message": "iframe HTML",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "169",
+        "from": "API",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "170",
+        "from": null,
+        "to": null,
+        "message": "not loose security",
+        "wrap": false,
+        "type": 13,
+        "activate": false
+      },
+      {
+        "id": "171",
+        "from": "API",
+        "to": "API",
+        "message": "DOMPurify.sanitize(svgCode, options)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "172",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 14,
+        "activate": false
+      },
+      {
+        "id": "173",
+        "from": "API",
+        "to": "API",
+        "message": "attachFunctions()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "174",
+        "from": "API",
+        "to": "API",
+        "message": "removeTempElements()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "175",
+        "from": null,
+        "to": null,
+        "message": "parseEncounteredException",
+        "wrap": false,
+        "type": 15,
+        "activate": false
+      },
+      {
+        "id": "176",
+        "from": "API",
+        "to": "Mermaid",
+        "message": "throw parseEncounteredException",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "177",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 16,
+        "activate": false
+      },
+      {
+        "id": "178",
+        "from": "API",
+        "to": "Queue",
+        "message": "{ diagramType, svg: svgCode, bindFunctions }",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "179",
+        "from": "API",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "180",
+        "from": "Mermaid",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "181",
+        "from": "Queue",
+        "to": "Mermaid",
+        "message": "render result",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "182",
+        "from": "Mermaid",
+        "to": "DOM",
+        "message": "element.innerHTML = svg",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "183",
+        "from": null,
+        "to": null,
+        "message": "postRenderCallback",
+        "wrap": false,
+        "type": 15,
+        "activate": false
+      },
+      {
+        "id": "184",
+        "from": "Mermaid",
+        "to": "User",
+        "message": "postRenderCallback(id)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "185",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 16,
+        "activate": false
+      },
+      {
+        "id": "186",
+        "from": null,
+        "to": null,
+        "message": "bindFunctions exist",
+        "wrap": false,
+        "type": 15,
+        "activate": false
+      },
+      {
+        "id": "187",
+        "from": "Mermaid",
+        "to": "DOM",
+        "message": "bindFunctions(element)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "188",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 16,
+        "activate": false
+      },
+      {
+        "id": "189",
+        "from": "Mermaid",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "190",
+        "from": "User",
+        "to": "Mermaid",
+        "message": "mermaid.parse(text, parseOptions)",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "191",
+        "from": "Mermaid",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "192",
+        "from": "Queue",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "193",
+        "from": "Queue",
+        "to": "API",
+        "message": "mermaidAPI.parse(text, parseOptions)",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "194",
+        "from": "API",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "195",
+        "from": "API",
+        "to": "DiagramAPI",
+        "message": "addDiagrams()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "196",
+        "from": "API",
+        "to": "Preprocessor",
+        "message": "processAndSetConfigs(text)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "197",
+        "from": "Preprocessor",
+        "to": "API",
+        "message": "{ code, config }",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "198",
+        "from": "API",
+        "to": "Diagram",
+        "message": "getDiagramFromText(code)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "199",
+        "from": "Diagram",
+        "to": "API",
+        "message": "diagram instance",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "200",
+        "from": "API",
+        "to": "Queue",
+        "message": "{ diagramType: diagram.type, config }",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "201",
+        "from": "API",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "202",
+        "from": "Queue",
+        "to": "Mermaid",
+        "message": "parse result",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "203",
+        "from": "Queue",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "204",
+        "from": "Mermaid",
+        "to": "User",
+        "message": "ParseResult or false",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "205",
+        "from": "Mermaid",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "206",
+        "from": "User",
+        "to": "Mermaid",
+        "message": "registerExternalDiagrams(diagrams, options)",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "207",
+        "from": "Mermaid",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "208",
+        "from": "Mermaid",
+        "to": "DiagramAPI",
+        "message": "addDiagrams()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "209",
+        "from": "Mermaid",
+        "to": "DiagramAPI",
+        "message": "registerLazyLoadedDiagrams(...diagrams)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "210",
+        "from": null,
+        "to": null,
+        "message": "lazyLoad is false",
+        "wrap": false,
+        "type": 15,
+        "activate": false
+      },
+      {
+        "id": "211",
+        "from": "Mermaid",
+        "to": "DiagramAPI",
+        "message": "loadRegisteredDiagrams()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "212",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 16,
+        "activate": false
+      },
+      {
+        "id": "213",
+        "from": "Mermaid",
+        "to": "User",
+        "message": "registration complete",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "214",
+        "from": "Mermaid",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "215",
+        "from": "Mermaid",
+        "to": "API",
+        "message": "Error Handling Throughout",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "216",
+        "from": null,
+        "to": null,
+        "message": "Error occurs",
+        "wrap": false,
+        "type": 12,
+        "activate": false
+      },
+      {
+        "id": "217",
+        "from": "API",
+        "to": "Mermaid",
+        "message": "throw error",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "218",
+        "from": "Mermaid",
+        "to": "Mermaid",
+        "message": "handleError(error, errors, parseError)",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "219",
+        "from": "Mermaid",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "220",
+        "from": "Mermaid",
+        "to": "Mermaid",
+        "message": "log.warn(error)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "221",
+        "from": null,
+        "to": null,
+        "message": "isDetailedError",
+        "wrap": false,
+        "type": 12,
+        "activate": false
+      },
+      {
+        "id": "222",
+        "from": "Mermaid",
+        "to": "User",
+        "message": "parseError(error.str, error.hash)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "223",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 13,
+        "activate": false
+      },
+      {
+        "id": "224",
+        "from": "Mermaid",
+        "to": "User",
+        "message": "parseError(error)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "225",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 14,
+        "activate": false
+      },
+      {
+        "id": "226",
+        "from": null,
+        "to": null,
+        "message": "not suppressErrors",
+        "wrap": false,
+        "type": 15,
+        "activate": false
+      },
+      {
+        "id": "227",
+        "from": "Mermaid",
+        "to": "User",
+        "message": "throw error",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "228",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 16,
+        "activate": false
+      },
+      {
+        "id": "229",
+        "from": "Mermaid",
+        "to": "User",
+        "message": "error handled",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "230",
+        "from": "Mermaid",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "231",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 14,
+        "activate": false
+      },
+      {
+        "id": "232",
+        "from": "Config",
+        "to": "Config",
+        "message": "Configuration Functions",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "233",
+        "from": "Config",
+        "to": "Config",
+        "message": "Functions:<br/>- reset()<br/>- getConfig()<br/>- setConfig()<br/>- getSiteConfig()<br/>- updateSiteConfig()<br/>- saveConfigFromInitialize()",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 1
+      },
+      {
+        "id": "234",
+        "from": "Styles",
+        "to": "Styles",
+        "message": "CSS Generation",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "235",
+        "from": "Styles",
+        "to": "Styles",
+        "message": "Features:<br/>- createCssStyles()<br/>- createUserStyles()<br/>- cssImportantStyles()<br/>- Theme integration<br/>- Class definitions",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 1
+      },
+      {
+        "id": "236",
+        "from": "API",
+        "to": "API",
+        "message": "Security Levels",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "237",
+        "from": "API",
+        "to": "API",
+        "message": "Modes:<br/>- sandbox: iframe isolation<br/>- loose: minimal sanitization<br/>- default: DOMPurify sanitization",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 1
+      },
+      {
+        "id": "238",
+        "from": "API",
+        "to": "API",
+        "message": "Helper Functions",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "239",
+        "from": "API",
+        "to": "API",
+        "message": "Utilities:<br/>- cleanUpSvgCode()<br/>- putIntoIFrame()<br/>- appendDivSvgG()<br/>- removeExistingElements()",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 1
+      }
+    ],
+    "notes": [
+      {
+        "actor": [
+          "User",
+          "DOM"
+        ],
+        "placement": 2,
+        "message": "Mermaid Complete API Flow",
+        "wrap": false
+      },
+      {
+        "actor": [
+          "Mermaid",
+          "API"
+        ],
+        "placement": 2,
+        "message": "Error Handling Throughout",
+        "wrap": false
+      },
+      {
+        "actor": [
+          "Config",
+          "Config"
+        ],
+        "placement": 2,
+        "message": "Configuration Functions",
+        "wrap": false
+      },
+      {
+        "actor": "Config",
+        "placement": 1,
+        "message": "Functions:<br/>- reset()<br/>- getConfig()<br/>- setConfig()<br/>- getSiteConfig()<br/>- updateSiteConfig()<br/>- saveConfigFromInitialize()",
+        "wrap": false
+      },
+      {
+        "actor": [
+          "Styles",
+          "Styles"
+        ],
+        "placement": 2,
+        "message": "CSS Generation",
+        "wrap": false
+      },
+      {
+        "actor": "Styles",
+        "placement": 1,
+        "message": "Features:<br/>- createCssStyles()<br/>- createUserStyles()<br/>- cssImportantStyles()<br/>- Theme integration<br/>- Class definitions",
+        "wrap": false
+      },
+      {
+        "actor": [
+          "API",
+          "API"
+        ],
+        "placement": 2,
+        "message": "Security Levels",
+        "wrap": false
+      },
+      {
+        "actor": "API",
+        "placement": 1,
+        "message": "Modes:<br/>- sandbox: iframe isolation<br/>- loose: minimal sanitization<br/>- default: DOMPurify sanitization",
+        "wrap": false
+      },
+      {
+        "actor": [
+          "API",
+          "API"
+        ],
+        "placement": 2,
+        "message": "Helper Functions",
+        "wrap": false
+      },
+      {
+        "actor": "API",
+        "placement": 1,
+        "message": "Utilities:<br/>- cleanUpSvgCode()<br/>- putIntoIFrame()<br/>- appendDivSvgG()<br/>- removeExistingElements()",
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}
