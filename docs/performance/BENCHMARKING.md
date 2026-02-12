@@ -49,6 +49,18 @@ python tools/bench/compare_mermaid_renderers.py
 
 This writes `docs/performance/COMPARISON.md` with mid-point `end_to_end/*` estimates and ratios.
 
+## Stage spot-check (recommended for triage)
+
+When you want to attribute a performance change to a specific pipeline stage quickly (parse vs
+layout vs SVG emission), use the stage spot-check script:
+
+```bash
+python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,class_medium --out target/bench/stage_spotcheck.md
+```
+
+This runs a small set of `--exact` Criterion benchmarks for both `merman` and
+`repo-ref/mermaid-rs-renderer` and writes a compact stage-by-stage report.
+
 If you also have the pinned Node toolchain under `tools/mermaid-cli` (used for parity SVG
 baselines), the script will additionally benchmark upstream Mermaid JS rendering via a single
 headless Chromium instance (puppeteer) and include it in the report.
