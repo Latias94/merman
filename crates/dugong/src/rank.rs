@@ -348,6 +348,8 @@ pub mod network_simplex {
         in_tree_by_g_ix: Vec<bool>,
         low_by_g_ix: Vec<i32>,
         lim_by_g_ix: Vec<i32>,
+        parent_g_ix_by_g_ix: Vec<Option<usize>>,
+        cut_to_parent_by_g_ix: Vec<f64>,
         g_ix_by_lim: Vec<Option<usize>>,
         tail_g_ixs: Vec<usize>,
 
@@ -406,6 +408,8 @@ pub mod network_simplex {
                 in_tree_by_g_ix: vec![false; g_len],
                 low_by_g_ix: vec![0; g_len],
                 lim_by_g_ix: vec![0; g_len],
+                parent_g_ix_by_g_ix: vec![None; g_len],
+                cut_to_parent_by_g_ix: vec![0.0; g_len],
                 g_ix_by_lim: vec![None; t_len + 1],
                 tail_g_ixs: Vec::new(),
                 children: vec![Vec::new(); t_len],
@@ -556,9 +560,17 @@ pub mod network_simplex {
             self.in_tree_by_g_ix.resize(self.t_ix_by_g_ix.len(), false);
             self.low_by_g_ix.resize(self.t_ix_by_g_ix.len(), 0);
             self.lim_by_g_ix.resize(self.t_ix_by_g_ix.len(), 0);
+            self.parent_g_ix_by_g_ix
+                .resize(self.t_ix_by_g_ix.len(), None);
+            self.cut_to_parent_by_g_ix
+                .resize(self.t_ix_by_g_ix.len(), 0.0);
             self.in_tree_by_g_ix.fill(false);
             self.low_by_g_ix.fill(0);
             self.lim_by_g_ix.fill(0);
+            self.parent_g_ix_by_g_ix.fill(None);
+            // `cut_to_parent_by_g_ix` is written in postorder during `rebuild_cut_values`;
+            // roots are never read through this mapping, so we don't need to clear the whole
+            // buffer here.
 
             for &t_ix in &self.node_ixs {
                 let Some(g_ix) = self.g_ix_by_t_ix.get(t_ix).copied().flatten() else {
@@ -570,6 +582,21 @@ pub mod network_simplex {
                 self.in_tree_by_g_ix[g_ix] = true;
                 self.low_by_g_ix[g_ix] = self.low.get(t_ix).copied().unwrap_or(0);
                 self.lim_by_g_ix[g_ix] = self.lim.get(t_ix).copied().unwrap_or(0);
+            }
+
+            for (child_tix, parent_tix) in self.parent_t_ix.iter().copied().enumerate() {
+                let Some(parent_tix) = parent_tix else {
+                    continue;
+                };
+                let Some(child_gix) = self.g_ix_by_t_ix.get(child_tix).copied().flatten() else {
+                    continue;
+                };
+                let Some(parent_gix) = self.g_ix_by_t_ix.get(parent_tix).copied().flatten() else {
+                    continue;
+                };
+                if child_gix < self.parent_g_ix_by_g_ix.len() {
+                    self.parent_g_ix_by_g_ix[child_gix] = Some(parent_gix);
+                }
             }
 
             self.g_ix_by_lim.resize(t_len + 1, None);
@@ -648,6 +675,10 @@ pub mod network_simplex {
                 }
             }
 
+            self.cut_to_parent_by_g_ix
+                .resize(self.t_ix_by_g_ix.len(), 0.0);
+            // `cut_to_parent_by_g_ix` is populated in postorder below; we intentionally avoid
+            // clearing the whole buffer here to keep rebuild costs down.
             for &child_tix in &self.postorder {
                 if self.parent_t_ix.get(child_tix).copied().flatten().is_none() {
                     continue;
@@ -655,6 +686,11 @@ pub mod network_simplex {
                 let cut = self.calc_cut_value_by_tix(t, g, child_tix);
                 if child_tix < self.cut_to_parent.len() {
                     self.cut_to_parent[child_tix] = cut;
+                }
+                if let Some(child_gix) = self.g_ix_by_t_ix.get(child_tix).copied().flatten() {
+                    if child_gix < self.cut_to_parent_by_g_ix.len() {
+                        self.cut_to_parent_by_g_ix[child_gix] = cut;
+                    }
                 }
             }
         }
@@ -713,15 +749,15 @@ pub mod network_simplex {
                         -lbl.weight
                     };
 
-                    let other_tix = self.t_ix_by_g_ix.get(head_ix).copied().flatten();
-                    let Some(other_tix) = other_tix else {
-                        return;
-                    };
-                    if self.parent_t_ix.get(other_tix).copied().flatten() != Some(child_tix) {
+                    if self.parent_g_ix_by_g_ix.get(head_ix).copied().flatten() != Some(child_gix) {
                         return;
                     }
 
-                    let other_cut_value = self.cut_to_parent.get(other_tix).copied().unwrap_or(0.0);
+                    let other_cut_value = self
+                        .cut_to_parent_by_g_ix
+                        .get(head_ix)
+                        .copied()
+                        .unwrap_or(0.0);
                     cut_value += if points_to_head {
                         -other_cut_value
                     } else {
@@ -741,15 +777,15 @@ pub mod network_simplex {
                         -lbl.weight
                     };
 
-                    let other_tix = self.t_ix_by_g_ix.get(tail_ix).copied().flatten();
-                    let Some(other_tix) = other_tix else {
-                        return;
-                    };
-                    if self.parent_t_ix.get(other_tix).copied().flatten() != Some(child_tix) {
+                    if self.parent_g_ix_by_g_ix.get(tail_ix).copied().flatten() != Some(child_gix) {
                         return;
                     }
 
-                    let other_cut_value = self.cut_to_parent.get(other_tix).copied().unwrap_or(0.0);
+                    let other_cut_value = self
+                        .cut_to_parent_by_g_ix
+                        .get(tail_ix)
+                        .copied()
+                        .unwrap_or(0.0);
                     cut_value += if points_to_head {
                         -other_cut_value
                     } else {
