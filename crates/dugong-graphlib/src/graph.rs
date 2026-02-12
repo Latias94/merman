@@ -533,6 +533,13 @@ where
             .map(|n| n.id.as_str())
     }
 
+    pub fn node_label_mut_by_ix(&mut self, ix: usize) -> Option<&mut N> {
+        self.nodes
+            .get_mut(ix)
+            .and_then(|n| n.as_mut())
+            .map(|n| &mut n.label)
+    }
+
     pub fn has_edge_ix(&self, v_ix: usize, w_ix: usize) -> bool {
         self.edge_by_endpoints_ix(v_ix, w_ix).is_some()
     }
@@ -1224,6 +1231,39 @@ where
             if w_ix.is_none_or(|w_ix| e.w_ix == w_ix) {
                 f(e.v_ix, e.w_ix, &e.key, &e.label);
             }
+        }
+    }
+
+    pub fn for_each_neighbor_ix<F>(&self, v_ix: usize, mut f: F)
+    where
+        F: FnMut(usize),
+    {
+        if self.options.directed {
+            let cache = self.ensure_directed_adj();
+            for &edge_idx in cache.out_edges(v_ix) {
+                let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
+                    continue;
+                };
+                debug_assert_eq!(e.v_ix, v_ix);
+                f(e.w_ix);
+            }
+            for &edge_idx in cache.in_edges(v_ix) {
+                let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
+                    continue;
+                };
+                debug_assert_eq!(e.w_ix, v_ix);
+                f(e.v_ix);
+            }
+            return;
+        }
+
+        let cache = self.ensure_undirected_adj();
+        for &edge_idx in cache.edges(v_ix) {
+            let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
+                continue;
+            };
+            let other_ix = if e.v_ix == v_ix { e.w_ix } else { e.v_ix };
+            f(other_ix);
         }
     }
 
