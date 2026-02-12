@@ -5469,6 +5469,32 @@ pub(super) fn render_flowchart_node(
         out
     }
 
+    fn generate_circle_points(
+        center_x: f64,
+        center_y: f64,
+        radius: f64,
+        num_points: usize,
+        start_angle_deg: f64,
+        end_angle_deg: f64,
+    ) -> Vec<(f64, f64)> {
+        // Ported from Mermaid `generateCirclePoints(...)` in
+        // `packages/mermaid/src/rendering-util/rendering-elements/shapes/util.ts`.
+        //
+        // Note: Mermaid pushes negated coordinates (`{ x: -x, y: -y }`).
+        let start = start_angle_deg.to_radians();
+        let end = end_angle_deg.to_radians();
+        let angle_range = end - start;
+        let step = angle_range / (num_points.saturating_sub(1).max(1) as f64);
+        let mut pts: Vec<(f64, f64)> = Vec::with_capacity(num_points);
+        for i in 0..num_points {
+            let angle = start + (i as f64) * step;
+            let x = center_x + radius * angle.cos();
+            let y = center_y + radius * angle.sin();
+            pts.push((-x, -y));
+        }
+        pts
+    }
+
     fn generate_full_sine_wave_points(
         x1: f64,
         y1: f64,
@@ -5965,6 +5991,136 @@ pub(super) fn render_flowchart_node(
             return;
         }
 
+        // Flowchart v2 lightning bolt (Communication link). Mermaid clears `node.label` and does
+        // not emit a label group.
+        "bolt" => {
+            label_text.clear();
+            label_type = "text".to_string();
+
+            // Mermaid uses `width = max(35, node.width)` and `height = max(35, node.height)`,
+            // then draws a 2*height tall bolt and translates it by `(-width/2, -height)`.
+            let width = layout_node.width.max(35.0);
+            let height = (layout_node.height / 2.0).max(35.0);
+            let gap = 7.0;
+
+            let points: Vec<(f64, f64)> = vec![
+                (width, 0.0),
+                (0.0, height + gap / 2.0),
+                (width - 2.0 * gap, height + gap / 2.0),
+                (0.0, 2.0 * height),
+                (width, height - gap / 2.0),
+                (2.0 * gap, height - gap / 2.0),
+            ];
+            let path_data = path_from_points(&points);
+            let (fill_d, stroke_d) = roughjs_paths_for_svg_path(
+                &path_data,
+                fill_color,
+                stroke_color,
+                1.3,
+                "0 0",
+                hand_drawn_seed,
+            )
+            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+            let _ = write!(
+                out,
+                r#"<g transform="translate({},{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"#,
+                fmt(-width / 2.0),
+                fmt(-height),
+                escape_attr(&fill_d),
+                escape_attr(fill_color),
+                escape_attr(&stroke_d),
+                escape_attr(stroke_color),
+            );
+            out.push_str("</g>");
+            if wrapped_in_a {
+                out.push_str("</a>");
+            }
+            return;
+        }
+
+        // Flowchart v2 filled circle (junction). Mermaid clears `node.label` and does not emit a
+        // label group. Note that even in non-handDrawn mode Mermaid still uses RoughJS circle
+        // paths (roughness=0), which have a slightly asymmetric bbox in Chromium.
+        "f-circ" => {
+            label_text.clear();
+            label_type = "text".to_string();
+
+            let border =
+                config_string(ctx.config.as_value(), &["themeVariables", "nodeBorder"])
+                    .unwrap_or_else(|| ctx.node_border_color.clone());
+
+            let d = roughjs_circle_path_d(14.0, hand_drawn_seed).unwrap_or_else(|| "M0,0".into());
+            let _ = write!(
+                out,
+                r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="fill: {} !important;"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill: {} !important;"/></g>"##,
+                escape_attr(&d),
+                escape_attr(fill_color),
+                escape_attr(&border),
+                escape_attr(&d),
+                escape_attr(stroke_color),
+                escape_attr(&border),
+            );
+            out.push_str("</g>");
+            if wrapped_in_a {
+                out.push_str("</a>");
+            }
+            return;
+        }
+
+        // Flowchart v2 crossed circle (summary). Mermaid clears `node.label` and does not emit a
+        // label group.
+        "cross-circ" => {
+            label_text.clear();
+            label_type = "text".to_string();
+
+            // Mermaid uses `radius = max(30, node.width)` before `updateNodeBounds(...)`. In
+            // practice `node.width` is usually unset here, so radius=30.
+            let radius = 30.0;
+
+            let circle_d = roughjs_circle_path_d(radius * 2.0, hand_drawn_seed)
+                .unwrap_or_else(|| "M0,0".into());
+
+            // Port of Mermaid `createLine(r)` in `crossedCircle.ts`.
+            let x_axis_45 = (std::f64::consts::PI / 4.0).cos();
+            let y_axis_45 = (std::f64::consts::PI / 4.0).sin();
+            let point_q1 = (radius * x_axis_45, radius * y_axis_45);
+            let point_q2 = (-radius * x_axis_45, radius * y_axis_45);
+            let point_q3 = (-radius * x_axis_45, -radius * y_axis_45);
+            let point_q4 = (radius * x_axis_45, -radius * y_axis_45);
+            let line_path = format!(
+                "M {},{} L {},{} M {},{} L {},{}",
+                point_q2.0, point_q2.1, point_q4.0, point_q4.1, point_q1.0, point_q1.1, point_q3.0,
+                point_q3.1
+            );
+            let (line_fill_d, line_stroke_d) = roughjs_paths_for_svg_path(
+                &line_path,
+                fill_color,
+                stroke_color,
+                1.3,
+                "0 0",
+                hand_drawn_seed,
+            )
+            .unwrap_or_else(|| ("".to_string(), "M0,0".to_string()));
+
+            let _ = write!(
+                out,
+                r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g></g>"##,
+                escape_attr(&circle_d),
+                escape_attr(fill_color),
+                escape_attr(&circle_d),
+                escape_attr(stroke_color),
+                escape_attr(&line_fill_d),
+                escape_attr(fill_color),
+                escape_attr(&line_stroke_d),
+                escape_attr(stroke_color),
+            );
+            out.push_str("</g>");
+            if wrapped_in_a {
+                out.push_str("</a>");
+            }
+            return;
+        }
+
         // Flowchart v2 hourglass/collate: Mermaid clears `node.label` but still emits an empty
         // label group (via `labelHelper(...)`).
         "hourglass" | "collate" => {
@@ -6022,6 +6178,877 @@ pub(super) fn render_flowchart_node(
                 fmt(-w / 2.0),
                 fmt(h / 2.0)
             );
+        }
+
+        // Flowchart v2 delay / half-rounded rectangle.
+        "delay" => {
+            let label_text_plain =
+                flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+            let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
+                &ctx.text_style,
+                &ctx.class_defs,
+                &node_classes,
+                &node_styles,
+            );
+            let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+                ctx.measurer,
+                &label_text,
+                &label_type,
+                &node_text_style,
+                Some(ctx.wrapping_width),
+                ctx.node_wrap_mode,
+            );
+            let span_css_height_parity = node_classes.iter().any(|c| {
+                ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
+                    styles.iter().any(|s| {
+                        matches!(
+                            s.split_once(':').map(|p| p.0.trim()),
+                            Some("background" | "border")
+                        )
+                    })
+                })
+            });
+            if span_css_height_parity {
+                crate::text::flowchart_apply_mermaid_styled_node_height_parity(
+                    &mut metrics,
+                    &node_text_style,
+                );
+            }
+            let label_has_visual_content = label_text.to_ascii_lowercase().contains("<img")
+                || (label_type == "markdown" && label_text.contains("!["));
+            if label_text_plain.trim().is_empty() && !label_has_visual_content {
+                metrics.width = 0.0;
+                metrics.height = 0.0;
+            }
+
+            let p = ctx.node_padding;
+            let min_width = 80.0;
+            let min_height = 50.0;
+            let w = (metrics.width + 2.0 * p).max(min_width);
+            let h = (metrics.height + 2.0 * p).max(min_height);
+            let radius = h / 2.0;
+
+            let mut points: Vec<(f64, f64)> = Vec::new();
+            points.push((-w / 2.0, -h / 2.0));
+            points.push((w / 2.0 - radius, -h / 2.0));
+            points.extend(generate_circle_points(
+                -w / 2.0 + radius,
+                0.0,
+                radius,
+                50,
+                90.0,
+                270.0,
+            ));
+            points.push((w / 2.0 - radius, h / 2.0));
+            points.push((-w / 2.0, h / 2.0));
+
+            let path_data = path_from_points(&points);
+            let (fill_d, stroke_d) = roughjs_paths_for_svg_path(
+                &path_data,
+                fill_color,
+                stroke_color,
+                1.3,
+                "0 0",
+                hand_drawn_seed,
+            )
+            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+            let _ = write!(
+                out,
+                r##"<g class="basic label-container"><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
+                escape_attr(&fill_d),
+                escape_attr(fill_color),
+                escape_attr(&stroke_d),
+                escape_attr(stroke_color),
+            );
+        }
+
+        // Flowchart v2 lined cylinder (Disk storage).
+        "lin-cyl" => {
+            // Mirror Mermaid `linedCylinder.ts` (non-handDrawn) + translate.
+            let w = layout_node.width.max(1.0);
+            let rx = w / 2.0;
+            let ry = rx / (2.5 + w / 50.0);
+            let out_h = layout_node.height.max(1.0);
+            let h = (out_h - 2.0 * ry).max(0.0);
+            let outer_offset = h * 0.1;
+
+            // Mermaid moves the label down by `ry`.
+            label_dy = ry;
+
+            let path_data = format!(
+                "M0,{ry} a{rx},{ry} 0,0,0 {w},0 a{rx},{ry} 0,0,0 -{w},0 l0,{h} a{rx},{ry} 0,0,0 {w},0 l0,-{h} M0,{y2} a{rx},{ry} 0,0,0 {w},0",
+                ry = fmt(ry),
+                rx = fmt(rx),
+                w = fmt(w),
+                h = fmt(h),
+                y2 = fmt(ry + outer_offset),
+            );
+            let _ = write!(
+                out,
+                r#"<path d="{}" class="basic label-container" style="" transform="translate({}, {})"/>"#,
+                escape_attr(&path_data),
+                fmt(-w / 2.0),
+                fmt(-(h / 2.0 + ry))
+            );
+        }
+
+        // Flowchart v2 curved trapezoid (Display).
+        "curv-trap" => {
+            let label_text_plain =
+                flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+            let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
+                &ctx.text_style,
+                &ctx.class_defs,
+                &node_classes,
+                &node_styles,
+            );
+            let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+                ctx.measurer,
+                &label_text,
+                &label_type,
+                &node_text_style,
+                Some(ctx.wrapping_width),
+                ctx.node_wrap_mode,
+            );
+            let span_css_height_parity = node_classes.iter().any(|c| {
+                ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
+                    styles.iter().any(|s| {
+                        matches!(
+                            s.split_once(':').map(|p| p.0.trim()),
+                            Some("background" | "border")
+                        )
+                    })
+                })
+            });
+            if span_css_height_parity {
+                crate::text::flowchart_apply_mermaid_styled_node_height_parity(
+                    &mut metrics,
+                    &node_text_style,
+                );
+            }
+            let label_has_visual_content = label_text.to_ascii_lowercase().contains("<img")
+                || (label_type == "markdown" && label_text.contains("!["));
+            if label_text_plain.trim().is_empty() && !label_has_visual_content {
+                metrics.width = 0.0;
+                metrics.height = 0.0;
+            }
+
+            let p = ctx.node_padding;
+            let min_width = 80.0;
+            let min_height = 20.0;
+            let w = ((metrics.width + 2.0 * p) * 1.25).max(min_width);
+            let h = (metrics.height + 2.0 * p).max(min_height);
+            let radius = h / 2.0;
+
+            let total_width = w;
+            let total_height = h;
+            let rw = total_width - radius;
+            let tw = total_height / 4.0;
+
+            let mut points: Vec<(f64, f64)> = Vec::new();
+            points.push((rw, 0.0));
+            points.push((tw, 0.0));
+            points.push((0.0, total_height / 2.0));
+            points.push((tw, total_height));
+            points.push((rw, total_height));
+            points.extend(generate_circle_points(
+                -rw,
+                -total_height / 2.0,
+                radius,
+                50,
+                270.0,
+                90.0,
+            ));
+
+            let path_data = path_from_points(&points);
+            let (fill_d, stroke_d) = roughjs_paths_for_svg_path(
+                &path_data,
+                fill_color,
+                stroke_color,
+                1.3,
+                "0 0",
+                hand_drawn_seed,
+            )
+            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+            let _ = write!(
+                out,
+                r##"<g class="basic label-container" transform="translate({}, {})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
+                fmt(-w / 2.0),
+                fmt(-h / 2.0),
+                escape_attr(&fill_d),
+                escape_attr(fill_color),
+                escape_attr(&stroke_d),
+                escape_attr(stroke_color),
+            );
+        }
+
+        // Flowchart v2 divided rectangle (Divided process).
+        "div-rect" => {
+            // Mermaid draws the polygon using `h` and then the rendered bbox expands to
+            // `out_h = h + rectOffset` where `rectOffset = h * 0.2`, i.e. `out_h = 1.2*h`.
+            let out_w = layout_node.width.max(1.0);
+            let out_h = layout_node.height.max(1.0);
+            let h = out_h / 1.2;
+            let w = out_w;
+            let rect_offset = h * 0.2;
+            let x = -w / 2.0;
+            let y = -h / 2.0 - rect_offset / 2.0;
+
+            // Label is shifted down by `rectOffset/2`.
+            label_dy = rect_offset / 2.0;
+
+            let pts: Vec<(f64, f64)> = vec![
+                (x, y + rect_offset),
+                (-x, y + rect_offset),
+                (-x, -y),
+                (x, -y),
+                (x, y),
+                (-x, y),
+                (-x, y + rect_offset),
+            ];
+            let (fill_d, stroke_d) =
+                roughjs_paths_for_polygon(&pts, fill_color, stroke_color, 1.3, hand_drawn_seed)
+                    .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+            let _ = write!(
+                out,
+                r##"<g class="basic label-container" style=""><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
+                escape_attr(&fill_d),
+                escape_attr(fill_color),
+                escape_attr(&stroke_d),
+                escape_attr(stroke_color),
+            );
+        }
+
+        // Flowchart v2 notched pentagon (Loop limit).
+        "notch-pent" => {
+            let label_text_plain =
+                flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+            let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
+                &ctx.text_style,
+                &ctx.class_defs,
+                &node_classes,
+                &node_styles,
+            );
+            let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+                ctx.measurer,
+                &label_text,
+                &label_type,
+                &node_text_style,
+                Some(ctx.wrapping_width),
+                ctx.node_wrap_mode,
+            );
+            let span_css_height_parity = node_classes.iter().any(|c| {
+                ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
+                    styles.iter().any(|s| {
+                        matches!(
+                            s.split_once(':').map(|p| p.0.trim()),
+                            Some("background" | "border")
+                        )
+                    })
+                })
+            });
+            if span_css_height_parity {
+                crate::text::flowchart_apply_mermaid_styled_node_height_parity(
+                    &mut metrics,
+                    &node_text_style,
+                );
+            }
+            let label_has_visual_content = label_text.to_ascii_lowercase().contains("<img")
+                || (label_type == "markdown" && label_text.contains("!["));
+            if label_text_plain.trim().is_empty() && !label_has_visual_content {
+                metrics.width = 0.0;
+                metrics.height = 0.0;
+            }
+
+            let p = ctx.node_padding;
+            let min_width = 60.0;
+            let min_height = 20.0;
+            let w = (metrics.width + 2.0 * p).max(min_width);
+            let h = (metrics.height + 2.0 * p).max(min_height);
+            let points = vec![
+                ((-w / 2.0) * 0.8, -h / 2.0),
+                ((w / 2.0) * 0.8, -h / 2.0),
+                (w / 2.0, (-h / 2.0) * 0.6),
+                (w / 2.0, h / 2.0),
+                (-w / 2.0, h / 2.0),
+                (-w / 2.0, (-h / 2.0) * 0.6),
+            ];
+            let path_data = path_from_points(&points);
+            let (fill_d, stroke_d) = roughjs_paths_for_svg_path(
+                &path_data,
+                fill_color,
+                stroke_color,
+                1.3,
+                "0 0",
+                hand_drawn_seed,
+            )
+            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+            let _ = write!(
+                out,
+                r##"<g class="basic label-container"><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
+                escape_attr(&fill_d),
+                escape_attr(fill_color),
+                escape_attr(&stroke_d),
+                escape_attr(stroke_color),
+            );
+        }
+
+        // Flowchart v2 bow tie rectangle (Stored data).
+        "bow-rect" => {
+            let label_text_plain =
+                flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+            let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
+                &ctx.text_style,
+                &ctx.class_defs,
+                &node_classes,
+                &node_styles,
+            );
+            let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+                ctx.measurer,
+                &label_text,
+                &label_type,
+                &node_text_style,
+                Some(ctx.wrapping_width),
+                ctx.node_wrap_mode,
+            );
+            let span_css_height_parity = node_classes.iter().any(|c| {
+                ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
+                    styles.iter().any(|s| {
+                        matches!(
+                            s.split_once(':').map(|p| p.0.trim()),
+                            Some("background" | "border")
+                        )
+                    })
+                })
+            });
+            if span_css_height_parity {
+                crate::text::flowchart_apply_mermaid_styled_node_height_parity(
+                    &mut metrics,
+                    &node_text_style,
+                );
+            }
+            let label_has_visual_content = label_text.to_ascii_lowercase().contains("<img")
+                || (label_type == "markdown" && label_text.contains("!["));
+            if label_text_plain.trim().is_empty() && !label_has_visual_content {
+                metrics.width = 0.0;
+                metrics.height = 0.0;
+            }
+
+            let p = ctx.node_padding;
+            let w = metrics.width + p + 20.0;
+            let h = metrics.height + p;
+            let ry = h / 2.0;
+            let rx = ry / (2.5 + h / 50.0);
+
+            let mut points: Vec<(f64, f64)> = Vec::new();
+            points.push((w / 2.0, -h / 2.0));
+            points.push((-w / 2.0, -h / 2.0));
+            points.extend(arc_points(
+                -w / 2.0,
+                -h / 2.0,
+                -w / 2.0,
+                h / 2.0,
+                rx,
+                ry,
+                false,
+            ));
+            points.push((w / 2.0, h / 2.0));
+            points.extend(arc_points(
+                w / 2.0,
+                h / 2.0,
+                w / 2.0,
+                -h / 2.0,
+                rx,
+                ry,
+                true,
+            ));
+
+            let path_data = path_from_points(&points);
+            let (fill_d, stroke_d) = roughjs_paths_for_svg_path(
+                &path_data,
+                fill_color,
+                stroke_color,
+                1.3,
+                "0 0",
+                hand_drawn_seed,
+            )
+            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+
+            let _ = write!(
+                out,
+                r##"<g class="basic label-container" transform="translate({}, 0)"><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
+                fmt(rx / 2.0),
+                escape_attr(&fill_d),
+                escape_attr(fill_color),
+                escape_attr(&stroke_d),
+                escape_attr(stroke_color),
+            );
+        }
+
+        // Flowchart v2 tagged rectangle (Tagged process).
+        "tag-rect" => {
+            let label_text_plain =
+                flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+            let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
+                &ctx.text_style,
+                &ctx.class_defs,
+                &node_classes,
+                &node_styles,
+            );
+            let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+                ctx.measurer,
+                &label_text,
+                &label_type,
+                &node_text_style,
+                Some(ctx.wrapping_width),
+                ctx.node_wrap_mode,
+            );
+            let span_css_height_parity = node_classes.iter().any(|c| {
+                ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
+                    styles.iter().any(|s| {
+                        matches!(
+                            s.split_once(':').map(|p| p.0.trim()),
+                            Some("background" | "border")
+                        )
+                    })
+                })
+            });
+            if span_css_height_parity {
+                crate::text::flowchart_apply_mermaid_styled_node_height_parity(
+                    &mut metrics,
+                    &node_text_style,
+                );
+            }
+            let label_has_visual_content = label_text.to_ascii_lowercase().contains("<img")
+                || (label_type == "markdown" && label_text.contains("!["));
+            if label_text_plain.trim().is_empty() && !label_has_visual_content {
+                metrics.width = 0.0;
+                metrics.height = 0.0;
+            }
+
+            let p = ctx.node_padding;
+            let w = (metrics.width + 2.0 * p).max(layout_node.width.max(0.0));
+            let h = (metrics.height + 2.0 * p).max(layout_node.height.max(0.0));
+            let x = -w / 2.0;
+            let y = -h / 2.0;
+            let tag_w = 0.2 * h;
+            let tag_h = 0.2 * h;
+
+            let rect_points = vec![
+                (x - tag_w / 2.0, y),
+                (x + w + tag_w / 2.0, y),
+                (x + w + tag_w / 2.0, y + h),
+                (x - tag_w / 2.0, y + h),
+            ];
+            let tag_points = vec![
+                (x + w - tag_w / 2.0, y + h),
+                (x + w + tag_w / 2.0, y + h),
+                (x + w + tag_w / 2.0, y + h - tag_h),
+            ];
+
+            let rect_path = path_from_points(&rect_points);
+            let (rect_fill_d, rect_stroke_d) = roughjs_paths_for_svg_path(
+                &rect_path,
+                fill_color,
+                stroke_color,
+                1.3,
+                "0 0",
+                hand_drawn_seed,
+            )
+            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+
+            let tag_path = path_from_points(&tag_points);
+            let (tag_fill_d, tag_stroke_d) = roughjs_paths_for_svg_path(
+                &tag_path,
+                fill_color,
+                stroke_color,
+                1.3,
+                "0 0",
+                hand_drawn_seed,
+            )
+            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+
+            let _ = write!(
+                out,
+                r##"<g class="basic label-container"><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
+                escape_attr(&rect_fill_d),
+                escape_attr(fill_color),
+                escape_attr(&rect_stroke_d),
+                escape_attr(stroke_color),
+                escape_attr(&tag_fill_d),
+                escape_attr(fill_color),
+                escape_attr(&tag_stroke_d),
+                escape_attr(stroke_color),
+            );
+        }
+
+        // Flowchart v2 wave edged rectangle (Document).
+        "doc" => {
+            compact_label_translate = true;
+
+            let label_text_plain =
+                flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+            let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
+                &ctx.text_style,
+                &ctx.class_defs,
+                &node_classes,
+                &node_styles,
+            );
+            let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+                ctx.measurer,
+                &label_text,
+                &label_type,
+                &node_text_style,
+                Some(ctx.wrapping_width),
+                ctx.node_wrap_mode,
+            );
+            let span_css_height_parity = node_classes.iter().any(|c| {
+                ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
+                    styles.iter().any(|s| {
+                        matches!(
+                            s.split_once(':').map(|p| p.0.trim()),
+                            Some("background" | "border")
+                        )
+                    })
+                })
+            });
+            if span_css_height_parity {
+                crate::text::flowchart_apply_mermaid_styled_node_height_parity(
+                    &mut metrics,
+                    &node_text_style,
+                );
+            }
+            let label_has_visual_content = label_text.to_ascii_lowercase().contains("<img")
+                || (label_type == "markdown" && label_text.contains("!["));
+            if label_text_plain.trim().is_empty() && !label_has_visual_content {
+                metrics.width = 0.0;
+                metrics.height = 0.0;
+            }
+
+            let p = ctx.node_padding;
+            let w = (metrics.width + 2.0 * p).max(layout_node.width.max(0.0));
+            let h = (metrics.height + 2.0 * p).max(layout_node.height.max(0.0));
+            let wave_amplitude = h / 8.0;
+            let final_h = h + wave_amplitude;
+
+            // Mermaid keeps a minimum width (70px) for wave edged rectangles.
+            let min_width = 70.0;
+            let extra_w = ((min_width - w).max(0.0)) / 2.0;
+
+            let mut points: Vec<(f64, f64)> = Vec::new();
+            points.push((-w / 2.0 - extra_w, final_h / 2.0));
+            points.extend(generate_full_sine_wave_points(
+                -w / 2.0 - extra_w,
+                final_h / 2.0,
+                w / 2.0 + extra_w,
+                final_h / 2.0,
+                wave_amplitude,
+                0.8,
+            ));
+            points.push((w / 2.0 + extra_w, -final_h / 2.0));
+            points.push((-w / 2.0 - extra_w, -final_h / 2.0));
+
+            let path_data = path_from_points(&points);
+            let (fill_d, stroke_d) = roughjs_paths_for_svg_path(
+                &path_data,
+                fill_color,
+                stroke_color,
+                1.3,
+                "0 0",
+                hand_drawn_seed,
+            )
+            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+            let _ = write!(
+                out,
+                r##"<g class="basic label-container" transform="translate(0,{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
+                fmt(-wave_amplitude / 2.0),
+                escape_attr(&fill_d),
+                escape_attr(fill_color),
+                escape_attr(&stroke_d),
+                escape_attr(stroke_color),
+            );
+
+            // Mirror Mermaid `waveEdgedRectangle.ts` label placement.
+            label_dx = -w / 2.0 + p + metrics.width / 2.0;
+            label_dy = -h / 2.0 + p - wave_amplitude + metrics.height / 2.0;
+        }
+
+        // Flowchart v2 lined wave edged rectangle (Lined document).
+        "lin-doc" => {
+            compact_label_translate = true;
+
+            let label_text_plain =
+                flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+            let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
+                &ctx.text_style,
+                &ctx.class_defs,
+                &node_classes,
+                &node_styles,
+            );
+            let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+                ctx.measurer,
+                &label_text,
+                &label_type,
+                &node_text_style,
+                Some(ctx.wrapping_width),
+                ctx.node_wrap_mode,
+            );
+            let span_css_height_parity = node_classes.iter().any(|c| {
+                ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
+                    styles.iter().any(|s| {
+                        matches!(
+                            s.split_once(':').map(|p| p.0.trim()),
+                            Some("background" | "border")
+                        )
+                    })
+                })
+            });
+            if span_css_height_parity {
+                crate::text::flowchart_apply_mermaid_styled_node_height_parity(
+                    &mut metrics,
+                    &node_text_style,
+                );
+            }
+            let label_has_visual_content = label_text.to_ascii_lowercase().contains("<img")
+                || (label_type == "markdown" && label_text.contains("!["));
+            if label_text_plain.trim().is_empty() && !label_has_visual_content {
+                metrics.width = 0.0;
+                metrics.height = 0.0;
+            }
+
+            let p = ctx.node_padding;
+            let w = (metrics.width + 2.0 * p).max(layout_node.width.max(0.0));
+            let h = (metrics.height + 2.0 * p).max(layout_node.height.max(0.0));
+            let wave_amplitude = h / 4.0;
+            let final_h = h + wave_amplitude;
+            let ext = (w / 2.0) * 0.1;
+
+            // Mermaid nudges label by half the left extension, and shifts it up by waveAmplitude/2.
+            label_dx = ext / 2.0;
+            label_dy = -wave_amplitude / 2.0;
+
+            let mut points: Vec<(f64, f64)> = Vec::new();
+            points.push((-w / 2.0 - ext, -final_h / 2.0));
+            points.push((-w / 2.0 - ext, final_h / 2.0));
+            points.extend(generate_full_sine_wave_points(
+                -w / 2.0 - ext,
+                final_h / 2.0,
+                w / 2.0 + ext,
+                final_h / 2.0,
+                wave_amplitude,
+                0.8,
+            ));
+            points.push((w / 2.0 + ext, -final_h / 2.0));
+            points.push((-w / 2.0 - ext, -final_h / 2.0));
+            points.push((-w / 2.0, -final_h / 2.0));
+            points.push((-w / 2.0, (final_h / 2.0) * 1.1));
+            points.push((-w / 2.0, -final_h / 2.0));
+
+            let (fill_d, stroke_d) =
+                roughjs_paths_for_polygon(&points, fill_color, stroke_color, 1.3, hand_drawn_seed)
+                    .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+            let _ = write!(
+                out,
+                r##"<g class="basic label-container" transform="translate(0,{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
+                fmt(-wave_amplitude / 2.0),
+                escape_attr(&fill_d),
+                escape_attr(fill_color),
+                escape_attr(&stroke_d),
+                escape_attr(stroke_color),
+            );
+        }
+
+        // Flowchart v2 tagged wave edged rectangle (Tagged document).
+        "tag-doc" => {
+            compact_label_translate = true;
+
+            let label_text_plain =
+                flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+            let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
+                &ctx.text_style,
+                &ctx.class_defs,
+                &node_classes,
+                &node_styles,
+            );
+            let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+                ctx.measurer,
+                &label_text,
+                &label_type,
+                &node_text_style,
+                Some(ctx.wrapping_width),
+                ctx.node_wrap_mode,
+            );
+            let span_css_height_parity = node_classes.iter().any(|c| {
+                ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
+                    styles.iter().any(|s| {
+                        matches!(
+                            s.split_once(':').map(|p| p.0.trim()),
+                            Some("background" | "border")
+                        )
+                    })
+                })
+            });
+            if span_css_height_parity {
+                crate::text::flowchart_apply_mermaid_styled_node_height_parity(
+                    &mut metrics,
+                    &node_text_style,
+                );
+            }
+            let label_has_visual_content = label_text.to_ascii_lowercase().contains("<img")
+                || (label_type == "markdown" && label_text.contains("!["));
+            if label_text_plain.trim().is_empty() && !label_has_visual_content {
+                metrics.width = 0.0;
+                metrics.height = 0.0;
+            }
+
+            let p = ctx.node_padding;
+            let w = (metrics.width + 2.0 * p).max(layout_node.width.max(0.0));
+            let h = (metrics.height + 2.0 * p).max(layout_node.height.max(0.0));
+            let wave_amplitude = h / 4.0;
+            let tag_width = 0.2 * w;
+            let tag_height = 0.2 * h;
+            let final_h = h + wave_amplitude;
+
+            // Mermaid shifts label to the left padding origin and up by waveAmplitude/2.
+            label_dx = -w / 2.0 + p + metrics.width / 2.0;
+            label_dy = -h / 2.0 + p - wave_amplitude / 2.0 + metrics.height / 2.0;
+
+            let ext = (w / 2.0) * 0.1;
+            let mut points: Vec<(f64, f64)> = Vec::new();
+            points.push((-w / 2.0 - ext, final_h / 2.0));
+            points.extend(generate_full_sine_wave_points(
+                -w / 2.0 - ext,
+                final_h / 2.0,
+                w / 2.0 + ext,
+                final_h / 2.0,
+                wave_amplitude,
+                0.8,
+            ));
+            points.push((w / 2.0 + ext, -final_h / 2.0));
+            points.push((-w / 2.0 - ext, -final_h / 2.0));
+
+            let x = -w / 2.0 + ext;
+            let y = -final_h / 2.0 - tag_height * 0.4;
+            let mut tag_points: Vec<(f64, f64)> = Vec::new();
+            tag_points.push((x + w - tag_width, (y + h) * 1.4));
+            tag_points.push((x + w, y + h - tag_height));
+            tag_points.push((x + w, (y + h) * 0.9));
+            tag_points.extend(generate_full_sine_wave_points(
+                x + w,
+                (y + h) * 1.3,
+                x + w - tag_width,
+                (y + h) * 1.5,
+                -h * 0.03,
+                0.5,
+            ));
+
+            let wave_rect_path = path_from_points(&points);
+            let (wave_fill_d, wave_stroke_d) = roughjs_paths_for_svg_path(
+                &wave_rect_path,
+                fill_color,
+                stroke_color,
+                1.3,
+                "0 0",
+                hand_drawn_seed,
+            )
+            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+
+            let tag_path = path_from_points(&tag_points);
+            let (tag_fill_d, tag_stroke_d) = roughjs_paths_for_svg_path(
+                &tag_path,
+                fill_color,
+                stroke_color,
+                1.3,
+                "0 0",
+                hand_drawn_seed,
+            )
+            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+
+            let _ = write!(
+                out,
+                r##"<g class="basic label-container" transform="translate(0,{})"><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
+                fmt(-wave_amplitude / 2.0),
+                escape_attr(&wave_fill_d),
+                escape_attr(fill_color),
+                escape_attr(&wave_stroke_d),
+                escape_attr(stroke_color),
+                escape_attr(&tag_fill_d),
+                escape_attr(fill_color),
+                escape_attr(&tag_stroke_d),
+                escape_attr(stroke_color),
+            );
+        }
+
+        // Flowchart v2 triangle (Extract).
+        "tri" => {
+            let label_text_plain =
+                flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+            let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
+                &ctx.text_style,
+                &ctx.class_defs,
+                &node_classes,
+                &node_styles,
+            );
+            let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+                ctx.measurer,
+                &label_text,
+                &label_type,
+                &node_text_style,
+                Some(ctx.wrapping_width),
+                ctx.node_wrap_mode,
+            );
+            let span_css_height_parity = node_classes.iter().any(|c| {
+                ctx.class_defs.get(c.as_str()).is_some_and(|styles| {
+                    styles.iter().any(|s| {
+                        matches!(
+                            s.split_once(':').map(|p| p.0.trim()),
+                            Some("background" | "border")
+                        )
+                    })
+                })
+            });
+            if span_css_height_parity {
+                crate::text::flowchart_apply_mermaid_styled_node_height_parity(
+                    &mut metrics,
+                    &node_text_style,
+                );
+            }
+            let label_has_visual_content = label_text.to_ascii_lowercase().contains("<img")
+                || (label_type == "markdown" && label_text.contains("!["));
+            if label_text_plain.trim().is_empty() && !label_has_visual_content {
+                metrics.width = 0.0;
+                metrics.height = 0.0;
+            }
+
+            let p = ctx.node_padding;
+            let w = metrics.width + p;
+            let h = w + metrics.height;
+            let tw = w + metrics.height;
+            let pts = vec![(0.0, 0.0), (tw, 0.0), (tw / 2.0, -h)];
+            let path_data = path_from_points(&pts);
+            let (fill_d, stroke_d) = roughjs_paths_for_svg_path(
+                &path_data,
+                fill_color,
+                stroke_color,
+                1.3,
+                "0 0",
+                hand_drawn_seed,
+            )
+            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+
+            let _ = write!(
+                out,
+                r#"<g transform="translate({}, {})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"#,
+                fmt(-h / 2.0),
+                fmt(h / 2.0),
+                escape_attr(&fill_d),
+                escape_attr(fill_color),
+                escape_attr(&stroke_d),
+                escape_attr(stroke_color),
+            );
+
+            // Mermaid places the label near the base; in htmlLabels mode the padding term is /2.
+            label_dy = h / 2.0 - metrics.height / 2.0 - p / 2.0;
         }
 
         // Flowchart v2 shaded process / lined rectangle.
@@ -8682,12 +9709,94 @@ pub(super) fn render_flowchart_v2_svg(
                             right_hw += 0.5;
                         }
 
-                        // Mermaid `stateEnd.ts` renders the framed-circle using a RoughJS ellipse
-                        // path with a slightly asymmetric bbox in Chromium. Model that asymmetry
-                        // so root `viewBox` parity matches upstream.
-                        if matches!(shape, "fr-circ" | "framed-circle" | "stop") {
+                         // Mermaid `stateEnd.ts` renders the framed-circle using a RoughJS ellipse
+                         // path with a slightly asymmetric bbox in Chromium. Model that asymmetry
+                         // so root `viewBox` parity matches upstream.
+                         if matches!(shape, "fr-circ" | "framed-circle" | "stop") {
+                             left_hw = 7.0;
+                             right_hw = (n.width - 7.0).max(0.0);
+                         }
+
+                        // Mermaid `filledCircle.ts` uses a RoughJS circle path (roughness=0) whose
+                        // bbox is slightly asymmetric (it extends further to the right). Model
+                        // that asymmetry so root `viewBox` parity matches upstream.
+                        if matches!(shape, "f-circ") {
                             left_hw = 7.0;
                             right_hw = (n.width - 7.0).max(0.0);
+                        }
+
+                        // Mermaid `crossedCircle.ts` uses a RoughJS circle path with radius=30;
+                        // its bbox is slightly asymmetric in Chromium.
+                        if matches!(shape, "cross-circ") {
+                            left_hw = 30.0;
+                            right_hw = (n.width - 30.0).max(0.0);
+                            hh = 30.0;
+                        }
+
+                        // Mermaid `halfRoundedRectangle.ts` and `curvedTrapezoid.ts` draw their
+                        // rough paths from the "theoretical" text+padding width, but Dagre uses
+                        // the `updateNodeBounds(...)` bbox which can be slightly narrower. Root
+                        // viewport comes from DOM `getBBox()`, so adjust the left/right extents to
+                        // match the rendered path's asymmetric bbox.
+                        if matches!(shape, "delay" | "curv-trap") {
+                            if let Some(flow_node) = nodes_by_id.get(&n.id) {
+                                let label = flow_node.label.as_deref().unwrap_or("");
+                                let label_type = flow_node
+                                    .label_type
+                                    .as_deref()
+                                    .unwrap_or(if node_html_labels { "html" } else { "text" });
+                                let label_plain = flowchart_label_plain_text(
+                                    label,
+                                    label_type,
+                                    node_html_labels,
+                                );
+                                let node_text_style =
+                                    crate::flowchart::flowchart_effective_text_style_for_classes(
+                                        &text_style,
+                                        &model.class_defs,
+                                        &flow_node.classes,
+                                        &flow_node.styles,
+                                    );
+                                let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
+                                    measurer,
+                                    label,
+                                    label_type,
+                                    &node_text_style,
+                                    Some(wrapping_width),
+                                    node_wrap_mode,
+                                );
+                                let span_css_height_parity = flow_node.classes.iter().any(|c| {
+                                    model.class_defs.get(c.as_str()).is_some_and(|styles| {
+                                        styles.iter().any(|s| {
+                                            matches!(
+                                                s.split_once(':').map(|p| p.0.trim()),
+                                                Some("background" | "border")
+                                            )
+                                        })
+                                    })
+                                });
+                                if span_css_height_parity {
+                                    crate::text::flowchart_apply_mermaid_styled_node_height_parity(
+                                        &mut metrics,
+                                        &node_text_style,
+                                    );
+                                }
+                                let label_has_visual_content =
+                                    label.to_ascii_lowercase().contains("<img")
+                                        || (label_type == "markdown" && label.contains("!["));
+                                if label_plain.trim().is_empty() && !label_has_visual_content {
+                                    metrics.width = 0.0;
+                                    metrics.height = 0.0;
+                                }
+
+                                let pre_w = if shape == "delay" {
+                                    (metrics.width + 2.0 * node_padding).max(80.0)
+                                } else {
+                                    ((metrics.width + 2.0 * node_padding) * 1.25).max(80.0)
+                                };
+                                left_hw = pre_w / 2.0;
+                                right_hw = (n.width - left_hw).max(0.0);
+                            }
                         }
 
                         // Mermaid `forkJoin.ts` inflates Dagre dimensions (via `state.padding/2`)

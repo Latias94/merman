@@ -47,7 +47,7 @@ Recently imported (keep gates green after each batch):
 - 2026-02-11: Sequence `sequenceDiagram.md` docs examples batch import (16 new fixtures; additional blocks were skipped as duplicates).
 - 2026-02-11: Class `classDiagram.md` docs examples batch import (13 new fixtures, including `hideEmptyMembersBox` and inline style variants).
 - 2026-02-11: GitGraph `gitgraph.md` docs examples batch import (5 new fixtures: branch/line hiding and theme variants).
-- 2026-02-11: External fixtures from `mermaid-rs-renderer` (Mindmap + Kanban: 2 fixtures).
+- 2026-02-11: External fixtures from `mermaid-rs-renderer` (Mindmap + Kanban + Flowchart + Sequence + Architecture: 5 fixtures).
 
 ## Medium priority (coverage growth)
 

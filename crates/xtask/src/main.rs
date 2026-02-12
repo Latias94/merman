@@ -331,6 +331,21 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
+    fn clamp_slug(mut s: String, max_len: usize) -> String {
+        if s.len() <= max_len {
+            return s;
+        }
+        s.truncate(max_len);
+        while s.ends_with('_') {
+            s.pop();
+        }
+        if s.is_empty() {
+            "untitled".to_string()
+        } else {
+            s
+        }
+    }
+
     fn canonical_fixture_text(s: &str) -> String {
         let s = s.replace("\r\n", "\n").replace('\r', "\n");
         let s = s.trim_matches('\n');
@@ -636,7 +651,7 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown");
-        let source_slug = slugify(source_stem);
+        let source_slug = clamp_slug(slugify(source_stem), 48);
 
         for b in blocks {
             if !allowed_infos.iter().any(|v| *v == b.info) {
@@ -697,7 +712,8 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
                 continue;
             }
 
-            let heading_slug = slugify(b.heading.as_deref().unwrap_or("example"));
+            let heading_slug =
+                clamp_slug(slugify(b.heading.as_deref().unwrap_or("example")), 64);
             let stem = format!(
                 "upstream_docs_{source_slug}_{heading_slug}_{idx:03}",
                 idx = b.idx_in_file + 1
@@ -11339,7 +11355,26 @@ fn gen_upstream_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             };
 
             match status {
-                Ok(s) if s.success() => {}
+                Ok(s) if s.success() => {
+                    // Some upstream renderer failures surface only as console errors while still
+                    // returning a successful exit code. Treat missing/empty outputs as failures so
+                    // we don't silently accept a broken baseline corpus.
+                    match fs::metadata(&out_path) {
+                        Ok(meta) if meta.is_file() && meta.len() > 0 => {}
+                        Ok(meta) => failures.push(format!(
+                            "mmdc succeeded but output is empty for {} (out={}, bytes={})",
+                            mmd_path.display(),
+                            out_path.display(),
+                            meta.len()
+                        )),
+                        Err(err) => failures.push(format!(
+                            "mmdc succeeded but output is missing for {} (out={}, err={})",
+                            mmd_path.display(),
+                            out_path.display(),
+                            err
+                        )),
+                    }
+                }
                 Ok(s) => failures.push(format!(
                     "mmdc failed for {} (exit={})",
                     mmd_path.display(),

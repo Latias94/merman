@@ -347,7 +347,7 @@ fn parse_directive(raw: &str) -> Result<Option<Directive>> {
             None
         } else if rest.starts_with('{') || rest.starts_with('[') {
             Some(
-                serde_json::from_str::<Value>(rest).map_err(|e| Error::InvalidDirectiveJson {
+                json5::from_str::<Value>(rest).map_err(|e| Error::InvalidDirectiveJson {
                     message: e.to_string(),
                 })?,
             )

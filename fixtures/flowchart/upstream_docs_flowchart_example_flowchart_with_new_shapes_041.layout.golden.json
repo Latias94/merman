@@ -6,31 +6,31 @@
         {
           "id": "A",
           "x": 103.44,
-          "y": 35.0,
-          "width": 143.68,
-          "height": 54.0,
+          "y": 69.34,
+          "width": 122.68,
+          "height": 122.68,
           "is_cluster": false
         },
         {
           "id": "B",
           "x": 103.44,
-          "y": 139.0,
-          "width": 127.84,
-          "height": 54.0,
+          "y": 221.18,
+          "width": 97.84,
+          "height": 81.0,
           "is_cluster": false
         },
         {
           "id": "C",
           "x": 103.44,
-          "y": 243.0,
-          "width": 186.08,
-          "height": 54.0,
+          "y": 357.175,
+          "width": 166.08,
+          "height": 90.99,
           "is_cluster": false
         },
         {
           "id": "D",
           "x": 103.44,
-          "y": 347.0,
+          "y": 479.67,
           "width": 190.88,
           "height": 54.0,
           "is_cluster": false
@@ -38,9 +38,9 @@
         {
           "id": "E",
           "x": 103.44,
-          "y": 451.0,
-          "width": 153.28,
-          "height": 54.0,
+          "y": 605.249,
+          "width": 123.28,
+          "height": 97.157,
           "is_cluster": false
         }
       ],
@@ -50,7 +50,7 @@
         "min_x": 8.0,
         "min_y": 8.0,
         "max_x": 198.88,
-        "max_y": 478.0
+        "max_y": 653.828
       }
     }
   }

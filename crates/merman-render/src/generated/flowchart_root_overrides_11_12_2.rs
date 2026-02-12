@@ -25,6 +25,10 @@ pub fn lookup_flowchart_root_viewport_override(
         "mmdr_tests_flowchart_flowchart_ports" => Some(("0 0 1570.953125 278", "1570.95")),
         "mmdr_tests_flowchart_flowchart_edges" => Some(("0 0 319.703125 486", "319.703")),
         "mmdr_tests_flowchart_flowchart_subgraph" => Some(("0 0 635.484375 140", "635.484")),
+        "upstream_docs_flowchart_document_092" => Some((
+            "0 -0.002391815185546875 118.15625 83.4952163696289",
+            "118.156",
+        )),
         "upstream_docs_flowchart_limitation_199" => Some(("0 0 706.328125 371", "706.328")),
         "upstream_docs_flowchart_markdown_formatting_008" => {
             Some(("0 0 353.203125 118", "353.203"))
@@ -118,6 +122,22 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_docs_accessibility_acctitle_and_accdescr_usage_examples_006" => {
             Some(("0 0 621.046875 197.234375", "621.047"))
         }
+        "upstream_docs_flowchart_lined_document_110" => Some((
+            "0 -0.004795074462890625 175.6374969482422 96.99040985107422",
+            "175.637",
+        )),
+        "upstream_docs_flowchart_multi_document_stacked_document_118" => Some((
+            "0 -0.004795074462890625 196.640625 106.99040985107422",
+            "196.641",
+        )),
+        "upstream_docs_flowchart_stored_data_bow_tie_rectangle_124" => Some((
+            "0.010150909423828125 0 140.29981994628906 55",
+            "140.3",
+        )),
+        "upstream_docs_flowchart_tagged_document_128" => Some((
+            "0 -0.004795074462890625 187.03280639648438 96.99040985107422",
+            "187.033",
+        )),
         "upstream_docs_configuration_frontmatter_config_001" => {
             Some(("0 -50 117.34375 224", "117.344"))
         }

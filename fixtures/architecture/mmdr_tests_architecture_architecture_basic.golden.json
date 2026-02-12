@@ -1,0 +1,119 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [
+      {
+        "id": "api",
+        "icon": "icon",
+        "title": "API",
+        "in": null
+      }
+    ],
+    "nodes": [
+      {
+        "id": "web",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "web",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "icon",
+        "iconText": null,
+        "title": "Web",
+        "in": "api"
+      },
+      {
+        "id": "db",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "web",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "icon",
+        "iconText": null,
+        "title": "DB",
+        "in": "api"
+      }
+    ],
+    "services": [
+      {
+        "id": "web",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "web",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "icon",
+        "iconText": null,
+        "title": "Web",
+        "in": "api"
+      },
+      {
+        "id": "db",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "web",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "icon",
+        "iconText": null,
+        "title": "DB",
+        "in": "api"
+      }
+    ],
+    "junctions": [],
+    "edges": [
+      {
+        "lhsId": "web",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "db",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": null
+      }
+    ]
+  }
+}
