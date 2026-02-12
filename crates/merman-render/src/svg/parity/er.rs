@@ -323,7 +323,12 @@ fn is_label_coordinate_in_path(point: crate::model::LayoutPoint, d_attr: &str) -
     let rounded_x = point.x.round() as i64;
     let rounded_y = point.y.round() as i64;
 
-    let re = regex::Regex::new(r"(\d+\.\d+)").expect("regex must compile");
+    fn re_float_with_decimals() -> &'static regex::Regex {
+        use std::sync::OnceLock;
+        static RE: OnceLock<regex::Regex> = OnceLock::new();
+        RE.get_or_init(|| regex::Regex::new(r"(\d+\.\d+)").expect("regex must compile"))
+    }
+    let re = re_float_with_decimals();
     let sanitized_d = re.replace_all(d_attr, |caps: &regex::Captures<'_>| {
         let v = caps
             .get(1)

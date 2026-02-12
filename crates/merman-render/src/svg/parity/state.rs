@@ -3515,7 +3515,12 @@ fn render_state_edge_label(
     ) -> bool {
         let rounded_x = point.x.round() as i64;
         let rounded_y = point.y.round() as i64;
-        let re = regex::Regex::new(r"(\d+\.\d+)").expect("valid regex");
+        fn re_float_with_decimals() -> &'static regex::Regex {
+            use std::sync::OnceLock;
+            static RE: OnceLock<regex::Regex> = OnceLock::new();
+            RE.get_or_init(|| regex::Regex::new(r"(\d+\.\d+)").expect("valid regex"))
+        }
+        let re = re_float_with_decimals();
         let sanitized_d = re
             .replace_all(d_attr, |caps: &regex::Captures<'_>| {
                 caps.get(1)
