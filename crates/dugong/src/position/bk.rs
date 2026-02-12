@@ -5,6 +5,7 @@
 use crate::graphlib::{EdgeKey, Graph, GraphOptions};
 use crate::{EdgeLabel, GraphLabel, LabelPos, NodeLabel};
 use rustc_hash::FxHashMap as HashMap;
+use rustc_hash::FxHashSet as HashSet;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub type Conflicts = BTreeMap<String, BTreeSet<String>>;
@@ -337,25 +338,49 @@ fn horizontal_compaction_ref<'a>(
         "borderRight"
     };
 
-    fn iterate<F, N>(block_g: &Graph<(), f64, ()>, mut set_xs: F, mut next_nodes: N)
+    fn iterate_predecessors<'a, F>(block_g: &'a Graph<(), f64, ()>, mut set_xs: F)
     where
-        F: FnMut(&str),
-        N: FnMut(&str) -> Vec<String>,
+        F: FnMut(&'a str),
     {
-        let mut stack: Vec<String> = block_g.nodes().map(|n| n.to_string()).collect();
-        let mut visited: HashMap<String, bool> = HashMap::default();
+        let mut stack: Vec<&'a str> = block_g.nodes().collect();
+        let mut entered: HashSet<&'a str> = HashSet::default();
+        let mut scratch: Vec<&'a str> = Vec::new();
 
         while let Some(elem) = stack.pop() {
-            if visited.get(&elem).copied().unwrap_or(false) {
-                set_xs(&elem);
+            if entered.contains(elem) {
+                set_xs(elem);
                 continue;
             }
 
-            visited.insert(elem.clone(), true);
-            stack.push(elem.clone());
-            for next in next_nodes(&elem) {
-                stack.push(next);
+            entered.insert(elem);
+            stack.push(elem);
+
+            scratch.clear();
+            block_g.extend_predecessors(elem, &mut scratch);
+            stack.extend(scratch.iter().copied());
+        }
+    }
+
+    fn iterate_successors<'a, F>(block_g: &'a Graph<(), f64, ()>, mut set_xs: F)
+    where
+        F: FnMut(&'a str),
+    {
+        let mut stack: Vec<&'a str> = block_g.nodes().collect();
+        let mut entered: HashSet<&'a str> = HashSet::default();
+        let mut scratch: Vec<&'a str> = Vec::new();
+
+        while let Some(elem) = stack.pop() {
+            if entered.contains(elem) {
+                set_xs(elem);
+                continue;
             }
+
+            entered.insert(elem);
+            stack.push(elem);
+
+            scratch.clear();
+            block_g.extend_successors(elem, &mut scratch);
+            stack.extend(scratch.iter().copied());
         }
     }
 
@@ -369,14 +394,7 @@ fn horizontal_compaction_ref<'a>(
             });
             xs.insert(elem.to_string(), best);
         };
-        let next = |elem: &str| {
-            block_g
-                .predecessors(elem)
-                .into_iter()
-                .map(|s| s.to_string())
-                .collect()
-        };
-        iterate(&block_g, &mut set, next);
+        iterate_predecessors(&block_g, &mut set);
     }
 
     // Second pass: assign greatest coordinates
@@ -397,14 +415,7 @@ fn horizontal_compaction_ref<'a>(
                 xs.insert(elem.to_string(), cur.max(min));
             }
         };
-        let next = |elem: &str| {
-            block_g
-                .successors(elem)
-                .into_iter()
-                .map(|s| s.to_string())
-                .collect()
-        };
-        iterate(&block_g, &mut set, next);
+        iterate_successors(&block_g, &mut set);
     }
 
     // Assign x coordinates to all nodes based on their block root.

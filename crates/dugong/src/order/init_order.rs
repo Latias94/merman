@@ -53,9 +53,8 @@ where
             layer.push(v.to_string());
         }
 
-        let successors: Vec<String> = g.successors(v).into_iter().map(|s| s.to_string()).collect();
-        for w in successors {
-            dfs(g, &w, visited, layers);
+        for w in g.successors(v) {
+            dfs(g, w, visited, layers);
         }
     }
 
