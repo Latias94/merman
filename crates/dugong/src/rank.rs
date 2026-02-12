@@ -293,7 +293,6 @@ pub mod network_simplex {
     use super::{feasible_tree, tree, util};
     use crate::graphlib::{EdgeKey, Graph, alg};
     use crate::{EdgeLabel, GraphLabel, NodeLabel};
-    use rustc_hash::FxHashSet as HashSet;
 
     pub fn network_simplex(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         let mut simplified = crate::util::simplify(g);
@@ -334,39 +333,103 @@ pub mod network_simplex {
         else {
             return;
         };
+        let Some(root_ix) = tree.node_ix(&root) else {
+            return;
+        };
 
-        let mut visited: HashSet<String> = HashSet::default();
-        let _ = dfs_assign_low_lim(tree, &mut visited, 1, &root, None);
-    }
+        #[derive(Debug)]
+        struct Frame {
+            v_ix: usize,
+            parent_ix: Option<usize>,
+            low: i32,
+            neighbors: Vec<usize>,
+            next_neighbor: usize,
+        }
 
-    fn dfs_assign_low_lim(
-        tree: &mut Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
-        visited: &mut HashSet<String>,
-        next_lim: i32,
-        v: &str,
-        parent: Option<&str>,
-    ) -> i32 {
-        let low = next_lim;
-        visited.insert(v.to_string());
-
-        let neighbors: Vec<String> = tree
-            .neighbors(v)
-            .into_iter()
-            .map(|s| s.to_string())
-            .collect();
-        let mut next_lim = next_lim;
-        for w in neighbors {
-            if !visited.contains(&w) {
-                next_lim = dfs_assign_low_lim(tree, visited, next_lim, &w, Some(v));
+        fn ensure_bool_len(v: &mut Vec<bool>, ix: usize) {
+            if ix >= v.len() {
+                v.resize(ix + 1, false);
             }
         }
 
-        if let Some(label) = tree.node_mut(v) {
-            label.low = low;
-            label.lim = next_lim;
-            label.parent = parent.map(|p| p.to_string());
+        fn push_frame(
+            tree: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
+            visited: &mut Vec<bool>,
+            stack: &mut Vec<Frame>,
+            v_ix: usize,
+            parent_ix: Option<usize>,
+            next_lim: i32,
+        ) {
+            ensure_bool_len(visited, v_ix);
+            visited[v_ix] = true;
+
+            let mut neighbors: Vec<usize> = Vec::new();
+            tree.for_each_neighbor_ix(v_ix, |w_ix| {
+                if parent_ix.is_some_and(|p| p == w_ix) {
+                    return;
+                }
+                neighbors.push(w_ix);
+            });
+
+            stack.push(Frame {
+                v_ix,
+                parent_ix,
+                low: next_lim,
+                neighbors,
+                next_neighbor: 0,
+            });
         }
-        next_lim + 1
+
+        let mut visited: Vec<bool> = Vec::new();
+        let mut stack: Vec<Frame> = Vec::new();
+        let mut next_lim: i32 = 1;
+        push_frame(&*tree, &mut visited, &mut stack, root_ix, None, next_lim);
+
+        while !stack.is_empty() {
+            let next_child = {
+                let top = stack.last_mut().expect("stack is non-empty");
+                top.neighbors
+                    .get(top.next_neighbor)
+                    .copied()
+                    .inspect(|_| top.next_neighbor += 1)
+                    .map(|w_ix| (w_ix, top.v_ix))
+            };
+
+            if let Some((w_ix, parent_ix)) = next_child {
+                ensure_bool_len(&mut visited, w_ix);
+                if visited[w_ix] {
+                    continue;
+                }
+                push_frame(
+                    &*tree,
+                    &mut visited,
+                    &mut stack,
+                    w_ix,
+                    Some(parent_ix),
+                    next_lim,
+                );
+                continue;
+            }
+
+            let Frame {
+                v_ix,
+                parent_ix,
+                low,
+                neighbors: _,
+                next_neighbor: _,
+            } = stack.pop().expect("stack is non-empty");
+
+            let parent = parent_ix
+                .and_then(|p| tree.node_id_by_ix(p))
+                .map(|p| p.to_string());
+            if let Some(label) = tree.node_label_mut_by_ix(v_ix) {
+                label.low = low;
+                label.lim = next_lim;
+                label.parent = parent;
+            }
+
+            next_lim += 1;
+        }
     }
 
     pub fn init_cut_values(
