@@ -4,6 +4,66 @@ use super::*;
 
 // State diagram SVG renderer implementation (split from parity.rs).
 
+fn prefer_fast_state_viewport_bounds() -> bool {
+    match std::env::var("MERMAN_STATE_VIEWPORT").as_deref() {
+        Ok("svg") | Ok("slow") | Ok("0") | Ok("false") => false,
+        Ok("layout") | Ok("fast") | Ok("1") | Ok("true") => true,
+        // Default to fast: derive viewBox from layout geometry (avoid SVG scan).
+        _ => true,
+    }
+}
+
+fn state_viewport_bounds_from_layout(layout: &StateDiagramV2Layout) -> Option<Bounds> {
+    fn include_rect(bounds: &mut Option<Bounds>, min_x: f64, min_y: f64, max_x: f64, max_y: f64) {
+        let w = (max_x - min_x).abs();
+        let h = (max_y - min_y).abs();
+        if w < 1e-9 && h < 1e-9 {
+            return;
+        }
+
+        if let Some(cur) = bounds.as_mut() {
+            cur.min_x = cur.min_x.min(min_x);
+            cur.min_y = cur.min_y.min(min_y);
+            cur.max_x = cur.max_x.max(max_x);
+            cur.max_y = cur.max_y.max(max_y);
+        } else {
+            *bounds = Some(Bounds {
+                min_x,
+                min_y,
+                max_x,
+                max_y,
+            });
+        }
+    }
+
+    let mut bounds = layout.bounds.clone();
+
+    for c in &layout.clusters {
+        let left = c.x - c.width / 2.0;
+        let top = c.y - c.height / 2.0;
+        include_rect(
+            &mut bounds,
+            left,
+            top,
+            left + c.width.max(0.0),
+            top + c.height.max(0.0),
+        );
+
+        let tl = &c.title_label;
+        let left = tl.x - tl.width / 2.0;
+        let top = tl.y - tl.height / 2.0;
+        include_rect(
+            &mut bounds,
+            left,
+            top,
+            left + tl.width.max(0.0),
+            top + tl.height.max(0.0),
+        );
+    }
+
+    bounds
+}
+
 pub(super) fn render_state_diagram_v2_svg(
     layout: &StateDiagramV2Layout,
     semantic: &serde_json::Value,
@@ -59,30 +119,31 @@ pub(super) fn render_state_diagram_v2_svg(
     let text_style = crate::state::state_text_style(effective_config);
 
     let mut nodes_by_id: std::collections::HashMap<&str, &StateSvgNode> =
-        std::collections::HashMap::new();
+        std::collections::HashMap::with_capacity(model.nodes.len());
     for n in &model.nodes {
         nodes_by_id.insert(n.id.as_str(), n);
     }
 
     let mut layout_nodes_by_id: std::collections::HashMap<&str, &LayoutNode> =
-        std::collections::HashMap::new();
+        std::collections::HashMap::with_capacity(layout.nodes.len());
     for n in &layout.nodes {
         layout_nodes_by_id.insert(n.id.as_str(), n);
     }
 
     let mut layout_edges_by_id: std::collections::HashMap<&str, &crate::model::LayoutEdge> =
-        std::collections::HashMap::new();
+        std::collections::HashMap::with_capacity(layout.edges.len());
     for e in &layout.edges {
         layout_edges_by_id.insert(e.id.as_str(), e);
     }
 
     let mut layout_clusters_by_id: std::collections::HashMap<&str, &LayoutCluster> =
-        std::collections::HashMap::new();
+        std::collections::HashMap::with_capacity(layout.clusters.len());
     for c in &layout.clusters {
         layout_clusters_by_id.insert(c.id.as_str(), c);
     }
 
-    let mut parent: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
+    let mut parent: std::collections::HashMap<&str, &str> =
+        std::collections::HashMap::with_capacity(model.nodes.len());
     for n in &model.nodes {
         if let Some(p) = n.parent_id.as_deref() {
             parent.insert(n.id.as_str(), p);
@@ -230,13 +291,17 @@ pub(super) fn render_state_diagram_v2_svg(
     let _ = write!(&mut out, "<!--{}-->", TITLE_PLACEHOLDER);
     out.push_str("</svg>\n");
 
-    let mut content_bounds = svg_emitted_bounds_from_svg(&out[bounds_scan_start..bounds_scan_end])
-        .unwrap_or(Bounds {
-            min_x: 0.0,
-            min_y: 0.0,
-            max_x: 100.0,
-            max_y: 100.0,
-        });
+    let mut content_bounds = if prefer_fast_state_viewport_bounds() {
+        state_viewport_bounds_from_layout(layout)
+    } else {
+        svg_emitted_bounds_from_svg(&out[bounds_scan_start..bounds_scan_end])
+    }
+    .unwrap_or(Bounds {
+        min_x: 0.0,
+        min_y: 0.0,
+        max_x: 100.0,
+        max_y: 100.0,
+    });
     // Note: Chromium `getBBox()` values are not always exact `f32`-lattice outputs. Some Mermaid
     // state diagram fixtures show sub-ulp deltas in `x/y` that survive into the serialized root
     // `viewBox`. Avoid forcing `f32` quantization here; we keep `max-width` stable via the
