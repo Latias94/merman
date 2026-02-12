@@ -502,6 +502,9 @@ pub fn sanitize_text(text: &str, config: &MermaidConfig) -> String {
     }
 
     let t = sanitize_more(text, config);
+    if !t.contains('<') {
+        return t;
+    }
     let cfg = dompurify_effective_config(config, true);
     dompurify_like_sanitize_html(&t, &cfg)
 }
