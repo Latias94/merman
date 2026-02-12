@@ -468,11 +468,10 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
         None
     }
 
-    fn parse_transform_ops(transform: &str) -> Vec<AffineTransform> {
+    fn parse_transform_ops_into(transform: &str, ops: &mut Vec<AffineTransform>) {
         // Mermaid output routinely uses rotated elements (e.g. gitGraph commit labels,
         // Architecture edge labels). For parity-root viewport computations we need to support
         // a reasonably complete SVG transform subset.
-        let mut ops: Vec<AffineTransform> = Vec::new();
         let mut s = transform.trim();
 
         while !s.is_empty() {
@@ -637,7 +636,7 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
             s = &rest[end + 1..];
         }
 
-        ops
+        // Caller owns `ops`.
     }
 
     fn parse_view_box(view_box: &str) -> Option<(f64, f64, f64, f64)> {
@@ -1223,6 +1222,7 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
     let mut defs_depth: usize = 0;
     let mut tf_stack: Vec<usize> = Vec::new();
     let mut cur_ops: Vec<AffineTransform> = Vec::new();
+    let mut el_ops_buf: Vec<AffineTransform> = Vec::new();
     let mut seen_root_svg = false;
     let mut nested_svg_depth = 0usize;
 
@@ -1324,13 +1324,15 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
             defs_depth += 1;
         }
 
-        let el_ops = attr_value(attrs, "transform")
-            .map(parse_transform_ops)
-            .unwrap_or_default();
-        let tf_kind = if has_non_axis_aligned_ops(&cur_ops, &el_ops) {
-            if has_pivot_baked_ops(&cur_ops, &el_ops) {
+        el_ops_buf.clear();
+        if let Some(transform) = attr_value(attrs, "transform") {
+            parse_transform_ops_into(transform, &mut el_ops_buf);
+        }
+        let el_ops: &[AffineTransform] = &el_ops_buf;
+        let tf_kind = if has_non_axis_aligned_ops(&cur_ops, el_ops) {
+            if has_pivot_baked_ops(&cur_ops, el_ops) {
                 ExtremaKind::RotatedPivot
-            } else if has_decomposed_pivot_ops(&cur_ops, &el_ops) {
+            } else if has_decomposed_pivot_ops(&cur_ops, el_ops) {
                 ExtremaKind::RotatedDecomposedPivot
             } else {
                 ExtremaKind::Rotated
@@ -1341,7 +1343,7 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
 
         if tag == "g" || tag == "a" {
             tf_stack.push(cur_ops.len());
-            cur_ops.extend(el_ops);
+            cur_ops.extend_from_slice(el_ops);
             if self_closing {
                 // Balance a self-closing group.
                 if let Some(len) = tf_stack.pop() {
@@ -1363,7 +1365,7 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
                 tf_stack.push(cur_ops.len());
                 nested_svg_depth += 1;
                 let vp_tf = svg_viewport_transform(attrs);
-                cur_ops.extend(el_ops);
+                cur_ops.extend_from_slice(el_ops);
                 cur_ops.push(vp_tf);
                 if self_closing {
                     nested_svg_depth = nested_svg_depth.saturating_sub(1);
@@ -1391,7 +1393,7 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
                         .unwrap_or(0.0);
                     let mut b = apply_ops_bounds(
                         &cur_ops,
-                        &el_ops,
+                        el_ops,
                         Bounds {
                             min_x: x,
                             min_y: y,
@@ -1407,7 +1409,7 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
                     let allow_alt_max_y = tf_kind == ExtremaKind::Rotated
                         || tf_kind == ExtremaKind::RotatedDecomposedPivot
                         || (tf_kind == ExtremaKind::RotatedPivot
-                            && has_translate_quantized_to_0_01(&cur_ops, &el_ops));
+                            && has_translate_quantized_to_0_01(&cur_ops, el_ops));
                     if allow_alt_max_y {
                         let base = Bounds {
                             min_x: x,
@@ -1417,7 +1419,7 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
                         };
                         let b_alt = apply_ops_bounds_f64_then_f32(
                             &cur_ops,
-                            &el_ops,
+                            el_ops,
                             Bounds {
                                 min_x: x,
                                 min_y: y,
@@ -1426,14 +1428,14 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
                             },
                         );
                         let b_alt_fma =
-                            apply_ops_bounds_f64_then_f32_fma(&cur_ops, &el_ops, base.clone());
+                            apply_ops_bounds_f64_then_f32_fma(&cur_ops, el_ops, base.clone());
                         let mut alt_max_y = b_alt.max_y.max(b_alt_fma.max_y);
 
                         if tf_kind == ExtremaKind::RotatedPivot
-                            && has_translate_quantized_to_0_01(&cur_ops, &el_ops)
-                            && has_pivot_cy_close(&cur_ops, &el_ops, 90.0)
+                            && has_translate_quantized_to_0_01(&cur_ops, el_ops)
+                            && has_pivot_cy_close(&cur_ops, el_ops, 90.0)
                         {
-                            let b_no_fma = apply_ops_bounds_no_fma(&cur_ops, &el_ops, base);
+                            let b_no_fma = apply_ops_bounds_no_fma(&cur_ops, el_ops, base);
                             alt_max_y = alt_max_y.max(b_no_fma.max_y);
                         }
                         if alt_max_y > b.max_y {
@@ -1442,8 +1444,8 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
                     }
 
                     if tf_kind == ExtremaKind::RotatedPivot
-                        && has_translate_close(&cur_ops, &el_ops, -14.34, 12.72)
-                        && has_pivot_close(&cur_ops, &el_ops, 50.0, 90.0)
+                        && has_translate_close(&cur_ops, el_ops, -14.34, 12.72)
+                        && has_pivot_close(&cur_ops, el_ops, 50.0, 90.0)
                     {
                         // Upstream `getBBox()` + JS padding for this specific rotate+translate
                         // combination can round the final viewBox height up by 1 ULP. Bias the
@@ -1470,7 +1472,7 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
                     let r = attr_value(attrs, "r").and_then(parse_f64).unwrap_or(0.0);
                     let b = apply_ops_bounds(
                         &cur_ops,
-                        &el_ops,
+                        el_ops,
                         Bounds {
                             min_x: cx - r,
                             min_y: cy - r,
@@ -1498,7 +1500,7 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
                     let ry = attr_value(attrs, "ry").and_then(parse_f64).unwrap_or(0.0);
                     let b = apply_ops_bounds(
                         &cur_ops,
-                        &el_ops,
+                        el_ops,
                         Bounds {
                             min_x: cx - rx,
                             min_y: cy - ry,
@@ -1524,8 +1526,8 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
                     let y1 = attr_value(attrs, "y1").and_then(parse_f64).unwrap_or(0.0);
                     let x2 = attr_value(attrs, "x2").and_then(parse_f64).unwrap_or(0.0);
                     let y2 = attr_value(attrs, "y2").and_then(parse_f64).unwrap_or(0.0);
-                    let (tx1, ty1) = apply_ops_point(&cur_ops, &el_ops, x1, y1);
-                    let (tx2, ty2) = apply_ops_point(&cur_ops, &el_ops, x2, y2);
+                    let (tx1, ty1) = apply_ops_point(&cur_ops, el_ops, x1, y1);
+                    let (tx2, ty2) = apply_ops_point(&cur_ops, el_ops, x2, y2);
                     let b = Bounds {
                         min_x: tx1.min(tx2),
                         min_y: ty1.min(ty2),
@@ -1548,7 +1550,7 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
                         if let Some(pb) = svg_path_bounds_from_d(d) {
                             let b0 = apply_ops_bounds(
                                 &cur_ops,
-                                &el_ops,
+                                el_ops,
                                 Bounds {
                                     min_x: pb.min_x,
                                     min_y: pb.min_y,
@@ -1567,7 +1569,7 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
                                 ExtremaKind::Path,
                             );
                         } else {
-                            include_path_d(&mut bounds, &mut extrema_kinds, d, &cur_ops, &el_ops);
+                            include_path_d(&mut bounds, &mut extrema_kinds, d, &cur_ops, el_ops);
                         }
                     }
                 }
@@ -1578,7 +1580,7 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
                             &mut extrema_kinds,
                             pts,
                             &cur_ops,
-                            &el_ops,
+                            el_ops,
                             tf_kind,
                         );
                     }
@@ -1594,7 +1596,7 @@ pub(super) fn svg_emitted_bounds_from_svg_inner(
                         .unwrap_or(0.0);
                     let b = apply_ops_bounds(
                         &cur_ops,
-                        &el_ops,
+                        el_ops,
                         Bounds {
                             min_x: x,
                             min_y: y,
