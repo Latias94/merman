@@ -62,30 +62,35 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
             n.rank = Some(rank);
         }
     }
-
     // Mirror Dagre's `injectEdgeLabelProxies` / `removeEdgeLabelProxies` to compute label ranks.
     // These label ranks are used by `normalize::run` to materialize `edge-label` dummy nodes with
     // the correct width/height, letting BK positioning account for edge labels.
-    for ek in g.edge_keys() {
-        let Some(edge) = g.edge_by_key(&ek) else {
-            continue;
-        };
+    let mut edge_proxy_nodes: Vec<String> = Vec::new();
+    // Only clone edge keys when a proxy is actually needed.
+    let mut to_proxy: Vec<(graphlib::EdgeKey, i32)> = Vec::new();
+    g.for_each_edge(|ek, edge| {
         if edge.width <= 0.0 || edge.height <= 0.0 {
-            continue;
+            return;
         }
         let Some(v_rank) = g.node(&ek.v).and_then(|n| n.rank) else {
-            continue;
+            return;
         };
         let Some(w_rank) = g.node(&ek.w).and_then(|n| n.rank) else {
-            continue;
+            return;
         };
         let rank = (w_rank - v_rank) / 2 + v_rank;
+        to_proxy.push((ek.clone(), rank));
+    });
+
+    for (ek, rank) in to_proxy {
+        let id = util::unique_id("_ep");
+        edge_proxy_nodes.push(id.clone());
         g.set_node(
-            util::unique_id("_ep"),
+            id,
             NodeLabel {
                 rank: Some(rank),
                 dummy: Some("edge-proxy".to_string()),
-                edge_obj: Some(ek.clone()),
+                edge_obj: Some(ek),
                 ..Default::default()
             },
         );
@@ -101,15 +106,39 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     util::normalize_ranks(g);
 
     // Remove edge label proxy nodes, storing their rank on the corresponding edge label.
-    let node_ids = g.node_ids();
-    for v in node_ids {
+    for v in std::mem::take(&mut edge_proxy_nodes) {
         let Some(node) = g.node(&v).cloned() else {
+            let _ = g.remove_node(&v);
             continue;
         };
         if node.dummy.as_deref() != Some("edge-proxy") {
+            let _ = g.remove_node(&v);
             continue;
         }
-        let Some(edge_obj) = node.edge_obj.clone() else {
+        let Some(edge_obj) = node.edge_obj else {
+            let _ = g.remove_node(&v);
+            continue;
+        };
+        if let Some(lbl) = g.edge_mut_by_key(&edge_obj) {
+            lbl.label_rank = node.rank;
+        }
+        let _ = g.remove_node(&v);
+    }
+
+    // Defensive parity: if the caller-provided graph already contained edge-proxy nodes,
+    // remove them as well to match the previous best-effort behavior.
+    let mut leftovers: Vec<String> = Vec::new();
+    g.for_each_node(|id, n| {
+        if n.dummy.as_deref() == Some("edge-proxy") {
+            leftovers.push(id.to_string());
+        }
+    });
+    for v in leftovers {
+        let Some(node) = g.node(&v).cloned() else {
+            let _ = g.remove_node(&v);
+            continue;
+        };
+        let Some(edge_obj) = node.edge_obj else {
             let _ = g.remove_node(&v);
             continue;
         };
