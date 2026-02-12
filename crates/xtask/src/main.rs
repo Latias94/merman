@@ -494,6 +494,7 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
     md_files.sort();
 
     let allowed_infos = [
+        "",
         "mermaid",
         "mermaid-example",
         "mermaid-nocode",
@@ -777,6 +778,7 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
         //
         // This is intentionally per-fixture (filter=stem) so we don't accidentally regenerate or
         // fail on unrelated upstream fixtures in the same folder.
+        let mut kept: Vec<CreatedFixture> = Vec::with_capacity(created.len());
         for f in &created {
             let mut svg_args = vec![
                 "--diagram".to_string(),
@@ -787,7 +789,40 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
             if install {
                 svg_args.push("--install".to_string());
             }
-            gen_upstream_svgs(svg_args)?;
+            match gen_upstream_svgs(svg_args) {
+                Ok(()) => {}
+                Err(XtaskError::UpstreamSvgFailed(msg)) => {
+                    skipped.push(format!(
+                        "skip (upstream svg failed): {} ({})",
+                        f.path.display(),
+                        msg.lines().next().unwrap_or("unknown upstream error")
+                    ));
+
+                    // Best-effort cleanup: do not leave half-imported fixtures behind.
+                    let _ = fs::remove_file(&f.path);
+                    let _ = fs::remove_file(
+                        workspace_root
+                            .join("fixtures")
+                            .join("upstream-svgs")
+                            .join(&f.diagram_dir)
+                            .join(format!("{}.svg", f.stem)),
+                    );
+                    let _ = fs::remove_file(
+                        workspace_root
+                            .join("fixtures")
+                            .join(&f.diagram_dir)
+                            .join(format!("{}.golden.json", f.stem)),
+                    );
+                    let _ = fs::remove_file(
+                        workspace_root
+                            .join("fixtures")
+                            .join(&f.diagram_dir)
+                            .join(format!("{}.layout.golden.json", f.stem)),
+                    );
+                    continue;
+                }
+                Err(other) => return Err(other),
+            }
             update_snapshots(vec![
                 "--diagram".to_string(),
                 f.diagram_dir.clone(),
@@ -800,6 +835,15 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
                 "--filter".to_string(),
                 f.stem.clone(),
             ])?;
+
+            kept.push(f.clone());
+        }
+        created = kept;
+
+        if created.is_empty() {
+            return Err(XtaskError::SnapshotUpdateFailed(
+                "no fixtures were imported (all candidates failed upstream rendering)".to_string(),
+            ));
         }
     }
 
