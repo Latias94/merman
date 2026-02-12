@@ -375,55 +375,116 @@ pub mod network_simplex {
 
         let mut cut_value = graph_edge.weight;
 
-        g.for_each_out_edge(child, None, |ek, lbl| {
-            let other = ek.w.as_str();
-            if other == parent {
-                return;
-            }
-
-            let points_to_head = child_is_tail;
-            cut_value += if points_to_head {
-                lbl.weight
-            } else {
-                -lbl.weight
+        if g.is_directed() {
+            let Some(child_ix) = g.node_ix(child) else {
+                return cut_value;
             };
+            let parent_ix = g.node_ix(parent);
 
-            if is_tree_edge(t, child, other) {
-                if let Some(other_edge) = t.edge(child, other, None) {
-                    let other_cut_value = other_edge.cutvalue;
-                    cut_value += if points_to_head {
-                        -other_cut_value
-                    } else {
-                        other_cut_value
-                    };
+            g.for_each_out_edge_ix(child_ix, None, |_tail_ix, head_ix, _ek, lbl| {
+                if parent_ix.is_some_and(|p| head_ix == p) {
+                    return;
                 }
-            }
-        });
+                let Some(other) = g.node_id_by_ix(head_ix) else {
+                    return;
+                };
 
-        g.for_each_in_edge(child, None, |ek, lbl| {
-            let other = ek.v.as_str();
-            if other == parent {
-                return;
-            }
+                let points_to_head = child_is_tail;
+                cut_value += if points_to_head {
+                    lbl.weight
+                } else {
+                    -lbl.weight
+                };
 
-            let points_to_head = !child_is_tail;
-            cut_value += if points_to_head {
-                lbl.weight
-            } else {
-                -lbl.weight
-            };
-
-            if is_tree_edge(t, child, other) {
-                if let Some(other_edge) = t.edge(child, other, None) {
-                    let other_cut_value = other_edge.cutvalue;
-                    cut_value += if points_to_head {
-                        -other_cut_value
-                    } else {
-                        other_cut_value
-                    };
+                if is_tree_edge(t, child, other) {
+                    if let Some(other_edge) = t.edge(child, other, None) {
+                        let other_cut_value = other_edge.cutvalue;
+                        cut_value += if points_to_head {
+                            -other_cut_value
+                        } else {
+                            other_cut_value
+                        };
+                    }
                 }
-            }
-        });
+            });
+
+            g.for_each_in_edge_ix(child_ix, None, |tail_ix, _head_ix, _ek, lbl| {
+                if parent_ix.is_some_and(|p| tail_ix == p) {
+                    return;
+                }
+                let Some(other) = g.node_id_by_ix(tail_ix) else {
+                    return;
+                };
+
+                let points_to_head = !child_is_tail;
+                cut_value += if points_to_head {
+                    lbl.weight
+                } else {
+                    -lbl.weight
+                };
+
+                if is_tree_edge(t, child, other) {
+                    if let Some(other_edge) = t.edge(child, other, None) {
+                        let other_cut_value = other_edge.cutvalue;
+                        cut_value += if points_to_head {
+                            -other_cut_value
+                        } else {
+                            other_cut_value
+                        };
+                    }
+                }
+            });
+        } else {
+            g.for_each_out_edge(child, None, |ek, lbl| {
+                let other = ek.w.as_str();
+                if other == parent {
+                    return;
+                }
+
+                let points_to_head = child_is_tail;
+                cut_value += if points_to_head {
+                    lbl.weight
+                } else {
+                    -lbl.weight
+                };
+
+                if is_tree_edge(t, child, other) {
+                    if let Some(other_edge) = t.edge(child, other, None) {
+                        let other_cut_value = other_edge.cutvalue;
+                        cut_value += if points_to_head {
+                            -other_cut_value
+                        } else {
+                            other_cut_value
+                        };
+                    }
+                }
+            });
+
+            g.for_each_in_edge(child, None, |ek, lbl| {
+                let other = ek.v.as_str();
+                if other == parent {
+                    return;
+                }
+
+                let points_to_head = !child_is_tail;
+                cut_value += if points_to_head {
+                    lbl.weight
+                } else {
+                    -lbl.weight
+                };
+
+                if is_tree_edge(t, child, other) {
+                    if let Some(other_edge) = t.edge(child, other, None) {
+                        let other_cut_value = other_edge.cutvalue;
+                        cut_value += if points_to_head {
+                            -other_cut_value
+                        } else {
+                            other_cut_value
+                        };
+                    }
+                }
+            });
+        }
 
         cut_value
     }
