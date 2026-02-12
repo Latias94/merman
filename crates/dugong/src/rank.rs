@@ -399,38 +399,37 @@ pub mod network_simplex {
             ((v_low, v_lim), false)
         };
 
-        let mut ranks: HashMap<&str, i32> = HashMap::default();
-        for id in g.nodes() {
-            let rank = g.node(id).and_then(|lbl| lbl.rank).unwrap_or(0);
-            ranks.insert(id, rank);
-        }
+        let mut g_rank: Vec<i32> = Vec::new();
+        g.for_each_node_ix(|g_ix, _, lbl| {
+            if g_ix >= g_rank.len() {
+                g_rank.resize(g_ix + 1, 0);
+            }
+            g_rank[g_ix] = lbl.rank.unwrap_or(0);
+        });
 
         let mut best: Option<(i32, EdgeKey)> = None;
-        for e in g.edges() {
-            let Some(&(_, v_lim)) = t_labels.get(e.v.as_str()) else {
-                continue;
+        g.for_each_edge_ix(|g_v_ix, g_w_ix, key, lbl| {
+            let Some(&(_, v_lim)) = t_labels.get(key.v.as_str()) else {
+                return;
             };
-            let Some(&(_, w_lim)) = t_labels.get(e.w.as_str()) else {
-                continue;
+            let Some(&(_, w_lim)) = t_labels.get(key.w.as_str()) else {
+                return;
             };
             let v_desc = tail_low <= v_lim && v_lim <= tail_lim;
             let w_desc = tail_low <= w_lim && w_lim <= tail_lim;
 
             if flip == v_desc && flip != w_desc {
-                let v_rank = ranks.get(e.v.as_str()).copied().unwrap_or(0);
-                let w_rank = ranks.get(e.w.as_str()).copied().unwrap_or(0);
-                let minlen: i32 = g
-                    .edge_by_key(e)
-                    .map(|lbl| lbl.minlen.max(1) as i32)
-                    .unwrap_or(1);
+                let v_rank = g_rank.get(g_v_ix).copied().unwrap_or(0);
+                let w_rank = g_rank.get(g_w_ix).copied().unwrap_or(0);
+                let minlen: i32 = (lbl.minlen.max(1)) as i32;
                 let slack = w_rank - v_rank - minlen;
 
                 match &best {
                     Some((best_slack, _)) if slack >= *best_slack => {}
-                    _ => best = Some((slack, e.clone())),
+                    _ => best = Some((slack, key.clone())),
                 }
             }
-        }
+        });
 
         best.map(|(_, e)| e).unwrap_or_else(|| edge.clone())
     }
