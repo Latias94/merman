@@ -95,6 +95,8 @@ struct NodeEntry<N> {
 #[derive(Debug, Clone)]
 struct EdgeEntry<E> {
     key: EdgeKey,
+    v_ix: usize,
+    w_ix: usize,
     label: E,
 }
 
@@ -110,10 +112,12 @@ where
     default_node_label: Box<dyn Fn() -> N + Send + Sync>,
     default_edge_label: Box<dyn Fn() -> E + Send + Sync>,
 
-    nodes: Vec<NodeEntry<N>>,
+    nodes: Vec<Option<NodeEntry<N>>>,
+    node_len: usize,
     node_index: HashMap<String, usize>,
 
-    edges: Vec<EdgeEntry<E>>,
+    edges: Vec<Option<EdgeEntry<E>>>,
+    edge_len: usize,
     edge_index: HashMap<EdgeKey, usize>,
 
     parent: HashMap<String, String>,
@@ -154,14 +158,11 @@ where
             let mut out: Vec<Vec<usize>> = vec![Vec::new(); self.nodes.len()];
             let mut in_: Vec<Vec<usize>> = vec![Vec::new(); self.nodes.len()];
             for (edge_idx, e) in self.edges.iter().enumerate() {
-                let Some(&v_idx) = self.node_index.get(&e.key.v) else {
+                let Some(e) = e.as_ref() else {
                     continue;
                 };
-                let Some(&w_idx) = self.node_index.get(&e.key.w) else {
-                    continue;
-                };
-                out[v_idx].push(edge_idx);
-                in_[w_idx].push(edge_idx);
+                out[e.v_ix].push(edge_idx);
+                in_[e.w_ix].push(edge_idx);
             }
             *cache = Some(DirectedAdjCache {
                 generation,
@@ -230,8 +231,10 @@ where
             default_node_label: Box::new(N::default),
             default_edge_label: Box::new(E::default),
             nodes: Vec::new(),
+            node_len: 0,
             node_index: HashMap::default(),
             edges: Vec::new(),
+            edge_len: 0,
             edge_index: HashMap::default(),
             parent: HashMap::default(),
             children: HashMap::default(),
@@ -292,15 +295,18 @@ where
     pub fn set_node(&mut self, id: impl Into<String>, label: N) -> &mut Self {
         let id = id.into();
         if let Some(&idx) = self.node_index.get(&id) {
-            self.nodes[idx].label = label;
+            if let Some(node) = self.nodes.get_mut(idx).and_then(|n| n.as_mut()) {
+                node.label = label;
+            }
             return self;
         }
         self.invalidate_directed_adj();
         let idx = self.nodes.len();
-        self.nodes.push(NodeEntry {
+        self.nodes.push(Some(NodeEntry {
             id: id.clone(),
             label,
-        });
+        }));
+        self.node_len += 1;
         self.node_index.insert(id, idx);
         self
     }
@@ -315,34 +321,44 @@ where
     }
 
     pub fn node(&self, id: &str) -> Option<&N> {
-        self.node_index.get(id).map(|&idx| &self.nodes[idx].label)
+        let idx = *self.node_index.get(id)?;
+        self.nodes
+            .get(idx)
+            .and_then(|n| n.as_ref())
+            .map(|n| &n.label)
     }
 
     pub fn node_mut(&mut self, id: &str) -> Option<&mut N> {
-        self.node_index
-            .get(id)
-            .copied()
-            .map(move |idx| &mut self.nodes[idx].label)
+        let idx = *self.node_index.get(id)?;
+        self.nodes
+            .get_mut(idx)
+            .and_then(|n| n.as_mut())
+            .map(|n| &mut n.label)
     }
 
     pub fn node_count(&self) -> usize {
-        self.nodes.len()
+        self.node_len
     }
 
     pub fn nodes(&self) -> impl Iterator<Item = &str> {
-        self.nodes.iter().map(|n| n.id.as_str())
+        self.nodes
+            .iter()
+            .filter_map(|n| n.as_ref().map(|n| n.id.as_str()))
     }
 
     pub fn node_ids(&self) -> Vec<String> {
-        self.nodes.iter().map(|n| n.id.clone()).collect()
+        self.nodes
+            .iter()
+            .filter_map(|n| n.as_ref().map(|n| n.id.clone()))
+            .collect()
     }
 
     pub fn edge_count(&self) -> usize {
-        self.edges.len()
+        self.edge_len
     }
 
     pub fn edges(&self) -> impl Iterator<Item = &EdgeKey> {
-        self.edges.iter().map(|e| &e.key)
+        self.edges.iter().filter_map(|e| e.as_ref().map(|e| &e.key))
     }
 
     pub fn for_each_edge<F>(&self, mut f: F)
@@ -350,6 +366,9 @@ where
         F: FnMut(&EdgeKey, &E),
     {
         for e in &self.edges {
+            let Some(e) = e.as_ref() else {
+                continue;
+            };
             f(&e.key, &e.label);
         }
     }
@@ -359,6 +378,9 @@ where
         F: FnMut(&EdgeKey, &mut E),
     {
         for e in &mut self.edges {
+            let Some(e) = e.as_mut() else {
+                continue;
+            };
             f(&e.key, &mut e.label);
         }
     }
@@ -368,6 +390,9 @@ where
         F: FnMut(&str, &N),
     {
         for n in &self.nodes {
+            let Some(n) = n.as_ref() else {
+                continue;
+            };
             f(&n.id, &n.label);
         }
     }
@@ -377,12 +402,18 @@ where
         F: FnMut(&str, &mut N),
     {
         for n in &mut self.nodes {
+            let Some(n) = n.as_mut() else {
+                continue;
+            };
             f(&n.id, &mut n.label);
         }
     }
 
     pub fn edge_keys(&self) -> Vec<EdgeKey> {
-        self.edges.iter().map(|e| e.key.clone()).collect()
+        self.edges
+            .iter()
+            .filter_map(|e| e.as_ref().map(|e| e.key.clone()))
+            .collect()
     }
 
     pub fn set_edge(&mut self, v: impl Into<String>, w: impl Into<String>) -> &mut Self {
@@ -414,17 +445,30 @@ where
 
         if let Some(&idx) = self.edge_index.get(&key) {
             if let Some(label) = label {
-                self.edges[idx].label = label;
+                if let Some(edge) = self.edges.get_mut(idx).and_then(|e| e.as_mut()) {
+                    edge.label = label;
+                }
             }
             return self;
         }
 
         self.invalidate_directed_adj();
+        let v_ix = *self
+            .node_index
+            .get(&key.v)
+            .expect("ensure_node should have inserted the endpoint node");
+        let w_ix = *self
+            .node_index
+            .get(&key.w)
+            .expect("ensure_node should have inserted the endpoint node");
         let idx = self.edges.len();
-        self.edges.push(EdgeEntry {
+        self.edges.push(Some(EdgeEntry {
             key: key.clone(),
+            v_ix,
+            w_ix,
             label: label.unwrap_or_else(|| (self.default_edge_label)()),
-        });
+        }));
+        self.edge_len += 1;
         self.edge_index.insert(key, idx);
         self
     }
@@ -449,37 +493,47 @@ where
     pub fn edge(&self, v: &str, w: &str, name: Option<&str>) -> Option<&E> {
         let view = self.edge_key_view(v, w, name);
         let idx = self.edge_index_of_view(view)?;
-        Some(&self.edges[idx].label)
+        self.edges
+            .get(idx)
+            .and_then(|e| e.as_ref())
+            .map(|e| &e.label)
     }
 
     pub fn edge_mut(&mut self, v: &str, w: &str, name: Option<&str>) -> Option<&mut E> {
         let view = self.edge_key_view(v, w, name);
         let idx = self.edge_index_of_view(view)?;
-        Some(&mut self.edges[idx].label)
+        self.edges
+            .get_mut(idx)
+            .and_then(|e| e.as_mut())
+            .map(|e| &mut e.label)
     }
 
     pub fn edge_by_key(&self, key: &EdgeKey) -> Option<&E> {
         let view = self.edge_key_view_from_key(key);
         let idx = self.edge_index_of_view(view)?;
-        Some(&self.edges[idx].label)
+        self.edges
+            .get(idx)
+            .and_then(|e| e.as_ref())
+            .map(|e| &e.label)
     }
 
     pub fn edge_mut_by_key(&mut self, key: &EdgeKey) -> Option<&mut E> {
         let view = self.edge_key_view_from_key(key);
         let idx = self.edge_index_of_view(view)?;
-        Some(&mut self.edges[idx].label)
+        self.edges
+            .get_mut(idx)
+            .and_then(|e| e.as_mut())
+            .map(|e| &mut e.label)
     }
 
     fn remove_edge_at_index(&mut self, idx: usize) {
         self.invalidate_directed_adj();
-        let _ = self.edge_index.remove_entry(&self.edges[idx].key);
-        self.edges.remove(idx);
-        for i in idx..self.edges.len() {
-            let k = &self.edges[i].key;
-            if let Some(v) = self.edge_index.get_mut(k) {
-                *v = i;
-            }
-        }
+        let Some(edge) = self.edges.get(idx).and_then(|e| e.as_ref()) else {
+            return;
+        };
+        let _ = self.edge_index.remove_entry(&edge.key);
+        self.edges[idx] = None;
+        self.edge_len = self.edge_len.saturating_sub(1);
     }
 
     pub fn remove_edge_key(&mut self, key: &EdgeKey) -> bool {
@@ -506,28 +560,23 @@ where
         };
 
         self.invalidate_directed_adj();
-        self.nodes.remove(idx);
-        for i in idx..self.nodes.len() {
-            let node_id = self.nodes[i].id.as_str();
-            if let Some(v) = self.node_index.get_mut(node_id) {
-                *v = i;
+        if let Some(slot) = self.nodes.get_mut(idx) {
+            if slot.is_some() {
+                *slot = None;
+                self.node_len = self.node_len.saturating_sub(1);
             }
         }
 
         // Remove incident edges.
-        let mut removed_any_edge = false;
-        for e in &self.edges {
-            if e.key.v == id || e.key.w == id {
-                removed_any_edge = true;
-                let _ = self.edge_index.remove_entry(&e.key);
-            }
-        }
-        if removed_any_edge {
-            self.edges.retain(|e| e.key.v != id && e.key.w != id);
-            for (i, e) in self.edges.iter().enumerate() {
-                if let Some(v) = self.edge_index.get_mut(&e.key) {
-                    *v = i;
-                }
+        for e in self.edges.iter_mut() {
+            let Some(edge) = e.as_ref() else {
+                continue;
+            };
+            if edge.v_ix == idx || edge.w_ix == idx {
+                let key = edge.key.clone();
+                let _ = self.edge_index.remove_entry(&key);
+                *e = None;
+                self.edge_len = self.edge_len.saturating_sub(1);
             }
         }
 
@@ -558,7 +607,10 @@ where
         let out_edges = &cache.out[v_idx];
         let mut out: Vec<&str> = Vec::with_capacity(out_edges.len());
         for &edge_idx in out_edges {
-            out.push(self.edges[edge_idx].key.w.as_str());
+            let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
+                continue;
+            };
+            out.push(edge.key.w.as_str());
         }
         out
     }
@@ -574,7 +626,10 @@ where
         let in_edges = &cache.in_[v_idx];
         let mut out: Vec<&str> = Vec::with_capacity(in_edges.len());
         for &edge_idx in in_edges {
-            out.push(self.edges[edge_idx].key.v.as_str());
+            let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
+                continue;
+            };
+            out.push(edge.key.v.as_str());
         }
         out
     }
@@ -587,7 +642,7 @@ where
         let w = {
             let cache = self.ensure_directed_adj();
             let edge_idx = *cache.out[v_idx].first()?;
-            self.edges[edge_idx].key.w.as_str()
+            self.edges.get(edge_idx)?.as_ref()?.key.w.as_str()
         };
         Some(w)
     }
@@ -600,7 +655,7 @@ where
         let u = {
             let cache = self.ensure_directed_adj();
             let edge_idx = *cache.in_[v_idx].first()?;
-            self.edges[edge_idx].key.v.as_str()
+            self.edges.get(edge_idx)?.as_ref()?.key.v.as_str()
         };
         Some(u)
     }
@@ -616,7 +671,10 @@ where
         let cache = self.ensure_directed_adj();
         out.reserve(cache.out[v_idx].len());
         for &edge_idx in &cache.out[v_idx] {
-            out.push(self.edges[edge_idx].key.w.as_str());
+            let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
+                continue;
+            };
+            out.push(edge.key.w.as_str());
         }
     }
 
@@ -631,7 +689,10 @@ where
         let cache = self.ensure_directed_adj();
         out.reserve(cache.in_[v_idx].len());
         for &edge_idx in &cache.in_[v_idx] {
-            out.push(self.edges[edge_idx].key.v.as_str());
+            let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
+                continue;
+            };
+            out.push(edge.key.v.as_str());
         }
     }
 
@@ -650,7 +711,10 @@ where
         };
         let cache = self.ensure_directed_adj();
         for &edge_idx in &cache.out[v_idx] {
-            f(self.edges[edge_idx].key.w.as_str());
+            let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
+                continue;
+            };
+            f(edge.key.w.as_str());
         }
     }
 
@@ -669,7 +733,10 @@ where
         };
         let cache = self.ensure_directed_adj();
         for &edge_idx in &cache.in_[v_idx] {
-            f(self.edges[edge_idx].key.v.as_str());
+            let Some(edge) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
+                continue;
+            };
+            f(edge.key.v.as_str());
         }
     }
 
@@ -694,6 +761,9 @@ where
     fn adjacent_nodes(&self, v: &str) -> Vec<&str> {
         let mut out: Vec<&str> = Vec::new();
         for e in &self.edges {
+            let Some(e) = e.as_ref() else {
+                continue;
+            };
             if e.key.v == v {
                 let w = e.key.w.as_str();
                 if !out.iter().any(|x| x == &w) {
@@ -718,7 +788,9 @@ where
             let out_edges = &cache.out[v_idx];
             let mut out: Vec<EdgeKey> = Vec::with_capacity(out_edges.len());
             for &edge_idx in out_edges {
-                let e = &self.edges[edge_idx];
+                let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
+                    continue;
+                };
                 if w.is_none_or(|w| e.key.w == w) {
                     out.push(e.key.clone());
                 }
@@ -728,6 +800,7 @@ where
 
         self.edges
             .iter()
+            .filter_map(|e| e.as_ref())
             .filter(|e| {
                 if e.key.v == v {
                     w.is_none_or(|w| e.key.w == w)
@@ -750,7 +823,9 @@ where
             let in_edges = &cache.in_[v_idx];
             let mut out: Vec<EdgeKey> = Vec::with_capacity(in_edges.len());
             for &edge_idx in in_edges {
-                let e = &self.edges[edge_idx];
+                let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
+                    continue;
+                };
                 if w.is_none_or(|w| e.key.v == w) {
                     out.push(e.key.clone());
                 }
@@ -770,7 +845,9 @@ where
             };
             let cache = self.ensure_directed_adj();
             for &edge_idx in &cache.out[v_idx] {
-                let e = &self.edges[edge_idx];
+                let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
+                    continue;
+                };
                 if w.is_none_or(|w| e.key.w == w) {
                     f(&e.key, &e.label);
                 }
@@ -779,6 +856,9 @@ where
         }
 
         for e in &self.edges {
+            let Some(e) = e.as_ref() else {
+                continue;
+            };
             if e.key.v == v {
                 if w.is_none_or(|w| e.key.w == w) {
                     f(&e.key, &e.label);
@@ -801,7 +881,9 @@ where
             };
             let cache = self.ensure_directed_adj();
             for &edge_idx in &cache.in_[v_idx] {
-                let e = &self.edges[edge_idx];
+                let Some(e) = self.edges.get(edge_idx).and_then(|e| e.as_ref()) else {
+                    continue;
+                };
                 if w.is_none_or(|w| e.key.v == w) {
                     f(&e.key, &e.label);
                 }
@@ -866,6 +948,7 @@ where
         }
         self.nodes
             .iter()
+            .filter_map(|n| n.as_ref())
             .filter(|n| !self.parent.contains_key(&n.id))
             .map(|n| n.id.as_str())
             .collect()
@@ -877,6 +960,7 @@ where
         }
         self.nodes
             .iter()
+            .filter_map(|n| n.as_ref())
             .filter(|n| self.in_edges(&n.id, None).is_empty())
             .map(|n| n.id.as_str())
             .collect()
@@ -886,6 +970,9 @@ where
         let mut out: Vec<EdgeKey> = Vec::new();
         let mut seen: HashSet<EdgeKey> = HashSet::default();
         for e in &self.edges {
+            let Some(e) = e.as_ref() else {
+                continue;
+            };
             if (e.key.v == v || e.key.w == v) && seen.insert(e.key.clone()) {
                 out.push(e.key.clone());
             }
