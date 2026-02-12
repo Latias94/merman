@@ -37,16 +37,16 @@ while preserving correctness.
 From a local comparison run on a single machine (see `docs/performance/COMPARISON.md`,
 generated via `tools/bench/compare_mermaid_renderers.py`):
 
-- End-to-end geometric mean (8 fixtures): ~`6.5x` slower than `mermaid-rs-renderer` (mmdr).
-- Medium fixtures (4): ~`3.2x` slower than mmdr.
-- Tiny fixtures (4): ~`13.1x` slower than mmdr.
+- End-to-end geometric mean (8 fixtures): ~`6.9x` slower than `mermaid-rs-renderer` (mmdr).
+- Medium fixtures (4): ~`3.1x` slower than mmdr.
+- Tiny fixtures (4): ~`15.2x` slower than mmdr.
 
 Stage spot-checks (same machine, Criterion, mid estimates; generate via
 `python tools/bench/stage_spotcheck.py --fixtures flowchart_tiny,flowchart_medium,state_tiny,state_medium,class_tiny,class_medium,sequence_tiny,sequence_medium --out target/bench/stage_spotcheck.md`):
 
-- `parse`: ~`56.0x` geometric mean slower than mmdr.
-- `layout`: ~`2.9x` geometric mean slower than mmdr.
-- `render`: ~`14.3x` geometric mean slower than mmdr.
+- `parse`: ~`38.0x` geometric mean slower than mmdr.
+- `layout`: ~`2.6x` geometric mean slower than mmdr.
+- `render`: ~`12.7x` geometric mean slower than mmdr.
 
 Interpretation:
 

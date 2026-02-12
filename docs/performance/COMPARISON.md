@@ -4,12 +4,12 @@
 
 ## Environment
 
-- Timestamp: "2026-02-12 18:19:37 +0800"
+- Timestamp: "2026-02-12 18:48:13 +0800"
 - OS: "Windows-11-10.0.26200-SP0"
 - Machine: "AMD64"
 - CPU: "13th Gen Intel(R) Core(TM) i9-13900KF"
 - Python: "3.13.11"
-- merman: `054ec9fd879c8181b61489bf06e1836c21861cf3`
+- merman: `e71a6bb4ee208f4e4d67663514f653002ed16607`
 - mermaid-rs-renderer: `859253415e69dce28bd65cd5a7c1d1ae8b39f4a1`
 - mermaid-js: unknown
 - Rust:
@@ -35,14 +35,14 @@ LLVM version: 21.1.8
 
 | benchmark | merman | mermaid-rs-renderer | mermaid-js (puppeteer) | ratio (merman / mmdr) | ratio (merman / mermaid-js) |
 |---|---:|---:|---:|---:|---:|
-| end_to_end/class_medium | 32.13 ms | 3.85 ms | - | 8.3x | - |
-| end_to_end/class_tiny | 1.01 ms | 39.68 µs | - | 25.5x | - |
-| end_to_end/flowchart_medium | 26.06 ms | 6.46 ms | - | 4.0x | - |
-| end_to_end/flowchart_tiny | 527.96 µs | 42.21 µs | - | 12.5x | - |
-| end_to_end/sequence_medium | 340.27 µs | 431.99 µs | - | 0.8x | - |
-| end_to_end/sequence_tiny | 122.20 µs | 30.87 µs | - | 4.0x | - |
-| end_to_end/state_medium | 9.85 ms | 2.38 ms | - | 4.1x | - |
-| end_to_end/state_tiny | 1.19 ms | 52.15 µs | - | 22.9x | - |
+| end_to_end/class_medium | 13.55 ms | 2.27 ms | - | 6.0x | - |
+| end_to_end/class_tiny | 535.52 µs | 32.84 µs | - | 16.3x | - |
+| end_to_end/flowchart_medium | 31.85 ms | 6.34 ms | - | 5.0x | - |
+| end_to_end/flowchart_tiny | 690.72 µs | 35.58 µs | - | 19.4x | - |
+| end_to_end/sequence_medium | 252.79 µs | 281.40 µs | - | 0.9x | - |
+| end_to_end/sequence_tiny | 116.38 µs | 20.29 µs | - | 5.7x | - |
+| end_to_end/state_medium | 6.83 ms | 1.90 ms | - | 3.6x | - |
+| end_to_end/state_tiny | 929.50 µs | 31.48 µs | - | 29.5x | - |
 
 ## Notes
 
