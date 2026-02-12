@@ -459,15 +459,13 @@ pub mod network_simplex {
                     -lbl.weight
                 };
 
-                if is_tree_edge(t, child, other) {
-                    if let Some(other_edge) = t.edge(child, other, None) {
-                        let other_cut_value = other_edge.cutvalue;
-                        cut_value += if points_to_head {
-                            -other_cut_value
-                        } else {
-                            other_cut_value
-                        };
-                    }
+                if let Some(other_edge) = t.edge(child, other, None) {
+                    let other_cut_value = other_edge.cutvalue;
+                    cut_value += if points_to_head {
+                        -other_cut_value
+                    } else {
+                        other_cut_value
+                    };
                 }
             });
 
@@ -486,15 +484,13 @@ pub mod network_simplex {
                     -lbl.weight
                 };
 
-                if is_tree_edge(t, child, other) {
-                    if let Some(other_edge) = t.edge(child, other, None) {
-                        let other_cut_value = other_edge.cutvalue;
-                        cut_value += if points_to_head {
-                            -other_cut_value
-                        } else {
-                            other_cut_value
-                        };
-                    }
+                if let Some(other_edge) = t.edge(child, other, None) {
+                    let other_cut_value = other_edge.cutvalue;
+                    cut_value += if points_to_head {
+                        -other_cut_value
+                    } else {
+                        other_cut_value
+                    };
                 }
             });
         } else {
@@ -511,15 +507,13 @@ pub mod network_simplex {
                     -lbl.weight
                 };
 
-                if is_tree_edge(t, child, other) {
-                    if let Some(other_edge) = t.edge(child, other, None) {
-                        let other_cut_value = other_edge.cutvalue;
-                        cut_value += if points_to_head {
-                            -other_cut_value
-                        } else {
-                            other_cut_value
-                        };
-                    }
+                if let Some(other_edge) = t.edge(child, other, None) {
+                    let other_cut_value = other_edge.cutvalue;
+                    cut_value += if points_to_head {
+                        -other_cut_value
+                    } else {
+                        other_cut_value
+                    };
                 }
             });
 
@@ -536,15 +530,13 @@ pub mod network_simplex {
                     -lbl.weight
                 };
 
-                if is_tree_edge(t, child, other) {
-                    if let Some(other_edge) = t.edge(child, other, None) {
-                        let other_cut_value = other_edge.cutvalue;
-                        cut_value += if points_to_head {
-                            -other_cut_value
-                        } else {
-                            other_cut_value
-                        };
-                    }
+                if let Some(other_edge) = t.edge(child, other, None) {
+                    let other_cut_value = other_edge.cutvalue;
+                    cut_value += if points_to_head {
+                        -other_cut_value
+                    } else {
+                        other_cut_value
+                    };
                 }
             });
         }
@@ -719,11 +711,6 @@ pub mod network_simplex {
         }
     }
 
-    fn is_tree_edge(
-        tree: &Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()>,
-        u: &str,
-        v: &str,
-    ) -> bool {
-        tree.has_edge(u, v, None)
-    }
+    // NOTE: Dagre treats the feasible tree as an undirected structure. We consider an edge to be a
+    // tree edge if it exists in `t` (queried via `t.edge(u, v, None)` in the hot loops).
 }
