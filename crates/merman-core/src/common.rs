@@ -44,6 +44,9 @@ fn process_set(mut input: String) -> String {
 pub fn parse_generic_types(input: &str) -> String {
     // Mirrors Mermaid's `parseGenericTypes` logic (packages/mermaid/src/diagrams/common/common.ts).
     // Regex split `/(,)/` with capture: keep `,` as separate tokens.
+    if !input.contains('~') {
+        return input.to_string();
+    }
     let mut input_sets: Vec<String> = Vec::new();
     let mut cur = String::new();
     for ch in input.chars() {
