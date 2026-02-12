@@ -1,0 +1,195 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "NewYork",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "MetroLine1"
+      },
+      {
+        "id": "Dallas",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "NewYork"
+        ],
+        "branch": "MetroLine1"
+      },
+      {
+        "id": "LosAngeles",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "Dallas"
+        ],
+        "branch": "MetroLine2"
+      },
+      {
+        "id": "Chicago",
+        "message": "",
+        "seq": 3,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "LosAngeles"
+        ],
+        "branch": "MetroLine2"
+      },
+      {
+        "id": "Houston",
+        "message": "",
+        "seq": 4,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "Chicago"
+        ],
+        "branch": "MetroLine2"
+      },
+      {
+        "id": "Phoenix",
+        "message": "",
+        "seq": 5,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "Houston"
+        ],
+        "branch": "MetroLine3"
+      },
+      {
+        "id": "Denver",
+        "message": "",
+        "seq": 6,
+        "type": 2,
+        "tags": [],
+        "parents": [
+          "Phoenix"
+        ],
+        "branch": "MetroLine3"
+      },
+      {
+        "id": "Atlanta",
+        "message": "",
+        "seq": 8,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "Dallas"
+        ],
+        "branch": "MetroLine1"
+      },
+      {
+        "id": "9-<dynamic>",
+        "message": "merged branch MetroLine3 into MetroLine1",
+        "seq": 9,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "Atlanta",
+          "Boston"
+        ],
+        "branch": "MetroLine1",
+        "customId": false
+      },
+      {
+        "id": "Miami",
+        "message": "",
+        "seq": 10,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "9-<dynamic>"
+        ],
+        "branch": "MetroLine1"
+      },
+      {
+        "id": "Washington",
+        "message": "",
+        "seq": 11,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "Miami"
+        ],
+        "branch": "MetroLine1"
+      },
+      {
+        "id": "12-<dynamic>",
+        "message": "merged branch MetroLine2 into MetroLine1",
+        "seq": 12,
+        "type": 3,
+        "tags": [
+          "MY JUNCTION"
+        ],
+        "parents": [
+          "Washington",
+          "Houston"
+        ],
+        "branch": "MetroLine1",
+        "customId": false
+      },
+      {
+        "id": "Boston",
+        "message": "",
+        "seq": 13,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "12-<dynamic>"
+        ],
+        "branch": "MetroLine1"
+      },
+      {
+        "id": "Detroit",
+        "message": "",
+        "seq": 14,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "Boston"
+        ],
+        "branch": "MetroLine1"
+      },
+      {
+        "id": "SanFrancisco",
+        "message": "",
+        "seq": 15,
+        "type": 1,
+        "tags": [],
+        "parents": [
+          "Detroit"
+        ],
+        "branch": "MetroLine1"
+      }
+    ],
+    "branches": [
+      {
+        "name": "MetroLine1"
+      },
+      {
+        "name": "MetroLine2"
+      },
+      {
+        "name": "MetroLine3"
+      }
+    ],
+    "currentBranch": "MetroLine1",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": [
+      "Commit ID Boston already exists"
+    ]
+  }
+}

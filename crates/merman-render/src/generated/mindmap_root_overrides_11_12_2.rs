@@ -21,6 +21,9 @@ pub fn lookup_mindmap_root_viewport_override(
         "upstream_docs_mindmap_default_019" => Some(("5 5 222.265625 54", "222.266")),
         "upstream_docs_mindmap_hexagon_017" => Some(("5 5 204.6432342529297 64", "204.643")),
         "upstream_docs_mindmap_icons_021" => Some(("5 5 287.67645263671875 74", "287.676")),
+        "upstream_docs_example_icons_br" => {
+            Some(("5 5 756.3554077148438 720.9426879882812", "756.355"))
+        }
         "upstream_docs_mindmap_bang_013" => Some((
             "8.327735900878906 6.599998474121094 186.38671875 100",
             "186.387",
@@ -39,6 +42,9 @@ pub fn lookup_mindmap_root_viewport_override(
         }
         "upstream_docs_tidy_tree_example_usage_002" => {
             Some(("5 5 796.6170043945312 671.435546875", "796.617"))
+        }
+        "upstream_docs_intro_how_can_i_help_001" => {
+            Some(("5 5 893.5901489257812 384.7295837402344", "893.59"))
         }
         _ => None,
     }

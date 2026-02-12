@@ -1,0 +1,608 @@
+{
+  "diagramType": "mindmap",
+  "model": {
+    "type": "mindmap",
+    "nodes": [
+      {
+        "id": "0",
+        "domId": "node_0",
+        "label": "Contributing",
+        "isGroup": false,
+        "shape": "cloud",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-root section--1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 0,
+        "nodeId": "root",
+        "type": 4
+      },
+      {
+        "id": "1",
+        "domId": "node_1",
+        "label": "Development",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 2,
+        "nodeId": "Development",
+        "type": 0,
+        "section": 0
+      },
+      {
+        "id": "2",
+        "domId": "node_2",
+        "label": "Solving issues",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "Solving issues",
+        "type": 0,
+        "section": 0
+      },
+      {
+        "id": "3",
+        "domId": "node_3",
+        "label": "Adding new diagrams",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "Adding new diagrams",
+        "type": 0,
+        "section": 0
+      },
+      {
+        "id": "4",
+        "domId": "node_4",
+        "label": "Handling pull requests",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "Handling pull requests",
+        "type": 0,
+        "section": 0
+      },
+      {
+        "id": "5",
+        "domId": "node_5",
+        "label": "Updating tooling",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "Updating tooling",
+        "type": 0,
+        "section": 0
+      },
+      {
+        "id": "6",
+        "domId": "node_6",
+        "label": "Testing",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 2,
+        "nodeId": "Testing",
+        "type": 0,
+        "section": 1
+      },
+      {
+        "id": "7",
+        "domId": "node_7",
+        "label": "Verification of fixed issues",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "Verification of fixed issues",
+        "type": 0,
+        "section": 1
+      },
+      {
+        "id": "8",
+        "domId": "node_8",
+        "label": "Regression testing in connection with releases",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "Regression testing in connection with releases",
+        "type": 0,
+        "section": 1
+      },
+      {
+        "id": "9",
+        "domId": "node_9",
+        "label": "Testing pull requests",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "Testing pull requests",
+        "type": 0,
+        "section": 1
+      },
+      {
+        "id": "10",
+        "domId": "node_10",
+        "label": "Management",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-2",
+        "cssStyles": [],
+        "look": "default",
+        "level": 2,
+        "nodeId": "Management",
+        "type": 0,
+        "section": 2
+      },
+      {
+        "id": "11",
+        "domId": "node_11",
+        "label": "Coordinating the work",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-2",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "Coordinating the work",
+        "type": 0,
+        "section": 2
+      },
+      {
+        "id": "12",
+        "domId": "node_12",
+        "label": "Classification and monitoring of incoming issues",
+        "isGroup": false,
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-2",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "Classification and monitoring of incoming issues",
+        "type": 0,
+        "section": 2
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge_0_1",
+        "start": "0",
+        "end": "1",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-1",
+        "depth": 0,
+        "section": 0
+      },
+      {
+        "id": "edge_1_2",
+        "start": "1",
+        "end": "2",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-3",
+        "depth": 2,
+        "section": 0
+      },
+      {
+        "id": "edge_1_3",
+        "start": "1",
+        "end": "3",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-3",
+        "depth": 2,
+        "section": 0
+      },
+      {
+        "id": "edge_1_4",
+        "start": "1",
+        "end": "4",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-3",
+        "depth": 2,
+        "section": 0
+      },
+      {
+        "id": "edge_1_5",
+        "start": "1",
+        "end": "5",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-3",
+        "depth": 2,
+        "section": 0
+      },
+      {
+        "id": "edge_0_6",
+        "start": "0",
+        "end": "6",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-1",
+        "depth": 0,
+        "section": 1
+      },
+      {
+        "id": "edge_6_7",
+        "start": "6",
+        "end": "7",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-3",
+        "depth": 2,
+        "section": 1
+      },
+      {
+        "id": "edge_6_8",
+        "start": "6",
+        "end": "8",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-3",
+        "depth": 2,
+        "section": 1
+      },
+      {
+        "id": "edge_6_9",
+        "start": "6",
+        "end": "9",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-3",
+        "depth": 2,
+        "section": 1
+      },
+      {
+        "id": "edge_0_10",
+        "start": "0",
+        "end": "10",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-2 edge-depth-1",
+        "depth": 0,
+        "section": 2
+      },
+      {
+        "id": "edge_10_11",
+        "start": "10",
+        "end": "11",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-2 edge-depth-3",
+        "depth": 2,
+        "section": 2
+      },
+      {
+        "id": "edge_10_12",
+        "start": "10",
+        "end": "12",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-2 edge-depth-3",
+        "depth": 2,
+        "section": 2
+      }
+    ],
+    "diagramId": "<dynamic>",
+    "rootNode": {
+      "id": 0,
+      "nodeId": "root",
+      "level": 0,
+      "descr": "Contributing",
+      "type": 4,
+      "children": [
+        {
+          "id": 1,
+          "nodeId": "Development",
+          "level": 2,
+          "descr": "Development",
+          "type": 0,
+          "children": [
+            {
+              "id": 2,
+              "nodeId": "Solving issues",
+              "level": 4,
+              "descr": "Solving issues",
+              "type": 0,
+              "children": [],
+              "width": 200,
+              "padding": 10,
+              "section": 0
+            },
+            {
+              "id": 3,
+              "nodeId": "Adding new diagrams",
+              "level": 4,
+              "descr": "Adding new diagrams",
+              "type": 0,
+              "children": [],
+              "width": 200,
+              "padding": 10,
+              "section": 0
+            },
+            {
+              "id": 4,
+              "nodeId": "Handling pull requests",
+              "level": 4,
+              "descr": "Handling pull requests",
+              "type": 0,
+              "children": [],
+              "width": 200,
+              "padding": 10,
+              "section": 0
+            },
+            {
+              "id": 5,
+              "nodeId": "Updating tooling",
+              "level": 4,
+              "descr": "Updating tooling",
+              "type": 0,
+              "children": [],
+              "width": 200,
+              "padding": 10,
+              "section": 0
+            }
+          ],
+          "width": 200,
+          "padding": 10,
+          "section": 0
+        },
+        {
+          "id": 6,
+          "nodeId": "Testing",
+          "level": 2,
+          "descr": "Testing",
+          "type": 0,
+          "children": [
+            {
+              "id": 7,
+              "nodeId": "Verification of fixed issues",
+              "level": 4,
+              "descr": "Verification of fixed issues",
+              "type": 0,
+              "children": [],
+              "width": 200,
+              "padding": 10,
+              "section": 1
+            },
+            {
+              "id": 8,
+              "nodeId": "Regression testing in connection with releases",
+              "level": 4,
+              "descr": "Regression testing in connection with releases",
+              "type": 0,
+              "children": [],
+              "width": 200,
+              "padding": 10,
+              "section": 1
+            },
+            {
+              "id": 9,
+              "nodeId": "Testing pull requests",
+              "level": 4,
+              "descr": "Testing pull requests",
+              "type": 0,
+              "children": [],
+              "width": 200,
+              "padding": 10,
+              "section": 1
+            }
+          ],
+          "width": 200,
+          "padding": 10,
+          "section": 1
+        },
+        {
+          "id": 10,
+          "nodeId": "Management",
+          "level": 2,
+          "descr": "Management",
+          "type": 0,
+          "children": [
+            {
+              "id": 11,
+              "nodeId": "Coordinating the work",
+              "level": 4,
+              "descr": "Coordinating the work",
+              "type": 0,
+              "children": [],
+              "width": 200,
+              "padding": 10,
+              "section": 2
+            },
+            {
+              "id": 12,
+              "nodeId": "Classification and monitoring of incoming issues",
+              "level": 4,
+              "descr": "Classification and monitoring of incoming issues",
+              "type": 0,
+              "children": [],
+              "width": 200,
+              "padding": 10,
+              "section": 2
+            }
+          ],
+          "width": 200,
+          "padding": 10,
+          "section": 2
+        }
+      ],
+      "width": 200,
+      "padding": 10,
+      "isRoot": true
+    },
+    "markers": [
+      "point"
+    ],
+    "direction": "TB",
+    "nodeSpacing": 50,
+    "rankSpacing": 50,
+    "shapes": {
+      "0": {
+        "shape": "cloud",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "1": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "2": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "3": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "4": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "5": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "6": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "7": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "8": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "9": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "10": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "11": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "12": {
+        "shape": "defaultMindmapNode",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      }
+    }
+  }
+}

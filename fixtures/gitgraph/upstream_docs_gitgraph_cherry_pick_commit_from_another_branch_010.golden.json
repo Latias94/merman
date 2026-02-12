@@ -1,0 +1,126 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "ZERO",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "A",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "ZERO"
+        ],
+        "branch": "release"
+      },
+      {
+        "id": "ONE",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "ZERO"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "B",
+        "message": "",
+        "seq": 3,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "ZERO"
+        ],
+        "branch": "develop"
+      },
+      {
+        "id": "MERGE",
+        "message": "merged branch develop into main",
+        "seq": 4,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "ONE",
+          "B"
+        ],
+        "branch": "main",
+        "customId": true
+      },
+      {
+        "id": "TWO",
+        "message": "",
+        "seq": 5,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "MERGE"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "6-<dynamic>",
+        "message": "cherry-picked merged branch develop into main into release",
+        "seq": 6,
+        "type": 4,
+        "tags": [
+          "cherry-pick:MERGE|parent:B"
+        ],
+        "parents": [
+          "A",
+          "MERGE"
+        ],
+        "branch": "release"
+      },
+      {
+        "id": "THREE",
+        "message": "",
+        "seq": 7,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "6-<dynamic>"
+        ],
+        "branch": "release"
+      },
+      {
+        "id": "C",
+        "message": "",
+        "seq": 8,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "B"
+        ],
+        "branch": "develop"
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "develop"
+      },
+      {
+        "name": "release"
+      }
+    ],
+    "currentBranch": "develop",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}

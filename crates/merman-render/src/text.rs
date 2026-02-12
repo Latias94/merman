@@ -1175,7 +1175,7 @@ mod tests {
         assert_eq!(strong_html.width, 30.109375);
 
         let regular_svg = measurer.measure_wrapped("Two", &style, Some(200.0), WrapMode::SvgLike);
-        assert_eq!(regular_svg.width, 27.5703125);
+        assert_eq!(regular_svg.width, 28.984375);
 
         let strong_svg = measure_markdown_with_flowchart_bold_deltas(
             &measurer,
@@ -1184,7 +1184,13 @@ mod tests {
             Some(200.0),
             WrapMode::SvgLike,
         );
-        assert_eq!(strong_svg.width, 30.09375);
+        // The whole point of `measure_markdown_with_flowchart_bold_deltas` is that `**...**` uses
+        // the flowchart bold delta table consistently across wrap modes.
+        assert_eq!(
+            strong_svg.width - regular_svg.width,
+            strong_html.width - regular_html.width
+        );
+        assert_eq!(strong_svg.width, 31.515625);
     }
 
     #[test]

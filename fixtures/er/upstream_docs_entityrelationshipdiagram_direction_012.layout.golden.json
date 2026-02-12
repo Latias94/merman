@@ -1,0 +1,109 @@
+{
+  "diagramType": "er",
+  "layout": {
+    "ErDiagram": {
+      "nodes": [
+        {
+          "id": "entity-CUSTOMER-0",
+          "x": 96.708,
+          "y": 85.5,
+          "width": 167.495,
+          "height": 171.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-LINE-ITEM-2",
+          "x": 96.708,
+          "y": 586.75,
+          "width": 173.575,
+          "height": 171.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-ORDER-1",
+          "x": 96.708,
+          "y": 336.125,
+          "width": 193.415,
+          "height": 128.25,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "er-rel-0",
+          "from": "entity-CUSTOMER-0",
+          "to": "entity-ORDER-1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 96.708,
+              "y": 171.0
+            },
+            {
+              "x": 96.708,
+              "y": 221.5
+            },
+            {
+              "x": 96.708,
+              "y": 272.0
+            }
+          ],
+          "label": {
+            "x": 96.708,
+            "y": 221.5,
+            "width": 39.531,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ZERO_OR_MORE_END",
+          "stroke_dasharray": null
+        },
+        {
+          "id": "er-rel-1",
+          "from": "entity-ORDER-1",
+          "to": "entity-LINE-ITEM-2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 96.708,
+              "y": 400.25
+            },
+            {
+              "x": 96.708,
+              "y": 450.75
+            },
+            {
+              "x": 96.708,
+              "y": 501.25
+            }
+          ],
+          "label": {
+            "x": 96.708,
+            "y": 450.75,
+            "width": 52.313,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ONE_OR_MORE_END",
+          "stroke_dasharray": null
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 193.415,
+        "max_y": 672.25
+      }
+    }
+  }
+}

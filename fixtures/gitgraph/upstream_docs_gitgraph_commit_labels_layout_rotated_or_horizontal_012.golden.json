@@ -1,0 +1,135 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "feat(api): ...",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "a",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "feat(api): ..."
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "b",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "a"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "fix(client): .extra long label..",
+        "message": "",
+        "seq": 3,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "b"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "feat(modules): ...",
+        "message": "",
+        "seq": 4,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "fix(client): .extra long label.."
+        ],
+        "branch": "c2"
+      },
+      {
+        "id": "test(client): ...",
+        "message": "",
+        "seq": 5,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "feat(modules): ..."
+        ],
+        "branch": "c2"
+      },
+      {
+        "id": "fix(api): ...",
+        "message": "",
+        "seq": 6,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "fix(client): .extra long label.."
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "ci: ...",
+        "message": "",
+        "seq": 7,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "fix(api): ..."
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "8-<dynamic>",
+        "message": "",
+        "seq": 8,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "ci: ..."
+        ],
+        "branch": "b1"
+      },
+      {
+        "id": "9-<dynamic>",
+        "message": "",
+        "seq": 9,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "8-<dynamic>"
+        ],
+        "branch": "b2"
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "c2"
+      },
+      {
+        "name": "b1"
+      },
+      {
+        "name": "b2"
+      }
+    ],
+    "currentBranch": "b2",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}

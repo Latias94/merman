@@ -158,17 +158,23 @@ pub(super) fn render_c4_diagram_svg(
 
     let aria_roledescription = options.aria_roledescription.as_deref().unwrap_or("c4");
 
+    let root_viewbox = format!(
+        "{} {} {} {}",
+        fmt(viewbox_x),
+        fmt(viewbox_y),
+        fmt(width),
+        fmt(height + extra_vert_for_title)
+    );
+    let root_max_w = fmt(width);
+
     let mut out = String::new();
     if use_max_width {
         let _ = write!(
             &mut out,
-            r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{vb_x} {vb_y} {vb_w} {vb_h}" role="graphics-document document" aria-roledescription="{aria}"{aria_describedby}{aria_labelledby}>"#,
+            r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{vb}" role="graphics-document document" aria-roledescription="{aria}"{aria_describedby}{aria_labelledby}>"#,
             diagram_id_esc = diagram_id_esc,
-            max_w = fmt(width),
-            vb_x = fmt(viewbox_x),
-            vb_y = fmt(viewbox_y),
-            vb_w = fmt(width),
-            vb_h = fmt(height + extra_vert_for_title),
+            max_w = escape_attr(&root_max_w),
+            vb = escape_attr(&root_viewbox),
             aria = escape_attr(aria_roledescription),
             aria_describedby = model
                 .acc_descr
@@ -188,14 +194,11 @@ pub(super) fn render_c4_diagram_svg(
     } else {
         let _ = write!(
             &mut out,
-            r#"<svg id="{diagram_id_esc}" width="{w}" height="{h}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="background-color: white;" viewBox="{vb_x} {vb_y} {vb_w} {vb_h}" role="graphics-document document" aria-roledescription="{aria}"{aria_describedby}{aria_labelledby}>"#,
+            r#"<svg id="{diagram_id_esc}" width="{w}" height="{h}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="background-color: white;" viewBox="{vb}" role="graphics-document document" aria-roledescription="{aria}"{aria_describedby}{aria_labelledby}>"#,
             diagram_id_esc = diagram_id_esc,
             w = fmt(width),
             h = fmt(height + extra_vert_for_title),
-            vb_x = fmt(viewbox_x),
-            vb_y = fmt(viewbox_y),
-            vb_w = fmt(width),
-            vb_h = fmt(height + extra_vert_for_title),
+            vb = escape_attr(&root_viewbox),
             aria = escape_attr(aria_roledescription),
             aria_describedby = model
                 .acc_descr

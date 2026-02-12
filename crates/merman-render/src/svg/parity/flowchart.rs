@@ -5282,8 +5282,8 @@ pub(super) fn render_flowchart_node(
         class_attr,
         wrapped_in_a,
         href,
-        label_text,
-        label_type,
+        mut label_text,
+        mut label_type,
         shape,
         node_img,
         node_pos,
@@ -5413,6 +5413,7 @@ pub(super) fn render_flowchart_node(
     let style = compiled_styles.node_style.clone();
     let mut label_dx: f64 = 0.0;
     let mut label_dy: f64 = 0.0;
+    let mut compact_label_translate: bool = false;
     let fill_color = compiled_styles
         .fill
         .as_deref()
@@ -5723,6 +5724,163 @@ pub(super) fn render_flowchart_node(
         Some(ops_to_svg_path_d(&opset))
     }
 
+    fn roughjs_circle_path_d(diameter: f64, seed: u64) -> Option<String> {
+        // Port of Mermaid `stateEnd.ts`/`stateStart.ts` which use RoughJS even for classic look
+        // (roughness=0). Use RoughJS `opsToPath(...)` formatting (no `fmt(...)` quantization).
+        let mut opts = roughr::core::OptionsBuilder::default()
+            .seed(seed)
+            .roughness(0.0)
+            .fill_style(roughr::core::FillStyle::Solid)
+            .disable_multi_stroke(false)
+            .disable_multi_stroke_fill(false)
+            .build()
+            .ok()?;
+        let opset = roughr::renderer::ellipse::<f64>(0.0, 0.0, diameter, diameter, &mut opts);
+        let mut out = String::new();
+        for op in &opset.ops {
+            match op.op {
+                roughr::core::OpType::Move => {
+                    let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
+                }
+                roughr::core::OpType::BCurveTo => {
+                    let _ = write!(
+                        &mut out,
+                        "C{} {}, {} {}, {} {} ",
+                        op.data[0], op.data[1], op.data[2], op.data[3], op.data[4], op.data[5]
+                    );
+                }
+                roughr::core::OpType::LineTo => {
+                    let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
+                }
+            }
+        }
+        Some(out.trim_end().to_string())
+    }
+
+    fn roughjs_paths_for_rect(
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+        fill: &str,
+        stroke: &str,
+        stroke_width: f32,
+        seed: u64,
+    ) -> Option<(String, String)> {
+        // Port of Mermaid `forkJoin.ts` generation order: outline first (advancing PRNG), then fill;
+        // SVG emission order is fill first, stroke second.
+        let fill = parse_hex_color_to_srgba(fill)?;
+        let stroke = parse_hex_color_to_srgba(stroke)?;
+        let mut opts = roughr::core::OptionsBuilder::default()
+            .seed(seed)
+            .roughness(0.0)
+            .fill_style(roughr::core::FillStyle::Solid)
+            .fill(fill)
+            .stroke(stroke)
+            .stroke_width(stroke_width)
+            .stroke_line_dash(vec![0.0, 0.0])
+            .stroke_line_dash_offset(0.0)
+            .fill_line_dash(vec![0.0, 0.0])
+            .fill_line_dash_offset(0.0)
+            .disable_multi_stroke(false)
+            .disable_multi_stroke_fill(false)
+            .build()
+            .ok()?;
+
+        let fill_poly = vec![vec![
+            roughr::Point2D::new(x, y),
+            roughr::Point2D::new(x + w, y),
+            roughr::Point2D::new(x + w, y + h),
+            roughr::Point2D::new(x, y + h),
+        ]];
+        let stroke_opset = roughr::renderer::rectangle::<f64>(x, y, w, h, &mut opts);
+        let fill_opset = roughr::renderer::solid_fill_polygon(&fill_poly, &mut opts);
+
+        fn ops_to_d(opset: &roughr::core::OpSet<f64>) -> String {
+            let mut out = String::new();
+            for op in &opset.ops {
+                match op.op {
+                    roughr::core::OpType::Move => {
+                        let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
+                    }
+                    roughr::core::OpType::BCurveTo => {
+                        let _ = write!(
+                            &mut out,
+                            "C{} {}, {} {}, {} {} ",
+                            op.data[0], op.data[1], op.data[2], op.data[3], op.data[4], op.data[5]
+                        );
+                    }
+                    roughr::core::OpType::LineTo => {
+                        let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
+                    }
+                }
+            }
+            out.trim_end().to_string()
+        }
+
+        Some((ops_to_d(&fill_opset), ops_to_d(&stroke_opset)))
+    }
+
+    fn roughjs_paths_for_polygon(
+        points: &[(f64, f64)],
+        fill: &str,
+        stroke: &str,
+        stroke_width: f32,
+        seed: u64,
+    ) -> Option<(String, String)> {
+        // Mirror RoughJS `generator.polygon(...)` generation order: outline first, then fill, then
+        // emit fill before outline.
+        let fill = parse_hex_color_to_srgba(fill)?;
+        let stroke = parse_hex_color_to_srgba(stroke)?;
+        let mut opts = roughr::core::OptionsBuilder::default()
+            .seed(seed)
+            .roughness(0.0)
+            .fill_style(roughr::core::FillStyle::Solid)
+            .fill(fill)
+            .stroke(stroke)
+            .stroke_width(stroke_width)
+            .stroke_line_dash(vec![0.0, 0.0])
+            .stroke_line_dash_offset(0.0)
+            .fill_line_dash(vec![0.0, 0.0])
+            .fill_line_dash_offset(0.0)
+            .disable_multi_stroke(false)
+            .disable_multi_stroke_fill(false)
+            .build()
+            .ok()?;
+
+        let pts: Vec<_> = points
+            .iter()
+            .copied()
+            .map(|(x, y)| roughr::Point2D::new(x, y))
+            .collect();
+        let outline_opset = roughr::renderer::polygon::<f64>(&pts, &mut opts);
+        let fill_opset = roughr::renderer::solid_fill_polygon(&vec![pts.clone()], &mut opts);
+
+        fn ops_to_d(opset: &roughr::core::OpSet<f64>) -> String {
+            let mut out = String::new();
+            for op in &opset.ops {
+                match op.op {
+                    roughr::core::OpType::Move => {
+                        let _ = write!(&mut out, "M{} {} ", op.data[0], op.data[1]);
+                    }
+                    roughr::core::OpType::BCurveTo => {
+                        let _ = write!(
+                            &mut out,
+                            "C{} {}, {} {}, {} {} ",
+                            op.data[0], op.data[1], op.data[2], op.data[3], op.data[4], op.data[5]
+                        );
+                    }
+                    roughr::core::OpType::LineTo => {
+                        let _ = write!(&mut out, "L{} {} ", op.data[0], op.data[1]);
+                    }
+                }
+            }
+            out.trim_end().to_string()
+        }
+
+        Some((ops_to_d(&fill_opset), ops_to_d(&outline_opset)))
+    }
+
     let hand_drawn_seed = ctx
         .config
         .as_value()
@@ -5731,6 +5889,534 @@ pub(super) fn render_flowchart_node(
         .unwrap_or(0);
 
     match shape.as_str() {
+        // Flowchart v2 "rendering-elements" aliases for state diagram start/end nodes.
+        // Mermaid ignores `node.label` for these shapes and does not emit a label group.
+        "sm-circ" | "small-circle" | "start" => {
+            out.push_str(r#"<circle class="state-start" r="7" width="14" height="14"/>"#);
+            out.push_str("</g>");
+            if wrapped_in_a {
+                out.push_str("</a>");
+            }
+            return;
+        }
+        "fr-circ" | "framed-circle" | "stop" => {
+            let line_color = theme_color(ctx.config.as_value(), "lineColor", "#333333");
+            let inner_fill =
+                config_string(ctx.config.as_value(), &["themeVariables", "stateBorder"])
+                    .unwrap_or_else(|| ctx.node_border_color.clone());
+
+            let outer_d =
+                roughjs_circle_path_d(14.0, hand_drawn_seed).unwrap_or_else(|| "M0,0".to_string());
+            let inner_d =
+                roughjs_circle_path_d(5.0, hand_drawn_seed).unwrap_or_else(|| "M0,0".to_string());
+
+            let _ = write!(
+                out,
+                r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/></g></g>"##,
+                outer_d,
+                escape_attr(ctx.node_fill_color.as_str()),
+                outer_d,
+                escape_attr(&line_color),
+                inner_d,
+                escape_attr(&inner_fill),
+                inner_d,
+                escape_attr(&inner_fill),
+            );
+            out.push_str("</g>");
+            if wrapped_in_a {
+                out.push_str("</a>");
+            }
+            return;
+        }
+
+        // Flowchart v2 fork/join (no label; uses `lineColor` fill/stroke).
+        "fork" | "join" => {
+            // Mermaid inflates Dagre dimensions after `updateNodeBounds(...)` but does not
+            // re-render the bar at the inflated size. Render the canonical shape dimensions.
+            let (w, h) = if layout_node.width >= layout_node.height {
+                (70.0, 10.0)
+            } else {
+                (10.0, 70.0)
+            };
+            let line_color = theme_color(ctx.config.as_value(), "lineColor", "#333333");
+            let (fill_d, stroke_d) = roughjs_paths_for_rect(
+                -w / 2.0,
+                -h / 2.0,
+                w,
+                h,
+                &line_color,
+                &line_color,
+                1.3,
+                hand_drawn_seed,
+            )
+            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+            let _ = write!(
+                out,
+                r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
+                fill_d,
+                escape_attr(&line_color),
+                stroke_d,
+                escape_attr(&line_color),
+            );
+            out.push_str("</g>");
+            if wrapped_in_a {
+                out.push_str("</a>");
+            }
+            return;
+        }
+
+        // Flowchart v2 hourglass/collate: Mermaid clears `node.label` but still emits an empty
+        // label group (via `labelHelper(...)`).
+        "hourglass" | "collate" => {
+            label_text.clear();
+            label_type = "text".to_string();
+            let w = layout_node.width.max(30.0);
+            let h = layout_node.height.max(30.0);
+            let pts: Vec<(f64, f64)> = vec![(0.0, 0.0), (w, 0.0), (0.0, h), (w, h)];
+            let path_data = path_from_points(&pts);
+            let (fill_d, stroke_d) = roughjs_paths_for_svg_path(
+                &path_data,
+                fill_color,
+                stroke_color,
+                1.3,
+                "0 0",
+                hand_drawn_seed,
+            )
+            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+            let _ = write!(
+                out,
+                r##"<g class="basic label-container" transform="translate({}, {})"><path d="{}" stroke="none" stroke-width="0" fill="{}" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
+                fmt(-w / 2.0),
+                fmt(-h / 2.0),
+                escape_attr(&fill_d),
+                escape_attr(fill_color),
+                escape_attr(&stroke_d),
+                escape_attr(stroke_color),
+            );
+        }
+
+        // Flowchart v2 card/notched-rectangle.
+        "notch-rect" | "notched-rectangle" | "card" => {
+            let w = layout_node.width.max(1.0);
+            let h = layout_node.height.max(1.0);
+            let notch = 12.0;
+            let pts: Vec<(f64, f64)> = vec![
+                (notch, -h),
+                (w, -h),
+                (w, 0.0),
+                (0.0, 0.0),
+                (0.0, -h + notch),
+                (notch, -h),
+            ];
+            let mut points_attr = String::new();
+            for (idx, (px, py)) in pts.iter().copied().enumerate() {
+                if idx > 0 {
+                    points_attr.push(' ');
+                }
+                let _ = write!(&mut points_attr, "{},{}", fmt(px), fmt(py));
+            }
+            let _ = write!(
+                out,
+                r#"<polygon points="{}" class="label-container" transform="translate({},{})"/>"#,
+                points_attr,
+                fmt(-w / 2.0),
+                fmt(h / 2.0)
+            );
+        }
+
+        // Flowchart v2 shaded process / lined rectangle.
+        "lin-rect" | "lined-rectangle" | "lined-process" | "lin-proc" => {
+            // Mermaid `shadedProcess.ts`:
+            // - outer bbox includes an extra 8px on both sides (and an internal vertical line),
+            // - label is nudged +4px on x.
+            label_dx = 4.0;
+            compact_label_translate = true;
+            let out_w = layout_node.width.max(1.0);
+            let h = layout_node.height.max(1.0);
+            let w = (out_w - 16.0).max(1.0);
+            let x = -out_w / 2.0 + 8.0;
+            let y = -h / 2.0;
+            let pts: Vec<(f64, f64)> = vec![
+                (x, y),
+                (x + w + 8.0, y),
+                (x + w + 8.0, y + h),
+                (x - 8.0, y + h),
+                (x - 8.0, y),
+                (x, y),
+                (x, y + h),
+            ];
+            let (fill_d, stroke_d) =
+                roughjs_paths_for_polygon(&pts, fill_color, stroke_color, 1.3, hand_drawn_seed)
+                    .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+            let _ = write!(
+                out,
+                r##"<g class="basic label-container" style=""><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
+                escape_attr(&fill_d),
+                escape_attr(fill_color),
+                escape_attr(&stroke_d),
+                escape_attr(stroke_color),
+            );
+        }
+
+        // Flowchart v2 curly brace/comment shapes (rendering-elements).
+        "comment" | "brace" | "brace-l" | "brace-r" | "braces" => {
+            fn circle_points(
+                center_x: f64,
+                center_y: f64,
+                radius: f64,
+                num_points: usize,
+                start_deg: f64,
+                end_deg: f64,
+                negate: bool,
+            ) -> Vec<(f64, f64)> {
+                let start = start_deg.to_radians();
+                let end = end_deg.to_radians();
+                let angle_range = end - start;
+                let angle_step = if num_points > 1 {
+                    angle_range / (num_points as f64 - 1.0)
+                } else {
+                    0.0
+                };
+                let mut out: Vec<(f64, f64)> = Vec::with_capacity(num_points);
+                for i in 0..num_points {
+                    let a = start + (i as f64) * angle_step;
+                    let x = center_x + radius * a.cos();
+                    let y = center_y + radius * a.sin();
+                    if negate {
+                        out.push((-x, -y));
+                    } else {
+                        out.push((x, y));
+                    }
+                }
+                out
+            }
+
+            let out_w = layout_node.width.max(1.0);
+            let out_h = layout_node.height.max(1.0);
+
+            // Mermaid's `label.attr('transform', ...)` for curly brace shapes renders without a
+            // space after the comma (e.g. `translate(-34.265625,-12)`).
+            compact_label_translate = true;
+
+            // Radius depends on the *inner* height in Mermaid (`h = bbox.height + padding`).
+            // Solve `radius = max(5, (out_h - 2*radius) * 0.1)` by a few fixed-point iterations.
+            let mut radius: f64 = 5.0;
+            for _ in 0..3 {
+                let inner_h = (out_h - 2.0 * radius).max(0.0);
+                let next = (inner_h * 0.1).max(5.0);
+                if (next - radius).abs() < 1e-9 {
+                    break;
+                }
+                radius = next;
+            }
+            let h = (out_h - 2.0 * radius).max(0.0);
+
+            let w = match shape.as_str() {
+                "comment" | "brace" | "brace-l" => (out_w - 2.0 * radius) / 1.1,
+                "brace-r" | "braces" => out_w - 3.0 * radius,
+                _ => out_w - 3.0 * radius,
+            };
+
+            let (group_tx, local_label_dx) = match shape.as_str() {
+                "comment" | "brace" | "brace-l" => (radius, -radius / 2.0),
+                "brace-r" => (-radius, 0.0),
+                "braces" => (radius - radius / 4.0, 0.0),
+                _ => (0.0, 0.0),
+            };
+            label_dx = local_label_dx;
+
+            let stroke_d = |d: &str| {
+                roughjs_stroke_path_for_svg_path(d, stroke_color, 1.3, "0 0", hand_drawn_seed)
+                    .unwrap_or_else(|| "M0,0".to_string())
+            };
+
+            if shape == "braces" {
+                // Mermaid `curlyBraces.ts`: two visible brace paths + one invisible rect path.
+                let left_points: Vec<(f64, f64)> = [
+                    circle_points(w / 2.0, -h / 2.0, radius, 30, -90.0, 0.0, true),
+                    vec![(-w / 2.0 - radius, radius)],
+                    circle_points(
+                        w / 2.0 + radius * 2.0,
+                        -radius,
+                        radius,
+                        20,
+                        -180.0,
+                        -270.0,
+                        true,
+                    ),
+                    circle_points(
+                        w / 2.0 + radius * 2.0,
+                        radius,
+                        radius,
+                        20,
+                        -90.0,
+                        -180.0,
+                        true,
+                    ),
+                    vec![(-w / 2.0 - radius, -h / 2.0)],
+                    circle_points(w / 2.0, h / 2.0, radius, 20, 0.0, 90.0, true),
+                ]
+                .into_iter()
+                .flatten()
+                .collect();
+                let right_points: Vec<(f64, f64)> = [
+                    circle_points(
+                        -w / 2.0 + radius + radius / 2.0,
+                        -h / 2.0,
+                        radius,
+                        20,
+                        -90.0,
+                        -180.0,
+                        true,
+                    ),
+                    vec![(w / 2.0 - radius / 2.0, radius)],
+                    circle_points(
+                        -w / 2.0 - radius / 2.0,
+                        -radius,
+                        radius,
+                        20,
+                        0.0,
+                        90.0,
+                        true,
+                    ),
+                    circle_points(
+                        -w / 2.0 - radius / 2.0,
+                        radius,
+                        radius,
+                        20,
+                        -90.0,
+                        0.0,
+                        true,
+                    ),
+                    vec![(w / 2.0 - radius / 2.0, -radius)],
+                    circle_points(
+                        -w / 2.0 + radius + radius / 2.0,
+                        h / 2.0,
+                        radius,
+                        30,
+                        -180.0,
+                        -270.0,
+                        true,
+                    ),
+                ]
+                .into_iter()
+                .flatten()
+                .collect();
+                let rect_points: Vec<(f64, f64)> = [
+                    vec![(w / 2.0, -h / 2.0 - radius), (-w / 2.0, -h / 2.0 - radius)],
+                    circle_points(w / 2.0, -h / 2.0, radius, 20, -90.0, 0.0, true),
+                    vec![(-w / 2.0 - radius, -radius)],
+                    circle_points(
+                        w / 2.0 + radius * 2.0,
+                        -radius,
+                        radius,
+                        20,
+                        -180.0,
+                        -270.0,
+                        true,
+                    ),
+                    circle_points(
+                        w / 2.0 + radius * 2.0,
+                        radius,
+                        radius,
+                        20,
+                        -90.0,
+                        -180.0,
+                        true,
+                    ),
+                    vec![(-w / 2.0 - radius, h / 2.0)],
+                    circle_points(w / 2.0, h / 2.0, radius, 20, 0.0, 90.0, true),
+                    vec![
+                        (-w / 2.0, h / 2.0 + radius),
+                        (w / 2.0 - radius - radius / 2.0, h / 2.0 + radius),
+                    ],
+                    circle_points(
+                        -w / 2.0 + radius + radius / 2.0,
+                        -h / 2.0,
+                        radius,
+                        20,
+                        -90.0,
+                        -180.0,
+                        true,
+                    ),
+                    vec![(w / 2.0 - radius / 2.0, radius)],
+                    circle_points(
+                        -w / 2.0 - radius / 2.0,
+                        -radius,
+                        radius,
+                        20,
+                        0.0,
+                        90.0,
+                        true,
+                    ),
+                    circle_points(
+                        -w / 2.0 - radius / 2.0,
+                        radius,
+                        radius,
+                        20,
+                        -90.0,
+                        0.0,
+                        true,
+                    ),
+                    vec![(w / 2.0 - radius / 2.0, -radius)],
+                    circle_points(
+                        -w / 2.0 + radius + radius / 2.0,
+                        h / 2.0,
+                        radius,
+                        30,
+                        -180.0,
+                        -270.0,
+                        true,
+                    ),
+                ]
+                .into_iter()
+                .flatten()
+                .collect();
+
+                let left_path = path_from_points(&left_points)
+                    .trim_end_matches('Z')
+                    .to_string();
+                let right_path = path_from_points(&right_points)
+                    .trim_end_matches('Z')
+                    .to_string();
+                let rect_path = path_from_points(&rect_points);
+
+                let left_d = stroke_d(&left_path);
+                let right_d = stroke_d(&right_path);
+                let rect_d = stroke_d(&rect_path);
+
+                let _ = write!(
+                    out,
+                    r##"<g class="text" transform="translate({}, 0)"><g><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g><g><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g><g stroke-opacity="0"><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g></g>"##,
+                    fmt(group_tx),
+                    escape_attr(&left_d),
+                    escape_attr(stroke_color),
+                    escape_attr(&right_d),
+                    escape_attr(stroke_color),
+                    escape_attr(&rect_d),
+                    escape_attr(stroke_color),
+                );
+            } else {
+                // Mermaid `curlyBraceLeft.ts` / `curlyBraceRight.ts`.
+                let (negate, points, rect_points) = if shape == "brace-r" {
+                    let points: Vec<(f64, f64)> = [
+                        circle_points(w / 2.0, -h / 2.0, radius, 20, -90.0, 0.0, false),
+                        vec![(w / 2.0 + radius, -radius)],
+                        circle_points(
+                            w / 2.0 + radius * 2.0,
+                            -radius,
+                            radius,
+                            20,
+                            -180.0,
+                            -270.0,
+                            false,
+                        ),
+                        circle_points(
+                            w / 2.0 + radius * 2.0,
+                            radius,
+                            radius,
+                            20,
+                            -90.0,
+                            -180.0,
+                            false,
+                        ),
+                        vec![(w / 2.0 + radius, h / 2.0)],
+                        circle_points(w / 2.0, h / 2.0, radius, 20, 0.0, 90.0, false),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .collect();
+                    let rect_points: Vec<(f64, f64)> = [
+                        vec![(-w / 2.0, -h / 2.0 - radius), (w / 2.0, -h / 2.0 - radius)],
+                        circle_points(w / 2.0, -h / 2.0, radius, 20, -90.0, 0.0, false),
+                        vec![(w / 2.0 + radius, -radius)],
+                        circle_points(
+                            w / 2.0 + radius * 2.0,
+                            -radius,
+                            radius,
+                            20,
+                            -180.0,
+                            -270.0,
+                            false,
+                        ),
+                        circle_points(
+                            w / 2.0 + radius * 2.0,
+                            radius,
+                            radius,
+                            20,
+                            -90.0,
+                            -180.0,
+                            false,
+                        ),
+                        vec![(w / 2.0 + radius, h / 2.0)],
+                        circle_points(w / 2.0, h / 2.0, radius, 20, 0.0, 90.0, false),
+                        vec![(w / 2.0, h / 2.0 + radius), (-w / 2.0, h / 2.0 + radius)],
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .collect();
+                    (false, points, rect_points)
+                } else {
+                    let points: Vec<(f64, f64)> = [
+                        circle_points(w / 2.0, -h / 2.0, radius, 30, -90.0, 0.0, true),
+                        vec![(-w / 2.0 - radius, radius)],
+                        circle_points(
+                            w / 2.0 + radius * 2.0,
+                            -radius,
+                            radius,
+                            20,
+                            -180.0,
+                            -270.0,
+                            true,
+                        ),
+                        circle_points(
+                            w / 2.0 + radius * 2.0,
+                            radius,
+                            radius,
+                            20,
+                            -90.0,
+                            -180.0,
+                            true,
+                        ),
+                        vec![(-w / 2.0 - radius, -h / 2.0)],
+                        circle_points(w / 2.0, h / 2.0, radius, 20, 0.0, 90.0, true),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .collect();
+                    let rect_points: Vec<(f64, f64)> = [
+                        vec![(w / 2.0, -h / 2.0 - radius), (-w / 2.0, -h / 2.0 - radius)],
+                        circle_points(w / 2.0, -h / 2.0, radius, 20, -90.0, 0.0, true),
+                        vec![(-w / 2.0 - radius, -radius)],
+                        circle_points(w / 2.0 + w * 0.1, -radius, radius, 20, -180.0, -270.0, true),
+                        circle_points(w / 2.0 + w * 0.1, radius, radius, 20, -90.0, -180.0, true),
+                        vec![(-w / 2.0 - radius, h / 2.0)],
+                        circle_points(w / 2.0, h / 2.0, radius, 20, 0.0, 90.0, true),
+                        vec![(-w / 2.0, h / 2.0 + radius), (w / 2.0, h / 2.0 + radius)],
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .collect();
+                    (true, points, rect_points)
+                };
+                let _ = negate;
+
+                let brace_path = path_from_points(&points).trim_end_matches('Z').to_string();
+                let rect_path = path_from_points(&rect_points);
+                let brace_d = stroke_d(&brace_path);
+                let rect_d = stroke_d(&rect_path);
+                let _ = write!(
+                    out,
+                    r##"<g class="text" transform="translate({}, 0)"><g><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g><g stroke-opacity="0"><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g></g>"##,
+                    fmt(group_tx),
+                    escape_attr(&brace_d),
+                    escape_attr(stroke_color),
+                    escape_attr(&rect_d),
+                    escape_attr(stroke_color),
+                );
+            }
+        }
+
         "imageSquare" => {
             // Port of Mermaid `imageSquare.ts` (`image-shape default`).
             if let Some(img_href) = node_img.as_deref().filter(|s| !s.trim().is_empty()) {
@@ -6345,7 +7031,7 @@ pub(super) fn render_flowchart_node(
                 fmt(r),
             );
         }
-        "doublecircle" => {
+        "doublecircle" | "dbl-circ" | "double-circle" => {
             let w = layout_node.width.max(1.0);
             let h = layout_node.height.max(1.0);
             let r = (w.min(h) / 2.0).max(0.5);
@@ -6576,7 +7262,7 @@ pub(super) fn render_flowchart_node(
                 );
             }
         }
-        "hexagon" => {
+        "hexagon" | "hex" => {
             let w = layout_node.width.max(1.0);
             let h = layout_node.height.max(1.0);
             let half_width = w / 2.0;
@@ -6706,7 +7392,7 @@ pub(super) fn render_flowchart_node(
                 }
             );
         }
-        "trapezoid" => {
+        "trapezoid" | "trap-b" => {
             // Mermaid `trapezoid.ts` (non-handDrawn): polygon via `insertPolygonShape(...)`.
             let total_w = layout_node.width.max(1.0);
             let h = layout_node.height.max(1.0);
@@ -6733,7 +7419,7 @@ pub(super) fn render_flowchart_node(
                 }
             );
         }
-        "inv_trapezoid" | "inv-trapezoid" => {
+        "inv_trapezoid" | "inv-trapezoid" | "trap-t" => {
             // Mermaid `invertedTrapezoid.ts` (non-handDrawn): polygon via `insertPolygonShape(...)`.
             let total_w = layout_node.width.max(1.0);
             let h = layout_node.height.max(1.0);
@@ -6827,6 +7513,20 @@ pub(super) fn render_flowchart_node(
                     }
                 );
             }
+        }
+        "text" => {
+            // Mermaid `text.ts`: invisible rect used only to size/position the label.
+            let w = layout_node.width.max(0.0);
+            let h = layout_node.height.max(0.0);
+            let _ = write!(
+                out,
+                r#"<rect class="text" style="{}" rx="0" ry="0" x="{}" y="{}" width="{}" height="{}"/>"#,
+                escape_attr(&style),
+                fmt(-w / 2.0),
+                fmt(-h / 2.0),
+                fmt(w),
+                fmt(h)
+            );
         }
         _ => {
             let w = layout_node.width.max(1.0);
@@ -7026,18 +7726,33 @@ pub(super) fn render_flowchart_node(
                 "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;",
             );
         }
-        let _ = write!(
-            out,
-            r#"<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
-            escape_attr(&compiled_styles.label_style),
-            fmt(-metrics.width / 2.0 + label_dx),
-            fmt(-metrics.height / 2.0 + label_dy),
-            fmt(metrics.width),
-            fmt(metrics.height),
-            escape_attr(&div_style),
-            span_style_attr,
-            label_html
-        );
+        if compact_label_translate {
+            let _ = write!(
+                out,
+                r#"<g class="label" style="{}" transform="translate({},{})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
+                escape_attr(&compiled_styles.label_style),
+                fmt(-metrics.width / 2.0 + label_dx),
+                fmt(-metrics.height / 2.0 + label_dy),
+                fmt(metrics.width),
+                fmt(metrics.height),
+                escape_attr(&div_style),
+                span_style_attr,
+                label_html
+            );
+        } else {
+            let _ = write!(
+                out,
+                r#"<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,
+                escape_attr(&compiled_styles.label_style),
+                fmt(-metrics.width / 2.0 + label_dx),
+                fmt(-metrics.height / 2.0 + label_dy),
+                fmt(metrics.width),
+                fmt(metrics.height),
+                escape_attr(&div_style),
+                span_style_attr,
+                label_html
+            );
+        }
     }
     if wrapped_in_a {
         out.push_str("</a>");
@@ -7362,7 +8077,11 @@ pub(super) fn write_flowchart_svg_text(out: &mut String, text: &str, include_sty
             return None;
         }
         let inner = &line[open_end + 1..line.len() - close_tag.len()];
-        Some(vec![open_tag.to_string(), inner.to_string(), close_tag])
+        Some(vec![
+            open_tag.to_string(),
+            inner.trim().to_string(),
+            close_tag,
+        ])
     }
 
     for (idx, line) in lines.iter().enumerate() {
@@ -7947,6 +8666,7 @@ pub(super) fn render_flowchart_v2_svg(
             if n.is_cluster || node_dom_index.contains_key(&n.id) {
                 let mut left_hw = n.width / 2.0;
                 let mut right_hw = left_hw;
+                let mut hh = n.height / 2.0;
                 if !n.is_cluster {
                     if let Some(shape) = nodes_by_id
                         .get(&n.id)
@@ -7961,9 +8681,31 @@ pub(super) fn render_flowchart_v2_svg(
                             left_hw = (left_hw - 0.5).max(0.0);
                             right_hw += 0.5;
                         }
+
+                        // Mermaid `stateEnd.ts` renders the framed-circle using a RoughJS ellipse
+                        // path with a slightly asymmetric bbox in Chromium. Model that asymmetry
+                        // so root `viewBox` parity matches upstream.
+                        if matches!(shape, "fr-circ" | "framed-circle" | "stop") {
+                            left_hw = 7.0;
+                            right_hw = (n.width - 7.0).max(0.0);
+                        }
+
+                        // Mermaid `forkJoin.ts` inflates Dagre dimensions (via `state.padding/2`)
+                        // but the rendered bar remains `70x10` (or `10x70` for LR). Root viewport
+                        // comes from DOM `getBBox()`, so use the rendered dimensions here.
+                        if matches!(shape, "fork" | "join") {
+                            if n.width >= n.height {
+                                left_hw = 35.0;
+                                right_hw = 35.0;
+                                hh = 5.0;
+                            } else {
+                                left_hw = 5.0;
+                                right_hw = 5.0;
+                                hh = 35.0;
+                            }
+                        }
                     }
                 }
-                let hh = n.height / 2.0;
                 include_rect(
                     n.x - left_hw,
                     n.y + y_off - hh,

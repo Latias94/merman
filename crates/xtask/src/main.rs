@@ -469,6 +469,7 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
             "journey" => Some("journey".to_string()),
             "xychart" => Some("xychart".to_string()),
             "requirement" => Some("requirement".to_string()),
+            "architecture-beta" => Some("architecture".to_string()),
             "architecture" | "block" | "c4" | "gantt" | "info" | "kanban" | "mindmap"
             | "packet" | "pie" | "radar" | "sankey" | "sequence" | "timeline" | "treemap" => {
                 Some(detected.to_string())
@@ -1256,6 +1257,7 @@ fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     let flowchart = generated_dir.join("flowchart_root_overrides_11_12_2.rs");
     let class = generated_dir.join("class_root_overrides_11_12_2.rs");
     let mindmap = generated_dir.join("mindmap_root_overrides_11_12_2.rs");
+    let gitgraph = generated_dir.join("gitgraph_root_overrides_11_12_2.rs");
     let pie = generated_dir.join("pie_root_overrides_11_12_2.rs");
     let sankey = generated_dir.join("sankey_root_overrides_11_12_2.rs");
     let sequence = generated_dir.join("sequence_root_overrides_11_12_2.rs");
@@ -1267,6 +1269,7 @@ fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     let flowchart_txt = read_text(&flowchart)?;
     let class_txt = read_text(&class)?;
     let mindmap_txt = read_text(&mindmap)?;
+    let gitgraph_txt = read_text(&gitgraph)?;
     let pie_txt = read_text(&pie)?;
     let sankey_txt = read_text(&sankey)?;
     let sequence_txt = read_text(&sequence)?;
@@ -1278,6 +1281,7 @@ fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     let flowchart_n = count_matches(root_viewport_entry_re, &flowchart_txt);
     let class_n = count_matches(root_viewport_entry_re, &class_txt);
     let mindmap_n = count_matches(root_viewport_entry_re, &mindmap_txt);
+    let gitgraph_n = count_matches(root_viewport_entry_re, &gitgraph_txt);
     let pie_n = count_matches(root_viewport_entry_re, &pie_txt);
     let sankey_n = count_matches(root_viewport_entry_re, &sankey_txt);
     let sequence_n = count_matches(root_viewport_entry_re, &sequence_txt);
@@ -1292,6 +1296,7 @@ fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     println!("- flowchart_root_overrides_11_12_2.rs: {flowchart_n} entries");
     println!("- class_root_overrides_11_12_2.rs: {class_n} entries");
     println!("- mindmap_root_overrides_11_12_2.rs: {mindmap_n} entries");
+    println!("- gitgraph_root_overrides_11_12_2.rs: {gitgraph_n} entries");
     println!("- pie_root_overrides_11_12_2.rs: {pie_n} entries");
     println!("- sankey_root_overrides_11_12_2.rs: {sankey_n} entries");
     println!("- sequence_root_overrides_11_12_2.rs: {sequence_n} entries");

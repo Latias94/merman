@@ -1,0 +1,400 @@
+{
+  "diagramType": "gitGraph",
+  "layout": {
+    "GitGraphDiagram": {
+      "bounds": {
+        "min_x": -134.922,
+        "min_y": -18.0,
+        "max_x": 758.0,
+        "max_y": 198.0
+      },
+      "direction": "LR",
+      "rotate_commit_label": true,
+      "show_branches": true,
+      "show_commit_label": true,
+      "parallel_commits": false,
+      "diagram_padding": 8.0,
+      "max_pos": 750.0,
+      "branches": [
+        {
+          "name": "MetroLine1",
+          "index": 0.0,
+          "pos": 0.0,
+          "bbox_width": 73.922,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "MetroLine2",
+          "index": 1.0,
+          "pos": 90.0,
+          "bbox_width": 73.922,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "MetroLine3",
+          "index": 2.0,
+          "pos": 180.0,
+          "bbox_width": 73.922,
+          "bbox_height": 17.6
+        }
+      ],
+      "commits": [
+        {
+          "id": "NewYork",
+          "message": "",
+          "seq": 0.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [],
+          "branch": "MetroLine1",
+          "pos": 0.0,
+          "pos_with_offset": 10.0,
+          "x": 10.0,
+          "y": 0.0
+        },
+        {
+          "id": "Dallas",
+          "message": "",
+          "seq": 1.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "NewYork"
+          ],
+          "branch": "MetroLine1",
+          "pos": 50.0,
+          "pos_with_offset": 60.0,
+          "x": 60.0,
+          "y": 0.0
+        },
+        {
+          "id": "LosAngeles",
+          "message": "",
+          "seq": 2.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "Dallas"
+          ],
+          "branch": "MetroLine2",
+          "pos": 100.0,
+          "pos_with_offset": 110.0,
+          "x": 110.0,
+          "y": 90.0
+        },
+        {
+          "id": "Chicago",
+          "message": "",
+          "seq": 3.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "LosAngeles"
+          ],
+          "branch": "MetroLine2",
+          "pos": 150.0,
+          "pos_with_offset": 160.0,
+          "x": 160.0,
+          "y": 90.0
+        },
+        {
+          "id": "Houston",
+          "message": "",
+          "seq": 4.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "Chicago"
+          ],
+          "branch": "MetroLine2",
+          "pos": 200.0,
+          "pos_with_offset": 210.0,
+          "x": 210.0,
+          "y": 90.0
+        },
+        {
+          "id": "Phoenix",
+          "message": "",
+          "seq": 5.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "Houston"
+          ],
+          "branch": "MetroLine3",
+          "pos": 250.0,
+          "pos_with_offset": 260.0,
+          "x": 260.0,
+          "y": 180.0
+        },
+        {
+          "id": "Denver",
+          "message": "",
+          "seq": 6.0,
+          "commit_type": 2.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "Phoenix"
+          ],
+          "branch": "MetroLine3",
+          "pos": 300.0,
+          "pos_with_offset": 310.0,
+          "x": 310.0,
+          "y": 180.0
+        },
+        {
+          "id": "Atlanta",
+          "message": "",
+          "seq": 8.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "Dallas"
+          ],
+          "branch": "MetroLine1",
+          "pos": 350.0,
+          "pos_with_offset": 360.0,
+          "x": 360.0,
+          "y": 0.0
+        },
+        {
+          "id": "9-<dynamic>",
+          "message": "merged branch MetroLine3 into MetroLine1",
+          "seq": 9.0,
+          "commit_type": 3.0,
+          "custom_type": null,
+          "custom_id": false,
+          "tags": [],
+          "parents": [
+            "Atlanta",
+            "Boston"
+          ],
+          "branch": "MetroLine1",
+          "pos": 400.0,
+          "pos_with_offset": 410.0,
+          "x": 410.0,
+          "y": 0.0
+        },
+        {
+          "id": "Miami",
+          "message": "",
+          "seq": 10.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "9-<dynamic>"
+          ],
+          "branch": "MetroLine1",
+          "pos": 450.0,
+          "pos_with_offset": 460.0,
+          "x": 460.0,
+          "y": 0.0
+        },
+        {
+          "id": "Washington",
+          "message": "",
+          "seq": 11.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "Miami"
+          ],
+          "branch": "MetroLine1",
+          "pos": 500.0,
+          "pos_with_offset": 510.0,
+          "x": 510.0,
+          "y": 0.0
+        },
+        {
+          "id": "12-<dynamic>",
+          "message": "merged branch MetroLine2 into MetroLine1",
+          "seq": 12.0,
+          "commit_type": 3.0,
+          "custom_type": null,
+          "custom_id": false,
+          "tags": [
+            "MY JUNCTION"
+          ],
+          "parents": [
+            "Washington",
+            "Houston"
+          ],
+          "branch": "MetroLine1",
+          "pos": 550.0,
+          "pos_with_offset": 560.0,
+          "x": 560.0,
+          "y": 0.0
+        },
+        {
+          "id": "Boston",
+          "message": "",
+          "seq": 13.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "12-<dynamic>"
+          ],
+          "branch": "MetroLine1",
+          "pos": 600.0,
+          "pos_with_offset": 610.0,
+          "x": 610.0,
+          "y": 0.0
+        },
+        {
+          "id": "Detroit",
+          "message": "",
+          "seq": 14.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "Boston"
+          ],
+          "branch": "MetroLine1",
+          "pos": 650.0,
+          "pos_with_offset": 660.0,
+          "x": 660.0,
+          "y": 0.0
+        },
+        {
+          "id": "SanFrancisco",
+          "message": "",
+          "seq": 15.0,
+          "commit_type": 1.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "Detroit"
+          ],
+          "branch": "MetroLine1",
+          "pos": 700.0,
+          "pos_with_offset": 710.0,
+          "x": 710.0,
+          "y": 0.0
+        }
+      ],
+      "arrows": [
+        {
+          "from": "NewYork",
+          "to": "Dallas",
+          "class_index": 0.0,
+          "d": "M 10 0 L 60 0"
+        },
+        {
+          "from": "Dallas",
+          "to": "LosAngeles",
+          "class_index": 1.0,
+          "d": "M 60 0 L 60 70 A 20 20, 0, 0, 0, 80 90 L 110 90"
+        },
+        {
+          "from": "LosAngeles",
+          "to": "Chicago",
+          "class_index": 1.0,
+          "d": "M 110 90 L 160 90"
+        },
+        {
+          "from": "Chicago",
+          "to": "Houston",
+          "class_index": 1.0,
+          "d": "M 160 90 L 210 90"
+        },
+        {
+          "from": "Houston",
+          "to": "Phoenix",
+          "class_index": 2.0,
+          "d": "M 210 90 L 210 160 A 20 20, 0, 0, 0, 230 180 L 260 180"
+        },
+        {
+          "from": "Phoenix",
+          "to": "Denver",
+          "class_index": 2.0,
+          "d": "M 260 180 L 310 180"
+        },
+        {
+          "from": "Dallas",
+          "to": "Atlanta",
+          "class_index": 0.0,
+          "d": "M 60 0 L 360 0"
+        },
+        {
+          "from": "Atlanta",
+          "to": "9-<dynamic>",
+          "class_index": 0.0,
+          "d": "M 360 0 L 410 0"
+        },
+        {
+          "from": "Boston",
+          "to": "9-<dynamic>",
+          "class_index": 0.0,
+          "d": "M 610 0 L 410 0"
+        },
+        {
+          "from": "9-<dynamic>",
+          "to": "Miami",
+          "class_index": 0.0,
+          "d": "M 410 0 L 460 0"
+        },
+        {
+          "from": "Miami",
+          "to": "Washington",
+          "class_index": 0.0,
+          "d": "M 460 0 L 510 0"
+        },
+        {
+          "from": "Washington",
+          "to": "12-<dynamic>",
+          "class_index": 0.0,
+          "d": "M 510 0 L 560 0"
+        },
+        {
+          "from": "Houston",
+          "to": "12-<dynamic>",
+          "class_index": 1.0,
+          "d": "M 210 90 L 540 90 A 20 20, 0, 0, 0, 560 70 L 560 0"
+        },
+        {
+          "from": "12-<dynamic>",
+          "to": "Boston",
+          "class_index": 0.0,
+          "d": "M 560 0 L 610 0"
+        },
+        {
+          "from": "Boston",
+          "to": "Detroit",
+          "class_index": 0.0,
+          "d": "M 610 0 L 660 0"
+        },
+        {
+          "from": "Detroit",
+          "to": "SanFrancisco",
+          "class_index": 0.0,
+          "d": "M 660 0 L 710 0"
+        }
+      ]
+    }
+  }
+}

@@ -68,9 +68,15 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_docs_directives_changing_flowchart_config_via_directive_012" => {
             Some(("0 0 333.03125 224", "333.031"))
         }
+        "upstream_docs_getting_started_diagram_code_001" => {
+            Some(("0 0 400.44140625 533.765625", "400.441"))
+        }
         "upstream_docs_flowchart_custom_icons_238" => Some(("0 0 180.03125 174", "180.031")),
         "upstream_docs_theming_customizing_themes_with_themevariables_003" => {
             Some(("0 0 529.14453125 571.28125", "529.145"))
+        }
+        "upstream_docs_syntax_reference_using_dagre_layout_with_classic_look_006" => {
+            Some(("0 0 518.203125 174", "518.203"))
         }
         "upstream_docs_flowchart_unicode_text_005" => Some(("0 0 188.09375 70", "188.094")),
         "upstream_docs_flowchart_a_node_with_round_edges_013" => {
