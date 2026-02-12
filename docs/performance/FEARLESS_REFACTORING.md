@@ -31,6 +31,7 @@ while preserving correctness.
 - Use Criterion for local benchmarking: `docs/performance/BENCHMARKING.md`.
 - Compare revisions on the same machine; avoid cross-machine comparisons.
 - Prefer stage breakdown (parse vs layout vs SVG emission), then end-to-end.
+- For SVG emission hotspots, use internal breakdown timings when available (see “Micro-timing” below).
 
 ## Current Gap (as of 2026-02-12)
 
@@ -55,6 +56,22 @@ Interpretation:
 - `parse/*` still has outliers for some tiny fixtures, but is no longer the dominant medium-fixture cost.
 - `layout/*` is not the dominant stage overall, but it is the largest absolute cost for `flowchart_medium`
   and therefore still a worthwhile target after the SVG emitter hotspots are under control.
+
+## Micro-timing (render sub-breakdowns)
+
+When optimizing SVG emission, stage timing alone is often too coarse. `merman-render` supports an
+internal breakdown that can be enabled via:
+
+- `MERMAN_RENDER_TIMING=1`
+
+Example (single fixture run):
+
+- `cargo run -p merman-cli --release -- render --text-measurer vendored crates/merman/benches/fixtures/flowchart_medium.mmd > $null`
+
+Typical interpretation (varies by machine/fixture):
+
+- `flowchart-v2`: `render_svg` is dominated by per-node SVG emission (`nodes`).
+- `stateDiagram`: `render_svg` is dominated by leaf node emission (`leaf_nodes`) rather than edges.
 
 ## Milestones (revised)
 
@@ -154,6 +171,8 @@ Exit criteria:
 - Reduced dagreish edge-proxy overhead in dugong (`perf(dugong): cut dagreish edge-proxy overhead`).
 - Made SVG number/path formatting allocation-free (`fmt_display`, `fmt_path_into`, curve/path emit refactors).
 - Reduced allocations in flowchart/state SVG emission (escape display wrappers, fewer intermediate `String`s).
+- Added an internal render breakdown switch (`MERMAN_RENDER_TIMING=1`) to cheaply localize SVG hotspots.
+- Reduced flowchart node render allocations by borrowing node inputs and avoiding style string cloning.
 - Optimized state `parity-root` bbox scan to skip `<style>/<defs>` and reuse transform parse buffers.
 
 ## Prioritized Backlog
