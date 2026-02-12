@@ -18,20 +18,21 @@ pub(super) struct FlowchartRenderCtx<'a> {
     pub(super) default_edge_interpolate: String,
     pub(super) default_edge_style: Vec<String>,
     #[allow(dead_code)]
-    pub(super) node_order: Vec<String>,
-    pub(super) subgraph_order: Vec<String>,
-    pub(super) edge_order: Vec<String>,
-    pub(super) nodes_by_id: std::collections::HashMap<String, crate::flowchart::FlowNode>,
-    pub(super) edges_by_id: std::collections::HashMap<String, crate::flowchart::FlowEdge>,
-    pub(super) subgraphs_by_id: std::collections::HashMap<String, crate::flowchart::FlowSubgraph>,
+    pub(super) node_order: Vec<&'a str>,
+    pub(super) subgraph_order: Vec<&'a str>,
+    pub(super) edge_order: Vec<&'a str>,
+    pub(super) nodes_by_id: std::collections::HashMap<&'a str, &'a crate::flowchart::FlowNode>,
+    pub(super) edges_by_id: std::collections::HashMap<&'a str, &'a crate::flowchart::FlowEdge>,
+    pub(super) subgraphs_by_id:
+        std::collections::HashMap<&'a str, &'a crate::flowchart::FlowSubgraph>,
     pub(super) tooltips: std::collections::HashMap<String, String>,
-    pub(super) recursive_clusters: std::collections::HashSet<String>,
-    pub(super) parent: std::collections::HashMap<String, String>,
-    pub(super) layout_nodes_by_id: std::collections::HashMap<String, LayoutNode>,
-    pub(super) layout_edges_by_id: std::collections::HashMap<String, crate::model::LayoutEdge>,
-    pub(super) layout_clusters_by_id: std::collections::HashMap<String, LayoutCluster>,
-    pub(super) dom_node_order_by_root: std::collections::HashMap<String, Vec<String>>,
-    pub(super) node_dom_index: std::collections::HashMap<String, usize>,
+    pub(super) recursive_clusters: std::collections::HashSet<&'a str>,
+    pub(super) parent: std::collections::HashMap<&'a str, &'a str>,
+    pub(super) layout_nodes_by_id: std::collections::HashMap<&'a str, &'a LayoutNode>,
+    pub(super) layout_edges_by_id: std::collections::HashMap<&'a str, &'a crate::model::LayoutEdge>,
+    pub(super) layout_clusters_by_id: std::collections::HashMap<&'a str, &'a LayoutCluster>,
+    pub(super) dom_node_order_by_root: &'a std::collections::HashMap<String, Vec<String>>,
+    pub(super) node_dom_index: std::collections::HashMap<&'a str, usize>,
     pub(super) node_padding: f64,
     pub(super) wrapping_width: f64,
     pub(super) node_wrap_mode: crate::text::WrapMode,
@@ -41,39 +42,40 @@ pub(super) struct FlowchartRenderCtx<'a> {
     pub(super) diagram_title: Option<String>,
 }
 
-pub(super) fn flowchart_node_dom_indices(
-    model: &crate::flowchart::FlowchartV2Model,
-) -> std::collections::HashMap<String, usize> {
+pub(super) fn flowchart_node_dom_indices<'a>(
+    model: &'a crate::flowchart::FlowchartV2Model,
+) -> std::collections::HashMap<&'a str, usize> {
     if !model.vertex_calls.is_empty() {
-        let mut out: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        let mut out: std::collections::HashMap<&'a str, usize> = std::collections::HashMap::new();
         for (vertex_counter, id) in model.vertex_calls.iter().enumerate() {
+            let id: &'a str = id.as_str();
             if !out.contains_key(id) {
-                out.insert(id.clone(), vertex_counter);
+                out.insert(id, vertex_counter);
             }
         }
         return out;
     }
 
-    let mut out: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut out: std::collections::HashMap<&'a str, usize> = std::collections::HashMap::new();
     let mut vertex_counter: usize = 0;
 
     // Mermaid FlowDB assigns `domId` when a vertex is first created, but increments the internal
     // `vertexCounter` on every `addVertex(...)` call (even for repeated references). This means the
     // domId suffix depends on the full "first-use" order + repeat uses.
-    let touch = |id: &str, out: &mut std::collections::HashMap<String, usize>, c: &mut usize| {
+    fn touch<'a>(id: &'a str, out: &mut std::collections::HashMap<&'a str, usize>, c: &mut usize) {
         if !out.contains_key(id) {
-            out.insert(id.to_string(), *c);
+            out.insert(id, *c);
         }
         *c += 1;
-    };
+    }
 
     for e in &model.edges {
-        touch(&e.from, &mut out, &mut vertex_counter);
-        touch(&e.to, &mut out, &mut vertex_counter);
+        touch(e.from.as_str(), &mut out, &mut vertex_counter);
+        touch(e.to.as_str(), &mut out, &mut vertex_counter);
     }
 
     for n in &model.nodes {
-        touch(&n.id, &mut out, &mut vertex_counter);
+        touch(n.id.as_str(), &mut out, &mut vertex_counter);
     }
 
     out
@@ -653,8 +655,8 @@ pub(super) fn flowchart_collect_edge_marker_colors(ctx: &FlowchartRenderCtx<'_>)
 
 #[allow(dead_code)]
 pub(super) fn flowchart_is_in_cluster(
-    parent: &std::collections::HashMap<String, String>,
-    _cluster_ids: &std::collections::HashSet<String>,
+    parent: &std::collections::HashMap<&str, &str>,
+    _cluster_ids: &std::collections::HashSet<&str>,
     node_id: &str,
     cluster_id: &str,
 ) -> bool {
@@ -666,13 +668,13 @@ pub(super) fn flowchart_is_in_cluster(
         if id == cluster_id {
             return true;
         }
-        cur = parent.get(id).map(|s| s.as_str());
+        cur = parent.get(id).copied();
     }
     false
 }
 
 pub(super) fn flowchart_is_strict_descendant(
-    parent: &std::collections::HashMap<String, String>,
+    parent: &std::collections::HashMap<&str, &str>,
     node_id: &str,
     cluster_id: &str,
 ) -> bool {
@@ -684,7 +686,7 @@ pub(super) fn flowchart_is_strict_descendant(
         if id == cluster_id {
             return true;
         }
-        cur = parent.get(id).map(|s| s.as_str());
+        cur = parent.get(id).copied();
     }
     false
 }
@@ -693,10 +695,10 @@ pub(super) fn flowchart_effective_parent<'a>(
     ctx: &'a FlowchartRenderCtx<'_>,
     id: &str,
 ) -> Option<&'a str> {
-    let mut cur = ctx.parent.get(id).map(|s| s.as_str());
+    let mut cur = ctx.parent.get(id).copied();
     while let Some(p) = cur {
         if ctx.subgraphs_by_id.contains_key(p) && !ctx.recursive_clusters.contains(p) {
-            cur = ctx.parent.get(p).map(|s| s.as_str());
+            cur = ctx.parent.get(p).copied();
             continue;
         }
         return Some(p);
@@ -704,18 +706,18 @@ pub(super) fn flowchart_effective_parent<'a>(
     None
 }
 
-pub(super) fn flowchart_root_children_clusters(
-    ctx: &FlowchartRenderCtx<'_>,
+pub(super) fn flowchart_root_children_clusters<'a>(
+    ctx: &'a FlowchartRenderCtx<'a>,
     parent_cluster: Option<&str>,
-) -> Vec<String> {
+) -> Vec<&'a str> {
     let mut out = Vec::new();
     for id in ctx.subgraphs_by_id.keys() {
         if !ctx.recursive_clusters.contains(id) {
             continue;
         }
-        let parent = flowchart_effective_parent(ctx, id.as_str());
+        let parent = flowchart_effective_parent(ctx, id);
         if parent == parent_cluster {
-            out.push(id.clone());
+            out.push(*id);
         }
     }
     out.sort_by(|a, b| {
@@ -746,33 +748,33 @@ pub(super) fn flowchart_root_children_clusters(
     out
 }
 
-pub(super) fn flowchart_root_children_nodes(
-    ctx: &FlowchartRenderCtx<'_>,
+pub(super) fn flowchart_root_children_nodes<'a>(
+    ctx: &'a FlowchartRenderCtx<'a>,
     parent_cluster: Option<&str>,
-) -> Vec<String> {
+) -> Vec<&'a str> {
     let cluster_ids: std::collections::HashSet<&str> = ctx
         .subgraphs_by_id
         .iter()
         .filter(|(_, sg)| !sg.nodes.is_empty())
-        .map(|(k, _)| k.as_str())
+        .map(|(k, _)| *k)
         .collect();
     let mut out = Vec::new();
     for (id, n) in &ctx.nodes_by_id {
-        if cluster_ids.contains(id.as_str()) {
+        if cluster_ids.contains(id) {
             continue;
         }
-        let parent = flowchart_effective_parent(ctx, id.as_str());
+        let parent = flowchart_effective_parent(ctx, id);
         if parent == parent_cluster {
-            out.push(n.id.clone());
+            out.push(n.id.as_str());
         }
     }
     for (id, sg) in &ctx.subgraphs_by_id {
         if !sg.nodes.is_empty() {
             continue;
         }
-        let parent = flowchart_effective_parent(ctx, id.as_str());
+        let parent = flowchart_effective_parent(ctx, id);
         if parent == parent_cluster {
-            out.push(id.clone());
+            out.push(*id);
         }
     }
 
@@ -793,7 +795,7 @@ pub(super) fn flowchart_root_children_nodes(
         parent_cluster: Option<&str>,
     ) -> usize {
         let mut depth: usize = 0;
-        let mut cur = ctx.parent.get(id).map(|s| s.as_str());
+        let mut cur = ctx.parent.get(id).copied();
         while let Some(p) = cur {
             let count = if parent_cluster.is_some() {
                 // Within an extracted root, Mermaid's node insertion/DOM ordering is sensitive
@@ -806,7 +808,7 @@ pub(super) fn flowchart_root_children_nodes(
             if count {
                 depth = depth.saturating_add(1);
             }
-            cur = ctx.parent.get(p).map(|s| s.as_str());
+            cur = ctx.parent.get(p).copied();
         }
         depth
     }
@@ -816,7 +818,7 @@ pub(super) fn flowchart_root_children_nodes(
         id: &str,
         parent_cluster: Option<&str>,
     ) -> Option<&'a str> {
-        let mut cur = ctx.parent.get(id).map(|s| s.as_str());
+        let mut cur = ctx.parent.get(id).copied();
         while let Some(p) = cur {
             let keep = if parent_cluster.is_some() {
                 ctx.subgraphs_by_id
@@ -828,7 +830,7 @@ pub(super) fn flowchart_root_children_nodes(
             if keep {
                 return Some(p);
             }
-            cur = ctx.parent.get(p).map(|s| s.as_str());
+            cur = ctx.parent.get(p).copied();
         }
         None
     }
@@ -844,8 +846,8 @@ pub(super) fn flowchart_root_children_nodes(
 
     out.sort_by(|a, b| {
         if let Some(ref dom) = dom_order_idx {
-            let adi = dom.get(a.as_str()).copied().unwrap_or(usize::MAX);
-            let bdi = dom.get(b.as_str()).copied().unwrap_or(usize::MAX);
+            let adi = dom.get(a).copied().unwrap_or(usize::MAX);
+            let bdi = dom.get(b).copied().unwrap_or(usize::MAX);
             if adi != bdi {
                 return adi.cmp(&bdi);
             }
@@ -914,18 +916,18 @@ pub(super) fn flowchart_lca(ctx: &FlowchartRenderCtx<'_>, a: &str, b: &str) -> O
     None
 }
 
-pub(super) fn flowchart_edges_for_root(
-    ctx: &FlowchartRenderCtx<'_>,
+pub(super) fn flowchart_edges_for_root<'a>(
+    ctx: &'a FlowchartRenderCtx<'a>,
     cluster_id: Option<&str>,
-) -> Vec<crate::flowchart::FlowEdge> {
+) -> Vec<&'a crate::flowchart::FlowEdge> {
     let mut out = Vec::new();
     for edge_id in &ctx.edge_order {
-        let Some(e) = ctx.edges_by_id.get(edge_id) else {
+        let Some(&e) = ctx.edges_by_id.get(edge_id) else {
             continue;
         };
-        let lca = flowchart_lca(ctx, &e.from, &e.to);
+        let lca = flowchart_lca(ctx, e.from.as_str(), e.to.as_str());
         if lca.as_deref() == cluster_id {
-            out.push(e.clone());
+            out.push(e);
         }
     }
     out
@@ -951,10 +953,10 @@ pub(super) fn render_flowchart_root(
 
             let my_parent = flowchart_effective_parent(ctx, cid);
             let has_empty_sibling = ctx.subgraphs_by_id.iter().any(|(id, sg)| {
-                id.as_str() != cid
+                *id != cid
                     && sg.nodes.is_empty()
-                    && ctx.layout_clusters_by_id.contains_key(id.as_str())
-                    && flowchart_effective_parent(ctx, id.as_str()) == my_parent
+                    && ctx.layout_clusters_by_id.contains_key(id)
+                    && flowchart_effective_parent(ctx, id) == my_parent
             });
 
             let base_top = (cluster.y - cluster.height / 2.0) + ctx.ty - ROOT_MARGIN_PX;
@@ -1006,7 +1008,7 @@ pub(super) fn render_flowchart_root(
         }
     }
     for id in ctx.subgraphs_by_id.keys() {
-        if cluster_id.is_some_and(|cid| cid == id.as_str()) {
+        if cluster_id.is_some_and(|cid| cid == *id) {
             continue;
         }
         if ctx
@@ -1019,8 +1021,8 @@ pub(super) fn render_flowchart_root(
         if ctx.recursive_clusters.contains(id) {
             continue;
         }
-        if flowchart_effective_parent(ctx, id.as_str()) == cluster_id {
-            if let Some(cluster) = ctx.layout_clusters_by_id.get(id.as_str()) {
+        if flowchart_effective_parent(ctx, *id) == cluster_id {
+            if let Some(cluster) = ctx.layout_clusters_by_id.get(*id) {
                 clusters_to_draw.push(cluster);
             }
         }
@@ -1032,16 +1034,19 @@ pub(super) fn render_flowchart_root(
         // `graph.children()`), which in practice matches a stable bottom-to-top ordering in the
         // upstream SVG baselines (see `flowchart-v2 outgoing-links-*` fixtures).
         fn is_ancestor(
-            parent: &std::collections::HashMap<String, String>,
+            parent: &std::collections::HashMap<&str, &str>,
             ancestor: &str,
             node: &str,
         ) -> bool {
-            let mut cur = node.to_string();
-            while let Some(p) = parent.get(&cur) {
-                if p.as_str() == ancestor {
+            let mut cur: Option<&str> = Some(node);
+            while let Some(id) = cur {
+                let Some(p) = parent.get(id).copied() else {
+                    break;
+                };
+                if p == ancestor {
                     return true;
                 }
-                cur = p.clone();
+                cur = Some(p);
             }
             false
         }
@@ -1060,8 +1065,14 @@ pub(super) fn render_flowchart_root(
             let b_top_y = b.y - b.height / 2.0;
             let a_top_x = a.x - a.width / 2.0;
             let b_top_x = b.x - b.width / 2.0;
-            let a_idx = ctx.subgraph_order.iter().position(|id| id == &a.id);
-            let b_idx = ctx.subgraph_order.iter().position(|id| id == &b.id);
+            let a_idx = ctx
+                .subgraph_order
+                .iter()
+                .position(|id| *id == a.id.as_str());
+            let b_idx = ctx
+                .subgraph_order
+                .iter()
+                .position(|id| *id == b.id.as_str());
             if let (Some(ai), Some(bi)) = (a_idx, b_idx) {
                 // Mermaid's cluster insertion order tracks the order in which subgraphs are
                 // defined/registered, but for SVG output the baselines match a reverse (last
@@ -1123,10 +1134,10 @@ pub(super) fn render_flowchart_root(
 
     // Mermaid inserts node DOM elements in `graph.nodes()` insertion order while recursively
     // rendering extracted cluster graphs. Our layout captures that order per extracted root.
-    let mut dom_order = ctx
+    let mut dom_order: Vec<&str> = ctx
         .dom_node_order_by_root
         .get(cluster_id.unwrap_or(""))
-        .cloned()
+        .map(|ids| ids.iter().map(|s| s.as_str()).collect())
         .unwrap_or_default();
     if dom_order.is_empty() {
         // Fallback for v1 layouts: approximate by appending extracted cluster roots after
@@ -1138,18 +1149,18 @@ pub(super) fn render_flowchart_root(
     for id in dom_order {
         if ctx
             .subgraphs_by_id
-            .get(&id)
+            .get(id)
             .is_some_and(|sg| !sg.nodes.is_empty())
         {
             // Non-recursive clusters render as cluster boxes (in `.clusters`) and do not emit a
             // node DOM element. Recursive clusters render as nested `.root` groups.
-            if ctx.recursive_clusters.contains(&id) {
-                render_flowchart_root(out, ctx, Some(id.as_str()), origin_x, origin_y);
+            if ctx.recursive_clusters.contains(id) {
+                render_flowchart_root(out, ctx, Some(id), origin_x, origin_y);
             }
             continue;
         }
 
-        render_flowchart_node(out, ctx, &id, origin_x, content_origin_y);
+        render_flowchart_node(out, ctx, id, origin_x, content_origin_y);
     }
 
     out.push_str("</g></g>");
@@ -1291,7 +1302,7 @@ pub(super) fn render_flowchart_cluster(
     origin_x: f64,
     origin_y: f64,
 ) {
-    let Some(sg) = ctx.subgraphs_by_id.get(&cluster.id) else {
+    let Some(sg) = ctx.subgraphs_by_id.get(cluster.id.as_str()) else {
         return;
     };
     if sg.nodes.is_empty() {
@@ -1459,15 +1470,15 @@ pub(super) fn flowchart_edge_class_attr(edge: &crate::flowchart::FlowEdge) -> St
 }
 
 pub(super) fn flowchart_edge_path_d_for_bbox(
-    layout_edges_by_id: &std::collections::HashMap<String, crate::model::LayoutEdge>,
-    layout_clusters_by_id: &std::collections::HashMap<String, LayoutCluster>,
+    layout_edges_by_id: &std::collections::HashMap<&str, &crate::model::LayoutEdge>,
+    layout_clusters_by_id: &std::collections::HashMap<&str, &LayoutCluster>,
     translate_x: f64,
     translate_y: f64,
     default_edge_interpolate: &str,
     edge_html_labels: bool,
     edge: &crate::flowchart::FlowEdge,
 ) -> Option<String> {
-    let le = layout_edges_by_id.get(&edge.id)?;
+    let le = layout_edges_by_id.get(edge.id.as_str()).copied()?;
     if le.points.len() < 2 {
         return None;
     }
@@ -1635,12 +1646,12 @@ pub(super) fn flowchart_edge_path_d_for_bbox(
     }
 
     fn boundary_for_cluster(
-        layout_clusters_by_id: &std::collections::HashMap<String, LayoutCluster>,
+        layout_clusters_by_id: &std::collections::HashMap<&str, &LayoutCluster>,
         cluster_id: &str,
         translate_x: f64,
         translate_y: f64,
     ) -> Option<BoundaryNode> {
-        let n = layout_clusters_by_id.get(cluster_id)?;
+        let n = layout_clusters_by_id.get(cluster_id).copied()?;
         Some(BoundaryNode {
             x: n.x + translate_x,
             y: n.y + translate_y,
@@ -2172,7 +2183,7 @@ pub(super) fn render_flowchart_edge_path(
     origin_x: f64,
     origin_y: f64,
 ) {
-    let Some(le) = ctx.layout_edges_by_id.get(&edge.id) else {
+    let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()) else {
         return;
     };
     if le.points.len() < 2 {
@@ -4451,9 +4462,9 @@ pub(super) fn render_flowchart_edge_path(
     // Mermaid flowchart-v2 can emit a degenerate edge path when linking a subgraph to one of its
     // strict descendants (e.g. `Sub --> In` where `In` is declared inside `subgraph Sub`). Upstream
     // renders these as a single-point path (`M..Z`) while preserving the original `data-points`.
-    if (ctx.subgraphs_by_id.contains_key(&edge.from)
+    if (ctx.subgraphs_by_id.contains_key(edge.from.as_str())
         && flowchart_is_strict_descendant(&ctx.parent, edge.to.as_str(), edge.from.as_str()))
-        || (ctx.subgraphs_by_id.contains_key(&edge.to)
+        || (ctx.subgraphs_by_id.contains_key(edge.to.as_str())
             && flowchart_is_strict_descendant(&ctx.parent, edge.from.as_str(), edge.to.as_str()))
     {
         if let Some(p) = points_for_data_points.last() {
@@ -4696,7 +4707,7 @@ pub(super) fn render_flowchart_edge_label(
     }
 
     if !ctx.edge_html_labels {
-        if let Some(le) = ctx.layout_edges_by_id.get(&edge.id) {
+        if let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
             if let Some(lbl) = le.label.as_ref() {
                 if !label_text_plain.trim().is_empty() {
                     let x = lbl.x + ctx.tx - origin_x;
@@ -4792,7 +4803,7 @@ pub(super) fn render_flowchart_edge_label(
         flowchart_label_html(label_text, label_type, &ctx.config)
     };
 
-    if let Some(le) = ctx.layout_edges_by_id.get(&edge.id) {
+    if let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
         if let Some(lbl) = le.label.as_ref() {
             let mut x = lbl.x + ctx.tx - origin_x;
             let mut y = lbl.y + ctx.ty - origin_y;
@@ -8446,66 +8457,72 @@ pub(super) fn render_flowchart_v2_svg(
         font_weight: None,
     };
 
-    let mut nodes_by_id: std::collections::HashMap<String, crate::flowchart::FlowNode> =
-        std::collections::HashMap::new();
-    let node_order: Vec<String> = model.nodes.iter().map(|n| n.id.clone()).collect();
-    for n in model.nodes.iter().cloned() {
-        nodes_by_id.insert(n.id.clone(), n);
-    }
+    let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id.as_str()).collect();
+
+    let mut extra_nodes: Vec<crate::flowchart::FlowNode> =
+        Vec::with_capacity(self_loop_label_node_ids.len());
     for id in &self_loop_label_node_ids {
-        nodes_by_id
-            .entry(id.clone())
-            .or_insert(crate::flowchart::FlowNode {
-                id: id.clone(),
-                label: Some(String::new()),
-                label_type: None,
-                layout_shape: None,
-                icon: None,
-                form: None,
-                pos: None,
-                img: None,
-                constraint: None,
-                asset_width: None,
-                asset_height: None,
-                classes: Vec::new(),
-                styles: Vec::new(),
-                have_callback: false,
-                link: None,
-                link_target: None,
-            });
+        extra_nodes.push(crate::flowchart::FlowNode {
+            id: id.clone(),
+            label: Some(String::new()),
+            label_type: None,
+            layout_shape: None,
+            icon: None,
+            form: None,
+            pos: None,
+            img: None,
+            constraint: None,
+            asset_width: None,
+            asset_height: None,
+            classes: Vec::new(),
+            styles: Vec::new(),
+            have_callback: false,
+            link: None,
+            link_target: None,
+        });
     }
 
-    let mut edges_by_id: std::collections::HashMap<String, crate::flowchart::FlowEdge> =
-        std::collections::HashMap::new();
-    let edge_order: Vec<String> = render_edges.iter().map(|e| e.id.clone()).collect();
-    for e in render_edges.iter().cloned() {
-        edges_by_id.insert(e.id.clone(), e);
+    let mut nodes_by_id: std::collections::HashMap<&str, &crate::flowchart::FlowNode> =
+        std::collections::HashMap::with_capacity(model.nodes.len() + extra_nodes.len());
+    for n in &model.nodes {
+        nodes_by_id.insert(n.id.as_str(), n);
+    }
+    for n in &extra_nodes {
+        let _ = nodes_by_id.entry(n.id.as_str()).or_insert(n);
     }
 
-    let mut subgraphs_by_id: std::collections::HashMap<String, crate::flowchart::FlowSubgraph> =
-        std::collections::HashMap::new();
-    let subgraph_order: Vec<String> = model.subgraphs.iter().map(|s| s.id.clone()).collect();
-    for sg in model.subgraphs.iter().cloned() {
-        subgraphs_by_id.insert(sg.id.clone(), sg);
+    let edge_order: Vec<&str> = render_edges.iter().map(|e| e.id.as_str()).collect();
+    let mut edges_by_id: std::collections::HashMap<&str, &crate::flowchart::FlowEdge> =
+        std::collections::HashMap::with_capacity(render_edges.len());
+    for e in &render_edges {
+        edges_by_id.insert(e.id.as_str(), e);
     }
 
-    let mut parent: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-    for sg in model.subgraphs.iter() {
+    let subgraph_order: Vec<&str> = model.subgraphs.iter().map(|s| s.id.as_str()).collect();
+    let mut subgraphs_by_id: std::collections::HashMap<&str, &crate::flowchart::FlowSubgraph> =
+        std::collections::HashMap::with_capacity(model.subgraphs.len());
+    for sg in &model.subgraphs {
+        subgraphs_by_id.insert(sg.id.as_str(), sg);
+    }
+
+    let mut parent: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
+    for sg in &model.subgraphs {
+        let sg_id = sg.id.as_str();
         for child in &sg.nodes {
-            parent.insert(child.clone(), sg.id.clone());
+            parent.insert(child.as_str(), sg_id);
         }
     }
-    for id in &self_loop_label_node_ids {
+    for n in &extra_nodes {
+        let id = n.id.as_str();
         let Some((base, _)) = id.split_once("---") else {
             continue;
         };
-        if let Some(p) = parent.get(base).cloned() {
-            parent.insert(id.clone(), p);
+        if let Some(&p) = parent.get(base) {
+            parent.insert(id, p);
         }
     }
 
-    let mut recursive_clusters: std::collections::HashSet<String> =
-        std::collections::HashSet::new();
+    let mut recursive_clusters: std::collections::HashSet<&str> = std::collections::HashSet::new();
     for sg in model.subgraphs.iter() {
         if sg.nodes.is_empty() {
             continue;
@@ -8522,26 +8539,26 @@ pub(super) fn render_flowchart_v2_svg(
             }
         }
         if !external {
-            recursive_clusters.insert(sg.id.clone());
+            recursive_clusters.insert(sg.id.as_str());
         }
     }
 
-    let mut layout_nodes_by_id: std::collections::HashMap<String, LayoutNode> =
-        std::collections::HashMap::new();
-    for n in layout.nodes.iter().cloned() {
-        layout_nodes_by_id.insert(n.id.clone(), n);
+    let mut layout_nodes_by_id: std::collections::HashMap<&str, &LayoutNode> =
+        std::collections::HashMap::with_capacity(layout.nodes.len());
+    for n in &layout.nodes {
+        layout_nodes_by_id.insert(n.id.as_str(), n);
     }
 
-    let mut layout_edges_by_id: std::collections::HashMap<String, crate::model::LayoutEdge> =
-        std::collections::HashMap::new();
-    for e in layout.edges.iter().cloned() {
-        layout_edges_by_id.insert(e.id.clone(), e);
+    let mut layout_edges_by_id: std::collections::HashMap<&str, &crate::model::LayoutEdge> =
+        std::collections::HashMap::with_capacity(layout.edges.len());
+    for e in &layout.edges {
+        layout_edges_by_id.insert(e.id.as_str(), e);
     }
 
-    let mut layout_clusters_by_id: std::collections::HashMap<String, LayoutCluster> =
-        std::collections::HashMap::new();
-    for c in layout.clusters.iter().cloned() {
-        layout_clusters_by_id.insert(c.id.clone(), c);
+    let mut layout_clusters_by_id: std::collections::HashMap<&str, &LayoutCluster> =
+        std::collections::HashMap::with_capacity(layout.clusters.len());
+    for c in &layout.clusters {
+        layout_clusters_by_id.insert(c.id.as_str(), c);
     }
 
     let default_edge_interpolate_for_bbox = model
@@ -8586,15 +8603,15 @@ pub(super) fn render_flowchart_v2_svg(
     }
 
     let effective_parent_for_id = |id: &str| -> Option<&str> {
-        let mut cur = parent.get(id).map(|s| s.as_str());
+        let mut cur = parent.get(id).copied();
         if cur.is_none() {
             if let Some(base) = self_loop_label_base_node_id(id) {
-                cur = parent.get(base).map(|s| s.as_str());
+                cur = parent.get(base).copied();
             }
         }
         while let Some(p) = cur {
             if subgraphs_by_id.contains_key(p) && !recursive_clusters.contains(p) {
-                cur = parent.get(p).map(|s| s.as_str());
+                cur = parent.get(p).copied();
                 continue;
             }
             return Some(p);
@@ -8652,7 +8669,7 @@ pub(super) fn render_flowchart_v2_svg(
         };
 
         for c in &layout.clusters {
-            let root = if recursive_clusters.contains(&c.id) {
+            let root = if recursive_clusters.contains(c.id.as_str()) {
                 Some(c.id.as_str())
             } else {
                 effective_parent_for_id(&c.id)
@@ -8673,19 +8690,19 @@ pub(super) fn render_flowchart_v2_svg(
         }
 
         for n in &layout.nodes {
-            let root = if n.is_cluster && recursive_clusters.contains(&n.id) {
+            let root = if n.is_cluster && recursive_clusters.contains(n.id.as_str()) {
                 Some(n.id.as_str())
             } else {
                 effective_parent_for_id(&n.id)
             };
             let y_off = y_offset_for_root(root);
-            if n.is_cluster || node_dom_index.contains_key(&n.id) {
+            if n.is_cluster || node_dom_index.contains_key(n.id.as_str()) {
                 let mut left_hw = n.width / 2.0;
                 let mut right_hw = left_hw;
                 let mut hh = n.height / 2.0;
                 if !n.is_cluster {
                     if let Some(shape) = nodes_by_id
-                        .get(&n.id)
+                        .get(n.id.as_str())
                         .and_then(|node| node.layout_shape.as_deref())
                     {
                         // Mermaid's flowchart-v2 rhombus node renderer offsets the polygon by
@@ -8794,15 +8811,18 @@ pub(super) fn render_flowchart_v2_svg(
     // root viewport by expanding the max-y by the largest such extra root offset.
     let extra_recursive_root_y = {
         fn effective_parent<'a>(
-            parent: &'a std::collections::HashMap<String, String>,
-            subgraphs_by_id: &'a std::collections::HashMap<String, crate::flowchart::FlowSubgraph>,
-            recursive_clusters: &std::collections::HashSet<String>,
+            parent: &'a std::collections::HashMap<&'a str, &'a str>,
+            subgraphs_by_id: &'a std::collections::HashMap<
+                &'a str,
+                &'a crate::flowchart::FlowSubgraph,
+            >,
+            recursive_clusters: &std::collections::HashSet<&'a str>,
             id: &str,
         ) -> Option<&'a str> {
-            let mut cur = parent.get(id).map(|s| s.as_str());
+            let mut cur = parent.get(id).copied();
             while let Some(p) = cur {
                 if subgraphs_by_id.contains_key(p) && !recursive_clusters.contains(p) {
-                    cur = parent.get(p).map(|s| s.as_str());
+                    cur = parent.get(p).copied();
                     continue;
                 }
                 return Some(p);
@@ -8811,16 +8831,16 @@ pub(super) fn render_flowchart_v2_svg(
         }
 
         let mut max_y: f64 = 0.0;
-        for cid in &recursive_clusters {
+        for &cid in &recursive_clusters {
             let Some(cluster) = layout_clusters_by_id.get(cid) else {
                 continue;
             };
             let my_parent = effective_parent(&parent, &subgraphs_by_id, &recursive_clusters, cid);
-            let has_empty_sibling = subgraphs_by_id.iter().any(|(id, sg)| {
+            let has_empty_sibling = subgraphs_by_id.iter().any(|(&id, &sg)| {
                 id != cid
                     && sg.nodes.is_empty()
                     && layout_clusters_by_id.contains_key(id)
-                    && effective_parent(&parent, &subgraphs_by_id, &recursive_clusters, id.as_str())
+                    && effective_parent(&parent, &subgraphs_by_id, &recursive_clusters, id)
                         == my_parent
             });
             if has_empty_sibling {
@@ -9055,7 +9075,7 @@ pub(super) fn render_flowchart_v2_svg(
         layout_nodes_by_id,
         layout_edges_by_id,
         layout_clusters_by_id,
-        dom_node_order_by_root: layout.dom_node_order_by_root.clone(),
+        dom_node_order_by_root: &layout.dom_node_order_by_root,
         node_dom_index,
         node_padding,
         wrapping_width,
