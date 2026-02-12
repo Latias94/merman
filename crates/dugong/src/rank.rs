@@ -671,8 +671,13 @@ pub mod network_simplex {
                 }
             };
 
-            let Some(parent_rank) = g.node(&parent).and_then(|n| n.rank) else {
-                continue;
+            let parent_rank = if let Some(parent_ix) = g.node_ix(&parent) {
+                rank_by_ix.get(parent_ix).copied().unwrap_or(0)
+            } else {
+                let Some(parent_rank) = g.node(&parent).and_then(|n| n.rank) else {
+                    continue;
+                };
+                parent_rank
             };
             let rank = if flipped {
                 parent_rank + minlen
