@@ -141,6 +141,35 @@ pub(super) fn fmt(v: f64) -> String {
     out
 }
 
+pub(super) fn fmt_display(v: f64) -> FmtDisplay {
+    FmtDisplay(v)
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct FmtDisplay(f64);
+
+impl std::fmt::Display for FmtDisplay {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut v = self.0;
+        if !v.is_finite() {
+            return f.write_str("0");
+        }
+
+        if v.abs() < 1e-9 {
+            v = 0.0;
+        }
+        let nearest = v.round();
+        if (v - nearest).abs() < 1e-6 {
+            v = nearest;
+        }
+        if v == -0.0 {
+            v = 0.0;
+        }
+
+        write!(f, "{v}")
+    }
+}
+
 pub(super) fn fmt_into(out: &mut String, v: f64) {
     // Match how Mermaid/D3 generally stringify numbers for SVG attributes:
     // use a round-trippable decimal form (similar to JS `Number#toString()`),
@@ -344,6 +373,26 @@ mod tests {
         assert_eq!(fmt_into_string(1.0), "1");
         assert_eq!(fmt_into_string(1.0000004), "1");
         assert_eq!(fmt_into_string(-1.0000004), "-1");
+    }
+
+    #[test]
+    fn fmt_display_matches_fmt() {
+        let samples = [
+            f64::NAN,
+            f64::INFINITY,
+            -f64::INFINITY,
+            -0.0,
+            0.0,
+            1.0,
+            -1.0,
+            1.0000004,
+            -1.0000004,
+            1234.5678,
+            -1234.5678,
+        ];
+        for v in samples {
+            assert_eq!(fmt_display(v).to_string(), fmt(v));
+        }
     }
 
     #[test]

@@ -321,8 +321,8 @@ pub(super) fn render_radar_diagram_svg(
     let _ = write!(
         &mut out,
         r#"<g transform="translate({x}, {y})">"#,
-        x = fmt(layout.center_x),
-        y = fmt(layout.center_y)
+        x = fmt_display(layout.center_x),
+        y = fmt_display(layout.center_y)
     );
 
     for g in &layout.graticules {
@@ -335,7 +335,7 @@ pub(super) fn render_radar_diagram_svg(
                     if i > 0 {
                         points.push(' ');
                     }
-                    let _ = write!(&mut points, "{},{}", fmt(p.x), fmt(p.y));
+                    let _ = write!(&mut points, "{},{}", fmt_display(p.x), fmt_display(p.y));
                 }
                 let _ = write!(
                     &mut out,
@@ -347,7 +347,7 @@ pub(super) fn render_radar_diagram_svg(
             let _ = write!(
                 &mut out,
                 r#"<circle r="{r}" class="radarGraticule"/>"#,
-                r = fmt(r)
+                r = fmt_display(r)
             );
         }
     }
@@ -356,14 +356,14 @@ pub(super) fn render_radar_diagram_svg(
         let _ = write!(
             &mut out,
             r#"<line x1="0" y1="0" x2="{x2}" y2="{y2}" class="radarAxisLine"/>"#,
-            x2 = fmt(a.line_x2),
-            y2 = fmt(a.line_y2)
+            x2 = fmt_display(a.line_x2),
+            y2 = fmt_display(a.line_y2)
         );
         let _ = write!(
             &mut out,
             r#"<text x="{x}" y="{y}" class="radarAxisLabel">{label}</text>"#,
-            x = fmt(a.label_x),
-            y = fmt(a.label_y),
+            x = fmt_display(a.label_x),
+            y = fmt_display(a.label_y),
             label = escape_xml(&a.label)
         );
     }
@@ -379,7 +379,7 @@ pub(super) fn render_radar_diagram_svg(
                 if i > 0 {
                     points.push(' ');
                 }
-                let _ = write!(&mut points, "{},{}", fmt(p.x), fmt(p.y));
+                let _ = write!(&mut points, "{},{}", fmt_display(p.x), fmt_display(p.y));
             }
             let _ = write!(
                 &mut out,
@@ -401,8 +401,8 @@ pub(super) fn render_radar_diagram_svg(
         let _ = write!(
             &mut out,
             r#"<g transform="translate({x}, {y})">"#,
-            x = fmt(item.x),
-            y = fmt(item.y)
+            x = fmt_display(item.x),
+            y = fmt_display(item.y)
         );
         let _ = write!(
             &mut out,

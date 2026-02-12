@@ -621,13 +621,13 @@ pub(super) fn render_block_diagram_svg(
                     if idx > 0 {
                         out.push(' ');
                     }
-                    let _ = write!(&mut out, "{},{}", fmt(p.x), fmt(p.y));
+                    let _ = write!(&mut out, "{},{}", fmt_display(p.x), fmt_display(p.y));
                 }
                 let _ = write!(
                     &mut out,
                     r#"" class="label-container" transform="translate({},{})"/>"#,
-                    fmt(-w / 2.0),
-                    fmt(h / 2.0)
+                    fmt_display(-w / 2.0),
+                    fmt_display(h / 2.0)
                 );
             }
             _ => {

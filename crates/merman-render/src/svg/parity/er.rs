@@ -128,7 +128,7 @@ pub(super) fn render_er_diagram_debug_svg(
                     if idx > 0 {
                         out.push(' ');
                     }
-                    let _ = write!(&mut out, "{},{}", fmt(p.x), fmt(p.y));
+                    let _ = write!(&mut out, "{},{}", fmt_display(p.x), fmt_display(p.y));
                 }
                 out.push_str(r#"" />"#);
             }

@@ -145,7 +145,7 @@ pub(super) fn render_flowchart_v2_debug_svg(
                     if idx > 0 {
                         out.push(' ');
                     }
-                    let _ = write!(&mut out, "{},{}", fmt(p.x), fmt(p.y));
+                    let _ = write!(&mut out, "{},{}", fmt_display(p.x), fmt_display(p.y));
                 }
                 out.push_str(r#"" />"#);
             }
@@ -154,8 +154,8 @@ pub(super) fn render_flowchart_v2_debug_svg(
                     let _ = write!(
                         &mut out,
                         r#"<text class="edge-label" x="{}" y="{}">{}</text>"#,
-                        fmt(lbl.x),
-                        fmt(lbl.y),
+                        fmt_display(lbl.x),
+                        fmt_display(lbl.y),
                         escape_xml(&e.id)
                     );
                 }
@@ -971,7 +971,11 @@ pub(super) fn render_flowchart_root(
             (
                 abs_left,
                 abs_top_content,
-                format!(r#" transform="translate({}, {})""#, fmt(rel_x), fmt(rel_y)),
+                format!(
+                    r#" transform="translate({}, {})""#,
+                    fmt_display(rel_x),
+                    fmt_display(rel_y)
+                ),
             )
         } else {
             // Fallback: keep the group in the parent's coordinate space.
@@ -4453,7 +4457,7 @@ pub(super) fn render_flowchart_edge_path(
             && flowchart_is_strict_descendant(&ctx.parent, edge.from.as_str(), edge.to.as_str()))
     {
         if let Some(p) = points_for_data_points.last() {
-            d = format!("M{},{}Z", fmt(p.x + 4.0), fmt(p.y));
+            d = format!("M{},{}Z", fmt_display(p.x + 4.0), fmt_display(p.y));
         }
     }
 
@@ -5384,11 +5388,16 @@ pub(super) fn render_flowchart_node(
                 out,
                 r#"<a xlink:href="{}" transform="translate({}, {})">"#,
                 escape_attr(href),
-                fmt(x),
-                fmt(y)
+                fmt_display(x),
+                fmt_display(y)
             );
         } else {
-            let _ = write!(out, r#"<a transform="translate({}, {})">"#, fmt(x), fmt(y));
+            let _ = write!(
+                out,
+                r#"<a transform="translate({}, {})">"#,
+                fmt_display(x),
+                fmt_display(y)
+            );
         }
         let _ = write!(
             out,
@@ -5403,8 +5412,8 @@ pub(super) fn render_flowchart_node(
             r#"<g class="{}" id="{}" transform="translate({}, {})"{}>"#,
             escape_attr(&class_attr),
             escape_attr(&group_id),
-            fmt(x),
-            fmt(y),
+            fmt_display(x),
+            fmt_display(y),
             tooltip_attr
         );
     }
@@ -5789,28 +5798,28 @@ pub(super) fn render_flowchart_node(
                 // Mermaid `imageSquare` fills with a straight rect (not rough).
                 let rect_fill_path = format!(
                     "M{} {} L{} {} L{} {} L{} {}",
-                    fmt(x0),
-                    fmt(y0),
-                    fmt(x0 + image_width),
-                    fmt(y0),
-                    fmt(x0 + image_width),
-                    fmt(y0 + image_height),
-                    fmt(x0),
-                    fmt(y0 + image_height)
+                    fmt_display(x0),
+                    fmt_display(y0),
+                    fmt_display(x0 + image_width),
+                    fmt_display(y0),
+                    fmt_display(x0 + image_width),
+                    fmt_display(y0 + image_height),
+                    fmt_display(x0),
+                    fmt_display(y0 + image_height)
                 );
                 // Stroke uses RoughJS and must be a closed path so the left edge is included.
                 let rect_stroke_path = format!(
                     "M{} {} L{} {} L{} {} L{} {} L{} {}",
-                    fmt(x0),
-                    fmt(y0),
-                    fmt(x0 + image_width),
-                    fmt(y0),
-                    fmt(x0 + image_width),
-                    fmt(y0 + image_height),
-                    fmt(x0),
-                    fmt(y0 + image_height),
-                    fmt(x0),
-                    fmt(y0)
+                    fmt_display(x0),
+                    fmt_display(y0),
+                    fmt_display(x0 + image_width),
+                    fmt_display(y0),
+                    fmt_display(x0 + image_width),
+                    fmt_display(y0 + image_height),
+                    fmt_display(x0),
+                    fmt_display(y0 + image_height),
+                    fmt_display(x0),
+                    fmt_display(y0)
                 );
 
                 let icon_dy = if top_label {
@@ -5818,7 +5827,11 @@ pub(super) fn render_flowchart_node(
                 } else {
                     -metrics.height / 2.0 - label_padding / 2.0
                 };
-                let _ = write!(out, r#"<g transform="translate(0,{})">"#, fmt(icon_dy));
+                let _ = write!(
+                    out,
+                    r#"<g transform="translate(0,{})">"#,
+                    fmt_display(icon_dy)
+                );
                 let _ = write!(
                     out,
                     r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"/>"#,
@@ -5837,7 +5850,7 @@ pub(super) fn render_flowchart_node(
                         r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
                         escape_attr(&stroke_d),
                         escape_attr(stroke_color),
-                        fmt(stroke_width as f64),
+                        fmt_display(stroke_width as f64),
                         escape_attr(stroke_dasharray)
                     );
                 }
@@ -5945,7 +5958,7 @@ pub(super) fn render_flowchart_node(
                     r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
                     escape_attr(&stroke_d),
                     escape_attr(stroke_color),
-                    fmt(stroke_width as f64),
+                    fmt_display(stroke_width as f64),
                     escape_attr(stroke_dasharray),
                     escape_attr(&style)
                 );
@@ -6268,14 +6281,14 @@ pub(super) fn render_flowchart_node(
                 if idx > 0 {
                     points_attr.push(' ');
                 }
-                let _ = write!(&mut points_attr, "{},{}", fmt(px), fmt(py));
+                let _ = write!(&mut points_attr, "{},{}", fmt_display(px), fmt_display(py));
             }
             let _ = write!(
                 out,
                 r#"<polygon points="{}" class="label-container" transform="translate({},{})"{} />"#,
                 points_attr,
-                fmt(-w / 2.0),
-                fmt(h / 2.0),
+                fmt_display(-w / 2.0),
+                fmt_display(h / 2.0),
                 if style.is_empty() {
                     String::new()
                 } else {
@@ -6617,7 +6630,7 @@ pub(super) fn render_flowchart_node(
                     r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
                     escape_attr(&stroke_d),
                     escape_attr(stroke_color),
-                    fmt(stroke_width as f64),
+                    fmt_display(stroke_width as f64),
                     escape_attr(stroke_dasharray),
                     escape_attr(&style)
                 );
@@ -6626,24 +6639,24 @@ pub(super) fn render_flowchart_node(
                 let _ = write!(
                     out,
                     r#"<polygon points="{},{} {},{} {},{} {},{} {},{} {},{} {},{} {},{}" class="label-container" transform="translate({}, {})"{} />"#,
-                    fmt(-deduced_width),
-                    fmt(-half_height),
-                    fmt(0.0),
-                    fmt(-half_height),
-                    fmt(deduced_width),
-                    fmt(-half_height),
-                    fmt(half_width),
-                    fmt(0.0),
-                    fmt(deduced_width),
-                    fmt(half_height),
-                    fmt(0.0),
-                    fmt(half_height),
-                    fmt(-deduced_width),
-                    fmt(half_height),
-                    fmt(-half_width),
-                    fmt(0.0),
-                    fmt(0.0),
-                    fmt(0.0),
+                    fmt_display(-deduced_width),
+                    fmt_display(-half_height),
+                    fmt_display(0.0),
+                    fmt_display(-half_height),
+                    fmt_display(deduced_width),
+                    fmt_display(-half_height),
+                    fmt_display(half_width),
+                    fmt_display(0.0),
+                    fmt_display(deduced_width),
+                    fmt_display(half_height),
+                    fmt_display(0.0),
+                    fmt_display(half_height),
+                    fmt_display(-deduced_width),
+                    fmt_display(half_height),
+                    fmt_display(-half_width),
+                    fmt_display(0.0),
+                    fmt_display(0.0),
+                    fmt_display(0.0),
                     if style.is_empty() {
                         String::new()
                     } else {
@@ -6664,14 +6677,14 @@ pub(super) fn render_flowchart_node(
                 if idx > 0 {
                     points_attr.push(' ');
                 }
-                let _ = write!(&mut points_attr, "{},{}", fmt(px), fmt(py));
+                let _ = write!(&mut points_attr, "{},{}", fmt_display(px), fmt_display(py));
             }
             let _ = write!(
                 out,
                 r#"<polygon points="{}" class="label-container" transform="translate({},{})"{} />"#,
                 points_attr,
-                fmt(-w / 2.0),
-                fmt(h / 2.0),
+                fmt_display(-w / 2.0),
+                fmt_display(h / 2.0),
                 if style.is_empty() {
                     String::new()
                 } else {
@@ -6691,14 +6704,14 @@ pub(super) fn render_flowchart_node(
                 if idx > 0 {
                     points_attr.push(' ');
                 }
-                let _ = write!(&mut points_attr, "{},{}", fmt(px), fmt(py));
+                let _ = write!(&mut points_attr, "{},{}", fmt_display(px), fmt_display(py));
             }
             let _ = write!(
                 out,
                 r#"<polygon points="{}" class="label-container" transform="translate({},{})"{} />"#,
                 points_attr,
-                fmt(-w / 2.0),
-                fmt(h / 2.0),
+                fmt_display(-w / 2.0),
+                fmt_display(h / 2.0),
                 if style.is_empty() {
                     String::new()
                 } else {
@@ -6718,14 +6731,14 @@ pub(super) fn render_flowchart_node(
                 if idx > 0 {
                     points_attr.push(' ');
                 }
-                let _ = write!(&mut points_attr, "{},{}", fmt(px), fmt(py));
+                let _ = write!(&mut points_attr, "{},{}", fmt_display(px), fmt_display(py));
             }
             let _ = write!(
                 out,
                 r#"<polygon points="{}" class="label-container" transform="translate({},{})"{} />"#,
                 points_attr,
-                fmt(-w / 2.0),
-                fmt(h / 2.0),
+                fmt_display(-w / 2.0),
+                fmt_display(h / 2.0),
                 if style.is_empty() {
                     String::new()
                 } else {
@@ -6745,14 +6758,14 @@ pub(super) fn render_flowchart_node(
                 if idx > 0 {
                     points_attr.push(' ');
                 }
-                let _ = write!(&mut points_attr, "{},{}", fmt(px), fmt(py));
+                let _ = write!(&mut points_attr, "{},{}", fmt_display(px), fmt_display(py));
             }
             let _ = write!(
                 out,
                 r#"<polygon points="{}" class="label-container" transform="translate({},{})"{} />"#,
                 points_attr,
-                fmt(-w / 2.0),
-                fmt(h / 2.0),
+                fmt_display(-w / 2.0),
+                fmt_display(h / 2.0),
                 if style.is_empty() {
                     String::new()
                 } else {

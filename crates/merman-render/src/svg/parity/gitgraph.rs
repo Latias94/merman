@@ -521,7 +521,12 @@ pub(super) fn render_gitgraph_diagram_svg(
             out.push_str("/>");
 
             out.push_str(r#"<text class="commit-label""#);
-            let _ = write!(&mut out, r#" x="{}" y="{}""#, fmt(text_x), fmt(text_y));
+            let _ = write!(
+                &mut out,
+                r#" x="{}" y="{}""#,
+                fmt_display(text_x),
+                fmt_display(text_y)
+            );
             if let Some(t) = &text_transform {
                 let _ = write!(&mut out, r#" transform="{}""#, escape_attr(t));
             }
