@@ -62,6 +62,12 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_docs_directives_changing_loglevel_via_directive_011" => {
             Some(("0 0 333.03125 224", "333.031"))
         }
+        "upstream_docs_directives_changing_theme_via_directive_009" => {
+            Some(("0 0 333.03125 224", "333.031"))
+        }
+        "upstream_docs_directives_changing_flowchart_config_via_directive_012" => {
+            Some(("0 0 333.03125 224", "333.031"))
+        }
         "upstream_docs_flowchart_custom_icons_238" => Some(("0 0 180.03125 174", "180.031")),
         "upstream_docs_theming_customizing_themes_with_themevariables_003" => {
             Some(("0 0 529.14453125 571.28125", "529.145"))
@@ -76,17 +82,30 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_docs_flowchart_a_node_in_a_subroutine_shape_017" => {
             Some(("0 0 231.90625 55", "231.906"))
         }
-        "upstream_docs_flowchart_a_node_in_a_cylindrical_shape_019" => Some((
-            "0 -0.000003814697265625 96.5 84.37955474853516",
-            "96.5",
-        )),
+        "upstream_docs_flowchart_a_node_in_a_cylindrical_shape_019" => {
+            Some(("0 -0.000003814697265625 96.5 84.37955474853516", "96.5"))
+        }
         "upstream_docs_flowchart_a_node_in_the_form_of_a_circle_021" => {
             Some(("0 0 230.46875 230.46875", "230.469"))
         }
         "upstream_docs_flowchart_a_node_in_an_asymmetric_shape_023" => {
             Some(("0 0 225.65625 55", "225.656"))
         }
-        "upstream_docs_flowchart_a_node_rhombus_025" => Some(("0.5 0 254.90625 254.90625", "254.906")),
+        "upstream_docs_flowchart_a_node_rhombus_025" => {
+            Some(("0.5 0 254.90625 254.90625", "254.906"))
+        }
+        "upstream_docs_flowchart_a_hexagon_node_027" => {
+            Some(("0 0 275.4739685058594 55", "275.474"))
+        }
+        "upstream_docs_flowchart_parallelogram_029" => Some(("0 0 254.90625 55", "254.906")),
+        "upstream_docs_flowchart_parallelogram_alt_031" => Some(("0 0 254.90625 55", "254.906")),
+        "upstream_docs_flowchart_double_circle_037" => Some(("0 0 240.46875 240.46875", "240.469")),
+        "upstream_docs_flowchart_process_042" => Some(("0 0 192.296875 70", "192.297")),
+        "upstream_docs_flowchart_event_044" => Some(("0 0 158.09375 70", "158.094")),
+        "upstream_docs_flowchart_terminal_point_stadium_046" => {
+            Some(("0 0 144.65184020996094 55", "144.652"))
+        }
+        "upstream_docs_flowchart_subprocess_048" => Some(("0 0 187.4375 55", "187.438")),
         _ => None,
     }
 }

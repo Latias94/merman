@@ -38,7 +38,19 @@ These fixtures are imported from Mermaid's public syntax docs (code blocks) and 
 The batch currently includes examples for:
 
 - new shapes: `fixtures/flowchart/upstream_docs_flowchart_example_flowchart_with_new_shapes_041.mmd`
+- additional shape nodes (hexagon/parallelogram/trapezoid/double-circle):
+  - `fixtures/flowchart/upstream_docs_flowchart_a_hexagon_node_027.mmd`
+  - `fixtures/flowchart/upstream_docs_flowchart_parallelogram_029.mmd`
+  - `fixtures/flowchart/upstream_docs_flowchart_parallelogram_alt_031.mmd`
+  - `fixtures/flowchart/upstream_docs_flowchart_trapezoid_033.mmd`
+  - `fixtures/flowchart/upstream_docs_flowchart_trapezoid_alt_035.mmd`
+  - `fixtures/flowchart/upstream_docs_flowchart_double_circle_037.mmd`
 - image nodes (`@{ img: ... }` parameters): `fixtures/flowchart/upstream_docs_flowchart_parameters_136.mmd`
+- `@{ shape: ... }` parameter nodes (`rect`, `rounded`, `stadium`, `subproc`):
+  - `fixtures/flowchart/upstream_docs_flowchart_process_042.mmd`
+  - `fixtures/flowchart/upstream_docs_flowchart_event_044.mmd`
+  - `fixtures/flowchart/upstream_docs_flowchart_terminal_point_stadium_046.mmd`
+  - `fixtures/flowchart/upstream_docs_flowchart_subprocess_048.mmd`
 - edge animations (`animate` / `animation: fast|slow`): `fixtures/flowchart/upstream_docs_flowchart_turning_an_animation_on_170.mmd`,
   `fixtures/flowchart/upstream_docs_flowchart_selecting_type_of_animation_172.mmd`,
   `fixtures/flowchart/upstream_docs_flowchart_using_classdef_statements_for_animations_174.mmd`
