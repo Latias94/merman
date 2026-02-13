@@ -246,8 +246,9 @@ fn append_fixed_3dp_trimmed(out: &mut String, k: i64) {
     }
 
     out.push('.');
-    // Safety: only ASCII digits.
-    out.push_str(std::str::from_utf8(&frac_str[..end]).unwrap_or("0"));
+    for &b in &frac_str[..end] {
+        out.push(b as char);
+    }
 }
 
 pub(super) fn json_stringify_points(points: &[crate::model::LayoutPoint]) -> String {

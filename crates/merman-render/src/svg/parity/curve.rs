@@ -124,7 +124,7 @@ pub(super) fn curve_monotone_path_d(points: &[crate::model::LayoutPoint], swap_x
         );
     }
 
-    let mut out = String::new();
+    let mut out = String::with_capacity(points.len().saturating_mul(64));
     if points.is_empty() {
         return out;
     }
@@ -196,7 +196,7 @@ fn curve_monotone_y_path_d(points: &[crate::model::LayoutPoint]) -> String {
 
 // Ported from D3 `curveBasis` (d3-shape v3.x), used by Mermaid ER renderer `@11.12.2`.
 pub(super) fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {
-    let mut out = String::new();
+    let mut out = String::with_capacity(points.len().saturating_mul(64));
     if points.is_empty() {
         return out;
     }
@@ -260,7 +260,7 @@ pub(super) fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String
 }
 
 pub(super) fn curve_linear_path_d(points: &[crate::model::LayoutPoint]) -> String {
-    let mut out = String::new();
+    let mut out = String::with_capacity(points.len().saturating_mul(32));
     let Some(first) = points.first() else {
         return out;
     };
@@ -331,7 +331,7 @@ pub(super) fn curve_natural_path_d(points: &[crate::model::LayoutPoint]) -> Stri
         (c1, c2)
     }
 
-    let mut out = String::new();
+    let mut out = String::with_capacity(points.len().saturating_mul(64));
     let Some(first) = points.first() else {
         return out;
     };
@@ -365,7 +365,7 @@ pub(super) fn curve_natural_path_d(points: &[crate::model::LayoutPoint]) -> Stri
 
 // Ported from D3 `curveStepAfter` (d3-shape v3.x).
 pub(super) fn curve_step_after_path_d(points: &[crate::model::LayoutPoint]) -> String {
-    let mut out = String::new();
+    let mut out = String::with_capacity(points.len().saturating_mul(32));
     let Some(first) = points.first() else {
         return out;
     };
@@ -381,7 +381,7 @@ pub(super) fn curve_step_after_path_d(points: &[crate::model::LayoutPoint]) -> S
 
 // Ported from D3 `curveStepBefore` (d3-shape v3.x).
 pub(super) fn curve_step_before_path_d(points: &[crate::model::LayoutPoint]) -> String {
-    let mut out = String::new();
+    let mut out = String::with_capacity(points.len().saturating_mul(32));
     let Some(first) = points.first() else {
         return out;
     };
@@ -397,7 +397,7 @@ pub(super) fn curve_step_before_path_d(points: &[crate::model::LayoutPoint]) -> 
 
 // Ported from D3 `curveStep` (d3-shape v3.x).
 pub(super) fn curve_step_path_d(points: &[crate::model::LayoutPoint]) -> String {
-    let mut out = String::new();
+    let mut out = String::with_capacity(points.len().saturating_mul(32));
     let Some(first) = points.first() else {
         return out;
     };
@@ -415,7 +415,7 @@ pub(super) fn curve_step_path_d(points: &[crate::model::LayoutPoint]) -> String 
 
 // Ported from D3 `curveCardinal` (d3-shape v3.x).
 pub(super) fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tension: f64) -> String {
-    let mut out = String::new();
+    let mut out = String::with_capacity(points.len().saturating_mul(64));
     if points.is_empty() {
         return out;
     }
