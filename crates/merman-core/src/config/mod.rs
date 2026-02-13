@@ -1,7 +1,8 @@
 use serde_json::{Map, Value};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct MermaidConfig(Value);
+pub struct MermaidConfig(Arc<Value>);
 
 impl Default for MermaidConfig {
     fn default() -> Self {
@@ -11,23 +12,23 @@ impl Default for MermaidConfig {
 
 impl MermaidConfig {
     pub fn empty_object() -> Self {
-        Self(Value::Object(Map::new()))
+        Self(Arc::new(Value::Object(Map::new())))
     }
 
     pub fn from_value(value: Value) -> Self {
-        Self(value)
+        Self(Arc::new(value))
     }
 
     pub fn as_value(&self) -> &Value {
-        &self.0
+        self.0.as_ref()
     }
 
     pub fn as_value_mut(&mut self) -> &mut Value {
-        &mut self.0
+        Arc::make_mut(&mut self.0)
     }
 
     pub fn get_str(&self, dotted_path: &str) -> Option<&str> {
-        let mut cur = &self.0;
+        let mut cur: &Value = self.0.as_ref();
         for segment in dotted_path.split('.') {
             cur = cur.as_object()?.get(segment)?;
         }
@@ -35,7 +36,7 @@ impl MermaidConfig {
     }
 
     pub fn get_bool(&self, dotted_path: &str) -> Option<bool> {
-        let mut cur = &self.0;
+        let mut cur: &Value = self.0.as_ref();
         for segment in dotted_path.split('.') {
             cur = cur.as_object()?.get(segment)?;
         }
@@ -43,14 +44,15 @@ impl MermaidConfig {
     }
 
     pub fn set_value(&mut self, dotted_path: &str, value: Value) {
+        let root_value = Arc::make_mut(&mut self.0);
         // Be defensive: callers can construct `MermaidConfig` from any JSON value via
         // `from_value`. Mermaid configs are objects; if we see a non-object here, coerce it
         // to an object so this API never panics on user input.
-        if !self.0.is_object() {
-            self.0 = Value::Object(Map::new());
+        if !root_value.is_object() {
+            *root_value = Value::Object(Map::new());
         }
 
-        let Value::Object(ref mut root) = self.0 else {
+        let Value::Object(root) = root_value else {
             return;
         };
         let mut cur: &mut Map<String, Value> = root;
@@ -72,7 +74,16 @@ impl MermaidConfig {
     }
 
     pub fn deep_merge(&mut self, other: &Value) {
-        deep_merge_value(&mut self.0, other);
+        let Value::Object(m) = other else {
+            let base = Arc::make_mut(&mut self.0);
+            deep_merge_value(base, other);
+            return;
+        };
+        if m.is_empty() {
+            return;
+        }
+        let base = Arc::make_mut(&mut self.0);
+        deep_merge_value(base, other);
     }
 }
 

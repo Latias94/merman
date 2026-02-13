@@ -56,29 +56,41 @@ pub fn preprocess_diagram_with_known_type(
 }
 
 fn cleanup_text(input: &str) -> String {
-    let mut s = re_crlf().replace_all(input, "\n").to_string();
+    let mut s = if input.contains('\r') {
+        re_crlf().replace_all(input, "\n").to_string()
+    } else {
+        input.to_string()
+    };
 
     // Mermaid encodes `#quot;`-style sequences before parsing (`encodeEntities(...)`).
     // This is required because `#` and `;` are significant in several grammars (comments and
     // statement separators), and the encoded placeholders are later decoded by the renderer.
     //
     // Source of truth: `packages/mermaid/src/utils.ts::encodeEntities` at Mermaid@11.12.2.
-    s = encode_mermaid_entities_like_upstream(&s);
+    if s.contains('#') {
+        s = encode_mermaid_entities_like_upstream(&s);
+    }
 
     // Mermaid performs this HTML attribute rewrite as part of preprocessing.
-    s = re_tag()
-        .replace_all(&s, |caps: &regex::Captures| {
-            let tag = &caps[1];
-            let attrs = &caps[2];
-            let attrs = re_attr_eq_double_quoted().replace_all(attrs, "='$1'");
-            format!("<{tag}{attrs}>")
-        })
-        .to_string();
+    if s.contains('<') && s.contains("=\"") {
+        s = re_tag()
+            .replace_all(&s, |caps: &regex::Captures| {
+                let tag = &caps[1];
+                let attrs = &caps[2];
+                let attrs = re_attr_eq_double_quoted().replace_all(attrs, "='$1'");
+                format!("<{tag}{attrs}>")
+            })
+            .to_string();
+    }
 
     s
 }
 
 fn encode_mermaid_entities_like_upstream(text: &str) -> String {
+    if !text.contains('#') {
+        return text.to_string();
+    }
+
     // Mirrors Mermaid `encodeEntities` (Mermaid@11.12.2):
     //
     // 1) Protect `style...:#...;` and `classDef...:#...;` so color hex fragments are not mistaken
@@ -86,35 +98,41 @@ fn encode_mermaid_entities_like_upstream(text: &str) -> String {
     // 2) Encode `#<name>;` and `#<number>;` sequences into placeholders that do not contain `#`/`;`.
     let mut txt = text.to_string();
 
-    txt = re_style_hex()
-        .replace_all(&txt, |caps: &regex::Captures| {
-            let s = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
-            s.strip_suffix(';').unwrap_or(s).to_string()
-        })
-        .to_string();
+    if txt.contains("style") && txt.contains(';') {
+        txt = re_style_hex()
+            .replace_all(&txt, |caps: &regex::Captures| {
+                let s = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
+                s.strip_suffix(';').unwrap_or(s).to_string()
+            })
+            .to_string();
+    }
 
-    txt = re_classdef_hex()
-        .replace_all(&txt, |caps: &regex::Captures| {
-            let s = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
-            s.strip_suffix(';').unwrap_or(s).to_string()
-        })
-        .to_string();
+    if txt.contains("classDef") && txt.contains(';') {
+        txt = re_classdef_hex()
+            .replace_all(&txt, |caps: &regex::Captures| {
+                let s = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
+                s.strip_suffix(';').unwrap_or(s).to_string()
+            })
+            .to_string();
+    }
 
-    txt = re_entity()
-        .replace_all(&txt, |caps: &regex::Captures| {
-            let s = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
-            let inner = s
-                .strip_prefix('#')
-                .and_then(|s| s.strip_suffix(';'))
-                .unwrap_or("");
-            let is_int = re_int().is_match(inner);
-            if is_int {
-                format!("ﬂ°°{inner}¶ß")
-            } else {
-                format!("ﬂ°{inner}¶ß")
-            }
-        })
-        .to_string();
+    if txt.contains(';') {
+        txt = re_entity()
+            .replace_all(&txt, |caps: &regex::Captures| {
+                let s = caps.get(0).map(|m| m.as_str()).unwrap_or_default();
+                let inner = s
+                    .strip_prefix('#')
+                    .and_then(|s| s.strip_suffix(';'))
+                    .unwrap_or("");
+                let is_int = re_int().is_match(inner);
+                if is_int {
+                    format!("ﬂ°°{inner}¶ß")
+                } else {
+                    format!("ﬂ°{inner}¶ß")
+                }
+            })
+            .to_string();
+    }
 
     txt
 }
@@ -132,6 +150,10 @@ fn cleanup_comments(input: &str) -> String {
 }
 
 fn process_frontmatter(input: &str) -> Result<(String, Option<String>, MermaidConfig)> {
+    if !input.trim_start().starts_with("---") {
+        return Ok((input.to_string(), None, MermaidConfig::empty_object()));
+    }
+
     let Some(caps) = re_frontmatter().captures(input) else {
         return Ok((input.to_string(), None, MermaidConfig::empty_object()));
     };

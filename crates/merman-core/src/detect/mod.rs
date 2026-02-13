@@ -69,6 +69,25 @@ impl DetectorRegistry {
         .into())
     }
 
+    /// Detects a diagram type assuming the input is already pre-cleaned:
+    /// no front-matter, no directives, and no Mermaid `%%` comments.
+    pub fn detect_type_precleaned(
+        &self,
+        text: &str,
+        config: &mut MermaidConfig,
+    ) -> Result<&'static str> {
+        for det in &self.detectors {
+            if (det.detector)(text, config) {
+                return Ok(det.id);
+            }
+        }
+
+        Err(DetectTypeError {
+            text: text.to_string(),
+        }
+        .into())
+    }
+
     pub fn default_mermaid_11_12_2_full() -> Self {
         let mut reg = Self::new();
 
@@ -185,34 +204,6 @@ cached_regex!(
     re_c4,
     r"^\s*C4Context|C4Container|C4Component|C4Dynamic|C4Deployment"
 );
-cached_regex!(re_kanban, r"^\s*kanban");
-cached_regex!(re_class_diagram, r"^\s*classDiagram");
-cached_regex!(re_class_diagram_v2, r"^\s*classDiagram-v2");
-cached_regex!(re_er_diagram, r"^\s*erDiagram");
-cached_regex!(re_gantt, r"^\s*gantt");
-cached_regex!(re_info, r"^\s*info");
-cached_regex!(re_pie, r"^\s*pie");
-cached_regex!(re_requirement, r"^\s*requirement(Diagram)?");
-cached_regex!(re_sequence_diagram, r"^\s*sequenceDiagram");
-cached_regex!(re_flowchart_elk, r"^\s*flowchart-elk");
-cached_regex!(re_flowchart_or_graph, r"^\s*(flowchart|graph)");
-cached_regex!(re_graph, r"^\s*graph");
-cached_regex!(re_flowchart, r"^\s*flowchart");
-cached_regex!(re_timeline, r"^\s*timeline");
-cached_regex!(re_git_graph, r"^\s*gitGraph");
-cached_regex!(re_state_diagram_v2, r"^\s*stateDiagram-v2");
-cached_regex!(re_state_diagram, r"^\s*stateDiagram");
-cached_regex!(re_journey, r"^\s*journey");
-cached_regex!(re_quadrant_chart, r"^\s*quadrantChart");
-cached_regex!(re_sankey, r"^\s*sankey(-beta)?");
-cached_regex!(re_packet, r"^\s*packet(-beta)?");
-cached_regex!(re_xychart, r"^\s*xychart(-beta)?");
-cached_regex!(re_block, r"^\s*block(-beta)?");
-cached_regex!(re_radar, r"^\s*radar-beta");
-cached_regex!(re_treemap, r"^\s*treemap");
-cached_regex!(re_mindmap, r"^\s*mindmap");
-cached_regex!(re_architecture, r"^\s*architecture");
-cached_regex!(re_zenuml, r"^\s*zenuml");
 
 impl Default for DetectorRegistry {
     fn default() -> Self {
@@ -221,11 +212,11 @@ impl Default for DetectorRegistry {
 }
 
 fn detector_frontmatter_unparsed(txt: &str, _config: &mut MermaidConfig) -> bool {
-    txt.to_lowercase().trim_start().starts_with("---")
+    txt.trim_start().starts_with("---")
 }
 
 fn detector_error(txt: &str, _config: &mut MermaidConfig) -> bool {
-    txt.to_lowercase().trim() == "error"
+    txt.trim().eq_ignore_ascii_case("error")
 }
 
 fn detector_c4(txt: &str, _config: &mut MermaidConfig) -> bool {
@@ -234,52 +225,53 @@ fn detector_c4(txt: &str, _config: &mut MermaidConfig) -> bool {
 }
 
 fn detector_kanban(txt: &str, _config: &mut MermaidConfig) -> bool {
-    re_kanban().is_match(txt)
+    txt.trim_start().starts_with("kanban")
 }
 
 fn detector_class_dagre_d3(txt: &str, config: &mut MermaidConfig) -> bool {
     if config.get_str("class.defaultRenderer") == Some("dagre-wrapper") {
         return false;
     }
-    re_class_diagram().is_match(txt)
+    txt.trim_start().starts_with("classDiagram")
 }
 
 fn detector_class_v2(txt: &str, config: &mut MermaidConfig) -> bool {
-    if re_class_diagram().is_match(txt)
+    if txt.trim_start().starts_with("classDiagram")
         && config.get_str("class.defaultRenderer") == Some("dagre-wrapper")
     {
         return true;
     }
-    re_class_diagram_v2().is_match(txt)
+    txt.trim_start().starts_with("classDiagram-v2")
 }
 
 fn detector_er(txt: &str, _config: &mut MermaidConfig) -> bool {
-    re_er_diagram().is_match(txt)
+    txt.trim_start().starts_with("erDiagram")
 }
 
 fn detector_gantt(txt: &str, _config: &mut MermaidConfig) -> bool {
-    re_gantt().is_match(txt)
+    txt.trim_start().starts_with("gantt")
 }
 
 fn detector_info(txt: &str, _config: &mut MermaidConfig) -> bool {
-    re_info().is_match(txt)
+    txt.trim_start().starts_with("info")
 }
 
 fn detector_pie(txt: &str, _config: &mut MermaidConfig) -> bool {
-    re_pie().is_match(txt)
+    txt.trim_start().starts_with("pie")
 }
 
 fn detector_requirement(txt: &str, _config: &mut MermaidConfig) -> bool {
-    re_requirement().is_match(txt)
+    txt.trim_start().starts_with("requirement")
 }
 
 fn detector_sequence(txt: &str, _config: &mut MermaidConfig) -> bool {
-    re_sequence_diagram().is_match(txt)
+    txt.trim_start().starts_with("sequenceDiagram")
 }
 
 fn detector_flowchart_elk(txt: &str, config: &mut MermaidConfig) -> bool {
-    if re_flowchart_elk().is_match(txt)
-        || (re_flowchart_or_graph().is_match(txt)
+    let trimmed = txt.trim_start();
+    if trimmed.starts_with("flowchart-elk")
+        || ((trimmed.starts_with("flowchart") || trimmed.starts_with("graph"))
             && config.get_str("flowchart.defaultRenderer") == Some("elk"))
     {
         config.set_value("layout", serde_json::Value::String("elk".to_string()));
@@ -296,12 +288,12 @@ fn detector_flowchart_v2(txt: &str, config: &mut MermaidConfig) -> bool {
         config.set_value("layout", serde_json::Value::String("elk".to_string()));
     }
 
-    if re_graph().is_match(txt)
+    if txt.trim_start().starts_with("graph")
         && config.get_str("flowchart.defaultRenderer") == Some("dagre-wrapper")
     {
         return true;
     }
-    re_flowchart().is_match(txt)
+    txt.trim_start().starts_with("flowchart")
 }
 
 fn detector_flowchart_dagre_d3_graph(txt: &str, config: &mut MermaidConfig) -> bool {
@@ -311,74 +303,74 @@ fn detector_flowchart_dagre_d3_graph(txt: &str, config: &mut MermaidConfig) -> b
     ) {
         return false;
     }
-    re_graph().is_match(txt)
+    txt.trim_start().starts_with("graph")
 }
 
 fn detector_timeline(txt: &str, _config: &mut MermaidConfig) -> bool {
-    re_timeline().is_match(txt)
+    txt.trim_start().starts_with("timeline")
 }
 
 fn detector_git_graph(txt: &str, _config: &mut MermaidConfig) -> bool {
-    re_git_graph().is_match(txt)
+    txt.trim_start().starts_with("gitGraph")
 }
 
 fn detector_state_dagre_d3(txt: &str, config: &mut MermaidConfig) -> bool {
     if config.get_str("state.defaultRenderer") == Some("dagre-wrapper") {
         return false;
     }
-    re_state_diagram().is_match(txt)
+    txt.trim_start().starts_with("stateDiagram")
 }
 
 fn detector_state_v2(txt: &str, config: &mut MermaidConfig) -> bool {
-    if re_state_diagram_v2().is_match(txt) {
+    let trimmed = txt.trim_start();
+    if trimmed.starts_with("stateDiagram-v2") {
         return true;
     }
-    re_state_diagram().is_match(txt)
-        && config.get_str("state.defaultRenderer") == Some("dagre-wrapper")
+    trimmed.starts_with("stateDiagram") && config.get_str("state.defaultRenderer") == Some("dagre-wrapper")
 }
 
 fn detector_journey(txt: &str, _config: &mut MermaidConfig) -> bool {
-    re_journey().is_match(txt)
+    txt.trim_start().starts_with("journey")
 }
 
 fn detector_quadrant(txt: &str, _config: &mut MermaidConfig) -> bool {
-    re_quadrant_chart().is_match(txt)
+    txt.trim_start().starts_with("quadrantChart")
 }
 
 fn detector_sankey(txt: &str, _config: &mut MermaidConfig) -> bool {
-    re_sankey().is_match(txt)
+    txt.trim_start().starts_with("sankey")
 }
 
 fn detector_packet(txt: &str, _config: &mut MermaidConfig) -> bool {
-    re_packet().is_match(txt)
+    txt.trim_start().starts_with("packet")
 }
 
 fn detector_xychart(txt: &str, _config: &mut MermaidConfig) -> bool {
-    re_xychart().is_match(txt)
+    txt.trim_start().starts_with("xychart")
 }
 
 fn detector_block(txt: &str, _config: &mut MermaidConfig) -> bool {
-    re_block().is_match(txt)
+    txt.trim_start().starts_with("block")
 }
 
 fn detector_radar(txt: &str, _config: &mut MermaidConfig) -> bool {
-    re_radar().is_match(txt)
+    txt.trim_start().starts_with("radar-beta")
 }
 
 fn detector_treemap(txt: &str, _config: &mut MermaidConfig) -> bool {
-    re_treemap().is_match(txt)
+    txt.trim_start().starts_with("treemap")
 }
 
 fn detector_mindmap(txt: &str, _config: &mut MermaidConfig) -> bool {
-    re_mindmap().is_match(txt)
+    txt.trim_start().starts_with("mindmap")
 }
 
 fn detector_architecture(txt: &str, _config: &mut MermaidConfig) -> bool {
-    re_architecture().is_match(txt)
+    txt.trim_start().starts_with("architecture")
 }
 
 fn detector_zenuml(txt: &str, _config: &mut MermaidConfig) -> bool {
-    re_zenuml().is_match(txt)
+    txt.trim_start().starts_with("zenuml")
 }
 
 #[cfg(test)]

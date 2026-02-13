@@ -363,7 +363,10 @@ impl Engine {
         let mut effective_config = self.site_config.clone();
         effective_config.deep_merge(pre.config.as_value());
 
-        let diagram_type = match self.registry.detect_type(&pre.code, &mut effective_config) {
+        let diagram_type = match self
+            .registry
+            .detect_type_precleaned(&pre.code, &mut effective_config)
+        {
             Ok(t) => t.to_string(),
             Err(err) => {
                 if options.suppress_errors {
