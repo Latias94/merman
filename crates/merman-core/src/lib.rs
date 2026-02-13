@@ -84,6 +84,14 @@ impl Default for Engine {
 }
 
 impl Engine {
+    fn parse_timing_enabled() -> bool {
+        static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *ENABLED.get_or_init(|| match std::env::var("MERMAN_PARSE_TIMING").as_deref() {
+            Ok("1") | Ok("true") => true,
+            _ => false,
+        })
+    }
+
     pub fn new() -> Self {
         Self::default()
     }
@@ -195,10 +203,16 @@ impl Engine {
         text: &str,
         options: ParseOptions,
     ) -> Result<Option<ParsedDiagram>> {
+        let timing_enabled = Self::parse_timing_enabled();
+        let total_start = timing_enabled.then(std::time::Instant::now);
+
+        let preprocess_start = timing_enabled.then(std::time::Instant::now);
         let Some((code, meta)) = self.preprocess_and_detect(text, options)? else {
             return Ok(None);
         };
+        let preprocess = preprocess_start.map(|s| s.elapsed());
 
+        let parse_start = timing_enabled.then(std::time::Instant::now);
         let mut model = match diagram::parse_or_unsupported(
             &self.diagram_registry,
             &meta.diagram_type,
@@ -218,13 +232,39 @@ impl Engine {
                     &mut error_model,
                     &error_meta.effective_config,
                 );
+                if let Some(start) = total_start {
+                    eprintln!(
+                        "[parse-timing] diagram=error total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
+                        start.elapsed(),
+                        preprocess.unwrap_or_default(),
+                        parse_start.map(|s| s.elapsed()).unwrap_or_default(),
+                        std::time::Duration::default(),
+                        text.len(),
+                    );
+                }
                 return Ok(Some(ParsedDiagram {
                     meta: error_meta,
                     model: error_model,
                 }));
             }
         };
+        let parse = parse_start.map(|s| s.elapsed());
+
+        let sanitize_start = timing_enabled.then(std::time::Instant::now);
         common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
+        let sanitize = sanitize_start.map(|s| s.elapsed());
+
+        if let Some(start) = total_start {
+            eprintln!(
+                "[parse-timing] diagram={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
+                meta.diagram_type,
+                start.elapsed(),
+                preprocess.unwrap_or_default(),
+                parse.unwrap_or_default(),
+                sanitize.unwrap_or_default(),
+                text.len(),
+            );
+        }
         Ok(Some(ParsedDiagram { meta, model }))
     }
 
