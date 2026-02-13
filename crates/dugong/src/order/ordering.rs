@@ -1,3 +1,4 @@
+use super::barycenter::SortSubgraphTimings;
 use super::layer_graph::{build_layer_graph_with_root, create_root_node};
 use super::{
     LayerGraphLabel, OrderEdgeWeight, OrderNodeLabel, Relationship, WeightLabel,
@@ -26,6 +27,14 @@ struct OrderTimings {
     sweep_add_constraints: std::time::Duration,
     build_layer_matrix: std::time::Duration,
     cross_count: std::time::Duration,
+
+    sort_subgraph_total: std::time::Duration,
+    sort_subgraph_build_movable: std::time::Duration,
+    sort_subgraph_barycenter: std::time::Duration,
+    sort_subgraph_resolve_conflicts: std::time::Duration,
+    sort_subgraph_expand_subgraphs: std::time::Duration,
+    sort_subgraph_sort: std::time::Duration,
+    sort_subgraph_border_adjust: std::time::Duration,
 }
 
 pub fn order<N, E, G>(g: &mut Graph<N, E, G>, opts: OrderOptions)
@@ -189,7 +198,7 @@ where
     if let Some(s) = total_start {
         timings.total = s.elapsed();
         eprintln!(
-            "[dugong-timing] stage=order total={:?} build_nodes_by_rank={:?} init_order={:?} assign_initial={:?} build_layer_graph_cache={:?} sweeps={:?} sweep_sync_orders={:?} sweep_build_layer_graph={:?} sweep_sort_subgraph={:?} sweep_apply_order={:?} sweep_add_constraints={:?} build_layer_matrix={:?} cross_count={:?}",
+            "[dugong-timing] stage=order total={:?} build_nodes_by_rank={:?} init_order={:?} assign_initial={:?} build_layer_graph_cache={:?} sweeps={:?} sweep_sync_orders={:?} sweep_build_layer_graph={:?} sweep_sort_subgraph={:?} sweep_apply_order={:?} sweep_add_constraints={:?} build_layer_matrix={:?} cross_count={:?} sort_subgraph_total={:?} sort_subgraph_build_movable={:?} sort_subgraph_barycenter={:?} sort_subgraph_resolve_conflicts={:?} sort_subgraph_expand_subgraphs={:?} sort_subgraph_sort={:?} sort_subgraph_border_adjust={:?}",
             timings.total,
             timings.build_nodes_by_rank,
             timings.init_order,
@@ -203,6 +212,13 @@ where
             timings.sweep_add_constraints,
             timings.build_layer_matrix,
             timings.cross_count,
+            timings.sort_subgraph_total,
+            timings.sort_subgraph_build_movable,
+            timings.sort_subgraph_barycenter,
+            timings.sort_subgraph_resolve_conflicts,
+            timings.sort_subgraph_expand_subgraphs,
+            timings.sort_subgraph_sort,
+            timings.sort_subgraph_border_adjust,
         );
     }
 }
@@ -267,9 +283,23 @@ fn sweep<N, E, G>(
         }
 
         let sort_start = timing_enabled.then(std::time::Instant::now);
-        let sorted = sort_subgraph(lg, root, &cg, bias_right);
+        let mut sg_timings = timing_enabled.then(SortSubgraphTimings::default);
+        let sorted = if let Some(t) = sg_timings.as_mut() {
+            super::barycenter::sort_subgraph_with_timings(lg, root, &cg, bias_right, t)
+        } else {
+            sort_subgraph(lg, root, &cg, bias_right)
+        };
         if let Some(s) = sort_start {
             timings.sweep_sort_subgraph += s.elapsed();
+        }
+        if let Some(t) = sg_timings {
+            timings.sort_subgraph_total += t.total;
+            timings.sort_subgraph_build_movable += t.build_movable;
+            timings.sort_subgraph_barycenter += t.barycenter;
+            timings.sort_subgraph_resolve_conflicts += t.resolve_conflicts;
+            timings.sort_subgraph_expand_subgraphs += t.expand_subgraphs;
+            timings.sort_subgraph_sort += t.sort;
+            timings.sort_subgraph_border_adjust += t.border_adjust;
         }
 
         let apply_order_start = timing_enabled.then(std::time::Instant::now);

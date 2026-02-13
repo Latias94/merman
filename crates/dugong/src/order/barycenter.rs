@@ -5,6 +5,7 @@
 use super::{OrderEdgeWeight, OrderNodeLabel};
 use crate::graphlib::Graph;
 use rustc_hash::FxHashMap as HashMap;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BarycenterEntry {
@@ -130,7 +131,10 @@ where
     while let Some(v) = source_set.pop() {
         processed.push(v.clone());
 
-        let ins = mapped.get(&v).map(|e| e.ins.clone()).unwrap_or_default();
+        let ins = mapped
+            .get_mut(&v)
+            .map(|e| std::mem::take(&mut e.ins))
+            .unwrap_or_default();
 
         // Match upstream `.reverse().forEach(...)` on the "in" list.
         for u in ins.into_iter().rev() {
@@ -156,7 +160,10 @@ where
             }
         }
 
-        let outs = mapped.get(&v).map(|e| e.outs.clone()).unwrap_or_default();
+        let outs = mapped
+            .get_mut(&v)
+            .map(|e| std::mem::take(&mut e.outs))
+            .unwrap_or_default();
         for w in outs {
             if let Some(w_entry) = mapped.get_mut(&w) {
                 w_entry.ins.push(v.clone());
@@ -244,6 +251,17 @@ pub struct SortResult {
     pub vs: Vec<String>,
     pub barycenter: Option<f64>,
     pub weight: Option<f64>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct SortSubgraphTimings {
+    pub total: Duration,
+    pub build_movable: Duration,
+    pub barycenter: Duration,
+    pub resolve_conflicts: Duration,
+    pub expand_subgraphs: Duration,
+    pub sort: Duration,
+    pub border_adjust: Duration,
 }
 
 pub fn sort(entries: &[SortEntry], bias_right: bool) -> SortResult {
@@ -355,6 +373,7 @@ where
     let mut subgraphs: HashMap<String, SortResult> = HashMap::default();
 
     let mut barycenters = barycenter(g, &movable);
+
     for entry in &mut barycenters {
         if !g.children(&entry.v).is_empty() {
             let subgraph_result = sort_subgraph(g, &entry.v, cg, bias_right);
@@ -366,6 +385,7 @@ where
     }
 
     let mut entries = resolve_conflicts(&barycenters, cg);
+
     expand_subgraphs(&mut entries, &subgraphs);
 
     let mut result = sort(&entries, bias_right);
@@ -390,6 +410,117 @@ where
         let denom = w + 2.0;
         result.barycenter = Some((bc * w + bl_order + br_order) / denom);
         result.weight = Some(denom);
+    }
+
+    result
+}
+
+pub(crate) fn sort_subgraph_with_timings<N, E, G, CN, CE, CG>(
+    g: &Graph<N, E, G>,
+    v: &str,
+    cg: &Graph<CN, CE, CG>,
+    bias_right: bool,
+    timings: &mut SortSubgraphTimings,
+) -> SortResult
+where
+    N: Default + OrderNodeLabel + Clone + 'static,
+    E: Default + OrderEdgeWeight + 'static,
+    G: Default,
+    CN: Default + 'static,
+    CE: Default + 'static,
+    CG: Default,
+{
+    sort_subgraph_timed(g, v, cg, bias_right, timings, 0)
+}
+
+fn sort_subgraph_timed<N, E, G, CN, CE, CG>(
+    g: &Graph<N, E, G>,
+    v: &str,
+    cg: &Graph<CN, CE, CG>,
+    bias_right: bool,
+    timings: &mut SortSubgraphTimings,
+    depth: usize,
+) -> SortResult
+where
+    N: Default + OrderNodeLabel + Clone + 'static,
+    E: Default + OrderEdgeWeight + 'static,
+    G: Default,
+    CN: Default + 'static,
+    CE: Default + 'static,
+    CG: Default,
+{
+    let total_start = (depth == 0).then(Instant::now);
+
+    let build_movable_start = Instant::now();
+    let mut movable: Vec<String> = g.children(v).into_iter().map(|s| s.to_string()).collect();
+
+    let (border_left, border_right) = g.node(v).map_or((None, None), |node| {
+        (
+            node.border_left().map(|s| s.to_string()),
+            node.border_right().map(|s| s.to_string()),
+        )
+    });
+
+    if let (Some(bl), Some(br)) = (border_left.as_deref(), border_right.as_deref()) {
+        movable.retain(|w| w != bl && w != br);
+    }
+    timings.build_movable += build_movable_start.elapsed();
+
+    let mut subgraphs: HashMap<String, SortResult> = HashMap::default();
+
+    let barycenter_start = Instant::now();
+    let mut barycenters = barycenter(g, &movable);
+    timings.barycenter += barycenter_start.elapsed();
+
+    for entry in &mut barycenters {
+        if !g.children(&entry.v).is_empty() {
+            let subgraph_result =
+                sort_subgraph_timed(g, &entry.v, cg, bias_right, timings, depth + 1);
+            if subgraph_result.barycenter.is_some() {
+                merge_barycenters(entry, &subgraph_result);
+            }
+            subgraphs.insert(entry.v.clone(), subgraph_result);
+        }
+    }
+
+    let resolve_start = Instant::now();
+    let mut entries = resolve_conflicts(&barycenters, cg);
+    timings.resolve_conflicts += resolve_start.elapsed();
+
+    let expand_start = Instant::now();
+    expand_subgraphs(&mut entries, &subgraphs);
+    timings.expand_subgraphs += expand_start.elapsed();
+
+    let sort_start = Instant::now();
+    let mut result = sort(&entries, bias_right);
+    timings.sort += sort_start.elapsed();
+
+    if let (Some(bl), Some(br)) = (border_left, border_right) {
+        let border_start = Instant::now();
+        let mut out: Vec<String> = Vec::with_capacity(result.vs.len() + 2);
+        out.push(bl.clone());
+        out.extend(result.vs);
+        out.push(br.clone());
+        result.vs = out;
+
+        let (Some(bl_pred), Some(br_pred)) = (g.first_predecessor(&bl), g.first_predecessor(&br))
+        else {
+            return result;
+        };
+
+        let bl_order = g.node(bl_pred).and_then(|n| n.order()).unwrap_or(0) as f64;
+        let br_order = g.node(br_pred).and_then(|n| n.order()).unwrap_or(0) as f64;
+
+        let bc = result.barycenter.unwrap_or(0.0);
+        let w = result.weight.unwrap_or(0.0);
+        let denom = w + 2.0;
+        result.barycenter = Some((bc * w + bl_order + br_order) / denom);
+        result.weight = Some(denom);
+        timings.border_adjust += border_start.elapsed();
+    }
+
+    if let Some(s) = total_start {
+        timings.total += s.elapsed();
     }
 
     result
