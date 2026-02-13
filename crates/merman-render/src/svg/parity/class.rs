@@ -929,6 +929,8 @@ pub(super) fn render_class_diagram_v2_svg(
 
             // Edge paths.
             out.push_str(r#"<g class="edgePaths">"#);
+            let mut points_json_buf: Vec<u8> = Vec::new();
+            let mut points_b64_buf: String = String::new();
             for e in &layout.edges {
                 if e.points.len() < 2 {
                     continue;
@@ -961,8 +963,13 @@ pub(super) fn render_class_diagram_v2_svg(
                     detail.path_bounds += s.elapsed();
                     detail.path_bounds_calls += 1;
                 }
-                let points_b64 = base64::engine::general_purpose::STANDARD
-                    .encode(serde_json::to_vec(&raw_points).unwrap_or_default());
+                points_json_buf.clear();
+                if serde_json::to_writer(&mut points_json_buf, &raw_points).is_err() {
+                    points_json_buf.clear();
+                }
+                points_b64_buf.clear();
+                base64::engine::general_purpose::STANDARD
+                    .encode_string(&points_json_buf, &mut points_b64_buf);
 
                 let mut class = String::from("edge-thickness-normal ");
                 if e.id.starts_with("edgeNote") {
@@ -1000,7 +1007,7 @@ pub(super) fn render_class_diagram_v2_svg(
                     escape_attr(&dom_id),
                     escape_attr(&class),
                     escape_attr(&dom_id),
-                    escape_attr(&points_b64),
+                    escape_attr(&points_b64_buf),
                 );
                 if let Some(url) = marker_start {
                     let _ = write!(out, r#" marker-start="{}""#, escape_attr(&url));
