@@ -1,6 +1,7 @@
 use crate::{DetectorRegistry, Error, MermaidConfig, Result};
 use regex::Regex;
 use serde_json::Value;
+use std::borrow::Cow;
 use std::sync::OnceLock;
 
 macro_rules! cached_regex {
@@ -41,25 +42,26 @@ pub fn preprocess_diagram_with_known_type(
     diagram_type: Option<&str>,
 ) -> Result<PreprocessResult> {
     let cleaned = cleanup_text(input);
-    let (without_frontmatter, title, mut frontmatter_config) = process_frontmatter(&cleaned)?;
+    let (without_frontmatter, title, mut frontmatter_config) =
+        process_frontmatter(cleaned.as_ref())?;
     let (without_directives, directive_config) =
-        process_directives(&without_frontmatter, registry, diagram_type)?;
+        process_directives(without_frontmatter, registry, diagram_type)?;
 
     frontmatter_config.deep_merge(directive_config.as_value());
 
-    let code = cleanup_comments(&without_directives);
+    let code = cleanup_comments(without_directives.as_ref());
     Ok(PreprocessResult {
-        code,
+        code: code.into_owned(),
         title,
         config: frontmatter_config,
     })
 }
 
-fn cleanup_text(input: &str) -> String {
-    let mut s = if input.contains('\r') {
-        re_crlf().replace_all(input, "\n").to_string()
+fn cleanup_text(input: &str) -> Cow<'_, str> {
+    let mut s: Cow<'_, str> = if input.contains('\r') {
+        Cow::Owned(re_crlf().replace_all(input, "\n").into_owned())
     } else {
-        input.to_string()
+        Cow::Borrowed(input)
     };
 
     // Mermaid encodes `#quot;`-style sequences before parsing (`encodeEntities(...)`).
@@ -68,19 +70,21 @@ fn cleanup_text(input: &str) -> String {
     //
     // Source of truth: `packages/mermaid/src/utils.ts::encodeEntities` at Mermaid@11.12.2.
     if s.contains('#') {
-        s = encode_mermaid_entities_like_upstream(&s);
+        s = Cow::Owned(encode_mermaid_entities_like_upstream(s.as_ref()));
     }
 
     // Mermaid performs this HTML attribute rewrite as part of preprocessing.
     if s.contains('<') && s.contains("=\"") {
-        s = re_tag()
-            .replace_all(&s, |caps: &regex::Captures| {
-                let tag = &caps[1];
-                let attrs = &caps[2];
-                let attrs = re_attr_eq_double_quoted().replace_all(attrs, "='$1'");
-                format!("<{tag}{attrs}>")
-            })
-            .to_string();
+        s = Cow::Owned(
+            re_tag()
+                .replace_all(s.as_ref(), |caps: &regex::Captures| {
+                    let tag = &caps[1];
+                    let attrs = &caps[2];
+                    let attrs = re_attr_eq_double_quoted().replace_all(attrs, "='$1'");
+                    format!("<{tag}{attrs}>")
+                })
+                .into_owned(),
+        );
     }
 
     s
@@ -137,9 +141,9 @@ fn encode_mermaid_entities_like_upstream(text: &str) -> String {
     txt
 }
 
-fn cleanup_comments(input: &str) -> String {
+fn cleanup_comments(input: &str) -> Cow<'_, str> {
     if !input.contains("%%") {
-        return input.trim_start().to_string();
+        return Cow::Borrowed(input.trim_start());
     }
     let mut out = String::with_capacity(input.len());
     for line in input.split_inclusive('\n') {
@@ -149,16 +153,16 @@ fn cleanup_comments(input: &str) -> String {
         }
         out.push_str(line);
     }
-    out.trim_start().to_string()
+    Cow::Owned(out.trim_start().to_string())
 }
 
-fn process_frontmatter(input: &str) -> Result<(String, Option<String>, MermaidConfig)> {
+fn process_frontmatter<'a>(input: &'a str) -> Result<(&'a str, Option<String>, MermaidConfig)> {
     if !input.trim_start().starts_with("---") {
-        return Ok((input.to_string(), None, MermaidConfig::empty_object()));
+        return Ok((input, None, MermaidConfig::empty_object()));
     }
 
     let Some(caps) = re_frontmatter().captures(input) else {
-        return Ok((input.to_string(), None, MermaidConfig::empty_object()));
+        return Ok((input, None, MermaidConfig::empty_object()));
     };
 
     let yaml_body = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
@@ -190,18 +194,18 @@ fn process_frontmatter(input: &str) -> Result<(String, Option<String>, MermaidCo
         config.set_value("gantt.displayMode", Value::String(dm));
     }
 
-    let stripped = input[caps.get(0).unwrap().end()..].to_string();
+    let stripped = &input[caps.get(0).unwrap().end()..];
     Ok((stripped, title, config))
 }
 
-fn process_directives(
-    input: &str,
+fn process_directives<'a>(
+    input: &'a str,
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
-) -> Result<(String, MermaidConfig)> {
+) -> Result<(Cow<'a, str>, MermaidConfig)> {
     let directives = detect_directives(input)?;
     if directives.is_empty() {
-        return Ok((input.to_string(), MermaidConfig::empty_object()));
+        return Ok((Cow::Borrowed(input), MermaidConfig::empty_object()));
     }
     let init = detect_init(&directives, input, registry, diagram_type)?;
     let wrap = directives.iter().any(|d| d.ty == "wrap");
@@ -211,7 +215,7 @@ fn process_directives(
         merged.set_value("wrap", Value::Bool(true));
     }
 
-    Ok((remove_directives(input), merged))
+    Ok((Cow::Owned(remove_directives(input)), merged))
 }
 
 fn detect_init(
