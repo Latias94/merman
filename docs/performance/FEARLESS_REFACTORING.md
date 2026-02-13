@@ -173,6 +173,7 @@ Exit criteria:
 - Reduced allocations in flowchart/state SVG emission (escape display wrappers, fewer intermediate `String`s).
 - Added an internal render breakdown switch (`MERMAN_RENDER_TIMING=1`) to cheaply localize SVG hotspots.
 - Reduced flowchart node render allocations by borrowing node inputs and avoiding style string cloning.
+- Cached RoughJS path generation within state leaf-node rendering (per-render cache; avoids repeated `roughr` work).
 - Optimized state `parity-root` bbox scan to skip `<style>/<defs>` and reuse transform parse buffers.
 
 ## Prioritized Backlog
