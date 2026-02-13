@@ -1,7 +1,5 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
-use merman::render::{
-    LayoutOptions, SvgRenderOptions, headless_layout_options, render_layouted_svg,
-};
+use merman::render::{LayoutOptions, SvgRenderOptions, headless_layout_options};
 use merman_core::{Engine, ParseMetadata, ParseOptions};
 use std::hint::black_box;
 
@@ -295,10 +293,10 @@ fn bench_render(c: &mut Criterion) {
         };
 
         // Pre-check that SVG rendering works.
-        if merman_render::svg::render_layout_svg_parts_for_render_model(
+        if merman_render::svg::render_layout_svg_parts_for_render_model_with_config(
             &layouted,
             &parsed.model,
-            parsed.meta.effective_config.as_value(),
+            &parsed.meta.effective_config,
             parsed.meta.title.as_deref(),
             layout.text_measurer.as_ref(),
             &svg_opts,
@@ -311,17 +309,18 @@ fn bench_render(c: &mut Criterion) {
 
         group.bench_with_input(BenchmarkId::from_parameter(name), &layouted, |b, data| {
             b.iter(|| {
-                let svg = match merman_render::svg::render_layout_svg_parts_for_render_model(
-                    black_box(data),
-                    &parsed.model,
-                    parsed.meta.effective_config.as_value(),
-                    parsed.meta.title.as_deref(),
-                    layout.text_measurer.as_ref(),
-                    &svg_opts,
-                ) {
-                    Ok(v) => v,
-                    Err(_) => return,
-                };
+                let svg =
+                    match merman_render::svg::render_layout_svg_parts_for_render_model_with_config(
+                        black_box(data),
+                        &parsed.model,
+                        &parsed.meta.effective_config,
+                        parsed.meta.title.as_deref(),
+                        layout.text_measurer.as_ref(),
+                        &svg_opts,
+                    ) {
+                        Ok(v) => v,
+                        Err(_) => return,
+                    };
                 black_box(svg.len());
             })
         });

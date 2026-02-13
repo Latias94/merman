@@ -156,6 +156,8 @@ Goal: reduce `render/*` ratios (flowchart + class + state) while preserving SVG 
 Work items (expected ROI order):
 
 - Avoid repeated `String` growth by pre-sizing buffers and using a single `String` builder per SVG.
+- Avoid cloning `effective_config` JSON in the hot render path; pass `MermaidConfig` (Arc-backed)
+  through the render API so diagram renderers can read config without deep-cloning.
 - Cache per-diagram derived values that are reused many times (e.g. sanitized labels / class names),
   but keep caches scoped to the render call to avoid cross-diagram leaks.
 - Keep fast-paths for common label cases (plain text, no HTML entities, no icon syntax).

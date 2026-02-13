@@ -201,10 +201,10 @@ pub mod render {
         };
 
         let layout = merman_render::layout_parsed_render_layout_only(&parsed, layout_options)?;
-        let svg = merman_render::svg::render_layout_svg_parts_for_render_model(
+        let svg = merman_render::svg::render_layout_svg_parts_for_render_model_with_config(
             &layout,
             &parsed.model,
-            parsed.meta.effective_config.as_value(),
+            &parsed.meta.effective_config,
             parsed.meta.title.as_deref(),
             layout_options.text_measurer.as_ref(),
             svg_options,

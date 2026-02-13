@@ -125,10 +125,31 @@ pub(super) fn render_mindmap_diagram_svg(
     render_mindmap_diagram_svg_model(layout, &model, _effective_config, options)
 }
 
+pub(super) fn render_mindmap_diagram_svg_with_config(
+    layout: &MindmapDiagramLayout,
+    semantic: &serde_json::Value,
+    effective_config: &merman_core::MermaidConfig,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let model: merman_core::diagrams::mindmap::MindmapDiagramRenderModel =
+        crate::json::from_value_ref(semantic)?;
+    render_mindmap_diagram_svg_model_with_config(layout, &model, effective_config, options)
+}
+
 pub(super) fn render_mindmap_diagram_svg_model(
     layout: &MindmapDiagramLayout,
     model: &merman_core::diagrams::mindmap::MindmapDiagramRenderModel,
     _effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let config = merman_core::MermaidConfig::from_value(_effective_config.clone());
+    render_mindmap_diagram_svg_model_with_config(layout, model, &config, options)
+}
+
+pub(super) fn render_mindmap_diagram_svg_model_with_config(
+    layout: &MindmapDiagramLayout,
+    model: &merman_core::diagrams::mindmap::MindmapDiagramRenderModel,
+    config: &merman_core::MermaidConfig,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     #[derive(Debug, Clone, serde::Serialize)]
@@ -237,7 +258,6 @@ pub(super) fn render_mindmap_diagram_svg_model(
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("mindmap");
     let diagram_id_esc = escape_xml(diagram_id);
-    let config = merman_core::MermaidConfig::from_value(_effective_config.clone());
 
     let mut node_by_id: std::collections::BTreeMap<String, &crate::model::LayoutNode> =
         std::collections::BTreeMap::new();

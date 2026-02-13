@@ -9597,6 +9597,18 @@ pub(super) fn render_flowchart_v2_svg(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
+    let config = merman_core::MermaidConfig::from_value(effective_config.clone());
+    render_flowchart_v2_svg_with_config(layout, semantic, &config, diagram_title, measurer, options)
+}
+
+pub(super) fn render_flowchart_v2_svg_with_config(
+    layout: &FlowchartV2Layout,
+    semantic: &serde_json::Value,
+    effective_config: &merman_core::MermaidConfig,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
     let timing_enabled = super::timing::render_timing_enabled();
     let mut timings = super::timing::RenderTimings::default();
     let total_start = std::time::Instant::now();
@@ -9611,6 +9623,8 @@ pub(super) fn render_flowchart_v2_svg(
         let _g = section(timing_enabled, &mut timings.deserialize_model);
         crate::json::from_value_ref(semantic)?
     };
+
+    let effective_config_value = effective_config.as_value();
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_type = "flowchart-v2";
@@ -9688,25 +9702,25 @@ pub(super) fn render_flowchart_v2_svg(
         render_edges = normal;
     }
 
-    let font_family = config_string(effective_config, &["fontFamily"])
+    let font_family = config_string(effective_config_value, &["fontFamily"])
         .map(|s| normalize_css_font_family(&s))
         .unwrap_or_else(|| "\"trebuchet ms\",verdana,arial,sans-serif".to_string());
-    let font_size = effective_config
+    let font_size = effective_config_value
         .get("fontSize")
         .and_then(|v| v.as_f64())
         .unwrap_or(16.0)
         .max(1.0);
 
-    let wrapping_width = config_f64(effective_config, &["flowchart", "wrappingWidth"])
+    let wrapping_width = config_f64(effective_config_value, &["flowchart", "wrappingWidth"])
         .unwrap_or(200.0)
         .max(1.0);
     // Mermaid flowchart-v2 uses the global `htmlLabels` toggle for node/subgraph labels, while
     // edge labels follow `flowchart.htmlLabels` (falling back to the global toggle when unset).
-    let node_html_labels = effective_config
+    let node_html_labels = effective_config_value
         .get("htmlLabels")
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(true);
-    let edge_html_labels = effective_config
+    let edge_html_labels = effective_config_value
         .get("flowchart")
         .and_then(|v| v.get("htmlLabels"))
         .and_then(serde_json::Value::as_bool)
@@ -9721,18 +9735,18 @@ pub(super) fn render_flowchart_v2_svg(
     } else {
         crate::text::WrapMode::SvgLike
     };
-    let diagram_padding = config_f64(effective_config, &["flowchart", "diagramPadding"])
+    let diagram_padding = config_f64(effective_config_value, &["flowchart", "diagramPadding"])
         .unwrap_or(8.0)
         .max(0.0);
-    let use_max_width = effective_config
+    let use_max_width = effective_config_value
         .get("flowchart")
         .and_then(|v| v.get("useMaxWidth"))
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(true);
-    let title_top_margin = config_f64(effective_config, &["flowchart", "titleTopMargin"])
+    let title_top_margin = config_f64(effective_config_value, &["flowchart", "titleTopMargin"])
         .unwrap_or(25.0)
         .max(0.0);
-    let node_padding = config_f64(effective_config, &["flowchart", "padding"])
+    let node_padding = config_f64(effective_config_value, &["flowchart", "padding"])
         .unwrap_or(15.0)
         .max(0.0);
 
@@ -9859,13 +9873,13 @@ pub(super) fn render_flowchart_v2_svg(
 
     let subgraph_title_y_shift = {
         let top = config_f64(
-            effective_config,
+            effective_config_value,
             &["flowchart", "subGraphTitleMargin", "top"],
         )
         .unwrap_or(0.0)
         .max(0.0);
         let bottom = config_f64(
-            effective_config,
+            effective_config_value,
             &["flowchart", "subGraphTitleMargin", "bottom"],
         )
         .unwrap_or(0.0)
@@ -10306,14 +10320,14 @@ pub(super) fn render_flowchart_v2_svg(
 
     let css = flowchart_css(
         diagram_id,
-        effective_config,
+        effective_config_value,
         &font_family,
         font_size,
         &model.class_defs,
     );
 
-    let node_border_color = theme_color(effective_config, "nodeBorder", "#9370DB");
-    let node_fill_color = theme_color(effective_config, "mainBkg", "#ECECFF");
+    let node_border_color = theme_color(effective_config_value, "nodeBorder", "#9370DB");
+    let node_fill_color = theme_color(effective_config_value, "mainBkg", "#ECECFF");
 
     let mut out = String::new();
     let mut vb_min_x_attr = fmt_string(vb_min_x);
@@ -10409,7 +10423,7 @@ pub(super) fn render_flowchart_v2_svg(
     out.push_str("<g>");
     flowchart_markers(&mut out, diagram_id);
 
-    let cfg_curve = config_string(effective_config, &["flowchart", "curve"]);
+    let cfg_curve = config_string(effective_config_value, &["flowchart", "curve"]);
     let default_edge_interpolate = model
         .edge_defaults
         .as_ref()
@@ -10429,7 +10443,7 @@ pub(super) fn render_flowchart_v2_svg(
         ty,
         diagram_type: diagram_type.to_string(),
         measurer,
-        config: merman_core::MermaidConfig::from_value(effective_config.clone()),
+        config: effective_config.clone(),
         node_html_labels,
         edge_html_labels,
         class_defs: model.class_defs.clone(),

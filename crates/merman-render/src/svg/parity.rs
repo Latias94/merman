@@ -230,6 +230,134 @@ pub fn render_layout_svg_parts(
     }
 }
 
+pub fn render_layout_svg_parts_with_config(
+    layout: &crate::model::LayoutDiagram,
+    semantic: &serde_json::Value,
+    effective_config: &merman_core::MermaidConfig,
+    title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    use crate::model::LayoutDiagram;
+
+    let effective_config_value = effective_config.as_value();
+
+    match layout {
+        LayoutDiagram::ErrorDiagram(layout) => {
+            render_error_diagram_svg(layout, semantic, effective_config_value, options)
+        }
+        LayoutDiagram::BlockDiagram(layout) => {
+            render_block_diagram_svg(layout, semantic, effective_config_value, options)
+        }
+        LayoutDiagram::RequirementDiagram(layout) => {
+            render_requirement_diagram_svg(layout, semantic, effective_config_value, options)
+        }
+        LayoutDiagram::ArchitectureDiagram(layout) => {
+            render_architecture_diagram_svg(layout, semantic, effective_config_value, options)
+        }
+        LayoutDiagram::MindmapDiagram(layout) => {
+            render_mindmap_diagram_svg_with_config(layout, semantic, effective_config, options)
+        }
+        LayoutDiagram::SankeyDiagram(layout) => {
+            render_sankey_diagram_svg(layout, semantic, effective_config_value, options)
+        }
+        LayoutDiagram::RadarDiagram(layout) => {
+            render_radar_diagram_svg(layout, semantic, effective_config_value, options)
+        }
+        LayoutDiagram::TreemapDiagram(layout) => {
+            render_treemap_diagram_svg(layout, semantic, effective_config_value, options)
+        }
+        LayoutDiagram::XyChartDiagram(layout) => {
+            render_xychart_diagram_svg(layout, semantic, effective_config_value, options)
+        }
+        LayoutDiagram::QuadrantChartDiagram(layout) => {
+            render_quadrantchart_diagram_svg(layout, semantic, effective_config_value, options)
+        }
+        LayoutDiagram::FlowchartV2(layout) => render_flowchart_v2_svg_with_config(
+            layout,
+            semantic,
+            effective_config,
+            title,
+            measurer,
+            options,
+        ),
+        LayoutDiagram::StateDiagramV2(layout) => render_state_diagram_v2_svg(
+            layout,
+            semantic,
+            effective_config_value,
+            title,
+            measurer,
+            options,
+        ),
+        LayoutDiagram::ClassDiagramV2(layout) => render_class_diagram_v2_svg(
+            layout,
+            semantic,
+            effective_config_value,
+            title,
+            measurer,
+            options,
+        ),
+        LayoutDiagram::ErDiagram(layout) => render_er_diagram_svg(
+            layout,
+            semantic,
+            effective_config_value,
+            title,
+            measurer,
+            options,
+        ),
+        LayoutDiagram::SequenceDiagram(layout) => render_sequence_diagram_svg(
+            layout,
+            semantic,
+            effective_config_value,
+            title,
+            measurer,
+            options,
+        ),
+        LayoutDiagram::InfoDiagram(layout) => {
+            render_info_diagram_svg(layout, semantic, effective_config_value, options)
+        }
+        LayoutDiagram::PacketDiagram(layout) => {
+            render_packet_diagram_svg(layout, semantic, effective_config_value, title, options)
+        }
+        LayoutDiagram::TimelineDiagram(layout) => render_timeline_diagram_svg(
+            layout,
+            semantic,
+            effective_config_value,
+            title,
+            measurer,
+            options,
+        ),
+        LayoutDiagram::PieDiagram(layout) => {
+            render_pie_diagram_svg(layout, semantic, effective_config_value, options)
+        }
+        LayoutDiagram::JourneyDiagram(layout) => render_journey_diagram_svg(
+            layout,
+            semantic,
+            effective_config_value,
+            title,
+            measurer,
+            options,
+        ),
+        LayoutDiagram::KanbanDiagram(layout) => {
+            render_kanban_diagram_svg(layout, semantic, effective_config_value, options)
+        }
+        LayoutDiagram::GitGraphDiagram(layout) => {
+            render_gitgraph_diagram_svg(layout, semantic, effective_config_value, measurer, options)
+        }
+        LayoutDiagram::GanttDiagram(layout) => {
+            render_gantt_diagram_svg(layout, semantic, effective_config_value, options)
+        }
+        LayoutDiagram::C4Diagram(layout) => render_c4_diagram_svg(
+            layout,
+            semantic,
+            effective_config_value,
+            title,
+            measurer,
+            options,
+        ),
+    }
+}
+
 pub fn render_layout_svg_parts_for_render_model(
     layout: &crate::model::LayoutDiagram,
     semantic: &merman_core::RenderSemanticModel,
@@ -260,6 +388,52 @@ pub fn render_layout_svg_parts_for_render_model(
         (_, RenderSemanticModel::Json(semantic)) => {
             render_layout_svg_parts(layout, semantic, effective_config, title, measurer, options)
         }
+        _ => Err(Error::InvalidModel {
+            message: "semantic model does not match layout diagram type".to_string(),
+        }),
+    }
+}
+
+pub fn render_layout_svg_parts_for_render_model_with_config(
+    layout: &crate::model::LayoutDiagram,
+    semantic: &merman_core::RenderSemanticModel,
+    effective_config: &merman_core::MermaidConfig,
+    title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    use crate::model::LayoutDiagram;
+    use merman_core::RenderSemanticModel;
+
+    match (layout, semantic) {
+        (LayoutDiagram::MindmapDiagram(layout), RenderSemanticModel::Mindmap(model)) => {
+            mindmap::render_mindmap_diagram_svg_model(
+                layout,
+                model,
+                effective_config.as_value(),
+                options,
+            )
+        }
+        (LayoutDiagram::StateDiagramV2(layout), RenderSemanticModel::State(model)) => {
+            // TODO(perf): avoid `serde_json::Value` materialization by rendering directly from the typed model.
+            let semantic = serde_json::to_value(model).map_err(Error::Json)?;
+            render_state_diagram_v2_svg(
+                layout,
+                &semantic,
+                effective_config.as_value(),
+                title,
+                measurer,
+                options,
+            )
+        }
+        (_, RenderSemanticModel::Json(semantic)) => render_layout_svg_parts_with_config(
+            layout,
+            semantic,
+            effective_config,
+            title,
+            measurer,
+            options,
+        ),
         _ => Err(Error::InvalidModel {
             message: "semantic model does not match layout diagram type".to_string(),
         }),
@@ -547,6 +721,15 @@ pub fn render_mindmap_diagram_svg(
     mindmap::render_mindmap_diagram_svg(layout, semantic, _effective_config, options)
 }
 
+pub fn render_mindmap_diagram_svg_with_config(
+    layout: &MindmapDiagramLayout,
+    semantic: &serde_json::Value,
+    effective_config: &merman_core::MermaidConfig,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    mindmap::render_mindmap_diagram_svg_with_config(layout, semantic, effective_config, options)
+}
+
 pub fn render_architecture_diagram_svg(
     layout: &ArchitectureDiagramLayout,
     semantic: &serde_json::Value,
@@ -583,6 +766,24 @@ pub fn render_flowchart_v2_svg(
     options: &SvgRenderOptions,
 ) -> Result<String> {
     flowchart::render_flowchart_v2_svg(
+        layout,
+        semantic,
+        effective_config,
+        diagram_title,
+        measurer,
+        options,
+    )
+}
+
+pub fn render_flowchart_v2_svg_with_config(
+    layout: &FlowchartV2Layout,
+    semantic: &serde_json::Value,
+    effective_config: &merman_core::MermaidConfig,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    flowchart::render_flowchart_v2_svg_with_config(
         layout,
         semantic,
         effective_config,
