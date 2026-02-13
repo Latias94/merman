@@ -217,28 +217,20 @@ pub fn layout_mindmap_diagram(
     text_measurer: &dyn TextMeasurer,
     use_manatee_layout: bool,
 ) -> Result<MindmapDiagramLayout> {
-    let model: MindmapModel = serde_json::from_value(model.clone())?;
+    let mut model: MindmapModel = serde_json::from_value(model.clone())?;
 
     let text_style = mindmap_text_style(effective_config);
     let max_node_width_px = config_f64(effective_config, &["mindmap", "maxNodeWidth"])
         .unwrap_or(200.0)
         .max(1.0);
 
-    let mut nodes: Vec<LayoutNode> = Vec::new();
-    let mut id_order: Vec<(i64, String)> = model
-        .nodes
-        .iter()
-        .map(|n| (n.id.parse::<i64>().unwrap_or(i64::MAX), n.id.clone()))
-        .collect();
-    id_order.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+    model.nodes.sort_by_cached_key(|n| {
+        let num = n.id.parse::<i64>().unwrap_or(i64::MAX);
+        (num, n.id.clone())
+    });
 
-    let node_by_id: std::collections::BTreeMap<String, MindmapNodeModel> =
-        model.nodes.into_iter().map(|n| (n.id.clone(), n)).collect();
-
-    for (_num, id) in id_order.iter() {
-        let Some(n) = node_by_id.get(id) else {
-            continue;
-        };
+    let mut nodes: Vec<LayoutNode> = Vec::with_capacity(model.nodes.len());
+    for n in &model.nodes {
         let (width, height) =
             mindmap_node_dimensions_px(n, text_measurer, &text_style, max_node_width_px);
 
@@ -304,20 +296,20 @@ pub fn layout_mindmap_diagram(
         shift_nodes_to_positive_bounds(&mut nodes, 15.0);
     }
 
-    let mut node_pos: std::collections::BTreeMap<String, (f64, f64)> =
-        std::collections::BTreeMap::new();
+    let mut node_pos: std::collections::HashMap<&str, (f64, f64)> =
+        std::collections::HashMap::with_capacity(nodes.len());
     for n in &nodes {
-        node_pos.insert(n.id.clone(), (n.x, n.y));
+        node_pos.insert(n.id.as_str(), (n.x, n.y));
     }
 
     let mut edges: Vec<LayoutEdge> = Vec::new();
     for e in model.edges {
-        let Some((sx, sy)) = node_pos.get(&e.start).copied() else {
+        let Some((sx, sy)) = node_pos.get(e.start.as_str()).copied() else {
             return Err(Error::InvalidModel {
                 message: format!("edge start node not found: {}", e.start),
             });
         };
-        let Some((tx, ty)) = node_pos.get(&e.end).copied() else {
+        let Some((tx, ty)) = node_pos.get(e.end.as_str()).copied() else {
             return Err(Error::InvalidModel {
                 message: format!("edge end node not found: {}", e.end),
             });
