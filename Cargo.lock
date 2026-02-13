@@ -1696,6 +1696,7 @@ dependencies = [
  "pulldown-cmark",
  "regex",
  "roughr",
+ "rustc-hash",
  "ryu-js",
  "serde",
  "serde_json",

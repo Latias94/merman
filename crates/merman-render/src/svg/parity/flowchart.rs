@@ -1,4 +1,5 @@
 use super::*;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 // Flowchart SVG renderer implementation (split from parity.rs).
 
@@ -21,18 +22,17 @@ pub(super) struct FlowchartRenderCtx<'a> {
     pub(super) node_order: Vec<&'a str>,
     pub(super) subgraph_order: Vec<&'a str>,
     pub(super) edge_order: Vec<&'a str>,
-    pub(super) nodes_by_id: std::collections::HashMap<&'a str, &'a crate::flowchart::FlowNode>,
-    pub(super) edges_by_id: std::collections::HashMap<&'a str, &'a crate::flowchart::FlowEdge>,
-    pub(super) subgraphs_by_id:
-        std::collections::HashMap<&'a str, &'a crate::flowchart::FlowSubgraph>,
-    pub(super) tooltips: std::collections::HashMap<String, String>,
-    pub(super) recursive_clusters: std::collections::HashSet<&'a str>,
-    pub(super) parent: std::collections::HashMap<&'a str, &'a str>,
-    pub(super) layout_nodes_by_id: std::collections::HashMap<&'a str, &'a LayoutNode>,
-    pub(super) layout_edges_by_id: std::collections::HashMap<&'a str, &'a crate::model::LayoutEdge>,
-    pub(super) layout_clusters_by_id: std::collections::HashMap<&'a str, &'a LayoutCluster>,
+    pub(super) nodes_by_id: FxHashMap<&'a str, &'a crate::flowchart::FlowNode>,
+    pub(super) edges_by_id: FxHashMap<&'a str, &'a crate::flowchart::FlowEdge>,
+    pub(super) subgraphs_by_id: FxHashMap<&'a str, &'a crate::flowchart::FlowSubgraph>,
+    pub(super) tooltips: FxHashMap<String, String>,
+    pub(super) recursive_clusters: FxHashSet<&'a str>,
+    pub(super) parent: FxHashMap<&'a str, &'a str>,
+    pub(super) layout_nodes_by_id: FxHashMap<&'a str, &'a LayoutNode>,
+    pub(super) layout_edges_by_id: FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
+    pub(super) layout_clusters_by_id: FxHashMap<&'a str, &'a LayoutCluster>,
     pub(super) dom_node_order_by_root: &'a std::collections::HashMap<String, Vec<String>>,
-    pub(super) node_dom_index: std::collections::HashMap<&'a str, usize>,
+    pub(super) node_dom_index: FxHashMap<&'a str, usize>,
     pub(super) node_padding: f64,
     pub(super) wrapping_width: f64,
     pub(super) node_wrap_mode: crate::text::WrapMode,
@@ -85,28 +85,26 @@ fn detail_guard<'a>(
 
 pub(super) fn flowchart_node_dom_indices<'a>(
     model: &'a crate::flowchart::FlowchartV2Model,
-) -> std::collections::HashMap<&'a str, usize> {
+) -> FxHashMap<&'a str, usize> {
     if !model.vertex_calls.is_empty() {
-        let mut out: std::collections::HashMap<&'a str, usize> = std::collections::HashMap::new();
+        let mut out: FxHashMap<&'a str, usize> = FxHashMap::default();
+        out.reserve(model.vertex_calls.len());
         for (vertex_counter, id) in model.vertex_calls.iter().enumerate() {
             let id: &'a str = id.as_str();
-            if !out.contains_key(id) {
-                out.insert(id, vertex_counter);
-            }
+            let _ = out.entry(id).or_insert(vertex_counter);
         }
         return out;
     }
 
-    let mut out: std::collections::HashMap<&'a str, usize> = std::collections::HashMap::new();
+    let mut out: FxHashMap<&'a str, usize> = FxHashMap::default();
+    out.reserve(model.edges.len().saturating_mul(2) + model.nodes.len());
     let mut vertex_counter: usize = 0;
 
     // Mermaid FlowDB assigns `domId` when a vertex is first created, but increments the internal
     // `vertexCounter` on every `addVertex(...)` call (even for repeated references). This means the
     // domId suffix depends on the full "first-use" order + repeat uses.
-    fn touch<'a>(id: &'a str, out: &mut std::collections::HashMap<&'a str, usize>, c: &mut usize) {
-        if !out.contains_key(id) {
-            out.insert(id, *c);
-        }
+    fn touch<'a>(id: &'a str, out: &mut FxHashMap<&'a str, usize>, c: &mut usize) {
+        let _ = out.entry(id).or_insert(*c);
         *c += 1;
     }
 
@@ -711,8 +709,8 @@ pub(super) fn flowchart_collect_edge_marker_colors(ctx: &FlowchartRenderCtx<'_>)
 
 #[allow(dead_code)]
 pub(super) fn flowchart_is_in_cluster(
-    parent: &std::collections::HashMap<&str, &str>,
-    _cluster_ids: &std::collections::HashSet<&str>,
+    parent: &FxHashMap<&str, &str>,
+    _cluster_ids: &FxHashSet<&str>,
     node_id: &str,
     cluster_id: &str,
 ) -> bool {
@@ -730,7 +728,7 @@ pub(super) fn flowchart_is_in_cluster(
 }
 
 pub(super) fn flowchart_is_strict_descendant(
-    parent: &std::collections::HashMap<&str, &str>,
+    parent: &FxHashMap<&str, &str>,
     node_id: &str,
     cluster_id: &str,
 ) -> bool {
@@ -1094,11 +1092,7 @@ fn render_flowchart_root(
         // Mermaid emits clusters by traversing the Dagre graph hierarchy (pre-order over
         // `graph.children()`), which in practice matches a stable bottom-to-top ordering in the
         // upstream SVG baselines (see `flowchart-v2 outgoing-links-*` fixtures).
-        fn is_ancestor(
-            parent: &std::collections::HashMap<&str, &str>,
-            ancestor: &str,
-            node: &str,
-        ) -> bool {
+        fn is_ancestor(parent: &FxHashMap<&str, &str>, ancestor: &str, node: &str) -> bool {
             let mut cur: Option<&str> = Some(node);
             while let Some(id) = cur {
                 let Some(p) = parent.get(id).copied() else {
@@ -1566,8 +1560,8 @@ pub(super) fn flowchart_edge_class_attr(edge: &crate::flowchart::FlowEdge) -> St
 }
 
 pub(super) fn flowchart_edge_path_d_for_bbox(
-    layout_edges_by_id: &std::collections::HashMap<&str, &crate::model::LayoutEdge>,
-    layout_clusters_by_id: &std::collections::HashMap<&str, &LayoutCluster>,
+    layout_edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
+    layout_clusters_by_id: &FxHashMap<&str, &LayoutCluster>,
     translate_x: f64,
     translate_y: f64,
     default_edge_interpolate: &str,
@@ -1742,7 +1736,7 @@ pub(super) fn flowchart_edge_path_d_for_bbox(
     }
 
     fn boundary_for_cluster(
-        layout_clusters_by_id: &std::collections::HashMap<&str, &LayoutCluster>,
+        layout_clusters_by_id: &FxHashMap<&str, &LayoutCluster>,
         cluster_id: &str,
         translate_x: f64,
         translate_y: f64,
@@ -9672,7 +9666,7 @@ pub(super) fn render_flowchart_v2_svg(
     // nodes by removing and re-adding them (after swapping endpoints to anchor nodes). This has a
     // visible side-effect: those edges end up later in `graph.edges()` insertion order, so the
     // DOM emitted under `.edgePaths` / `.edgeLabels` matches that stable partition.
-    let cluster_ids_with_children: std::collections::HashSet<&str> = model
+    let cluster_ids_with_children: FxHashSet<&str> = model
         .subgraphs
         .iter()
         .filter(|sg| !sg.nodes.is_empty())
@@ -9773,8 +9767,11 @@ pub(super) fn render_flowchart_v2_svg(
         });
     }
 
-    let mut nodes_by_id: std::collections::HashMap<&str, &crate::flowchart::FlowNode> =
-        std::collections::HashMap::with_capacity(model.nodes.len() + extra_nodes.len());
+    let mut nodes_by_id: FxHashMap<&str, &crate::flowchart::FlowNode> =
+        FxHashMap::with_capacity_and_hasher(
+            model.nodes.len() + extra_nodes.len(),
+            Default::default(),
+        );
     for n in &model.nodes {
         nodes_by_id.insert(n.id.as_str(), n);
     }
@@ -9783,20 +9780,20 @@ pub(super) fn render_flowchart_v2_svg(
     }
 
     let edge_order: Vec<&str> = render_edges.iter().map(|e| e.id.as_str()).collect();
-    let mut edges_by_id: std::collections::HashMap<&str, &crate::flowchart::FlowEdge> =
-        std::collections::HashMap::with_capacity(render_edges.len());
+    let mut edges_by_id: FxHashMap<&str, &crate::flowchart::FlowEdge> =
+        FxHashMap::with_capacity_and_hasher(render_edges.len(), Default::default());
     for e in &render_edges {
         edges_by_id.insert(e.id.as_str(), e);
     }
 
     let subgraph_order: Vec<&str> = model.subgraphs.iter().map(|s| s.id.as_str()).collect();
-    let mut subgraphs_by_id: std::collections::HashMap<&str, &crate::flowchart::FlowSubgraph> =
-        std::collections::HashMap::with_capacity(model.subgraphs.len());
+    let mut subgraphs_by_id: FxHashMap<&str, &crate::flowchart::FlowSubgraph> =
+        FxHashMap::with_capacity_and_hasher(model.subgraphs.len(), Default::default());
     for sg in &model.subgraphs {
         subgraphs_by_id.insert(sg.id.as_str(), sg);
     }
 
-    let mut parent: std::collections::HashMap<&str, &str> = std::collections::HashMap::new();
+    let mut parent: FxHashMap<&str, &str> = FxHashMap::default();
     for sg in &model.subgraphs {
         let sg_id = sg.id.as_str();
         for child in &sg.nodes {
@@ -9813,7 +9810,7 @@ pub(super) fn render_flowchart_v2_svg(
         }
     }
 
-    let mut recursive_clusters: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut recursive_clusters: FxHashSet<&str> = FxHashSet::default();
     for sg in model.subgraphs.iter() {
         if sg.nodes.is_empty() {
             continue;
@@ -9834,20 +9831,20 @@ pub(super) fn render_flowchart_v2_svg(
         }
     }
 
-    let mut layout_nodes_by_id: std::collections::HashMap<&str, &LayoutNode> =
-        std::collections::HashMap::with_capacity(layout.nodes.len());
+    let mut layout_nodes_by_id: FxHashMap<&str, &LayoutNode> =
+        FxHashMap::with_capacity_and_hasher(layout.nodes.len(), Default::default());
     for n in &layout.nodes {
         layout_nodes_by_id.insert(n.id.as_str(), n);
     }
 
-    let mut layout_edges_by_id: std::collections::HashMap<&str, &crate::model::LayoutEdge> =
-        std::collections::HashMap::with_capacity(layout.edges.len());
+    let mut layout_edges_by_id: FxHashMap<&str, &crate::model::LayoutEdge> =
+        FxHashMap::with_capacity_and_hasher(layout.edges.len(), Default::default());
     for e in &layout.edges {
         layout_edges_by_id.insert(e.id.as_str(), e);
     }
 
-    let mut layout_clusters_by_id: std::collections::HashMap<&str, &LayoutCluster> =
-        std::collections::HashMap::with_capacity(layout.clusters.len());
+    let mut layout_clusters_by_id: FxHashMap<&str, &LayoutCluster> =
+        FxHashMap::with_capacity_and_hasher(layout.clusters.len(), Default::default());
     for c in &layout.clusters {
         layout_clusters_by_id.insert(c.id.as_str(), c);
     }
@@ -10187,12 +10184,9 @@ pub(super) fn render_flowchart_v2_svg(
     // root viewport by expanding the max-y by the largest such extra root offset.
     let extra_recursive_root_y = {
         fn effective_parent<'a>(
-            parent: &'a std::collections::HashMap<&'a str, &'a str>,
-            subgraphs_by_id: &'a std::collections::HashMap<
-                &'a str,
-                &'a crate::flowchart::FlowSubgraph,
-            >,
-            recursive_clusters: &std::collections::HashSet<&'a str>,
+            parent: &'a FxHashMap<&'a str, &'a str>,
+            subgraphs_by_id: &'a FxHashMap<&'a str, &'a crate::flowchart::FlowSubgraph>,
+            recursive_clusters: &FxHashSet<&'a str>,
             id: &str,
         ) -> Option<&'a str> {
             let mut cur = parent.get(id).copied();

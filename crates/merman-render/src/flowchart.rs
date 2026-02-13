@@ -8,6 +8,7 @@ use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use indexmap::IndexMap;
+use rustc_hash::FxHashMap;
 use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -156,7 +157,7 @@ pub(crate) struct FlowchartV2Model {
     #[serde(default)]
     pub subgraphs: Vec<FlowSubgraph>,
     #[serde(default)]
-    pub tooltips: HashMap<String, String>,
+    pub tooltips: FxHashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
