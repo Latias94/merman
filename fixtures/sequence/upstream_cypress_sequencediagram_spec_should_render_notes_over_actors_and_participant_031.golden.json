@@ -1,0 +1,83 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Alice",
+      "Charlie"
+    ],
+    "actors": {
+      "Alice": {
+        "name": "Alice",
+        "description": "Alice",
+        "wrap": false,
+        "type": "actor",
+        "links": {},
+        "properties": {}
+      },
+      "Charlie": {
+        "name": "Charlie",
+        "description": "Charlie",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "Alice",
+        "to": "Alice",
+        "message": "some note",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "1",
+        "from": "Charlie",
+        "to": "Charlie",
+        "message": "other note",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      }
+    ],
+    "notes": [
+      {
+        "actor": [
+          "Alice",
+          "Alice"
+        ],
+        "placement": 2,
+        "message": "some note",
+        "wrap": false
+      },
+      {
+        "actor": [
+          "Charlie",
+          "Charlie"
+        ],
+        "placement": 2,
+        "message": "other note",
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

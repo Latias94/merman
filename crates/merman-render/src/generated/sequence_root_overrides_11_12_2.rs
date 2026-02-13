@@ -12,6 +12,12 @@ pub fn lookup_sequence_root_viewport_override(
     match diagram_id {
         "participant_types" => Some(("-50 -10 1250 260", "1250")),
         "html_br_variants_and_wrap" => Some(("-50 -10 953 651", "953")),
+        "upstream_cypress_sequencediagram_spec_should_render_bidirectional_arrows_003" => {
+            Some(("-50 -10 513 435", "513"))
+        }
+        "upstream_cypress_sequencediagram_spec_should_render_loops_with_a_slight_margin_007" => {
+            Some(("-50 -10 1145 314", "1145"))
+        }
         "upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_with_actor_creation_and_destruc_010" => {
             Some(("-50 -10 1169.5 1504", "1169.5"))
         }
@@ -65,6 +71,33 @@ pub fn lookup_sequence_root_viewport_override(
         }
         "upstream_cypress_sequencediagram_v2_spec_should_render_complex_sequence_with_all_features_010" => {
             Some(("-50 -10 938 633", "938"))
+        }
+        "upstream_cypress_sequencediagram_v2_spec_should_render_long_notes_over_collections_022" => {
+            Some(("-397.5 -10 1070 308", "1070"))
+        }
+        "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_over_queue_023" => {
+            Some(("-50 -10 450 441", "450"))
+        }
+        "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_right_of_database_021" => {
+            Some(("-50 -10 450 441", "450"))
+        }
+        "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019" => {
+            Some(("-166 -10 566 433", "566"))
+        }
+        "upstream_cypress_sequencediagram_v2_spec_should_render_notes_over_actor_and_boundary_024" => {
+            Some(("-50 -10 450 284", "450"))
+        }
+        "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_messages_from_control_to_entity_026" => {
+            Some(("-50 -10 450 338", "450"))
+        }
+        "upstream_cypress_sequencediagram_v2_spec_should_render_long_messages_from_database_to_collections_025" => {
+            Some(("-50 -10 1145 259", "1145"))
+        }
+        "upstream_cypress_sequencediagram_v2_spec_should_render_long_messages_from_queue_to_boundary_027" => {
+            Some(("-50 -10 1145 274", "1145"))
+        }
+        "upstream_cypress_sequencediagram_v2_spec_should_render_long_notes_right_of_entity_020" => {
+            Some(("-50 -10 1145 308", "1145"))
         }
         "upstream_cypress_sequencediagram_v2_spec_should_render_long_notes_left_of_boundary_018" => {
             Some(("-845 -10 1245 323", "1245"))

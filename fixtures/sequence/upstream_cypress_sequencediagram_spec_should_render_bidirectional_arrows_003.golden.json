@@ -1,0 +1,98 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Alice",
+      "John"
+    ],
+    "actors": {
+      "Alice": {
+        "name": "Alice",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "John": {
+        "name": "John",
+        "description": "John",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "Alice",
+        "to": "John",
+        "message": "Hello John, how are you?",
+        "wrap": false,
+        "type": 33,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Alice",
+        "to": "John",
+        "message": "Hi Alice, I can hear you!",
+        "wrap": false,
+        "type": 34,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "John",
+        "to": "Alice",
+        "message": "This also works the other way",
+        "wrap": false,
+        "type": 33,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "John",
+        "to": "Alice",
+        "message": "Yes",
+        "wrap": false,
+        "type": 34,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "Alice",
+        "to": "John",
+        "message": "Test",
+        "wrap": false,
+        "type": 5,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "John",
+        "to": "Alice",
+        "message": "Still works",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}
