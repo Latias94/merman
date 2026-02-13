@@ -1,7 +1,7 @@
 use crate::sanitize::sanitize_text;
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
 use serde_json::{Map, Value, json};
-use uuid::Uuid;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const NODE_TYPE_DEFAULT: i32 = 0;
 const NODE_TYPE_ROUNDED_RECT: i32 = 1;
@@ -10,6 +10,8 @@ const NODE_TYPE_CIRCLE: i32 = 3;
 const NODE_TYPE_CLOUD: i32 = 4;
 const NODE_TYPE_BANG: i32 = 5;
 const NODE_TYPE_HEXAGON: i32 = 6;
+
+static MINDMAP_DIAGRAM_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone)]
 struct MindmapNode {
@@ -535,6 +537,8 @@ pub fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
         );
     }
 
+    let diagram_id = MINDMAP_DIAGRAM_ID_COUNTER.fetch_add(1, Ordering::Relaxed) + 1;
+
     Ok(json!({
         "type": meta.diagram_type,
         "nodes": nodes,
@@ -546,7 +550,10 @@ pub fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
         "nodeSpacing": 50,
         "rankSpacing": 50,
         "shapes": Value::Object(shapes),
-        "diagramId": format!("mindmap-{}", Uuid::new_v4()),
+        // Mermaid uses a random UUID v4 here. For performance and determinism, keep a cheap
+        // monotonic id that is unique within the current process. Snapshot tests normalize this
+        // field to "<dynamic>".
+        "diagramId": format!("mindmap-{diagram_id}"),
     }))
 }
 
