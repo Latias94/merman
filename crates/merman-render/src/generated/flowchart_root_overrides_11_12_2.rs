@@ -149,6 +149,28 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_docs_configuration_frontmatter_config_001" => {
             Some(("0 -50 117.34375 224", "117.344"))
         }
+        "upstream_cypress_flowchart_handdrawn_spec_fdh21_render_cylindrical_shape_021" => Some((
+            "0 0.000003814697265625 769.890625 341.0105285644531",
+            "769.891",
+        )),
+        "upstream_cypress_flowchart_handdrawn_spec_fhd12_should_render_a_flowchart_with_long_names_and_class_defini_012" => {
+            Some(("0 0 1806.8125 452", "1806.81"))
+        }
+        "upstream_cypress_flowchart_handdrawn_spec_fhd6_should_render_a_flowchart_full_of_circles_006" => {
+            Some(("0 -45 2400.640625 645", "2400.64"))
+        }
+        "upstream_cypress_flowchart_handdrawn_spec_fhd7_should_render_a_flowchart_full_of_icons_007" => {
+            Some(("0 0 2004.41015625 1046", "2004.41"))
+        }
+        "upstream_cypress_flowchart_handdrawn_spec_fdh25_handle_link_click_events_link_anchor_mailto_other_protocol_025" => {
+            Some(("0 0 1384.953125 198", "1384.95"))
+        }
+        "upstream_cypress_flowchart_handdrawn_spec_fdh26_set_text_color_of_nodes_and_links_according_to_styles_when_026" => {
+            Some(("0 0 334.8125 366.109375", "334.812"))
+        }
+        "upstream_cypress_flowchart_handdrawn_spec_fdh32_render_subroutine_shape_032" => {
+            Some(("0 0 953.6875 257", "953.688"))
+        }
         _ => None,
     }
 }

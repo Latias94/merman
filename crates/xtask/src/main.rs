@@ -12946,6 +12946,9 @@ const mermaidIifePath = path.join(cliRoot, 'node_modules', 'mermaid', 'dist', 'm
   }, { code, cfg, theme, svgId, width });
 
   function ensureSvgBackgroundColor(svgText, bg) {
+    if (typeof svgText !== 'string') {
+      throw new Error(`expected svg string from mermaid.render, got ${typeof svgText}`);
+    }
     if (!bg) return svgText;
     if (svgText.includes('background-color:')) return svgText;
     const m = svgText.match(/<svg\b[^>]*\bstyle="([^"]*)"/);

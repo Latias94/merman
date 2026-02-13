@@ -1,0 +1,15 @@
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: '#00ff00'
+---
+%%{init: {'theme': 'base', 'themeVariables':{ 'primaryColor': '#ff0000'}}}%%
+graph TD
+          A(Start) --> B[/Another/]
+          A[/Another/] --> C[End]
+          subgraph section
+            B
+            C
+          end
+        
