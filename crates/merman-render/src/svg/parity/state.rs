@@ -74,12 +74,20 @@ struct StateRenderDetails {
     leaf_nodes_style_parse: std::time::Duration,
     leaf_nodes_roughjs: std::time::Duration,
     leaf_roughjs_calls: u32,
-    leaf_roughjs_unique: std::collections::HashSet<u64>,
+    leaf_roughjs_unique: std::collections::HashSet<StateRoughCacheKey>,
     leaf_nodes_measure: std::time::Duration,
     leaf_nodes_label_html: std::time::Duration,
     leaf_nodes_emit: std::time::Duration,
     nested_roots: std::time::Duration,
     self_loop_placeholders: std::time::Duration,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct StateRoughCacheKey {
+    tag: u8,
+    a: u64,
+    b: u64,
+    seed: u64,
 }
 
 #[inline]
@@ -2022,9 +2030,10 @@ struct StateRenderCtx<'a> {
     include_nodes: bool,
     measurer: &'a dyn TextMeasurer,
     text_style: crate::text::TextStyle,
-    rough_circle_cache: std::cell::RefCell<std::collections::HashMap<u64, std::rc::Rc<String>>>,
+    rough_circle_cache:
+        std::cell::RefCell<std::collections::HashMap<StateRoughCacheKey, std::rc::Rc<String>>>,
     rough_paths_cache: std::cell::RefCell<
-        std::collections::HashMap<u64, (std::rc::Rc<String>, std::rc::Rc<String>)>,
+        std::collections::HashMap<StateRoughCacheKey, (std::rc::Rc<String>, std::rc::Rc<String>)>,
     >,
 }
 
@@ -4122,20 +4131,9 @@ fn render_state_node_svg(
     let h = ln.height.max(1.0);
 
     #[inline]
-    fn rough_key(tag: u64, a: u64, b: u64, seed: u64) -> u64 {
-        // Cheap reversible-ish mixing for debug counters (not cryptographic).
-        let mut x = tag ^ seed.rotate_left(17) ^ a.rotate_left(7) ^ b.rotate_left(29);
-        x = x.wrapping_mul(0x9E37_79B9_7F4A_7C15);
-        x ^= x >> 33;
-        x = x.wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
-        x ^= x >> 29;
-        x
-    }
-
-    #[inline]
     fn cached_circle(
         ctx: &StateRenderCtx<'_>,
-        key: u64,
+        key: StateRoughCacheKey,
         build: impl FnOnce() -> String,
     ) -> std::rc::Rc<String> {
         let existing = { ctx.rough_circle_cache.borrow().get(&key).cloned() };
@@ -4152,7 +4150,7 @@ fn render_state_node_svg(
     #[inline]
     fn cached_paths(
         ctx: &StateRenderCtx<'_>,
-        key: u64,
+        key: StateRoughCacheKey,
         build: impl FnOnce() -> (String, String),
     ) -> (std::rc::Rc<String>, std::rc::Rc<String>) {
         let existing = { ctx.rough_paths_cache.borrow().get(&key).cloned() };
@@ -4230,21 +4228,31 @@ fn render_state_node_svg(
             let rough_start = timing_enabled.then(std::time::Instant::now);
             if timing_enabled {
                 details.leaf_roughjs_calls += 2;
-                details.leaf_roughjs_unique.insert(rough_key(
-                    1,
-                    14.0f64.to_bits(),
-                    0,
-                    ctx.hand_drawn_seed,
-                ));
-                details.leaf_roughjs_unique.insert(rough_key(
-                    2,
-                    5.0f64.to_bits(),
-                    0,
-                    ctx.hand_drawn_seed,
-                ));
+                details.leaf_roughjs_unique.insert(StateRoughCacheKey {
+                    tag: 1,
+                    a: 14.0f64.to_bits(),
+                    b: 0,
+                    seed: ctx.hand_drawn_seed,
+                });
+                details.leaf_roughjs_unique.insert(StateRoughCacheKey {
+                    tag: 2,
+                    a: 5.0f64.to_bits(),
+                    b: 0,
+                    seed: ctx.hand_drawn_seed,
+                });
             }
-            let outer_key = rough_key(1, 14.0f64.to_bits(), 0, ctx.hand_drawn_seed);
-            let inner_key = rough_key(2, 5.0f64.to_bits(), 0, ctx.hand_drawn_seed);
+            let outer_key = StateRoughCacheKey {
+                tag: 1,
+                a: 14.0f64.to_bits(),
+                b: 0,
+                seed: ctx.hand_drawn_seed,
+            };
+            let inner_key = StateRoughCacheKey {
+                tag: 2,
+                a: 5.0f64.to_bits(),
+                b: 0,
+                seed: ctx.hand_drawn_seed,
+            };
 
             let outer_d = cached_circle(ctx, outer_key, || {
                 roughjs_circle_path_d(14.0, ctx.hand_drawn_seed)
@@ -4273,7 +4281,12 @@ fn render_state_node_svg(
         }
         "fork" | "join" => {
             let rough_start = timing_enabled.then(std::time::Instant::now);
-            let key = rough_key(3, w.to_bits(), h.to_bits(), ctx.hand_drawn_seed);
+            let key = StateRoughCacheKey {
+                tag: 3,
+                a: w.to_bits(),
+                b: h.to_bits(),
+                seed: ctx.hand_drawn_seed,
+            };
             if timing_enabled {
                 details.leaf_roughjs_calls += 1;
                 details.leaf_roughjs_unique.insert(key);
@@ -4309,7 +4322,12 @@ fn render_state_node_svg(
         }
         "choice" => {
             let rough_start = timing_enabled.then(std::time::Instant::now);
-            let key = rough_key(4, w.to_bits(), h.to_bits(), ctx.hand_drawn_seed);
+            let key = StateRoughCacheKey {
+                tag: 4,
+                a: w.to_bits(),
+                b: h.to_bits(),
+                seed: ctx.hand_drawn_seed,
+            };
             if timing_enabled {
                 details.leaf_roughjs_calls += 1;
                 details.leaf_roughjs_unique.insert(key);
@@ -4357,7 +4375,12 @@ fn render_state_node_svg(
             let lw = metrics.width.max(0.0);
             let lh = metrics.height.max(0.0);
             let rough_start = timing_enabled.then(std::time::Instant::now);
-            let key = rough_key(5, w.to_bits(), h.to_bits(), ctx.hand_drawn_seed);
+            let key = StateRoughCacheKey {
+                tag: 5,
+                a: w.to_bits(),
+                b: h.to_bits(),
+                seed: ctx.hand_drawn_seed,
+            };
             if timing_enabled {
                 details.leaf_roughjs_calls += 1;
                 details.leaf_roughjs_unique.insert(key);
@@ -4636,7 +4659,12 @@ fn render_state_node_svg(
             let stroke_width_attr = stroke_width_override.unwrap_or(1.3).max(0.0);
 
             let rough_start = timing_enabled.then(std::time::Instant::now);
-            let key = rough_key(6, w.to_bits(), h.to_bits(), ctx.hand_drawn_seed);
+            let key = StateRoughCacheKey {
+                tag: 6,
+                a: w.to_bits(),
+                b: h.to_bits(),
+                seed: ctx.hand_drawn_seed,
+            };
             if timing_enabled {
                 details.leaf_roughjs_calls += 1;
                 details.leaf_roughjs_unique.insert(key);
