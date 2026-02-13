@@ -1,15 +1,100 @@
 #![allow(clippy::too_many_arguments)]
 
+use super::path_bounds::{SvgPathBounds, svg_path_bounds_include_cubic};
 use super::*;
 
+#[derive(Debug, Default)]
+struct BoundsBuilder {
+    bounds: Option<SvgPathBounds>,
+    cur: Option<(f64, f64)>,
+}
+
+impl BoundsBuilder {
+    fn include_point(&mut self, x: f64, y: f64) {
+        if let Some(b) = &mut self.bounds {
+            b.min_x = b.min_x.min(x);
+            b.min_y = b.min_y.min(y);
+            b.max_x = b.max_x.max(x);
+            b.max_y = b.max_y.max(y);
+        } else {
+            self.bounds = Some(SvgPathBounds {
+                min_x: x,
+                min_y: y,
+                max_x: x,
+                max_y: y,
+            });
+        }
+    }
+
+    fn on_pair(&mut self, cmd: char, x: f64, y: f64) {
+        match cmd {
+            'M' | 'L' => {
+                self.include_point(x, y);
+                self.cur = Some((x, y));
+            }
+            _ => {}
+        }
+    }
+
+    fn on_cubic(&mut self, x1: f64, y1: f64, x2: f64, y2: f64, x: f64, y: f64) {
+        let Some((x0, y0)) = self.cur else {
+            // Defensive: cubic without a current point is invalid; fall back to including end point.
+            self.include_point(x, y);
+            self.cur = Some((x, y));
+            return;
+        };
+
+        if self.bounds.is_none() {
+            self.bounds = Some(SvgPathBounds {
+                min_x: x0,
+                min_y: y0,
+                max_x: x0,
+                max_y: y0,
+            });
+        }
+        if let Some(b) = &mut self.bounds {
+            svg_path_bounds_include_cubic(b, x0, y0, x1, y1, x2, y2, x, y);
+        }
+        self.cur = Some((x, y));
+    }
+}
+
+#[allow(dead_code)]
 fn emit_cmd_pair(out: &mut String, cmd: char, x: f64, y: f64) {
+    emit_cmd_pair_impl(out, None, cmd, x, y);
+}
+
+fn emit_cmd_pair_impl(
+    out: &mut String,
+    bounds: Option<&mut BoundsBuilder>,
+    cmd: char,
+    x: f64,
+    y: f64,
+) {
     out.push(cmd);
     fmt_path_into(out, x);
     out.push(',');
     fmt_path_into(out, y);
+    if let Some(b) = bounds {
+        b.on_pair(cmd, x, y);
+    }
 }
 
+#[allow(dead_code)]
 fn emit_cmd_cubic(out: &mut String, x1: f64, y1: f64, x2: f64, y2: f64, x: f64, y: f64) {
+    emit_cmd_cubic_impl(out, None, x1, y1, x2, y2, x, y);
+}
+
+fn emit_cmd_cubic_impl(
+    out: &mut String,
+    bounds: Option<&mut BoundsBuilder>,
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    x: f64,
+    y: f64,
+) {
     out.push('C');
     fmt_path_into(out, x1);
     out.push(',');
@@ -22,9 +107,29 @@ fn emit_cmd_cubic(out: &mut String, x1: f64, y1: f64, x2: f64, y2: f64, x: f64, 
     fmt_path_into(out, x);
     out.push(',');
     fmt_path_into(out, y);
+    if let Some(b) = bounds {
+        b.on_cubic(x1, y1, x2, y2, x, y);
+    }
 }
 
 pub(super) fn curve_monotone_path_d(points: &[crate::model::LayoutPoint], swap_xy: bool) -> String {
+    curve_monotone_path_d_impl(points, swap_xy, None)
+}
+
+pub(super) fn curve_monotone_path_d_and_bounds(
+    points: &[crate::model::LayoutPoint],
+    swap_xy: bool,
+) -> (String, Option<SvgPathBounds>) {
+    let mut b = BoundsBuilder::default();
+    let d = curve_monotone_path_d_impl(points, swap_xy, Some(&mut b));
+    (d, b.bounds)
+}
+
+fn curve_monotone_path_d_impl(
+    points: &[crate::model::LayoutPoint],
+    swap_xy: bool,
+    bounds: Option<&mut BoundsBuilder>,
+) -> String {
     fn sign(v: f64) -> f64 {
         if v < 0.0 { -1.0 } else { 1.0 }
     }
@@ -36,18 +141,30 @@ pub(super) fn curve_monotone_path_d(points: &[crate::model::LayoutPoint], swap_x
         if swap_xy { p.x } else { p.y }
     }
 
-    fn emit_move_to(out: &mut String, x: f64, y: f64, swap_xy: bool) {
+    fn emit_move_to(
+        out: &mut String,
+        x: f64,
+        y: f64,
+        swap_xy: bool,
+        bounds: Option<&mut BoundsBuilder>,
+    ) {
         if swap_xy {
-            emit_cmd_pair(out, 'M', y, x);
+            emit_cmd_pair_impl(out, bounds, 'M', y, x);
         } else {
-            emit_cmd_pair(out, 'M', x, y);
+            emit_cmd_pair_impl(out, bounds, 'M', x, y);
         }
     }
-    fn emit_line_to(out: &mut String, x: f64, y: f64, swap_xy: bool) {
+    fn emit_line_to(
+        out: &mut String,
+        x: f64,
+        y: f64,
+        swap_xy: bool,
+        bounds: Option<&mut BoundsBuilder>,
+    ) {
         if swap_xy {
-            emit_cmd_pair(out, 'L', y, x);
+            emit_cmd_pair_impl(out, bounds, 'L', y, x);
         } else {
-            emit_cmd_pair(out, 'L', x, y);
+            emit_cmd_pair_impl(out, bounds, 'L', x, y);
         }
     }
     fn emit_cubic_to(
@@ -59,11 +176,12 @@ pub(super) fn curve_monotone_path_d(points: &[crate::model::LayoutPoint], swap_x
         x: f64,
         y: f64,
         swap_xy: bool,
+        bounds: Option<&mut BoundsBuilder>,
     ) {
         if swap_xy {
-            emit_cmd_cubic(out, y1, x1, y2, x2, y, x);
+            emit_cmd_cubic_impl(out, bounds, y1, x1, y2, x2, y, x);
         } else {
-            emit_cmd_cubic(out, x1, y1, x2, y2, x, y);
+            emit_cmd_cubic_impl(out, bounds, x1, y1, x2, y2, x, y);
         }
     }
 
@@ -109,6 +227,7 @@ pub(super) fn curve_monotone_path_d(points: &[crate::model::LayoutPoint], swap_x
         t0: f64,
         t1: f64,
         swap_xy: bool,
+        bounds: Option<&mut BoundsBuilder>,
     ) {
         // dx is in the monotone coordinate system; we swap at emit-time if needed.
         let dx = (x1 - x0) / 3.0;
@@ -121,9 +240,11 @@ pub(super) fn curve_monotone_path_d(points: &[crate::model::LayoutPoint], swap_x
             x1,
             y1,
             swap_xy,
+            bounds,
         );
     }
 
+    let mut bounds = bounds;
     let mut out = String::with_capacity(points.len().saturating_mul(64));
     if points.is_empty() {
         return out;
@@ -148,7 +269,7 @@ pub(super) fn curve_monotone_path_d(points: &[crate::model::LayoutPoint], swap_x
         match point_state {
             0 => {
                 point_state = 1;
-                emit_move_to(&mut out, x, y, swap_xy);
+                emit_move_to(&mut out, x, y, swap_xy, bounds.as_deref_mut());
             }
             1 => {
                 point_state = 2;
@@ -157,11 +278,31 @@ pub(super) fn curve_monotone_path_d(points: &[crate::model::LayoutPoint], swap_x
                 point_state = 3;
                 t1 = slope3(x0, y0, x1, y1, x, y);
                 let t0_local = slope2(x0, y0, x1, y1, t1);
-                hermite_segment(&mut out, x0, y0, x1, y1, t0_local, t1, swap_xy);
+                hermite_segment(
+                    &mut out,
+                    x0,
+                    y0,
+                    x1,
+                    y1,
+                    t0_local,
+                    t1,
+                    swap_xy,
+                    bounds.as_deref_mut(),
+                );
             }
             _ => {
                 t1 = slope3(x0, y0, x1, y1, x, y);
-                hermite_segment(&mut out, x0, y0, x1, y1, t0, t1, swap_xy);
+                hermite_segment(
+                    &mut out,
+                    x0,
+                    y0,
+                    x1,
+                    y1,
+                    t0,
+                    t1,
+                    swap_xy,
+                    bounds.as_deref_mut(),
+                );
             }
         }
 
@@ -173,10 +314,20 @@ pub(super) fn curve_monotone_path_d(points: &[crate::model::LayoutPoint], swap_x
     }
 
     match point_state {
-        2 => emit_line_to(&mut out, x1, y1, swap_xy),
+        2 => emit_line_to(&mut out, x1, y1, swap_xy, bounds.as_deref_mut()),
         3 => {
             let t1 = slope2(x0, y0, x1, y1, t0);
-            hermite_segment(&mut out, x0, y0, x1, y1, t0, t1, swap_xy);
+            hermite_segment(
+                &mut out,
+                x0,
+                y0,
+                x1,
+                y1,
+                t0,
+                t1,
+                swap_xy,
+                bounds.as_deref_mut(),
+            );
         }
         _ => {}
     }
@@ -196,6 +347,22 @@ fn curve_monotone_y_path_d(points: &[crate::model::LayoutPoint]) -> String {
 
 // Ported from D3 `curveBasis` (d3-shape v3.x), used by Mermaid ER renderer `@11.12.2`.
 pub(super) fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {
+    curve_basis_path_d_impl(points, None)
+}
+
+pub(super) fn curve_basis_path_d_and_bounds(
+    points: &[crate::model::LayoutPoint],
+) -> (String, Option<SvgPathBounds>) {
+    let mut b = BoundsBuilder::default();
+    let d = curve_basis_path_d_impl(points, Some(&mut b));
+    (d, b.bounds)
+}
+
+fn curve_basis_path_d_impl(
+    points: &[crate::model::LayoutPoint],
+    bounds: Option<&mut BoundsBuilder>,
+) -> String {
+    let mut bounds = bounds;
     let mut out = String::with_capacity(points.len().saturating_mul(64));
     if points.is_empty() {
         return out;
@@ -207,14 +374,23 @@ pub(super) fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String
     let mut x1 = f64::NAN;
     let mut y1 = f64::NAN;
 
-    fn basis_point(out: &mut String, x0: f64, y0: f64, x1: f64, y1: f64, x: f64, y: f64) {
+    fn basis_point(
+        out: &mut String,
+        x0: f64,
+        y0: f64,
+        x1: f64,
+        y1: f64,
+        x: f64,
+        y: f64,
+        bounds: Option<&mut BoundsBuilder>,
+    ) {
         let c1x = (2.0 * x0 + x1) / 3.0;
         let c1y = (2.0 * y0 + y1) / 3.0;
         let c2x = (x0 + 2.0 * x1) / 3.0;
         let c2y = (y0 + 2.0 * y1) / 3.0;
         let ex = (x0 + 4.0 * x1 + x) / 6.0;
         let ey = (y0 + 4.0 * y1 + y) / 6.0;
-        emit_cmd_cubic(out, c1x, c1y, c2x, c2y, ex, ey);
+        emit_cmd_cubic_impl(out, bounds, c1x, c1y, c2x, c2y, ex, ey);
     }
 
     for pt in points {
@@ -223,7 +399,7 @@ pub(super) fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String
         match p {
             0 => {
                 p = 1;
-                emit_cmd_pair(&mut out, 'M', x, y);
+                emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'M', x, y);
             }
             1 => {
                 p = 2;
@@ -232,11 +408,11 @@ pub(super) fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String
                 p = 3;
                 let lx = (5.0 * x0 + x1) / 6.0;
                 let ly = (5.0 * y0 + y1) / 6.0;
-                emit_cmd_pair(&mut out, 'L', lx, ly);
-                basis_point(&mut out, x0, y0, x1, y1, x, y);
+                emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'L', lx, ly);
+                basis_point(&mut out, x0, y0, x1, y1, x, y, bounds.as_deref_mut());
             }
             _ => {
-                basis_point(&mut out, x0, y0, x1, y1, x, y);
+                basis_point(&mut out, x0, y0, x1, y1, x, y, bounds.as_deref_mut());
             }
         }
         x0 = x1;
@@ -247,11 +423,11 @@ pub(super) fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String
 
     match p {
         3 => {
-            basis_point(&mut out, x0, y0, x1, y1, x1, y1);
-            emit_cmd_pair(&mut out, 'L', x1, y1);
+            basis_point(&mut out, x0, y0, x1, y1, x1, y1, bounds.as_deref_mut());
+            emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'L', x1, y1);
         }
         2 => {
-            emit_cmd_pair(&mut out, 'L', x1, y1);
+            emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'L', x1, y1);
         }
         _ => {}
     }
@@ -260,13 +436,29 @@ pub(super) fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String
 }
 
 pub(super) fn curve_linear_path_d(points: &[crate::model::LayoutPoint]) -> String {
+    curve_linear_path_d_impl(points, None)
+}
+
+pub(super) fn curve_linear_path_d_and_bounds(
+    points: &[crate::model::LayoutPoint],
+) -> (String, Option<SvgPathBounds>) {
+    let mut b = BoundsBuilder::default();
+    let d = curve_linear_path_d_impl(points, Some(&mut b));
+    (d, b.bounds)
+}
+
+fn curve_linear_path_d_impl(
+    points: &[crate::model::LayoutPoint],
+    bounds: Option<&mut BoundsBuilder>,
+) -> String {
+    let mut bounds = bounds;
     let mut out = String::with_capacity(points.len().saturating_mul(32));
     let Some(first) = points.first() else {
         return out;
     };
-    emit_cmd_pair(&mut out, 'M', first.x, first.y);
+    emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'M', first.x, first.y);
     for p in points.iter().skip(1) {
-        emit_cmd_pair(&mut out, 'L', p.x, p.y);
+        emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'L', p.x, p.y);
     }
     out
 }
@@ -275,6 +467,21 @@ pub(super) fn curve_linear_path_d(points: &[crate::model::LayoutPoint]) -> Strin
 //
 // This is used by Mermaid flowchart edge-id curve overrides (e.g. `e1@{ curve: natural }`).
 pub(super) fn curve_natural_path_d(points: &[crate::model::LayoutPoint]) -> String {
+    curve_natural_path_d_impl(points, None)
+}
+
+pub(super) fn curve_natural_path_d_and_bounds(
+    points: &[crate::model::LayoutPoint],
+) -> (String, Option<SvgPathBounds>) {
+    let mut b = BoundsBuilder::default();
+    let d = curve_natural_path_d_impl(points, Some(&mut b));
+    (d, b.bounds)
+}
+
+fn curve_natural_path_d_impl(
+    points: &[crate::model::LayoutPoint],
+    bounds: Option<&mut BoundsBuilder>,
+) -> String {
     fn compute_control_points(coords: &[f64]) -> (Vec<f64>, Vec<f64>) {
         // `coords` contains the knot coordinates for points[0..=n], where n = segment count.
         let n = coords.len().saturating_sub(1);
@@ -331,17 +538,18 @@ pub(super) fn curve_natural_path_d(points: &[crate::model::LayoutPoint]) -> Stri
         (c1, c2)
     }
 
+    let mut bounds = bounds;
     let mut out = String::with_capacity(points.len().saturating_mul(64));
     let Some(first) = points.first() else {
         return out;
     };
-    emit_cmd_pair(&mut out, 'M', first.x, first.y);
+    emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'M', first.x, first.y);
     if points.len() == 1 {
         return out;
     }
     if points.len() == 2 {
         let p1 = &points[1];
-        emit_cmd_pair(&mut out, 'L', p1.x, p1.y);
+        emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'L', p1.x, p1.y);
         return out;
     }
 
@@ -357,7 +565,16 @@ pub(super) fn curve_natural_path_d(points: &[crate::model::LayoutPoint]) -> Stri
 
     for i in 0..points.len().saturating_sub(1) {
         let p = &points[i + 1];
-        emit_cmd_cubic(&mut out, x1[i], y1[i], x2[i], y2[i], p.x, p.y);
+        emit_cmd_cubic_impl(
+            &mut out,
+            bounds.as_deref_mut(),
+            x1[i],
+            y1[i],
+            x2[i],
+            y2[i],
+            p.x,
+            p.y,
+        );
     }
 
     out
@@ -365,15 +582,31 @@ pub(super) fn curve_natural_path_d(points: &[crate::model::LayoutPoint]) -> Stri
 
 // Ported from D3 `curveStepAfter` (d3-shape v3.x).
 pub(super) fn curve_step_after_path_d(points: &[crate::model::LayoutPoint]) -> String {
+    curve_step_after_path_d_impl(points, None)
+}
+
+pub(super) fn curve_step_after_path_d_and_bounds(
+    points: &[crate::model::LayoutPoint],
+) -> (String, Option<SvgPathBounds>) {
+    let mut b = BoundsBuilder::default();
+    let d = curve_step_after_path_d_impl(points, Some(&mut b));
+    (d, b.bounds)
+}
+
+fn curve_step_after_path_d_impl(
+    points: &[crate::model::LayoutPoint],
+    bounds: Option<&mut BoundsBuilder>,
+) -> String {
+    let mut bounds = bounds;
     let mut out = String::with_capacity(points.len().saturating_mul(32));
     let Some(first) = points.first() else {
         return out;
     };
     let mut prev_y = first.y;
-    emit_cmd_pair(&mut out, 'M', first.x, first.y);
+    emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'M', first.x, first.y);
     for p in points.iter().skip(1) {
-        emit_cmd_pair(&mut out, 'L', p.x, prev_y);
-        emit_cmd_pair(&mut out, 'L', p.x, p.y);
+        emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'L', p.x, prev_y);
+        emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'L', p.x, p.y);
         prev_y = p.y;
     }
     out
@@ -381,15 +614,31 @@ pub(super) fn curve_step_after_path_d(points: &[crate::model::LayoutPoint]) -> S
 
 // Ported from D3 `curveStepBefore` (d3-shape v3.x).
 pub(super) fn curve_step_before_path_d(points: &[crate::model::LayoutPoint]) -> String {
+    curve_step_before_path_d_impl(points, None)
+}
+
+pub(super) fn curve_step_before_path_d_and_bounds(
+    points: &[crate::model::LayoutPoint],
+) -> (String, Option<SvgPathBounds>) {
+    let mut b = BoundsBuilder::default();
+    let d = curve_step_before_path_d_impl(points, Some(&mut b));
+    (d, b.bounds)
+}
+
+fn curve_step_before_path_d_impl(
+    points: &[crate::model::LayoutPoint],
+    bounds: Option<&mut BoundsBuilder>,
+) -> String {
+    let mut bounds = bounds;
     let mut out = String::with_capacity(points.len().saturating_mul(32));
     let Some(first) = points.first() else {
         return out;
     };
     let mut prev_x = first.x;
-    emit_cmd_pair(&mut out, 'M', first.x, first.y);
+    emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'M', first.x, first.y);
     for p in points.iter().skip(1) {
-        emit_cmd_pair(&mut out, 'L', prev_x, p.y);
-        emit_cmd_pair(&mut out, 'L', p.x, p.y);
+        emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'L', prev_x, p.y);
+        emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'L', p.x, p.y);
         prev_x = p.x;
     }
     out
@@ -397,17 +646,33 @@ pub(super) fn curve_step_before_path_d(points: &[crate::model::LayoutPoint]) -> 
 
 // Ported from D3 `curveStep` (d3-shape v3.x).
 pub(super) fn curve_step_path_d(points: &[crate::model::LayoutPoint]) -> String {
+    curve_step_path_d_impl(points, None)
+}
+
+pub(super) fn curve_step_path_d_and_bounds(
+    points: &[crate::model::LayoutPoint],
+) -> (String, Option<SvgPathBounds>) {
+    let mut b = BoundsBuilder::default();
+    let d = curve_step_path_d_impl(points, Some(&mut b));
+    (d, b.bounds)
+}
+
+fn curve_step_path_d_impl(
+    points: &[crate::model::LayoutPoint],
+    bounds: Option<&mut BoundsBuilder>,
+) -> String {
+    let mut bounds = bounds;
     let mut out = String::with_capacity(points.len().saturating_mul(32));
     let Some(first) = points.first() else {
         return out;
     };
-    emit_cmd_pair(&mut out, 'M', first.x, first.y);
+    emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'M', first.x, first.y);
     let mut prev = first;
     for p in points.iter().skip(1) {
         let mid_x = (prev.x + p.x) / 2.0;
-        emit_cmd_pair(&mut out, 'L', mid_x, prev.y);
-        emit_cmd_pair(&mut out, 'L', mid_x, p.y);
-        emit_cmd_pair(&mut out, 'L', p.x, p.y);
+        emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'L', mid_x, prev.y);
+        emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'L', mid_x, p.y);
+        emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'L', p.x, p.y);
         prev = p;
     }
     out
@@ -415,6 +680,24 @@ pub(super) fn curve_step_path_d(points: &[crate::model::LayoutPoint]) -> String 
 
 // Ported from D3 `curveCardinal` (d3-shape v3.x).
 pub(super) fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tension: f64) -> String {
+    curve_cardinal_path_d_impl(points, tension, None)
+}
+
+pub(super) fn curve_cardinal_path_d_and_bounds(
+    points: &[crate::model::LayoutPoint],
+    tension: f64,
+) -> (String, Option<SvgPathBounds>) {
+    let mut b = BoundsBuilder::default();
+    let d = curve_cardinal_path_d_impl(points, tension, Some(&mut b));
+    (d, b.bounds)
+}
+
+fn curve_cardinal_path_d_impl(
+    points: &[crate::model::LayoutPoint],
+    tension: f64,
+    bounds: Option<&mut BoundsBuilder>,
+) -> String {
+    let mut bounds = bounds;
     let mut out = String::with_capacity(points.len().saturating_mul(64));
     if points.is_empty() {
         return out;
@@ -441,12 +724,13 @@ pub(super) fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tensio
         y2: f64,
         x: f64,
         y: f64,
+        bounds: Option<&mut BoundsBuilder>,
     ) {
         let c1x = x1 + k * (x2 - x0);
         let c1y = y1 + k * (y2 - y0);
         let c2x = x2 + k * (x1 - x);
         let c2y = y2 + k * (y1 - y);
-        emit_cmd_cubic(out, c1x, c1y, c2x, c2y, x2, y2);
+        emit_cmd_cubic_impl(out, bounds, c1x, c1y, c2x, c2y, x2, y2);
     }
 
     for pt in points {
@@ -455,7 +739,7 @@ pub(super) fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tensio
         match p {
             0 => {
                 p = 1;
-                emit_cmd_pair(&mut out, 'M', x, y);
+                emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'M', x, y);
             }
             1 => {
                 p = 2;
@@ -464,10 +748,34 @@ pub(super) fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tensio
             }
             2 => {
                 p = 3;
-                cardinal_point(&mut out, k, x0, y0, x1, y1, x2, y2, x, y);
+                cardinal_point(
+                    &mut out,
+                    k,
+                    x0,
+                    y0,
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    x,
+                    y,
+                    bounds.as_deref_mut(),
+                );
             }
             _ => {
-                cardinal_point(&mut out, k, x0, y0, x1, y1, x2, y2, x, y);
+                cardinal_point(
+                    &mut out,
+                    k,
+                    x0,
+                    y0,
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                    x,
+                    y,
+                    bounds.as_deref_mut(),
+                );
             }
         }
 
@@ -481,10 +789,22 @@ pub(super) fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tensio
 
     match p {
         2 => {
-            emit_cmd_pair(&mut out, 'L', x2, y2);
+            emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'L', x2, y2);
         }
         3 => {
-            cardinal_point(&mut out, k, x0, y0, x1, y1, x2, y2, x1, y1);
+            cardinal_point(
+                &mut out,
+                k,
+                x0,
+                y0,
+                x1,
+                y1,
+                x2,
+                y2,
+                x1,
+                y1,
+                bounds.as_deref_mut(),
+            );
         }
         _ => {}
     }
@@ -496,6 +816,22 @@ pub(super) fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tensio
 //
 // This is used by Mermaid flowchart edge-id curve overrides (e.g. `e1@{ curve: bumpY }`).
 pub(super) fn curve_bump_y_path_d(points: &[crate::model::LayoutPoint]) -> String {
+    curve_bump_y_path_d_impl(points, None)
+}
+
+pub(super) fn curve_bump_y_path_d_and_bounds(
+    points: &[crate::model::LayoutPoint],
+) -> (String, Option<SvgPathBounds>) {
+    let mut b = BoundsBuilder::default();
+    let d = curve_bump_y_path_d_impl(points, Some(&mut b));
+    (d, b.bounds)
+}
+
+fn curve_bump_y_path_d_impl(
+    points: &[crate::model::LayoutPoint],
+    bounds: Option<&mut BoundsBuilder>,
+) -> String {
+    let mut bounds = bounds;
     let mut out = String::new();
     let Some(first) = points.first() else {
         return out;
@@ -503,22 +839,13 @@ pub(super) fn curve_bump_y_path_d(points: &[crate::model::LayoutPoint]) -> Strin
 
     let mut x0 = first.x;
     let mut y0 = first.y;
-    let _ = write!(&mut out, "M{},{}", fmt_path(x0), fmt_path(y0));
+    emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'M', x0, y0);
 
     for p in points.iter().skip(1) {
         let x = p.x;
         let y = p.y;
         let y_mid = (y0 + y) / 2.0;
-        let _ = write!(
-            &mut out,
-            "C{},{},{},{},{},{}",
-            fmt_path(x0),
-            fmt_path(y_mid),
-            fmt_path(x),
-            fmt_path(y_mid),
-            fmt_path(x),
-            fmt_path(y)
-        );
+        emit_cmd_cubic_impl(&mut out, bounds.as_deref_mut(), x0, y_mid, x, y_mid, x, y);
         x0 = x;
         y0 = y;
     }
@@ -533,7 +860,23 @@ pub(super) fn curve_catmull_rom_path_d(points: &[crate::model::LayoutPoint]) -> 
     curve_catmull_rom_path_d_with_alpha(points, 0.5)
 }
 
+pub(super) fn curve_catmull_rom_path_d_and_bounds(
+    points: &[crate::model::LayoutPoint],
+) -> (String, Option<SvgPathBounds>) {
+    let mut b = BoundsBuilder::default();
+    let d = curve_catmull_rom_path_d_with_alpha_impl(points, 0.5, Some(&mut b));
+    (d, b.bounds)
+}
+
 fn curve_catmull_rom_path_d_with_alpha(points: &[crate::model::LayoutPoint], alpha: f64) -> String {
+    curve_catmull_rom_path_d_with_alpha_impl(points, alpha, None)
+}
+
+fn curve_catmull_rom_path_d_with_alpha_impl(
+    points: &[crate::model::LayoutPoint],
+    alpha: f64,
+    bounds: Option<&mut BoundsBuilder>,
+) -> String {
     const EPSILON: f64 = 1e-12;
 
     #[derive(Debug, Clone, Copy)]
@@ -574,7 +917,13 @@ fn curve_catmull_rom_path_d_with_alpha(points: &[crate::model::LayoutPoint], alp
             }
         }
 
-        fn emit_segment(&self, out: &mut String, x: f64, y: f64) {
+        fn emit_segment(
+            &self,
+            out: &mut String,
+            x: f64,
+            y: f64,
+            bounds: Option<&mut BoundsBuilder>,
+        ) {
             let mut x1 = self.x1;
             let mut y1 = self.y1;
             let mut x2 = self.x2;
@@ -599,19 +948,10 @@ fn curve_catmull_rom_path_d_with_alpha(points: &[crate::model::LayoutPoint], alp
                 }
             }
 
-            let _ = write!(
-                out,
-                "C{},{},{},{},{},{}",
-                fmt_path(x1),
-                fmt_path(y1),
-                fmt_path(x2),
-                fmt_path(y2),
-                fmt_path(self.x2),
-                fmt_path(self.y2)
-            );
+            emit_cmd_cubic_impl(out, bounds, x1, y1, x2, y2, self.x2, self.y2);
         }
 
-        fn point(&mut self, out: &mut String, x: f64, y: f64) {
+        fn point(&mut self, out: &mut String, x: f64, y: f64, bounds: Option<&mut BoundsBuilder>) {
             if self.point_state != 0 {
                 let dx = self.x2 - x;
                 let dy = self.y2 - y;
@@ -622,17 +962,17 @@ fn curve_catmull_rom_path_d_with_alpha(points: &[crate::model::LayoutPoint], alp
             match self.point_state {
                 0 => {
                     self.point_state = 1;
-                    let _ = write!(out, "M{},{}", fmt_path(x), fmt_path(y));
+                    emit_cmd_pair_impl(out, bounds, 'M', x, y);
                 }
                 1 => {
                     self.point_state = 2;
                 }
                 2 => {
                     self.point_state = 3;
-                    self.emit_segment(out, x, y);
+                    self.emit_segment(out, x, y, bounds);
                 }
                 _ => {
-                    self.emit_segment(out, x, y);
+                    self.emit_segment(out, x, y, bounds);
                 }
             }
 
@@ -649,22 +989,23 @@ fn curve_catmull_rom_path_d_with_alpha(points: &[crate::model::LayoutPoint], alp
             self.y2 = y;
         }
 
-        fn line_end(&mut self, out: &mut String) {
+        fn line_end(&mut self, out: &mut String, bounds: Option<&mut BoundsBuilder>) {
             match self.point_state {
                 2 => {
-                    let _ = write!(out, "L{},{}", fmt_path(self.x2), fmt_path(self.y2));
+                    emit_cmd_pair_impl(out, bounds, 'L', self.x2, self.y2);
                 }
                 3 => {
                     // Mirror D3's `lineEnd` behavior: `this.point(this._x2, this._y2)`.
                     self.l23_a = 0.0;
                     self.l23_2a = 0.0;
-                    self.emit_segment(out, self.x2, self.y2);
+                    self.emit_segment(out, self.x2, self.y2, bounds);
                 }
                 _ => {}
             }
         }
     }
 
+    let mut bounds = bounds;
     let mut out = String::new();
     if points.is_empty() {
         return out;
@@ -672,9 +1013,9 @@ fn curve_catmull_rom_path_d_with_alpha(points: &[crate::model::LayoutPoint], alp
 
     let mut state = CatmullRomState::new(alpha);
     for p in points {
-        state.point(&mut out, p.x, p.y);
+        state.point(&mut out, p.x, p.y, bounds.as_deref_mut());
     }
-    state.line_end(&mut out);
+    state.line_end(&mut out, bounds.as_deref_mut());
 
     out
 }

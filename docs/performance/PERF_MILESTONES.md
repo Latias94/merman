@@ -27,6 +27,10 @@ Root-cause direction:
 
 - `flowchart_medium` is now a multi-stage problem: layout (`dugong::order`) is still expensive, and
   render spends a meaningful slice in DOM building + edge path work + viewport computation.
+- Flowchart viewport work had some pure overhead: we were generating an edge path `d` string and
+  then re-parsing it to approximate `getBBox()`. We now compute cubic bounds during curve emission
+  for the viewBox approximation, avoiding `svg_path_bounds_from_d(...)` in the flowchart viewbox
+  prepass (still builds the `d`, but no longer parses it).
 - `state_medium` render is dominated by leaf node work, especially RoughJS path generation and emit.
 - `mindmap_medium` overall gap is now mostly layout (COSE port / bbox work) rather than parse.
 
@@ -149,6 +153,8 @@ Work items (expected ROI order):
 - Cache per-diagram derived values that are reused many times (e.g. sanitized labels / class names),
   but keep caches scoped to the render call to avoid cross-diagram leaks.
 - Keep fast-paths for common label cases (plain text, no HTML entities, no icon syntax).
+- Viewport bounds: avoid “build SVG path `d` → parse `d`” patterns by computing bounds during path
+  generation; extend this beyond flowcharts (e.g. class diagram `path_bounds` hot section).
 
 Acceptance criteria:
 

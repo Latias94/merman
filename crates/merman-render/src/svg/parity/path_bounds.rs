@@ -21,6 +21,84 @@ impl SvgPathBounds {
     }
 }
 
+fn cubic_eval(p0: f64, p1: f64, p2: f64, p3: f64, t: f64) -> f64 {
+    let a = -p0 + 3.0 * p1 - 3.0 * p2 + p3;
+    let b = 3.0 * p0 - 6.0 * p1 + 3.0 * p2;
+    let c = -3.0 * p0 + 3.0 * p1;
+    ((a * t + b) * t + c) * t + p0
+}
+
+pub(super) fn svg_path_bounds_include_cubic(
+    b: &mut SvgPathBounds,
+    x0: f64,
+    y0: f64,
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    x3: f64,
+    y3: f64,
+) {
+    b.include_point(x0, y0);
+    b.include_point(x3, y3);
+
+    fn include_extrema(
+        b: &mut SvgPathBounds,
+        p0: f64,
+        p1: f64,
+        p2: f64,
+        p3: f64,
+        is_x: bool,
+        fixed0: f64,
+        fixed1: f64,
+        fixed2: f64,
+        fixed3: f64,
+    ) {
+        let a = -p0 + 3.0 * p1 - 3.0 * p2 + p3;
+        let bb = 3.0 * p0 - 6.0 * p1 + 3.0 * p2;
+        let c = -3.0 * p0 + 3.0 * p1;
+        let qa = 3.0 * a;
+        let qb = 2.0 * bb;
+        let qc = c;
+
+        const EPS: f64 = 1e-12;
+        let mut roots: [f64; 2] = [f64::NAN, f64::NAN];
+        let mut root_count = 0usize;
+        if qa.abs() <= EPS {
+            if qb.abs() > EPS {
+                let t = -qc / qb;
+                roots[0] = t;
+                root_count = 1;
+            }
+        } else {
+            let disc = qb * qb - 4.0 * qa * qc;
+            let tol = 1e-12 * (qb * qb + (4.0 * qa * qc).abs() + 1.0);
+            if disc >= -tol {
+                let s = disc.max(0.0).sqrt();
+                roots[0] = (-qb + s) / (2.0 * qa);
+                roots[1] = (-qb - s) / (2.0 * qa);
+                root_count = 2;
+            }
+        }
+
+        for &t in roots.iter().take(root_count) {
+            if t <= 0.0 || t >= 1.0 {
+                continue;
+            }
+            let v = cubic_eval(p0, p1, p2, p3, t);
+            let other = cubic_eval(fixed0, fixed1, fixed2, fixed3, t);
+            if is_x {
+                b.include_point(v, other);
+            } else {
+                b.include_point(other, v);
+            }
+        }
+    }
+
+    include_extrema(b, x0, x1, x2, x3, true, y0, y1, y2, y3);
+    include_extrema(b, y0, y1, y2, y3, false, x0, x1, x2, x3);
+}
+
 pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
     use std::f64::consts::PI;
 
@@ -87,84 +165,6 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
         v
     }
 
-    fn cubic_eval(p0: f64, p1: f64, p2: f64, p3: f64, t: f64) -> f64 {
-        let a = -p0 + 3.0 * p1 - 3.0 * p2 + p3;
-        let b = 3.0 * p0 - 6.0 * p1 + 3.0 * p2;
-        let c = -3.0 * p0 + 3.0 * p1;
-        ((a * t + b) * t + c) * t + p0
-    }
-
-    fn cubic_include_bounds(
-        b: &mut SvgPathBounds,
-        x0: f64,
-        y0: f64,
-        x1: f64,
-        y1: f64,
-        x2: f64,
-        y2: f64,
-        x3: f64,
-        y3: f64,
-    ) {
-        b.include_point(x0, y0);
-        b.include_point(x3, y3);
-
-        fn include_extrema(
-            b: &mut SvgPathBounds,
-            p0: f64,
-            p1: f64,
-            p2: f64,
-            p3: f64,
-            is_x: bool,
-            fixed0: f64,
-            fixed1: f64,
-            fixed2: f64,
-            fixed3: f64,
-        ) {
-            let a = -p0 + 3.0 * p1 - 3.0 * p2 + p3;
-            let bb = 3.0 * p0 - 6.0 * p1 + 3.0 * p2;
-            let c = -3.0 * p0 + 3.0 * p1;
-            let qa = 3.0 * a;
-            let qb = 2.0 * bb;
-            let qc = c;
-
-            const EPS: f64 = 1e-12;
-            let mut roots: [f64; 2] = [f64::NAN, f64::NAN];
-            let mut root_count = 0usize;
-            if qa.abs() <= EPS {
-                if qb.abs() > EPS {
-                    let t = -qc / qb;
-                    roots[0] = t;
-                    root_count = 1;
-                }
-            } else {
-                let disc = qb * qb - 4.0 * qa * qc;
-                let tol = 1e-12 * (qb * qb + (4.0 * qa * qc).abs() + 1.0);
-                if disc >= -tol {
-                    let s = disc.max(0.0).sqrt();
-                    roots[0] = (-qb + s) / (2.0 * qa);
-                    roots[1] = (-qb - s) / (2.0 * qa);
-                    root_count = 2;
-                }
-            }
-
-            for &t in roots.iter().take(root_count) {
-                if t <= 0.0 || t >= 1.0 {
-                    continue;
-                }
-                let v = cubic_eval(p0, p1, p2, p3, t);
-                let other = cubic_eval(fixed0, fixed1, fixed2, fixed3, t);
-                if is_x {
-                    b.include_point(v, other);
-                } else {
-                    b.include_point(other, v);
-                }
-            }
-        }
-
-        include_extrema(b, x0, x1, x2, x3, true, y0, y1, y2, y3);
-        include_extrema(b, y0, y1, y2, y3, false, x0, x1, x2, x3);
-    }
-
     fn quadratic_include_bounds(
         b: &mut SvgPathBounds,
         x0: f64,
@@ -180,7 +180,7 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
         let cy1 = y0 + (2.0 / 3.0) * (y1 - y0);
         let cx2 = x2 + (2.0 / 3.0) * (x1 - x2);
         let cy2 = y2 + (2.0 / 3.0) * (y1 - y2);
-        cubic_include_bounds(b, x0, y0, cx1, cy1, cx2, cy2, x2, y2);
+        svg_path_bounds_include_cubic(b, x0, y0, cx1, cy1, cx2, cy2, x2, y2);
     }
 
     fn normalize_angle(mut a: f64) -> f64 {
@@ -498,7 +498,7 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
                     y3 += cy;
                 }
                 let cur = ensure_bounds(&mut b, cx, cy);
-                cubic_include_bounds(cur, cx, cy, x1, y1, x2, y2, x3, y3);
+                svg_path_bounds_include_cubic(cur, cx, cy, x1, y1, x2, y2, x3, y3);
                 cx = x3;
                 cy = y3;
                 last_cubic_ctrl = Some((x2, y2));
@@ -539,7 +539,7 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
                         ny3 += cy;
                     }
                     let cur = ensure_bounds(&mut b, cx, cy);
-                    cubic_include_bounds(cur, cx, cy, nx1, ny1, nx2, ny2, nx3, ny3);
+                    svg_path_bounds_include_cubic(cur, cx, cy, nx1, ny1, nx2, ny2, nx3, ny3);
                     cx = nx3;
                     cy = ny3;
                     last_cubic_ctrl = Some((nx2, ny2));
@@ -569,7 +569,7 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
                     y3 += cy;
                 }
                 let cur = ensure_bounds(&mut b, cx, cy);
-                cubic_include_bounds(cur, cx, cy, x1, y1, x2, y2, x3, y3);
+                svg_path_bounds_include_cubic(cur, cx, cy, x1, y1, x2, y2, x3, y3);
                 cx = x3;
                 cy = y3;
                 last_cubic_ctrl = Some((x2, y2));

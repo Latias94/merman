@@ -1573,7 +1573,7 @@ pub(super) fn flowchart_edge_path_d_for_bbox(
     default_edge_interpolate: &str,
     edge_html_labels: bool,
     edge: &crate::flowchart::FlowEdge,
-) -> Option<String> {
+) -> Option<(String, super::path_bounds::SvgPathBounds)> {
     let le = layout_edges_by_id.get(edge.id.as_str()).copied()?;
     if le.points.len() < 2 {
         return None;
@@ -2258,20 +2258,21 @@ pub(super) fn flowchart_edge_path_d_for_bbox(
     };
     let line_data = line_with_offset_points(&line_data, arrow_type_start, arrow_type_end);
 
-    let d = match interpolate {
-        "linear" => curve_linear_path_d(&line_data),
-        "natural" => curve_natural_path_d(&line_data),
-        "bumpY" => curve_bump_y_path_d(&line_data),
-        "catmullRom" => curve_catmull_rom_path_d(&line_data),
-        "step" => curve_step_path_d(&line_data),
-        "stepAfter" => curve_step_after_path_d(&line_data),
-        "stepBefore" => curve_step_before_path_d(&line_data),
-        "cardinal" => curve_cardinal_path_d(&line_data, 0.0),
-        "monotoneX" => curve_monotone_x_path_d(&line_data),
-        "monotoneY" => curve_monotone_y_path_d(&line_data),
-        _ => curve_basis_path_d(&line_data),
+    let (d, pb) = match interpolate {
+        "linear" => super::curve::curve_linear_path_d_and_bounds(&line_data),
+        "natural" => super::curve::curve_natural_path_d_and_bounds(&line_data),
+        "bumpY" => super::curve::curve_bump_y_path_d_and_bounds(&line_data),
+        "catmullRom" => super::curve::curve_catmull_rom_path_d_and_bounds(&line_data),
+        "step" => super::curve::curve_step_path_d_and_bounds(&line_data),
+        "stepAfter" => super::curve::curve_step_after_path_d_and_bounds(&line_data),
+        "stepBefore" => super::curve::curve_step_before_path_d_and_bounds(&line_data),
+        "cardinal" => super::curve::curve_cardinal_path_d_and_bounds(&line_data, 0.0),
+        "monotoneX" => super::curve::curve_monotone_path_d_and_bounds(&line_data, false),
+        "monotoneY" => super::curve::curve_monotone_path_d_and_bounds(&line_data, true),
+        _ => super::curve::curve_basis_path_d_and_bounds(&line_data),
     };
-    Some(d)
+    let pb = pb?;
+    Some((d, pb))
 }
 
 fn render_flowchart_edge_path(
@@ -10234,7 +10235,7 @@ pub(super) fn render_flowchart_v2_svg(
         for e in &render_edges {
             let edge_root = lca_for_ids(&e.from, &e.to);
             let edge_y_off = y_offset_for_root(edge_root.as_deref());
-            let Some(d) = flowchart_edge_path_d_for_bbox(
+            let Some((_d, pb)) = flowchart_edge_path_d_for_bbox(
                 &layout_edges_by_id,
                 &layout_clusters_by_id,
                 tx,
@@ -10245,12 +10246,10 @@ pub(super) fn render_flowchart_v2_svg(
             ) else {
                 continue;
             };
-            if let Some(pb) = svg_path_bounds_from_d(&d) {
-                bbox_min_x = bbox_min_x.min(pb.min_x);
-                bbox_min_y = bbox_min_y.min(pb.min_y);
-                bbox_max_x = bbox_max_x.max(pb.max_x);
-                bbox_max_y = bbox_max_y.max(pb.max_y);
-            }
+            bbox_min_x = bbox_min_x.min(pb.min_x);
+            bbox_min_y = bbox_min_y.min(pb.min_y);
+            bbox_max_x = bbox_max_x.max(pb.max_x);
+            bbox_max_y = bbox_max_y.max(pb.max_y);
         }
     }
 
