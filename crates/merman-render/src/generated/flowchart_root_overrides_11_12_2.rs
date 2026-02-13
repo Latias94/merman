@@ -174,6 +174,12 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_cypress_flowchart_handdrawn_spec_fdh26_set_text_color_of_nodes_and_links_according_to_styles_when_026" => {
             Some(("0 0 334.8125 366.109375", "334.812"))
         }
+        "upstream_cypress_flowchart_handdrawn_spec_fdh24_keep_node_label_text_if_already_defined_when_a_style_is_ap_024" => {
+            Some(("0 0 357.015625 40", "357.016"))
+        }
+        "upstream_cypress_flowchart_handdrawn_spec_fhd4_should_render_a_simple_flowchart_with_trapezoid_and_inverse_004" => {
+            Some(("0 0 405 637.875", "405"))
+        }
         "upstream_cypress_flowchart_handdrawn_spec_fdh32_render_subroutine_shape_032" => {
             Some(("0 0 953.6875 257", "953.688"))
         }
@@ -185,6 +191,18 @@ pub fn lookup_flowchart_root_viewport_override(
         }
         "upstream_cypress_flowchart_v2_spec_wrapping_long_text_with_a_new_line_056" => {
             Some(("0 0 363.921875 430", "363.922"))
+        }
+        "upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_015" => {
+            Some(("0 0 154.921875 364", "154.922"))
+        }
+        "upstream_cypress_flowchart_v2_spec_new_line_in_node_and_formatted_edge_label_050" => {
+            Some(("0 0 379.390625 94", "379.391"))
+        }
+        "upstream_cypress_flowchart_v2_spec_new_line_in_node_and_formatted_edge_label_055" => {
+            Some(("0 0 383.390625 94", "383.391"))
+        }
+        "upstream_cypress_flowchart_v2_spec_should_render_raw_strings_072" => {
+            Some(("0 0 231.4375 70", "231.438"))
         }
         _ => None,
     }
