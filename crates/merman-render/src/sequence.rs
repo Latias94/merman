@@ -1294,7 +1294,7 @@ pub fn layout_sequence_diagram(
             let tx = actor_centers_x[ti];
 
             let placement = msg.placement.unwrap_or(2);
-            let (note_x, mut note_w) = match placement {
+            let (mut note_x, mut note_w) = match placement {
                 // leftOf
                 0 => (fx - 25.0 - note_width_single, note_width_single),
                 // rightOf
@@ -1302,7 +1302,17 @@ pub fn layout_sequence_diagram(
                 // over
                 _ => {
                     if (fx - tx).abs() < 0.0001 {
-                        (fx - (note_width_single / 2.0), note_width_single)
+                        // Mermaid's `buildNoteModel(...)` widens "over self" notes when `wrap: true`:
+                        //   noteModel.width = max(conf.width, fromActor.width)
+                        //
+                        // This is observable in upstream SVG baselines for participants with
+                        // type-driven widths (e.g. `queue`), where the note box matches the actor
+                        // width rather than the configured default `conf.width`.
+                        let mut w = note_width_single;
+                        if msg.wrap {
+                            w = w.max(actor_widths.get(fi).copied().unwrap_or(note_width_single));
+                        }
+                        (fx - (w / 2.0), w)
                     } else {
                         let left = fx.min(tx) - 25.0;
                         let right = fx.max(tx) + 25.0;
@@ -1314,16 +1324,43 @@ pub fn layout_sequence_diagram(
 
             let text = msg.message.as_str().unwrap_or_default();
             let (text_w, h) = if msg.wrap {
-                // Mermaid's `wrap:` notes are wrapped to the configured note width rather than
-                // widening the note box to fit the full line width.
+                // Mermaid Sequence notes are wrapped via `wrapLabel(...)`, then measured via SVG
+                // bbox probes (not HTML wrapping). Model this by producing wrapped `<br/>` lines
+                // and then measuring them.
+                //
+                // Important: Mermaid widens *leftOf* wrapped notes based on the initially wrapped
+                // text width (+ margins) before re-wrapping to the final width. This affects the
+                // final wrap width and thus the rendered line breaks.
+                let w0 = {
+                    let init_lines = wrap_label_like_mermaid_lines_floored_bbox(
+                        text,
+                        measurer,
+                        &note_text_style,
+                        note_width_single.max(1.0),
+                    );
+                    let init_wrapped = init_lines.join("<br/>");
+                    let (w, _h) =
+                        measure_svg_like_with_html_br(measurer, &init_wrapped, &note_text_style);
+                    w.max(0.0)
+                };
+
+                if placement == 0 {
+                    // Mermaid (LEFTOF + wrap): `noteModel.width = max(conf.width, textWidth + 2*noteMargin)`.
+                    // Our note padding total is `2*noteMargin`/`2*wrapPadding` in the default config.
+                    note_w = note_w.max((w0 + note_text_pad_total).round().max(1.0));
+                    note_x = fx - 25.0 - note_w;
+                }
+
                 let wrap_w = (note_w - note_text_pad_total).max(1.0);
-                let metrics = measurer.measure_wrapped(
+                let lines = wrap_label_like_mermaid_lines_floored_bbox(
                     text,
+                    measurer,
                     &note_text_style,
-                    Some(wrap_w),
-                    WrapMode::SvgLike,
+                    wrap_w,
                 );
-                (metrics.width.max(0.0), metrics.height.max(0.0))
+                let wrapped = lines.join("<br/>");
+                let (w, h) = measure_svg_like_with_html_br(measurer, &wrapped, &note_text_style);
+                (w.max(0.0), h.max(0.0))
             } else {
                 measure_svg_like_with_html_br(measurer, text, &note_text_style)
             };

@@ -1908,14 +1908,17 @@ pub(super) fn render_sequence_diagram_svg(
                     h = fmt(n.height)
                 );
                 let lines: Vec<String> = if msg.wrap {
-                    // Mermaid's `wrap:` notes wrap to the default note width rather than widening.
-                    // Model the line count using our heuristic wrapper (text content is parity-masked).
-                    let wrap_w = (n.width - 20.0).max(1.0);
-                    crate::text::wrap_text_lines_px(
+                    // Mermaid@11.12.2 (Sequence) wraps notes *after* placement width is known:
+                    //   noteModel.message = wrapLabel(msg.message, noteModel.width - 2*wrapPadding, noteFont)
+                    //
+                    // Layout already computed the note box width (`n.width`) to match Mermaid's
+                    // `noteModel.width`, so wrap to `n.width - 2*wrapPadding` here.
+                    let wrap_w = (n.width - 2.0 * wrap_padding).max(1.0);
+                    crate::text::wrap_label_like_mermaid_lines_floored_bbox(
                         raw,
+                        measurer,
                         &note_text_style,
-                        Some(wrap_w),
-                        crate::text::WrapMode::SvgLike,
+                        wrap_w,
                     )
                 } else {
                     crate::text::split_html_br_lines(raw)
