@@ -23,14 +23,22 @@ where
     movable
         .iter()
         .map(|v| {
+            let Some(v_ix) = g.node_ix(v.as_str()) else {
+                return BarycenterEntry {
+                    v: v.clone(),
+                    barycenter: None,
+                    weight: None,
+                };
+            };
+
             let mut saw_edge = false;
             let mut sum: f64 = 0.0;
             let mut weight: f64 = 0.0;
-            g.for_each_in_edge(v, None, |ek, lbl| {
+            g.for_each_in_edge_ix(v_ix, None, |u_ix, _w_ix, _ek, lbl| {
                 saw_edge = true;
                 let edge_weight = lbl.weight();
                 let u_order = g
-                    .node(&ek.v)
+                    .node_label_by_ix(u_ix)
                     .and_then(|n| n.order())
                     .map(|n| n as f64)
                     .unwrap_or(0.0);

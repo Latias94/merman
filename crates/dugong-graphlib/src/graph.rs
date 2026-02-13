@@ -533,6 +533,13 @@ where
             .map(|n| n.id.as_str())
     }
 
+    pub fn node_label_by_ix(&self, ix: usize) -> Option<&N> {
+        self.nodes
+            .get(ix)
+            .and_then(|n| n.as_ref())
+            .map(|n| &n.label)
+    }
+
     pub fn node_label_mut_by_ix(&mut self, ix: usize) -> Option<&mut N> {
         self.nodes
             .get_mut(ix)
