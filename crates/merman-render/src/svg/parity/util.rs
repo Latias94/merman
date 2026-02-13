@@ -348,14 +348,27 @@ pub(super) fn escape_xml(text: &str) -> String {
 }
 
 pub(super) fn escape_xml_into(out: &mut String, text: &str) {
-    for ch in text.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
-            _ => out.push(ch),
+    let bytes = text.as_bytes();
+    let mut start = 0usize;
+    for (i, &b) in bytes.iter().enumerate() {
+        let esc = match b {
+            b'&' => Some("&amp;"),
+            b'<' => Some("&lt;"),
+            b'"' => Some("&quot;"),
+            b'\'' => Some("&#39;"),
+            _ => None,
+        };
+        let Some(esc) = esc else {
+            continue;
+        };
+        if start < i {
+            out.push_str(&text[start..i]);
         }
+        out.push_str(esc);
+        start = i + 1;
+    }
+    if start < text.len() {
+        out.push_str(&text[start..]);
     }
 }
 
@@ -367,14 +380,28 @@ pub(super) struct EscapeXmlDisplay<'a>(&'a str);
 
 impl std::fmt::Display for EscapeXmlDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for ch in self.0.chars() {
-            match ch {
-                '&' => f.write_str("&amp;")?,
-                '<' => f.write_str("&lt;")?,
-                '"' => f.write_str("&quot;")?,
-                '\'' => f.write_str("&#39;")?,
-                _ => f.write_char(ch)?,
+        let text = self.0;
+        let bytes = text.as_bytes();
+        let mut start = 0usize;
+        for (i, &b) in bytes.iter().enumerate() {
+            let esc = match b {
+                b'&' => Some("&amp;"),
+                b'<' => Some("&lt;"),
+                b'"' => Some("&quot;"),
+                b'\'' => Some("&#39;"),
+                _ => None,
+            };
+            let Some(esc) = esc else {
+                continue;
+            };
+            if start < i {
+                f.write_str(&text[start..i])?;
             }
+            f.write_str(esc)?;
+            start = i + 1;
+        }
+        if start < text.len() {
+            f.write_str(&text[start..])?;
         }
         Ok(())
     }
