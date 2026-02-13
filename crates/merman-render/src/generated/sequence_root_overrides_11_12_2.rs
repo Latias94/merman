@@ -15,11 +15,26 @@ pub fn lookup_sequence_root_viewport_override(
         "upstream_cypress_sequencediagram_spec_should_render_bidirectional_arrows_003" => {
             Some(("-50 -10 513 435", "513"))
         }
+        "upstream_cypress_sequencediagram_spec_should_handle_empty_lines_005" => {
+            Some(("-50 -10 450 310", "450"))
+        }
         "upstream_cypress_sequencediagram_spec_should_render_loops_with_a_slight_margin_007" => {
             Some(("-50 -10 1145 314", "1145"))
         }
         "upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_with_actor_creation_and_destruc_010" => {
             Some(("-50 -10 1169.5 1504", "1169.5"))
+        }
+        "upstream_cypress_sequencediagram_spec_should_render_different_actor_fonts_when_configured_013" => {
+            Some(("-50 -10 450 259", "450"))
+        }
+        "upstream_cypress_sequencediagram_spec_should_render_multi_line_messages_aligned_to_the_left_when_confi_018" => {
+            Some(("-50 -10 450 327", "450"))
+        }
+        "upstream_cypress_sequencediagram_spec_should_render_long_messages_from_an_actor_to_the_right_to_one_to_034" => {
+            Some(("-50 -10 1145 259", "1145"))
+        }
+        "upstream_cypress_sequencediagram_spec_should_render_long_messages_wrapped_inline_from_an_actor_to_the_035" => {
+            Some(("-50 -10 450 327", "450"))
         }
         "upstream_cypress_sequencediagram_spec_should_render_different_note_fonts_when_configured_011" => {
             Some(("-187 -10 587 308", "587"))
