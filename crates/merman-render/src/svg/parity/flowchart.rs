@@ -590,7 +590,15 @@ pub(super) fn flowchart_marker_id(diagram_id: &str, base: &str, color: Option<&s
     if let Some(c) = color {
         let cid = flowchart_marker_color_id(c);
         if !cid.is_empty() {
-            return format!("{diagram_id}_{base}__{cid}");
+            // Mermaid marker ids are not fully uniform across all code paths. Empirically (Mermaid
+            // @11.12.2 `mmdc` baselines), named colors that retain ASCII uppercase (e.g. `DarkGray`)
+            // use a single `_` separator, while lowercase/hex-like ids use `__`.
+            let sep = if cid.chars().any(|ch| ch.is_ascii_uppercase()) {
+                "_"
+            } else {
+                "__"
+            };
+            return format!("{diagram_id}_{base}{sep}{cid}");
         }
     }
     format!("{diagram_id}_{base}")
@@ -603,10 +611,16 @@ pub(super) fn flowchart_extra_markers(out: &mut String, diagram_id: &str, colors
             continue;
         }
 
+        let sep = if cid.chars().any(|ch| ch.is_ascii_uppercase()) {
+            "_"
+        } else {
+            "__"
+        };
         let _ = write!(
             out,
-            r#"<marker id="{}_flowchart-v2-pointEnd__{}" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;" stroke="{}" fill="{}"/></marker>"#,
+            r#"<marker id="{}_flowchart-v2-pointEnd{}{}" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;" stroke="{}" fill="{}"/></marker>"#,
             escape_xml(diagram_id),
+            sep,
             escape_xml(&cid),
             escape_attr(c.trim()),
             escape_attr(c.trim())
@@ -5253,6 +5267,34 @@ pub(super) fn render_flowchart_node(
         return;
     }
 
+    fn href_is_safe_in_strict_mode(href: &str, config: &merman_core::MermaidConfig) -> bool {
+        if config.get_str("securityLevel") == Some("loose") {
+            return true;
+        }
+
+        let href = href.trim();
+        if href.is_empty() {
+            return false;
+        }
+
+        let lower = href.to_ascii_lowercase();
+        if lower.starts_with('#')
+            || lower.starts_with("mailto:")
+            || lower.starts_with("http://")
+            || lower.starts_with("https://")
+            || lower.starts_with("//")
+            || lower.starts_with('/')
+            || lower.starts_with("./")
+            || lower.starts_with("../")
+        {
+            return true;
+        }
+
+        // In Mermaid's browser pipeline, the rendered SVG is further sanitized in strict mode.
+        // This strips unknown deep-link schemes (e.g. `notes://...`) from `xlink:href`.
+        !lower.contains("://")
+    }
+
     enum RenderNodeKind<'a> {
         Normal(&'a crate::flowchart::FlowNode),
         EmptySubgraph(&'a crate::flowchart::FlowSubgraph),
@@ -5321,7 +5363,9 @@ pub(super) fn render_flowchart_node(
             let link_present = link.is_some();
             // Mermaid sanitizes unsafe URLs (e.g. `javascript:` in strict mode) into
             // `about:blank`, but the resulting SVG `<a>` carries no `xlink:href` attribute.
-            let href = link.filter(|u| *u != "about:blank");
+            let href = link
+                .filter(|u| *u != "about:blank")
+                .filter(|u| href_is_safe_in_strict_mode(u, &ctx.config));
             // Mermaid wraps nodes in `<a>` only when a link is present. Callback-based
             // interactions (`click A someFn`) still mark the node as clickable, but do not
             // emit an anchor element in the SVG.

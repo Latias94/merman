@@ -1,0 +1,214 @@
+{
+  "diagramType": "flowchart-v2",
+  "model": {
+    "type": "flowchart-v2",
+    "keyword": "flowchart",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classDefs": {},
+    "tooltips": {},
+    "edgeDefaults": {
+      "style": [],
+      "interpolate": null
+    },
+    "vertexCalls": [
+      "_sub_one",
+      "_sub_two",
+      "_one",
+      "sub_one",
+      "sub_two",
+      "_one",
+      "b"
+    ],
+    "nodes": [
+      {
+        "id": "_sub_one",
+        "label": "_sub_one",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "_sub_two",
+        "label": "_sub_two",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "_one",
+        "label": "_one",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "sub_one",
+        "label": "sub_one",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "sub_two",
+        "label": "sub_two",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "b",
+        "label": "b",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      }
+    ],
+    "edges": [
+      {
+        "from": "sub_one",
+        "to": "sub_two",
+        "id": "L_sub_one_sub_two_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "_one",
+        "to": "b",
+        "id": "L__one_b_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      }
+    ],
+    "subgraphs": [
+      {
+        "id": "sub_one",
+        "nodes": [
+          "_sub_one"
+        ],
+        "title": "Sub One",
+        "classes": [],
+        "styles": [],
+        "dir": null,
+        "labelType": "text"
+      },
+      {
+        "id": "sub_two",
+        "nodes": [
+          "_sub_two"
+        ],
+        "title": "Sub Two",
+        "classes": [],
+        "styles": [],
+        "dir": null,
+        "labelType": "text"
+      },
+      {
+        "id": "one",
+        "nodes": [
+          "sub_one",
+          "sub_two",
+          "_one"
+        ],
+        "title": "One",
+        "classes": [],
+        "styles": [],
+        "dir": null,
+        "labelType": "text"
+      }
+    ]
+  }
+}

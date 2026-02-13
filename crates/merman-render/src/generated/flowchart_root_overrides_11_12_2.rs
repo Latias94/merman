@@ -162,6 +162,15 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_cypress_flowchart_handdrawn_spec_fhd7_should_render_a_flowchart_full_of_icons_007" => {
             Some(("0 0 2004.41015625 1046", "2004.41"))
         }
+        "upstream_cypress_flowchart_handdrawn_spec_fdh25_handle_link_click_events_link_anchor_mailto_other_protocol_025" => {
+            Some(("0 0 1384.953125 198", "1384.95"))
+        }
+        "upstream_cypress_flowchart_handdrawn_spec_fdh26_set_text_color_of_nodes_and_links_according_to_styles_when_026" => {
+            Some(("0 0 334.8125 366.109375", "334.812"))
+        }
+        "upstream_cypress_flowchart_handdrawn_spec_fdh32_render_subroutine_shape_032" => {
+            Some(("0 0 953.6875 257", "953.688"))
+        }
         _ => None,
     }
 }
