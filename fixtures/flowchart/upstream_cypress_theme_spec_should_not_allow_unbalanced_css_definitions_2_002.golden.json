@@ -3,30 +3,23 @@
   "model": {
     "type": "flowchart-v2",
     "keyword": "flowchart",
-    "direction": "LR",
+    "direction": "TB",
     "accTitle": null,
     "accDescr": null,
-    "classDefs": {
-      "animate": [
-        "stroke-dasharray: 9",
-        "5",
-        "stroke-dashoffset: 900",
-        "animation: dash 25s linear infinite"
-      ]
-    },
+    "classDefs": {},
     "tooltips": {},
     "edgeDefaults": {
       "style": [],
       "interpolate": null
     },
     "vertexCalls": [
-      "A",
-      "B"
+      "a2",
+      "b2"
     ],
     "nodes": [
       {
-        "id": "A",
-        "label": "A",
+        "id": "a2",
+        "label": "a2",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -44,8 +37,8 @@
         "haveCallback": false
       },
       {
-        "id": "B",
-        "label": "B",
+        "id": "b2",
+        "label": "b2",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -65,10 +58,10 @@
     ],
     "edges": [
       {
-        "from": "A",
-        "to": "B",
-        "id": "e1",
-        "isUserDefinedId": true,
+        "from": "a2",
+        "to": "b2",
+        "id": "L_a2_b2_0",
+        "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
         "stroke": "normal",
@@ -76,9 +69,7 @@
         "label": null,
         "labelType": "text",
         "style": [],
-        "classes": [
-          "animate"
-        ],
+        "classes": [],
         "interpolate": null,
         "animate": null,
         "animation": null

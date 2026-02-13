@@ -6,27 +6,21 @@
     "direction": "LR",
     "accTitle": null,
     "accDescr": null,
-    "classDefs": {
-      "animate": [
-        "stroke-dasharray: 9",
-        "5",
-        "stroke-dashoffset: 900",
-        "animation: dash 25s linear infinite"
-      ]
-    },
+    "classDefs": {},
     "tooltips": {},
     "edgeDefaults": {
       "style": [],
       "interpolate": null
     },
     "vertexCalls": [
-      "A",
-      "B"
+      "a",
+      "b",
+      "b"
     ],
     "nodes": [
       {
-        "id": "A",
-        "label": "A",
+        "id": "a",
+        "label": "a",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -44,8 +38,8 @@
         "haveCallback": false
       },
       {
-        "id": "B",
-        "label": "B",
+        "id": "b",
+        "label": "b",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -65,10 +59,10 @@
     ],
     "edges": [
       {
-        "from": "A",
-        "to": "B",
-        "id": "e1",
-        "isUserDefinedId": true,
+        "from": "a",
+        "to": "b",
+        "id": "L_a_b_0",
+        "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
         "stroke": "normal",
@@ -76,14 +70,34 @@
         "label": null,
         "labelType": "text",
         "style": [],
-        "classes": [
-          "animate"
-        ],
+        "classes": [],
         "interpolate": null,
         "animate": null,
         "animation": null
       }
     ],
-    "subgraphs": []
+    "subgraphs": [
+      {
+        "id": "A",
+        "nodes": [
+          "b",
+          "a"
+        ],
+        "title": "A",
+        "classes": [],
+        "styles": [],
+        "dir": null,
+        "labelType": "text"
+      },
+      {
+        "id": "B",
+        "nodes": [],
+        "title": "B",
+        "classes": [],
+        "styles": [],
+        "dir": null,
+        "labelType": "text"
+      }
+    ]
   }
 }

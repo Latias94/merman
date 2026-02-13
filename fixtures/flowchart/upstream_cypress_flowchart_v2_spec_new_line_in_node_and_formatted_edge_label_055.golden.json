@@ -6,30 +6,23 @@
     "direction": "LR",
     "accTitle": null,
     "accDescr": null,
-    "classDefs": {
-      "animate": [
-        "stroke-dasharray: 9",
-        "5",
-        "stroke-dashoffset: 900",
-        "animation: dash 25s linear infinite"
-      ]
-    },
+    "classDefs": {},
     "tooltips": {},
     "edgeDefaults": {
       "style": [],
       "interpolate": null
     },
     "vertexCalls": [
-      "A",
-      "B"
+      "b",
+      "c"
     ],
     "nodes": [
       {
-        "id": "A",
-        "label": "A",
-        "labelType": "text",
-        "shape": null,
-        "layoutShape": "squareRect",
+        "id": "b",
+        "label": "The dog in **the** hog.(1)\nNL",
+        "labelType": "markdown",
+        "shape": "round",
+        "layoutShape": "roundedRect",
         "icon": null,
         "form": null,
         "pos": null,
@@ -44,8 +37,8 @@
         "haveCallback": false
       },
       {
-        "id": "B",
-        "label": "B",
+        "id": "c",
+        "label": "c",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -65,20 +58,18 @@
     ],
     "edges": [
       {
-        "from": "A",
-        "to": "B",
-        "id": "e1",
-        "isUserDefinedId": true,
+        "from": "b",
+        "to": "c",
+        "id": "L_b_c_0",
+        "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
         "stroke": "normal",
         "length": 1,
-        "label": null,
-        "labelType": "text",
+        "label": "1o **bold**",
+        "labelType": "markdown",
         "style": [],
-        "classes": [
-          "animate"
-        ],
+        "classes": [],
         "interpolate": null,
         "animate": null,
         "animation": null

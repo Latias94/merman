@@ -2,31 +2,24 @@
   "diagramType": "flowchart-v2",
   "model": {
     "type": "flowchart-v2",
-    "keyword": "flowchart",
-    "direction": "LR",
+    "keyword": "graph",
+    "direction": "TB",
     "accTitle": null,
     "accDescr": null,
-    "classDefs": {
-      "animate": [
-        "stroke-dasharray: 9",
-        "5",
-        "stroke-dashoffset: 900",
-        "animation: dash 25s linear infinite"
-      ]
-    },
+    "classDefs": {},
     "tooltips": {},
     "edgeDefaults": {
       "style": [],
       "interpolate": null
     },
     "vertexCalls": [
-      "A",
-      "B"
+      "F",
+      "bar"
     ],
     "nodes": [
       {
-        "id": "A",
-        "label": "A",
+        "id": "F",
+        "label": "F",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -44,8 +37,8 @@
         "haveCallback": false
       },
       {
-        "id": "B",
-        "label": "B",
+        "id": "bar",
+        "label": "bar",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -63,27 +56,24 @@
         "haveCallback": false
       }
     ],
-    "edges": [
+    "edges": [],
+    "subgraphs": [
       {
-        "from": "A",
-        "to": "B",
-        "id": "e1",
-        "isUserDefinedId": true,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": null,
-        "labelType": "text",
-        "style": [],
-        "classes": [
-          "animate"
+        "id": "bar",
+        "nodes": [
+          "F"
         ],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
+        "title": "Bar",
+        "classes": [],
+        "styles": [
+          "fill:#999",
+          "stroke-width:10px",
+          "stroke:#0F0",
+          "color:blue"
+        ],
+        "dir": null,
+        "labelType": "text"
       }
-    ],
-    "subgraphs": []
+    ]
   }
 }

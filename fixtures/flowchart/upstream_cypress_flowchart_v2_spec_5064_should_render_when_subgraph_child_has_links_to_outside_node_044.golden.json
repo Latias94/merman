@@ -3,30 +3,26 @@
   "model": {
     "type": "flowchart-v2",
     "keyword": "flowchart",
-    "direction": "LR",
+    "direction": "TB",
     "accTitle": null,
     "accDescr": null,
-    "classDefs": {
-      "animate": [
-        "stroke-dasharray: 9",
-        "5",
-        "stroke-dashoffset: 900",
-        "animation: dash 25s linear infinite"
-      ]
-    },
+    "classDefs": {},
     "tooltips": {},
     "edgeDefaults": {
       "style": [],
       "interpolate": null
     },
     "vertexCalls": [
-      "A",
-      "B"
+      "Out",
+      "In",
+      "In",
+      "Sub",
+      "In"
     ],
     "nodes": [
       {
-        "id": "A",
-        "label": "A",
+        "id": "Out",
+        "label": "Out",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -44,8 +40,27 @@
         "haveCallback": false
       },
       {
-        "id": "B",
-        "label": "B",
+        "id": "In",
+        "label": "In",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "Sub",
+        "label": "Sub",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -65,10 +80,10 @@
     ],
     "edges": [
       {
-        "from": "A",
-        "to": "B",
-        "id": "e1",
-        "isUserDefinedId": true,
+        "from": "Out",
+        "to": "In",
+        "id": "L_Out_In_0",
+        "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
         "stroke": "normal",
@@ -76,14 +91,41 @@
         "label": null,
         "labelType": "text",
         "style": [],
-        "classes": [
-          "animate"
-        ],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "Sub",
+        "to": "In",
+        "id": "L_Sub_In_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
         "interpolate": null,
         "animate": null,
         "animation": null
       }
     ],
-    "subgraphs": []
+    "subgraphs": [
+      {
+        "id": "Sub",
+        "nodes": [
+          "In"
+        ],
+        "title": "Sub",
+        "classes": [],
+        "styles": [],
+        "dir": null,
+        "labelType": "text"
+      }
+    ]
   }
 }

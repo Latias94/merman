@@ -3,30 +3,25 @@
   "model": {
     "type": "flowchart-v2",
     "keyword": "flowchart",
-    "direction": "LR",
+    "direction": "RL",
     "accTitle": null,
     "accDescr": null,
-    "classDefs": {
-      "animate": [
-        "stroke-dasharray: 9",
-        "5",
-        "stroke-dashoffset: 900",
-        "animation: dash 25s linear infinite"
-      ]
-    },
+    "classDefs": {},
     "tooltips": {},
     "edgeDefaults": {
       "style": [],
       "interpolate": null
     },
     "vertexCalls": [
-      "A",
-      "B"
+      "a1",
+      "a2",
+      "a1",
+      "a2"
     ],
     "nodes": [
       {
-        "id": "A",
-        "label": "A",
+        "id": "a1",
+        "label": "a1",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -44,8 +39,8 @@
         "haveCallback": false
       },
       {
-        "id": "B",
-        "label": "B",
+        "id": "a2",
+        "label": "a2",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -65,25 +60,53 @@
     ],
     "edges": [
       {
-        "from": "A",
-        "to": "B",
-        "id": "e1",
-        "isUserDefinedId": true,
+        "from": "a1",
+        "to": "a2",
+        "id": "L_a1_a2_0",
+        "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
         "stroke": "normal",
         "length": 1,
-        "label": null,
+        "label": "l1",
         "labelType": "text",
         "style": [],
-        "classes": [
-          "animate"
-        ],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "a1",
+        "to": "a2",
+        "id": "L_a1_a2_2",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": "l2",
+        "labelType": "text",
+        "style": [],
+        "classes": [],
         "interpolate": null,
         "animate": null,
         "animation": null
       }
     ],
-    "subgraphs": []
+    "subgraphs": [
+      {
+        "id": "one",
+        "nodes": [
+          "a2",
+          "a1"
+        ],
+        "title": "one",
+        "classes": [],
+        "styles": [],
+        "dir": null,
+        "labelType": "text"
+      }
+    ]
   }
 }

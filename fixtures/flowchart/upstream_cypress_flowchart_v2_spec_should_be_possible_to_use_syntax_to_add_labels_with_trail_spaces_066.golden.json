@@ -3,30 +3,45 @@
   "model": {
     "type": "flowchart-v2",
     "keyword": "flowchart",
-    "direction": "LR",
+    "direction": "TB",
     "accTitle": null,
     "accDescr": null,
-    "classDefs": {
-      "animate": [
-        "stroke-dasharray: 9",
-        "5",
-        "stroke-dashoffset: 900",
-        "animation: dash 25s linear infinite"
-      ]
-    },
+    "classDefs": {},
     "tooltips": {},
     "edgeDefaults": {
       "style": [],
       "interpolate": null
     },
     "vertexCalls": [
-      "A",
-      "B"
+      "n2",
+      "n4",
+      "n4",
+      "n5",
+      "n5"
     ],
     "nodes": [
       {
-        "id": "A",
-        "label": "A",
+        "id": "n2",
+        "label": "label for n2",
+        "labelType": "string",
+        "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "n4",
+        "label": "label for n4",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -44,8 +59,8 @@
         "haveCallback": false
       },
       {
-        "id": "B",
-        "label": "B",
+        "id": "n5",
+        "label": "label for n5",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -63,27 +78,7 @@
         "haveCallback": false
       }
     ],
-    "edges": [
-      {
-        "from": "A",
-        "to": "B",
-        "id": "e1",
-        "isUserDefinedId": true,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": null,
-        "labelType": "text",
-        "style": [],
-        "classes": [
-          "animate"
-        ],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      }
-    ],
+    "edges": [],
     "subgraphs": []
   }
 }

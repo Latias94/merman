@@ -611,16 +611,19 @@ pub(super) fn flowchart_markers(out: &mut String, diagram_id: &str) {
 }
 
 pub(super) fn flowchart_marker_color_id(color: &str) -> String {
-    // Mermaid appends `__{color}` to marker ids for linkStyle-driven marker coloring.
-    // Keep this close to upstream behavior (named colors are passed through).
-    let raw = color.trim().trim_end_matches(';').trim();
-    if raw.is_empty() {
+    // Mermaid's DOM marker id coloring logic (Mermaid@11.12.2) uses:
+    // `strokeColor.replace(/[^\dA-Za-z]/g, '_')`
+    //
+    // Important: this does not trim whitespace. As a result, values like `" orange"` (leading
+    // space captured from `style="...stroke: orange;..."`) produce a leading `_` in the color id,
+    // which in turn yields a `__orange` suffix in the final marker id.
+    let raw = color.trim_end_matches(';');
+    if raw.trim().is_empty() {
         return String::new();
     }
-    let raw = raw.strip_prefix('#').unwrap_or(raw);
     let mut out = String::with_capacity(raw.len());
     for ch in raw.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+        if ch.is_ascii_alphanumeric() {
             out.push(ch);
         } else {
             out.push('_');
@@ -633,15 +636,7 @@ pub(super) fn flowchart_marker_id(diagram_id: &str, base: &str, color: Option<&s
     if let Some(c) = color {
         let cid = flowchart_marker_color_id(c);
         if !cid.is_empty() {
-            // Mermaid marker ids are not fully uniform across all code paths. Empirically (Mermaid
-            // @11.12.2 `mmdc` baselines), named colors that retain ASCII uppercase (e.g. `DarkGray`)
-            // use a single `_` separator, while lowercase/hex-like ids use `__`.
-            let sep = if cid.chars().any(|ch| ch.is_ascii_uppercase()) {
-                "_"
-            } else {
-                "__"
-            };
-            return format!("{diagram_id}_{base}{sep}{cid}");
+            return format!("{diagram_id}_{base}_{cid}");
         }
     }
     format!("{diagram_id}_{base}")
@@ -654,16 +649,10 @@ pub(super) fn flowchart_extra_markers(out: &mut String, diagram_id: &str, colors
             continue;
         }
 
-        let sep = if cid.chars().any(|ch| ch.is_ascii_uppercase()) {
-            "_"
-        } else {
-            "__"
-        };
         let _ = write!(
             out,
-            r#"<marker id="{}_flowchart-v2-pointEnd{}{}" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;" stroke="{}" fill="{}"/></marker>"#,
+            r#"<marker id="{}_flowchart-v2-pointEnd_{}" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;" stroke="{}" fill="{}"/></marker>"#,
             escape_xml(diagram_id),
-            sep,
             escape_xml(&cid),
             escape_xml_display(c.trim()),
             escape_xml_display(c.trim())
@@ -672,18 +661,6 @@ pub(super) fn flowchart_extra_markers(out: &mut String, diagram_id: &str, colors
 }
 
 pub(super) fn flowchart_collect_edge_marker_colors(ctx: &FlowchartRenderCtx<'_>) -> Vec<String> {
-    fn marker_color_from_styles(styles: &[String]) -> Option<String> {
-        for raw in styles {
-            let Some((k, v)) = parse_style_decl(raw) else {
-                continue;
-            };
-            if k == "stroke" {
-                return Some(v.to_string());
-            }
-        }
-        None
-    }
-
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut out: Vec<String> = Vec::new();
 
@@ -692,15 +669,39 @@ pub(super) fn flowchart_collect_edge_marker_colors(ctx: &FlowchartRenderCtx<'_>)
         styles.extend(ctx.default_edge_style.iter().cloned());
         styles.extend(e.style.iter().cloned());
 
-        let Some(color) = marker_color_from_styles(&styles) else {
-            continue;
-        };
-        let cid = flowchart_marker_color_id(&color);
-        if cid.is_empty() {
-            continue;
+        let mut found: Option<String> = None;
+        for raw in &styles {
+            // Mirror upstream behavior: `strokeColor` is extracted from `style="...stroke:...;..."`
+            // without trimming, and then marker ids use `replace(/[^\dA-Za-z]/g, '_')`.
+            //
+            // Our style declarations may include a leading space (e.g. ` stroke: orange`), so we
+            // only trim the key side.
+            let s = raw.trim_start();
+            let Some(rest) = s.strip_prefix("stroke:") else {
+                continue;
+            };
+            let cid = flowchart_marker_color_id(rest);
+            if cid.is_empty() {
+                continue;
+            }
+            if seen.insert(cid) {
+                found = Some(rest.to_string());
+            }
+            break;
         }
-        if seen.insert(cid) {
-            out.push(color);
+
+        if found.is_none() && !e.classes.is_empty() {
+            let compiled = flowchart_compile_styles(&ctx.class_defs, &e.classes, &styles);
+            if let Some(stroke) = compiled.stroke {
+                let cid = flowchart_marker_color_id(&stroke);
+                if !cid.is_empty() && seen.insert(cid) {
+                    found = Some(stroke);
+                }
+            }
+        }
+
+        if let Some(v) = found {
+            out.push(v);
         }
     }
 
@@ -4651,13 +4652,29 @@ fn render_flowchart_edge_path(
 
     let mut marker_color: Option<&str> = None;
     for raw in &merged_styles {
-        let Some((k, v)) = parse_style_decl(raw) else {
+        // Mirror Mermaid@11.12.2: marker coloring uses the `stroke:` style capture without
+        // trimming (see `edges.js` + `edgeMarker.ts`).
+        let s = raw.trim_start();
+        let Some(rest) = s.strip_prefix("stroke:") else {
             continue;
         };
-        if k == "stroke" {
-            marker_color = Some(v);
+        if !rest.trim().is_empty() {
+            marker_color = Some(rest);
             break;
         }
+    }
+
+    // If no inline `stroke:` exists, Mermaid still colors markers based on class-derived stroke
+    // styles (see `edges.js` `stylesFromClasses` + `edgeMarker.ts` `strokeColor` extraction).
+    // We approximate this by compiling the edge styles using class defs and reusing the resulting
+    // `stroke` value for the marker id suffix.
+    let compiled_marker_color = if marker_color.is_none() && !edge.classes.is_empty() {
+        flowchart_compile_styles(&ctx.class_defs, &edge.classes, &merged_styles).stroke
+    } else {
+        None
+    };
+    if marker_color.is_none() {
+        marker_color = compiled_marker_color.as_deref();
     }
 
     let class_attr = flowchart_edge_class_attr(edge);

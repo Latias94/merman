@@ -2,16 +2,16 @@
   "diagramType": "flowchart-v2",
   "model": {
     "type": "flowchart-v2",
-    "keyword": "flowchart",
+    "keyword": "graph",
     "direction": "LR",
     "accTitle": null,
     "accDescr": null,
     "classDefs": {
-      "animate": [
-        "stroke-dasharray: 9",
-        "5",
-        "stroke-dashoffset: 900",
-        "animation: dash 25s linear infinite"
+      "foo": [
+        "fill:lightblue",
+        "color:green",
+        "stroke:#FF9E2C",
+        "font-weight:bold"
       ]
     },
     "tooltips": {},
@@ -20,13 +20,15 @@
       "interpolate": null
     },
     "vertexCalls": [
-      "A",
-      "B"
+      "foo",
+      "bar",
+      "foo",
+      "bar"
     ],
     "nodes": [
       {
-        "id": "A",
-        "label": "A",
+        "id": "foo",
+        "label": "foo",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -37,15 +39,19 @@
         "constraint": null,
         "assetWidth": null,
         "assetHeight": null,
-        "styles": [],
+        "styles": [
+          "fill:#F99",
+          "stroke-width:2px",
+          "stroke:#F0F"
+        ],
         "classes": [],
         "link": null,
         "linkTarget": null,
         "haveCallback": false
       },
       {
-        "id": "B",
-        "label": "B",
+        "id": "bar",
+        "label": "bar",
         "labelType": "text",
         "shape": null,
         "layoutShape": "squareRect",
@@ -56,7 +62,12 @@
         "constraint": null,
         "assetWidth": null,
         "assetHeight": null,
-        "styles": [],
+        "styles": [
+          "fill:#999",
+          "color: #00ff00",
+          "stroke-width:10px",
+          "stroke:#0F0"
+        ],
         "classes": [],
         "link": null,
         "linkTarget": null,
@@ -65,10 +76,10 @@
     ],
     "edges": [
       {
-        "from": "A",
-        "to": "B",
-        "id": "e1",
-        "isUserDefinedId": true,
+        "from": "foo",
+        "to": "bar",
+        "id": "L_foo_bar_0",
+        "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
         "stroke": "normal",
@@ -76,9 +87,7 @@
         "label": null,
         "labelType": "text",
         "style": [],
-        "classes": [
-          "animate"
-        ],
+        "classes": [],
         "interpolate": null,
         "animate": null,
         "animation": null

@@ -3,32 +3,25 @@
   "model": {
     "type": "flowchart-v2",
     "keyword": "flowchart",
-    "direction": "LR",
+    "direction": "TB",
     "accTitle": null,
     "accDescr": null,
-    "classDefs": {
-      "animate": [
-        "stroke-dasharray: 9",
-        "5",
-        "stroke-dashoffset: 900",
-        "animation: dash 25s linear infinite"
-      ]
-    },
+    "classDefs": {},
     "tooltips": {},
     "edgeDefaults": {
       "style": [],
       "interpolate": null
     },
     "vertexCalls": [
-      "A",
-      "B"
+      "angular_velocity",
+      "frequency"
     ],
     "nodes": [
       {
-        "id": "A",
-        "label": "A",
-        "labelType": "text",
-        "shape": null,
+        "id": "angular_velocity",
+        "label": "**angular_velocity**\n      *angular_displacement / duration*\n      [rad/s, 1/s]\n      {vector}",
+        "labelType": "markdown",
+        "shape": "square",
         "layoutShape": "squareRect",
         "icon": null,
         "form": null,
@@ -44,10 +37,10 @@
         "haveCallback": false
       },
       {
-        "id": "B",
-        "label": "B",
-        "labelType": "text",
-        "shape": null,
+        "id": "frequency",
+        "label": "frequency\n(1 / period_duration)\n[Hz, 1/s]",
+        "labelType": "string",
+        "shape": "square",
         "layoutShape": "squareRect",
         "icon": null,
         "form": null,
@@ -63,27 +56,7 @@
         "haveCallback": false
       }
     ],
-    "edges": [
-      {
-        "from": "A",
-        "to": "B",
-        "id": "e1",
-        "isUserDefinedId": true,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": null,
-        "labelType": "text",
-        "style": [],
-        "classes": [
-          "animate"
-        ],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      }
-    ],
+    "edges": [],
     "subgraphs": []
   }
 }

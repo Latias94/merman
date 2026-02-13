@@ -1,0 +1,33 @@
+{
+  "diagramType": "flowchart-v2",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "angular_velocity",
+          "x": 138.0,
+          "y": 83.0,
+          "width": 260.0,
+          "height": 150.0,
+          "is_cluster": false
+        },
+        {
+          "id": "frequency",
+          "x": 414.08,
+          "y": 83.0,
+          "width": 192.16,
+          "height": 102.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "clusters": [],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 510.16,
+        "max_y": 158.0
+      }
+    }
+  }
+}
