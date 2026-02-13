@@ -5,26 +5,30 @@ It is intentionally fixture-driven and stage-attributed (parse/layout/render/end
 
 ## Current Status (2026-02-13)
 
-### Flowchart (`flowchart_medium`)
+### Stage Attribution Snapshot (canaries)
 
-Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) still shows that **flowchart layout is the main
-end-to-end bottleneck**, and the remaining gap is dominated by Dagre-ish ordering sweeps:
+Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) indicates the remaining gap is now dominated by
+**parse + render**, with layout mostly competitive except for `flowchart_medium` and `mindmap_medium`.
 
-- Spotcheck (`tools/bench/stage_spotcheck.py`, 30 samples / 2s warmup / 3s measurement):
-  - `parse`: `2.66x` slower (`601.76 µs` vs `226.27 µs`)
-  - `layout`: `1.83x` slower (`7.4041 ms` vs `4.0514 ms`)
-  - `render`: `3.59x` slower (`678.51 µs` vs `188.77 µs`)
-  - `end_to_end`: `2.31x` slower (`9.6824 ms` vs `4.1845 ms`)
-- Micro-timing (deterministic text measurer) indicates `dugong::order` is the hotspot:
-  - After caching per-rank layer graphs, `order` is split roughly as:
-    - `build_layer_graph_cache ~2.7ms`
-    - `sweeps ~1.9ms` (dominant part inside sweeps is `sort_subgraph ~1.6ms`)
-  - Next hotspots after `order` (varies by run): `position_x ~1ms`, `compound_border ~0.8ms`
+- Spotcheck (`tools/bench/stage_spotcheck.py`, 20 samples / 1s warmup / 1s measurement):
+  - Geomean ratios across canaries (`flowchart_medium,class_medium,state_medium,sequence_medium,mindmap_medium`):
+    - `parse`: `~5.91x`
+    - `layout`: `~1.36x`
+    - `render`: `~4.40x`
+    - `end_to_end`: `~1.73x`
+  - Notable outliers:
+    - `mindmap_medium`: `parse ~18x`, `layout ~9x`, `end_to_end ~7–8x`
+    - `state_medium`: `parse ~16x`, `render ~11x`
+    - `flowchart_medium`: `layout ~2–3x`, `render ~6x`, `end_to_end ~2–3x`
 
-Notes:
+Root-cause direction:
 
-- With `layout` much faster than before, **`render` is now the biggest ratio gap** on the
-  canary fixtures.
+- `flowchart_medium` still needs more `dugong::order` work, but **layout is no longer the only big
+  lever**.
+- `state_medium` render is dominated by RoughJS path generation; caching across renders improves it
+  materially, but it remains a large ratio gap.
+- `mindmap_medium` is currently the biggest overall gap (parse + layout), and needs a dedicated plan
+  (likely typed parsing + fewer `serde_json::Value` allocations, and/or a faster internal model).
 
 Useful debug toggles:
 
@@ -93,7 +97,21 @@ Acceptance criteria:
 - Layout micro-timing: `order` and especially `sweeps` drop materially (single-digit ms is a
   reasonable medium-term target for the medium fixture).
 
-### M3 — Positioning: reduce `position_x` overhead (Planned)
+### M3 — State render: eliminate RoughJS cold-start cost (Done)
+
+Goal: reduce `render/state_medium` without changing SVG output.
+
+What we did:
+
+- Cache RoughJS-generated path strings across render calls (global cache keyed by rough shape params),
+  so Criterion iterations and server-style repeated renders avoid recomputing identical shapes.
+
+Acceptance criteria:
+
+- Spotcheck: `render/state_medium` drops materially (e.g. ~`1.5ms` → ~`0.45–0.80ms` in typical runs),
+  and end-to-end ratio improves accordingly.
+
+### M4 — Positioning: reduce `position_x` overhead (Planned)
 
 Goal: after `order` is no longer dominant, reduce the next hotspot(s) without changing layout.
 
@@ -107,7 +125,7 @@ Acceptance criteria:
 
 - `position_x` time drops in `DUGONG_DAGREISH_TIMING=1` output for `flowchart_medium`.
 
-### M4 — Render: close the multi-diagram gap (Planned)
+### M5 — Render: close the multi-diagram gap (Planned)
 
 Goal: reduce `render/*` ratios (flowchart + class + state) while preserving SVG output.
 
@@ -123,20 +141,25 @@ Acceptance criteria:
 - Spotcheck: `render/flowchart_medium` and `render/class_medium` ratios drop materially without
   changing golden fixtures.
 
-### M5 — Parser: only optimize when it matters (Planned)
+### M6 — Parser/IR: stop paying the `serde_json::Value` tax (Planned)
+
+Motivation (from spotcheck):
+
+- `parse/state_medium` and `parse/mindmap_medium` are extreme ratio outliers.
+- Many diagram pipelines parse into intermediate JSON-like structures and then deserialize again for
+  layout/render. That doubles work and allocates heavily.
+
+Work items (ordered by expected ROI):
+
+1. Add parse micro-timing (metadata detection vs preprocessing vs diagram parser vs JSON materialize).
+2. Introduce typed parse paths for high-impact diagrams (start with `stateDiagram` and `mindmap`),
+   and keep JSON emission as a compatibility layer (only when needed for debugging/tests).
+3. Consider a lightweight lexer + hand-rolled parser for the hot subset where it measurably pays off.
 
 Guidance:
 
 - Do not switch to a parser combinator crate (e.g. `nom`) as a default move. That trade is mainly
   about maintainability and error reporting; it does not guarantee speed.
-- Prioritize parser work only after layout is no longer the dominant end-to-end bottleneck for the
-  main canary fixtures.
-
-If parser becomes material:
-
-- Add parse micro-timing (metadata detection vs preprocessing vs AST build vs typed parsing).
-- Consider a lightweight lexer (e.g. `logos`) + hand-rolled parser for the hot subset, keeping
-  parity requirements explicit.
 
 ## Fixture-driven Targets
 
