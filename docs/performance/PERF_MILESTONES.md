@@ -14,14 +14,14 @@ allocations for `mindmap`/`stateDiagram`).
 
 - Spotcheck (`tools/bench/stage_spotcheck.py`, 20 samples / 1s warmup / 1s measurement):
   - Latest canary set (`flowchart_medium,class_medium,state_medium,mindmap_medium`):
-    - `parse`: `~2.3x`
-    - `layout`: `~1.1x`
-    - `render`: `~4.6x`
-    - `end_to_end`: `~1.5x` (varies; mindmap still dominates)
+    - `parse`: `~2.5–2.7x` (run-to-run variance is noticeable)
+    - `layout`: `~1.2–1.3x` (gmean hides that `flowchart`/`mindmap` layout are still large)
+    - `render`: `~4.6–4.9x`
+    - `end_to_end`: `~1.1–1.4x` (gmean is skewed by `class`/`state` being < 1x)
   - Notable outliers in a recent run:
     - `state_medium`: `render ~9x` (RoughJS + leaf node work; typed model still serializes to JSON for renderer)
-    - `mindmap_medium`: `layout ~3–4x`, `end_to_end ~2.8–3.0x`
-    - `flowchart_medium`: `layout ~2.0–2.5x`, `render ~3–4x`, `end_to_end ~1.7–2.3x`
+    - `mindmap_medium`: `layout ~3.5–5.2x`, `end_to_end ~2.4–2.9x`
+    - `flowchart_medium`: `layout ~2.7–3.0x`, `render ~3.5–5.0x`, `end_to_end ~2.0–2.2x`
 
 Root-cause direction:
 
@@ -70,7 +70,7 @@ Work items:
 Goal: cut `layout/flowchart_medium` substantially.
 
 Primary target: reduce the spotcheck ratio from `~5x` → `< 2.0x` without changing layout output.
-Current: `~2.8x` on `flowchart_medium` in the latest canary run (numbers fluctuate).
+Current: `~2.7–3.0x` on `flowchart_medium` in the latest canary runs (numbers fluctuate).
 
 What we know:
 
@@ -82,8 +82,12 @@ Next work items (ordered by expected ROI):
 
 1. Add micro-timing *inside* `sweeps` to identify the true dominant operations
    (e.g. barycenter evaluation vs conflict resolution vs sorting vs layer graph construction).
+   (Done: `sort_subgraph_*` breakdown is now available in `[dugong-timing] stage=order ...`.)
 2. Reduce allocations / cloning inside `sweeps` (reuse scratch buffers; avoid building temporary
    `Vec<String>` / `HashMap<String, ...>` where a borrowed view works).
+   (In progress: conflict resolution was a major contributor; `resolve_conflicts` now operates on
+   dense indices rather than cloning node ids repeatedly. On `flowchart_medium`, local timing showed
+   `sort_subgraph_resolve_conflicts` dropping from ~`0.78ms` → ~`0.29ms`.)
 3. Deeper refactor (likely required): introduce an index-based internal representation for ordering
    sweeps:
    - map external `NodeKey` → dense `usize` once per `order(...)` call
