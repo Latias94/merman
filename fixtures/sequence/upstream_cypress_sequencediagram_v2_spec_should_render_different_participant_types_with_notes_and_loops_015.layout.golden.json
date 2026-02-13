@@ -1,0 +1,643 @@
+{
+  "diagramType": "sequence",
+  "layout": {
+    "SequenceDiagram": {
+      "nodes": [
+        {
+          "id": "actor-top-Admin",
+          "x": 75.0,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-Dashboard",
+          "x": 293.32,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-AuthService",
+          "x": 493.88,
+          "y": 40.0,
+          "width": 150.0,
+          "height": 80.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-UserManager",
+          "x": 693.88,
+          "y": 38.0,
+          "width": 150.0,
+          "height": 76.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-UserProfile",
+          "x": 893.88,
+          "y": 28.0,
+          "width": 150.0,
+          "height": 56.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-UserDB",
+          "x": 1093.88,
+          "y": 28.75,
+          "width": 150.0,
+          "height": 57.5,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-Logs",
+          "x": 1293.88,
+          "y": 28.75,
+          "width": 150.0,
+          "height": 57.5,
+          "is_cluster": false
+        },
+        {
+          "id": "note-8",
+          "x": 1193.88,
+          "y": 421.5,
+          "width": 150.0,
+          "height": 55.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-Admin",
+          "x": 75.0,
+          "y": 721.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-Dashboard",
+          "x": 293.32,
+          "y": 721.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-AuthService",
+          "x": 493.88,
+          "y": 729.0,
+          "width": 150.0,
+          "height": 80.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-UserManager",
+          "x": 693.88,
+          "y": 727.0,
+          "width": 150.0,
+          "height": 76.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-UserProfile",
+          "x": 893.88,
+          "y": 717.0,
+          "width": 150.0,
+          "height": 56.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-UserDB",
+          "x": 1093.88,
+          "y": 717.75,
+          "width": 150.0,
+          "height": 57.5,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-Logs",
+          "x": 1293.88,
+          "y": 717.75,
+          "width": 150.0,
+          "height": 57.5,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "msg-0",
+          "from": "Admin",
+          "to": "Dashboard",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 76.0,
+              "y": 109.0
+            },
+            {
+              "x": 289.32,
+              "y": 109.0
+            }
+          ],
+          "label": {
+            "x": 183.0,
+            "y": 80.0,
+            "width": 148.32,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-2",
+          "from": "Dashboard",
+          "to": "AuthService",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 294.32,
+              "y": 198.0
+            },
+            {
+              "x": 489.88,
+              "y": 198.0
+            }
+          ],
+          "label": {
+            "x": 392.0,
+            "y": 169.0,
+            "width": 130.56,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-3",
+          "from": "AuthService",
+          "to": "Dashboard",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 492.88,
+              "y": 242.0
+            },
+            {
+              "x": 297.32,
+              "y": 242.0
+            }
+          ],
+          "label": {
+            "x": 395.0,
+            "y": 213.0,
+            "width": 97.44,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-5",
+          "from": "Dashboard",
+          "to": "UserManager",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 294.32,
+              "y": 296.0
+            },
+            {
+              "x": 689.88,
+              "y": 296.0
+            }
+          ],
+          "label": {
+            "x": 492.0,
+            "y": 267.0,
+            "width": 67.52,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-6",
+          "from": "UserManager",
+          "to": "UserDB",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 694.88,
+              "y": 340.0
+            },
+            {
+              "x": 1089.88,
+              "y": 340.0
+            }
+          ],
+          "label": {
+            "x": 892.0,
+            "y": 311.0,
+            "width": 78.72,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-7",
+          "from": "UserDB",
+          "to": "UserManager",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 1092.88,
+              "y": 384.0
+            },
+            {
+              "x": 697.88,
+              "y": 384.0
+            }
+          ],
+          "label": {
+            "x": 895.0,
+            "y": 355.0,
+            "width": 109.6,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-9",
+          "from": "UserManager",
+          "to": "UserProfile",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 694.88,
+              "y": 493.0
+            },
+            {
+              "x": 889.88,
+              "y": 493.0
+            }
+          ],
+          "label": {
+            "x": 792.0,
+            "y": 464.0,
+            "width": 105.12,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-10",
+          "from": "UserProfile",
+          "to": "UserManager",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 892.88,
+              "y": 537.0
+            },
+            {
+              "x": 697.88,
+              "y": 537.0
+            }
+          ],
+          "label": {
+            "x": 795.0,
+            "y": 508.0,
+            "width": 103.04,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-11",
+          "from": "UserManager",
+          "to": "Dashboard",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 692.88,
+              "y": 581.0
+            },
+            {
+              "x": 297.32,
+              "y": 581.0
+            }
+          ],
+          "label": {
+            "x": 495.0,
+            "y": 552.0,
+            "width": 87.68,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-12",
+          "from": "Dashboard",
+          "to": "Logs",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 294.32,
+              "y": 625.0
+            },
+            {
+              "x": 1289.88,
+              "y": 625.0
+            }
+          ],
+          "label": {
+            "x": 792.0,
+            "y": 596.0,
+            "width": 90.56,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-13",
+          "from": "Logs",
+          "to": "Admin",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 1292.88,
+              "y": 669.0
+            },
+            {
+              "x": 79.0,
+              "y": 669.0
+            }
+          ],
+          "label": {
+            "x": 686.0,
+            "y": 640.0,
+            "width": 69.6,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-Admin",
+          "from": "actor-top-Admin",
+          "to": "actor-bottom-Admin",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 75.0,
+              "y": 80.0
+            },
+            {
+              "x": 75.0,
+              "y": 689.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-Dashboard",
+          "from": "actor-top-Dashboard",
+          "to": "actor-bottom-Dashboard",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 293.32,
+              "y": 65.0
+            },
+            {
+              "x": 293.32,
+              "y": 689.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-AuthService",
+          "from": "actor-top-AuthService",
+          "to": "actor-bottom-AuthService",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 493.88,
+              "y": 80.0
+            },
+            {
+              "x": 493.88,
+              "y": 689.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-UserManager",
+          "from": "actor-top-UserManager",
+          "to": "actor-bottom-UserManager",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 693.88,
+              "y": 75.0
+            },
+            {
+              "x": 693.88,
+              "y": 689.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-UserProfile",
+          "from": "actor-top-UserProfile",
+          "to": "actor-bottom-UserProfile",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 893.88,
+              "y": 75.0
+            },
+            {
+              "x": 893.88,
+              "y": 689.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-UserDB",
+          "from": "actor-top-UserDB",
+          "to": "actor-bottom-UserDB",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 1093.88,
+              "y": 75.0
+            },
+            {
+              "x": 1093.88,
+              "y": 689.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-Logs",
+          "from": "actor-top-Logs",
+          "to": "actor-bottom-Logs",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 1293.88,
+              "y": 75.0
+            },
+            {
+              "x": 1293.88,
+              "y": 689.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": -50.0,
+        "min_y": -10.0,
+        "max_x": 1418.88,
+        "max_y": 780.0
+      }
+    }
+  }
+}

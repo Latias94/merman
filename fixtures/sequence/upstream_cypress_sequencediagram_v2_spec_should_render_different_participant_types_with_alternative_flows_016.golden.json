@@ -1,0 +1,215 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Client",
+      "MobileApp",
+      "CloudService",
+      "DataProcessor",
+      "Transaction",
+      "TransactionsDB",
+      "EventBus"
+    ],
+    "actors": {
+      "Client": {
+        "name": "Client",
+        "description": "Client",
+        "wrap": false,
+        "type": "actor",
+        "links": {},
+        "properties": {}
+      },
+      "MobileApp": {
+        "name": "MobileApp",
+        "description": "MobileApp",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "CloudService": {
+        "name": "CloudService",
+        "description": "CloudService",
+        "wrap": false,
+        "type": "boundary",
+        "links": {},
+        "properties": {}
+      },
+      "DataProcessor": {
+        "name": "DataProcessor",
+        "description": "DataProcessor",
+        "wrap": false,
+        "type": "control",
+        "links": {},
+        "properties": {}
+      },
+      "Transaction": {
+        "name": "Transaction",
+        "description": "Transaction",
+        "wrap": false,
+        "type": "entity",
+        "links": {},
+        "properties": {}
+      },
+      "TransactionsDB": {
+        "name": "TransactionsDB",
+        "description": "TransactionsDB",
+        "wrap": false,
+        "type": "database",
+        "links": {},
+        "properties": {}
+      },
+      "EventBus": {
+        "name": "EventBus",
+        "description": "EventBus",
+        "wrap": false,
+        "type": "queue",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "Client",
+        "to": "MobileApp",
+        "message": "Initiate transaction",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "MobileApp",
+        "to": "CloudService",
+        "message": "Authenticate",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": null,
+        "to": null,
+        "message": "Authentication successful",
+        "wrap": false,
+        "type": 12,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "CloudService",
+        "to": "MobileApp",
+        "message": "Auth token",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "MobileApp",
+        "to": "DataProcessor",
+        "message": "Process data",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "DataProcessor",
+        "to": "Transaction",
+        "message": "Create transaction",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "Transaction",
+        "to": "TransactionsDB",
+        "message": "Save record",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "TransactionsDB",
+        "to": "Transaction",
+        "message": "Confirmation",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "Transaction",
+        "to": "EventBus",
+        "message": "Publish event",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": "EventBus",
+        "to": "Client",
+        "message": "Notification",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": null,
+        "to": null,
+        "message": "Authentication failed",
+        "wrap": false,
+        "type": 13,
+        "activate": false
+      },
+      {
+        "id": "11",
+        "from": "CloudService",
+        "to": "MobileApp",
+        "message": "Error",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "12",
+        "from": "MobileApp",
+        "to": "Client",
+        "message": "Show error",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "13",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 14,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

@@ -1,0 +1,223 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Admin",
+      "Dashboard",
+      "AuthService",
+      "UserManager",
+      "UserProfile",
+      "UserDB",
+      "Logs"
+    ],
+    "actors": {
+      "Admin": {
+        "name": "Admin",
+        "description": "Admin",
+        "wrap": false,
+        "type": "actor",
+        "links": {},
+        "properties": {}
+      },
+      "Dashboard": {
+        "name": "Dashboard",
+        "description": "Dashboard",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "AuthService": {
+        "name": "AuthService",
+        "description": "AuthService",
+        "wrap": false,
+        "type": "boundary",
+        "links": {},
+        "properties": {}
+      },
+      "UserManager": {
+        "name": "UserManager",
+        "description": "UserManager",
+        "wrap": false,
+        "type": "control",
+        "links": {},
+        "properties": {}
+      },
+      "UserProfile": {
+        "name": "UserProfile",
+        "description": "UserProfile",
+        "wrap": false,
+        "type": "entity",
+        "links": {},
+        "properties": {}
+      },
+      "UserDB": {
+        "name": "UserDB",
+        "description": "UserDB",
+        "wrap": false,
+        "type": "database",
+        "links": {},
+        "properties": {}
+      },
+      "Logs": {
+        "name": "Logs",
+        "description": "Logs",
+        "wrap": false,
+        "type": "database",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "Admin",
+        "to": "Dashboard",
+        "message": "Open user management",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": null,
+        "to": null,
+        "message": "Authentication check",
+        "wrap": false,
+        "type": 10,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "Dashboard",
+        "to": "AuthService",
+        "message": "Verify admin rights",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "AuthService",
+        "to": "Dashboard",
+        "message": "Access granted",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 11,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "Dashboard",
+        "to": "UserManager",
+        "message": "List users",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "UserManager",
+        "to": "UserDB",
+        "message": "Query users",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "UserDB",
+        "to": "UserManager",
+        "message": "Return user data",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "UserDB",
+        "to": "UserDB",
+        "message": "Encrypted data<br/>requires decryption",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 1
+      },
+      {
+        "id": "9",
+        "from": "UserManager",
+        "to": "UserProfile",
+        "message": "Format profiles",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": "UserProfile",
+        "to": "UserManager",
+        "message": "Formatted data",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "11",
+        "from": "UserManager",
+        "to": "Dashboard",
+        "message": "Display users",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "12",
+        "from": "Dashboard",
+        "to": "Logs",
+        "message": "Record access",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "13",
+        "from": "Logs",
+        "to": "Admin",
+        "message": "Audit trail",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": "UserDB",
+        "placement": 1,
+        "message": "Encrypted data<br/>requires decryption",
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

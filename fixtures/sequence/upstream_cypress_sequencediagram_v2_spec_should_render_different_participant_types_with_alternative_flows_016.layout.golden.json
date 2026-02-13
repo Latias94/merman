@@ -1,0 +1,635 @@
+{
+  "diagramType": "sequence",
+  "layout": {
+    "SequenceDiagram": {
+      "nodes": [
+        {
+          "id": "actor-top-Client",
+          "x": 75.0,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-MobileApp",
+          "x": 275.0,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-CloudService",
+          "x": 475.0,
+          "y": 40.0,
+          "width": 150.0,
+          "height": 80.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-DataProcessor",
+          "x": 675.0,
+          "y": 38.0,
+          "width": 150.0,
+          "height": 76.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-Transaction",
+          "x": 875.0,
+          "y": 28.0,
+          "width": 150.0,
+          "height": 56.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-TransactionsDB",
+          "x": 1075.0,
+          "y": 28.75,
+          "width": 150.0,
+          "height": 57.5,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-EventBus",
+          "x": 1275.0,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-Client",
+          "x": 75.0,
+          "y": 701.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-MobileApp",
+          "x": 275.0,
+          "y": 701.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-CloudService",
+          "x": 475.0,
+          "y": 709.0,
+          "width": 150.0,
+          "height": 80.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-DataProcessor",
+          "x": 675.0,
+          "y": 707.0,
+          "width": 150.0,
+          "height": 76.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-Transaction",
+          "x": 875.0,
+          "y": 697.0,
+          "width": 150.0,
+          "height": 56.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-TransactionsDB",
+          "x": 1075.0,
+          "y": 697.75,
+          "width": 150.0,
+          "height": 57.5,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-EventBus",
+          "x": 1275.0,
+          "y": 701.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "msg-0",
+          "from": "Client",
+          "to": "MobileApp",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 76.0,
+              "y": 109.0
+            },
+            {
+              "x": 271.0,
+              "y": 109.0
+            }
+          ],
+          "label": {
+            "x": 174.0,
+            "y": 80.0,
+            "width": 126.72,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-1",
+          "from": "MobileApp",
+          "to": "CloudService",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 276.0,
+              "y": 153.0
+            },
+            {
+              "x": 471.0,
+              "y": 153.0
+            }
+          ],
+          "label": {
+            "x": 374.0,
+            "y": 124.0,
+            "width": 82.88,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-3",
+          "from": "CloudService",
+          "to": "MobileApp",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 474.0,
+              "y": 242.0
+            },
+            {
+              "x": 279.0,
+              "y": 242.0
+            }
+          ],
+          "label": {
+            "x": 377.0,
+            "y": 213.0,
+            "width": 71.84,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-4",
+          "from": "MobileApp",
+          "to": "DataProcessor",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 276.0,
+              "y": 286.0
+            },
+            {
+              "x": 671.0,
+              "y": 286.0
+            }
+          ],
+          "label": {
+            "x": 474.0,
+            "y": 257.0,
+            "width": 83.68,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-5",
+          "from": "DataProcessor",
+          "to": "Transaction",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 676.0,
+              "y": 330.0
+            },
+            {
+              "x": 871.0,
+              "y": 330.0
+            }
+          ],
+          "label": {
+            "x": 774.0,
+            "y": 301.0,
+            "width": 122.56,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-6",
+          "from": "Transaction",
+          "to": "TransactionsDB",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 876.0,
+              "y": 374.0
+            },
+            {
+              "x": 1071.0,
+              "y": 374.0
+            }
+          ],
+          "label": {
+            "x": 974.0,
+            "y": 345.0,
+            "width": 76.8,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-7",
+          "from": "TransactionsDB",
+          "to": "Transaction",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 1074.0,
+              "y": 418.0
+            },
+            {
+              "x": 879.0,
+              "y": 418.0
+            }
+          ],
+          "label": {
+            "x": 977.0,
+            "y": 389.0,
+            "width": 86.08,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-8",
+          "from": "Transaction",
+          "to": "EventBus",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 876.0,
+              "y": 462.0
+            },
+            {
+              "x": 1271.0,
+              "y": 462.0
+            }
+          ],
+          "label": {
+            "x": 1074.0,
+            "y": 433.0,
+            "width": 85.76,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-9",
+          "from": "EventBus",
+          "to": "Client",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 1274.0,
+              "y": 506.0
+            },
+            {
+              "x": 79.0,
+              "y": 506.0
+            }
+          ],
+          "label": {
+            "x": 677.0,
+            "y": 477.0,
+            "width": 78.08,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-11",
+          "from": "CloudService",
+          "to": "MobileApp",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 474.0,
+              "y": 595.0
+            },
+            {
+              "x": 279.0,
+              "y": 595.0
+            }
+          ],
+          "label": {
+            "x": 377.0,
+            "y": 566.0,
+            "width": 37.12,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-12",
+          "from": "MobileApp",
+          "to": "Client",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 274.0,
+              "y": 639.0
+            },
+            {
+              "x": 79.0,
+              "y": 639.0
+            }
+          ],
+          "label": {
+            "x": 177.0,
+            "y": 610.0,
+            "width": 75.52,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-Client",
+          "from": "actor-top-Client",
+          "to": "actor-bottom-Client",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 75.0,
+              "y": 80.0
+            },
+            {
+              "x": 75.0,
+              "y": 669.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-MobileApp",
+          "from": "actor-top-MobileApp",
+          "to": "actor-bottom-MobileApp",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 275.0,
+              "y": 65.0
+            },
+            {
+              "x": 275.0,
+              "y": 669.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-CloudService",
+          "from": "actor-top-CloudService",
+          "to": "actor-bottom-CloudService",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 475.0,
+              "y": 80.0
+            },
+            {
+              "x": 475.0,
+              "y": 669.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-DataProcessor",
+          "from": "actor-top-DataProcessor",
+          "to": "actor-bottom-DataProcessor",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 675.0,
+              "y": 75.0
+            },
+            {
+              "x": 675.0,
+              "y": 669.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-Transaction",
+          "from": "actor-top-Transaction",
+          "to": "actor-bottom-Transaction",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 875.0,
+              "y": 75.0
+            },
+            {
+              "x": 875.0,
+              "y": 669.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-TransactionsDB",
+          "from": "actor-top-TransactionsDB",
+          "to": "actor-bottom-TransactionsDB",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 1075.0,
+              "y": 75.0
+            },
+            {
+              "x": 1075.0,
+              "y": 669.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-EventBus",
+          "from": "actor-top-EventBus",
+          "to": "actor-bottom-EventBus",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 1275.0,
+              "y": 65.0
+            },
+            {
+              "x": 1275.0,
+              "y": 669.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": -50.0,
+        "min_y": -10.0,
+        "max_x": 1400.0,
+        "max_y": 760.0
+      }
+    }
+  }
+}

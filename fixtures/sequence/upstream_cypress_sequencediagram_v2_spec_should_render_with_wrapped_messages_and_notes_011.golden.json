@@ -1,0 +1,188 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "User",
+      "AuthService",
+      "UI",
+      "OrderController",
+      "Product",
+      "MongoDB",
+      "Products",
+      "OrderQueue"
+    ],
+    "actors": {
+      "User": {
+        "name": "User",
+        "description": "User",
+        "wrap": false,
+        "type": "actor",
+        "links": {},
+        "properties": {}
+      },
+      "AuthService": {
+        "name": "AuthService",
+        "description": "AuthService",
+        "wrap": false,
+        "type": "control",
+        "links": {},
+        "properties": {}
+      },
+      "UI": {
+        "name": "UI",
+        "description": "UI",
+        "wrap": false,
+        "type": "boundary",
+        "links": {},
+        "properties": {}
+      },
+      "OrderController": {
+        "name": "OrderController",
+        "description": "OrderController",
+        "wrap": false,
+        "type": "control",
+        "links": {},
+        "properties": {}
+      },
+      "Product": {
+        "name": "Product",
+        "description": "Product",
+        "wrap": false,
+        "type": "entity",
+        "links": {},
+        "properties": {}
+      },
+      "MongoDB": {
+        "name": "MongoDB",
+        "description": "MongoDB",
+        "wrap": false,
+        "type": "database",
+        "links": {},
+        "properties": {}
+      },
+      "Products": {
+        "name": "Products",
+        "description": "Products",
+        "wrap": false,
+        "type": "collections",
+        "links": {},
+        "properties": {}
+      },
+      "OrderQueue": {
+        "name": "OrderQueue",
+        "description": "OrderQueue",
+        "wrap": false,
+        "type": "queue",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "User",
+        "to": "UI",
+        "message": "Login request",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "UI",
+        "to": "AuthService",
+        "message": "Validate credentials",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "AuthService",
+        "to": "UI",
+        "message": "Authentication token",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "UI",
+        "to": "OrderController",
+        "message": "Place order",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "OrderController",
+        "to": "Product",
+        "message": "Check availability",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "Product",
+        "to": "OrderController",
+        "message": "Available",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "OrderController",
+        "to": "MongoDB",
+        "message": "Save order",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "MongoDB",
+        "to": "OrderController",
+        "message": "Order saved",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "OrderController",
+        "to": "OrderQueue",
+        "message": "Process payment",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": "OrderQueue",
+        "to": "User",
+        "message": "Order confirmation",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

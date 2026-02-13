@@ -1,0 +1,188 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "B",
+      "C",
+      "E",
+      "DB",
+      "COL",
+      "Q",
+      "FE",
+      "LongNameUser"
+    ],
+    "actors": {
+      "B": {
+        "name": "B",
+        "description": "B",
+        "wrap": false,
+        "type": "boundary",
+        "links": {},
+        "properties": {}
+      },
+      "C": {
+        "name": "C",
+        "description": "C",
+        "wrap": false,
+        "type": "control",
+        "links": {},
+        "properties": {}
+      },
+      "E": {
+        "name": "E",
+        "description": "E",
+        "wrap": false,
+        "type": "entity",
+        "links": {},
+        "properties": {}
+      },
+      "DB": {
+        "name": "DB",
+        "description": "DB",
+        "wrap": false,
+        "type": "database",
+        "links": {},
+        "properties": {}
+      },
+      "COL": {
+        "name": "COL",
+        "description": "COL",
+        "wrap": false,
+        "type": "collections",
+        "links": {},
+        "properties": {}
+      },
+      "Q": {
+        "name": "Q",
+        "description": "Q",
+        "wrap": false,
+        "type": "queue",
+        "links": {},
+        "properties": {}
+      },
+      "FE": {
+        "name": "FE",
+        "description": "FE",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "LongNameUser": {
+        "name": "LongNameUser",
+        "description": "LongNameUser",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "FE",
+        "to": "B",
+        "message": "Another long message<br/>with explicit<br/>line breaks",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "B",
+        "to": "FE",
+        "message": "Response message that is also quite long and needs to wrap",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "FE",
+        "to": "C",
+        "message": "Process data",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "C",
+        "to": "E",
+        "message": "Validate",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "E",
+        "to": "C",
+        "message": "Validation result",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "C",
+        "to": "DB",
+        "message": "Save",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "DB",
+        "to": "C",
+        "message": "Save result",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "C",
+        "to": "COL",
+        "message": "Log",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "COL",
+        "to": "Q",
+        "message": "Forward",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": "Q",
+        "to": "LongNameUser",
+        "message": "Final response with confirmation of all actions taken",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

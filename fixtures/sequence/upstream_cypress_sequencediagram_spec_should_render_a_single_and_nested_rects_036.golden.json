@@ -1,0 +1,269 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "G"
+    ],
+    "actors": {
+      "A": {
+        "name": "A",
+        "description": "A",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "B": {
+        "name": "B",
+        "description": "B",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "C": {
+        "name": "C",
+        "description": "C",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "D": {
+        "name": "D",
+        "description": "D",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "E": {
+        "name": "E",
+        "description": "E",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "G": {
+        "name": "G",
+        "description": "G",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "A",
+        "to": "B",
+        "message": "Task 1",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "1",
+        "from": "B",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": null,
+        "to": null,
+        "message": "rgb(178, 102, 255)",
+        "wrap": false,
+        "type": 22,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "B",
+        "to": "C",
+        "message": "Task 2",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "4",
+        "from": "C",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "C",
+        "to": "B",
+        "message": "Return",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "C",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 23,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "A",
+        "to": "D",
+        "message": "Task 3",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": null,
+        "to": null,
+        "message": "rgb(0, 128, 255)",
+        "wrap": false,
+        "type": 22,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": "D",
+        "to": "E",
+        "message": "Task 4",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "11",
+        "from": "E",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "12",
+        "from": null,
+        "to": null,
+        "message": "rgb(0, 204, 0)",
+        "wrap": false,
+        "type": 22,
+        "activate": false
+      },
+      {
+        "id": "13",
+        "from": "E",
+        "to": "G",
+        "message": "Task 5",
+        "wrap": false,
+        "type": 0,
+        "activate": true
+      },
+      {
+        "id": "14",
+        "from": "G",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "15",
+        "from": "G",
+        "to": "E",
+        "message": "Return",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "16",
+        "from": "G",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "17",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 23,
+        "activate": false
+      },
+      {
+        "id": "18",
+        "from": "E",
+        "to": "E",
+        "message": "Task 6",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "19",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 23,
+        "activate": false
+      },
+      {
+        "id": "20",
+        "from": "D",
+        "to": "A",
+        "message": "Complete",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

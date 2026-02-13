@@ -1,0 +1,605 @@
+{
+  "diagramType": "sequence",
+  "layout": {
+    "SequenceDiagram": {
+      "nodes": [
+        {
+          "id": "actor-top-Customer",
+          "x": 75.0,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-Frontend",
+          "x": 275.0,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-PaymentService",
+          "x": 475.0,
+          "y": 40.0,
+          "width": 150.0,
+          "height": 80.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-InventoryManager",
+          "x": 675.0,
+          "y": 38.0,
+          "width": 150.0,
+          "height": 76.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-Order",
+          "x": 875.0,
+          "y": 28.0,
+          "width": 150.0,
+          "height": 56.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-OrdersDB",
+          "x": 1075.0,
+          "y": 28.75,
+          "width": 150.0,
+          "height": 57.5,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-NotificationQueue",
+          "x": 1275.0,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-Customer",
+          "x": 75.0,
+          "y": 637.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-Frontend",
+          "x": 275.0,
+          "y": 637.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-PaymentService",
+          "x": 475.0,
+          "y": 645.0,
+          "width": 150.0,
+          "height": 80.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-InventoryManager",
+          "x": 675.0,
+          "y": 643.0,
+          "width": 150.0,
+          "height": 76.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-Order",
+          "x": 875.0,
+          "y": 633.0,
+          "width": 150.0,
+          "height": 56.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-OrdersDB",
+          "x": 1075.0,
+          "y": 633.75,
+          "width": 150.0,
+          "height": 57.5,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-NotificationQueue",
+          "x": 1275.0,
+          "y": 637.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "msg-0",
+          "from": "Customer",
+          "to": "Frontend",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 76.0,
+              "y": 109.0
+            },
+            {
+              "x": 271.0,
+              "y": 109.0
+            }
+          ],
+          "label": {
+            "x": 174.0,
+            "y": 80.0,
+            "width": 74.4,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-1",
+          "from": "Frontend",
+          "to": "Order",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 276.0,
+              "y": 153.0
+            },
+            {
+              "x": 871.0,
+              "y": 153.0
+            }
+          ],
+          "label": {
+            "x": 574.0,
+            "y": 124.0,
+            "width": 83.68,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-3",
+          "from": "Order",
+          "to": "PaymentService",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 874.0,
+              "y": 242.0
+            },
+            {
+              "x": 479.0,
+              "y": 242.0
+            }
+          ],
+          "label": {
+            "x": 677.0,
+            "y": 213.0,
+            "width": 111.84,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-5",
+          "from": "Order",
+          "to": "InventoryManager",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 874.0,
+              "y": 311.0
+            },
+            {
+              "x": 679.0,
+              "y": 311.0
+            }
+          ],
+          "label": {
+            "x": 777.0,
+            "y": 282.0,
+            "width": 93.76,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-7",
+          "from": "PaymentService",
+          "to": "Order",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 476.0,
+              "y": 365.0
+            },
+            {
+              "x": 871.0,
+              "y": 365.0
+            }
+          ],
+          "label": {
+            "x": 674.0,
+            "y": 336.0,
+            "width": 128.8,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-8",
+          "from": "InventoryManager",
+          "to": "Order",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 676.0,
+              "y": 409.0
+            },
+            {
+              "x": 871.0,
+              "y": 409.0
+            }
+          ],
+          "label": {
+            "x": 774.0,
+            "y": 380.0,
+            "width": 98.24,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-9",
+          "from": "Order",
+          "to": "OrdersDB",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 876.0,
+              "y": 453.0
+            },
+            {
+              "x": 1071.0,
+              "y": 453.0
+            }
+          ],
+          "label": {
+            "x": 974.0,
+            "y": 424.0,
+            "width": 129.92,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-10",
+          "from": "OrdersDB",
+          "to": "Order",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 1074.0,
+              "y": 497.0
+            },
+            {
+              "x": 879.0,
+              "y": 497.0
+            }
+          ],
+          "label": {
+            "x": 977.0,
+            "y": 468.0,
+            "width": 76.8,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-11",
+          "from": "Order",
+          "to": "NotificationQueue",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 876.0,
+              "y": 541.0
+            },
+            {
+              "x": 1271.0,
+              "y": 541.0
+            }
+          ],
+          "label": {
+            "x": 1074.0,
+            "y": 512.0,
+            "width": 118.88,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-12",
+          "from": "NotificationQueue",
+          "to": "Customer",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 1274.0,
+              "y": 585.0
+            },
+            {
+              "x": 79.0,
+              "y": 585.0
+            }
+          ],
+          "label": {
+            "x": 677.0,
+            "y": 556.0,
+            "width": 125.76,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-Customer",
+          "from": "actor-top-Customer",
+          "to": "actor-bottom-Customer",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 75.0,
+              "y": 80.0
+            },
+            {
+              "x": 75.0,
+              "y": 605.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-Frontend",
+          "from": "actor-top-Frontend",
+          "to": "actor-bottom-Frontend",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 275.0,
+              "y": 65.0
+            },
+            {
+              "x": 275.0,
+              "y": 605.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-PaymentService",
+          "from": "actor-top-PaymentService",
+          "to": "actor-bottom-PaymentService",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 475.0,
+              "y": 80.0
+            },
+            {
+              "x": 475.0,
+              "y": 605.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-InventoryManager",
+          "from": "actor-top-InventoryManager",
+          "to": "actor-bottom-InventoryManager",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 675.0,
+              "y": 75.0
+            },
+            {
+              "x": 675.0,
+              "y": 605.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-Order",
+          "from": "actor-top-Order",
+          "to": "actor-bottom-Order",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 875.0,
+              "y": 75.0
+            },
+            {
+              "x": 875.0,
+              "y": 605.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-OrdersDB",
+          "from": "actor-top-OrdersDB",
+          "to": "actor-bottom-OrdersDB",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 1075.0,
+              "y": 75.0
+            },
+            {
+              "x": 1075.0,
+              "y": 605.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-NotificationQueue",
+          "from": "actor-top-NotificationQueue",
+          "to": "actor-bottom-NotificationQueue",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 1275.0,
+              "y": 65.0
+            },
+            {
+              "x": 1275.0,
+              "y": 605.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": -50.0,
+        "min_y": -10.0,
+        "max_x": 1400.0,
+        "max_y": 696.0
+      }
+    }
+  }
+}
