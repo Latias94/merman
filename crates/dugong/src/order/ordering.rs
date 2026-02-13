@@ -16,9 +16,28 @@ where
     E: Default + OrderEdgeWeight + 'static,
     G: Default,
 {
+    let timing_enabled = std::env::var("DUGONG_ORDER_TIMING")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    #[derive(Debug, Default, Clone)]
+    struct OrderTimings {
+        total: std::time::Duration,
+        build_nodes_by_rank: std::time::Duration,
+        init_order: std::time::Duration,
+        assign_initial: std::time::Duration,
+        sweeps: std::time::Duration,
+        build_layer_matrix: std::time::Duration,
+        cross_count: std::time::Duration,
+    }
+
+    let total_start = timing_enabled.then(std::time::Instant::now);
+    let mut timings = OrderTimings::default();
+
     let mut max_rank: i32 = i32::MIN;
     let mut nodes_by_rank: BTreeMap<i32, Vec<String>> = BTreeMap::new();
 
+    let build_nodes_by_rank_start = timing_enabled.then(std::time::Instant::now);
     for v in g.nodes() {
         let Some(node) = g.node(v) else {
             continue;
@@ -36,13 +55,25 @@ where
             }
         }
     }
+    if let Some(s) = build_nodes_by_rank_start {
+        timings.build_nodes_by_rank = s.elapsed();
+    }
 
     if max_rank == i32::MIN {
         return;
     }
 
+    let init_order_start = timing_enabled.then(std::time::Instant::now);
     let layering = init_order(g);
+    if let Some(s) = init_order_start {
+        timings.init_order = s.elapsed();
+    }
+
+    let assign_initial_start = timing_enabled.then(std::time::Instant::now);
     assign_order(g, &layering);
+    if let Some(s) = assign_initial_start {
+        timings.assign_initial = s.elapsed();
+    }
 
     if opts.disable_optimal_order_heuristic {
         return;
@@ -51,6 +82,13 @@ where
     let mut best_cc: f64 = f64::INFINITY;
     let mut best_layering: Option<Vec<Vec<String>>> = None;
 
+    let ranks_down: Vec<i32> = (1..=max_rank).collect();
+    let ranks_up: Vec<i32> = if max_rank >= 1 {
+        (0..=(max_rank - 1)).rev().collect()
+    } else {
+        Vec::new()
+    };
+
     let mut i: usize = 0;
     let mut last_best: usize = 0;
     while last_best < 4 {
@@ -58,25 +96,42 @@ where
         let bias_right = i % 4 >= 2;
 
         if use_down {
-            let ranks: Vec<i32> = (1..=max_rank).collect();
-            sweep(g, &nodes_by_rank, &ranks, Relationship::InEdges, bias_right);
-        } else {
-            let ranks: Vec<i32> = if max_rank >= 1 {
-                (0..=(max_rank - 1)).rev().collect()
-            } else {
-                Vec::new()
-            };
+            let sweep_start = timing_enabled.then(std::time::Instant::now);
             sweep(
                 g,
                 &nodes_by_rank,
-                &ranks,
+                &ranks_down,
+                Relationship::InEdges,
+                bias_right,
+            );
+            if let Some(s) = sweep_start {
+                timings.sweeps += s.elapsed();
+            }
+        } else {
+            let sweep_start = timing_enabled.then(std::time::Instant::now);
+            sweep(
+                g,
+                &nodes_by_rank,
+                &ranks_up,
                 Relationship::OutEdges,
                 bias_right,
             );
+            if let Some(s) = sweep_start {
+                timings.sweeps += s.elapsed();
+            }
         }
 
+        let build_layer_matrix_start = timing_enabled.then(std::time::Instant::now);
         let layering_now = build_layer_matrix(g, max_rank);
+        if let Some(s) = build_layer_matrix_start {
+            timings.build_layer_matrix += s.elapsed();
+        }
+
+        let cross_count_start = timing_enabled.then(std::time::Instant::now);
         let cc = cross_count(g, &layering_now);
+        if let Some(s) = cross_count_start {
+            timings.cross_count += s.elapsed();
+        }
         if cc < best_cc {
             last_best = 0;
             best_cc = cc;
@@ -89,6 +144,20 @@ where
 
     if let Some(best) = best_layering {
         assign_order(g, &best);
+    }
+
+    if let Some(s) = total_start {
+        timings.total = s.elapsed();
+        eprintln!(
+            "[dugong-timing] stage=order total={:?} build_nodes_by_rank={:?} init_order={:?} assign_initial={:?} sweeps={:?} build_layer_matrix={:?} cross_count={:?}",
+            timings.total,
+            timings.build_nodes_by_rank,
+            timings.init_order,
+            timings.assign_initial,
+            timings.sweeps,
+            timings.build_layer_matrix,
+            timings.cross_count,
+        );
     }
 }
 
