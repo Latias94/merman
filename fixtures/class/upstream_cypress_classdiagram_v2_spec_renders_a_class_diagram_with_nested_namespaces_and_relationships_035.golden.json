@@ -1,0 +1,197 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "User": {
+        "id": "User",
+        "type": "",
+        "label": "User",
+        "text": "User",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "login",
+            "classifier": "",
+            "parameters": "username: String, password: String",
+            "returnType": "",
+            "displayText": "+login(username: String, password: String)",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "logout",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+logout()",
+            "cssStyle": ""
+          }
+        ],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-User-0",
+        "parent": "Company.Project.Module",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Admin": {
+        "id": "Admin",
+        "type": "",
+        "label": "Admin",
+        "text": "Admin",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "addUser",
+            "classifier": "",
+            "parameters": "user: User",
+            "returnType": "",
+            "displayText": "+addUser(user: User)",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "removeUser",
+            "classifier": "",
+            "parameters": "user: User",
+            "returnType": "",
+            "displayText": "+removeUser(user: User)",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "generateReport",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+generateReport()",
+            "cssStyle": ""
+          }
+        ],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Admin-1",
+        "parent": "Company.Project.Module",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Report": {
+        "id": "Report",
+        "type": "",
+        "label": "Report",
+        "text": "Report",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "generatePDF",
+            "classifier": "",
+            "parameters": "reportData: List",
+            "returnType": "",
+            "displayText": "+generatePDF(reportData: List)",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "generateCSV",
+            "classifier": "",
+            "parameters": "reportData: List",
+            "returnType": "",
+            "displayText": "+generateCSV(reportData: List)",
+            "cssStyle": ""
+          }
+        ],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Report-2",
+        "parent": "Company.Project.Module",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "Admin",
+        "id2": "User",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "manages",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "1",
+        "id1": "Admin",
+        "id2": "Report",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "generates",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      }
+    ],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {
+      "Company.Project.Module": {
+        "id": "Company.Project.Module",
+        "domId": "classId-Company.Project.Module-0",
+        "classIds": [
+          "User",
+          "Admin",
+          "Report"
+        ]
+      }
+    },
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

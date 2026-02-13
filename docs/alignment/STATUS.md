@@ -18,7 +18,7 @@ goldens/baselines. It is intentionally short and should stay true even as fixtur
 - Upstream SVG baselines (`fixtures/upstream-svgs/**`):
   - Scope: authoritative Mermaid end-to-end SVG output (generated via official CLI).
   - How-to: `docs/rendering/UPSTREAM_SVG_BASELINES.md`.
-  - Current corpus (2026-02-13): 881 baselines across 23 diagrams.
+  - Current corpus (2026-02-13): 900 baselines across 23 diagrams.
 - Raster previews (PNG/JPG/PDF via `merman-cli`):
   - Scope: best-effort output for previews/integrations (not pixel-identical to upstream).
   - Note: upstream uses browser rendering; pure-Rust rasterizers do not fully render SVG `<foreignObject>`.
@@ -89,8 +89,11 @@ Recent progress (2026-02-13): imported Sequence Cypress rendering fixtures (with
 hardened Sequence note wrapping / actor menu properties / nested `rect` DOM ordering, keeping `parity-root` green.
 Recent progress (2026-02-13): imported Mindmap Cypress rendering fixtures (with upstream SVG baselines) and
 added fixture-derived Mindmap root viewport overrides to keep `parity-root` green.
+Recent progress (2026-02-13): imported Class Cypress rendering fixtures (with upstream SVG baselines) and
+hardened Class parity for multiline IDs (attribute `&#10;`), HTML label line breaks (`<br />`), themeVariables,
+and single-namespace wrapper DOM, keeping `parity-root` green.
 As of 2026-02-13, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 0 DOM
-mismatches for the current fixture set (881/881 upstream SVG baselines, including root viewport parity).
+mismatches for the current fixture set (900/900 upstream SVG baselines, including root viewport parity).
 
 Post-baseline hardening plan (coverage growth + override consolidation + CI guardrails) is tracked in
 `docs/alignment/PARITY_HARDENING_PLAN.md`.

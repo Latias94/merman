@@ -1,0 +1,548 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Class01": {
+        "id": "Class01",
+        "type": "",
+        "label": "Class01",
+        "text": "Class01",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "",
+            "id": "size",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "size()",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "int chimp",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "int chimp",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "int gorilla",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "int gorilla",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "int privateChimp",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-int privateChimp",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "int publicGorilla",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+int publicGorilla",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "#",
+            "id": "int protectedMarmoset",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "#int protectedMarmoset",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [
+          "interface"
+        ],
+        "styles": [],
+        "domId": "classId-Class01-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "AveryLongClass": {
+        "id": "AveryLongClass",
+        "type": "",
+        "label": "AveryLongClass",
+        "text": "AveryLongClass",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-AveryLongClass-1",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Class03": {
+        "id": "Class03",
+        "type": "",
+        "label": "Class03",
+        "text": "Class03",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Class03-2",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Class04": {
+        "id": "Class04",
+        "type": "",
+        "label": "Class04",
+        "text": "Class04",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Class04-3",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Class05": {
+        "id": "Class05",
+        "type": "",
+        "label": "Class05",
+        "text": "Class05",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Class05-4",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Class06": {
+        "id": "Class06",
+        "type": "",
+        "label": "Class06",
+        "text": "Class06",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Class06-5",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Class07": {
+        "id": "Class07",
+        "type": "",
+        "label": "Class07",
+        "text": "Class07",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "",
+            "id": "equals",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "equals()",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "Object[] elementData",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "Object[] elementData",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Class07-6",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Class08": {
+        "id": "Class08",
+        "type": "",
+        "label": "Class08",
+        "text": "Class08",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Class08-7",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Class09": {
+        "id": "Class09",
+        "type": "",
+        "label": "Class09",
+        "text": "Class09",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Class09-8",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "C2": {
+        "id": "C2",
+        "type": "",
+        "label": "C2",
+        "text": "C2",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-C2-9",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "C3": {
+        "id": "C3",
+        "type": "",
+        "label": "C3",
+        "text": "C3",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-C3-10",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Class12": {
+        "id": "Class12",
+        "type": "",
+        "label": "Class12",
+        "text": "Class12",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Class12-11",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Class11": {
+        "id": "Class11",
+        "type": "",
+        "label": "Class11",
+        "text": "Class11",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Class11-12",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Class10": {
+        "id": "Class10",
+        "type": "",
+        "label": "Class10",
+        "text": "Class10",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "",
+            "id": "test",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "test()",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "int id",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "int id",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [
+          "service"
+        ],
+        "styles": [],
+        "domId": "classId-Class10-13",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "Class01",
+        "id2": "AveryLongClass",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "Cool",
+        "relation": {
+          "type1": 1,
+          "type2": -1,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "1",
+        "id1": "Class03",
+        "id2": "Class04",
+        "relationTitle1": "1",
+        "relationTitle2": "*",
+        "title": "",
+        "relation": {
+          "type1": 2,
+          "type2": -1,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "2",
+        "id1": "Class05",
+        "id2": "Class06",
+        "relationTitle1": "1",
+        "relationTitle2": "many",
+        "title": "",
+        "relation": {
+          "type1": 0,
+          "type2": -1,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "3",
+        "id1": "Class07",
+        "id2": "Class08",
+        "relationTitle1": "1",
+        "relationTitle2": "*",
+        "title": "",
+        "relation": {
+          "type1": -1,
+          "type2": -1,
+          "lineType": 1
+        }
+      },
+      {
+        "id": "4",
+        "id1": "Class09",
+        "id2": "C2",
+        "relationTitle1": "1",
+        "relationTitle2": "*",
+        "title": "Where am i?",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "5",
+        "id1": "Class09",
+        "id2": "C3",
+        "relationTitle1": "*",
+        "relationTitle2": "*",
+        "title": "",
+        "relation": {
+          "type1": -1,
+          "type2": 2,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "6",
+        "id1": "Class09",
+        "id2": "Class07",
+        "relationTitle1": "1",
+        "relationTitle2": "1",
+        "title": "",
+        "relation": {
+          "type1": -1,
+          "type2": 1,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "7",
+        "id1": "Class12",
+        "id2": "Class08",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "",
+        "relation": {
+          "type1": 1,
+          "type2": -1,
+          "lineType": 1
+        }
+      },
+      {
+        "id": "8",
+        "id1": "Class11",
+        "id2": "Class12",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 1
+        }
+      },
+      {
+        "id": "9",
+        "id1": "Class08",
+        "id2": "C2",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "Cool label",
+        "relation": {
+          "type1": 3,
+          "type2": 3,
+          "lineType": 0
+        }
+      }
+    ],
+    "notes": [
+      {
+        "id": "note0",
+        "class": null,
+        "text": "I love this diagram!\nDo you love it?"
+      },
+      {
+        "id": "note1",
+        "class": "Class10",
+        "text": "Cool class\nI said it's very cool class!"
+      }
+    ],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

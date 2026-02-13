@@ -504,6 +504,17 @@ fn render_class_html_label(
     include_p: bool,
     extra_span_class: Option<&str>,
 ) {
+    fn escape_xml_with_br_into(out: &mut String, text: &str) {
+        // Mermaid renders multiline HTML labels by emitting `<br />` tags inside the `<p>`.
+        // (Literal newlines inside text nodes do not produce equivalent DOM structure.)
+        for (idx, line) in text.split('\n').enumerate() {
+            if idx > 0 {
+                out.push_str("<br />");
+            }
+            escape_xml_into(out, line);
+        }
+    }
+
     let mut class = span_class.to_string();
     if let Some(extra) = extra_span_class {
         if !extra.trim().is_empty() {
@@ -512,19 +523,13 @@ fn render_class_html_label(
         }
     }
     if include_p {
-        let _ = write!(
-            out,
-            r#"<span class="{}"><p>{}</p></span>"#,
-            escape_xml(&class),
-            escape_xml(text)
-        );
+        let _ = write!(out, r#"<span class="{}"><p>"#, escape_xml(&class));
+        escape_xml_with_br_into(out, text);
+        out.push_str("</p></span>");
     } else {
-        let _ = write!(
-            out,
-            r#"<span class="{}">{}</span>"#,
-            escape_xml(&class),
-            escape_xml(text)
-        );
+        let _ = write!(out, r#"<span class="{}">"#, escape_xml(&class));
+        escape_xml_with_br_into(out, text);
+        out.push_str("</span>");
     }
 }
 
@@ -733,6 +738,14 @@ pub(super) fn render_class_diagram_v2_svg(
     let hide_empty_members_box =
         config_bool(effective_config, &["class", "hideEmptyMembersBox"]).unwrap_or(false);
 
+    // Theme-derived defaults. Mermaid's class renderer applies `themeVariables.*` values to node
+    // fills/strokes when no explicit `style` overrides exist on the node.
+    let default_node_fill = config_string(effective_config, &["themeVariables", "primaryColor"])
+        .unwrap_or_else(|| "#ECECFF".to_string());
+    let default_node_stroke =
+        config_string(effective_config, &["themeVariables", "primaryBorderColor"])
+            .unwrap_or_else(|| "#9370DB".to_string());
+
     // Mermaid derives the final viewport using `svg.getBBox()` (after rendering). We don't have a
     // browser DOM, so approximate the effective bbox by accumulating bounds for the elements we
     // emit (using the exact same `d` strings we output for paths).
@@ -861,11 +874,23 @@ pub(super) fn render_class_diagram_v2_svg(
 
     out.push_str(r#"<g class="root">"#);
 
-    // Mermaid only emits the nested dagre-d3 `root` wrapper (translated by -8px on the x-axis)
-    // for namespace-only diagrams (no relations/notes). When relations exist, namespaces are
-    // rendered as normal clusters without the extra wrapper.
-    let wrap_nodes_root =
-        model.relations.is_empty() && model.notes.is_empty() && !model.namespaces.is_empty();
+    // Mermaid sometimes emits the nested dagre-d3 `root` wrapper (translated by -8px on the x-axis)
+    // when the diagram is "fully contained" within a single namespace cluster. In that mode, the
+    // outer `clusters/edgePaths/edgeLabels` groups are empty placeholders, and all cluster + edge
+    // rendering happens inside the nested wrapper under `<g class="nodes">`.
+    //
+    // See upstream fixtures:
+    // - `upstream_docs_classdiagram_define_namespace_035` (no relations)
+    // - `upstream_cypress_classdiagram_v2_spec_renders_a_class_diagram_with_nested_namespaces_and_relationships_035`
+    let wrap_nodes_root = model.notes.is_empty()
+        && model.namespaces.len() == 1
+        && model
+            .namespaces
+            .iter()
+            .next()
+            .and_then(|(_, ns)| ns.get("classIds"))
+            .and_then(|v| v.as_array())
+            .is_some_and(|ids| ids.len() == model.classes.len());
     let nodes_root_dx = if wrap_nodes_root {
         -GRAPH_MARGIN_PX
     } else {
@@ -1224,7 +1249,7 @@ pub(super) fn render_class_diagram_v2_svg(
             );
             let _ = write!(
                 &mut out,
-                r##"<g class="node undefined" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/></g><g class="label" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="text-align: center; white-space: nowrap; display: table-cell; line-height: 1.5; max-width: 200px;" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"##,
+                r##"<g class="node undefined" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/></g><g class="label" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="text-align: center; white-space: nowrap; display: table-cell; line-height: 1.5; max-width: 200px;" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel"><p>"##,
                 escape_attr(&note.id),
                 fmt(node_tx),
                 fmt(node_ty),
@@ -1241,8 +1266,14 @@ pub(super) fn render_class_diagram_v2_svg(
                 fmt(label_y),
                 fmt(fo_w),
                 fmt(fo_h),
-                escape_xml(&note_text)
             );
+            for (idx, line) in note_text.split('\n').enumerate() {
+                if idx > 0 {
+                    out.push_str("<br />");
+                }
+                escape_xml_into(&mut out, line);
+            }
+            out.push_str("</p></span></div></foreignObject></g></g>");
             continue;
         }
 
@@ -1280,7 +1311,7 @@ pub(super) fn render_class_diagram_v2_svg(
 
             let _ = write!(
                 &mut out,
-                r#"<g class="node undefined" id="{}" transform="translate({}, {})"><rect class="basic label-container" style="opacity:0; !important" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
+                r#"<g class="node undefined" id="{}" transform="translate({}, {})"><rect class="basic label-container" style="opacity:0; !important" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>"#,
                 escape_attr(&iface.id),
                 fmt(node_tx),
                 fmt(node_ty),
@@ -1292,8 +1323,14 @@ pub(super) fn render_class_diagram_v2_svg(
                 fmt(top),
                 fmt(fo_w),
                 fmt(fo_h),
-                escape_xml(&label_text)
             );
+            for (idx, line) in label_text.split('\n').enumerate() {
+                if idx > 0 {
+                    out.push_str("<br />");
+                }
+                escape_xml_into(&mut out, line);
+            }
+            out.push_str("</p></span></div></foreignObject></g></g>");
             continue;
         }
 
@@ -1303,8 +1340,8 @@ pub(super) fn render_class_diagram_v2_svg(
 
         let (style_fill, style_stroke, style_stroke_width, style_stroke_dasharray) =
             class_apply_inline_styles(node);
-        let node_fill = style_fill.unwrap_or("#ECECFF");
-        let node_stroke = style_stroke.unwrap_or("#9370DB");
+        let node_fill = style_fill.unwrap_or(default_node_fill.as_str());
+        let node_stroke = style_stroke.unwrap_or(default_node_stroke.as_str());
         let node_stroke_width = style_stroke_width
             .unwrap_or("1.3")
             .trim_end_matches("px")

@@ -295,6 +295,24 @@ impl std::fmt::Display for EscapeXmlDisplay<'_> {
 }
 
 pub(super) fn escape_attr(text: &str) -> String {
-    // Attributes in our debug SVG only use escaped XML. No URL encoding here.
-    escape_xml(text)
+    // Note: XML parsers normalize literal newlines/carriage-returns/tabs inside attribute values
+    // into spaces. Mermaid's serialized SVGs typically encode those characters as numeric
+    // character references (e.g. `&#10;`) to keep the attribute value stable across parsers.
+    //
+    // We mirror that behavior here to preserve parity for diagrams that embed newlines in IDs
+    // (e.g. backtick-quoted multiline class names).
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '\n' => out.push_str("&#10;"),
+            '\r' => out.push_str("&#13;"),
+            '\t' => out.push_str("&#9;"),
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(ch),
+        }
+    }
+    out
 }

@@ -53,6 +53,40 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/class/classDiagram.spec.
 - notes (`note for`, unattached `note`): `fixtures/class/upstream_separators_labels_notes.mmd`
 - notes with keywords in text: `fixtures/class/upstream_note_keywords_spec.mmd`
 
+## Cypress rendering fixtures (`cypress/integration/rendering`)
+
+Source: `repo-ref/mermaid/cypress/integration/rendering/classdiagram*.spec.{js,ts}`
+
+These fixtures are parity-gated against upstream SVG baselines under `fixtures/upstream-svgs/class/` via:
+
+- `cargo run --release -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
+
+Imported fixtures:
+
+- `fixtures/class/upstream_cypress_classdiagram_elk_v3_spec_elk_1_1_should_render_a_simple_class_diagram_without_htmllabels_003.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_elk_v3_spec_elk_10_should_render_a_simple_class_diagram_with_clickable_callb_018.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_elk_v3_spec_elk_16b_should_handle_the_direction_statement_with_tb_027.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_elk_v3_spec_elk_17a_should_handle_the_direction_statement_with_bt_028.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_elk_v3_spec_elk_18a_should_handle_the_direction_statement_with_lr_030.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_elk_v3_spec_elk_2_1_should_render_a_simple_class_diagrams_with_cardinality_w_005.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_elk_v3_spec_elk_4_should_render_a_simple_class_diagram_with_comments_009.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_elk_v3_spec_elk_9_should_render_a_simple_class_diagram_with_clickable_link_017.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_full_class_diagram_using_elk_057.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_simple_class_diagram_with_a_custom_theme_055.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_spec_should_handle_newline_title_in_namespace_021.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_spec_should_render_class_diagram_with_newlines_in_title_018.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_spec_should_render_with_newlines_in_title_and_an_annotation_020.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_v2_spec_1_should_render_a_simple_class_diagram_002.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_v2_spec_10_should_render_a_simple_class_diagram_with_clickable_callback_012.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_v2_spec_2_should_render_a_simple_class_diagrams_with_cardinality_003.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_v2_spec_4_should_render_a_simple_class_diagram_with_comments_006.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_v2_spec_9_should_render_a_simple_class_diagram_with_clickable_link_011.mmd`
+- `fixtures/class/upstream_cypress_classdiagram_v2_spec_renders_a_class_diagram_with_nested_namespaces_and_relationships_035.mmd`
+
+Deferred:
+
+- `classdiagram_handdrawn_v3.spec.*` (uses classDiagram-v3 DOM shape that is not yet covered by Stage-B `render_class_diagram_v2_svg` parity).
+
 ## Interactivity and security-level behavior
 
 Source files:

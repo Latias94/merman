@@ -1,0 +1,130 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "Bike",
+          "x": 252.88,
+          "y": 72.0,
+          "width": 131.2,
+          "height": 144.0,
+          "is_cluster": false
+        },
+        {
+          "id": "IdCard",
+          "x": 68.64,
+          "y": 72.0,
+          "width": 137.28,
+          "height": 144.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Student",
+          "x": 160.76,
+          "y": 278.0,
+          "width": 153.28,
+          "height": 120.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "0",
+          "from": "Student",
+          "to": "IdCard",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 103.779,
+              "y": 218.0
+            },
+            {
+              "x": 68.64,
+              "y": 181.0
+            },
+            {
+              "x": 68.64,
+              "y": 144.0
+            }
+          ],
+          "label": {
+            "x": 68.64,
+            "y": 181.0,
+            "width": 45.76,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": {
+            "x": 102.422,
+            "y": 202.05,
+            "width": 8.96,
+            "height": 24.0
+          },
+          "end_label_left": {
+            "x": 48.64,
+            "y": 156.5,
+            "width": 8.96,
+            "height": 24.0
+          },
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "1",
+          "from": "Student",
+          "to": "Bike",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 217.741,
+              "y": 218.0
+            },
+            {
+              "x": 252.88,
+              "y": 181.0
+            },
+            {
+              "x": 252.88,
+              "y": 144.0
+            }
+          ],
+          "label": {
+            "x": 252.88,
+            "y": 181.0,
+            "width": 32.0,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": {
+            "x": 233.6,
+            "y": 215.822,
+            "width": 8.96,
+            "height": 24.0
+          },
+          "end_label_left": {
+            "x": 232.88,
+            "y": 156.5,
+            "width": 8.96,
+            "height": 24.0
+          },
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 318.48,
+        "max_y": 338.0
+      }
+    }
+  }
+}

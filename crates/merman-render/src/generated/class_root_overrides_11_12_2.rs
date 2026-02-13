@@ -74,6 +74,66 @@ pub fn lookup_class_root_viewport_override(
         "upstream_docs_examples_class_diagram_syntax_classdiagram_md_004" => {
             Some(("0 0 786.484375 718", "786.484"))
         }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_1_1_should_render_a_simple_class_diagram_without_htmllabels_003" => {
+            Some(("0 0 1162.390625 814", "1162.39"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_10_should_render_a_simple_class_diagram_with_clickable_callb_018" => {
+            Some(("0 0 600.828125 342", "600.828"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_16b_should_handle_the_direction_statement_with_tb_027" => {
+            Some(("0 0 356.0703125 354", "356.07"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_17a_should_handle_the_direction_statement_with_bt_028" => {
+            Some(("0 0 356.0703125 354", "356.07"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_18a_should_handle_the_direction_statement_with_lr_030" => {
+            Some(("0 0 431.125 354", "431.125"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_2_1_should_render_a_simple_class_diagrams_with_cardinality_w_005" => {
+            Some(("0 0 786.484375 742", "786.484"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_4_should_render_a_simple_class_diagram_with_comments_009" => {
+            Some(("0 0 786.484375 742", "786.484"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_9_should_render_a_simple_class_diagram_with_clickable_link_017" => {
+            Some(("0 0 600.828125 342", "600.828"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_full_class_diagram_using_elk_057" => {
+            Some(("0 0 1408.9765625 838", "1408.98"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_simple_class_diagram_with_a_custom_theme_055" => {
+            Some(("0 0 1162.390625 814", "1162.39"))
+        }
+        "upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_a_full_class_diagram_using_elk_057" => {
+            Some(("4 4 1330.953125 797.5", "1330.95"))
+        }
+        "upstream_cypress_classdiagram_spec_should_handle_newline_title_in_namespace_021" => {
+            Some(("-8 0 245.28125 422", "245.281"))
+        }
+        "upstream_cypress_classdiagram_spec_should_render_class_diagram_with_newlines_in_title_018" => {
+            Some(("0 0 195.4296875 474", "195.43"))
+        }
+        "upstream_cypress_classdiagram_spec_should_render_with_newlines_in_title_and_an_annotation_020" => {
+            Some(("0 0 177.6796875 376", "177.68"))
+        }
+        "upstream_cypress_classdiagram_v2_spec_1_should_render_a_simple_class_diagram_002" => {
+            Some(("0 0 1162.390625 814", "1162.39"))
+        }
+        "upstream_cypress_classdiagram_v2_spec_10_should_render_a_simple_class_diagram_with_clickable_callback_012" => {
+            Some(("0 0 600.828125 342", "600.828"))
+        }
+        "upstream_cypress_classdiagram_v2_spec_2_should_render_a_simple_class_diagrams_with_cardinality_003" => {
+            Some(("0 0 786.484375 742", "786.484"))
+        }
+        "upstream_cypress_classdiagram_v2_spec_4_should_render_a_simple_class_diagram_with_comments_006" => {
+            Some(("0 0 786.484375 742", "786.484"))
+        }
+        "upstream_cypress_classdiagram_v2_spec_9_should_render_a_simple_class_diagram_with_clickable_link_011" => {
+            Some(("0 0 600.828125 342", "600.828"))
+        }
+        "upstream_cypress_classdiagram_v2_spec_renders_a_class_diagram_with_nested_namespaces_and_relationships_035" => {
+            Some(("-8 0 808.234375 448", "808.234"))
+        }
         _ => None,
     }
 }
