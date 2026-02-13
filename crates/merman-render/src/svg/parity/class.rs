@@ -4,6 +4,7 @@ use super::timing::{RenderTimings, TimingGuard, render_timing_enabled};
 use super::*;
 use crate::entities::decode_entities_minimal;
 use indexmap::IndexMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 // Class diagram SVG renderer implementation (split from parity.rs).
 
@@ -463,7 +464,7 @@ fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str)
 
 fn class_edge_dom_id(
     edge: &crate::model::LayoutEdge,
-    relation_index_by_id: &std::collections::HashMap<&str, usize>,
+    relation_index_by_id: &FxHashMap<&str, usize>,
 ) -> String {
     if edge.id.starts_with("edgeNote") {
         // Mermaid numbers note edges as `edgeNote<N>` where `<N>` follows the `note<N-1>` id.
@@ -896,31 +897,31 @@ pub(super) fn render_class_diagram_v2_svg(
     out.push_str("<g>");
     class_markers(&mut out, diagram_id, aria_roledescription);
 
-    let mut class_nodes_by_id: std::collections::HashMap<&str, &ClassSvgNode> =
-        std::collections::HashMap::new();
+    let mut class_nodes_by_id: FxHashMap<&str, &ClassSvgNode> = FxHashMap::default();
+    class_nodes_by_id.reserve(model.classes.len());
     for (id, n) in &model.classes {
         class_nodes_by_id.insert(id.as_str(), n);
     }
 
-    let mut relations_by_id: std::collections::HashMap<&str, &ClassSvgRelation> =
-        std::collections::HashMap::new();
+    let mut relations_by_id: FxHashMap<&str, &ClassSvgRelation> = FxHashMap::default();
+    relations_by_id.reserve(model.relations.len());
     for r in &model.relations {
         relations_by_id.insert(r.id.as_str(), r);
     }
-    let mut relation_index_by_id: std::collections::HashMap<&str, usize> =
-        std::collections::HashMap::new();
+    let mut relation_index_by_id: FxHashMap<&str, usize> = FxHashMap::default();
+    relation_index_by_id.reserve(model.relations.len());
     for (idx, r) in model.relations.iter().enumerate() {
         relation_index_by_id.insert(r.id.as_str(), idx + 1);
     }
 
-    let mut note_by_id: std::collections::HashMap<&str, &ClassSvgNote> =
-        std::collections::HashMap::new();
+    let mut note_by_id: FxHashMap<&str, &ClassSvgNote> = FxHashMap::default();
+    note_by_id.reserve(model.notes.len());
     for n in &model.notes {
         note_by_id.insert(n.id.as_str(), n);
     }
 
-    let mut iface_by_id: std::collections::HashMap<&str, &ClassSvgInterface> =
-        std::collections::HashMap::new();
+    let mut iface_by_id: FxHashMap<&str, &ClassSvgInterface> = FxHashMap::default();
+    iface_by_id.reserve(model.interfaces.len());
     for i in &model.interfaces {
         iface_by_id.insert(i.id.as_str(), i);
     }
@@ -1231,8 +1232,8 @@ pub(super) fn render_class_diagram_v2_svg(
     // (namespaces, then classes, then notes). Using the raw layout node iteration order can drift
     // when the layout pipeline injects and removes internal dummy nodes. Build a stable rendering
     // order from the semantic model and fall back to any remaining nodes in layout order.
-    let mut layout_nodes_by_id: std::collections::HashMap<&str, &crate::model::LayoutNode> =
-        std::collections::HashMap::new();
+    let mut layout_nodes_by_id: FxHashMap<&str, &crate::model::LayoutNode> = FxHashMap::default();
+    layout_nodes_by_id.reserve(layout.nodes.len());
     for n in &layout.nodes {
         if n.is_cluster {
             continue;
@@ -1241,7 +1242,8 @@ pub(super) fn render_class_diagram_v2_svg(
     }
 
     let mut ordered_ids: Vec<&str> = Vec::new();
-    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut seen: FxHashSet<&str> = FxHashSet::default();
+    seen.reserve(model.classes.len() + model.notes.len() + model.interfaces.len());
     for cls in model.classes.values() {
         let id = cls.id.as_str();
         if seen.insert(id) {
