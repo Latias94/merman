@@ -65,9 +65,9 @@ pub struct SortEntry {
 #[derive(Debug, Clone)]
 struct ConflictEntry {
     indegree: usize,
-    ins: Vec<String>,
-    outs: Vec<String>,
-    vs: Vec<String>,
+    ins: Vec<usize>,
+    outs: Vec<usize>,
+    vs: Vec<usize>,
     i: usize,
     barycenter: Option<f64>,
     weight: Option<f64>,
@@ -83,114 +83,92 @@ where
     E: Default + 'static,
     G: Default,
 {
-    let mut mapped: HashMap<String, ConflictEntry> = HashMap::default();
-    for (i, entry) in entries.iter().enumerate() {
-        mapped.insert(
-            entry.v.clone(),
-            ConflictEntry {
-                indegree: 0,
-                ins: Vec::new(),
-                outs: Vec::new(),
-                vs: vec![entry.v.clone()],
-                i,
-                barycenter: entry.barycenter,
-                weight: entry.weight,
-                merged: false,
-            },
-        );
+    let mut id_to_ix: HashMap<&str, usize> = HashMap::default();
+    let mut conflicts: Vec<ConflictEntry> = Vec::with_capacity(entries.len());
+    for (ix, entry) in entries.iter().enumerate() {
+        id_to_ix.insert(entry.v.as_str(), ix);
+        conflicts.push(ConflictEntry {
+            indegree: 0,
+            ins: Vec::new(),
+            outs: Vec::new(),
+            vs: vec![ix],
+            i: ix,
+            barycenter: entry.barycenter,
+            weight: entry.weight,
+            merged: false,
+        });
     }
 
     for e in cg.edges() {
-        let Some(_) = mapped.get(&e.v) else {
+        let Some(&v_ix) = id_to_ix.get(e.v.as_str()) else {
             continue;
         };
-        let Some(_) = mapped.get(&e.w) else {
+        let Some(&w_ix) = id_to_ix.get(e.w.as_str()) else {
             continue;
         };
 
-        if let Some(w_entry) = mapped.get_mut(&e.w) {
-            w_entry.indegree += 1;
-        }
-        if let Some(v_entry) = mapped.get_mut(&e.v) {
-            v_entry.outs.push(e.w.clone());
-        }
+        conflicts[w_ix].indegree += 1;
+        conflicts[v_ix].outs.push(w_ix);
     }
 
-    let mut source_set: Vec<String> = mapped
+    // Keep the original "source_set" ordering as close as possible to the previous HashMap-based
+    // port by iterating `id_to_ix` (FxHashMap) rather than using the input slice order.
+    let mut source_set: Vec<usize> = id_to_ix
         .iter()
-        .filter_map(|(k, v)| {
-            if v.indegree == 0 {
-                Some(k.clone())
+        .filter_map(|(_, &ix)| {
+            if conflicts[ix].indegree == 0 {
+                Some(ix)
             } else {
                 None
             }
         })
         .collect();
 
-    let mut processed: Vec<String> = Vec::new();
-    while let Some(v) = source_set.pop() {
-        processed.push(v.clone());
+    let mut processed: Vec<usize> = Vec::new();
+    while let Some(v_ix) = source_set.pop() {
+        processed.push(v_ix);
 
-        let ins = mapped
-            .get_mut(&v)
-            .map(|e| std::mem::take(&mut e.ins))
-            .unwrap_or_default();
+        let ins = std::mem::take(&mut conflicts[v_ix].ins);
 
         // Match upstream `.reverse().forEach(...)` on the "in" list.
         for u in ins.into_iter().rev() {
-            if mapped.get(&u).map(|e| e.merged).unwrap_or(true) {
+            if conflicts[u].merged {
                 continue;
             }
-            let (u_bary, v_bary) = {
-                let Some(u_entry) = mapped.get(&u) else {
-                    continue;
-                };
-                let Some(v_entry) = mapped.get(&v) else {
-                    continue;
-                };
-                (u_entry.barycenter, v_entry.barycenter)
-            };
+            let u_bary = conflicts[u].barycenter;
+            let v_bary = conflicts[v_ix].barycenter;
             let should_merge = match (u_bary, v_bary) {
                 (None, _) => true,
                 (_, None) => true,
                 (Some(ub), Some(vb)) => ub >= vb,
             };
             if should_merge {
-                merge_conflict_entries(&mut mapped, &v, &u);
+                merge_conflict_entries(&mut conflicts, v_ix, u);
             }
         }
 
-        let outs = mapped
-            .get_mut(&v)
-            .map(|e| std::mem::take(&mut e.outs))
-            .unwrap_or_default();
-        for w in outs {
-            if let Some(w_entry) = mapped.get_mut(&w) {
-                w_entry.ins.push(v.clone());
-            }
-            let w_indegree = {
-                let Some(w_entry) = mapped.get_mut(&w) else {
-                    continue;
-                };
-                w_entry.indegree = w_entry.indegree.saturating_sub(1);
-                w_entry.indegree
-            };
-            if w_indegree == 0 {
-                source_set.push(w);
+        let outs = std::mem::take(&mut conflicts[v_ix].outs);
+        for w_ix in outs {
+            conflicts[w_ix].ins.push(v_ix);
+            conflicts[w_ix].indegree = conflicts[w_ix].indegree.saturating_sub(1);
+            if conflicts[w_ix].indegree == 0 {
+                source_set.push(w_ix);
             }
         }
     }
 
     let mut out: Vec<SortEntry> = Vec::new();
     for id in processed {
-        let Some(entry) = mapped.get(&id) else {
-            continue;
-        };
+        let entry = &conflicts[id];
         if entry.merged {
             continue;
         }
+        let mut vs: Vec<String> = Vec::with_capacity(entry.vs.len());
+        for &ix in &entry.vs {
+            vs.push(entries[ix].v.clone());
+        }
         out.push(SortEntry {
-            vs: entry.vs.clone(),
+            vs,
             i: entry.i,
             barycenter: entry.barycenter,
             weight: entry.weight,
@@ -201,20 +179,24 @@ where
 
 // The conflict resolution algorithm needs a helper that can mutate two entries in-place.
 // We keep it as a standalone function to make the port easy to review.
-fn merge_conflict_entries(mapped: &mut HashMap<String, ConflictEntry>, target: &str, source: &str) {
-    let (target_bary, target_weight, source_bary, source_weight, source_vs, source_i) = {
-        let (Some(t), Some(s)) = (mapped.get(target), mapped.get(source)) else {
-            return;
-        };
-        (
-            t.barycenter,
-            t.weight,
-            s.barycenter,
-            s.weight,
-            s.vs.clone(),
-            s.i,
-        )
+fn merge_conflict_entries(mapped: &mut [ConflictEntry], target: usize, source: usize) {
+    if target == source {
+        return;
+    }
+
+    let (t, s) = if target < source {
+        let (left, right) = mapped.split_at_mut(source);
+        (&mut left[target], &mut right[0])
+    } else {
+        let (left, right) = mapped.split_at_mut(target);
+        (&mut right[0], &mut left[source])
     };
+
+    let target_bary = t.barycenter;
+    let target_weight = t.weight;
+    let source_bary = s.barycenter;
+    let source_weight = s.weight;
+    let source_i = s.i;
 
     let mut sum: f64 = 0.0;
     let mut weight: f64 = 0.0;
@@ -231,19 +213,20 @@ fn merge_conflict_entries(mapped: &mut HashMap<String, ConflictEntry>, target: &
         }
     }
 
-    let Some(t) = mapped.get_mut(target) else {
-        return;
-    };
-    t.vs = source_vs.into_iter().chain(t.vs.drain(..)).collect();
+    let source_vs = std::mem::take(&mut s.vs);
+    let target_vs = std::mem::take(&mut t.vs);
+    let mut merged_vs: Vec<usize> = Vec::with_capacity(source_vs.len() + target_vs.len());
+    merged_vs.extend(source_vs);
+    merged_vs.extend(target_vs);
+    t.vs = merged_vs;
+
     if weight != 0.0 {
         t.barycenter = Some(sum / weight);
         t.weight = Some(weight);
     }
     t.i = t.i.min(source_i);
 
-    if let Some(s) = mapped.get_mut(source) {
-        s.merged = true;
-    }
+    s.merged = true;
 }
 
 #[derive(Debug, Clone, PartialEq)]
