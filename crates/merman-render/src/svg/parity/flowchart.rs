@@ -51,6 +51,11 @@ struct FlowchartRenderDetails {
     edge_labels: std::time::Duration,
     dom_order: std::time::Duration,
     nodes: std::time::Duration,
+    node_style_compile: std::time::Duration,
+    node_roughjs: std::time::Duration,
+    node_roughjs_calls: u32,
+    node_label_html: std::time::Duration,
+    node_label_html_calls: u32,
     nested_roots: std::time::Duration,
 }
 
@@ -1207,8 +1212,19 @@ fn render_flowchart_root(
             continue;
         }
 
-        let _g_node = detail_guard(timing_enabled, &mut details.nodes);
-        render_flowchart_node(out, ctx, id, origin_x, content_origin_y);
+        let node_start = timing_enabled.then(std::time::Instant::now);
+        render_flowchart_node(
+            out,
+            ctx,
+            id,
+            origin_x,
+            content_origin_y,
+            timing_enabled,
+            details,
+        );
+        if let Some(s) = node_start {
+            details.nodes += s.elapsed();
+        }
     }
 
     out.push_str("</g></g>");
@@ -5277,12 +5293,14 @@ pub(super) fn flowchart_compile_styles(
     }
 }
 
-pub(super) fn render_flowchart_node(
+fn render_flowchart_node(
     out: &mut String,
     ctx: &FlowchartRenderCtx<'_>,
     node_id: &str,
     origin_x: f64,
     origin_y: f64,
+    timing_enabled: bool,
+    details: &mut FlowchartRenderDetails,
 ) {
     let Some(layout_node) = ctx.layout_nodes_by_id.get(node_id) else {
         return;
@@ -5469,7 +5487,11 @@ pub(super) fn render_flowchart_node(
         );
     }
 
+    let style_start = timing_enabled.then(std::time::Instant::now);
     let mut compiled_styles = flowchart_compile_styles(&ctx.class_defs, node_classes, node_styles);
+    if let Some(s) = style_start {
+        details.node_style_compile += s.elapsed();
+    }
     let style = std::mem::take(&mut compiled_styles.node_style);
     let mut label_dx: f64 = 0.0;
     let mut label_dy: f64 = 0.0;
@@ -5967,6 +5989,34 @@ pub(super) fn render_flowchart_node(
         Some((ops_to_d(&fill_opset), ops_to_d(&outline_opset)))
     }
 
+    macro_rules! rough_timed {
+        ($expr:expr) => {{
+            if timing_enabled {
+                details.node_roughjs_calls += 1;
+                let start = std::time::Instant::now();
+                let out = $expr;
+                details.node_roughjs += start.elapsed();
+                out
+            } else {
+                $expr
+            }
+        }};
+    }
+
+    macro_rules! label_html_timed {
+        ($expr:expr) => {{
+            if timing_enabled {
+                details.node_label_html_calls += 1;
+                let start = std::time::Instant::now();
+                let out = $expr;
+                details.node_label_html += start.elapsed();
+                out
+            } else {
+                $expr
+            }
+        }};
+    }
+
     let hand_drawn_seed = ctx
         .config
         .as_value()
@@ -5991,10 +6041,10 @@ pub(super) fn render_flowchart_node(
                 config_string(ctx.config.as_value(), &["themeVariables", "stateBorder"])
                     .unwrap_or_else(|| ctx.node_border_color.clone());
 
-            let outer_d =
-                roughjs_circle_path_d(14.0, hand_drawn_seed).unwrap_or_else(|| "M0,0".to_string());
-            let inner_d =
-                roughjs_circle_path_d(5.0, hand_drawn_seed).unwrap_or_else(|| "M0,0".to_string());
+            let outer_d = rough_timed!(roughjs_circle_path_d(14.0, hand_drawn_seed))
+                .unwrap_or_else(|| "M0,0".to_string());
+            let inner_d = rough_timed!(roughjs_circle_path_d(5.0, hand_drawn_seed))
+                .unwrap_or_else(|| "M0,0".to_string());
 
             let _ = write!(
                 out,
@@ -6025,7 +6075,7 @@ pub(super) fn render_flowchart_node(
                 (10.0, 70.0)
             };
             let line_color = theme_color(ctx.config.as_value(), "lineColor", "#333333");
-            let (fill_d, stroke_d) = roughjs_paths_for_rect(
+            let (fill_d, stroke_d) = rough_timed!(roughjs_paths_for_rect(
                 -w / 2.0,
                 -h / 2.0,
                 w,
@@ -6034,7 +6084,7 @@ pub(super) fn render_flowchart_node(
                 &line_color,
                 1.3,
                 hand_drawn_seed,
-            )
+            ))
             .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
             let _ = write!(
                 out,
@@ -6072,14 +6122,14 @@ pub(super) fn render_flowchart_node(
                 (2.0 * gap, height - gap / 2.0),
             ];
             let path_data = path_from_points(&points);
-            let (fill_d, stroke_d) = roughjs_paths_for_svg_path(
+            let (fill_d, stroke_d) = rough_timed!(roughjs_paths_for_svg_path(
                 &path_data,
                 fill_color,
                 stroke_color,
                 1.3,
                 "0 0",
                 hand_drawn_seed,
-            )
+            ))
             .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
             let _ = write!(
                 out,
@@ -6108,7 +6158,8 @@ pub(super) fn render_flowchart_node(
             let border = config_string(ctx.config.as_value(), &["themeVariables", "nodeBorder"])
                 .unwrap_or_else(|| ctx.node_border_color.clone());
 
-            let d = roughjs_circle_path_d(14.0, hand_drawn_seed).unwrap_or_else(|| "M0,0".into());
+            let d = rough_timed!(roughjs_circle_path_d(14.0, hand_drawn_seed))
+                .unwrap_or_else(|| "M0,0".into());
             let _ = write!(
                 out,
                 r##"<g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="fill: {} !important;"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill: {} !important;"/></g>"##,
@@ -6136,7 +6187,7 @@ pub(super) fn render_flowchart_node(
             // practice `node.width` is usually unset here, so radius=30.
             let radius = 30.0;
 
-            let circle_d = roughjs_circle_path_d(radius * 2.0, hand_drawn_seed)
+            let circle_d = rough_timed!(roughjs_circle_path_d(radius * 2.0, hand_drawn_seed))
                 .unwrap_or_else(|| "M0,0".into());
 
             // Port of Mermaid `createLine(r)` in `crossedCircle.ts`.
@@ -6157,14 +6208,14 @@ pub(super) fn render_flowchart_node(
                 point_q3.0,
                 point_q3.1
             );
-            let (line_fill_d, line_stroke_d) = roughjs_paths_for_svg_path(
+            let (line_fill_d, line_stroke_d) = rough_timed!(roughjs_paths_for_svg_path(
                 &line_path,
                 fill_color,
                 stroke_color,
                 1.3,
                 "0 0",
                 hand_drawn_seed,
-            )
+            ))
             .unwrap_or_else(|| ("".to_string(), "M0,0".to_string()));
 
             let _ = write!(
@@ -6195,14 +6246,14 @@ pub(super) fn render_flowchart_node(
             let h = layout_node.height.max(30.0);
             let pts: Vec<(f64, f64)> = vec![(0.0, 0.0), (w, 0.0), (0.0, h), (w, h)];
             let path_data = path_from_points(&pts);
-            let (fill_d, stroke_d) = roughjs_paths_for_svg_path(
+            let (fill_d, stroke_d) = rough_timed!(roughjs_paths_for_svg_path(
                 &path_data,
                 fill_color,
                 stroke_color,
                 1.3,
                 "0 0",
                 hand_drawn_seed,
-            )
+            ))
             .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
             let _ = write!(
                 out,
@@ -6308,14 +6359,14 @@ pub(super) fn render_flowchart_node(
             points.push((-w / 2.0, h / 2.0));
 
             let path_data = path_from_points(&points);
-            let (fill_d, stroke_d) = roughjs_paths_for_svg_path(
+            let (fill_d, stroke_d) = rough_timed!(roughjs_paths_for_svg_path(
                 &path_data,
                 fill_color,
                 stroke_color,
                 1.3,
                 "0 0",
                 hand_drawn_seed,
-            )
+            ))
             .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
             let _ = write!(
                 out,
@@ -6426,14 +6477,14 @@ pub(super) fn render_flowchart_node(
             ));
 
             let path_data = path_from_points(&points);
-            let (fill_d, stroke_d) = roughjs_paths_for_svg_path(
+            let (fill_d, stroke_d) = rough_timed!(roughjs_paths_for_svg_path(
                 &path_data,
                 fill_color,
                 stroke_color,
                 1.3,
                 "0 0",
                 hand_drawn_seed,
-            )
+            ))
             .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
             let _ = write!(
                 out,
@@ -6471,9 +6522,14 @@ pub(super) fn render_flowchart_node(
                 (-x, y),
                 (-x, y + rect_offset),
             ];
-            let (fill_d, stroke_d) =
-                roughjs_paths_for_polygon(&pts, fill_color, stroke_color, 1.3, hand_drawn_seed)
-                    .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+            let (fill_d, stroke_d) = rough_timed!(roughjs_paths_for_polygon(
+                &pts,
+                fill_color,
+                stroke_color,
+                1.3,
+                hand_drawn_seed
+            ))
+            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
             let _ = write!(
                 out,
                 r##"<g class="basic label-container" style=""><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
@@ -6539,14 +6595,14 @@ pub(super) fn render_flowchart_node(
                 (-w / 2.0, (-h / 2.0) * 0.6),
             ];
             let path_data = path_from_points(&points);
-            let (fill_d, stroke_d) = roughjs_paths_for_svg_path(
+            let (fill_d, stroke_d) = rough_timed!(roughjs_paths_for_svg_path(
                 &path_data,
                 fill_color,
                 stroke_color,
                 1.3,
                 "0 0",
                 hand_drawn_seed,
-            )
+            ))
             .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
             let _ = write!(
                 out,
@@ -6629,14 +6685,14 @@ pub(super) fn render_flowchart_node(
             ));
 
             let path_data = path_from_points(&points);
-            let (fill_d, stroke_d) = roughjs_paths_for_svg_path(
+            let (fill_d, stroke_d) = rough_timed!(roughjs_paths_for_svg_path(
                 &path_data,
                 fill_color,
                 stroke_color,
                 1.3,
                 "0 0",
                 hand_drawn_seed,
-            )
+            ))
             .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
 
             let _ = write!(
@@ -6712,25 +6768,25 @@ pub(super) fn render_flowchart_node(
             ];
 
             let rect_path = path_from_points(&rect_points);
-            let (rect_fill_d, rect_stroke_d) = roughjs_paths_for_svg_path(
+            let (rect_fill_d, rect_stroke_d) = rough_timed!(roughjs_paths_for_svg_path(
                 &rect_path,
                 fill_color,
                 stroke_color,
                 1.3,
                 "0 0",
                 hand_drawn_seed,
-            )
+            ))
             .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
 
             let tag_path = path_from_points(&tag_points);
-            let (tag_fill_d, tag_stroke_d) = roughjs_paths_for_svg_path(
+            let (tag_fill_d, tag_stroke_d) = rough_timed!(roughjs_paths_for_svg_path(
                 &tag_path,
                 fill_color,
                 stroke_color,
                 1.3,
                 "0 0",
                 hand_drawn_seed,
-            )
+            ))
             .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
 
             let _ = write!(
@@ -6814,14 +6870,14 @@ pub(super) fn render_flowchart_node(
             points.push((-w / 2.0 - extra_w, -final_h / 2.0));
 
             let path_data = path_from_points(&points);
-            let (fill_d, stroke_d) = roughjs_paths_for_svg_path(
+            let (fill_d, stroke_d) = rough_timed!(roughjs_paths_for_svg_path(
                 &path_data,
                 fill_color,
                 stroke_color,
                 1.3,
                 "0 0",
                 hand_drawn_seed,
-            )
+            ))
             .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
             let _ = write!(
                 out,
@@ -6909,9 +6965,14 @@ pub(super) fn render_flowchart_node(
             points.push((-w / 2.0, (final_h / 2.0) * 1.1));
             points.push((-w / 2.0, -final_h / 2.0));
 
-            let (fill_d, stroke_d) =
-                roughjs_paths_for_polygon(&points, fill_color, stroke_color, 1.3, hand_drawn_seed)
-                    .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+            let (fill_d, stroke_d) = rough_timed!(roughjs_paths_for_polygon(
+                &points,
+                fill_color,
+                stroke_color,
+                1.3,
+                hand_drawn_seed
+            ))
+            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
             let _ = write!(
                 out,
                 r##"<g class="basic label-container" transform="translate(0,{})"><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
@@ -7008,25 +7069,25 @@ pub(super) fn render_flowchart_node(
             ));
 
             let wave_rect_path = path_from_points(&points);
-            let (wave_fill_d, wave_stroke_d) = roughjs_paths_for_svg_path(
+            let (wave_fill_d, wave_stroke_d) = rough_timed!(roughjs_paths_for_svg_path(
                 &wave_rect_path,
                 fill_color,
                 stroke_color,
                 1.3,
                 "0 0",
                 hand_drawn_seed,
-            )
+            ))
             .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
 
             let tag_path = path_from_points(&tag_points);
-            let (tag_fill_d, tag_stroke_d) = roughjs_paths_for_svg_path(
+            let (tag_fill_d, tag_stroke_d) = rough_timed!(roughjs_paths_for_svg_path(
                 &tag_path,
                 fill_color,
                 stroke_color,
                 1.3,
                 "0 0",
                 hand_drawn_seed,
-            )
+            ))
             .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
 
             let _ = write!(
@@ -7091,14 +7152,14 @@ pub(super) fn render_flowchart_node(
             let tw = w + metrics.height;
             let pts = vec![(0.0, 0.0), (tw, 0.0), (tw / 2.0, -h)];
             let path_data = path_from_points(&pts);
-            let (fill_d, stroke_d) = roughjs_paths_for_svg_path(
+            let (fill_d, stroke_d) = rough_timed!(roughjs_paths_for_svg_path(
                 &path_data,
                 fill_color,
                 stroke_color,
                 1.3,
                 "0 0",
                 hand_drawn_seed,
-            )
+            ))
             .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
 
             let _ = write!(
@@ -7137,9 +7198,14 @@ pub(super) fn render_flowchart_node(
                 (x, y),
                 (x, y + h),
             ];
-            let (fill_d, stroke_d) =
-                roughjs_paths_for_polygon(&pts, fill_color, stroke_color, 1.3, hand_drawn_seed)
-                    .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
+            let (fill_d, stroke_d) = rough_timed!(roughjs_paths_for_polygon(
+                &pts,
+                fill_color,
+                stroke_color,
+                1.3,
+                hand_drawn_seed
+            ))
+            .unwrap_or_else(|| ("M0,0".to_string(), "M0,0".to_string()));
             let _ = write!(
                 out,
                 r##"<g class="basic label-container" style=""><path d="{}" stroke="none" stroke-width="0" fill="{}" fill-rule="evenodd" style=""/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style=""/></g>"##,
@@ -7217,9 +7283,15 @@ pub(super) fn render_flowchart_node(
             };
             label_dx = local_label_dx;
 
-            let stroke_d = |d: &str| {
-                roughjs_stroke_path_for_svg_path(d, stroke_color, 1.3, "0 0", hand_drawn_seed)
-                    .unwrap_or_else(|| "M0,0".to_string())
+            let mut stroke_d = |d: &str| {
+                rough_timed!(roughjs_stroke_path_for_svg_path(
+                    d,
+                    stroke_color,
+                    1.3,
+                    "0 0",
+                    hand_drawn_seed
+                ))
+                .unwrap_or_else(|| "M0,0".to_string())
             };
 
             if shape == "braces" {
@@ -7607,13 +7679,13 @@ pub(super) fn render_flowchart_node(
                     escape_xml_display(&rect_fill_path),
                     escape_xml_display(fill_color)
                 );
-                if let Some(stroke_d) = roughjs_stroke_path_for_svg_path(
+                if let Some(stroke_d) = rough_timed!(roughjs_stroke_path_for_svg_path(
                     &rect_stroke_path,
                     stroke_color,
                     stroke_width,
                     stroke_dasharray,
                     hand_drawn_seed,
-                ) {
+                )) {
                     let _ = write!(
                         out,
                         r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
@@ -7626,7 +7698,8 @@ pub(super) fn render_flowchart_node(
                 out.push_str("</g>");
 
                 // Label group uses a background class in Mermaid's image/icon helpers.
-                let label_html = flowchart_label_html(&label_text, &label_type, &ctx.config);
+                let label_html =
+                    label_html_timed!(flowchart_label_html(&label_text, &label_type, &ctx.config));
                 let label_dy = if top_label {
                     -image_height / 2.0 - metrics.height / 2.0 - label_padding / 2.0
                 } else {
@@ -7701,14 +7774,14 @@ pub(super) fn render_flowchart_node(
             let h = layout_node.height.max(1.0);
             let pts = vec![(0.0, -h), (h, -h), (h / 2.0, 0.0)];
             let path_data = path_from_points(&pts);
-            if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+            if let Some((fill_d, stroke_d)) = rough_timed!(roughjs_paths_for_svg_path(
                 &path_data,
                 fill_color,
                 stroke_color,
                 stroke_width,
                 stroke_dasharray,
                 hand_drawn_seed,
-            ) {
+            )) {
                 let _ = write!(
                     out,
                     r#"<g transform="translate({}, {})">"#,
@@ -7741,14 +7814,14 @@ pub(super) fn render_flowchart_node(
             let y = -h / 2.0;
             let points = vec![(x, y), (x, y + h), (x + w, y + h), (x + w, y - h / 2.0)];
             let path_data = path_from_points(&points);
-            if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+            if let Some((fill_d, stroke_d)) = rough_timed!(roughjs_paths_for_svg_path(
                 &path_data,
                 fill_color,
                 stroke_color,
                 stroke_width,
                 stroke_dasharray,
                 hand_drawn_seed,
-            ) {
+            )) {
                 let _ = write!(
                     out,
                     r#"<g class="basic label-container" transform="translate(0, {})">"#,
@@ -7823,14 +7896,14 @@ pub(super) fn render_flowchart_node(
                 r#"<g class="basic label-container" transform="translate(0,{})">"#,
                 fmt_display(-wave_amplitude / 2.0)
             );
-            if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+            if let Some((fill_d, stroke_d)) = rough_timed!(roughjs_paths_for_svg_path(
                 &outer_path,
                 fill_color,
                 stroke_color,
                 stroke_width,
                 stroke_dasharray,
                 hand_drawn_seed,
-            ) {
+            )) {
                 let _ = write!(
                     out,
                     r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
@@ -7849,14 +7922,14 @@ pub(super) fn render_flowchart_node(
                 );
             }
             out.push_str("<g>");
-            if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+            if let Some((fill_d, stroke_d)) = rough_timed!(roughjs_paths_for_svg_path(
                 &inner_path,
                 fill_color,
                 stroke_color,
                 stroke_width,
                 stroke_dasharray,
                 hand_drawn_seed,
-            ) {
+            )) {
                 let _ = write!(
                     out,
                     r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
@@ -7912,14 +7985,14 @@ pub(super) fn render_flowchart_node(
 
             out.push_str(r#"<g class="basic label-container">"#);
             out.push_str("<g>");
-            if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+            if let Some((fill_d, stroke_d)) = rough_timed!(roughjs_paths_for_svg_path(
                 &outer_path,
                 fill_color,
                 stroke_color,
                 stroke_width,
                 stroke_dasharray,
                 hand_drawn_seed,
-            ) {
+            )) {
                 let _ = write!(
                     out,
                     r#"<path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,
@@ -7938,13 +8011,13 @@ pub(super) fn render_flowchart_node(
                 );
             }
             out.push_str("</g>");
-            if let Some(stroke_d) = roughjs_stroke_path_for_svg_path(
+            if let Some(stroke_d) = rough_timed!(roughjs_stroke_path_for_svg_path(
                 &inner_path,
                 stroke_color,
                 stroke_width,
                 stroke_dasharray,
                 hand_drawn_seed,
-            ) {
+            )) {
                 let _ = write!(
                     out,
                     r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/>"#,
@@ -7999,14 +8072,14 @@ pub(super) fn render_flowchart_node(
             ));
 
             let path_data = path_from_points(&points);
-            if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+            if let Some((fill_d, stroke_d)) = rough_timed!(roughjs_paths_for_svg_path(
                 &path_data,
                 fill_color,
                 stroke_color,
                 stroke_width,
                 stroke_dasharray,
                 hand_drawn_seed,
-            ) {
+            )) {
                 out.push_str(r#"<g class="basic label-container">"#);
                 let _ = write!(
                     out,
@@ -8195,14 +8268,14 @@ pub(super) fn render_flowchart_node(
             ));
             let path_data = path_from_points(&pts);
 
-            if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+            if let Some((fill_d, stroke_d)) = rough_timed!(roughjs_paths_for_svg_path(
                 &path_data,
                 fill_color,
                 stroke_color,
                 stroke_width,
                 stroke_dasharray,
                 hand_drawn_seed,
-            ) {
+            )) {
                 out.push_str(r#"<g class="basic label-container outer-path">"#);
                 let _ = write!(
                     out,
@@ -8318,14 +8391,14 @@ pub(super) fn render_flowchart_node(
             ));
             let path_data = path_from_points(&pts);
 
-            if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+            if let Some((fill_d, stroke_d)) = rough_timed!(roughjs_paths_for_svg_path(
                 &path_data,
                 fill_color,
                 stroke_color,
                 stroke_width,
                 stroke_dasharray,
                 hand_drawn_seed,
-            ) {
+            )) {
                 out.push_str(r#"<g class="basic label-container outer-path">"#);
                 let _ = write!(
                     out,
@@ -8378,14 +8451,14 @@ pub(super) fn render_flowchart_node(
             ];
             let path_data = path_from_points(&pts);
 
-            if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+            if let Some((fill_d, stroke_d)) = rough_timed!(roughjs_paths_for_svg_path(
                 &path_data,
                 fill_color,
                 stroke_color,
                 stroke_width,
                 stroke_dasharray,
                 hand_drawn_seed,
-            ) {
+            )) {
                 out.push_str(r#"<g class="basic label-container">"#);
                 let _ = write!(
                     out,
@@ -8556,14 +8629,14 @@ pub(super) fn render_flowchart_node(
                 vec![(x + notch, y), (x, 0.0), (x + notch, -y), (-x, -y), (-x, y)];
             let path_data = path_from_points(&pts);
 
-            if let Some((fill_d, stroke_d)) = roughjs_paths_for_svg_path(
+            if let Some((fill_d, stroke_d)) = rough_timed!(roughjs_paths_for_svg_path(
                 &path_data,
                 fill_color,
                 stroke_color,
                 stroke_width,
                 stroke_dasharray,
                 hand_drawn_seed,
-            ) {
+            )) {
                 let _ = write!(
                     out,
                     r#"<g class="basic label-container" transform="translate({},0)">"#,
@@ -8728,7 +8801,8 @@ pub(super) fn render_flowchart_node(
         write_flowchart_svg_text(out, &wrapped, true);
         out.push_str("</g></g></g>");
     } else {
-        let label_html = flowchart_label_html(&label_text, &label_type, &ctx.config);
+        let label_html =
+            label_html_timed!(flowchart_label_html(&label_text, &label_type, &ctx.config));
         let mut span_style_attr = String::new();
         if !compiled_styles.label_style.trim().is_empty() {
             span_style_attr = format!(
@@ -9105,12 +9179,43 @@ pub(super) fn flowchart_label_html(
             xhtml_fix_fragment(&merman_core::sanitize::sanitize_text(&html_out, config))
         }
         _ => {
-            let mut label = label.replace("\r\n", "\n");
-            if label_type == "string" {
-                label = label.trim().to_string();
-            }
+            let label = if label.contains("\r\n") {
+                label.replace("\r\n", "\n")
+            } else {
+                label.to_string()
+            };
+            let label = if label_type == "string" {
+                label.trim().to_string()
+            } else {
+                label
+            };
             let label = label.trim_end_matches('\n');
             let wants_p = crate::text::mermaid_markdown_wants_paragraph_wrap(label);
+
+            // Fast path for the overwhelmingly common case: plain text labels (no HTML, no
+            // entities, no Mermaid icon syntax). In upstream Mermaid, these go through
+            // `sanitizeText(...)` but the output is unchanged; skipping the HTML sanitizer here is
+            // a large win in flowcharts with many nodes.
+            if !label.contains('<')
+                && !label.contains('>')
+                && !label.contains('&')
+                && !label.contains(":fa-")
+            {
+                let inner = if wants_p {
+                    if label.contains('\n') {
+                        label.replace('\n', "<br />")
+                    } else {
+                        label.to_string()
+                    }
+                } else {
+                    label.to_string()
+                };
+                if wants_p {
+                    return format!("<p>{inner}</p>");
+                }
+                return inner;
+            }
+
             let label = if wants_p {
                 label.replace('\n', "<br />")
             } else {
@@ -9123,7 +9228,11 @@ pub(super) fn flowchart_label_html(
             } else {
                 format!("<p>{}</p>", label)
             };
-            let wrapped = crate::text::replace_fontawesome_icons(&wrapped);
+            let wrapped = if wrapped.contains(":fa-") {
+                crate::text::replace_fontawesome_icons(&wrapped)
+            } else {
+                wrapped
+            };
             xhtml_fix_fragment(&merman_core::sanitize::sanitize_text(&wrapped, config))
         }
     }
@@ -10286,7 +10395,7 @@ pub(super) fn render_flowchart_v2_svg(
     timings.total = total_start.elapsed();
     if timing_enabled {
         eprintln!(
-            "[render-timing] diagram=flowchart-v2 total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} viewbox_edge_curve_bounds={:?} render_svg={:?} finalize={:?} root_calls={} clusters={:?} edges_select={:?} edge_paths={:?} edge_labels={:?} dom_order={:?} nodes={:?} nested_roots={:?}",
+            "[render-timing] diagram=flowchart-v2 total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} viewbox_edge_curve_bounds={:?} render_svg={:?} finalize={:?} root_calls={} clusters={:?} edges_select={:?} edge_paths={:?} edge_labels={:?} dom_order={:?} nodes={:?} node_style_compile={:?} node_roughjs={:?} node_roughjs_calls={} node_label_html={:?} node_label_html_calls={} nested_roots={:?}",
             timings.total,
             timings.deserialize_model,
             timings.build_ctx,
@@ -10301,6 +10410,11 @@ pub(super) fn render_flowchart_v2_svg(
             detail.edge_labels,
             detail.dom_order,
             detail.nodes,
+            detail.node_style_compile,
+            detail.node_roughjs,
+            detail.node_roughjs_calls,
+            detail.node_label_html,
+            detail.node_label_html_calls,
             detail.nested_roots,
         );
     }
