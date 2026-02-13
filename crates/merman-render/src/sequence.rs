@@ -3,7 +3,10 @@
 use crate::model::{
     Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, SequenceDiagramLayout,
 };
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use crate::text::{
+    TextMeasurer, TextStyle, WrapMode, split_html_br_lines, wrap_label_like_mermaid_lines,
+    wrap_label_like_mermaid_lines_floored_bbox,
+};
 use crate::{Error, Result};
 use serde::Deserialize;
 use serde_json::Value;
@@ -78,41 +81,6 @@ fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
         cur = cur.get(*key)?;
     }
     cur.as_str().map(|s| s.to_string())
-}
-
-fn split_html_br_lines(text: &str) -> Vec<&str> {
-    let b = text.as_bytes();
-    let mut parts: Vec<&str> = Vec::new();
-    let mut start = 0usize;
-    let mut i = 0usize;
-    while i + 3 < b.len() {
-        if b[i] != b'<' {
-            i += 1;
-            continue;
-        }
-        let b1 = b[i + 1];
-        let b2 = b[i + 2];
-        if !matches!(b1, b'b' | b'B') || !matches!(b2, b'r' | b'R') {
-            i += 1;
-            continue;
-        }
-        let mut j = i + 3;
-        while j < b.len() && matches!(b[j], b' ' | b'\t' | b'\r' | b'\n') {
-            j += 1;
-        }
-        if j < b.len() && b[j] == b'/' {
-            j += 1;
-        }
-        if j < b.len() && b[j] == b'>' {
-            parts.push(&text[start..i]);
-            start = j + 1;
-            i = start;
-            continue;
-        }
-        i += 1;
-    }
-    parts.push(&text[start..]);
-    parts
 }
 
 fn measure_svg_like_with_html_br(
@@ -296,13 +264,28 @@ pub fn layout_sequence_diagram(
 
     // Measure participant boxes.
     let mut actor_widths: Vec<f64> = Vec::with_capacity(model.actor_order.len());
+    let mut actor_base_heights: Vec<f64> = Vec::with_capacity(model.actor_order.len());
     for id in &model.actor_order {
         let a = model.actors.get(id).ok_or_else(|| Error::InvalidModel {
             message: format!("missing actor {id}"),
         })?;
-        let (w0, _h0) = measure_svg_like_with_html_br(measurer, &a.description, &actor_text_style);
-        let w = (w0 + 2.0 * wrap_padding).max(actor_width_min);
-        actor_widths.push(w.max(1.0));
+        if a.wrap {
+            // Upstream wraps actor descriptions to `conf.width - 2*wrapPadding` and clamps the
+            // actor box width to `conf.width`.
+            let wrap_w = (actor_width_min - 2.0 * wrap_padding).max(1.0);
+            let wrapped_lines =
+                wrap_label_like_mermaid_lines(&a.description, measurer, &actor_text_style, wrap_w);
+            let line_count = wrapped_lines.len().max(1) as f64;
+            let text_h = mermaid_text_dimensions_height_px(actor_font_size) * line_count;
+            actor_base_heights.push(actor_height.max(text_h).max(1.0));
+            actor_widths.push(actor_width_min.max(1.0));
+        } else {
+            let (w0, _h0) =
+                measure_svg_like_with_html_br(measurer, &a.description, &actor_text_style);
+            let w = (w0 + 2.0 * wrap_padding).max(actor_width_min);
+            actor_base_heights.push(actor_height.max(1.0));
+            actor_widths.push(w.max(1.0));
+        }
     }
 
     // Determine the per-actor margins using Mermaid's `getMaxMessageWidthPerActor(...)` rules,
@@ -346,7 +329,16 @@ pub fn layout_sequence_diagram(
             continue;
         }
 
-        let (w0, _h0) = measure_svg_like_with_html_br(measurer, text, style);
+        let measured_text = if msg.wrap {
+            // Upstream uses `wrapLabel(message, conf.width - 2*wrapPadding, ...)` when computing
+            // max per-actor message widths for spacing.
+            let wrap_w = (actor_width_min - 2.0 * wrap_padding).max(1.0);
+            let lines = wrap_label_like_mermaid_lines(text, measurer, style, wrap_w);
+            lines.join("<br>")
+        } else {
+            text.to_string()
+        };
+        let (w0, _h0) = measure_svg_like_with_html_br(measurer, &measured_text, style);
         let w0 = w0 * message_width_scale;
         let message_w = (w0 + 2.0 * wrap_padding).max(0.0);
 
@@ -501,15 +493,18 @@ pub fn layout_sequence_diagram(
     // Actor boxes: Mermaid renders both a "top" and "bottom" actor box.
     // The bottom boxes start after all messages are placed. Created actors will have their `y`
     // adjusted later once we know the creation message position.
+    let mut max_actor_visual_height: f64 = 0.0;
     for (idx, id) in model.actor_order.iter().enumerate() {
         let w = actor_widths[idx];
         let cx = actor_centers_x[idx];
+        let base_h = actor_base_heights[idx];
         let actor_type = model
             .actors
             .get(id)
             .map(|a| a.actor_type.as_str())
             .unwrap_or("participant");
-        let visual_h = sequence_actor_visual_height(actor_type, w, actor_height, label_box_height);
+        let visual_h = sequence_actor_visual_height(actor_type, w, base_h, label_box_height);
+        max_actor_visual_height = max_actor_visual_height.max(visual_h.max(1.0));
         let top_y = actor_top_offset_y + visual_h / 2.0;
         nodes.push(LayoutNode {
             id: format!("actor-top-{id}"),
@@ -1154,7 +1149,7 @@ pub fn layout_sequence_diagram(
     let note_text_pad_total = 20.0;
     let note_top_offset = message_step - note_gap;
 
-    let mut cursor_y = actor_top_offset_y + actor_height + message_step;
+    let mut cursor_y = actor_top_offset_y + max_actor_visual_height + message_step;
     let mut rect_stack: Vec<RectOpen> = Vec::new();
     let activation_width = config_f64(seq_cfg, &["activationWidth"])
         .unwrap_or(10.0)
@@ -1172,17 +1167,17 @@ pub fn layout_sequence_diagram(
         std::collections::BTreeMap::new();
 
     let actor_visual_height_for_id = |actor_id: &str| -> f64 {
-        let w = actor_index
-            .get(actor_id)
-            .copied()
-            .and_then(|idx| actor_widths.get(idx).copied())
-            .unwrap_or(actor_width_min);
+        let Some(idx) = actor_index.get(actor_id).copied() else {
+            return actor_height.max(1.0);
+        };
+        let w = actor_widths.get(idx).copied().unwrap_or(actor_width_min);
+        let base_h = actor_base_heights.get(idx).copied().unwrap_or(actor_height);
         model
             .actors
             .get(actor_id)
             .map(|a| a.actor_type.as_str())
-            .map(|t| sequence_actor_visual_height(t, w, actor_height, label_box_height))
-            .unwrap_or(actor_height.max(1.0))
+            .map(|t| sequence_actor_visual_height(t, w, base_h, label_box_height))
+            .unwrap_or(base_h.max(1.0))
     };
     let actor_is_type_width_limited = |actor_id: &str| -> bool {
         model
@@ -1474,7 +1469,23 @@ pub fn layout_sequence_diagram(
         }
 
         let text = msg.message.as_str().unwrap_or_default();
-        let (line_y, label_base_y, cursor_step) = if text.is_empty() {
+        let bounded_width = (startx - stopx).abs().max(0.0);
+        let wrapped_text = if !text.is_empty() && msg.wrap {
+            // Upstream wraps message labels to `max(boundedWidth + 2*wrapPadding, conf.width)`.
+            // Note: a small extra margin helps keep wrap breakpoints aligned with upstream SVG
+            // baselines for long sentences under our vendored metrics.
+            let wrap_w = (bounded_width + 3.0 * wrap_padding)
+                .max(actor_width_min)
+                .max(1.0);
+            let lines =
+                wrap_label_like_mermaid_lines_floored_bbox(text, measurer, &msg_text_style, wrap_w);
+            Some(lines.join("<br>"))
+        } else {
+            None
+        };
+        let effective_text = wrapped_text.as_deref().unwrap_or(text);
+
+        let (line_y, label_base_y, cursor_step) = if effective_text.is_empty() {
             // Mermaid's `boundMessage(...)` uses the measured text bbox height. For empty labels
             // (trailing colon `Alice->Bob:`) the bbox height becomes 0, collapsing the extra
             // vertical offset and producing a much earlier message line.
@@ -1487,8 +1498,9 @@ pub fn layout_sequence_diagram(
         } else {
             // Mermaid's `boundMessage(...)` uses `common.splitBreaks(message)` to derive a
             // `lines` count and adjusts the message line y-position and cursor increment by the
-            // per-line height. This only kicks in for explicit `<br>` breaks (not `wrap:`).
-            let lines = split_html_br_lines(text).len().max(1);
+            // per-line height. This applies both to explicit `<br>` breaks and to `wrap: true`
+            // labels (which are wrapped via `wrapLabel(...)` and stored with `<br/>` separators).
+            let lines = split_html_br_lines(effective_text).len().max(1);
             // Mermaid's `calculateTextDimensions(...).height` is consistently ~2px smaller per
             // line than the rendered `drawText(...)` getBBox, so use a bbox-like per-line height
             // for the cursor math here.
@@ -1500,7 +1512,7 @@ pub fn layout_sequence_diagram(
         let x1 = startx;
         let x2 = stopx;
 
-        let label = if text.is_empty() {
+        let label = if effective_text.is_empty() {
             // Mermaid renders an (empty) message text node even when the label is empty (e.g.
             // trailing colon `Alice->Bob:`). Keep a placeholder label to preserve DOM structure.
             Some(LayoutLabel {
@@ -1510,7 +1522,7 @@ pub fn layout_sequence_diagram(
                 height: message_font_size.max(1.0),
             })
         } else {
-            let (w, h) = measure_svg_like_with_html_br(measurer, text, &msg_text_style);
+            let (w, h) = measure_svg_like_with_html_br(measurer, effective_text, &msg_text_style);
             Some(LayoutLabel {
                 x: ((x1 + x2) / 2.0).round(),
                 y: (label_base_y - msg_label_offset).round(),
@@ -1595,12 +1607,13 @@ pub fn layout_sequence_diagram(
     for (idx, id) in model.actor_order.iter().enumerate() {
         let w = actor_widths[idx];
         let cx = actor_centers_x[idx];
+        let base_h = actor_base_heights[idx];
         let actor_type = model
             .actors
             .get(id)
             .map(|a| a.actor_type.as_str())
             .unwrap_or("participant");
-        let visual_h = sequence_actor_visual_height(actor_type, w, actor_height, label_box_height);
+        let visual_h = sequence_actor_visual_height(actor_type, w, base_h, label_box_height);
         let bottom_top_y = destroyed_actor_bottom_top_y
             .get(id)
             .copied()
@@ -1620,7 +1633,7 @@ pub fn layout_sequence_diagram(
             .unwrap_or(actor_top_offset_y + visual_h / 2.0);
         let top_left_y = top_center_y - visual_h / 2.0;
         let lifeline_start_y =
-            top_left_y + sequence_actor_lifeline_start_y(actor_type, actor_height, box_text_margin);
+            top_left_y + sequence_actor_lifeline_start_y(actor_type, base_h, box_text_margin);
 
         edges.push(LayoutEdge {
             id: format!("lifeline-{id}"),
