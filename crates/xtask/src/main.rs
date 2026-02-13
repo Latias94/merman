@@ -1667,6 +1667,18 @@ fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
             skipped.push(format!("skip (already exists): {}", out_path.display()));
             continue;
         }
+        let deferred_out_path = workspace_root
+            .join("fixtures")
+            .join("_deferred")
+            .join(&c.diagram_dir)
+            .join(format!("{}.mmd", c.stem));
+        if deferred_out_path.exists() && !overwrite {
+            skipped.push(format!(
+                "skip (already deferred): {}",
+                deferred_out_path.display()
+            ));
+            continue;
+        }
 
         fs::write(&out_path, c.body.as_bytes()).map_err(|source| XtaskError::WriteFile {
             path: out_path.display().to_string(),
@@ -1717,11 +1729,6 @@ fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
         ) -> Option<&'static str> {
             match diagram_dir {
                 "flowchart" => {
-                    if fixture_text.contains("\n  layout: elk")
-                        || fixture_text.contains("\nlayout: elk")
-                    {
-                        return Some("flowchart frontmatter config.layout=elk (deferred)");
-                    }
                     if fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:") {
                         if !fixture_text.contains("\n  look: classic")
                             && !fixture_text.contains("\nlook: classic")
@@ -1749,6 +1756,34 @@ fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
             None
         }
 
+        fn deferred_keep_baselines_reason(
+            diagram_dir: &str,
+            fixture_text: &str,
+        ) -> Option<&'static str> {
+            match diagram_dir {
+                "flowchart" => {
+                    // ELK layout is currently out of scope for the headless layout engine, but we
+                    // still keep the upstream SVG baseline so the case remains traceable.
+                    if fixture_text.contains("\n  layout: elk")
+                        || fixture_text.contains("\nlayout: elk")
+                    {
+                        return Some("flowchart frontmatter config.layout=elk (deferred)");
+                    }
+
+                    // Mermaid also has a dedicated `flowchart-elk` diagram type.
+                    // Keep these fixtures in `_deferred` until we implement ELK layout parity.
+                    if fixture_text
+                        .lines()
+                        .any(|l| l.trim_start().starts_with("flowchart-elk"))
+                    {
+                        return Some("flowchart diagram type flowchart-elk (deferred)");
+                    }
+                }
+                _ => {}
+            }
+            None
+        }
+
         fn is_suspicious_blank_svg(svg_path: &Path) -> bool {
             let Ok(head) = fs::read_to_string(svg_path) else {
                 return false;
@@ -1768,6 +1803,47 @@ fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
                     .join(&f.diagram_dir)
                     .join(format!("{}.svg", f.stem)),
             );
+            let _ = fs::remove_file(
+                workspace_root
+                    .join("fixtures")
+                    .join(&f.diagram_dir)
+                    .join(format!("{}.golden.json", f.stem)),
+            );
+            let _ = fs::remove_file(
+                workspace_root
+                    .join("fixtures")
+                    .join(&f.diagram_dir)
+                    .join(format!("{}.layout.golden.json", f.stem)),
+            );
+        }
+
+        fn defer_fixture_files_keep_baselines(workspace_root: &Path, f: &CreatedFixture) {
+            let deferred_dir = workspace_root
+                .join("fixtures")
+                .join("_deferred")
+                .join(&f.diagram_dir);
+            let deferred_svg_dir = workspace_root
+                .join("fixtures")
+                .join("_deferred")
+                .join("upstream-svgs")
+                .join(&f.diagram_dir);
+            let _ = fs::create_dir_all(&deferred_dir);
+            let _ = fs::create_dir_all(&deferred_svg_dir);
+
+            let deferred_mmd_path = deferred_dir.join(format!("{}.mmd", f.stem));
+            let _ = fs::remove_file(&deferred_mmd_path);
+            let _ = fs::rename(&f.path, &deferred_mmd_path);
+
+            let svg_path = workspace_root
+                .join("fixtures")
+                .join("upstream-svgs")
+                .join(&f.diagram_dir)
+                .join(format!("{}.svg", f.stem));
+            let deferred_svg_path = deferred_svg_dir.join(format!("{}.svg", f.stem));
+            let _ = fs::remove_file(&deferred_svg_path);
+            let _ = fs::rename(&svg_path, &deferred_svg_path);
+
+            // We do not keep snapshots for deferred fixtures in the main fixture corpus.
             let _ = fs::remove_file(
                 workspace_root
                     .join("fixtures")
@@ -1875,6 +1951,24 @@ fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
                     f.path.display(),
                 ));
                 cleanup_fixture_files(&workspace_root, f);
+                continue;
+            }
+
+            if let Some(reason) = deferred_keep_baselines_reason(&f.diagram_dir, &fixture_text) {
+                report_lines.push(format!(
+                    "DEFERRED_WITH_BASELINES\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}\treason={reason}",
+                    f.diagram_dir,
+                    f.stem,
+                    f.source_spec.display(),
+                    f.source_idx_in_file,
+                    f.source_call,
+                    f.source_test_name.clone().unwrap_or_default(),
+                ));
+                skipped.push(format!(
+                    "skip (deferred for --with-baselines): {} ({reason})",
+                    f.path.display(),
+                ));
+                defer_fixture_files_keep_baselines(&workspace_root, f);
                 continue;
             }
 
