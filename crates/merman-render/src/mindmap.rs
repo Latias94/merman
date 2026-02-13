@@ -1,3 +1,4 @@
+use crate::json::from_value_ref;
 use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint, MindmapDiagramLayout};
 use crate::text::WrapMode;
 use crate::text::{TextMeasurer, TextStyle};
@@ -217,7 +218,7 @@ pub fn layout_mindmap_diagram(
     text_measurer: &dyn TextMeasurer,
     use_manatee_layout: bool,
 ) -> Result<MindmapDiagramLayout> {
-    let mut model: MindmapModel = serde_json::from_value(model.clone())?;
+    let mut model: MindmapModel = from_value_ref(model)?;
 
     let text_style = mindmap_text_style(effective_config);
     let max_node_width_px = config_f64(effective_config, &["mindmap", "maxNodeWidth"])

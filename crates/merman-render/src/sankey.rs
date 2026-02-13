@@ -1,5 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
+use crate::json::from_value_ref;
 use crate::model::{Bounds, SankeyDiagramLayout, SankeyLinkLayout, SankeyNodeLayout};
 use crate::text::TextMeasurer;
 use crate::{Error, Result};
@@ -114,7 +115,7 @@ pub fn layout_sankey_diagram(
     effective_config: &Value,
     _text_measurer: &dyn TextMeasurer,
 ) -> Result<SankeyDiagramLayout> {
-    let model: SankeySemanticModel = serde_json::from_value(Value::clone(semantic))?;
+    let model: SankeySemanticModel = from_value_ref(semantic)?;
 
     let width = config_f64(effective_config, &["sankey", "width"]).unwrap_or(600.0);
     let height = config_f64(effective_config, &["sankey", "height"]).unwrap_or(400.0);

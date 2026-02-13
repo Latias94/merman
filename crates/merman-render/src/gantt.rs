@@ -1,3 +1,4 @@
+use crate::json::from_value_ref;
 use crate::model::{
     Bounds, GanttAxisTickLayout, GanttDiagramLayout, GanttExcludeRangeLayout, GanttRowLayout,
     GanttSectionTitleLayout, GanttTaskBarLayout, GanttTaskLabelLayout, GanttTaskLayout,
@@ -852,7 +853,7 @@ pub fn layout_gantt_diagram(
     config: &serde_json::Value,
     text_measurer: &dyn TextMeasurer,
 ) -> Result<GanttDiagramLayout> {
-    let mut m: GanttModel = serde_json::from_value(model.clone()).map_err(Error::Json)?;
+    let mut m: GanttModel = from_value_ref(model).map_err(Error::Json)?;
 
     let gantt_cfg = config.get("gantt").unwrap_or(config);
     let bar_gap = cfg_f64(gantt_cfg, &["barGap"]).unwrap_or(4.0);

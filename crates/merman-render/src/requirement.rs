@@ -1,3 +1,4 @@
+use crate::json::from_value_ref;
 use crate::model::{
     Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, RequirementDiagramLayout,
 };
@@ -409,7 +410,7 @@ pub fn layout_requirement_diagram(
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
 ) -> Result<RequirementDiagramLayout> {
-    let model: RequirementDiagramModel = serde_json::from_value(model.clone())?;
+    let model: RequirementDiagramModel = from_value_ref(model)?;
 
     let direction = normalize_dir(model.direction.as_deref().unwrap_or("TB"));
     let nodesep = config_f64(effective_config, &["nodeSpacing"])

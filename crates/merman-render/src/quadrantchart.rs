@@ -1,4 +1,5 @@
 use crate::Result;
+use crate::json::from_value_ref;
 use crate::model::{
     QuadrantChartAxisLabelData, QuadrantChartBorderLineData, QuadrantChartDiagramLayout,
     QuadrantChartPointData, QuadrantChartQuadrantData, QuadrantChartTextData,
@@ -301,7 +302,7 @@ pub fn layout_quadrantchart_diagram(
     effective_config: &Value,
     _text_measurer: &dyn TextMeasurer,
 ) -> Result<QuadrantChartDiagramLayout> {
-    let model: QuadrantChartModel = serde_json::from_value(model.clone())?;
+    let model: QuadrantChartModel = from_value_ref(model)?;
 
     let cfg = default_quadrant_config(effective_config);
     let theme = quadrant_theme_with_overrides(effective_config);

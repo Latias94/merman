@@ -1,3 +1,4 @@
+use crate::json::from_value_ref;
 use crate::model::{ArchitectureDiagramLayout, Bounds, LayoutEdge, LayoutNode, LayoutPoint};
 use crate::text::TextMeasurer;
 use crate::{Error, Result};
@@ -86,7 +87,7 @@ pub fn layout_architecture_diagram(
     _text_measurer: &dyn TextMeasurer,
     use_manatee_layout: bool,
 ) -> Result<ArchitectureDiagramLayout> {
-    let model: ArchitectureModel = serde_json::from_value(model.clone())?;
+    let model: ArchitectureModel = from_value_ref(model)?;
 
     let icon_size = config_f64(effective_config, &["architecture", "iconSize"]).unwrap_or(80.0);
     let icon_size = icon_size.max(1.0);

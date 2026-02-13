@@ -1,5 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
+use crate::json::from_value_ref;
 use crate::model::{
     Bounds, C4BoundaryLayout, C4DiagramLayout, C4ImageLayout, C4RelLayout, C4ShapeLayout,
     C4TextBlockLayout, LayoutPoint,
@@ -938,7 +939,7 @@ pub(crate) fn layout_c4_diagram(
     viewport_width: f64,
     viewport_height: f64,
 ) -> Result<C4DiagramLayout> {
-    let model: C4Model = serde_json::from_value(model.clone())?;
+    let model: C4Model = from_value_ref(model)?;
     let conf = C4Conf::from_effective_config(effective_config);
 
     let c4_shape_in_row = (model.layout.c4_shape_in_row.max(1)) as usize;

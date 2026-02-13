@@ -91,19 +91,17 @@ struct StateRoughCacheKey {
     seed: u64,
 }
 
-fn state_global_rough_circle_cache(
-) -> &'static Mutex<std::collections::HashMap<StateRoughCacheKey, Arc<String>>> {
-    static CACHE: OnceLock<Mutex<std::collections::HashMap<StateRoughCacheKey, Arc<String>>>> =
-        OnceLock::new();
+type StateRoughCircleCache = std::collections::HashMap<StateRoughCacheKey, Arc<String>>;
+type StateRoughPathsCache =
+    std::collections::HashMap<StateRoughCacheKey, (Arc<String>, Arc<String>)>;
+
+fn state_global_rough_circle_cache() -> &'static Mutex<StateRoughCircleCache> {
+    static CACHE: OnceLock<Mutex<StateRoughCircleCache>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
 }
 
-fn state_global_rough_paths_cache() -> &'static Mutex<
-    std::collections::HashMap<StateRoughCacheKey, (Arc<String>, Arc<String>)>,
-> {
-    static CACHE: OnceLock<
-        Mutex<std::collections::HashMap<StateRoughCacheKey, (Arc<String>, Arc<String>)>>,
-    > = OnceLock::new();
+fn state_global_rough_paths_cache() -> &'static Mutex<StateRoughPathsCache> {
+    static CACHE: OnceLock<Mutex<StateRoughPathsCache>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
 }
 

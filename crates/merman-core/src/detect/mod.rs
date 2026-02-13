@@ -326,7 +326,8 @@ fn detector_state_v2(txt: &str, config: &mut MermaidConfig) -> bool {
     if trimmed.starts_with("stateDiagram-v2") {
         return true;
     }
-    trimmed.starts_with("stateDiagram") && config.get_str("state.defaultRenderer") == Some("dagre-wrapper")
+    trimmed.starts_with("stateDiagram")
+        && config.get_str("state.defaultRenderer") == Some("dagre-wrapper")
 }
 
 fn detector_journey(txt: &str, _config: &mut MermaidConfig) -> bool {
