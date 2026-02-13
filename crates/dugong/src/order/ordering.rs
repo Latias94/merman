@@ -1,7 +1,7 @@
 use super::layer_graph::{build_layer_graph_with_root, create_root_node};
 use super::{
-    OrderEdgeWeight, OrderNodeLabel, Relationship, add_subgraph_constraints, cross_count,
-    init_order, sort_subgraph,
+    LayerGraphLabel, OrderEdgeWeight, OrderNodeLabel, Relationship, WeightLabel,
+    add_subgraph_constraints, cross_count, init_order, sort_subgraph,
 };
 use crate::graphlib::{Graph, GraphOptions};
 use std::collections::BTreeMap;
@@ -17,7 +17,9 @@ struct OrderTimings {
     build_nodes_by_rank: std::time::Duration,
     init_order: std::time::Duration,
     assign_initial: std::time::Duration,
+    build_layer_graph_cache: std::time::Duration,
     sweeps: std::time::Duration,
+    sweep_sync_orders: std::time::Duration,
     sweep_build_layer_graph: std::time::Duration,
     sweep_sort_subgraph: std::time::Duration,
     sweep_apply_order: std::time::Duration,
@@ -86,6 +88,29 @@ where
 
     let root = create_root_node(g);
 
+    let build_cache_start = timing_enabled.then(std::time::Instant::now);
+    let mut layer_graphs_in: BTreeMap<i32, Graph<N, WeightLabel, LayerGraphLabel>> =
+        BTreeMap::new();
+    let mut layer_graphs_out: BTreeMap<i32, Graph<N, WeightLabel, LayerGraphLabel>> =
+        BTreeMap::new();
+    for rank in 0..=max_rank {
+        let nodes = nodes_by_rank
+            .get(&rank)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[]);
+        layer_graphs_in.insert(
+            rank,
+            build_layer_graph_with_root(g, rank, Relationship::InEdges, &root, Some(nodes)),
+        );
+        layer_graphs_out.insert(
+            rank,
+            build_layer_graph_with_root(g, rank, Relationship::OutEdges, &root, Some(nodes)),
+        );
+    }
+    if let Some(s) = build_cache_start {
+        timings.build_layer_graph_cache = s.elapsed();
+    }
+
     let mut best_cc: f64 = f64::INFINITY;
     let mut best_layering: Option<Vec<Vec<String>>> = None;
 
@@ -111,6 +136,7 @@ where
                 Relationship::InEdges,
                 bias_right,
                 &root,
+                &mut layer_graphs_in,
                 timing_enabled,
                 &mut timings,
             );
@@ -126,6 +152,7 @@ where
                 Relationship::OutEdges,
                 bias_right,
                 &root,
+                &mut layer_graphs_out,
                 timing_enabled,
                 &mut timings,
             );
@@ -162,12 +189,14 @@ where
     if let Some(s) = total_start {
         timings.total = s.elapsed();
         eprintln!(
-            "[dugong-timing] stage=order total={:?} build_nodes_by_rank={:?} init_order={:?} assign_initial={:?} sweeps={:?} sweep_build_layer_graph={:?} sweep_sort_subgraph={:?} sweep_apply_order={:?} sweep_add_constraints={:?} build_layer_matrix={:?} cross_count={:?}",
+            "[dugong-timing] stage=order total={:?} build_nodes_by_rank={:?} init_order={:?} assign_initial={:?} build_layer_graph_cache={:?} sweeps={:?} sweep_sync_orders={:?} sweep_build_layer_graph={:?} sweep_sort_subgraph={:?} sweep_apply_order={:?} sweep_add_constraints={:?} build_layer_matrix={:?} cross_count={:?}",
             timings.total,
             timings.build_nodes_by_rank,
             timings.init_order,
             timings.assign_initial,
+            timings.build_layer_graph_cache,
             timings.sweeps,
+            timings.sweep_sync_orders,
             timings.sweep_build_layer_graph,
             timings.sweep_sort_subgraph,
             timings.sweep_apply_order,
@@ -200,6 +229,7 @@ fn sweep<N, E, G>(
     relationship: Relationship,
     bias_right: bool,
     root: &str,
+    layer_graphs: &mut BTreeMap<i32, Graph<N, WeightLabel, LayerGraphLabel>>,
     timing_enabled: bool,
     timings: &mut OrderTimings,
 ) where
@@ -216,13 +246,28 @@ fn sweep<N, E, G>(
             .unwrap_or(&[]);
 
         let build_lg_start = timing_enabled.then(std::time::Instant::now);
-        let lg = build_layer_graph_with_root(g, rank, relationship, root, Some(nodes));
+        let lg = match layer_graphs.get_mut(&rank) {
+            Some(v) => v,
+            None => {
+                layer_graphs.insert(
+                    rank,
+                    build_layer_graph_with_root(g, rank, relationship, root, Some(nodes)),
+                );
+                layer_graphs.get_mut(&rank).expect("just inserted")
+            }
+        };
         if let Some(s) = build_lg_start {
             timings.sweep_build_layer_graph += s.elapsed();
         }
 
+        let sync_start = timing_enabled.then(std::time::Instant::now);
+        sync_layer_graph_orders(g, lg, root);
+        if let Some(s) = sync_start {
+            timings.sweep_sync_orders += s.elapsed();
+        }
+
         let sort_start = timing_enabled.then(std::time::Instant::now);
-        let sorted = sort_subgraph(&lg, root, &cg, bias_right);
+        let sorted = sort_subgraph(lg, root, &cg, bias_right);
         if let Some(s) = sort_start {
             timings.sweep_sort_subgraph += s.elapsed();
         }
@@ -243,6 +288,27 @@ fn sweep<N, E, G>(
             timings.sweep_add_constraints += s.elapsed();
         }
     }
+}
+
+fn sync_layer_graph_orders<N, E, G>(
+    original: &Graph<N, E, G>,
+    layer_graph: &mut Graph<N, WeightLabel, LayerGraphLabel>,
+    root: &str,
+) where
+    N: Default + OrderNodeLabel + 'static,
+    E: Default + 'static,
+    G: Default,
+{
+    layer_graph.for_each_node_mut(|id, node| {
+        if id == root {
+            return;
+        }
+        if node.order().is_none() {
+            return;
+        }
+        let order = original.node(id).and_then(|n| n.order()).unwrap_or(0);
+        node.set_order(order);
+    });
 }
 
 fn build_layer_matrix<N, E, G>(g: &Graph<N, E, G>, max_rank: i32) -> Vec<Vec<String>>
