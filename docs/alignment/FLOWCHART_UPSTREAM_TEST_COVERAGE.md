@@ -52,6 +52,7 @@ upstream SVG baselines (rendered via `mmdc` with our pinned CLI config):
 - `fixtures/flowchart/upstream_cypress_flowchart_handdrawn_spec_fhd12_should_render_a_flowchart_with_long_names_and_class_defini_012.mmd`
 - `fixtures/flowchart/upstream_cypress_flowchart_handdrawn_spec_fhd14_should_render_hexagons_014.mmd`
 - `fixtures/flowchart/upstream_cypress_flowchart_handdrawn_spec_fhd16_render_stadium_shape_016.mmd`
+- `fixtures/flowchart/upstream_cypress_flowchart_handdrawn_spec_fhd17_render_multiline_texts_017.mmd`
 - `fixtures/flowchart/upstream_cypress_flowchart_handdrawn_spec_fhd6_should_render_a_flowchart_full_of_circles_006.mmd`
 - `fixtures/flowchart/upstream_cypress_flowchart_handdrawn_spec_fhd7_should_render_a_flowchart_full_of_icons_007.mmd`
 - `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_3_a_link_with_correct_arrowhead_to_a_subgraph_003.mmd`
@@ -82,6 +83,10 @@ upstream SVG baselines (rendered via `mmdc` with our pinned CLI config):
 - `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_with_formatting_in_a_node_049.mmd`
 - `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_with_styling_and_classes_053.mmd`
 - `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_with_formatting_in_a_node_054.mmd`
+- `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_66_more_nested_subgraph_cases_tb_027.mmd`
+- `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_67_more_nested_subgraph_cases_rl_028.mmd`
+- `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_68_more_nested_subgraph_cases_bt_029.mmd`
+- `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_69_more_nested_subgraph_cases_lr_030.mmd`
 - `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_6617_per_link_curve_styling_using_edge_ids_071.mmd`
 
 Deferred (not parity-gated yet):
