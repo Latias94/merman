@@ -1,5 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
+use super::timing::{RenderTimings, TimingGuard, render_timing_enabled};
 use super::*;
 use crate::entities::decode_entities_minimal;
 use indexmap::IndexMap;
@@ -504,28 +505,24 @@ fn render_class_html_label(
     include_p: bool,
     extra_span_class: Option<&str>,
 ) {
-    let mut class = span_class.to_string();
+    out.push_str(r#"<span class=""#);
+    let _ = write!(out, "{}", escape_xml_display(span_class));
     if let Some(extra) = extra_span_class {
-        if !extra.trim().is_empty() {
-            class.push(' ');
-            class.push_str(extra.trim());
+        let extra = extra.trim();
+        if !extra.is_empty() {
+            out.push(' ');
+            let _ = write!(out, "{}", escape_xml_display(extra));
         }
     }
+    out.push_str(r#"">"#);
     if include_p {
-        let _ = write!(
-            out,
-            r#"<span class="{}"><p>{}</p></span>"#,
-            escape_xml(&class),
-            escape_xml(text)
-        );
+        out.push_str("<p>");
+        let _ = write!(out, "{}", escape_xml_display(text));
+        out.push_str("</p>");
     } else {
-        let _ = write!(
-            out,
-            r#"<span class="{}">{}</span>"#,
-            escape_xml(&class),
-            escape_xml(text)
-        );
+        let _ = write!(out, "{}", escape_xml_display(text));
     }
+    out.push_str("</span>");
 }
 
 fn class_apply_inline_styles(
@@ -674,10 +671,25 @@ pub(super) fn render_class_diagram_v2_svg(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
+    let timing_enabled = render_timing_enabled();
+    let total_start = timing_enabled.then(std::time::Instant::now);
+    let mut timings = RenderTimings::default();
+
+    #[derive(Debug, Default, Clone)]
+    struct ClassRenderDetails {
+        path_bounds: std::time::Duration,
+        path_bounds_calls: usize,
+    }
+    let mut detail = ClassRenderDetails::default();
+
+    let deser_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.deserialize_model));
     let model: ClassSvgModel = crate::json::from_value_ref(semantic)?;
+    drop(deser_guard);
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let aria_roledescription = options.aria_roledescription.as_deref().unwrap_or("class");
+
+    let build_ctx_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.build_ctx));
 
     let font_size = effective_config
         .get("fontSize")
@@ -779,6 +791,7 @@ pub(super) fn render_class_diagram_v2_svg(
     const VIEWBOX_PLACEHOLDER: &str = "__MERMAID_VIEWBOX__";
     const MAX_WIDTH_PLACEHOLDER: &str = "__MERMAID_MAX_WIDTH__";
 
+    let render_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.render_svg));
     let mut out = String::new();
     let _ = write!(
         &mut out,
@@ -873,7 +886,9 @@ pub(super) fn render_class_diagram_v2_svg(
     };
     let nodes_root_dy = 0.0;
 
-    let render_clusters_edges_and_labels =
+    drop(build_ctx_guard);
+
+    let mut render_clusters_edges_and_labels =
         |out: &mut String, content_bounds: &mut Option<Bounds>, bounds_dx: f64, bounds_dy: f64| {
             // Clusters (namespaces).
             out.push_str(r#"<g class="clusters">"#);
@@ -940,7 +955,12 @@ pub(super) fn render_class_diagram_v2_svg(
                     );
                 }
                 let d = curve_basis_path_d(&curve_points);
+                let path_bounds_start = timing_enabled.then(std::time::Instant::now);
                 include_path_d(content_bounds, &d, bounds_dx, bounds_dy);
+                if let Some(s) = path_bounds_start {
+                    detail.path_bounds += s.elapsed();
+                    detail.path_bounds_calls += 1;
+                }
                 let points_b64 = base64::engine::general_purpose::STANDARD
                     .encode(serde_json::to_vec(&raw_points).unwrap_or_default());
 
@@ -1216,12 +1236,17 @@ pub(super) fn render_class_diagram_v2_svg(
                 fo_w,
                 fo_h,
             );
+            let path_bounds_start = timing_enabled.then(std::time::Instant::now);
             include_path_d(
                 &mut content_bounds,
                 &note_stroke_d,
                 node_bounds_tx,
                 node_bounds_ty,
             );
+            if let Some(s) = path_bounds_start {
+                detail.path_bounds += s.elapsed();
+                detail.path_bounds_calls += 1;
+            }
             let _ = write!(
                 &mut out,
                 r##"<g class="node undefined" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/></g><g class="label" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="text-align: center; white-space: nowrap; display: table-cell; line-height: 1.5; max-width: 200px;" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"##,
@@ -1392,12 +1417,17 @@ pub(super) fn render_class_diagram_v2_svg(
             w,
             h,
         );
+        let path_bounds_start = timing_enabled.then(std::time::Instant::now);
         include_path_d(
             &mut content_bounds,
             &stroke_d,
             node_bounds_tx,
             node_bounds_ty,
         );
+        if let Some(s) = path_bounds_start {
+            detail.path_bounds += s.elapsed();
+            detail.path_bounds_calls += 1;
+        }
         let _ = write!(
             &mut out,
             r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style=""/>"#,
@@ -1582,7 +1612,12 @@ pub(super) fn render_class_diagram_v2_svg(
             for y in [divider1_y, divider2_y] {
                 out.push_str(r#"<g class="divider" style="">"#);
                 let d = class_rough_line_double_path(left, y, left + w, y, rough_seed ^ 0x55);
+                let path_bounds_start = timing_enabled.then(std::time::Instant::now);
                 include_path_d(&mut content_bounds, &d, node_bounds_tx, node_bounds_ty);
+                if let Some(s) = path_bounds_start {
+                    detail.path_bounds += s.elapsed();
+                    detail.path_bounds_calls += 1;
+                }
                 let _ = write!(
                     &mut out,
                     r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style=""/>"#,
@@ -1608,6 +1643,9 @@ pub(super) fn render_class_diagram_v2_svg(
     out.push_str("</g>"); // outer nodes
     out.push_str("</g>"); // root
     out.push_str("</g>"); // wrapper
+
+    drop(render_guard);
+    let viewbox_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.viewbox));
 
     let bounds = content_bounds.unwrap_or(Bounds {
         min_x: 0.0,
@@ -2046,9 +2084,31 @@ pub(super) fn render_class_diagram_v2_svg(
         );
     }
 
+    drop(viewbox_guard);
+    let finalize_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.finalize_svg));
+
     out = out.replacen(MAX_WIDTH_PLACEHOLDER, &max_w_attr, 1);
     out = out.replacen(VIEWBOX_PLACEHOLDER, &view_box_attr, 1);
 
     out.push_str("</svg>");
+    drop(finalize_guard);
+
+    if let Some(s) = total_start {
+        timings.total = s.elapsed();
+        eprintln!(
+            "[render-timing] diagram=classDiagram total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} render_svg={:?} finalize={:?} path_bounds={:?} path_bounds_calls={} nodes={} edges={} clusters={}",
+            timings.total,
+            timings.deserialize_model,
+            timings.build_ctx,
+            timings.viewbox,
+            timings.render_svg,
+            timings.finalize_svg,
+            detail.path_bounds,
+            detail.path_bounds_calls,
+            layout.nodes.len(),
+            layout.edges.len(),
+            layout.clusters.len(),
+        );
+    }
     Ok(out)
 }
