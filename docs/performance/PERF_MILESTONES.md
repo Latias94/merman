@@ -7,19 +7,20 @@ It is intentionally fixture-driven and stage-attributed (parse/layout/render/end
 
 ### Stage Attribution Snapshot (canaries)
 
-Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) indicates the remaining gap is now dominated by
-**parse + render**, with layout mostly competitive except for `flowchart_medium` and `mindmap_medium`.
+Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) indicates the remaining gap is dominated by
+**parse + render**, with layout now closer after removing a `serde_json::Value::clone()` tax in the
+layout decode path.
 
 - Spotcheck (`tools/bench/stage_spotcheck.py`, 20 samples / 1s warmup / 1s measurement):
   - Geomean ratios across canaries (`flowchart_medium,class_medium,state_medium,sequence_medium,mindmap_medium`):
-    - `parse`: `~5.91x`
-    - `layout`: `~1.36x`
-    - `render`: `~4.40x`
-    - `end_to_end`: `~1.73x`
+    - `parse`: `~5.53x`
+    - `layout`: `~1.40x`
+    - `render`: `~3.42x`
+    - `end_to_end`: `~1.49x`
   - Notable outliers:
-    - `mindmap_medium`: `parse ~18x`, `layout ~9x`, `end_to_end ~7–8x`
-    - `state_medium`: `parse ~16x`, `render ~11x`
-    - `flowchart_medium`: `layout ~2–3x`, `render ~6x`, `end_to_end ~2–3x`
+    - `mindmap_medium`: `parse ~15x`, `layout ~7x`, `end_to_end ~5–7x`
+    - `state_medium`: `parse ~16x`, `render ~7–9x`
+    - `flowchart_medium`: `layout ~2–3x`, `render ~4–5x`, `end_to_end ~2x`
 
 Root-cause direction:
 
@@ -33,6 +34,7 @@ Root-cause direction:
 Useful debug toggles:
 
 - `MERMAN_RENDER_TIMING=1` (flowchart render stage attribution)
+- `MERMAN_PARSE_TIMING=1` (parse stage attribution: preprocess/detect/parse/sanitize)
 - `MERMAN_FLOWCHART_LAYOUT_TIMING=1` (flowchart layout stage attribution)
 - `DUGONG_DAGREISH_TIMING=1` (Dagre-ish pipeline stage attribution; shows `order` as dominant)
 - `DUGONG_ORDER_TIMING=1` (ordering stage breakdown inside Dagre-ish pipeline)
@@ -68,8 +70,8 @@ Work items:
 
 Goal: cut `layout/flowchart_medium` substantially.
 
-Primary target: reduce the spotcheck ratio from ~`5.0x` → `< 2.0x` without changing layout output.
-Current: `~1.8x` on `flowchart_medium` in a recent spotcheck run.
+Primary target: reduce the spotcheck ratio from `~5x` → `< 2.0x` without changing layout output.
+Current: `~2.2x` on `flowchart_medium` in a recent spotcheck run (numbers fluctuate).
 
 What we know:
 
@@ -154,7 +156,9 @@ Work items (ordered by expected ROI):
 1. Add parse micro-timing (metadata detection vs preprocessing vs diagram parser vs JSON materialize).
 2. Introduce typed parse paths for high-impact diagrams (start with `stateDiagram` and `mindmap`),
    and keep JSON emission as a compatibility layer (only when needed for debugging/tests).
-3. Consider a lightweight lexer + hand-rolled parser for the hot subset where it measurably pays off.
+3. Stop cloning semantic JSON in layout/render decode paths (done for the main `merman-render`
+   layout decoders via `T::deserialize(&Value)`).
+4. Consider a lightweight lexer + hand-rolled parser for the hot subset where it measurably pays off.
 
 Guidance:
 
