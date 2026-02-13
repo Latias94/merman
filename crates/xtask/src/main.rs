@@ -1444,6 +1444,143 @@ fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
             ))
         })?;
 
+        fn find_matching_paren_close(text: &str, open_paren: usize) -> Option<usize> {
+            // Best-effort JS scanning to find the matching `)` for a call starting at `open_paren`.
+            //
+            // This intentionally ignores nested template literal `${...}` parsing; for our fixture
+            // sources this is sufficient and prevents accidentally capturing backticks from later
+            // tests when the call argument is not a template literal (e.g. `imgSnapshotTest(diagramCode, ...)`).
+            let bytes = text.as_bytes();
+            if bytes.get(open_paren) != Some(&b'(') {
+                return None;
+            }
+
+            #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+            enum Mode {
+                Normal,
+                SingleQuote,
+                DoubleQuote,
+                Template,
+                LineComment,
+                BlockComment,
+            }
+
+            let mut mode = Mode::Normal;
+            let mut depth: i32 = 1;
+            let mut escaped = false;
+
+            let mut i = open_paren + 1;
+            while i < bytes.len() {
+                let b = bytes[i];
+                match mode {
+                    Mode::Normal => {
+                        if b == b'/' && bytes.get(i + 1) == Some(&b'/') {
+                            mode = Mode::LineComment;
+                            i += 2;
+                            continue;
+                        }
+                        if b == b'/' && bytes.get(i + 1) == Some(&b'*') {
+                            mode = Mode::BlockComment;
+                            i += 2;
+                            continue;
+                        }
+                        if b == b'\'' {
+                            mode = Mode::SingleQuote;
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'"' {
+                            mode = Mode::DoubleQuote;
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'`' {
+                            mode = Mode::Template;
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+
+                        if b == b'(' {
+                            depth += 1;
+                        } else if b == b')' {
+                            depth -= 1;
+                            if depth == 0 {
+                                return Some(i);
+                            }
+                        }
+
+                        i += 1;
+                    }
+                    Mode::SingleQuote => {
+                        if escaped {
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\\' {
+                            escaped = true;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\'' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::DoubleQuote => {
+                        if escaped {
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\\' {
+                            escaped = true;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'"' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::Template => {
+                        if escaped {
+                            escaped = false;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'\\' {
+                            escaped = true;
+                            i += 1;
+                            continue;
+                        }
+                        if b == b'`' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::LineComment => {
+                        if b == b'\n' {
+                            mode = Mode::Normal;
+                        }
+                        i += 1;
+                    }
+                    Mode::BlockComment => {
+                        if b == b'*' && bytes.get(i + 1) == Some(&b'/') {
+                            mode = Mode::Normal;
+                            i += 2;
+                            continue;
+                        }
+                        i += 1;
+                    }
+                }
+            }
+            None
+        }
+
         let source_stem = spec_path
             .file_stem()
             .and_then(|s| s.to_str())
@@ -1499,7 +1636,17 @@ fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
                     continue;
                 };
                 let start = open_paren + 1;
-                if let Some((raw, end)) = extract_first_template_literal(&text, start) {
+
+                let Some(close_paren) = find_matching_paren_close(&text, open_paren) else {
+                    search_from = start;
+                    continue;
+                };
+
+                // Only scan within the call arguments; otherwise we can accidentally capture a
+                // backtick string from a later `it()` block when the call argument itself isn't
+                // a template literal.
+                let args_slice = &text[start..close_paren];
+                if let Some((raw, end_rel)) = extract_first_template_literal(args_slice, 0) {
                     out.push(CypressBlock {
                         source_spec: spec_path.to_path_buf(),
                         source_stem: source_stem.clone(),
@@ -1509,11 +1656,11 @@ fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
                         body: raw,
                     });
                     idx_in_file += 1;
-                    search_from = end;
+                    search_from = start + end_rel;
                     continue;
                 }
 
-                search_from = start;
+                search_from = close_paren + 1;
             }
         }
 
@@ -3059,6 +3206,7 @@ const browserExe = input.browser_exe || null;
 const cliRoot = process.cwd();
 const mermaidHtmlPath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermaid-cli', 'dist', 'index.html');
 const mermaidIifePath = path.join(cliRoot, 'node_modules', 'mermaid', 'dist', 'mermaid.js');
+const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermaid-zenuml', 'dist', 'mermaid-zenuml.js');
 
 (async () => {
   const launchOpts = { headless: 'shell', args: ['--no-sandbox', '--disable-setuid-sandbox'] };
@@ -12977,6 +13125,7 @@ if (!inputPath || !outputPath || !configPath) {
 const cliRoot = process.cwd();
 const mermaidHtmlPath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermaid-cli', 'dist', 'index.html');
 const mermaidIifePath = path.join(cliRoot, 'node_modules', 'mermaid', 'dist', 'mermaid.js');
+const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermaid-zenuml', 'dist', 'mermaid-zenuml.js');
 
 (async () => {
   const code = fs.readFileSync(inputPath, 'utf8');
@@ -13023,11 +13172,28 @@ const mermaidIifePath = path.join(cliRoot, 'node_modules', 'mermaid', 'dist', 'm
 
   await page.setViewport({ width: Math.max(1, width), height: Math.max(1, height), deviceScaleFactor: 1 });
   await page.goto(url.pathToFileURL(mermaidHtmlPath).href);
-  await page.addScriptTag({ path: mermaidIifePath });
+  await Promise.all([
+    page.addScriptTag({ path: mermaidIifePath }),
+    page.addScriptTag({ path: zenumlIifePath }),
+  ]);
 
   const svg = await page.evaluate(async ({ code, cfg, theme, svgId, width }) => {
     const mermaid = globalThis.mermaid;
     if (!mermaid) throw new Error('mermaid global not found');
+
+    if (document.fonts && typeof document.fonts[Symbol.iterator] === 'function') {
+      await Promise.all(Array.from(document.fonts, (font) => font.load()));
+    }
+
+    // Match mermaid-cli behavior: register external diagrams and layout loaders.
+    const zenuml = globalThis['mermaid-zenuml'];
+    if (zenuml && typeof mermaid.registerExternalDiagrams === 'function') {
+      await mermaid.registerExternalDiagrams([zenuml]);
+    }
+    const elkLayouts = globalThis.elkLayouts;
+    if (elkLayouts && typeof mermaid.registerLayoutLoaders === 'function') {
+      mermaid.registerLayoutLoaders(elkLayouts);
+    }
 
     mermaid.initialize(Object.assign({ startOnLoad: false, theme }, cfg));
 
