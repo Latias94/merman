@@ -1,0 +1,172 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Alice",
+      "Bob",
+      "John"
+    ],
+    "actors": {
+      "Alice": {
+        "name": "Alice",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Bob": {
+        "name": "Bob",
+        "description": "Bob",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "John": {
+        "name": "John",
+        "description": "John<br/>Second Line",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "Alice",
+        "to": "Bob",
+        "message": "Hello Bob, how are you?",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Bob",
+        "to": "John",
+        "message": "How about you John?",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "John",
+        "to": "John",
+        "message": "John thinks a long<br/>long time, so long<br/>that the text does<br/>not fit on a row.",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 1
+      },
+      {
+        "id": "3",
+        "from": "Bob",
+        "to": "Alice",
+        "message": "Checking with John...",
+        "wrap": false,
+        "type": 6,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "John",
+        "to": "John",
+        "message": "John looks like he's still thinking, so Bob prods him a bit.",
+        "wrap": true,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "5",
+        "from": "Bob",
+        "to": "John",
+        "message": "Hey John -<br/>we're still waiting to know<br/>how you're doing",
+        "wrap": false,
+        "type": 3,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "John",
+        "to": "John",
+        "message": "John's trying hard not to break his train of thought.",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "7",
+        "from": "Bob",
+        "to": "John",
+        "message": "John! Are you still debating about how you're doing? How long does it take??",
+        "wrap": true,
+        "type": 3,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "John",
+        "to": "John",
+        "message": "After a few more moments, John<br/>finally snaps out of it.",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      }
+    ],
+    "notes": [
+      {
+        "actor": "John",
+        "placement": 1,
+        "message": "John thinks a long<br/>long time, so long<br/>that the text does<br/>not fit on a row.",
+        "wrap": false
+      },
+      {
+        "actor": [
+          "John",
+          "John"
+        ],
+        "placement": 2,
+        "message": "John looks like he's still thinking, so Bob prods him a bit.",
+        "wrap": true
+      },
+      {
+        "actor": [
+          "John",
+          "John"
+        ],
+        "placement": 2,
+        "message": "John's trying hard not to break his train of thought.",
+        "wrap": false
+      },
+      {
+        "actor": [
+          "John",
+          "John"
+        ],
+        "placement": 2,
+        "message": "After a few more moments, John<br/>finally snaps out of it.",
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

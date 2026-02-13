@@ -1,0 +1,73 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "A",
+      "B"
+    ],
+    "actors": {
+      "A": {
+        "name": "A",
+        "description": "A",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "B": {
+        "name": "B",
+        "description": "B",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": null,
+        "to": null,
+        "message": {
+          "visible": true
+        },
+        "wrap": false,
+        "type": 26,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "A",
+        "to": "B",
+        "message": "This is a bidirectional message",
+        "wrap": false,
+        "type": 33,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "A",
+        "to": "B",
+        "message": "This is a normal message",
+        "wrap": false,
+        "type": 5,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Alice",
+      "John",
+      "Bob"
+    ],
+    "actors": {
+      "Alice": {
+        "name": "Alice",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "John": {
+        "name": "John",
+        "description": "John",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Bob": {
+        "name": "Bob",
+        "description": "Bob",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "Alice",
+        "to": "John",
+        "message": "Hello John, how are you?",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": null,
+        "to": null,
+        "message": "Healthcheck",
+        "wrap": false,
+        "type": 10,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "John",
+        "to": "John",
+        "message": "Fight against hypochondria",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 11,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "John",
+        "to": "John",
+        "message": "Rational thoughts!",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 1
+      },
+      {
+        "id": "5",
+        "from": "John",
+        "to": "Alice",
+        "message": "Great!",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "John",
+        "to": "Bob",
+        "message": "How about you?",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "Bob",
+        "to": "John",
+        "message": "Jolly good!",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": "John",
+        "placement": 1,
+        "message": "Rational thoughts!",
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

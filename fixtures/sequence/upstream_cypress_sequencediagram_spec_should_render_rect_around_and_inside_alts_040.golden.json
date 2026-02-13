@@ -1,0 +1,152 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "A",
+      "B",
+      "C"
+    ],
+    "actors": {
+      "A": {
+        "name": "A",
+        "description": "A",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "B": {
+        "name": "B",
+        "description": "B",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "C": {
+        "name": "C",
+        "description": "C",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "A",
+        "to": "B",
+        "message": "1",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": null,
+        "to": null,
+        "message": "rgb(204, 0, 102)",
+        "wrap": false,
+        "type": 22,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": null,
+        "to": null,
+        "message": "yes",
+        "wrap": false,
+        "type": 12,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "C",
+        "to": "C",
+        "message": "1",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": null,
+        "to": null,
+        "message": "no",
+        "wrap": false,
+        "type": 13,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": null,
+        "to": null,
+        "message": "rgb(0, 204, 204)",
+        "wrap": false,
+        "type": 22,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "C",
+        "to": "C",
+        "message": "0",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 23,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 14,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 23,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": "B",
+        "to": "A",
+        "message": "Return",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}
