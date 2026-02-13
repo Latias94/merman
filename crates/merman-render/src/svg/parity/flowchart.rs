@@ -5383,8 +5383,8 @@ fn render_flowchart_node(
     let class_attr: String;
     let wrapped_in_a: bool;
     let href: Option<&str>;
-    let mut label_text: String;
-    let mut label_type: String;
+    let mut label_text: &str;
+    let mut label_type: &str;
     let shape: &str;
     let node_img: Option<&str>;
     let node_pos: Option<&str>;
@@ -5427,8 +5427,8 @@ fn render_flowchart_node(
             // emit an anchor element in the SVG.
             wrapped_in_a = link_present;
 
-            label_text = node.label.as_deref().unwrap_or(node_id).to_string();
-            label_type = node.label_type.as_deref().unwrap_or("text").to_string();
+            label_text = node.label.as_deref().unwrap_or(node_id);
+            label_type = node.label_type.as_deref().unwrap_or("text");
             node_img = node.img.as_deref();
             node_pos = node.pos.as_deref();
             node_constraint = node.constraint.as_deref();
@@ -5454,8 +5454,8 @@ fn render_flowchart_node(
             }
             class_attr = cls;
 
-            label_text = sg.title.clone();
-            label_type = sg.label_type.as_deref().unwrap_or("text").to_string();
+            label_text = sg.title.as_str();
+            label_type = sg.label_type.as_deref().unwrap_or("text");
             node_img = None;
             node_pos = None;
             node_constraint = None;
@@ -5465,12 +5465,6 @@ fn render_flowchart_node(
             node_classes = &sg.classes;
         }
     }
-
-    let group_id = if let Some(dom_idx) = dom_idx {
-        format!("flowchart-{node_id}-{dom_idx}")
-    } else {
-        node_id.to_string()
-    };
 
     if wrapped_in_a {
         if let Some(href) = href {
@@ -5489,23 +5483,47 @@ fn render_flowchart_node(
                 fmt_display(y)
             );
         }
-        let _ = write!(
-            out,
-            r#"<g class="{}" id="{}"{}>"#,
-            escape_xml_display(&class_attr),
-            escape_xml_display(&group_id),
-            tooltip_attr
-        );
+        if let Some(dom_idx) = dom_idx {
+            let _ = write!(
+                out,
+                r#"<g class="{}" id="flowchart-{}-{}"{}>"#,
+                escape_xml_display(&class_attr),
+                escape_xml_display(node_id),
+                dom_idx,
+                tooltip_attr
+            );
+        } else {
+            let _ = write!(
+                out,
+                r#"<g class="{}" id="{}"{}>"#,
+                escape_xml_display(&class_attr),
+                escape_xml_display(node_id),
+                tooltip_attr
+            );
+        }
     } else {
-        let _ = write!(
-            out,
-            r#"<g class="{}" id="{}" transform="translate({}, {})"{}>"#,
-            escape_xml_display(&class_attr),
-            escape_xml_display(&group_id),
-            fmt_display(x),
-            fmt_display(y),
-            tooltip_attr
-        );
+        if let Some(dom_idx) = dom_idx {
+            let _ = write!(
+                out,
+                r#"<g class="{}" id="flowchart-{}-{}" transform="translate({}, {})"{}>"#,
+                escape_xml_display(&class_attr),
+                escape_xml_display(node_id),
+                dom_idx,
+                fmt_display(x),
+                fmt_display(y),
+                tooltip_attr
+            );
+        } else {
+            let _ = write!(
+                out,
+                r#"<g class="{}" id="{}" transform="translate({}, {})"{}>"#,
+                escape_xml_display(&class_attr),
+                escape_xml_display(node_id),
+                fmt_display(x),
+                fmt_display(y),
+                tooltip_attr
+            );
+        }
     }
 
     let style_start = timing_enabled.then(std::time::Instant::now);
@@ -6125,9 +6143,6 @@ fn render_flowchart_node(
         // Flowchart v2 lightning bolt (Communication link). Mermaid clears `node.label` and does
         // not emit a label group.
         "bolt" => {
-            label_text.clear();
-            label_type = "text".to_string();
-
             // Mermaid uses `width = max(35, node.width)` and `height = max(35, node.height)`,
             // then draws a 2*height tall bolt and translates it by `(-width/2, -height)`.
             let width = layout_node.width.max(35.0);
@@ -6173,9 +6188,6 @@ fn render_flowchart_node(
         // label group. Note that even in non-handDrawn mode Mermaid still uses RoughJS circle
         // paths (roughness=0), which have a slightly asymmetric bbox in Chromium.
         "f-circ" => {
-            label_text.clear();
-            label_type = "text".to_string();
-
             let border = config_string(ctx.config.as_value(), &["themeVariables", "nodeBorder"])
                 .unwrap_or_else(|| ctx.node_border_color.clone());
 
@@ -6201,9 +6213,6 @@ fn render_flowchart_node(
         // Flowchart v2 crossed circle (summary). Mermaid clears `node.label` and does not emit a
         // label group.
         "cross-circ" => {
-            label_text.clear();
-            label_type = "text".to_string();
-
             // Mermaid uses `radius = max(30, node.width)` before `updateNodeBounds(...)`. In
             // practice `node.width` is usually unset here, so radius=30.
             let radius = 30.0;
@@ -6261,8 +6270,8 @@ fn render_flowchart_node(
         // Flowchart v2 hourglass/collate: Mermaid clears `node.label` but still emits an empty
         // label group (via `labelHelper(...)`).
         "hourglass" | "collate" => {
-            label_text.clear();
-            label_type = "text".to_string();
+            label_text = "";
+            label_type = "text";
             let w = layout_node.width.max(30.0);
             let h = layout_node.height.max(30.0);
             let pts: Vec<(f64, f64)> = vec![(0.0, 0.0), (w, 0.0), (0.0, h), (w, h)];
@@ -6320,7 +6329,7 @@ fn render_flowchart_node(
         // Flowchart v2 delay / half-rounded rectangle.
         "delay" => {
             let label_text_plain =
-                flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+                flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
                 &ctx.class_defs,
@@ -6329,8 +6338,8 @@ fn render_flowchart_node(
             );
             let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
                 ctx.measurer,
-                &label_text,
-                &label_type,
+                label_text,
+                label_type,
                 &node_text_style,
                 Some(ctx.wrapping_width),
                 ctx.node_wrap_mode,
@@ -6432,7 +6441,7 @@ fn render_flowchart_node(
         // Flowchart v2 curved trapezoid (Display).
         "curv-trap" => {
             let label_text_plain =
-                flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+                flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
                 &ctx.class_defs,
@@ -6441,8 +6450,8 @@ fn render_flowchart_node(
             );
             let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
                 ctx.measurer,
-                &label_text,
-                &label_type,
+                label_text,
+                label_type,
                 &node_text_style,
                 Some(ctx.wrapping_width),
                 ctx.node_wrap_mode,
@@ -6564,7 +6573,7 @@ fn render_flowchart_node(
         // Flowchart v2 notched pentagon (Loop limit).
         "notch-pent" => {
             let label_text_plain =
-                flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+                flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
                 &ctx.class_defs,
@@ -6573,8 +6582,8 @@ fn render_flowchart_node(
             );
             let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
                 ctx.measurer,
-                &label_text,
-                &label_type,
+                label_text,
+                label_type,
                 &node_text_style,
                 Some(ctx.wrapping_width),
                 ctx.node_wrap_mode,
@@ -6638,7 +6647,7 @@ fn render_flowchart_node(
         // Flowchart v2 bow tie rectangle (Stored data).
         "bow-rect" => {
             let label_text_plain =
-                flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+                flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
                 &ctx.class_defs,
@@ -6647,8 +6656,8 @@ fn render_flowchart_node(
             );
             let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
                 ctx.measurer,
-                &label_text,
-                &label_type,
+                label_text,
+                label_type,
                 &node_text_style,
                 Some(ctx.wrapping_width),
                 ctx.node_wrap_mode,
@@ -6730,7 +6739,7 @@ fn render_flowchart_node(
         // Flowchart v2 tagged rectangle (Tagged process).
         "tag-rect" => {
             let label_text_plain =
-                flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+                flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
                 &ctx.class_defs,
@@ -6739,8 +6748,8 @@ fn render_flowchart_node(
             );
             let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
                 ctx.measurer,
-                &label_text,
-                &label_type,
+                label_text,
+                label_type,
                 &node_text_style,
                 Some(ctx.wrapping_width),
                 ctx.node_wrap_mode,
@@ -6829,7 +6838,7 @@ fn render_flowchart_node(
             compact_label_translate = true;
 
             let label_text_plain =
-                flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+                flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
                 &ctx.class_defs,
@@ -6838,8 +6847,8 @@ fn render_flowchart_node(
             );
             let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
                 ctx.measurer,
-                &label_text,
-                &label_type,
+                label_text,
+                label_type,
                 &node_text_style,
                 Some(ctx.wrapping_width),
                 ctx.node_wrap_mode,
@@ -6920,7 +6929,7 @@ fn render_flowchart_node(
             compact_label_translate = true;
 
             let label_text_plain =
-                flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+                flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
                 &ctx.class_defs,
@@ -6929,8 +6938,8 @@ fn render_flowchart_node(
             );
             let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
                 ctx.measurer,
-                &label_text,
-                &label_type,
+                label_text,
+                label_type,
                 &node_text_style,
                 Some(ctx.wrapping_width),
                 ctx.node_wrap_mode,
@@ -7010,7 +7019,7 @@ fn render_flowchart_node(
             compact_label_translate = true;
 
             let label_text_plain =
-                flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+                flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
                 &ctx.class_defs,
@@ -7019,8 +7028,8 @@ fn render_flowchart_node(
             );
             let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
                 ctx.measurer,
-                &label_text,
-                &label_type,
+                label_text,
+                label_type,
                 &node_text_style,
                 Some(ctx.wrapping_width),
                 ctx.node_wrap_mode,
@@ -7129,7 +7138,7 @@ fn render_flowchart_node(
         // Flowchart v2 triangle (Extract).
         "tri" => {
             let label_text_plain =
-                flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+                flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
             let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
                 &ctx.text_style,
                 &ctx.class_defs,
@@ -7138,8 +7147,8 @@ fn render_flowchart_node(
             );
             let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
                 ctx.measurer,
-                &label_text,
-                &label_type,
+                label_text,
+                label_type,
                 &node_text_style,
                 Some(ctx.wrapping_width),
                 ctx.node_wrap_mode,
@@ -7606,7 +7615,7 @@ fn render_flowchart_node(
             // Port of Mermaid `imageSquare.ts` (`image-shape default`).
             if let Some(img_href) = node_img.as_deref().filter(|s| !s.trim().is_empty()) {
                 let label_text_plain =
-                    flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+                    flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
                 let has_label = !label_text_plain.trim().is_empty();
                 let label_padding = if has_label { 8.0 } else { 0.0 };
                 let top_label = node_pos.as_deref() == Some("t");
@@ -7641,8 +7650,8 @@ fn render_flowchart_node(
 
                 let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
                     ctx.measurer,
-                    &label_text,
-                    &label_type,
+                    label_text,
+                    label_type,
                     &ctx.text_style,
                     Some(ctx.wrapping_width),
                     ctx.node_wrap_mode,
@@ -7720,7 +7729,7 @@ fn render_flowchart_node(
 
                 // Label group uses a background class in Mermaid's image/icon helpers.
                 let label_html =
-                    label_html_timed!(flowchart_label_html(&label_text, &label_type, &ctx.config));
+                    label_html_timed!(flowchart_label_html(label_text, label_type, &ctx.config));
                 let label_dy = if top_label {
                     -image_height / 2.0 - metrics.height / 2.0 - label_padding / 2.0
                 } else {
@@ -8765,8 +8774,7 @@ fn render_flowchart_node(
         None
     }
 
-    let label_text_plain =
-        flowchart_label_plain_text(&label_text, &label_type, ctx.node_html_labels);
+    let label_text_plain = flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
     let node_text_style = crate::flowchart::flowchart_effective_text_style_for_classes(
         &ctx.text_style,
         &ctx.class_defs,
@@ -8775,8 +8783,8 @@ fn render_flowchart_node(
     );
     let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
         ctx.measurer,
-        &label_text,
-        &label_type,
+        label_text,
+        label_type,
         &node_text_style,
         Some(ctx.wrapping_width),
         ctx.node_wrap_mode,
@@ -8823,7 +8831,7 @@ fn render_flowchart_node(
         out.push_str("</g></g></g>");
     } else {
         let label_html =
-            label_html_timed!(flowchart_label_html(&label_text, &label_type, &ctx.config));
+            label_html_timed!(flowchart_label_html(label_text, label_type, &ctx.config));
         let mut span_style_attr = String::new();
         if !compiled_styles.label_style.trim().is_empty() {
             span_style_attr = format!(
@@ -8840,7 +8848,7 @@ fn render_flowchart_node(
             let raw = if label_type == "markdown" {
                 crate::text::measure_markdown_with_flowchart_bold_deltas(
                     ctx.measurer,
-                    &label_text,
+                    label_text,
                     &node_text_style,
                     None,
                     ctx.node_wrap_mode,
@@ -8849,7 +8857,7 @@ fn render_flowchart_node(
             } else if has_inline_style_tags {
                 crate::text::measure_html_with_flowchart_bold_deltas(
                     ctx.measurer,
-                    &label_text,
+                    label_text,
                     &node_text_style,
                     None,
                     ctx.node_wrap_mode,
