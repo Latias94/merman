@@ -242,18 +242,19 @@ fn bench_layout(c: &mut Criterion) {
         };
 
         // Pre-check that layout works.
-        if merman_render::layout_parsed(&parsed, &layout).is_err() {
+        if merman_render::layout_parsed_layout_only(&parsed, &layout).is_err() {
             eprintln!("[bench][skip][layout] {name}: layout error");
             continue;
         }
 
         group.bench_with_input(BenchmarkId::from_parameter(name), &parsed, |b, data| {
             b.iter(|| {
-                let diagram = match merman_render::layout_parsed(black_box(data), &layout) {
-                    Ok(v) => v,
-                    Err(_) => return,
-                };
-                black_box(layout_size(&diagram.layout));
+                let diagram =
+                    match merman_render::layout_parsed_layout_only(black_box(data), &layout) {
+                        Ok(v) => v,
+                        Err(_) => return,
+                    };
+                black_box(layout_size(&diagram));
             })
         });
     }
@@ -332,14 +333,23 @@ fn bench_end_to_end(c: &mut Criterion) {
                 continue;
             }
         };
-        let diagram = match merman_render::layout_parsed(&parsed, &layout) {
+        let diagram = match merman_render::layout_parsed_layout_only(&parsed, &layout) {
             Ok(v) => v,
             Err(_) => {
                 eprintln!("[bench][skip][end_to_end] {name}: layout error");
                 continue;
             }
         };
-        if render_layouted_svg(&diagram, layout.text_measurer.as_ref(), &svg_opts).is_err() {
+        if merman_render::svg::render_layout_svg_parts(
+            &diagram,
+            &parsed.model,
+            parsed.meta.effective_config.as_value(),
+            parsed.meta.title.as_deref(),
+            layout.text_measurer.as_ref(),
+            &svg_opts,
+        )
+        .is_err()
+        {
             eprintln!("[bench][skip][end_to_end] {name}: svg render error");
             continue;
         }
@@ -353,12 +363,15 @@ fn bench_end_to_end(c: &mut Criterion) {
                         Ok(None) => return,
                         Err(_) => return,
                     };
-                    let diagram = match merman_render::layout_parsed(&parsed, &layout) {
+                    let diagram = match merman_render::layout_parsed_layout_only(&parsed, &layout) {
                         Ok(v) => v,
                         Err(_) => return,
                     };
-                    let svg = match render_layouted_svg(
+                    let svg = match merman_render::svg::render_layout_svg_parts(
                         &diagram,
+                        &parsed.model,
+                        parsed.meta.effective_config.as_value(),
+                        parsed.meta.title.as_deref(),
                         layout.text_measurer.as_ref(),
                         &svg_opts,
                     ) {

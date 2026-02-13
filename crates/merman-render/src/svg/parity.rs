@@ -114,171 +114,119 @@ pub fn render_layouted_svg(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
+    render_layout_svg_parts(
+        &diagram.layout,
+        &diagram.semantic,
+        &diagram.meta.effective_config,
+        diagram.meta.title.as_deref(),
+        measurer,
+        options,
+    )
+}
+
+pub fn render_layout_svg_parts(
+    layout: &crate::model::LayoutDiagram,
+    semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
     use crate::model::LayoutDiagram;
 
-    match &diagram.layout {
-        LayoutDiagram::ErrorDiagram(layout) => render_error_diagram_svg(
-            layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            options,
-        ),
-        LayoutDiagram::BlockDiagram(layout) => render_block_diagram_svg(
-            layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            options,
-        ),
-        LayoutDiagram::RequirementDiagram(layout) => render_requirement_diagram_svg(
-            layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            options,
-        ),
-        LayoutDiagram::ArchitectureDiagram(layout) => render_architecture_diagram_svg(
-            layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            options,
-        ),
-        LayoutDiagram::MindmapDiagram(layout) => render_mindmap_diagram_svg(
-            layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            options,
-        ),
-        LayoutDiagram::SankeyDiagram(layout) => render_sankey_diagram_svg(
-            layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            options,
-        ),
-        LayoutDiagram::RadarDiagram(layout) => render_radar_diagram_svg(
-            layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            options,
-        ),
-        LayoutDiagram::TreemapDiagram(layout) => render_treemap_diagram_svg(
-            layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            options,
-        ),
-        LayoutDiagram::XyChartDiagram(layout) => render_xychart_diagram_svg(
-            layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            options,
-        ),
-        LayoutDiagram::QuadrantChartDiagram(layout) => render_quadrantchart_diagram_svg(
-            layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            options,
-        ),
-        LayoutDiagram::FlowchartV2(layout) => render_flowchart_v2_svg(
-            layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            diagram.meta.title.as_deref(),
-            measurer,
-            options,
-        ),
+    match layout {
+        LayoutDiagram::ErrorDiagram(layout) => {
+            render_error_diagram_svg(layout, semantic, effective_config, options)
+        }
+        LayoutDiagram::BlockDiagram(layout) => {
+            render_block_diagram_svg(layout, semantic, effective_config, options)
+        }
+        LayoutDiagram::RequirementDiagram(layout) => {
+            render_requirement_diagram_svg(layout, semantic, effective_config, options)
+        }
+        LayoutDiagram::ArchitectureDiagram(layout) => {
+            render_architecture_diagram_svg(layout, semantic, effective_config, options)
+        }
+        LayoutDiagram::MindmapDiagram(layout) => {
+            render_mindmap_diagram_svg(layout, semantic, effective_config, options)
+        }
+        LayoutDiagram::SankeyDiagram(layout) => {
+            render_sankey_diagram_svg(layout, semantic, effective_config, options)
+        }
+        LayoutDiagram::RadarDiagram(layout) => {
+            render_radar_diagram_svg(layout, semantic, effective_config, options)
+        }
+        LayoutDiagram::TreemapDiagram(layout) => {
+            render_treemap_diagram_svg(layout, semantic, effective_config, options)
+        }
+        LayoutDiagram::XyChartDiagram(layout) => {
+            render_xychart_diagram_svg(layout, semantic, effective_config, options)
+        }
+        LayoutDiagram::QuadrantChartDiagram(layout) => {
+            render_quadrantchart_diagram_svg(layout, semantic, effective_config, options)
+        }
+        LayoutDiagram::FlowchartV2(layout) => {
+            render_flowchart_v2_svg(layout, semantic, effective_config, title, measurer, options)
+        }
         LayoutDiagram::StateDiagramV2(layout) => render_state_diagram_v2_svg(
             layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            diagram.meta.title.as_deref(),
+            semantic,
+            effective_config,
+            title,
             measurer,
             options,
         ),
         LayoutDiagram::ClassDiagramV2(layout) => render_class_diagram_v2_svg(
             layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            diagram.meta.title.as_deref(),
+            semantic,
+            effective_config,
+            title,
             measurer,
             options,
         ),
-        LayoutDiagram::ErDiagram(layout) => render_er_diagram_svg(
-            layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            diagram.meta.title.as_deref(),
-            measurer,
-            options,
-        ),
+        LayoutDiagram::ErDiagram(layout) => {
+            render_er_diagram_svg(layout, semantic, effective_config, title, measurer, options)
+        }
         LayoutDiagram::SequenceDiagram(layout) => render_sequence_diagram_svg(
             layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            diagram.meta.title.as_deref(),
+            semantic,
+            effective_config,
+            title,
             measurer,
             options,
         ),
-        LayoutDiagram::InfoDiagram(layout) => render_info_diagram_svg(
-            layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            options,
-        ),
-        LayoutDiagram::PacketDiagram(layout) => render_packet_diagram_svg(
-            layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            diagram.meta.title.as_deref(),
-            options,
-        ),
+        LayoutDiagram::InfoDiagram(layout) => {
+            render_info_diagram_svg(layout, semantic, effective_config, options)
+        }
+        LayoutDiagram::PacketDiagram(layout) => {
+            render_packet_diagram_svg(layout, semantic, effective_config, title, options)
+        }
         LayoutDiagram::TimelineDiagram(layout) => render_timeline_diagram_svg(
             layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            diagram.meta.title.as_deref(),
+            semantic,
+            effective_config,
+            title,
             measurer,
             options,
         ),
-        LayoutDiagram::PieDiagram(layout) => render_pie_diagram_svg(
-            layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            options,
-        ),
-        LayoutDiagram::JourneyDiagram(layout) => render_journey_diagram_svg(
-            layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            diagram.meta.title.as_deref(),
-            measurer,
-            options,
-        ),
-        LayoutDiagram::KanbanDiagram(layout) => render_kanban_diagram_svg(
-            layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            options,
-        ),
-        LayoutDiagram::GitGraphDiagram(layout) => render_gitgraph_diagram_svg(
-            layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            measurer,
-            options,
-        ),
-        LayoutDiagram::GanttDiagram(layout) => render_gantt_diagram_svg(
-            layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            options,
-        ),
-        LayoutDiagram::C4Diagram(layout) => render_c4_diagram_svg(
-            layout,
-            &diagram.semantic,
-            &diagram.meta.effective_config,
-            diagram.meta.title.as_deref(),
-            measurer,
-            options,
-        ),
+        LayoutDiagram::PieDiagram(layout) => {
+            render_pie_diagram_svg(layout, semantic, effective_config, options)
+        }
+        LayoutDiagram::JourneyDiagram(layout) => {
+            render_journey_diagram_svg(layout, semantic, effective_config, title, measurer, options)
+        }
+        LayoutDiagram::KanbanDiagram(layout) => {
+            render_kanban_diagram_svg(layout, semantic, effective_config, options)
+        }
+        LayoutDiagram::GitGraphDiagram(layout) => {
+            render_gitgraph_diagram_svg(layout, semantic, effective_config, measurer, options)
+        }
+        LayoutDiagram::GanttDiagram(layout) => {
+            render_gantt_diagram_svg(layout, semantic, effective_config, options)
+        }
+        LayoutDiagram::C4Diagram(layout) => {
+            render_c4_diagram_svg(layout, semantic, effective_config, title, measurer, options)
+        }
     }
 }
 

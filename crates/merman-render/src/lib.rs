@@ -100,23 +100,38 @@ impl LayoutOptions {
 
 pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<LayoutedDiagram> {
     let meta = LayoutMeta::from_parse_metadata(&parsed.meta);
+    let layout = layout_parsed_layout_only(parsed, options)?;
+
+    Ok(LayoutedDiagram {
+        meta,
+        semantic: Value::clone(&parsed.model),
+        layout,
+    })
+}
+
+pub fn layout_parsed_layout_only(
+    parsed: &ParsedDiagram,
+    options: &LayoutOptions,
+) -> Result<LayoutDiagram> {
     let diagram_type = parsed.meta.diagram_type.as_str();
+    let effective_config = parsed.meta.effective_config.as_value();
+    let title = parsed.meta.title.as_deref();
 
     let layout = match diagram_type {
         "error" => LayoutDiagram::ErrorDiagram(error::layout_error_diagram(
             &parsed.model,
-            &meta.effective_config,
+            effective_config,
             options.text_measurer.as_ref(),
         )?),
         "block" => LayoutDiagram::BlockDiagram(block::layout_block_diagram(
             &parsed.model,
-            &meta.effective_config,
+            effective_config,
             options.text_measurer.as_ref(),
         )?),
         "architecture" => {
             LayoutDiagram::ArchitectureDiagram(architecture::layout_architecture_diagram(
                 &parsed.model,
-                &meta.effective_config,
+                effective_config,
                 options.text_measurer.as_ref(),
                 options.use_manatee_layout,
             )?)
@@ -124,114 +139,114 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
         "requirement" => {
             LayoutDiagram::RequirementDiagram(requirement::layout_requirement_diagram(
                 &parsed.model,
-                &meta.effective_config,
+                effective_config,
                 options.text_measurer.as_ref(),
             )?)
         }
         "radar" => LayoutDiagram::RadarDiagram(radar::layout_radar_diagram(
             &parsed.model,
-            &meta.effective_config,
+            effective_config,
             options.text_measurer.as_ref(),
         )?),
         "treemap" => LayoutDiagram::TreemapDiagram(treemap::layout_treemap_diagram(
             &parsed.model,
-            &meta.effective_config,
+            effective_config,
             options.text_measurer.as_ref(),
         )?),
         "flowchart-v2" => LayoutDiagram::FlowchartV2(flowchart::layout_flowchart_v2(
             &parsed.model,
-            &meta.effective_config,
+            effective_config,
             options.text_measurer.as_ref(),
         )?),
         "stateDiagram" => LayoutDiagram::StateDiagramV2(state::layout_state_diagram_v2(
             &parsed.model,
-            &meta.effective_config,
+            effective_config,
             options.text_measurer.as_ref(),
         )?),
         "classDiagram" | "class" => LayoutDiagram::ClassDiagramV2(class::layout_class_diagram_v2(
             &parsed.model,
-            &meta.effective_config,
+            effective_config,
             options.text_measurer.as_ref(),
         )?),
         "er" | "erDiagram" => LayoutDiagram::ErDiagram(er::layout_er_diagram(
             &parsed.model,
-            &meta.effective_config,
+            effective_config,
             options.text_measurer.as_ref(),
         )?),
         "sequence" | "zenuml" => LayoutDiagram::SequenceDiagram(sequence::layout_sequence_diagram(
             &parsed.model,
-            &meta.effective_config,
+            effective_config,
             options.text_measurer.as_ref(),
         )?),
         "info" => LayoutDiagram::InfoDiagram(info::layout_info_diagram(
             &parsed.model,
-            &meta.effective_config,
+            effective_config,
             options.text_measurer.as_ref(),
         )?),
         "packet" => LayoutDiagram::PacketDiagram(packet::layout_packet_diagram(
             &parsed.model,
-            meta.title.as_deref(),
-            &meta.effective_config,
+            title,
+            effective_config,
             options.text_measurer.as_ref(),
         )?),
         "timeline" => LayoutDiagram::TimelineDiagram(timeline::layout_timeline_diagram(
             &parsed.model,
-            &meta.effective_config,
+            effective_config,
             options.text_measurer.as_ref(),
         )?),
         "gantt" => LayoutDiagram::GanttDiagram(gantt::layout_gantt_diagram(
             &parsed.model,
-            &meta.effective_config,
+            effective_config,
             options.text_measurer.as_ref(),
         )?),
         "c4" => LayoutDiagram::C4Diagram(c4::layout_c4_diagram(
             &parsed.model,
-            &meta.effective_config,
+            effective_config,
             options.text_measurer.as_ref(),
             options.viewport_width,
             options.viewport_height,
         )?),
         "journey" => LayoutDiagram::JourneyDiagram(journey::layout_journey_diagram(
             &parsed.model,
-            &meta.effective_config,
+            effective_config,
             options.text_measurer.as_ref(),
         )?),
         "gitGraph" => LayoutDiagram::GitGraphDiagram(gitgraph::layout_gitgraph_diagram(
             &parsed.model,
-            &meta.effective_config,
+            effective_config,
             options.text_measurer.as_ref(),
         )?),
         "kanban" => LayoutDiagram::KanbanDiagram(kanban::layout_kanban_diagram(
             &parsed.model,
-            &meta.effective_config,
+            effective_config,
             options.text_measurer.as_ref(),
         )?),
         "pie" => LayoutDiagram::PieDiagram(pie::layout_pie_diagram(
             &parsed.model,
-            &meta.effective_config,
+            effective_config,
             options.text_measurer.as_ref(),
         )?),
         "xychart" => LayoutDiagram::XyChartDiagram(xychart::layout_xychart_diagram(
             &parsed.model,
-            &meta.effective_config,
+            effective_config,
             options.text_measurer.as_ref(),
         )?),
         "quadrantChart" => {
             LayoutDiagram::QuadrantChartDiagram(quadrantchart::layout_quadrantchart_diagram(
                 &parsed.model,
-                &meta.effective_config,
+                effective_config,
                 options.text_measurer.as_ref(),
             )?)
         }
         "mindmap" => LayoutDiagram::MindmapDiagram(mindmap::layout_mindmap_diagram(
             &parsed.model,
-            &meta.effective_config,
+            effective_config,
             options.text_measurer.as_ref(),
             options.use_manatee_layout,
         )?),
         "sankey" => LayoutDiagram::SankeyDiagram(sankey::layout_sankey_diagram(
             &parsed.model,
-            &meta.effective_config,
+            effective_config,
             options.text_measurer.as_ref(),
         )?),
         other => {
@@ -240,10 +255,5 @@ pub fn layout_parsed(parsed: &ParsedDiagram, options: &LayoutOptions) -> Result<
             });
         }
     };
-
-    Ok(LayoutedDiagram {
-        meta,
-        semantic: Value::clone(&parsed.model),
-        layout,
-    })
+    Ok(layout)
 }

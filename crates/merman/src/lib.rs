@@ -196,12 +196,20 @@ pub mod render {
         layout_options: &LayoutOptions,
         svg_options: &SvgRenderOptions,
     ) -> Result<Option<String>> {
-        let Some(diagram) = layout_diagram_sync(engine, text, parse_options, layout_options)?
-        else {
+        let Some(parsed) = engine.parse_diagram_sync(text, parse_options)? else {
             return Ok(None);
         };
-        let svg =
-            render_layouted_svg(&diagram, layout_options.text_measurer.as_ref(), svg_options)?;
+
+        let layout = merman_render::layout_parsed_layout_only(&parsed, layout_options)?;
+        let svg = merman_render::svg::render_layout_svg_parts(
+            &layout,
+            &parsed.model,
+            parsed.meta.effective_config.as_value(),
+            parsed.meta.title.as_deref(),
+            layout_options.text_measurer.as_ref(),
+            svg_options,
+        )?;
+
         Ok(Some(svg))
     }
 
