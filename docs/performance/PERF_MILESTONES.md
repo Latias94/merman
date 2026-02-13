@@ -8,27 +8,27 @@ It is intentionally fixture-driven and stage-attributed (parse/layout/render/end
 ### Stage Attribution Snapshot (canaries)
 
 Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) indicates the remaining gap is dominated by
-**parse + render**, with layout now closer after removing a `serde_json::Value::clone()` tax in the
-layout decode path.
+**render + flowchart layout**, with parse now substantially closer after moving the pipeline parse
+bench to the typed render semantic models (avoids per-field `serde_json::Value` object-key
+allocations for `mindmap`/`stateDiagram`).
 
 - Spotcheck (`tools/bench/stage_spotcheck.py`, 20 samples / 1s warmup / 1s measurement):
   - Latest canary set (`flowchart_medium,class_medium,state_medium,mindmap_medium`):
-    - `parse`: `6.91x`
-    - `layout`: `1.46x`
-    - `render`: `4.92x`
-    - `end_to_end`: `1.30x`
-  - Notable outliers in that run:
-    - `mindmap_medium`: `parse 15.78x`, `layout 5.07x`, `end_to_end 3.19x`
-    - `state_medium`: `parse 13.47x`, `render 8.27x`, `end_to_end 0.72x`
-    - `flowchart_medium`: `layout 2.81x`, `render 4.89x`, `end_to_end 1.92x`
+    - `parse`: `~2.3x`
+    - `layout`: `~1.1x`
+    - `render`: `~4.6x`
+    - `end_to_end`: `~1.5x` (varies; mindmap still dominates)
+  - Notable outliers in a recent run:
+    - `state_medium`: `render ~9x` (RoughJS + leaf node work; typed model still serializes to JSON for renderer)
+    - `mindmap_medium`: `layout ~3–4x`, `end_to_end ~2.8–3.0x`
+    - `flowchart_medium`: `layout ~2.0–2.5x`, `render ~3–4x`, `end_to_end ~1.7–2.3x`
 
 Root-cause direction:
 
-- `state_medium` and `mindmap_medium` parse are still extreme ratio outliers. The fastest lever is
-  to stop materializing large `serde_json::Value` trees on the hot pipeline path (typed/compact IR).
 - `flowchart_medium` is now a multi-stage problem: layout (`dugong::order`) is still expensive, and
   render spends a meaningful slice in DOM building + edge path work + viewport computation.
 - `state_medium` render is dominated by leaf node work, especially RoughJS path generation and emit.
+- `mindmap_medium` overall gap is now mostly layout (COSE port / bbox work) rather than parse.
 
 Useful debug toggles:
 
@@ -147,21 +147,21 @@ Acceptance criteria:
 - Spotcheck: `render/flowchart_medium` and `render/class_medium` ratios drop materially without
   changing golden fixtures.
 
-### M6 — Parser/IR: stop paying the `serde_json::Value` tax (Planned)
+### M6 — Parser/IR: stop paying the `serde_json::Value` tax (In progress)
 
 Motivation (from spotcheck):
 
-- `parse/state_medium` and `parse/mindmap_medium` are extreme ratio outliers.
-- Many diagram pipelines parse into intermediate JSON-like structures and then deserialize again for
-  layout/render. That doubles work and allocates heavily.
+- Many diagram pipelines pay a large allocation tax by constructing `serde_json::Value` object trees
+  with repeated per-field key strings (e.g. `"id"`, `"label"`, `"shape"`) even when the downstream
+  renderer only needs typed data.
 
 Work items (ordered by expected ROI):
 
 1. Add parse micro-timing (metadata detection vs preprocessing vs diagram parser vs JSON materialize).
 2. Introduce typed parse paths for high-impact diagrams (start with `stateDiagram` and `mindmap`),
-   and keep JSON emission as a compatibility layer (only when needed for debugging/tests).
-   - Note: we already have "render-focused" semantic models for these diagrams on the end-to-end
-     pipeline path, but the `parse/*` benches still measure the full JSON-producing path.
+   and keep JSON emission as a compatibility layer (only when needed for debugging/tests). (Partially done)
+   - `Engine::parse_diagram_for_render_model_sync(...)` returns typed semantic models for `mindmap`/`stateDiagram`.
+   - The `parse/*` pipeline bench now measures the typed render parse path (so spotcheck ratios are apples-to-apples).
 3. Stop cloning semantic JSON in layout/render decode paths (done for the main `merman-render`
    layout decoders via `T::deserialize(&Value)`).
 4. Consider a lightweight lexer + hand-rolled parser for the hot subset where it measurably pays off.
