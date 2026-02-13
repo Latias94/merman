@@ -177,8 +177,14 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_cypress_flowchart_handdrawn_spec_fdh24_keep_node_label_text_if_already_defined_when_a_style_is_ap_024" => {
             Some(("0 0 357.015625 40", "357.016"))
         }
+        "upstream_cypress_flowchart_handdrawn_spec_fhd3_should_render_a_simple_flowchart_with_line_breaks_003" => {
+            Some(("0 0 417 652.875", "417"))
+        }
         "upstream_cypress_flowchart_handdrawn_spec_fhd4_should_render_a_simple_flowchart_with_trapezoid_and_inverse_004" => {
             Some(("0 0 405 637.875", "405"))
+        }
+        "upstream_cypress_flowchart_handdrawn_spec_fhd13_should_render_color_of_styled_nodes_013" => {
+            Some(("0 0 232.640625 70", "232.641"))
         }
         "upstream_cypress_flowchart_handdrawn_spec_fdh32_render_subroutine_shape_032" => {
             Some(("0 0 953.6875 257", "953.688"))
@@ -192,8 +198,14 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_cypress_flowchart_v2_spec_wrapping_long_text_with_a_new_line_056" => {
             Some(("0 0 363.921875 430", "363.922"))
         }
+        "upstream_cypress_flowchart_v2_spec_should_not_auto_wrap_when_markdownautowrap_is_false_058" => {
+            Some(("0 0 539 166", "539"))
+        }
         "upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_015" => {
             Some(("0 0 154.921875 364", "154.922"))
+        }
+        "upstream_cypress_flowchart_v2_spec_should_render_a_rounded_rectangle_and_a_normal_rectangle_070" => {
+            Some(("0 0 385.96875 174", "385.969"))
         }
         "upstream_cypress_flowchart_v2_spec_new_line_in_node_and_formatted_edge_label_050" => {
             Some(("0 0 379.390625 94", "379.391"))
