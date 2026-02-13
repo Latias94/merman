@@ -121,18 +121,14 @@ pub(super) fn fmt_debug_3dp_into(out: &mut String, v: f64) {
         return;
     }
 
-    let mut r = (v * 1000.0).round() / 1000.0;
-    if r.abs() < 0.0005 {
-        r = 0.0;
+    let scaled = v * 1000.0;
+    let k = scaled.round() as i64;
+    if k == 0 {
+        out.push_str("0");
+        return;
     }
 
-    let start = out.len();
-    let _ = write!(out, "{r:.3}");
-    trim_trailing_zeros_and_dot(out, start);
-    if out.len() == start + 2 && &out[start..] == "-0" {
-        out.truncate(start);
-        out.push_str("0");
-    }
+    append_fixed_3dp_trimmed(out, k);
 }
 
 pub(super) fn fmt(v: f64) -> String {
@@ -206,18 +202,52 @@ pub(super) fn fmt_path_into(out: &mut String, v: f64) {
     }
 
     let scaled = v * 1000.0;
-    let mut r = (scaled + 0.5).floor() / 1000.0;
-    if r.abs() < 0.0005 {
-        r = 0.0;
+    let k = (scaled + 0.5).floor() as i64;
+    if k == 0 {
+        out.push_str("0");
+        return;
+    }
+    append_fixed_3dp_trimmed(out, k);
+}
+
+fn append_fixed_3dp_trimmed(out: &mut String, k: i64) {
+    if k == 0 {
+        out.push_str("0");
+        return;
     }
 
-    let start = out.len();
-    let _ = write!(out, "{r:.3}");
-    trim_trailing_zeros_and_dot(out, start);
-    if out.len() == start + 2 && &out[start..] == "-0" {
-        out.truncate(start);
-        out.push_str("0");
+    let neg = k.is_negative();
+    let abs = k.unsigned_abs();
+    let int_part = (abs / 1000) as u64;
+    let frac = (abs % 1000) as u64;
+
+    if neg {
+        out.push('-');
     }
+
+    use std::fmt::Write as _;
+    let _ = write!(out, "{int_part}");
+
+    if frac == 0 {
+        return;
+    }
+
+    let mut frac_str = [b'0'; 3];
+    frac_str[0] = b'0' + ((frac / 100) as u8);
+    frac_str[1] = b'0' + (((frac / 10) % 10) as u8);
+    frac_str[2] = b'0' + ((frac % 10) as u8);
+
+    let mut end = 3usize;
+    while end > 0 && frac_str[end - 1] == b'0' {
+        end -= 1;
+    }
+    if end == 0 {
+        return;
+    }
+
+    out.push('.');
+    // Safety: only ASCII digits.
+    out.push_str(std::str::from_utf8(&frac_str[..end]).unwrap_or("0"));
 }
 
 pub(super) fn json_stringify_points(points: &[crate::model::LayoutPoint]) -> String {
