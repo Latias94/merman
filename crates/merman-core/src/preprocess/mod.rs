@@ -138,6 +138,9 @@ fn encode_mermaid_entities_like_upstream(text: &str) -> String {
 }
 
 fn cleanup_comments(input: &str) -> String {
+    if !input.contains("%%") {
+        return input.trim_start().to_string();
+    }
     let mut out = String::with_capacity(input.len());
     for line in input.split_inclusive('\n') {
         let trimmed = line.trim_start();
@@ -197,6 +200,9 @@ fn process_directives(
     diagram_type: Option<&str>,
 ) -> Result<(String, MermaidConfig)> {
     let directives = detect_directives(input)?;
+    if directives.is_empty() {
+        return Ok((input.to_string(), MermaidConfig::empty_object()));
+    }
     let init = detect_init(&directives, input, registry, diagram_type)?;
     let wrap = directives.iter().any(|d| d.ty == "wrap");
 
