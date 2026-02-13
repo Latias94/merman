@@ -1,0 +1,25 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "Class10",
+          "x": 132.2,
+          "y": 96.0,
+          "width": 264.4,
+          "height": 192.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "clusters": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 264.4,
+        "max_y": 192.0
+      }
+    }
+  }
+}

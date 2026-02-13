@@ -1,0 +1,25 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "This\nTitle\nHas\nMany\nNewlines",
+          "x": 71.44,
+          "y": 168.0,
+          "width": 142.88,
+          "height": 336.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "clusters": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 142.88,
+        "max_y": 336.0
+      }
+    }
+  }
+}
