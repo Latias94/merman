@@ -80,6 +80,19 @@ pub struct ParsedDiagram {
     pub model: Value,
 }
 
+#[derive(Debug, Clone)]
+pub enum RenderSemanticModel {
+    Json(Value),
+    Mindmap(crate::diagrams::mindmap::MindmapDiagramRenderModel),
+    State(crate::diagrams::state::StateDiagramRenderModel),
+}
+
+#[derive(Debug, Clone)]
+pub struct ParsedDiagramRender {
+    pub meta: ParseMetadata,
+    pub model: RenderSemanticModel,
+}
+
 pub fn parse_or_unsupported(
     registry: &DiagramRegistry,
     diagram_type: &str,

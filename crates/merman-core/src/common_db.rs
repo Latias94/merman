@@ -40,10 +40,14 @@ pub fn apply_common_db_sanitization(model: &mut Value, config: &MermaidConfig) {
     };
 
     sanitize_string_field(obj, "title", |s| sanitize_text(s, config));
-    sanitize_string_field(obj, "accTitle", |s| {
-        strip_leading_whitespace(&sanitize_text(s, config))
-    });
-    sanitize_string_field(obj, "accDescr", |s| {
-        collapse_newline_whitespace(&sanitize_text(s, config))
-    });
+    sanitize_string_field(obj, "accTitle", |s| sanitize_acc_title(s, config));
+    sanitize_string_field(obj, "accDescr", |s| sanitize_acc_descr(s, config));
+}
+
+pub(crate) fn sanitize_acc_title(s: &str, config: &MermaidConfig) -> String {
+    strip_leading_whitespace(&sanitize_text(s, config))
+}
+
+pub(crate) fn sanitize_acc_descr(s: &str, config: &MermaidConfig) -> String {
+    collapse_newline_whitespace(&sanitize_text(s, config))
 }

@@ -1,5 +1,6 @@
 use crate::sanitize::sanitize_text;
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -12,6 +13,77 @@ const NODE_TYPE_BANG: i32 = 5;
 const NODE_TYPE_HEXAGON: i32 = 6;
 
 static MINDMAP_DIAGRAM_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct MindmapDiagramRenderModel {
+    #[serde(default)]
+    pub nodes: Vec<MindmapDiagramRenderNode>,
+    #[serde(default)]
+    pub edges: Vec<MindmapDiagramRenderEdge>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MindmapDiagramRenderNode {
+    pub id: String,
+    #[serde(rename = "domId")]
+    pub dom_id: String,
+    pub label: String,
+    #[serde(default, rename = "labelType")]
+    pub label_type: String,
+    #[serde(default, rename = "isGroup")]
+    pub is_group: bool,
+    pub shape: String,
+    #[serde(default)]
+    pub width: f64,
+    #[serde(default)]
+    pub height: f64,
+    #[serde(default)]
+    pub padding: f64,
+    #[serde(rename = "cssClasses")]
+    pub css_classes: String,
+    #[serde(default, rename = "cssStyles")]
+    pub css_styles: Vec<String>,
+    #[serde(default)]
+    pub look: String,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub x: Option<f64>,
+    #[serde(default)]
+    pub y: Option<f64>,
+    #[serde(default)]
+    pub level: i64,
+    #[serde(default, rename = "nodeId")]
+    pub node_id: String,
+    #[serde(default, rename = "type")]
+    pub node_type: i32,
+    #[serde(default)]
+    pub section: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MindmapDiagramRenderEdge {
+    pub id: String,
+    pub start: String,
+    pub end: String,
+    #[serde(default, rename = "type")]
+    pub edge_type: String,
+    #[serde(default)]
+    pub curve: String,
+    #[serde(default)]
+    pub thickness: String,
+    #[serde(default)]
+    pub look: String,
+    #[serde(default)]
+    pub classes: String,
+    #[serde(default)]
+    pub depth: i64,
+    #[serde(default)]
+    pub section: Option<i32>,
+}
 
 #[derive(Debug, Clone)]
 struct MindmapNode {
@@ -302,6 +374,76 @@ impl MindmapDb {
         out
     }
 
+    fn to_layout_nodes_for_render(&self, root_id: i32) -> Vec<MindmapDiagramRenderNode> {
+        fn shape_from_type(ty: i32) -> &'static str {
+            match ty {
+                NODE_TYPE_CIRCLE => "mindmapCircle",
+                NODE_TYPE_RECT => "rect",
+                NODE_TYPE_ROUNDED_RECT => "rounded",
+                NODE_TYPE_CLOUD => "cloud",
+                NODE_TYPE_BANG => "bang",
+                NODE_TYPE_HEXAGON => "hexagon",
+                NODE_TYPE_DEFAULT => "defaultMindmapNode",
+                _ => "rect",
+            }
+        }
+
+        fn visit(db: &MindmapDb, node_id: i32, out: &mut Vec<MindmapDiagramRenderNode>) {
+            let Ok(node_idx) = usize::try_from(node_id) else {
+                return;
+            };
+            let Some(node) = db.nodes.get(node_idx) else {
+                return;
+            };
+
+            let mut css = vec!["mindmap-node".to_string()];
+            if node.is_root {
+                css.push("section-root".to_string());
+                css.push("section--1".to_string());
+            } else if let Some(section) = node.section {
+                css.push(format!("section-{section}"));
+            }
+            if let Some(cls) = &node.class {
+                css.push(cls.clone());
+            }
+            let css_classes = css.join(" ");
+
+            out.push(MindmapDiagramRenderNode {
+                id: node.id.to_string(),
+                dom_id: format!("node_{}", node.id),
+                label: node.descr.clone(),
+                label_type: if node.is_markdown {
+                    "markdown".to_string()
+                } else {
+                    String::new()
+                },
+                is_group: false,
+                shape: shape_from_type(node.ty).to_string(),
+                width: node.width as f64,
+                height: node.height.unwrap_or(0) as f64,
+                padding: node.padding as f64,
+                css_classes,
+                css_styles: Vec::new(),
+                look: "default".to_string(),
+                icon: node.icon.clone(),
+                x: node.x,
+                y: node.y,
+                level: node.level as i64,
+                node_id: node.node_id.clone(),
+                node_type: node.ty,
+                section: node.section,
+            });
+
+            for child in node.children.iter() {
+                visit(db, *child, out);
+            }
+        }
+
+        let mut out = Vec::new();
+        visit(self, root_id, &mut out);
+        out
+    }
+
     fn to_edge_values(&self, root_id: i32) -> Vec<Value> {
         fn visit(db: &MindmapDb, node_id: i32, edges: &mut Vec<Value>) {
             let Ok(node_idx) = usize::try_from(node_id) else {
@@ -351,6 +493,51 @@ impl MindmapDb {
         visit(self, root_id, &mut edges);
         edges
     }
+
+    fn to_edges_for_render(&self, root_id: i32) -> Vec<MindmapDiagramRenderEdge> {
+        fn visit(db: &MindmapDb, node_id: i32, edges: &mut Vec<MindmapDiagramRenderEdge>) {
+            let Ok(node_idx) = usize::try_from(node_id) else {
+                return;
+            };
+            let Some(node) = db.nodes.get(node_idx) else {
+                return;
+            };
+            for child_id in node.children.iter() {
+                let Ok(child_idx) = usize::try_from(*child_id) else {
+                    continue;
+                };
+                let Some(child) = db.nodes.get(child_idx) else {
+                    continue;
+                };
+
+                let mut classes = "edge".to_string();
+                if let Some(section) = child.section {
+                    classes.push_str(&format!(" section-edge-{section}"));
+                }
+                let edge_depth = node.level + 1;
+                classes.push_str(&format!(" edge-depth-{edge_depth}"));
+
+                edges.push(MindmapDiagramRenderEdge {
+                    id: format!("edge_{}_{}", node.id, child.id),
+                    start: node.id.to_string(),
+                    end: child.id.to_string(),
+                    edge_type: "normal".to_string(),
+                    curve: "basis".to_string(),
+                    thickness: "normal".to_string(),
+                    look: "default".to_string(),
+                    classes,
+                    depth: node.level as i64,
+                    section: child.section,
+                });
+
+                visit(db, *child_id, edges);
+            }
+        }
+
+        let mut edges = Vec::new();
+        visit(self, root_id, &mut edges);
+        edges
+    }
 }
 
 pub fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
@@ -361,13 +548,30 @@ pub fn parse_mindmap_for_render(code: &str, meta: &ParseMetadata) -> Result<Valu
     parse_mindmap_impl(code, meta, MindmapEmit::RenderOnly)
 }
 
+pub fn parse_mindmap_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<MindmapDiagramRenderModel> {
+    let mut db = parse_mindmap_db(code, meta)?;
+    let Some(root_id) = db.get_mindmap().map(|n| n.id) else {
+        return Ok(MindmapDiagramRenderModel::default());
+    };
+
+    db.assign_sections(root_id, None);
+
+    Ok(MindmapDiagramRenderModel {
+        nodes: db.to_layout_nodes_for_render(root_id),
+        edges: db.to_edges_for_render(root_id),
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MindmapEmit {
     Full,
     RenderOnly,
 }
 
-fn parse_mindmap_impl(code: &str, meta: &ParseMetadata, emit: MindmapEmit) -> Result<Value> {
+fn parse_mindmap_db(code: &str, meta: &ParseMetadata) -> Result<MindmapDb> {
     let mut db = MindmapDb::default();
     db.clear();
 
@@ -504,6 +708,12 @@ fn parse_mindmap_impl(code: &str, meta: &ParseMetadata, emit: MindmapEmit) -> Re
             });
         }
     }
+
+    Ok(db)
+}
+
+fn parse_mindmap_impl(code: &str, meta: &ParseMetadata, emit: MindmapEmit) -> Result<Value> {
+    let mut db = parse_mindmap_db(code, meta)?;
 
     let Some(root_id) = db.get_mindmap().map(|n| n.id) else {
         if emit == MindmapEmit::Full {

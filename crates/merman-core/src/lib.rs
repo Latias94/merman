@@ -28,7 +28,9 @@ pub mod utils;
 
 pub use config::MermaidConfig;
 pub use detect::{Detector, DetectorRegistry};
-pub use diagram::{DiagramRegistry, DiagramSemanticParser, ParsedDiagram};
+pub use diagram::{
+    DiagramRegistry, DiagramSemanticParser, ParsedDiagram, ParsedDiagramRender, RenderSemanticModel,
+};
 pub use error::{Error, Result};
 pub use preprocess::{PreprocessResult, preprocess_diagram, preprocess_diagram_with_known_type};
 
@@ -335,6 +337,87 @@ impl Engine {
         options: ParseOptions,
     ) -> Result<Option<ParsedDiagram>> {
         self.parse_diagram_for_render_sync(text, options)
+    }
+
+    /// Parses a diagram into a typed semantic model optimized for headless layout + SVG rendering.
+    ///
+    /// Unlike [`Engine::parse_diagram_for_render_sync`], this avoids constructing large
+    /// `serde_json::Value` object trees for some high-impact diagrams (currently `stateDiagram` and
+    /// `mindmap`) and instead returns typed semantic structs that the renderer can consume
+    /// directly.
+    ///
+    /// Callers that need the semantic JSON model should continue using [`Engine::parse_diagram_sync`]
+    /// or [`Engine::parse_diagram_for_render_sync`].
+    pub fn parse_diagram_for_render_model_sync(
+        &self,
+        text: &str,
+        options: ParseOptions,
+    ) -> Result<Option<ParsedDiagramRender>> {
+        let Some((code, meta)) = self.preprocess_and_detect(text, options)? else {
+            return Ok(None);
+        };
+
+        let parse_res: Result<RenderSemanticModel> = match meta.diagram_type.as_str() {
+            "mindmap" => crate::diagrams::mindmap::parse_mindmap_model_for_render(&code, &meta)
+                .map(RenderSemanticModel::Mindmap),
+            "stateDiagram" | "state" => {
+                crate::diagrams::state::parse_state_model_for_render(&code, &meta)
+                    .map(RenderSemanticModel::State)
+            }
+            _ => diagram::parse_or_unsupported(
+                &self.diagram_registry,
+                &meta.diagram_type,
+                &code,
+                &meta,
+            )
+            .map(RenderSemanticModel::Json),
+        };
+
+        let mut model = match parse_res {
+            Ok(v) => v,
+            Err(err) => {
+                if !options.suppress_errors {
+                    return Err(err);
+                }
+
+                let mut error_meta = meta.clone();
+                error_meta.diagram_type = "error".to_string();
+                let mut error_model = serde_json::json!({ "type": "error" });
+                common_db::apply_common_db_sanitization(
+                    &mut error_model,
+                    &error_meta.effective_config,
+                );
+                return Ok(Some(ParsedDiagramRender {
+                    meta: error_meta,
+                    model: RenderSemanticModel::Json(error_model),
+                }));
+            }
+        };
+
+        match &mut model {
+            RenderSemanticModel::Json(v) => {
+                common_db::apply_common_db_sanitization(v, &meta.effective_config);
+            }
+            RenderSemanticModel::State(v) => {
+                if let Some(s) = v.acc_title.as_deref() {
+                    v.acc_title = Some(common_db::sanitize_acc_title(s, &meta.effective_config));
+                }
+                if let Some(s) = v.acc_descr.as_deref() {
+                    v.acc_descr = Some(common_db::sanitize_acc_descr(s, &meta.effective_config));
+                }
+            }
+            RenderSemanticModel::Mindmap(_) => {}
+        }
+
+        Ok(Some(ParsedDiagramRender { meta, model }))
+    }
+
+    pub async fn parse_diagram_for_render_model(
+        &self,
+        text: &str,
+        options: ParseOptions,
+    ) -> Result<Option<ParsedDiagramRender>> {
+        self.parse_diagram_for_render_model_sync(text, options)
     }
 
     /// Parses a diagram when the diagram type is already known (skips type detection).

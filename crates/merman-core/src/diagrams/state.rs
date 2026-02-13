@@ -1,6 +1,7 @@
 use crate::sanitize::{sanitize_text, sanitize_text_or_array};
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
 use indexmap::IndexMap;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, VecDeque};
@@ -57,6 +58,115 @@ pub(crate) enum Tok {
 #[error("{message}")]
 pub(crate) struct LexError {
     pub message: String,
+}
+
+fn default_state_direction() -> String {
+    "TB".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct StateDiagramRenderModel {
+    #[serde(default = "default_state_direction")]
+    pub direction: String,
+    #[serde(default, rename = "accTitle")]
+    pub acc_title: Option<String>,
+    #[serde(default, rename = "accDescr")]
+    pub acc_descr: Option<String>,
+    #[serde(default)]
+    pub nodes: Vec<StateDiagramRenderNode>,
+    #[serde(default)]
+    pub edges: Vec<StateDiagramRenderEdge>,
+    #[serde(default)]
+    pub links: HashMap<String, StateDiagramRenderLink>,
+    #[serde(default)]
+    pub states: HashMap<String, StateDiagramRenderState>,
+    #[serde(default, rename = "styleClasses")]
+    pub style_classes: IndexMap<String, StateDiagramRenderStyleClass>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StateDiagramRenderStyleClass {
+    pub id: String,
+    #[serde(default)]
+    pub styles: Vec<String>,
+    #[serde(default, rename = "textStyles")]
+    pub text_styles: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct StateDiagramRenderState {
+    #[serde(default)]
+    pub note: Option<StateDiagramRenderNote>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct StateDiagramRenderNote {
+    #[serde(default)]
+    pub position: Option<String>,
+    #[serde(default)]
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct StateDiagramRenderLink {
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub tooltip: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StateDiagramRenderNode {
+    pub id: String,
+    #[serde(default, rename = "labelStyle")]
+    pub label_style: String,
+    #[serde(default)]
+    pub label: Option<Value>,
+    #[serde(default)]
+    pub description: Option<Vec<String>>,
+    #[serde(default, rename = "domId")]
+    pub dom_id: String,
+    #[serde(default, rename = "isGroup")]
+    pub is_group: bool,
+    #[serde(default, rename = "parentId")]
+    pub parent_id: Option<String>,
+    #[serde(default, rename = "cssClasses")]
+    pub css_classes: String,
+    #[serde(default, rename = "cssCompiledStyles")]
+    pub css_compiled_styles: Vec<String>,
+    #[serde(default, rename = "cssStyles")]
+    pub css_styles: Vec<String>,
+    #[serde(default)]
+    pub dir: Option<String>,
+    #[serde(default)]
+    pub padding: Option<f64>,
+    #[serde(default)]
+    pub rx: Option<f64>,
+    #[serde(default)]
+    pub ry: Option<f64>,
+    pub shape: String,
+    #[serde(default)]
+    pub position: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct StateDiagramRenderEdge {
+    pub id: String,
+    pub start: String,
+    pub end: String,
+    #[serde(default)]
+    pub classes: String,
+    #[serde(default, rename = "arrowTypeEnd")]
+    pub arrow_type_end: String,
+    #[serde(default)]
+    pub label: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -965,6 +1075,25 @@ pub fn parse_state_for_render(code: &str, meta: &ParseMetadata) -> Result<Value>
     db.to_model_for_render(meta)
 }
 
+pub fn parse_state_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<StateDiagramRenderModel> {
+    let mut doc = state_grammar::RootParser::new()
+        .parse(Lexer::new(code))
+        .map_err(|e| Error::DiagramParse {
+            diagram_type: meta.diagram_type.clone(),
+            message: format!("{e:?}"),
+        })?;
+
+    let mut divider_cnt = 0usize;
+    assign_divider_ids(&mut doc, &mut divider_cnt);
+
+    let mut db = StateDb::new();
+    db.set_root_doc(doc);
+    db.to_model_for_render_typed(meta)
+}
+
 #[derive(Debug, Clone, Default)]
 struct StyleClass {
     id: String,
@@ -1529,6 +1658,72 @@ impl StateDb {
             "links": Value::Object(links_json),
         }))
     }
+
+    fn to_model_for_render_typed(&self, meta: &ParseMetadata) -> Result<StateDiagramRenderModel> {
+        let (nodes, edges) = build_layout_data_typed(
+            &self.root_doc,
+            &self.states,
+            &self.style_classes,
+            &meta.effective_config,
+        )
+        .map_err(|message| Error::DiagramParse {
+            diagram_type: meta.diagram_type.clone(),
+            message,
+        })?;
+
+        let states: HashMap<String, StateDiagramRenderState> = self
+            .state_order
+            .iter()
+            .filter_map(|id| self.states.get(id))
+            .map(|s| {
+                let note = s.note.as_ref().map(|n| StateDiagramRenderNote {
+                    position: n.position.clone(),
+                    text: n.text.clone(),
+                });
+                (s.id.clone(), StateDiagramRenderState { note })
+            })
+            .collect();
+
+        let style_classes: IndexMap<String, StateDiagramRenderStyleClass> = self
+            .style_classes
+            .iter()
+            .map(|(k, sc)| {
+                (
+                    k.clone(),
+                    StateDiagramRenderStyleClass {
+                        id: sc.id.clone(),
+                        styles: sc.styles.clone(),
+                        text_styles: sc.text_styles.clone(),
+                    },
+                )
+            })
+            .collect();
+
+        let links: HashMap<String, StateDiagramRenderLink> = self
+            .links
+            .iter()
+            .map(|(k, v)| {
+                (
+                    k.clone(),
+                    StateDiagramRenderLink {
+                        url: v.url.clone(),
+                        tooltip: v.tooltip.clone(),
+                    },
+                )
+            })
+            .collect();
+
+        Ok(StateDiagramRenderModel {
+            direction: self.direction.clone().unwrap_or_else(|| "TB".to_string()),
+            acc_title: self.acc_title.clone(),
+            acc_descr: self.acc_descr.clone(),
+            nodes,
+            edges,
+            links,
+            states,
+            style_classes,
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1629,6 +1824,420 @@ fn upsert_node(nodes: &mut Vec<Value>, index: &mut HashMap<String, usize>, node:
             nodes.push(node);
         }
     }
+}
+
+fn upsert_node_typed(
+    nodes: &mut Vec<StateDiagramRenderNode>,
+    index: &mut HashMap<String, usize>,
+    node: StateDiagramRenderNode,
+) {
+    match index.entry(node.id.clone()) {
+        Entry::Occupied(o) => {
+            if let Some(dst) = nodes.get_mut(*o.get()) {
+                *dst = node;
+            }
+        }
+        Entry::Vacant(v) => {
+            v.insert(nodes.len());
+            nodes.push(node);
+        }
+    }
+}
+
+fn value_as_f64(v: &Value) -> Option<f64> {
+    v.as_f64()
+        .or_else(|| v.as_i64().map(|n| n as f64))
+        .or_else(|| v.as_u64().map(|n| n as f64))
+}
+
+fn build_layout_data_typed(
+    root_doc: &[Stmt],
+    states: &HashMap<String, StateRecord>,
+    classes: &IndexMap<String, StyleClass>,
+    config: &MermaidConfig,
+) -> std::result::Result<(Vec<StateDiagramRenderNode>, Vec<StateDiagramRenderEdge>), String> {
+    let mut nodes: Vec<StateDiagramRenderNode> = Vec::new();
+    let mut edges: Vec<StateDiagramRenderEdge> = Vec::new();
+    let mut node_index: HashMap<String, usize> = HashMap::new();
+
+    let mut node_db: HashMap<String, NodeScratch> = HashMap::new();
+    let mut graph_item_count: usize = 0;
+
+    #[allow(clippy::too_many_arguments)]
+    fn setup_doc(
+        parent: Option<&StateStmt>,
+        doc: &[Stmt],
+        states: &HashMap<String, StateRecord>,
+        classes: &IndexMap<String, StyleClass>,
+        config: &MermaidConfig,
+        nodes: &mut Vec<StateDiagramRenderNode>,
+        node_index: &mut HashMap<String, usize>,
+        edges: &mut Vec<StateDiagramRenderEdge>,
+        node_db: &mut HashMap<String, NodeScratch>,
+        graph_item_count: &mut usize,
+        alt_flag: bool,
+    ) -> std::result::Result<(), String> {
+        for item in doc {
+            match item {
+                Stmt::State(s) => data_fetcher(
+                    parent,
+                    s,
+                    states,
+                    classes,
+                    config,
+                    nodes,
+                    node_index,
+                    edges,
+                    node_db,
+                    graph_item_count,
+                    alt_flag,
+                )?,
+                Stmt::Relation {
+                    state1,
+                    state2,
+                    description,
+                } => {
+                    data_fetcher(
+                        parent,
+                        state1,
+                        states,
+                        classes,
+                        config,
+                        nodes,
+                        node_index,
+                        edges,
+                        node_db,
+                        graph_item_count,
+                        alt_flag,
+                    )?;
+                    data_fetcher(
+                        parent,
+                        state2,
+                        states,
+                        classes,
+                        config,
+                        nodes,
+                        node_index,
+                        edges,
+                        node_db,
+                        graph_item_count,
+                        alt_flag,
+                    )?;
+
+                    let edge_label_raw = description.clone().unwrap_or_default();
+                    let edge_label = sanitize_text(&edge_label_raw, config);
+                    edges.push(StateDiagramRenderEdge {
+                        id: format!("edge{graph_item_count}"),
+                        start: state1.id.clone(),
+                        end: state2.id.clone(),
+                        arrow_type_end: "arrow_barb".to_string(),
+                        classes: CSS_EDGE.to_string(),
+                        label: edge_label,
+                    });
+                    *graph_item_count += 1;
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn data_fetcher(
+        parent: Option<&StateStmt>,
+        parsed_item: &StateStmt,
+        states: &HashMap<String, StateRecord>,
+        classes: &IndexMap<String, StyleClass>,
+        config: &MermaidConfig,
+        nodes: &mut Vec<StateDiagramRenderNode>,
+        node_index: &mut HashMap<String, usize>,
+        edges: &mut Vec<StateDiagramRenderEdge>,
+        node_db: &mut HashMap<String, NodeScratch>,
+        graph_item_count: &mut usize,
+        alt_flag: bool,
+    ) -> std::result::Result<(), String> {
+        let item_id = parsed_item.id.clone();
+        if item_id == "root" || item_id.is_empty() {
+            return Ok(());
+        }
+
+        let db_state = states.get(&item_id);
+        let class_str = db_state.map(|s| s.classes.join(" ")).unwrap_or_default();
+        let styles = db_state.map(|s| s.styles.clone()).unwrap_or_default();
+
+        let entry = node_db.entry(item_id.clone()).or_insert_with(|| {
+            let mut css_classes = String::new();
+            if !class_str.trim().is_empty() {
+                css_classes.push_str(class_str.trim());
+                css_classes.push(' ');
+            }
+            css_classes.push_str(CSS_DIAGRAM_STATE);
+
+            let mut shape = SHAPE_STATE.to_string();
+            if parsed_item.start == Some(true) {
+                shape = SHAPE_START.to_string();
+            } else if parsed_item.start == Some(false) {
+                shape = SHAPE_END.to_string();
+            }
+            if parsed_item.ty != "default" {
+                shape = parsed_item.ty.clone();
+            }
+
+            NodeScratch {
+                id: item_id.clone(),
+                shape,
+                label: json!(sanitize_text(&item_id, config)),
+                css_classes,
+                css_styles: styles.clone(),
+                node_type: None,
+                dir: None,
+                is_group: false,
+                parent_id: None,
+            }
+        });
+
+        // Apply description statements like Mermaid's `dataFetcher.ts`.
+        if let Some(descr) = parsed_item.description.as_deref() {
+            let base_label = sanitize_text(&item_id, config);
+
+            match &mut entry.label {
+                Value::Array(arr) => {
+                    entry.shape = SHAPE_STATE_WITH_DESC.to_string();
+                    arr.push(Value::String(descr.to_string()));
+                }
+                Value::String(s) => {
+                    if !s.is_empty() {
+                        entry.shape = SHAPE_STATE_WITH_DESC.to_string();
+                        if *s == base_label {
+                            entry.label = Value::Array(vec![Value::String(descr.to_string())]);
+                        } else {
+                            entry.label = Value::Array(vec![
+                                Value::String(s.clone()),
+                                Value::String(descr.to_string()),
+                            ]);
+                        }
+                    } else {
+                        entry.shape = SHAPE_STATE.to_string();
+                        entry.label = Value::String(descr.to_string());
+                    }
+                }
+                _ => {
+                    entry.shape = SHAPE_STATE.to_string();
+                    entry.label = Value::String(descr.to_string());
+                }
+            }
+
+            entry.label = sanitize_text_or_array(&entry.label, config);
+        }
+
+        // If there's only 1 description entry, just use a regular state shape.
+        if entry.shape == SHAPE_STATE_WITH_DESC {
+            if let Some(arr) = entry.label.as_array() {
+                if arr.len() == 1 {
+                    entry.shape = if entry.node_type.as_deref() == Some("group") {
+                        SHAPE_GROUP.to_string()
+                    } else {
+                        SHAPE_STATE.to_string()
+                    };
+                }
+            }
+        }
+
+        // Group handling (composite states)
+        if entry.node_type.is_none() {
+            if let Some(doc) = parsed_item.doc.as_ref() {
+                entry.node_type = Some("group".to_string());
+                entry.is_group = true;
+                let dir = get_dir_for_doc(doc, DEFAULT_NESTED_DOC_DIR);
+                entry.dir = Some(dir);
+                entry.shape = if parsed_item.ty == "divider" {
+                    SHAPE_DIVIDER.to_string()
+                } else {
+                    SHAPE_GROUP.to_string()
+                };
+
+                let mut css = entry.css_classes.clone();
+                css.push(' ');
+                css.push_str(CSS_DIAGRAM_CLUSTER);
+                if alt_flag {
+                    css.push(' ');
+                    css.push_str(CSS_DIAGRAM_CLUSTER_ALT);
+                }
+                entry.css_classes = css;
+            }
+        }
+
+        if let Some(p) = parent {
+            if p.id != "root" {
+                entry.parent_id = Some(p.id.clone());
+            }
+        }
+
+        let dom_id = state_dom_id(&item_id, *graph_item_count, None);
+        let mut label = Some(entry.label.clone());
+        if entry.shape == SHAPE_DIVIDER {
+            label = Some(Value::String(String::new()));
+        }
+
+        let mut node = StateDiagramRenderNode {
+            id: entry.id.clone(),
+            label_style: String::new(),
+            label,
+            description: None,
+            dom_id,
+            is_group: entry.is_group,
+            parent_id: entry.parent_id.clone(),
+            css_classes: entry.css_classes.clone(),
+            css_compiled_styles: Vec::new(),
+            css_styles: entry.css_styles.clone(),
+            dir: entry.dir.clone(),
+            padding: Some(8.0),
+            rx: Some(10.0),
+            ry: Some(10.0),
+            shape: entry.shape.clone(),
+            position: None,
+        };
+        node.css_compiled_styles = compiled_styles(&node.css_classes, classes);
+
+        // Notes create a note node + note group + note edge
+        if let Some(mut n) = parsed_item.note.clone() {
+            let flowchart_padding = config
+                .as_value()
+                .as_object()
+                .and_then(|o| o.get("flowchart"))
+                .and_then(|v| v.as_object())
+                .and_then(|o| o.get("padding"))
+                .and_then(value_as_f64);
+
+            n.text = sanitize_text(&n.text, config);
+
+            let note_id = format!("{item_id}{NOTE_ID}-{graph_item_count}");
+            let parent_node_id = format!("{item_id}{PARENT_ID}");
+            let note_dom_id = state_dom_id(&item_id, *graph_item_count, Some(NOTE));
+            let group_dom_id = state_dom_id(&item_id, *graph_item_count, Some(PARENT));
+
+            let mut group_node = StateDiagramRenderNode {
+                id: parent_node_id.clone(),
+                label_style: String::new(),
+                label: Some(Value::String(n.text.clone())),
+                description: None,
+                dom_id: group_dom_id,
+                is_group: true,
+                parent_id: None,
+                css_classes: node.css_classes.clone(),
+                css_compiled_styles: Vec::new(),
+                css_styles: Vec::new(),
+                dir: None,
+                padding: Some(16.0),
+                rx: None,
+                ry: None,
+                shape: SHAPE_NOTEGROUP.to_string(),
+                position: n.position.clone(),
+            };
+            group_node.css_compiled_styles = compiled_styles(&group_node.css_classes, classes);
+
+            let mut note_node = StateDiagramRenderNode {
+                id: note_id.clone(),
+                label_style: String::new(),
+                label: Some(Value::String(n.text.clone())),
+                description: None,
+                dom_id: note_dom_id,
+                is_group: entry.is_group,
+                parent_id: Some(parent_node_id.clone()),
+                css_classes: CSS_DIAGRAM_NOTE.to_string(),
+                css_compiled_styles: Vec::new(),
+                css_styles: Vec::new(),
+                dir: None,
+                padding: flowchart_padding,
+                rx: None,
+                ry: None,
+                shape: SHAPE_NOTE.to_string(),
+                position: n.position.clone(),
+            };
+            note_node.css_compiled_styles = compiled_styles(&note_node.css_classes, classes);
+
+            upsert_node_typed(nodes, node_index, group_node);
+            upsert_node_typed(nodes, node_index, note_node);
+            upsert_node_typed(nodes, node_index, node.clone());
+
+            let (mut from, mut to) = (item_id.clone(), note_id);
+            if n.position.as_deref() == Some("left of") {
+                std::mem::swap(&mut from, &mut to);
+            }
+
+            edges.push(StateDiagramRenderEdge {
+                id: format!("{from}-{to}"),
+                start: from,
+                end: to,
+                arrow_type_end: String::new(),
+                classes: CSS_EDGE_NOTE_EDGE.to_string(),
+                label: String::new(),
+            });
+            *graph_item_count += 1;
+        } else {
+            upsert_node_typed(nodes, node_index, node);
+        }
+
+        if let Some(doc) = parsed_item.doc.as_ref() {
+            setup_doc(
+                Some(parsed_item),
+                doc,
+                states,
+                classes,
+                config,
+                nodes,
+                node_index,
+                edges,
+                node_db,
+                graph_item_count,
+                !alt_flag,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    setup_doc(
+        None,
+        root_doc,
+        states,
+        classes,
+        config,
+        &mut nodes,
+        &mut node_index,
+        &mut edges,
+        &mut node_db,
+        &mut graph_item_count,
+        false,
+    )?;
+
+    // Post-process label arrays into (label, description) like Mermaid's StateDB.extract().
+    for node in nodes.iter_mut() {
+        let Some(label_val) = node.label.clone() else {
+            continue;
+        };
+        let Some(arr) = label_val.as_array() else {
+            continue;
+        };
+        if arr.is_empty() {
+            continue;
+        }
+        let label0 = arr[0].clone();
+        let rest: Vec<String> = arr
+            .iter()
+            .skip(1)
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect();
+        if node.is_group && !rest.is_empty() {
+            return Err("Group nodes can only have label".to_string());
+        }
+        node.label = Some(label0);
+        if !rest.is_empty() {
+            node.description = Some(rest);
+        }
+    }
+
+    Ok((nodes, edges))
 }
 
 fn build_layout_data(
