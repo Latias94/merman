@@ -36,7 +36,7 @@ fn radar_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
             return s.to_string();
         }
         if let Some(n) = json_f64(cur) {
-            return fmt(n);
+            return fmt_string(n);
         }
         fallback.to_string()
     }

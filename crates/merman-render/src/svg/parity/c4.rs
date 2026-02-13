@@ -165,7 +165,7 @@ pub(super) fn render_c4_diagram_svg(
         fmt(width),
         fmt(height + extra_vert_for_title)
     );
-    let root_max_w = fmt(width);
+    let root_max_w = fmt_string(width);
 
     let mut out = String::new();
     if use_max_width {

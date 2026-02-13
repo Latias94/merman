@@ -1918,7 +1918,7 @@ pub(super) fn render_architecture_diagram_svg(
             fmt(vb_h)
         );
 
-        let mut max_w_attr = use_max_width.then(|| fmt(vb_w));
+        let mut max_w_attr = use_max_width.then(|| fmt_string(vb_w));
 
         if let Some((up_viewbox, up_max_width_px)) =
             crate::generated::architecture_root_overrides_11_12_2::lookup_architecture_root_viewport_override(diagram_id)

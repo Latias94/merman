@@ -72,7 +72,7 @@ fn fmt_allow_nan(v: f64) -> String {
     if v.is_nan() {
         return "NaN".to_string();
     }
-    fmt(v)
+    fmt_string(v)
 }
 
 fn gantt_is_unsafe_rect_id(id: &str) -> bool {

@@ -787,6 +787,6 @@ pub(super) fn render_gitgraph_diagram_svg(
     out = out.replacen(VIEWBOX_PLACEHOLDER, &view_box_attr, 1);
     // Mermaid gitGraph baselines stringify `max-width` directly from the computed `viewBox` width
     // (no fixed precision rounding), so keep the full `Number#toString()`-like output here.
-    out = out.replacen(MAX_WIDTH_PLACEHOLDER, &fmt(vb_w), 1);
+    out = out.replacen(MAX_WIDTH_PLACEHOLDER, &fmt_string(vb_w), 1);
     Ok(out)
 }

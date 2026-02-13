@@ -131,13 +131,17 @@ pub(super) fn fmt_debug_3dp_into(out: &mut String, v: f64) {
     append_fixed_3dp_trimmed(out, k);
 }
 
-pub(super) fn fmt(v: f64) -> String {
+pub(super) fn fmt_string(v: f64) -> String {
     let mut out = String::new();
     fmt_into(&mut out, v);
     out
 }
 
 pub(super) fn fmt_display(v: f64) -> FmtDisplay {
+    fmt(v)
+}
+
+pub(super) fn fmt(v: f64) -> FmtDisplay {
     FmtDisplay(v)
 }
 
@@ -475,7 +479,8 @@ mod tests {
             -1234.5678,
         ];
         for v in samples {
-            assert_eq!(fmt_display(v).to_string(), fmt(v));
+            assert_eq!(fmt_display(v).to_string(), fmt_string(v));
+            assert_eq!(fmt(v).to_string(), fmt_string(v));
         }
     }
 

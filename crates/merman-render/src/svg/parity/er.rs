@@ -545,8 +545,8 @@ pub(super) fn render_er_diagram_svg(
     let vb_h_attr = ((vb_h.max(1.0)) as f32) as f64;
 
     let mut out = String::new();
-    let mut w_attr = fmt(vb_w_attr);
-    let mut h_attr = fmt(vb_h_attr);
+    let mut w_attr = fmt_string(vb_w_attr);
+    let mut h_attr = fmt_string(vb_h_attr);
     let mut max_w_style = fmt_max_width_px(vb_w_attr);
     if let Some((viewbox, max_w)) =
         crate::generated::er_root_overrides_11_12_2::lookup_er_root_viewport_override(diagram_id)

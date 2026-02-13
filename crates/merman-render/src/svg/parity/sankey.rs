@@ -87,7 +87,7 @@ pub(super) fn render_sankey_diagram_svg(
     let vb_w = (max_x - min_x).max(1.0);
     let vb_h = (max_y - min_y).max(1.0);
 
-    let mut max_w_attr = fmt(vb_w);
+    let mut max_w_attr = fmt_string(vb_w);
     let mut viewbox_attr = format!("{} {} {} {}", fmt(min_x), fmt(min_y), fmt(vb_w), fmt(vb_h));
     if let Some((viewbox, max_w)) =
         crate::generated::sankey_root_overrides_11_12_2::lookup_sankey_root_viewport_override(

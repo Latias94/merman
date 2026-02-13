@@ -78,7 +78,7 @@ pub(super) fn render_xychart_diagram_svg(
         if !v.is_finite() {
             return "NaN".to_string();
         }
-        fmt(v)
+        fmt_string(v)
     }
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("xychart");
@@ -315,7 +315,8 @@ pub(super) fn render_xychart_diagram_svg(
                     n.attrs.insert("x".to_string(), "0".to_string());
                     n.attrs.insert("y".to_string(), "0".to_string());
                     n.attrs.insert("fill".to_string(), escape_xml(&t.fill));
-                    n.attrs.insert("font-size".to_string(), fmt(t.font_size));
+                    n.attrs
+                        .insert("font-size".to_string(), fmt_string(t.font_size));
                     n.attrs.insert(
                         "dominant-baseline".to_string(),
                         dominant_baseline(&t.vertical_pos).to_string(),

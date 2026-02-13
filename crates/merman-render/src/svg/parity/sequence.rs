@@ -391,7 +391,7 @@ pub(super) fn render_sequence_diagram_svg(
         ),
         (None, None) => String::new(),
     };
-    let mut max_w_attr = fmt(vb_w);
+    let mut max_w_attr = fmt_string(vb_w);
     let mut viewbox_attr = format!(
         "{} {} {} {}",
         fmt(vb_min_x),

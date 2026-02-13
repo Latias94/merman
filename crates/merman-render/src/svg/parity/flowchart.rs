@@ -10323,10 +10323,10 @@ pub(super) fn render_flowchart_v2_svg(
     let node_fill_color = theme_color(effective_config, "mainBkg", "#ECECFF");
 
     let mut out = String::new();
-    let mut vb_min_x_attr = fmt(vb_min_x);
-    let mut vb_min_y_attr = fmt(vb_min_y);
-    let mut w_attr = fmt(vb_w.max(1.0));
-    let mut h_attr = fmt(vb_h.max(1.0));
+    let mut vb_min_x_attr = fmt_string(vb_min_x);
+    let mut vb_min_y_attr = fmt_string(vb_min_y);
+    let mut w_attr = fmt_string(vb_w.max(1.0));
+    let mut h_attr = fmt_string(vb_h.max(1.0));
     let mut max_w_attr = fmt_max_width_px(vb_w.max(1.0));
     if let Some((viewbox, max_w)) =
         crate::generated::flowchart_root_overrides_11_12_2::lookup_flowchart_root_viewport_override(

@@ -416,10 +416,10 @@ pub(super) fn render_requirement_diagram_svg(
 
     let mut out = String::new();
 
-    let mut vb_x_attr = fmt(vb_x);
-    let mut vb_y_attr = fmt(vb_y);
-    let mut vb_w_attr = fmt(vb_w);
-    let mut vb_h_attr = fmt(vb_h);
+    let mut vb_x_attr = fmt_string(vb_x);
+    let mut vb_y_attr = fmt_string(vb_y);
+    let mut vb_w_attr = fmt_string(vb_w);
+    let mut vb_h_attr = fmt_string(vb_h);
     let mut max_width_style_attr = max_width_style.clone();
     if let Some((viewbox, max_w)) =
         crate::generated::requirement_root_overrides_11_12_2::lookup_requirement_root_viewport_override(
