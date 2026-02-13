@@ -1,0 +1,92 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "nodes": [
+        {
+          "id": "C",
+          "x": 193.922,
+          "y": 115.5,
+          "width": 25.594,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Other",
+          "x": 69.563,
+          "y": 115.5,
+          "width": 53.125,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Parent",
+          "x": 193.922,
+          "y": 115.5,
+          "width": 95.594,
+          "height": 140.0,
+          "is_cluster": true
+        },
+        {
+          "id": "PersonalizedCockpit",
+          "x": 142.359,
+          "y": 115.5,
+          "width": 268.719,
+          "height": 215.0,
+          "is_cluster": true
+        }
+      ],
+      "edges": [],
+      "clusters": [
+        {
+          "id": "Parent",
+          "x": 193.922,
+          "y": 115.5,
+          "width": 95.594,
+          "height": 140.0,
+          "diff": -8.0,
+          "offset_y": 20.0,
+          "title": "Parent",
+          "title_label": {
+            "x": 193.922,
+            "y": 58.5,
+            "width": 44.0,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "PersonalizedCockpit",
+          "x": 142.359,
+          "y": 115.5,
+          "width": 268.719,
+          "height": 215.0,
+          "diff": -8.0,
+          "offset_y": 20.0,
+          "title": "PersonalizedCockpit",
+          "title_label": {
+            "x": 142.359,
+            "y": 21.0,
+            "width": 130.875,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 276.719,
+        "max_y": 223.0
+      }
+    }
+  }
+}

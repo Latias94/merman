@@ -1,0 +1,110 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "type": "stateDiagram",
+    "nodes": [
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Should NOT be white",
+        "cssClasses": "exampleStyleClass statediagram-state",
+        "cssCompiledStyles": [
+          "fill:#fff",
+          "color: blue"
+        ],
+        "cssStyles": [
+          "fill:#636",
+          "border:1px solid red",
+          "color:white"
+        ],
+        "id": "AState",
+        "dir": null,
+        "domId": "state-AState-0",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true,
+        "description": []
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "BState",
+        "cssClasses": "exampleStyleClass statediagram-state",
+        "cssCompiledStyles": [
+          "fill:#fff",
+          "color: blue"
+        ],
+        "cssStyles": [],
+        "id": "BState",
+        "dir": null,
+        "domId": "state-BState-0",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      }
+    ],
+    "edges": [],
+    "other": {},
+    "links": {},
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "states": {
+      "AState": {
+        "id": "AState",
+        "type": "default",
+        "descriptions": [
+          "Should NOT be white"
+        ],
+        "doc": null,
+        "note": null,
+        "classes": [
+          "exampleStyleClass"
+        ],
+        "styles": [
+          "fill:#636",
+          "border:1px solid red",
+          "color:white"
+        ],
+        "textStyles": [],
+        "start": null
+      },
+      "BState": {
+        "id": "BState",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [
+          "exampleStyleClass"
+        ],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      }
+    },
+    "relations": [],
+    "styleClasses": {
+      "exampleStyleClass": {
+        "id": "exampleStyleClass",
+        "styles": [
+          "fill:#fff",
+          "color: blue"
+        ],
+        "textStyles": [
+          "fill: blue"
+        ]
+      }
+    }
+  }
+}
