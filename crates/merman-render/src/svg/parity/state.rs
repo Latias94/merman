@@ -97,6 +97,8 @@ pub(super) fn render_state_diagram_v2_svg(
     let mut ctx = StateRenderCtx {
         diagram_id: diagram_id.to_string(),
         diagram_title: diagram_title.clone(),
+        diagram_look: config_string(effective_config, &["look"])
+            .unwrap_or_else(|| "classic".to_string()),
         hand_drawn_seed: effective_config
             .get("handDrawnSeed")
             .and_then(|v| v.as_u64())
@@ -123,6 +125,9 @@ pub(super) fn render_state_diagram_v2_svg(
 
     fn compute_state_nested_roots(ctx: &StateRenderCtx<'_>) -> std::collections::BTreeSet<String> {
         let mut out: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+
+        let mut composite_self_loops: std::collections::HashSet<&str> =
+            std::collections::HashSet::new();
         for e in ctx.edges {
             if state_is_hidden(ctx, e.start.as_str())
                 || state_is_hidden(ctx, e.end.as_str())
@@ -130,10 +135,101 @@ pub(super) fn render_state_diagram_v2_svg(
             {
                 continue;
             }
+            if e.start != e.end {
+                continue;
+            }
+            let id = e.start.as_str();
+            let Some(n) = ctx.nodes_by_id.get(id).copied() else {
+                continue;
+            };
+            if n.is_group && n.shape != "noteGroup" {
+                composite_self_loops.insert(id);
+            }
+        }
+
+        let mut composite_externals: std::collections::HashSet<&str> =
+            std::collections::HashSet::new();
+        for e in ctx.edges {
+            if state_is_hidden(ctx, e.start.as_str())
+                || state_is_hidden(ctx, e.end.as_str())
+                || state_is_hidden(ctx, e.id.as_str())
+            {
+                continue;
+            }
+            let a = state_endpoint_context_raw(ctx, e.start.as_str());
+            let b = state_endpoint_context_raw(ctx, e.end.as_str());
+            let ca = state_context_chain_raw(ctx, a);
+            let cb = state_context_chain_raw(ctx, b);
+
+            for anc in &ca {
+                let Some(id) = *anc else {
+                    continue;
+                };
+                if cb.contains(anc) {
+                    continue;
+                }
+                let Some(n) = ctx.nodes_by_id.get(id).copied() else {
+                    continue;
+                };
+                if n.is_group && n.shape != "noteGroup" {
+                    composite_externals.insert(id);
+                }
+            }
+            for anc in &cb {
+                let Some(id) = *anc else {
+                    continue;
+                };
+                if ca.contains(anc) {
+                    continue;
+                }
+                let Some(n) = ctx.nodes_by_id.get(id).copied() else {
+                    continue;
+                };
+                if n.is_group && n.shape != "noteGroup" {
+                    composite_externals.insert(id);
+                }
+            }
+        }
+
+        for e in ctx.edges {
+            if state_is_hidden(ctx, e.start.as_str())
+                || state_is_hidden(ctx, e.end.as_str())
+                || state_is_hidden(ctx, e.id.as_str())
+            {
+                continue;
+            }
+            // Mermaid avoids creating a nested root for composites that have a self-loop edge on
+            // the composite itself (e.g. `Active --> Active`).
+            if composite_self_loops.contains(e.start.as_str()) && e.start == e.end {
+                continue;
+            }
             let Some(c) = state_edge_context_raw(ctx, e) else {
                 continue;
             };
+            if composite_externals.contains(c) {
+                continue;
+            }
             out.insert(c.to_string());
+        }
+
+        // Mermaid usually renders composite states in a nested root even when they don't contain
+        // internal transitions, but it avoids doing so when the composite has a self-loop edge.
+        for (child_id, parent_id) in &ctx.parent {
+            if state_is_hidden(ctx, child_id) || state_is_hidden(ctx, parent_id) {
+                continue;
+            }
+            if composite_self_loops.contains(parent_id) {
+                continue;
+            }
+            if composite_externals.contains(parent_id) {
+                continue;
+            }
+            let Some(pn) = ctx.nodes_by_id.get(parent_id).copied() else {
+                continue;
+            };
+            if pn.is_group && pn.shape != "noteGroup" {
+                out.insert((*parent_id).to_string());
+            }
         }
 
         // If a nested graph is needed for a descendant composite state, Mermaid also nests
@@ -150,6 +246,10 @@ pub(super) fn render_state_diagram_v2_svg(
                     continue;
                 };
                 if pn.is_group && pn.shape != "noteGroup" {
+                    if composite_self_loops.contains(pid) || composite_externals.contains(pid) {
+                        cur = Some(pid);
+                        continue;
+                    }
                     out.insert(pid.to_string());
                 }
                 cur = Some(pid);
@@ -1834,6 +1934,7 @@ struct StateRenderCtx<'a> {
     diagram_id: String,
     #[allow(dead_code)]
     diagram_title: Option<String>,
+    diagram_look: String,
     hand_drawn_seed: u64,
     state_padding: f64,
     node_order: Vec<&'a str>,
@@ -2957,6 +3058,13 @@ fn render_state_cluster(
         return;
     };
 
+    let data_look = ctx.diagram_look.trim();
+    let data_look = if data_look.is_empty() {
+        "classic"
+    } else {
+        data_look
+    };
+
     let shape = ctx
         .nodes_by_id
         .get(cluster_id)
@@ -2980,13 +3088,15 @@ fn render_state_cluster(
     if shape == "divider" {
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-look="classic"><g><rect class="divider" x="{}" y="{}" width="{}" height="{}" data-look="classic"/></g></g>"#,
+            r#"<g class="{}" id="{}" data-look="{}"><g><rect class="divider" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g></g>"#,
             escape_attr(class),
             escape_attr(cluster_id),
+            escape_attr(data_look),
             fmt(x),
             fmt(y),
             fmt(cluster.width.max(1.0)),
-            fmt(cluster.height.max(1.0))
+            fmt(cluster.height.max(1.0)),
+            escape_attr(data_look),
         );
         return;
     }
@@ -3000,14 +3110,16 @@ fn render_state_cluster(
 
     let _ = write!(
         out,
-        r#"<g class="{}" id="{}" data-id="{}" data-look="classic"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="classic"/></g><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="19"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="nodeLabel">{}</span></div></foreignObject></g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
+        r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="19"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="nodeLabel">{}</span></div></foreignObject></g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
         escape_attr(class),
         escape_attr(cluster_id),
         escape_attr(cluster_id),
+        escape_attr(data_look),
         fmt(x),
         fmt(y),
         fmt(cluster.width.max(1.0)),
         fmt(cluster.height.max(1.0)),
+        escape_attr(data_look),
         fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
         fmt(y + 1.0),
         fmt(cluster.title_label.width.max(0.0)),
@@ -3181,7 +3293,23 @@ fn state_edge_boundary_for_cluster(
     ox: f64,
     oy: f64,
 ) -> Option<StateEdgeBoundaryNode> {
-    let n = ctx.layout_clusters_by_id.get(cluster_id).copied()?;
+    let mut resolved = cluster_id;
+    if !ctx.layout_clusters_by_id.contains_key(resolved) {
+        // Mermaid's state diagram edges sometimes annotate cluster endpoints as `state-<id>-<n>`
+        // while the cluster itself is keyed by `<id>`.
+        if let Some(rest) = resolved.strip_prefix("state-") {
+            if let Some((base, suffix)) = rest.rsplit_once('-') {
+                if !base.is_empty()
+                    && !suffix.is_empty()
+                    && suffix.bytes().all(|b| b.is_ascii_digit())
+                {
+                    resolved = base;
+                }
+            }
+        }
+    }
+
+    let n = ctx.layout_clusters_by_id.get(resolved).copied()?;
     Some(StateEdgeBoundaryNode {
         x: n.x - ox,
         y: n.y - oy,

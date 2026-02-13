@@ -1,0 +1,63 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "nodes": [
+        {
+          "id": "C",
+          "x": 125.156,
+          "y": 65.5,
+          "width": 164.313,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "D",
+          "x": 374.469,
+          "y": 65.5,
+          "width": 164.313,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "roundWithTitle",
+          "x": 125.156,
+          "y": 65.5,
+          "width": 234.313,
+          "height": 115.0,
+          "is_cluster": true
+        }
+      ],
+      "edges": [],
+      "clusters": [
+        {
+          "id": "roundWithTitle",
+          "x": 125.156,
+          "y": 65.5,
+          "width": 234.313,
+          "height": 115.0,
+          "diff": -8.0,
+          "offset_y": 20.0,
+          "title": "roundWithTitle",
+          "title_label": {
+            "x": 125.156,
+            "y": 21.0,
+            "width": 98.563,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 456.625,
+        "max_y": 123.0
+      }
+    }
+  }
+}

@@ -18,7 +18,7 @@ goldens/baselines. It is intentionally short and should stay true even as fixtur
 - Upstream SVG baselines (`fixtures/upstream-svgs/**`):
   - Scope: authoritative Mermaid end-to-end SVG output (generated via official CLI).
   - How-to: `docs/rendering/UPSTREAM_SVG_BASELINES.md`.
-  - Current corpus (2026-02-12): 817 baselines across 23 diagrams.
+  - Current corpus (2026-02-13): 844 baselines across 23 diagrams.
 - Raster previews (PNG/JPG/PDF via `merman-cli`):
   - Scope: best-effort output for previews/integrations (not pixel-identical to upstream).
   - Note: upstream uses browser rendering; pure-Rust rasterizers do not fully render SVG `<foreignObject>`.
@@ -85,8 +85,8 @@ Recent progress (2026-02-12): imported additional fixtures from Mermaid config d
 including accessibility examples and mindmap `tidy-tree`, keeping `parity-root` green.
 As of 2026-02-10, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM mismatches
 for the current fixture set (diagram subtree parity).
-As of 2026-02-12, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 0 DOM
-mismatches for the current fixture set (783/783 upstream SVG baselines, including root viewport parity).
+As of 2026-02-13, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 0 DOM
+mismatches for the current fixture set (844/844 upstream SVG baselines, including root viewport parity).
 
 Post-baseline hardening plan (coverage growth + override consolidation + CI guardrails) is tracked in
 `docs/alignment/PARITY_HARDENING_PLAN.md`.

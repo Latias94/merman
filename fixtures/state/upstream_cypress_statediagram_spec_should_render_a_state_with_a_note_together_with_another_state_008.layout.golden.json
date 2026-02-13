@@ -1,0 +1,225 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "nodes": [
+        {
+          "id": "State1",
+          "x": 243.0,
+          "y": 60.0,
+          "width": 182.234,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "State1----note-0",
+          "x": 158.0,
+          "y": 262.0,
+          "width": 230.0,
+          "height": 102.0,
+          "is_cluster": false
+        },
+        {
+          "id": "State1----parent",
+          "x": 158.0,
+          "y": 262.0,
+          "width": 300.0,
+          "height": 152.0,
+          "is_cluster": true
+        },
+        {
+          "id": "State2",
+          "x": 470.395,
+          "y": 262.0,
+          "width": 61.906,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "State2----note-2",
+          "x": 536.754,
+          "y": 60.0,
+          "width": 155.438,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "State2----parent",
+          "x": 536.754,
+          "y": 60.0,
+          "width": 225.438,
+          "height": 104.0,
+          "is_cluster": true
+        }
+      ],
+      "edges": [
+        {
+          "id": "State1-State1----note-0",
+          "from": "State1",
+          "to": "State1----note-0",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 210.808,
+              "y": 80.5
+            },
+            {
+              "x": 158.0,
+              "y": 112.0
+            },
+            {
+              "x": 158.0,
+              "y": 149.0
+            },
+            {
+              "x": 158.0,
+              "y": 186.0
+            },
+            {
+              "x": 158.0,
+              "y": 262.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "State2----note-2-State2",
+          "from": "State2----note-2",
+          "to": "State2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 536.754,
+              "y": 60.0
+            },
+            {
+              "x": 536.754,
+              "y": 112.0
+            },
+            {
+              "x": 536.754,
+              "y": 149.0
+            },
+            {
+              "x": 536.754,
+              "y": 186.0
+            },
+            {
+              "x": 488.358,
+              "y": 242.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge1",
+          "from": "State1",
+          "to": "State2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 285.029,
+              "y": 80.5
+            },
+            {
+              "x": 350.977,
+              "y": 112.0
+            },
+            {
+              "x": 350.977,
+              "y": 149.0
+            },
+            {
+              "x": 350.977,
+              "y": 186.0
+            },
+            {
+              "x": 441.551,
+              "y": 243.825
+            }
+          ],
+          "label": {
+            "x": 350.977,
+            "y": 149.0,
+            "width": 54.078,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "State1----parent",
+          "x": 158.0,
+          "y": 262.0,
+          "width": 300.0,
+          "height": 152.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
+          "title": "Important information! You can write +,-\nnotes.",
+          "title_label": {
+            "x": 158.0,
+            "y": 211.0,
+            "width": 276.484,
+            "height": 48.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 16.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "State2----parent",
+          "x": 536.754,
+          "y": 60.0,
+          "width": 225.438,
+          "height": 104.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
+          "title": "This is the note +,-<br/>",
+          "title_label": {
+            "x": 536.754,
+            "y": 21.0,
+            "width": 125.438,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 16.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 649.473,
+        "max_y": 338.0
+      }
+    }
+  }
+}

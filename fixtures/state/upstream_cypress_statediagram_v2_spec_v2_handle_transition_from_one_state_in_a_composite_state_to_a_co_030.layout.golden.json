@@ -1,0 +1,200 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "nodes": [
+        {
+          "id": "S1",
+          "x": 71.348,
+          "y": 110.5,
+          "width": 126.695,
+          "height": 205.0,
+          "is_cluster": true
+        },
+        {
+          "id": "S2",
+          "x": 212.492,
+          "y": 168.0,
+          "width": 115.594,
+          "height": 90.0,
+          "is_cluster": true
+        },
+        {
+          "id": "sub1",
+          "x": 76.898,
+          "y": 53.0,
+          "width": 45.594,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "sub2",
+          "x": 65.797,
+          "y": 168.0,
+          "width": 45.594,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "sub4",
+          "x": 212.492,
+          "y": 168.0,
+          "width": 45.594,
+          "height": 40.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge0",
+          "from": "sub1",
+          "to": "sub2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 72.464,
+              "y": 73.5
+            },
+            {
+              "x": 65.797,
+              "y": 98.0
+            },
+            {
+              "x": 65.797,
+              "y": 123.0
+            },
+            {
+              "x": 66.297,
+              "y": 148.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge1",
+          "from": "S1",
+          "to": "S2",
+          "from_cluster": "state-S1-1",
+          "to_cluster": "state-S2-1",
+          "points": [
+            {
+              "x": 71.348,
+              "y": 110.5
+            },
+            {
+              "x": 105.797,
+              "y": 98.0
+            },
+            {
+              "x": 105.797,
+              "y": 123.0
+            },
+            {
+              "x": 212.492,
+              "y": 168.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge2",
+          "from": "sub1",
+          "to": "sub4",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 81.353,
+              "y": 73.5
+            },
+            {
+              "x": 85.797,
+              "y": 98.0
+            },
+            {
+              "x": 85.797,
+              "y": 123.0
+            },
+            {
+              "x": 190.195,
+              "y": 160.403
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "S1",
+          "x": 71.348,
+          "y": 110.5,
+          "width": 126.695,
+          "height": 205.0,
+          "diff": -8.0,
+          "offset_y": 20.0,
+          "title": "S1",
+          "title_label": {
+            "x": 71.348,
+            "y": 21.0,
+            "width": 18.563,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "S2",
+          "x": 212.492,
+          "y": 168.0,
+          "width": 115.594,
+          "height": 90.0,
+          "diff": -8.0,
+          "offset_y": 20.0,
+          "title": "S2",
+          "title_label": {
+            "x": 212.492,
+            "y": 136.0,
+            "width": 18.563,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 270.289,
+        "max_y": 213.0
+      }
+    }
+  }
+}

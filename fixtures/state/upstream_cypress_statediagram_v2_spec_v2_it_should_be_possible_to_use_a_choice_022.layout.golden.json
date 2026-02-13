@@ -1,0 +1,285 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "nodes": [
+        {
+          "id": "Drying",
+          "x": 156.477,
+          "y": 350.0,
+          "width": 59.516,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Finished",
+          "x": 42.477,
+          "y": 440.0,
+          "width": 68.953,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "MyChoice",
+          "x": 99.477,
+          "y": 266.0,
+          "width": 28.0,
+          "height": 28.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Off",
+          "x": 99.477,
+          "y": 92.0,
+          "width": 39.359,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "On",
+          "x": 99.477,
+          "y": 182.0,
+          "width": 32.484,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Washing",
+          "x": 42.477,
+          "y": 350.0,
+          "width": 68.484,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "root_end",
+          "x": 42.477,
+          "y": 517.0,
+          "width": 14.013,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "root_start",
+          "x": 99.477,
+          "y": 15.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge0",
+          "from": "root_start",
+          "to": "Off",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 99.477,
+              "y": 22.0
+            },
+            {
+              "x": 99.477,
+              "y": 47.0
+            },
+            {
+              "x": 99.977,
+              "y": 72.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge1",
+          "from": "Off",
+          "to": "On",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 99.977,
+              "y": 112.5
+            },
+            {
+              "x": 99.477,
+              "y": 137.0
+            },
+            {
+              "x": 99.977,
+              "y": 162.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge2",
+          "from": "On",
+          "to": "MyChoice",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 99.977,
+              "y": 202.5
+            },
+            {
+              "x": 99.477,
+              "y": 227.0
+            },
+            {
+              "x": 99.977,
+              "y": 252.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge3",
+          "from": "MyChoice",
+          "to": "Washing",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 91.664,
+              "y": 272.188
+            },
+            {
+              "x": 42.477,
+              "y": 305.0
+            },
+            {
+              "x": 42.977,
+              "y": 330.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge4",
+          "from": "MyChoice",
+          "to": "Drying",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 108.289,
+              "y": 272.188
+            },
+            {
+              "x": 156.477,
+              "y": 305.0
+            },
+            {
+              "x": 156.977,
+              "y": 330.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge5",
+          "from": "Washing",
+          "to": "Finished",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 42.977,
+              "y": 370.5
+            },
+            {
+              "x": 42.477,
+              "y": 395.0
+            },
+            {
+              "x": 42.977,
+              "y": 420.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge6",
+          "from": "Finished",
+          "to": "root_end",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 42.977,
+              "y": 460.5
+            },
+            {
+              "x": 42.477,
+              "y": 485.0
+            },
+            {
+              "x": 42.477,
+              "y": 510.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 186.234,
+        "max_y": 524.0
+      }
+    }
+  }
+}

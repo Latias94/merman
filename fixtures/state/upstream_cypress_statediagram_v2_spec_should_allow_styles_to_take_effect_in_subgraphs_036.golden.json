@@ -1,0 +1,137 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "type": "stateDiagram",
+    "nodes": [
+      {
+        "labelStyle": "",
+        "shape": "roundedWithTitle",
+        "label": "roundWithTitle",
+        "cssClasses": "statediagram-state statediagram-cluster",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "roundWithTitle",
+        "dir": "TB",
+        "domId": "state-roundWithTitle-0",
+        "type": "group",
+        "isGroup": true,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Black with white text",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [
+          "stroke:#00f",
+          "fill:black",
+          "color:white"
+        ],
+        "id": "C",
+        "dir": null,
+        "domId": "state-C-0",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "roundWithTitle",
+        "centerLabel": true,
+        "description": []
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Black with white text",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [
+          "stroke:#00f",
+          "fill:black",
+          "color:white"
+        ],
+        "id": "D",
+        "dir": null,
+        "domId": "state-D-0",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true,
+        "description": []
+      }
+    ],
+    "edges": [],
+    "other": {},
+    "links": {},
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "states": {
+      "roundWithTitle": {
+        "id": "roundWithTitle",
+        "type": "default",
+        "descriptions": [],
+        "doc": [
+          {
+            "stmt": "state",
+            "id": "C",
+            "type": "default",
+            "description": "Black with white text",
+            "doc": null,
+            "classes": []
+          }
+        ],
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "D": {
+        "id": "D",
+        "type": "default",
+        "descriptions": [
+          "Black with white text"
+        ],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [
+          "stroke:#00f",
+          "fill:black",
+          "color:white"
+        ],
+        "textStyles": [],
+        "start": null
+      },
+      "C": {
+        "id": "C",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [
+          "stroke:#00f",
+          "fill:black",
+          "color:white"
+        ],
+        "textStyles": [],
+        "start": null
+      }
+    },
+    "relations": [],
+    "styleClasses": {}
+  }
+}

@@ -63,15 +63,11 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_docs_contributing_checkout_a_new_branch_020" => {
             Some(("0 0 819.421875 382", "819.422"))
         }
-        "upstream_docs_contributing_initial_setup_001" => {
-            Some(("0 0 732.1875 70", "732.188"))
-        }
+        "upstream_docs_contributing_initial_setup_001" => Some(("0 0 732.1875 70", "732.188")),
         "upstream_docs_contributing_where_is_the_documentation_located_026" => {
             Some(("0 0 752.5 118", "752.5"))
         }
-        "upstream_docs_contributing_workflow_011" => {
-            Some(("0 0 651.40625 70", "651.406"))
-        }
+        "upstream_docs_contributing_workflow_011" => Some(("0 0 651.40625 70", "651.406")),
         "upstream_docs_directives_changing_fontfamily_via_directive_010" => {
             Some(("0 0 333.03125 224", "333.031"))
         }
@@ -143,10 +139,9 @@ pub fn lookup_flowchart_root_viewport_override(
             "0 -0.004795074462890625 196.640625 106.99040985107422",
             "196.641",
         )),
-        "upstream_docs_flowchart_stored_data_bow_tie_rectangle_124" => Some((
-            "0.010150909423828125 0 140.29981994628906 55",
-            "140.3",
-        )),
+        "upstream_docs_flowchart_stored_data_bow_tie_rectangle_124" => {
+            Some(("0.010150909423828125 0 140.29981994628906 55", "140.3"))
+        }
         "upstream_docs_flowchart_tagged_document_128" => Some((
             "0 -0.004795074462890625 187.03280639648438 96.99040985107422",
             "187.033",

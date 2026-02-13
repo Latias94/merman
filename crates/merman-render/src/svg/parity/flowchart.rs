@@ -6045,9 +6045,8 @@ pub(super) fn render_flowchart_node(
             label_text.clear();
             label_type = "text".to_string();
 
-            let border =
-                config_string(ctx.config.as_value(), &["themeVariables", "nodeBorder"])
-                    .unwrap_or_else(|| ctx.node_border_color.clone());
+            let border = config_string(ctx.config.as_value(), &["themeVariables", "nodeBorder"])
+                .unwrap_or_else(|| ctx.node_border_color.clone());
 
             let d = roughjs_circle_path_d(14.0, hand_drawn_seed).unwrap_or_else(|| "M0,0".into());
             let _ = write!(
@@ -6089,7 +6088,13 @@ pub(super) fn render_flowchart_node(
             let point_q4 = (radius * x_axis_45, -radius * y_axis_45);
             let line_path = format!(
                 "M {},{} L {},{} M {},{} L {},{}",
-                point_q2.0, point_q2.1, point_q4.0, point_q4.1, point_q1.0, point_q1.1, point_q3.0,
+                point_q2.0,
+                point_q2.1,
+                point_q4.0,
+                point_q4.1,
+                point_q1.0,
+                point_q1.1,
+                point_q3.0,
                 point_q3.1
             );
             let (line_fill_d, line_stroke_d) = roughjs_paths_for_svg_path(
@@ -9709,13 +9714,13 @@ pub(super) fn render_flowchart_v2_svg(
                             right_hw += 0.5;
                         }
 
-                         // Mermaid `stateEnd.ts` renders the framed-circle using a RoughJS ellipse
-                         // path with a slightly asymmetric bbox in Chromium. Model that asymmetry
-                         // so root `viewBox` parity matches upstream.
-                         if matches!(shape, "fr-circ" | "framed-circle" | "stop") {
-                             left_hw = 7.0;
-                             right_hw = (n.width - 7.0).max(0.0);
-                         }
+                        // Mermaid `stateEnd.ts` renders the framed-circle using a RoughJS ellipse
+                        // path with a slightly asymmetric bbox in Chromium. Model that asymmetry
+                        // so root `viewBox` parity matches upstream.
+                        if matches!(shape, "fr-circ" | "framed-circle" | "stop") {
+                            left_hw = 7.0;
+                            right_hw = (n.width - 7.0).max(0.0);
+                        }
 
                         // Mermaid `filledCircle.ts` uses a RoughJS circle path (roughness=0) whose
                         // bbox is slightly asymmetric (it extends further to the right). Model
@@ -9745,11 +9750,8 @@ pub(super) fn render_flowchart_v2_svg(
                                     .label_type
                                     .as_deref()
                                     .unwrap_or(if node_html_labels { "html" } else { "text" });
-                                let label_plain = flowchart_label_plain_text(
-                                    label,
-                                    label_type,
-                                    node_html_labels,
-                                );
+                                let label_plain =
+                                    flowchart_label_plain_text(label, label_type, node_html_labels);
                                 let node_text_style =
                                     crate::flowchart::flowchart_effective_text_style_for_classes(
                                         &text_style,
@@ -9757,14 +9759,15 @@ pub(super) fn render_flowchart_v2_svg(
                                         &flow_node.classes,
                                         &flow_node.styles,
                                     );
-                                let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
-                                    measurer,
-                                    label,
-                                    label_type,
-                                    &node_text_style,
-                                    Some(wrapping_width),
-                                    node_wrap_mode,
-                                );
+                                let mut metrics =
+                                    crate::flowchart::flowchart_label_metrics_for_layout(
+                                        measurer,
+                                        label,
+                                        label_type,
+                                        &node_text_style,
+                                        Some(wrapping_width),
+                                        node_wrap_mode,
+                                    );
                                 let span_css_height_parity = flow_node.classes.iter().any(|c| {
                                     model.class_defs.get(c.as_str()).is_some_and(|styles| {
                                         styles.iter().any(|s| {

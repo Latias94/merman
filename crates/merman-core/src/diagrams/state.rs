@@ -628,7 +628,40 @@ impl<'input> Lexer<'input> {
             }));
         };
         self.pop_mode();
-        Some(Ok((start, Tok::CompositState(id), self.pos)))
+
+        // Mermaid accepts `state <id>` with a `{ ... }` block that starts on the next line:
+        //
+        //   state Foo
+        //   {
+        //     ...
+        //   }
+        //
+        // Treat the intervening whitespace/newlines as insignificant and advance to the `{` so the
+        // parser sees `CompositState` followed immediately by a `Block`.
+        let end = self.pos;
+        let mut look = self.pos;
+        while let Some(b) = self.input.as_bytes().get(look).copied() {
+            if matches!(b, b' ' | b'\t' | b'\r') {
+                look += 1;
+                continue;
+            }
+            break;
+        }
+        if self.input.as_bytes().get(look) == Some(&b'\n') {
+            let mut scan = look;
+            while let Some(b) = self.input.as_bytes().get(scan).copied() {
+                if matches!(b, b' ' | b'\t' | b'\r' | b'\n') {
+                    scan += 1;
+                    continue;
+                }
+                break;
+            }
+            if self.input.as_bytes().get(scan) == Some(&b'{') {
+                self.pos = scan;
+            }
+        }
+
+        Some(Ok((start, Tok::CompositState(id), end)))
     }
 
     fn lex_id(&mut self) -> Option<(usize, Tok, usize)> {
@@ -727,11 +760,10 @@ impl Iterator for Lexer<'_> {
             self.emitted_eof_newline = true;
             return Some(Ok((self.pos, Tok::Newline, self.pos)));
         }
+        self.skip_ws();
         if let Some(nl) = self.lex_newline() {
             return Some(Ok(nl));
         }
-
-        self.skip_ws();
         if self.skip_comment() {
             return self.next();
         }
