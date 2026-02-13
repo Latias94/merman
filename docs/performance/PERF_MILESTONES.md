@@ -11,21 +11,20 @@ Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) still shows that **flowchar
 end-to-end bottleneck**, and the remaining gap is dominated by Dagre-ish ordering sweeps:
 
 - Spotcheck (`tools/bench/stage_spotcheck.py`, 30 samples / 2s warmup / 3s measurement):
-  - `parse`: `2.68x` slower (`676.56 µs` vs `252.02 µs`)
-  - `layout`: `4.99x` slower (`19.359 ms` vs `3.8810 ms`)
-  - `render`: `5.79x` slower (`976.98 µs` vs `168.61 µs`)
-  - `end_to_end`: `2.33x` slower (`13.536 ms` vs `5.8099 ms`)
+  - `parse`: ~`2.3x` slower (`~670 µs` vs `~287 µs`)
+  - `layout`: ~`2.3x` slower (`~9.0 ms` vs `~4.0 ms`)
+  - `render`: ~`7.6x` slower (`~1.03 ms` vs `~136 µs`)
+  - `end_to_end`: ~`2.6x` slower (`~10.4 ms` vs `~4.0 ms`)
 - Micro-timing (deterministic text measurer) indicates `dugong::order` is the hotspot:
-  - `order total ~8.6ms`, of which `sweeps ~8.0ms` (dominant)
-  - Inside `sweeps`, the biggest pieces are currently:
-    - building per-rank layer graphs (`~5.2ms`)
-    - `sort_subgraph` (`~2.2ms`)
+  - After caching per-rank layer graphs, `order` is split roughly as:
+    - `build_layer_graph_cache ~2.7ms`
+    - `sweeps ~1.9ms` (dominant part inside sweeps is `sort_subgraph ~1.6ms`)
   - Next hotspots after `order` (varies by run): `position_x ~1ms`, `compound_border ~0.8ms`
 
 Notes:
 
-- `render` is no longer multi-ms for this fixture, but it is still significantly behind `mmdr` in
-  relative terms (ratio), and will matter more once layout is faster.
+- With `layout` much faster than before, **`render` is now the biggest ratio gap** on the
+  canary fixtures.
 
 Useful debug toggles:
 
