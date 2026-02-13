@@ -1,0 +1,126 @@
+{
+  "diagramType": "flowchart-v2",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "subcontainer-child",
+          "x": 170.52,
+          "y": 90.0,
+          "width": 175.04,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "subcontainer-sibling",
+          "x": 463.74,
+          "y": 90.0,
+          "width": 186.4,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "subcontainer",
+          "x": 170.52,
+          "y": 90.0,
+          "width": 250.04,
+          "height": 124.0,
+          "is_cluster": true
+        },
+        {
+          "id": "subGraph1",
+          "x": 301.22,
+          "y": 90.0,
+          "width": 586.44,
+          "height": 164.0,
+          "is_cluster": true
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_subcontainer-child_subcontainer-sibling_0",
+          "from": "subcontainer-child",
+          "to": "subcontainer-sibling",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 258.04,
+              "y": 90.0
+            },
+            {
+              "x": 295.54,
+              "y": 90.0
+            },
+            {
+              "x": 333.04,
+              "y": 90.0
+            },
+            {
+              "x": 370.54,
+              "y": 90.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "subGraph1",
+          "x": 301.22,
+          "y": 90.0,
+          "width": 586.44,
+          "height": 164.0,
+          "diff": -4.0,
+          "offset_y": 20.0,
+          "title": "main",
+          "title_label": {
+            "x": 301.22,
+            "y": 20.0,
+            "width": 30.72,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "LR",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "subcontainer",
+          "x": 170.52,
+          "y": 90.0,
+          "width": 250.04,
+          "height": 124.0,
+          "diff": -4.0,
+          "offset_y": 20.0,
+          "title": "subcontainer",
+          "title_label": {
+            "x": 170.52,
+            "y": 40.0,
+            "width": 80.16,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 594.44,
+        "max_y": 172.0
+      }
+    }
+  }
+}

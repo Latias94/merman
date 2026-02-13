@@ -1,0 +1,259 @@
+{
+  "diagramType": "flowchart-v2",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "process_C",
+          "x": 144.84,
+          "y": 342.0,
+          "width": 123.04,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Process_D",
+          "x": 144.84,
+          "y": 446.0,
+          "width": 125.76,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "process_A",
+          "x": 144.84,
+          "y": 60.0,
+          "width": 123.04,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "process_B",
+          "x": 208.26,
+          "y": 164.0,
+          "width": 123.04,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "container_Beta",
+          "x": 139.84,
+          "y": 394.0,
+          "width": 254.72,
+          "height": 208.0,
+          "is_cluster": true
+        },
+        {
+          "id": "container_Alpha",
+          "x": 156.39,
+          "y": 112.0,
+          "width": 296.78,
+          "height": 208.0,
+          "is_cluster": true
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_process_C_Process_D_0",
+          "from": "process_C",
+          "to": "Process_D",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 144.84,
+              "y": 369.0
+            },
+            {
+              "x": 144.84,
+              "y": 394.0
+            },
+            {
+              "x": 144.84,
+              "y": 419.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_process_A_process_B_0",
+          "from": "process_A",
+          "to": "process_B",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 177.77,
+              "y": 87.0
+            },
+            {
+              "x": 208.26,
+              "y": 112.0
+            },
+            {
+              "x": 208.26,
+              "y": 137.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_process_A_process_C_0",
+          "from": "process_A",
+          "to": "process_C",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 111.91,
+              "y": 87.0
+            },
+            {
+              "x": 81.42,
+              "y": 112.0
+            },
+            {
+              "x": 81.42,
+              "y": 164.0
+            },
+            {
+              "x": 81.42,
+              "y": 216.0
+            },
+            {
+              "x": 81.42,
+              "y": 253.0
+            },
+            {
+              "x": 81.42,
+              "y": 290.0
+            },
+            {
+              "x": 111.91,
+              "y": 315.0
+            }
+          ],
+          "label": {
+            "x": 81.42,
+            "y": 164.0,
+            "width": 60.64,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_process_B_container_Beta_0",
+          "from": "process_B",
+          "to": "container_Beta",
+          "from_cluster": null,
+          "to_cluster": "container_Beta",
+          "points": [
+            {
+              "x": 208.26,
+              "y": 191.0
+            },
+            {
+              "x": 208.26,
+              "y": 216.0
+            },
+            {
+              "x": 208.26,
+              "y": 253.0
+            },
+            {
+              "x": 208.26,
+              "y": 290.0
+            },
+            {
+              "x": 177.77,
+              "y": 315.0
+            }
+          ],
+          "label": {
+            "x": 208.26,
+            "y": 253.0,
+            "width": 93.44,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "container_Alpha",
+          "x": 156.39,
+          "y": 112.0,
+          "width": 296.78,
+          "height": 208.0,
+          "diff": -4.0,
+          "offset_y": 20.0,
+          "title": "container_Alpha",
+          "title_label": {
+            "x": 156.39,
+            "y": 20.0,
+            "width": 99.52,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "LR",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "container_Beta",
+          "x": 139.84,
+          "y": 394.0,
+          "width": 254.72,
+          "height": 208.0,
+          "diff": -4.0,
+          "offset_y": 20.0,
+          "title": "container_Beta",
+          "title_label": {
+            "x": 139.84,
+            "y": 302.0,
+            "width": 95.04,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "LR",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 304.78,
+        "max_y": 498.0
+      }
+    }
+  }
+}

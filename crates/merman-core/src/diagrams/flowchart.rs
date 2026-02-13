@@ -631,19 +631,35 @@ impl<'input> Lexer<'input> {
     }
 
     fn lex_subgraph_header_after_keyword(&mut self) -> Option<(usize, Tok, usize)> {
-        self.skip_ws();
+        // Match Mermaid's flowchart parser behavior: it consumes a single "SPACE" token after the
+        // `subgraph` keyword, while any additional whitespace becomes part of the subgraph header
+        // token (`textNoTags`). This affects whether `FlowDB.addSubGraph(...)` decides to auto-generate
+        // a `subGraphN` id.
+        //
+        // Example:
+        // - `subgraph main`   -> header text has no whitespace, id stays `main`
+        // - `subgraph  main`  -> header text begins with whitespace, id becomes `subGraphN`
+        if let Some(b) = self.peek() {
+            if b == b'\n' || b == b';' {
+                return None;
+            }
+            if b == b' ' || b == b'\t' || b == b'\r' {
+                self.pos += 1;
+            }
+        }
+
         let start = self.pos;
         if start >= self.input.len() {
             return None;
         }
         match self.input.as_bytes()[start] {
-            b'\n' | b';' => return None,
+            b'\n' | b'\r' | b';' => return None,
             _ => {}
         }
 
         while self.pos < self.input.len() {
             let b = self.input.as_bytes()[self.pos];
-            if b == b'\n' || b == b';' || b == b'[' {
+            if b == b'\n' || b == b'\r' || b == b';' || b == b'[' {
                 break;
             }
             self.pos += 1;
@@ -2356,7 +2372,12 @@ impl SubgraphBuilder {
             }
         };
 
-        if sg.header.id_equals_title && title_raw.chars().any(|c| c.is_whitespace()) {
+        // Mirror Mermaid `FlowDB.addSubGraph(...)`:
+        // `if (_id === _title && /\\s/.exec(_title.text)) id = undefined;`
+        //
+        // The important nuance is that this checks the untrimmed title token (including any
+        // extra whitespace that may have been captured into the header).
+        if sg.header.id_equals_title && sg.header.raw_title.chars().any(|c| c.is_whitespace()) {
             id = None;
         }
 
