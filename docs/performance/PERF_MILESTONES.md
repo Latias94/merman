@@ -12,24 +12,23 @@ Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) indicates the remaining gap
 layout decode path.
 
 - Spotcheck (`tools/bench/stage_spotcheck.py`, 20 samples / 1s warmup / 1s measurement):
-  - Geomean ratios across canaries (`flowchart_medium,class_medium,state_medium,sequence_medium,mindmap_medium`):
-    - `parse`: `~5.53x`
-    - `layout`: `~1.40x`
-    - `render`: `~3.42x`
-    - `end_to_end`: `~1.49x`
-  - Notable outliers:
-    - `mindmap_medium`: `parse ~15x`, `layout ~7x`, `end_to_end ~5–7x`
-    - `state_medium`: `parse ~16x`, `render ~7–9x`
-    - `flowchart_medium`: `layout ~2–3x`, `render ~4–5x`, `end_to_end ~2x`
+  - Latest canary set (`flowchart_medium,class_medium,state_medium,mindmap_medium`):
+    - `parse`: `6.91x`
+    - `layout`: `1.46x`
+    - `render`: `4.92x`
+    - `end_to_end`: `1.30x`
+  - Notable outliers in that run:
+    - `mindmap_medium`: `parse 15.78x`, `layout 5.07x`, `end_to_end 3.19x`
+    - `state_medium`: `parse 13.47x`, `render 8.27x`, `end_to_end 0.72x`
+    - `flowchart_medium`: `layout 2.81x`, `render 4.89x`, `end_to_end 1.92x`
 
 Root-cause direction:
 
-- `flowchart_medium` still needs more `dugong::order` work, but **layout is no longer the only big
-  lever**.
-- `state_medium` render is dominated by RoughJS path generation; caching across renders improves it
-  materially, but it remains a large ratio gap.
-- `mindmap_medium` is currently the biggest overall gap (parse + layout), and needs a dedicated plan
-  (likely typed parsing + fewer `serde_json::Value` allocations, and/or a faster internal model).
+- `state_medium` and `mindmap_medium` parse are still extreme ratio outliers. The fastest lever is
+  to stop materializing large `serde_json::Value` trees on the hot pipeline path (typed/compact IR).
+- `flowchart_medium` is now a multi-stage problem: layout (`dugong::order`) is still expensive, and
+  render spends a meaningful slice in DOM building + edge path work + viewport computation.
+- `state_medium` render is dominated by leaf node work, especially RoughJS path generation and emit.
 
 Useful debug toggles:
 
@@ -43,8 +42,8 @@ Useful debug toggles:
 
 This fixture is useful as a counter-example:
 
-- Spotcheck shows `layout` is already faster than `mmdr` (`~0.45x`), and end-to-end is close
-  (`~0.93x`), but `render` is still far behind (`~6.29x`).
+- Spotcheck shows `layout` is already faster than `mmdr` (`~0.48x`), and end-to-end can be faster
+  (`~0.65–0.75x` in recent runs), but `render` is still far behind (`~5–6x`).
 - Implication: once we fix flowchart layout, **render optimizations will pay off across diagram
   types**, not only flowcharts.
 - `MERMAN_RENDER_TIMING=1` now also emits a `[render-timing] diagram=classDiagram ...` line, so we
@@ -66,12 +65,12 @@ Work items:
 - Fast path for plain text labels in `flowchart_label_html(...)`.
 - Skip icon regex expansion when the label cannot contain `:fa-...` syntax.
 
-### M2 — Flowchart layout: make Dagre-ish ordering fast (Mostly done)
+### M2 — Flowchart layout: make Dagre-ish ordering fast (In progress)
 
 Goal: cut `layout/flowchart_medium` substantially.
 
 Primary target: reduce the spotcheck ratio from `~5x` → `< 2.0x` without changing layout output.
-Current: `~2.2x` on `flowchart_medium` in a recent spotcheck run (numbers fluctuate).
+Current: `~2.8x` on `flowchart_medium` in the latest canary run (numbers fluctuate).
 
 What we know:
 
@@ -99,7 +98,7 @@ Acceptance criteria:
 - Layout micro-timing: `order` and especially `sweeps` drop materially (single-digit ms is a
   reasonable medium-term target for the medium fixture).
 
-### M3 — State render: eliminate RoughJS cold-start cost (Done)
+### M3 — State render: eliminate RoughJS cost (Partially done)
 
 Goal: reduce `render/state_medium` without changing SVG output.
 
@@ -110,8 +109,13 @@ What we did:
 
 Acceptance criteria:
 
-- Spotcheck: `render/state_medium` drops materially (e.g. ~`1.5ms` → ~`0.45–0.80ms` in typical runs),
-  and end-to-end ratio improves accordingly.
+- Spotcheck: `render/state_medium` drops materially and consistently, not only after warm caches.
+
+Status note:
+
+- The cache helps, but `state_medium` is still far behind in `render` stage ratios. The next steps
+  are to reduce per-leaf overhead (style resolution, SVG emission) and increase cache hit rate for
+  RoughJS shapes.
 
 ### M4 — Positioning: reduce `position_x` overhead (Planned)
 
@@ -156,6 +160,8 @@ Work items (ordered by expected ROI):
 1. Add parse micro-timing (metadata detection vs preprocessing vs diagram parser vs JSON materialize).
 2. Introduce typed parse paths for high-impact diagrams (start with `stateDiagram` and `mindmap`),
    and keep JSON emission as a compatibility layer (only when needed for debugging/tests).
+   - Note: we already have "render-focused" semantic models for these diagrams on the end-to-end
+     pipeline path, but the `parse/*` benches still measure the full JSON-producing path.
 3. Stop cloning semantic JSON in layout/render decode paths (done for the main `merman-render`
    layout decoders via `T::deserialize(&Value)`).
 4. Consider a lightweight lexer + hand-rolled parser for the hot subset where it measurably pays off.
