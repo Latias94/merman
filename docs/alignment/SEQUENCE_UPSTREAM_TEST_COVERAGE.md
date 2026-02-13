@@ -18,6 +18,35 @@ are parity-gated against upstream SVG baselines:
 
 Reference: `docs/alignment/EXTERNAL_FIXTURES.md`.
 
+## Cypress rendering fixtures
+
+Source:
+
+- `repo-ref/mermaid/cypress/integration/rendering/sequencediagram.spec.js`
+- `repo-ref/mermaid/cypress/integration/rendering/sequencediagram-v2.spec.js`
+
+These fixtures are parity-gated against upstream SVG baselines (DOM parity, root viewport mode):
+
+- `fixtures/sequence/upstream_cypress_sequencediagram_spec_example_001.mmd`
+- `fixtures/sequence/upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_when_usemaxwidth_is_false_059.mmd`
+- `fixtures/sequence/upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_with_actor_creation_and_destruc_010.mmd`
+- `fixtures/sequence/upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_with_basic_actor_creation_and_d_009.mmd`
+- `fixtures/sequence/upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_with_par_over_008.mmd`
+- `fixtures/sequence/upstream_cypress_sequencediagram_spec_should_render_a_single_and_nested_opt_with_long_test_overflowing_037.mmd`
+- `fixtures/sequence/upstream_cypress_sequencediagram_spec_should_render_a_single_and_nested_opt_with_long_test_wrapping_038.mmd`
+- `fixtures/sequence/upstream_cypress_sequencediagram_spec_should_render_a_single_and_nested_rects_036.mmd`
+- `fixtures/sequence/upstream_cypress_sequencediagram_spec_should_render_rect_around_and_inside_opts_041.mmd`
+- `fixtures/sequence/upstream_cypress_sequencediagram_spec_should_support_actor_links_and_properties_experimental_use_with_052.mmd`
+- `fixtures/sequence/upstream_cypress_sequencediagram_v2_spec_should_handle_complex_interactions_between_different_participant_013.mmd`
+- `fixtures/sequence/upstream_cypress_sequencediagram_v2_spec_should_render_a_sequence_diagram_when_usemaxwidth_is_false_030.mmd`
+- `fixtures/sequence/upstream_cypress_sequencediagram_v2_spec_should_render_complex_sequence_with_all_features_010.mmd`
+- `fixtures/sequence/upstream_cypress_sequencediagram_v2_spec_should_render_different_participant_types_with_alternative_flows_016.mmd`
+- `fixtures/sequence/upstream_cypress_sequencediagram_v2_spec_should_render_different_participant_types_with_notes_and_loops_015.mmd`
+- `fixtures/sequence/upstream_cypress_sequencediagram_v2_spec_should_render_different_participant_types_with_wrapping_text_017.mmd`
+- `fixtures/sequence/upstream_cypress_sequencediagram_v2_spec_should_render_parallel_processes_with_different_participant_type_014.mmd`
+- `fixtures/sequence/upstream_cypress_sequencediagram_v2_spec_should_render_with_different_font_settings_009.mmd`
+- `fixtures/sequence/upstream_cypress_sequencediagram_v2_spec_should_render_with_wrapped_messages_and_notes_011.mmd`
+
 ## `sequenceDiagram.spec.js`
 
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/sequence/sequenceDiagram.spec.js`

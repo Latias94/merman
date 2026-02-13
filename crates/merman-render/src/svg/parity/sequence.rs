@@ -144,6 +144,8 @@ struct SequenceSvgActor {
     actor_type: String,
     #[serde(default)]
     links: serde_json::Map<String, serde_json::Value>,
+    #[serde(default)]
+    properties: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -156,6 +158,8 @@ struct SequenceSvgMessage {
     #[serde(rename = "type")]
     message_type: i32,
     message: serde_json::Value,
+    #[serde(default)]
+    wrap: bool,
     #[serde(default)]
     activate: bool,
 }
@@ -213,6 +217,11 @@ pub(super) fn render_sequence_diagram_svg(
     let seq_cfg = effective_config
         .get("sequence")
         .unwrap_or(&serde_json::Value::Null);
+    let force_menus = seq_cfg
+        .get("forceMenus")
+        .or_else(|| effective_config.get("forceMenus"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let diagram_margin_x = seq_cfg
         .get("diagramMarginX")
         .and_then(|v| v.as_f64())
@@ -262,6 +271,11 @@ pub(super) fn render_sequence_diagram_svg(
             .get("fontFamily")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string()),
+        font_size: actor_label_font_size,
+        font_weight: Some("400".to_string()),
+    };
+    let note_text_style = TextStyle {
+        font_family: loop_text_style.font_family.clone(),
         font_size: actor_label_font_size,
         font_weight: Some("400".to_string()),
     };
@@ -510,25 +524,70 @@ pub(super) fn render_sequence_diagram_svg(
     }
 
     // Mermaid renders `rect` blocks as root-level `<rect class="rect"/>` nodes before actors.
-    for msg in &model.messages {
-        if msg.message_type != 22 {
-            continue;
+    {
+        #[derive(Debug, Clone, Copy)]
+        struct RectBlock<'a> {
+            fill: &'a str,
+            x: f64,
+            y: f64,
+            w: f64,
+            h: f64,
         }
-        let fill = msg.message.as_str().unwrap_or_default();
-        let node_id = format!("rect-{}", msg.id);
-        let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
-            continue;
-        };
-        let (x, y) = node_left_top(n);
-        let _ = write!(
-            &mut out,
-            r#"<rect x="{x}" y="{y}" fill="{fill}" width="{w}" height="{h}" class="rect"/>"#,
-            x = fmt(x),
-            y = fmt(y),
-            w = fmt(n.width),
-            h = fmt(n.height),
-            fill = escape_xml_display(fill)
-        );
+
+        fn contains(a: &RectBlock<'_>, b: &RectBlock<'_>) -> bool {
+            const EPS: f64 = 1e-9;
+            a.x <= b.x + EPS
+                && a.y <= b.y + EPS
+                && (a.x + a.w) >= (b.x + b.w) - EPS
+                && (a.y + a.h) >= (b.y + b.h) - EPS
+        }
+
+        let mut rects: Vec<RectBlock<'_>> = Vec::new();
+        for msg in &model.messages {
+            if msg.message_type != 22 {
+                continue;
+            }
+            let fill = msg.message.as_str().unwrap_or_default();
+            let node_id = format!("rect-{}", msg.id);
+            let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
+                continue;
+            };
+            let (x, y) = node_left_top(n);
+            rects.push(RectBlock {
+                fill,
+                x,
+                y,
+                w: n.width,
+                h: n.height,
+            });
+        }
+
+        // Mermaid's emitted order for nested `rect` blocks is not strictly tied to parse order.
+        // Match its DOM ordering semantics by keeping parents before contained children and
+        // sorting unrelated rectangles by vertical position (lower blocks first).
+        rects.sort_by(|a, b| {
+            if contains(a, b) && !contains(b, a) {
+                return std::cmp::Ordering::Less;
+            }
+            if contains(b, a) && !contains(a, b) {
+                return std::cmp::Ordering::Greater;
+            }
+            b.y.partial_cmp(&a.y)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal))
+        });
+
+        for r in rects {
+            let _ = write!(
+                &mut out,
+                r#"<rect x="{x}" y="{y}" fill="{fill}" width="{w}" height="{h}" class="rect"/>"#,
+                x = fmt(r.x),
+                y = fmt(r.y),
+                w = fmt(r.w),
+                h = fmt(r.h),
+                fill = escape_xml_display(r.fill)
+            );
+        }
     }
 
     // Mermaid draws bottom actors first (reverse DOM order).
@@ -542,6 +601,16 @@ pub(super) fn render_sequence_diagram_svg(
             continue;
         };
         let (x, y) = node_left_top(n);
+        let actor_custom_class = actor
+            .properties
+            .get("class")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty());
+        let actor_rect_fill = if force_menus { "#EDF2AE" } else { "#eaeaea" };
+        let actor_bottom_class = actor_custom_class
+            .map(|c| format!("{c} actor-bottom"))
+            .unwrap_or_else(|| "actor actor-bottom".to_string());
         match actor_type {
             // Actor-man variants are drawn later (after `<defs>`), but Mermaid keeps stable
             // indices by emitting empty `<g/>` placeholders here.
@@ -651,12 +720,14 @@ pub(super) fn render_sequence_diagram_svg(
                 out.push_str("<g>");
                 let _ = write!(
                     &mut out,
-                    r##"<rect x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" rx="3" ry="3" class="actor actor-bottom"/>"##,
+                    r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" name="{name}" rx="3" ry="3" class="{class}"/>"##,
                     x = fmt(x),
                     y = fmt(y),
                     w = fmt(n.width),
                     h = fmt(n.height),
-                    name = escape_xml(actor_id)
+                    name = escape_xml(actor_id),
+                    fill = escape_xml_display(actor_rect_fill),
+                    class = escape_attr(&actor_bottom_class),
                 );
                 write_actor_label(
                     &mut out,
@@ -694,6 +765,16 @@ pub(super) fn render_sequence_diagram_svg(
             .get(format!("lifeline-{actor_id}").as_str())
             .and_then(|e| Some((e.points.first()?.y, e.points.get(1)?.y)))
             .unwrap_or((top_y + top.height, bottom_y));
+        let actor_custom_class = actor
+            .properties
+            .get("class")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty());
+        let actor_rect_fill = if force_menus { "#EDF2AE" } else { "#eaeaea" };
+        let actor_top_class = actor_custom_class
+            .map(|c| format!("{c} actor-top"))
+            .unwrap_or_else(|| "actor actor-top".to_string());
 
         match actor_type {
             "actor" | "boundary" | "control" | "entity" => {
@@ -843,12 +924,14 @@ pub(super) fn render_sequence_diagram_svg(
                 );
                 let _ = write!(
                     &mut out,
-                    r##"<rect x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" name="{name}" rx="3" ry="3" class="actor actor-top"/>"##,
+                    r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" name="{name}" rx="3" ry="3" class="{class}"/>"##,
                     x = fmt(top_x),
                     y = fmt(top_y),
                     w = fmt(top.width),
                     h = fmt(top.height),
                     name = escape_xml(actor_id),
+                    fill = escape_xml_display(actor_rect_fill),
+                    class = escape_attr(&actor_top_class),
                 );
                 write_actor_label(
                     &mut out,
@@ -1794,8 +1877,23 @@ pub(super) fn render_sequence_diagram_svg(
                     h = fmt(n.height)
                 );
                 let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw);
-                let lines = split_html_br_lines(decoded.as_ref());
-                for (i, line) in lines.into_iter().enumerate() {
+                let lines: Vec<String> = if msg.wrap {
+                    // Mermaid's `wrap:` notes wrap to the default note width rather than widening.
+                    // Model the line count using our heuristic wrapper (text content is parity-masked).
+                    let wrap_w = (n.width - 20.0).max(1.0);
+                    crate::text::wrap_text_lines_px(
+                        decoded.as_ref(),
+                        &note_text_style,
+                        Some(wrap_w),
+                        crate::text::WrapMode::SvgLike,
+                    )
+                } else {
+                    split_html_br_lines(decoded.as_ref())
+                        .into_iter()
+                        .map(|s| s.to_string())
+                        .collect()
+                };
+                for (i, line) in lines.iter().enumerate() {
                     let y = text_y + (i as f64) * line_step;
                     let _ = write!(
                         &mut out,
@@ -2928,6 +3026,21 @@ pub(super) fn render_sequence_diagram_svg(
         if actor.links.is_empty() {
             continue;
         }
+        let actor_custom_class = actor
+            .properties
+            .get("class")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty());
+        let popup_display = if force_menus {
+            "block !important"
+        } else {
+            "none"
+        };
+        let popup_fill = if force_menus { "#EDF2AE" } else { "#eaeaea" };
+        let popup_panel_class = actor_custom_class
+            .map(|c| format!("actorPopupMenuPanel {c} actor-bottom"))
+            .unwrap_or_else(|| "actorPopupMenuPanel actor actor-bottom".to_string());
 
         let node_id = format!("actor-top-{actor_id}");
         let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
@@ -2940,16 +3053,19 @@ pub(super) fn render_sequence_diagram_svg(
 
         let _ = write!(
             &mut out,
-            r##"<g id="actor{idx}_popup" class="actorPopupMenu" display="none">"##,
-            idx = actor_cnt
+            r##"<g id="actor{idx}_popup" class="actorPopupMenu" display="{display}">"##,
+            idx = actor_cnt,
+            display = escape_attr(popup_display),
         );
         let _ = write!(
             &mut out,
-            r##"<rect class="actorPopupMenuPanel actor actor-bottom" x="{x}" y="{y}" fill="#eaeaea" stroke="#666" width="{w}" height="{h}" rx="3" ry="3"/>"##,
+            r##"<rect class="{class}" x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="3" ry="3"/>"##,
+            class = escape_attr(&popup_panel_class),
             x = fmt(x),
             y = fmt(actor_height),
             w = fmt(n.width),
-            h = fmt(panel_height)
+            h = fmt(panel_height),
+            fill = escape_xml_display(popup_fill),
         );
 
         for (label, url) in &actor.links {

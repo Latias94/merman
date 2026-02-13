@@ -1318,21 +1318,36 @@ pub fn layout_sequence_diagram(
             };
 
             let text = msg.message.as_str().unwrap_or_default();
-            let (text_w, h) = measure_svg_like_with_html_br(measurer, text, &note_text_style);
+            let (text_w, h) = if msg.wrap {
+                // Mermaid's `wrap:` notes are wrapped to the configured note width rather than
+                // widening the note box to fit the full line width.
+                let wrap_w = (note_w - note_text_pad_total).max(1.0);
+                let metrics = measurer.measure_wrapped(
+                    text,
+                    &note_text_style,
+                    Some(wrap_w),
+                    WrapMode::SvgLike,
+                );
+                (metrics.width.max(0.0), metrics.height.max(0.0))
+            } else {
+                measure_svg_like_with_html_br(measurer, text, &note_text_style)
+            };
 
             // Mermaid's `buildNoteModel(...)` widens the note box when the text would overflow the
             // configured default width. This is observable in strict SVG XML baselines when the
             // note contains literal `<br ...>` markup that is *not* treated as a line break.
             let padded_w = (text_w + note_text_pad_total).round().max(1.0);
-            match placement {
-                // leftOf / rightOf notes clamp width to fit label text.
-                0 | 1 => {
-                    note_w = note_w.max(padded_w);
-                }
-                // over: only clamp when the note is over a single actor (`from == to`).
-                _ => {
-                    if (fx - tx).abs() < 0.0001 {
+            if !msg.wrap {
+                match placement {
+                    // leftOf / rightOf notes clamp width to fit label text.
+                    0 | 1 => {
                         note_w = note_w.max(padded_w);
+                    }
+                    // over: only clamp when the note is over a single actor (`from == to`).
+                    _ => {
+                        if (fx - tx).abs() < 0.0001 {
+                            note_w = note_w.max(padded_w);
+                        }
                     }
                 }
             }

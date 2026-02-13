@@ -1,0 +1,300 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "User",
+      "LoginUI",
+      "AuthService",
+      "UserDB",
+      "Order",
+      "OrderQueue",
+      "AuditLogs"
+    ],
+    "actors": {
+      "User": {
+        "name": "User",
+        "description": "User",
+        "wrap": false,
+        "type": "actor",
+        "links": {},
+        "properties": {}
+      },
+      "LoginUI": {
+        "name": "LoginUI",
+        "description": "LoginUI",
+        "wrap": false,
+        "type": "boundary",
+        "links": {},
+        "properties": {}
+      },
+      "AuthService": {
+        "name": "AuthService",
+        "description": "AuthService",
+        "wrap": false,
+        "type": "control",
+        "links": {},
+        "properties": {}
+      },
+      "UserDB": {
+        "name": "UserDB",
+        "description": "UserDB",
+        "wrap": false,
+        "type": "database",
+        "links": {},
+        "properties": {}
+      },
+      "Order": {
+        "name": "Order",
+        "description": "Order",
+        "wrap": false,
+        "type": "entity",
+        "links": {},
+        "properties": {}
+      },
+      "OrderQueue": {
+        "name": "OrderQueue",
+        "description": "OrderQueue",
+        "wrap": false,
+        "type": "queue",
+        "links": {},
+        "properties": {}
+      },
+      "AuditLogs": {
+        "name": "AuditLogs",
+        "description": "AuditLogs",
+        "wrap": false,
+        "type": "collections",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "User",
+        "to": "LoginUI",
+        "message": "Enter credentials",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "LoginUI",
+        "to": "AuthService",
+        "message": "Validate",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "AuthService",
+        "to": "UserDB",
+        "message": "Query user",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "UserDB",
+        "to": "AuthService",
+        "message": "User data",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": null,
+        "to": null,
+        "message": "Valid credentials",
+        "wrap": false,
+        "type": 12,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "AuthService",
+        "to": "LoginUI",
+        "message": "Success",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "LoginUI",
+        "to": "User",
+        "message": "Welcome",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": null,
+        "to": null,
+        "message": "Place order",
+        "wrap": false,
+        "type": 19,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "User",
+        "to": "Order",
+        "message": "New order",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": "Order",
+        "to": "OrderQueue",
+        "message": "Process",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 20,
+        "activate": false
+      },
+      {
+        "id": "11",
+        "from": "Order",
+        "to": "AuditLogs",
+        "message": "Record",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "12",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 21,
+        "activate": false
+      },
+      {
+        "id": "13",
+        "from": null,
+        "to": null,
+        "message": "Until confirmed",
+        "wrap": false,
+        "type": 10,
+        "activate": false
+      },
+      {
+        "id": "14",
+        "from": "OrderQueue",
+        "to": "Order",
+        "message": "Update status",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "15",
+        "from": "Order",
+        "to": "User",
+        "message": "Notification",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "16",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 11,
+        "activate": false
+      },
+      {
+        "id": "17",
+        "from": null,
+        "to": null,
+        "message": "Invalid credentials",
+        "wrap": false,
+        "type": 13,
+        "activate": false
+      },
+      {
+        "id": "18",
+        "from": "AuthService",
+        "to": "LoginUI",
+        "message": "Failure",
+        "wrap": false,
+        "type": 4,
+        "activate": false
+      },
+      {
+        "id": "19",
+        "from": "LoginUI",
+        "to": "User",
+        "message": "Retry",
+        "wrap": false,
+        "type": 4,
+        "activate": false
+      },
+      {
+        "id": "20",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 14,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [
+      {
+        "name": "Authentication",
+        "wrap": false,
+        "fill": "rgb(200,220,255)",
+        "actorKeys": [
+          "User",
+          "LoginUI",
+          "AuthService",
+          "UserDB"
+        ]
+      },
+      {
+        "name": "Order Processing",
+        "wrap": false,
+        "fill": "rgb(200,255,220)",
+        "actorKeys": [
+          "Order",
+          "OrderQueue",
+          "AuditLogs"
+        ]
+      }
+    ],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}
