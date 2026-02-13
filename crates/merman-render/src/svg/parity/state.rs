@@ -3870,26 +3870,38 @@ fn render_state_edge_label(
     ) -> bool {
         let rounded_x = point.x.round() as i64;
         let rounded_y = point.y.round() as i64;
-        fn re_float_with_decimals() -> &'static regex::Regex {
-            use std::sync::OnceLock;
-            static RE: OnceLock<regex::Regex> = OnceLock::new();
-            RE.get_or_init(|| regex::Regex::new(r"(\d+\.\d+)").expect("valid regex"))
+
+        let bytes = d_attr.as_bytes();
+        let mut i = 0usize;
+        while i < bytes.len() {
+            let b = bytes[i];
+            let is_start = b.is_ascii_digit() || b == b'-' || b == b'.';
+            if !is_start {
+                i += 1;
+                continue;
+            }
+
+            let start = i;
+            i += 1;
+            while i < bytes.len() {
+                let b = bytes[i];
+                if b.is_ascii_digit() || b == b'.' {
+                    i += 1;
+                    continue;
+                }
+                break;
+            }
+
+            let token = &d_attr[start..i];
+            if let Ok(v) = token.parse::<f64>() {
+                let r = v.round() as i64;
+                if r == rounded_x || r == rounded_y {
+                    return true;
+                }
+            }
         }
-        let re = re_float_with_decimals();
-        let sanitized_d = re
-            .replace_all(d_attr, |caps: &regex::Captures<'_>| {
-                caps.get(1)
-                    .and_then(|m| m.as_str().parse::<f64>().ok())
-                    .map(|v| v.round().to_string())
-                    .unwrap_or_else(|| {
-                        caps.get(1)
-                            .map(|m| m.as_str())
-                            .unwrap_or_default()
-                            .to_string()
-                    })
-            })
-            .to_string();
-        sanitized_d.contains(&rounded_x.to_string()) || sanitized_d.contains(&rounded_y.to_string())
+
+        false
     }
 
     let mut points_has_changed = le.to_cluster.is_some() || le.from_cluster.is_some();
