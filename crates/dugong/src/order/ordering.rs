@@ -11,6 +11,21 @@ pub struct OrderOptions {
     pub disable_optimal_order_heuristic: bool,
 }
 
+#[derive(Debug, Default, Clone)]
+struct OrderTimings {
+    total: std::time::Duration,
+    build_nodes_by_rank: std::time::Duration,
+    init_order: std::time::Duration,
+    assign_initial: std::time::Duration,
+    sweeps: std::time::Duration,
+    sweep_build_layer_graph: std::time::Duration,
+    sweep_sort_subgraph: std::time::Duration,
+    sweep_apply_order: std::time::Duration,
+    sweep_add_constraints: std::time::Duration,
+    build_layer_matrix: std::time::Duration,
+    cross_count: std::time::Duration,
+}
+
 pub fn order<N, E, G>(g: &mut Graph<N, E, G>, opts: OrderOptions)
 where
     N: Default + Clone + OrderNodeLabel + 'static,
@@ -20,17 +35,6 @@ where
     let timing_enabled = std::env::var("DUGONG_ORDER_TIMING")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
-
-    #[derive(Debug, Default, Clone)]
-    struct OrderTimings {
-        total: std::time::Duration,
-        build_nodes_by_rank: std::time::Duration,
-        init_order: std::time::Duration,
-        assign_initial: std::time::Duration,
-        sweeps: std::time::Duration,
-        build_layer_matrix: std::time::Duration,
-        cross_count: std::time::Duration,
-    }
 
     let total_start = timing_enabled.then(std::time::Instant::now);
     let mut timings = OrderTimings::default();
@@ -107,6 +111,8 @@ where
                 Relationship::InEdges,
                 bias_right,
                 &root,
+                timing_enabled,
+                &mut timings,
             );
             if let Some(s) = sweep_start {
                 timings.sweeps += s.elapsed();
@@ -120,6 +126,8 @@ where
                 Relationship::OutEdges,
                 bias_right,
                 &root,
+                timing_enabled,
+                &mut timings,
             );
             if let Some(s) = sweep_start {
                 timings.sweeps += s.elapsed();
@@ -154,12 +162,16 @@ where
     if let Some(s) = total_start {
         timings.total = s.elapsed();
         eprintln!(
-            "[dugong-timing] stage=order total={:?} build_nodes_by_rank={:?} init_order={:?} assign_initial={:?} sweeps={:?} build_layer_matrix={:?} cross_count={:?}",
+            "[dugong-timing] stage=order total={:?} build_nodes_by_rank={:?} init_order={:?} assign_initial={:?} sweeps={:?} sweep_build_layer_graph={:?} sweep_sort_subgraph={:?} sweep_apply_order={:?} sweep_add_constraints={:?} build_layer_matrix={:?} cross_count={:?}",
             timings.total,
             timings.build_nodes_by_rank,
             timings.init_order,
             timings.assign_initial,
             timings.sweeps,
+            timings.sweep_build_layer_graph,
+            timings.sweep_sort_subgraph,
+            timings.sweep_apply_order,
+            timings.sweep_add_constraints,
             timings.build_layer_matrix,
             timings.cross_count,
         );
@@ -188,6 +200,8 @@ fn sweep<N, E, G>(
     relationship: Relationship,
     bias_right: bool,
     root: &str,
+    timing_enabled: bool,
+    timings: &mut OrderTimings,
 ) where
     N: Default + Clone + OrderNodeLabel + 'static,
     E: Default + OrderEdgeWeight + 'static,
@@ -200,15 +214,34 @@ fn sweep<N, E, G>(
             .get(&rank)
             .map(|v| v.as_slice())
             .unwrap_or(&[]);
+
+        let build_lg_start = timing_enabled.then(std::time::Instant::now);
         let lg = build_layer_graph_with_root(g, rank, relationship, root, Some(nodes));
+        if let Some(s) = build_lg_start {
+            timings.sweep_build_layer_graph += s.elapsed();
+        }
+
+        let sort_start = timing_enabled.then(std::time::Instant::now);
         let sorted = sort_subgraph(&lg, root, &cg, bias_right);
+        if let Some(s) = sort_start {
+            timings.sweep_sort_subgraph += s.elapsed();
+        }
+
+        let apply_order_start = timing_enabled.then(std::time::Instant::now);
         for (i, v) in sorted.vs.iter().enumerate() {
             if let Some(n) = g.node_mut(v) {
                 n.set_order(i);
             }
         }
+        if let Some(s) = apply_order_start {
+            timings.sweep_apply_order += s.elapsed();
+        }
 
+        let constraints_start = timing_enabled.then(std::time::Instant::now);
         add_subgraph_constraints(&lg, &mut cg, &sorted.vs);
+        if let Some(s) = constraints_start {
+            timings.sweep_add_constraints += s.elapsed();
+        }
     }
 }
 
