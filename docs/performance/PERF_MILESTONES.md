@@ -17,6 +17,7 @@ Useful debug toggles:
 - `MERMAN_RENDER_TIMING=1` (flowchart render stage attribution)
 - `MERMAN_FLOWCHART_LAYOUT_TIMING=1` (flowchart layout stage attribution)
 - `DUGONG_DAGREISH_TIMING=1` (Dagre-ish pipeline stage attribution; shows `order` as dominant)
+- `DUGONG_ORDER_TIMING=1` (ordering stage breakdown inside Dagre-ish pipeline)
 
 ## Milestones
 
@@ -91,4 +92,3 @@ We treat these fixtures as canaries:
 
 When a milestone lands, record a new spotcheck report under `target/bench/` locally (do not commit)
 and update this doc with the latest ratios.
-
