@@ -59,6 +59,22 @@ struct FlowchartRenderDetails {
     nested_roots: std::time::Duration,
 }
 
+struct FlowchartEdgeDataPointsScratch {
+    json: String,
+    b64: String,
+    ryu: ryu_js::Buffer,
+}
+
+impl Default for FlowchartEdgeDataPointsScratch {
+    fn default() -> Self {
+        Self {
+            json: String::new(),
+            b64: String::new(),
+            ryu: ryu_js::Buffer::new(),
+        }
+    }
+}
+
 #[inline]
 fn detail_guard<'a>(
     enabled: bool,
@@ -1135,8 +1151,9 @@ fn render_flowchart_root(
         out.push_str(r#"<g class="edgePaths"/>"#);
     } else {
         out.push_str(r#"<g class="edgePaths">"#);
+        let mut scratch = FlowchartEdgeDataPointsScratch::default();
         for e in &edges {
-            render_flowchart_edge_path(out, ctx, e, origin_x, content_origin_y);
+            render_flowchart_edge_path(out, ctx, e, origin_x, content_origin_y, &mut scratch);
         }
         out.push_str("</g>");
     }
@@ -2240,12 +2257,13 @@ pub(super) fn flowchart_edge_path_d_for_bbox(
     Some(d)
 }
 
-pub(super) fn render_flowchart_edge_path(
+fn render_flowchart_edge_path(
     out: &mut String,
     ctx: &FlowchartRenderCtx<'_>,
     edge: &crate::flowchart::FlowEdge,
     origin_x: f64,
     origin_y: f64,
+    scratch: &mut FlowchartEdgeDataPointsScratch,
 ) {
     let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()) else {
         return;
@@ -4596,8 +4614,11 @@ pub(super) fn render_flowchart_edge_path(
         }
     }
 
-    let points_b64 = base64::engine::general_purpose::STANDARD
-        .encode(json_stringify_points(&points_for_data_points));
+    scratch.json.clear();
+    json_stringify_points_into(&mut scratch.json, &points_for_data_points, &mut scratch.ryu);
+    scratch.b64.clear();
+    base64::engine::general_purpose::STANDARD
+        .encode_string(scratch.json.as_bytes(), &mut scratch.b64);
 
     let mut merged_styles: Vec<String> = Vec::new();
     merged_styles.extend(ctx.default_edge_style.iter().cloned());
@@ -4644,7 +4665,7 @@ pub(super) fn render_flowchart_edge_path(
         escape_xml_display(&class_attr),
         escape_xml_display(&style_attr_value),
         escape_xml_display(&edge.id),
-        escape_xml_display(&points_b64),
+        escape_xml_display(&scratch.b64),
         marker_start_attr,
         marker_end_attr
     );

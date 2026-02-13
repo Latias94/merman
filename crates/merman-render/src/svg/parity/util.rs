@@ -258,31 +258,39 @@ pub(super) fn json_stringify_points(points: &[crate::model::LayoutPoint]) -> Str
     // For strict SVG XML parity we must also match V8's number-to-string behavior, including
     // tie-breaking cases where Rust's default float formatting can pick a different shortest
     // round-trippable decimal (e.g. `...0312` vs `...0313`).
-    fn js_number_to_string(mut v: f64, buf: &mut ryu_js::Buffer) -> &str {
-        if !v.is_finite() {
-            return "0";
-        }
-        if v == -0.0 {
-            v = 0.0;
-        }
-        buf.format_finite(v)
-    }
-
     let mut out = String::new();
-    out.push('[');
     let mut buf = ryu_js::Buffer::new();
+    json_stringify_points_into(&mut out, points, &mut buf);
+    out
+}
+
+pub(super) fn json_stringify_points_into(
+    out: &mut String,
+    points: &[crate::model::LayoutPoint],
+    buf: &mut ryu_js::Buffer,
+) {
+    out.push('[');
     for (i, p) in points.iter().enumerate() {
         if i > 0 {
             out.push(',');
         }
         out.push_str(r#"{"x":"#);
-        out.push_str(js_number_to_string(p.x, &mut buf));
+        out.push_str(js_number_to_string(p.x, buf));
         out.push_str(r#","y":"#);
-        out.push_str(js_number_to_string(p.y, &mut buf));
+        out.push_str(js_number_to_string(p.y, buf));
         out.push('}');
     }
     out.push(']');
-    out
+}
+
+fn js_number_to_string(mut v: f64, buf: &mut ryu_js::Buffer) -> &str {
+    if !v.is_finite() {
+        return "0";
+    }
+    if v == -0.0 {
+        v = 0.0;
+    }
+    buf.format_finite(v)
 }
 
 pub(super) fn fmt_max_width_px(v: f64) -> String {
