@@ -1,0 +1,93 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "nodes": [
+        {
+          "id": "NotShooting",
+          "x": 54.438,
+          "y": 123.0,
+          "width": 130.563,
+          "height": 230.0,
+          "is_cluster": true
+        },
+        {
+          "id": "a",
+          "x": 54.438,
+          "y": 65.5,
+          "width": 22.875,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "b",
+          "x": 54.438,
+          "y": 180.5,
+          "width": 22.875,
+          "height": 40.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge0",
+          "from": "a",
+          "to": "b",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 54.938,
+              "y": 86.0
+            },
+            {
+              "x": 54.438,
+              "y": 123.0
+            },
+            {
+              "x": 54.938,
+              "y": 161.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "NotShooting",
+          "x": 54.438,
+          "y": 123.0,
+          "width": 130.563,
+          "height": 230.0,
+          "diff": -8.0,
+          "offset_y": 20.0,
+          "title": "Long state name 2",
+          "title_label": {
+            "x": 54.438,
+            "y": 21.0,
+            "width": 122.563,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": -10.844,
+        "min_y": 8.0,
+        "max_x": 119.719,
+        "max_y": 238.0
+      }
+    }
+  }
+}
