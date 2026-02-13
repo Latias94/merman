@@ -165,13 +165,17 @@ fn bench_parse(c: &mut Criterion) {
     for (name, input) in fixtures() {
         // Skip fixtures that are not yet supported by `merman` to keep the bench runnable while
         // we expand coverage. Unsupported fixtures should be tracked separately as parity work.
-        if engine.parse_diagram_sync(input, parse_opts).is_err() {
+        if engine
+            .parse_diagram_for_render_model_sync(input, parse_opts)
+            .is_err()
+        {
             eprintln!("[bench][skip][parse] {name}: parse error");
             continue;
         }
         group.bench_with_input(BenchmarkId::from_parameter(name), input, |b, data| {
             b.iter(|| {
-                let parsed = engine.parse_diagram_sync(black_box(data), parse_opts);
+                let parsed =
+                    engine.parse_diagram_for_render_model_sync(black_box(data), parse_opts);
                 let parsed = match parsed {
                     Ok(v) => v,
                     Err(_) => return,
@@ -232,7 +236,7 @@ fn bench_layout(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("layout");
     for (name, input) in fixtures() {
-        let parsed = match engine.parse_diagram_sync(input, parse_opts) {
+        let parsed = match engine.parse_diagram_for_render_model_sync(input, parse_opts) {
             Ok(Some(v)) => v,
             Ok(None) => continue,
             Err(_) => {
@@ -242,7 +246,7 @@ fn bench_layout(c: &mut Criterion) {
         };
 
         // Pre-check that layout works.
-        if merman_render::layout_parsed_layout_only(&parsed, &layout).is_err() {
+        if merman_render::layout_parsed_render_layout_only(&parsed, &layout).is_err() {
             eprintln!("[bench][skip][layout] {name}: layout error");
             continue;
         }
@@ -250,7 +254,8 @@ fn bench_layout(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(name), &parsed, |b, data| {
             b.iter(|| {
                 let diagram =
-                    match merman_render::layout_parsed_layout_only(black_box(data), &layout) {
+                    match merman_render::layout_parsed_render_layout_only(black_box(data), &layout)
+                    {
                         Ok(v) => v,
                         Err(_) => return,
                     };
@@ -268,7 +273,7 @@ fn bench_render(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("render");
     for (name, input) in fixtures() {
-        let parsed = match engine.parse_diagram_sync(input, parse_opts) {
+        let parsed = match engine.parse_diagram_for_render_model_sync(input, parse_opts) {
             Ok(Some(v)) => v,
             Ok(None) => continue,
             Err(_) => {
@@ -276,7 +281,7 @@ fn bench_render(c: &mut Criterion) {
                 continue;
             }
         };
-        let diagram = match merman_render::layout_parsed(&parsed, &layout) {
+        let layouted = match merman_render::layout_parsed_render_layout_only(&parsed, &layout) {
             Ok(v) => v,
             Err(_) => {
                 eprintln!("[bench][skip][render] {name}: layout error");
@@ -290,15 +295,27 @@ fn bench_render(c: &mut Criterion) {
         };
 
         // Pre-check that SVG rendering works.
-        if render_layouted_svg(&diagram, layout.text_measurer.as_ref(), &svg_opts).is_err() {
+        if merman_render::svg::render_layout_svg_parts_for_render_model(
+            &layouted,
+            &parsed.model,
+            parsed.meta.effective_config.as_value(),
+            parsed.meta.title.as_deref(),
+            layout.text_measurer.as_ref(),
+            &svg_opts,
+        )
+        .is_err()
+        {
             eprintln!("[bench][skip][render] {name}: svg render error");
             continue;
         }
 
-        group.bench_with_input(BenchmarkId::from_parameter(name), &diagram, |b, data| {
+        group.bench_with_input(BenchmarkId::from_parameter(name), &layouted, |b, data| {
             b.iter(|| {
-                let svg = match render_layouted_svg(
+                let svg = match merman_render::svg::render_layout_svg_parts_for_render_model(
                     black_box(data),
+                    &parsed.model,
+                    parsed.meta.effective_config.as_value(),
+                    parsed.meta.title.as_deref(),
                     layout.text_measurer.as_ref(),
                     &svg_opts,
                 ) {
