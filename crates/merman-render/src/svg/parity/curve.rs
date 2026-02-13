@@ -514,3 +514,190 @@ pub(super) fn curve_cardinal_path_d(points: &[crate::model::LayoutPoint], tensio
 
     out
 }
+
+// Ported from D3 `curveBumpY` (d3-shape v3.x).
+//
+// This is used by Mermaid flowchart edge-id curve overrides (e.g. `e1@{ curve: bumpY }`).
+pub(super) fn curve_bump_y_path_d(points: &[crate::model::LayoutPoint]) -> String {
+    let mut out = String::new();
+    let Some(first) = points.first() else {
+        return out;
+    };
+
+    let mut x0 = first.x;
+    let mut y0 = first.y;
+    let _ = write!(&mut out, "M{},{}", fmt_path(x0), fmt_path(y0));
+
+    for p in points.iter().skip(1) {
+        let x = p.x;
+        let y = p.y;
+        let y_mid = (y0 + y) / 2.0;
+        let _ = write!(
+            &mut out,
+            "C{},{},{},{},{},{}",
+            fmt_path(x0),
+            fmt_path(y_mid),
+            fmt_path(x),
+            fmt_path(y_mid),
+            fmt_path(x),
+            fmt_path(y)
+        );
+        x0 = x;
+        y0 = y;
+    }
+
+    out
+}
+
+// Ported from D3 `curveCatmullRom` (d3-shape v3.x), with the default alpha=0.5.
+//
+// This is used by Mermaid flowchart edge-id curve overrides (e.g. `e1@{ curve: catmullRom }`).
+pub(super) fn curve_catmull_rom_path_d(points: &[crate::model::LayoutPoint]) -> String {
+    curve_catmull_rom_path_d_with_alpha(points, 0.5)
+}
+
+fn curve_catmull_rom_path_d_with_alpha(points: &[crate::model::LayoutPoint], alpha: f64) -> String {
+    const EPSILON: f64 = 1e-12;
+
+    #[derive(Debug, Clone, Copy)]
+    struct CatmullRomState {
+        alpha: f64,
+        point_state: u8,
+        x0: f64,
+        y0: f64,
+        x1: f64,
+        y1: f64,
+        x2: f64,
+        y2: f64,
+        l01_a: f64,
+        l12_a: f64,
+        l23_a: f64,
+        l01_2a: f64,
+        l12_2a: f64,
+        l23_2a: f64,
+    }
+
+    impl CatmullRomState {
+        fn new(alpha: f64) -> Self {
+            Self {
+                alpha,
+                point_state: 0,
+                x0: f64::NAN,
+                y0: f64::NAN,
+                x1: f64::NAN,
+                y1: f64::NAN,
+                x2: f64::NAN,
+                y2: f64::NAN,
+                l01_a: 0.0,
+                l12_a: 0.0,
+                l23_a: 0.0,
+                l01_2a: 0.0,
+                l12_2a: 0.0,
+                l23_2a: 0.0,
+            }
+        }
+
+        fn emit_segment(&self, out: &mut String, x: f64, y: f64) {
+            let mut x1 = self.x1;
+            let mut y1 = self.y1;
+            let mut x2 = self.x2;
+            let mut y2 = self.y2;
+
+            if self.l01_a > EPSILON {
+                let a = 2.0 * self.l01_2a + 3.0 * self.l01_a * self.l12_a + self.l12_2a;
+                let n = 3.0 * self.l01_a * (self.l01_a + self.l12_a);
+                if n != 0.0 && n.is_finite() {
+                    x1 = (x1 * a - self.x0 * self.l12_2a + self.x2 * self.l01_2a) / n;
+                    y1 = (y1 * a - self.y0 * self.l12_2a + self.y2 * self.l01_2a) / n;
+                }
+            }
+
+            if self.l23_a > EPSILON {
+                let b = 2.0 * self.l23_2a + 3.0 * self.l23_a * self.l12_a + self.l12_2a;
+                let m = 3.0 * self.l23_a * (self.l23_a + self.l12_a);
+                if m != 0.0 && m.is_finite() {
+                    // Note: D3 uses the original (unadjusted) `_x1/_y1` here.
+                    x2 = (x2 * b + self.x1 * self.l23_2a - x * self.l12_2a) / m;
+                    y2 = (y2 * b + self.y1 * self.l23_2a - y * self.l12_2a) / m;
+                }
+            }
+
+            let _ = write!(
+                out,
+                "C{},{},{},{},{},{}",
+                fmt_path(x1),
+                fmt_path(y1),
+                fmt_path(x2),
+                fmt_path(y2),
+                fmt_path(self.x2),
+                fmt_path(self.y2)
+            );
+        }
+
+        fn point(&mut self, out: &mut String, x: f64, y: f64) {
+            if self.point_state != 0 {
+                let dx = self.x2 - x;
+                let dy = self.y2 - y;
+                self.l23_2a = (dx * dx + dy * dy).powf(self.alpha);
+                self.l23_a = self.l23_2a.sqrt();
+            }
+
+            match self.point_state {
+                0 => {
+                    self.point_state = 1;
+                    let _ = write!(out, "M{},{}", fmt_path(x), fmt_path(y));
+                }
+                1 => {
+                    self.point_state = 2;
+                }
+                2 => {
+                    self.point_state = 3;
+                    self.emit_segment(out, x, y);
+                }
+                _ => {
+                    self.emit_segment(out, x, y);
+                }
+            }
+
+            self.l01_a = self.l12_a;
+            self.l12_a = self.l23_a;
+            self.l01_2a = self.l12_2a;
+            self.l12_2a = self.l23_2a;
+
+            self.x0 = self.x1;
+            self.x1 = self.x2;
+            self.x2 = x;
+            self.y0 = self.y1;
+            self.y1 = self.y2;
+            self.y2 = y;
+        }
+
+        fn line_end(&mut self, out: &mut String) {
+            match self.point_state {
+                2 => {
+                    let _ = write!(out, "L{},{}", fmt_path(self.x2), fmt_path(self.y2));
+                }
+                3 => {
+                    // Mirror D3's `lineEnd` behavior: `this.point(this._x2, this._y2)`.
+                    self.l23_a = 0.0;
+                    self.l23_2a = 0.0;
+                    self.emit_segment(out, self.x2, self.y2);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let mut out = String::new();
+    if points.is_empty() {
+        return out;
+    }
+
+    let mut state = CatmullRomState::new(alpha);
+    for p in points {
+        state.point(&mut out, p.x, p.y);
+    }
+    state.line_end(&mut out);
+
+    out
+}
