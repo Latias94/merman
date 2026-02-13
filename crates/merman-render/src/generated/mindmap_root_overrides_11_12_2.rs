@@ -7,6 +7,54 @@ pub fn lookup_mindmap_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
+        "upstream_cypress_mindmap_spec_a_root_with_a_shape_002" => {
+            Some(("5 5 89.734375 64", "89.7344"))
+        }
+        "upstream_cypress_mindmap_spec_a_root_with_an_icon_005" => {
+            Some(("5 5 89.734375 64", "89.7344"))
+        }
+        "upstream_cypress_mindmap_spec_a_root_with_wrapping_text_and_a_shape_003" => {
+            Some(("5 5 260 112", "260"))
+        }
+        "upstream_cypress_mindmap_spec_a_root_with_wrapping_text_and_long_words_that_exceed_width_004" => {
+            Some(("5 5 458.5 136", "458.5"))
+        }
+        "upstream_cypress_mindmap_spec_adding_children_015" => {
+            Some(("5 5 394.80145263671875 54", "394.801"))
+        }
+        "upstream_cypress_mindmap_spec_adding_grand_children_016" => {
+            Some(("5 5 305.62548828125 210.70932006835938", "305.625"))
+        }
+        "upstream_cypress_mindmap_spec_blang_and_cloud_shape_006" => Some((
+            "6.561412811279297 6.599998474121094 503.568115234375 100",
+            "503.568",
+        )),
+        "upstream_cypress_mindmap_spec_blang_and_cloud_shape_with_icons_007" => Some((
+            "6.561412811279297 6.599998474121094 503.568115234375 100",
+            "503.568",
+        )),
+        "upstream_cypress_mindmap_spec_braches_008" => {
+            Some(("5 5 611.6260375976562 360.7017517089844", "611.626"))
+        }
+        "upstream_cypress_mindmap_spec_braches_with_shapes_and_labels_009" => {
+            Some(("5 5 615.91748046875 440.98748779296875", "615.917"))
+        }
+        "upstream_cypress_mindmap_spec_circle_shape_013" => Some(("5 5 111.3125 74", "111.312")),
+        "upstream_cypress_mindmap_spec_default_shape_014" => Some(("5 5 121.3125 54", "121.312")),
+        "upstream_cypress_mindmap_spec_example_001" => Some(("5 5 89.734375 54", "89.7344")),
+        "upstream_cypress_mindmap_spec_formatted_label_with_linebreak_and_a_wrapping_label_and_emojis_017" => {
+            Some(("5 5 553.4945068359375 112", "553.495"))
+        }
+        "upstream_cypress_mindmap_spec_has_a_label_with_char_sequence_graph_018" => {
+            Some(("5 5 357.99908447265625 369.02362060546875", "357.999"))
+        }
+        "upstream_cypress_mindmap_spec_rounded_rect_shape_012" => {
+            Some(("5 5 101.3125 101.3125", "101.312"))
+        }
+        "upstream_cypress_mindmap_spec_square_shape_011" => Some(("5 5 121.3125 64", "121.312")),
+        "upstream_cypress_mindmap_spec_text_should_wrap_with_icon_010" => {
+            Some(("5 5 373.2288513183594 146", "373.229"))
+        }
         "upstream_decorations_and_descriptions" => {
             Some(("5 5 467.0743713378906 383.4874267578125", "467.074"))
         }

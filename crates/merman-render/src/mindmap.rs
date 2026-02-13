@@ -86,7 +86,8 @@ fn mindmap_label_bbox_px(
     //
     // Mirror that by measuring with an explicit max width in HTML-like mode.
     let max_node_width_px = max_node_width_px.max(1.0);
-    let m = if label_type == "markdown" {
+
+    let wrapped = if label_type == "markdown" {
         crate::text::measure_markdown_with_flowchart_bold_deltas(
             measurer,
             text,
@@ -97,7 +98,28 @@ fn mindmap_label_bbox_px(
     } else {
         measurer.measure_wrapped(text, style, Some(max_node_width_px), WrapMode::HtmlLike)
     };
-    (m.width.max(0.0), m.height.max(0.0))
+
+    // Mermaid mindmap labels can overflow the configured `maxNodeWidth` when they contain long
+    // unbreakable tokens. Upstream measures these via DOM in a way that resembles `scrollWidth`,
+    // so keep the larger of:
+    // - the wrapped layout width (clamped by `max-width`), and
+    // - the unwrapped overflow width (ignores `max-width`).
+    let unwrapped = if label_type == "markdown" {
+        crate::text::measure_markdown_with_flowchart_bold_deltas(
+            measurer,
+            text,
+            style,
+            None,
+            WrapMode::HtmlLike,
+        )
+    } else {
+        measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike)
+    };
+
+    (
+        wrapped.width.max(unwrapped.width).max(0.0),
+        wrapped.height.max(0.0),
+    )
 }
 
 fn mindmap_node_dimensions_px(
