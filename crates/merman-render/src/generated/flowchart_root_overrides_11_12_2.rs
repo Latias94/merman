@@ -149,6 +149,19 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_docs_configuration_frontmatter_config_001" => {
             Some(("0 -50 117.34375 224", "117.344"))
         }
+        "upstream_cypress_flowchart_handdrawn_spec_fdh21_render_cylindrical_shape_021" => Some((
+            "0 0.000003814697265625 769.890625 341.0105285644531",
+            "769.891",
+        )),
+        "upstream_cypress_flowchart_handdrawn_spec_fhd12_should_render_a_flowchart_with_long_names_and_class_defini_012" => {
+            Some(("0 0 1806.8125 452", "1806.81"))
+        }
+        "upstream_cypress_flowchart_handdrawn_spec_fhd6_should_render_a_flowchart_full_of_circles_006" => {
+            Some(("0 -45 2400.640625 645", "2400.64"))
+        }
+        "upstream_cypress_flowchart_handdrawn_spec_fhd7_should_render_a_flowchart_full_of_icons_007" => {
+            Some(("0 0 2004.41015625 1046", "2004.41"))
+        }
         _ => None,
     }
 }

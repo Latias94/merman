@@ -27,6 +27,32 @@ are parity-gated against upstream SVG baselines:
 
 Reference: `docs/alignment/EXTERNAL_FIXTURES.md`.
 
+## Cypress rendering specs
+
+Source: `repo-ref/mermaid/cypress/integration/rendering/*flowchart*.spec.*`
+
+These fixtures are imported from Mermaid's Cypress rendering tests and are parity-gated against
+upstream SVG baselines:
+
+- `fixtures/flowchart/upstream_cypress_appli_spec_should_render_subgraphs_with_title_margins_and_edge_labels_002.mmd`
+- `fixtures/flowchart/upstream_cypress_conf_and_directives_spec_theme_from_initialize_frontmatter_overriding_theme_variable_dire_010.mmd`
+- `fixtures/flowchart/upstream_cypress_flowchart_handdrawn_spec_fdh21_render_cylindrical_shape_021.mmd`
+- `fixtures/flowchart/upstream_cypress_flowchart_handdrawn_spec_fdh30_possibility_to_style_text_color_of_nodes_and_subgraphs_as_030.mmd`
+- `fixtures/flowchart/upstream_cypress_flowchart_handdrawn_spec_fdh41_handle_styling_for_all_node_shapes_039.mmd`
+- `fixtures/flowchart/upstream_cypress_flowchart_handdrawn_spec_fdh44_fontawesome_icons_in_edge_labels_042.mmd`
+- `fixtures/flowchart/upstream_cypress_flowchart_handdrawn_spec_fhd12_should_render_a_flowchart_with_long_names_and_class_defini_012.mmd`
+- `fixtures/flowchart/upstream_cypress_flowchart_handdrawn_spec_fhd6_should_render_a_flowchart_full_of_circles_006.mmd`
+- `fixtures/flowchart/upstream_cypress_flowchart_handdrawn_spec_fhd7_should_render_a_flowchart_full_of_icons_007.mmd`
+- `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_53_handle_nested_subgraphs_with_edges_in_and_out_011.mmd`
+- `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_59_handle_styling_of_subgraphs_and_links_019.mmd`
+- `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_60_handle_styling_for_all_node_shapes_v2_020.mmd`
+- `fixtures/flowchart/upstream_cypress_flowchart_v2_spec_62_should_render_styled_subgraphs_022.mmd`
+- `fixtures/flowchart/upstream_cypress_theme_spec_should_render_a_flowchart_diagram_004.mmd`
+
+Deferred (not parity-gated yet):
+
+- `layout: elk` fixtures (requires ELK layout parity support): `fixtures/_deferred/flowchart/upstream_cypress_flowchart_elk_spec_*.mmd`
+
 ## Docs-derived parser+render fixtures
 
 Source: `repo-ref/mermaid/docs/syntax/flowchart.md`
