@@ -1,0 +1,84 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "nodes": [
+        {
+          "id": "C",
+          "x": 90.797,
+          "y": 115.5,
+          "width": 25.594,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Parent",
+          "x": 90.797,
+          "y": 115.5,
+          "width": 95.594,
+          "height": 140.0,
+          "is_cluster": true
+        },
+        {
+          "id": "PilotCockpit",
+          "x": 90.797,
+          "y": 115.5,
+          "width": 165.594,
+          "height": 215.0,
+          "is_cluster": true
+        }
+      ],
+      "edges": [],
+      "clusters": [
+        {
+          "id": "Parent",
+          "x": 90.797,
+          "y": 115.5,
+          "width": 95.594,
+          "height": 140.0,
+          "diff": -8.0,
+          "offset_y": 20.0,
+          "title": "Parent",
+          "title_label": {
+            "x": 90.797,
+            "y": 58.5,
+            "width": 44.0,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "PilotCockpit",
+          "x": 90.797,
+          "y": 115.5,
+          "width": 165.594,
+          "height": 215.0,
+          "diff": -8.0,
+          "offset_y": 20.0,
+          "title": "PilotCockpit",
+          "title_label": {
+            "x": 90.797,
+            "y": 21.0,
+            "width": 82.719,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 173.594,
+        "max_y": 223.0
+      }
+    }
+  }
+}

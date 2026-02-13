@@ -117,18 +117,22 @@ Statement: Stmt = {
   <descr:StateDescr> "as" <id:Id> <doc:OptBlock> => {
     let trimmed = descr.trim().to_string();
     let mut state_id = id;
-    let mut description = trimmed;
+    let description = trimmed;
+    let mut descriptions: Vec<String> = Vec::new();
     if let Some((a, b)) = state_id
       .split_once(':')
       .map(|(a, b)| (a.to_string(), b.to_string())) {
       state_id = a;
-      description = format!("{description} {b}");
+      let extra = b.trim();
+      if !extra.is_empty() {
+        descriptions.push(extra.to_string());
+      }
     }
     Stmt::State(StateStmt {
       id: state_id,
       ty: "default".to_string(),
       description: Some(description),
-      descriptions: Vec::new(),
+      descriptions,
       doc,
       note: None,
       classes: Vec::new(),

@@ -1,0 +1,97 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "nodes": [
+        {
+          "id": "State1",
+          "x": 158.0,
+          "y": 28.0,
+          "width": 160.0,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "State1----note-0",
+          "x": 158.0,
+          "y": 174.0,
+          "width": 230.0,
+          "height": 102.0,
+          "is_cluster": false
+        },
+        {
+          "id": "State1----parent",
+          "x": 158.0,
+          "y": 174.0,
+          "width": 300.0,
+          "height": 152.0,
+          "is_cluster": true
+        }
+      ],
+      "edges": [
+        {
+          "id": "State1-State1----note-0",
+          "from": "State1",
+          "to": "State1----note-0",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 158.5,
+              "y": 48.5
+            },
+            {
+              "x": 158.0,
+              "y": 73.0
+            },
+            {
+              "x": 158.0,
+              "y": 98.0
+            },
+            {
+              "x": 158.0,
+              "y": 174.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "State1----parent",
+          "x": 158.0,
+          "y": 174.0,
+          "width": 300.0,
+          "height": 152.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
+          "title": "Important information! You can write\nnotes.",
+          "title_label": {
+            "x": 158.0,
+            "y": 123.0,
+            "width": 254.234,
+            "height": 48.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 16.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 308.0,
+        "max_y": 250.0
+      }
+    }
+  }
+}

@@ -111,7 +111,7 @@ Source: `repo-ref/mermaid/cypress/integration/rendering/`
 These fixtures are extracted from Cypress browser rendering specs (`imgSnapshotTest` / `renderGraph`)
 and are parity-gated against upstream SVG baselines:
 
-- Imported fixtures: `fixtures/state/upstream_cypress_*.mmd` (27 fixtures)
+- Imported fixtures: `fixtures/state/upstream_cypress_*.mmd` (62 fixtures)
 - Import tool: `cargo run -p xtask -- import-upstream-cypress --diagram state`
 - Baselines: `cargo run -p xtask -- gen-upstream-svgs --diagram state --filter upstream_cypress_`
 

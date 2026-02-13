@@ -100,6 +100,51 @@ pub fn lookup_state_root_viewport_override(
         "upstream_stateDiagram_v2_state_definition_with_quotes_spec" => {
             Some(("0 0 516.3033142089844 946.25", "516.303"))
         }
+        "upstream_cypress_statediagram_spec_should_handle_multiline_notes_with_different_line_breaks_010" => {
+            Some(("0 0 154.53125 306", "154.531"))
+        }
+        "upstream_cypress_statediagram_spec_should_render_a_long_descriptions_with_additional_descriptions_003" => {
+            Some(("0 0 142.171875 135", "142.172"))
+        }
+        "upstream_cypress_statediagram_spec_should_render_a_single_state_with_short_descriptions_004" => {
+            Some(("0 0 229.765625 56", "229.766"))
+        }
+        "upstream_cypress_statediagram_spec_should_render_state_descriptions_014" => {
+            Some(("0 0 245.984375 161", "245.984"))
+        }
+        "upstream_cypress_statediagram_v2_spec_1433_should_render_a_simple_state_diagram_with_a_title_037" => {
+            Some(("-53.671875 -50 185.30078125 234", "185.301"))
+        }
+        "upstream_cypress_statediagram_v2_spec_can_have_styles_applied_034" => {
+            Some(("0 0 78.953125 56", "78.9531"))
+        }
+        "upstream_cypress_statediagram_v2_spec_should_let_styles_take_precedence_over_classes_035" => {
+            Some(("0 0 294.359375 56", "294.359"))
+        }
+        "upstream_cypress_statediagram_v2_spec_v2_should_handle_multiple_notes_added_to_one_state_028" => {
+            Some(("0 0 314.5625 314", "314.562"))
+        }
+        "upstream_cypress_statediagram_v2_spec_v2_should_render_a_long_descriptions_with_additional_description_004" => {
+            Some(("0 0 142.171875 135", "142.172"))
+        }
+        "upstream_cypress_statediagram_v2_spec_v2_should_render_a_single_state_with_short_descriptions_005" => {
+            Some(("0 0 229.765625 56", "229.766"))
+        }
+        "upstream_cypress_statediagram_v2_spec_v2_should_render_a_state_diagram_and_set_the_correct_length_of_t_031" => {
+            Some(("0 0 136.46875 298", "136.469"))
+        }
+        "upstream_cypress_statediagram_v2_spec_v2_should_render_state_descriptions_015" => {
+            Some(("0 0 245.984375 161", "245.984"))
+        }
+        "upstream_cypress_statediagram_v2_spec_v2_state_label_with_names_in_it_025" => {
+            Some(("0 0 225.921875 120", "225.922"))
+        }
+        "upstream_cypress_statediagram_v2_spec_v2_states_can_have_a_class_applied_032" => {
+            Some(("0 0 136.46875 298", "136.469"))
+        }
+        "upstream_cypress_statediagram_v2_spec_v2_width_of_compound_state_should_grow_with_title_if_title_is_wi_024" => {
+            Some(("0 0 156.765625 246", "156.766"))
+        }
         _ => None,
     }
 }
