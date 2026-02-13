@@ -2260,6 +2260,8 @@ pub(super) fn flowchart_edge_path_d_for_bbox(
     let d = match interpolate {
         "linear" => curve_linear_path_d(&line_data),
         "natural" => curve_natural_path_d(&line_data),
+        "bumpY" => curve_bump_y_path_d(&line_data),
+        "catmullRom" => curve_catmull_rom_path_d(&line_data),
         "step" => curve_step_path_d(&line_data),
         "stepAfter" => curve_step_after_path_d(&line_data),
         "stepBefore" => curve_step_before_path_d(&line_data),
@@ -4546,6 +4548,8 @@ fn render_flowchart_edge_path(
     let mut d = match interpolate {
         "linear" => curve_linear_path_d(&line_data),
         "natural" => curve_natural_path_d(&line_data),
+        "bumpY" => curve_bump_y_path_d(&line_data),
+        "catmullRom" => curve_catmull_rom_path_d(&line_data),
         "step" => curve_step_path_d(&line_data),
         "stepAfter" => curve_step_after_path_d(&line_data),
         "stepBefore" => curve_step_before_path_d(&line_data),

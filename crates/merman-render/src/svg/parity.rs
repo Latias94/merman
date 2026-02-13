@@ -662,6 +662,16 @@ fn curve_natural_path_d(points: &[crate::model::LayoutPoint]) -> String {
     curve::curve_natural_path_d(points)
 }
 
+// Ported from D3 `curveBumpY` (d3-shape v3.x).
+fn curve_bump_y_path_d(points: &[crate::model::LayoutPoint]) -> String {
+    curve::curve_bump_y_path_d(points)
+}
+
+// Ported from D3 `curveCatmullRom` (d3-shape v3.x), with the default alpha=0.5.
+fn curve_catmull_rom_path_d(points: &[crate::model::LayoutPoint]) -> String {
+    curve::curve_catmull_rom_path_d(points)
+}
+
 // Ported from D3 `curveStepAfter` (d3-shape v3.x).
 fn curve_step_after_path_d(points: &[crate::model::LayoutPoint]) -> String {
     curve::curve_step_after_path_d(points)
