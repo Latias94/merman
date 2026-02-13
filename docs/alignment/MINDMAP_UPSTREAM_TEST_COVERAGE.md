@@ -86,3 +86,28 @@ Source: `repo-ref/mermaid/packages/mermaid/src/docs/config/tidy-tree.md`
   `fixtures/mindmap/upstream_docs_tidy_tree_example_usage_001.mmd`
 - tidy-tree layout example (nested + icons + `<br/>`):
   `fixtures/mindmap/upstream_docs_tidy_tree_example_usage_002.mmd`
+
+## Cypress rendering fixtures
+
+Source: `repo-ref/mermaid/cypress/integration/rendering/mindmap.spec.ts`
+
+These fixtures are parity-gated against upstream SVG baselines (DOM parity, root viewport mode):
+
+- `fixtures/mindmap/upstream_cypress_mindmap_spec_example_001.mmd`
+- `fixtures/mindmap/upstream_cypress_mindmap_spec_a_root_with_a_shape_002.mmd`
+- `fixtures/mindmap/upstream_cypress_mindmap_spec_a_root_with_wrapping_text_and_a_shape_003.mmd`
+- `fixtures/mindmap/upstream_cypress_mindmap_spec_a_root_with_wrapping_text_and_long_words_that_exceed_width_004.mmd`
+- `fixtures/mindmap/upstream_cypress_mindmap_spec_a_root_with_an_icon_005.mmd`
+- `fixtures/mindmap/upstream_cypress_mindmap_spec_blang_and_cloud_shape_006.mmd`
+- `fixtures/mindmap/upstream_cypress_mindmap_spec_blang_and_cloud_shape_with_icons_007.mmd`
+- `fixtures/mindmap/upstream_cypress_mindmap_spec_braches_008.mmd`
+- `fixtures/mindmap/upstream_cypress_mindmap_spec_braches_with_shapes_and_labels_009.mmd`
+- `fixtures/mindmap/upstream_cypress_mindmap_spec_text_should_wrap_with_icon_010.mmd`
+- `fixtures/mindmap/upstream_cypress_mindmap_spec_square_shape_011.mmd`
+- `fixtures/mindmap/upstream_cypress_mindmap_spec_rounded_rect_shape_012.mmd`
+- `fixtures/mindmap/upstream_cypress_mindmap_spec_circle_shape_013.mmd`
+- `fixtures/mindmap/upstream_cypress_mindmap_spec_default_shape_014.mmd`
+- `fixtures/mindmap/upstream_cypress_mindmap_spec_adding_children_015.mmd`
+- `fixtures/mindmap/upstream_cypress_mindmap_spec_adding_grand_children_016.mmd`
+- `fixtures/mindmap/upstream_cypress_mindmap_spec_formatted_label_with_linebreak_and_a_wrapping_label_and_emojis_017.mmd`
+- `fixtures/mindmap/upstream_cypress_mindmap_spec_has_a_label_with_char_sequence_graph_018.mmd`

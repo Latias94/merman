@@ -22,3 +22,5 @@
 /fixtures/upstream-svgs/**/upstream_docs_examples_*.svg
 
 __pycache__/
+# Local deferred fixtures (kept for investigation; not part of the committed fixture corpus).
+/fixtures/_deferred/

@@ -2678,6 +2678,27 @@ impl TextMeasurer for DeterministicTextMeasurer {
         max_width: Option<f64>,
         wrap_mode: WrapMode,
     ) -> TextMetrics {
+        self.measure_wrapped_impl(text, style, max_width, wrap_mode, true)
+    }
+
+    fn measure_svg_simple_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        let t = text.trim_end();
+        if t.is_empty() {
+            return 0.0;
+        }
+        (style.font_size.max(1.0) * 1.1).max(0.0)
+    }
+}
+
+impl DeterministicTextMeasurer {
+    fn measure_wrapped_impl(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+        clamp_html_width: bool,
+    ) -> TextMetrics {
         let uses_heuristic_widths = self.char_width_factor == 0.0;
         let char_width_factor = if uses_heuristic_widths {
             match wrap_mode {
@@ -2737,7 +2758,7 @@ impl TextMeasurer for DeterministicTextMeasurer {
         // Mermaid HTML labels use `max-width` and can visually overflow for long words, but their
         // layout width is effectively clamped to the max width. Mirror this to avoid explosive
         // headless widths when `htmlLabels=true`.
-        if wrap_mode == WrapMode::HtmlLike {
+        if clamp_html_width && wrap_mode == WrapMode::HtmlLike {
             if let Some(w) = max_width {
                 if needs_wrap {
                     width = w;
@@ -2752,14 +2773,6 @@ impl TextMeasurer for DeterministicTextMeasurer {
             height,
             line_count: lines.len(),
         }
-    }
-
-    fn measure_svg_simple_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
-        let t = text.trim_end();
-        if t.is_empty() {
-            return 0.0;
-        }
-        (style.font_size.max(1.0) * 1.1).max(0.0)
     }
 }
 

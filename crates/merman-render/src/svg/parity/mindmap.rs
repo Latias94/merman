@@ -225,6 +225,17 @@ pub(super) fn render_mindmap_diagram_svg(
                 .replace("<br/>", "<br />")
                 .trim()
                 .to_string()
+        } else if text.contains('\n') || text.contains('\r') {
+            // Mermaid's Cypress mindmap fixtures include multi-line labels inside node delimiters
+            // (e.g. `root((\n  The root\n))`). Upstream preserves the raw whitespace/newlines as
+            // a text node (no `<p>...</p>` wrapper) unless the label intentionally includes a
+            // backtick snippet (which upstream keeps inside a `<p>` node).
+            if text.contains('`') {
+                let text = text.replace("<br>", "<br />").replace("<br/>", "<br />");
+                format!("<p>{}</p>", escape_xml(&text))
+            } else {
+                escape_xml(text)
+            }
         } else {
             let text = text
                 .replace("<br>", "<br />")

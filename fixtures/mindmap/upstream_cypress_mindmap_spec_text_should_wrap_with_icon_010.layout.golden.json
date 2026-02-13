@@ -1,0 +1,58 @@
+{
+  "diagramType": "mindmap",
+  "layout": {
+    "MindmapDiagram": {
+      "nodes": [
+        {
+          "id": "0",
+          "x": 302.16,
+          "y": 78.0,
+          "width": 67.52,
+          "height": 34.0,
+          "is_cluster": false
+        },
+        {
+          "id": "1",
+          "x": 302.16,
+          "y": 78.0,
+          "width": 574.32,
+          "height": 126.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge_0_1",
+          "from": "0",
+          "to": "1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 302.16,
+              "y": 78.0
+            },
+            {
+              "x": 302.16,
+              "y": 78.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "bounds": {
+        "min_x": 15.0,
+        "min_y": 15.0,
+        "max_x": 589.32,
+        "max_y": 141.0
+      }
+    }
+  }
+}
