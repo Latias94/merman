@@ -324,31 +324,8 @@ fn bench_end_to_end(c: &mut Criterion) {
             ..SvgRenderOptions::default()
         };
 
-        // Pre-check end-to-end viability (parse + layout + render) once to keep the bench stable.
-        let parsed = match engine.parse_diagram_sync(input, parse_opts) {
-            Ok(Some(v)) => v,
-            Ok(None) => continue,
-            Err(_) => {
-                eprintln!("[bench][skip][end_to_end] {name}: parse error");
-                continue;
-            }
-        };
-        let diagram = match merman_render::layout_parsed_layout_only(&parsed, &layout) {
-            Ok(v) => v,
-            Err(_) => {
-                eprintln!("[bench][skip][end_to_end] {name}: layout error");
-                continue;
-            }
-        };
-        if merman_render::svg::render_layout_svg_parts(
-            &diagram,
-            &parsed.model,
-            parsed.meta.effective_config.as_value(),
-            parsed.meta.title.as_deref(),
-            layout.text_measurer.as_ref(),
-            &svg_opts,
-        )
-        .is_err()
+        // Pre-check end-to-end viability once to keep the bench stable.
+        if merman::render::render_svg_sync(&engine, input, parse_opts, &layout, &svg_opts).is_err()
         {
             eprintln!("[bench][skip][end_to_end] {name}: svg render error");
             continue;
@@ -358,24 +335,15 @@ fn bench_end_to_end(c: &mut Criterion) {
             b.iter_batched(
                 || data,
                 |text| {
-                    let parsed = match engine.parse_diagram_sync(black_box(text), parse_opts) {
-                        Ok(Some(v)) => v,
-                        Ok(None) => return,
-                        Err(_) => return,
-                    };
-                    let diagram = match merman_render::layout_parsed_layout_only(&parsed, &layout) {
-                        Ok(v) => v,
-                        Err(_) => return,
-                    };
-                    let svg = match merman_render::svg::render_layout_svg_parts(
-                        &diagram,
-                        &parsed.model,
-                        parsed.meta.effective_config.as_value(),
-                        parsed.meta.title.as_deref(),
-                        layout.text_measurer.as_ref(),
+                    let svg = match merman::render::render_svg_sync(
+                        &engine,
+                        black_box(text),
+                        parse_opts,
+                        &layout,
                         &svg_opts,
                     ) {
-                        Ok(v) => v,
+                        Ok(Some(v)) => v,
+                        Ok(None) => return,
                         Err(_) => return,
                     };
                     black_box(svg.len());

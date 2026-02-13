@@ -196,7 +196,7 @@ pub mod render {
         layout_options: &LayoutOptions,
         svg_options: &SvgRenderOptions,
     ) -> Result<Option<String>> {
-        let Some(parsed) = engine.parse_diagram_sync(text, parse_options)? else {
+        let Some(parsed) = engine.parse_diagram_for_render_sync(text, parse_options)? else {
             return Ok(None);
         };
 

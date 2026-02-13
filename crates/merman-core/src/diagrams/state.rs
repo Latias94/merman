@@ -949,6 +949,22 @@ pub fn parse_state(code: &str, meta: &ParseMetadata) -> Result<Value> {
     db.to_model(meta)
 }
 
+pub fn parse_state_for_render(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    let mut doc = state_grammar::RootParser::new()
+        .parse(Lexer::new(code))
+        .map_err(|e| Error::DiagramParse {
+            diagram_type: meta.diagram_type.clone(),
+            message: format!("{e:?}"),
+        })?;
+
+    let mut divider_cnt = 0usize;
+    assign_divider_ids(&mut doc, &mut divider_cnt);
+
+    let mut db = StateDb::new();
+    db.set_root_doc(doc);
+    db.to_model_for_render(meta)
+}
+
 #[derive(Debug, Clone, Default)]
 struct StyleClass {
     id: String,
@@ -1439,6 +1455,76 @@ impl StateDb {
             "accDescr": self.acc_descr,
             "states": Value::Object(states_json),
             "relations": relations_json,
+            "styleClasses": Value::Object(style_classes_json),
+            "links": Value::Object(links_json),
+        }))
+    }
+
+    fn to_model_for_render(&self, meta: &ParseMetadata) -> Result<Value> {
+        let states_json: serde_json::Map<String, Value> = self
+            .state_order
+            .iter()
+            .filter_map(|id| self.states.get(id))
+            .map(|s| (s.id.clone(), s.to_json()))
+            .collect();
+
+        let style_classes_json: serde_json::Map<String, Value> = self
+            .style_classes
+            .iter()
+            .map(|(k, sc)| {
+                (
+                    k.clone(),
+                    json!({
+                        "id": sc.id,
+                        "styles": sc.styles,
+                        "textStyles": sc.text_styles,
+                    }),
+                )
+            })
+            .collect();
+
+        let look = meta
+            .effective_config
+            .as_value()
+            .as_object()
+            .and_then(|o| o.get("look"))
+            .cloned()
+            .unwrap_or(Value::Null);
+
+        let (nodes_json, edges_json) = build_layout_data(
+            &self.root_doc,
+            &self.states,
+            &self.style_classes,
+            &meta.effective_config,
+            &look,
+        )
+        .map_err(|message| Error::DiagramParse {
+            diagram_type: meta.diagram_type.clone(),
+            message,
+        })?;
+
+        let links_json: serde_json::Map<String, Value> = self
+            .links
+            .iter()
+            .map(|(k, v)| {
+                (
+                    k.clone(),
+                    json!({
+                        "url": v.url,
+                        "tooltip": v.tooltip,
+                    }),
+                )
+            })
+            .collect();
+
+        Ok(json!({
+            "type": meta.diagram_type,
+            "nodes": nodes_json,
+            "edges": edges_json,
+            "direction": self.direction.clone().unwrap_or_else(|| "TB".to_string()),
+            "accTitle": self.acc_title,
+            "accDescr": self.acc_descr,
+            "states": Value::Object(states_json),
             "styleClasses": Value::Object(style_classes_json),
             "links": Value::Object(links_json),
         }))
