@@ -1142,11 +1142,38 @@ pub fn layout_flowchart_v2(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<FlowchartV2Layout> {
+    let timing_enabled = std::env::var("MERMAN_FLOWCHART_LAYOUT_TIMING")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    #[derive(Debug, Default, Clone)]
+    struct FlowchartLayoutTimings {
+        total: std::time::Duration,
+        deserialize: std::time::Duration,
+        expand_self_loops: std::time::Duration,
+        build_graph: std::time::Duration,
+        extract_clusters: std::time::Duration,
+        dom_order: std::time::Duration,
+        layout_recursive: std::time::Duration,
+        dagre_calls: u32,
+        dagre_total: std::time::Duration,
+        place_graph: std::time::Duration,
+        build_output: std::time::Duration,
+    }
+
+    let total_start = timing_enabled.then(std::time::Instant::now);
+
+    let deserialize_start = timing_enabled.then(std::time::Instant::now);
     let model: FlowchartV2Model = crate::json::from_value_ref(semantic)?;
+    let mut timings = FlowchartLayoutTimings::default();
+    if let Some(s) = deserialize_start {
+        timings.deserialize = s.elapsed();
+    }
 
     // Mermaid's dagre adapter expands self-loop edges into a chain of two special label nodes plus
     // three edges. This avoids `v == w` edges in Dagre and is required for SVG parity (Mermaid
     // uses `*-cyclic-special-*` ids when rendering self-loops).
+    let expand_self_loops_start = timing_enabled.then(std::time::Instant::now);
     let mut render_edges: Vec<FlowEdge> = Vec::new();
     let mut self_loop_label_node_ids: Vec<String> = Vec::new();
     let mut self_loop_label_node_id_set: std::collections::HashSet<String> =
@@ -1194,6 +1221,11 @@ pub fn layout_flowchart_v2(
         render_edges.push(edge_mid);
         render_edges.push(edge2);
     }
+    if let Some(s) = expand_self_loops_start {
+        timings.expand_self_loops = s.elapsed();
+    }
+
+    let build_graph_start = timing_enabled.then(std::time::Instant::now);
 
     let nodesep = config_f64(effective_config, &["flowchart", "nodeSpacing"]).unwrap_or(50.0);
     let ranksep = config_f64(effective_config, &["flowchart", "rankSpacing"]).unwrap_or(50.0);
@@ -1597,11 +1629,16 @@ pub fn layout_flowchart_v2(
         edge_endpoints_by_id.insert(edge_id, (ek.v.clone(), ek.w.clone()));
     }
 
+    if let Some(s) = build_graph_start {
+        timings.build_graph = s.elapsed();
+    }
+
     let mut extracted_graphs: std::collections::HashMap<
         String,
         Graph<NodeLabel, EdgeLabel, GraphLabel>,
     > = std::collections::HashMap::new();
     if has_subgraphs {
+        let extract_start = timing_enabled.then(std::time::Instant::now);
         extract_clusters_recursively(
             &mut g,
             &subgraphs_by_id,
@@ -1609,6 +1646,9 @@ pub fn layout_flowchart_v2(
             &mut extracted_graphs,
             0,
         );
+        if let Some(s) = extract_start {
+            timings.extract_clusters = s.elapsed();
+        }
     }
 
     // Mermaid's flowchart-v2 renderer inserts node DOM elements in `graph.nodes()` order before
@@ -1616,9 +1656,13 @@ pub fn layout_flowchart_v2(
     // insertion order per root so the headless SVG matches strict DOM expectations.
     let mut dom_node_order_by_root: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
+    let dom_order_start = timing_enabled.then(std::time::Instant::now);
     dom_node_order_by_root.insert(String::new(), g.node_ids());
     for (id, cg) in &extracted_graphs {
         dom_node_order_by_root.insert(id.clone(), cg.node_ids());
+    }
+    if let Some(s) = dom_order_start {
+        timings.dom_order = s.elapsed();
     }
 
     type Rect = merman_core::geom::Box2;
@@ -1745,9 +1789,18 @@ pub fn layout_flowchart_v2(
         y_shift: f64,
         cluster_node_labels: &std::collections::HashMap<String, NodeLabel>,
         title_total_margin: f64,
+        timings: &mut FlowchartLayoutTimings,
+        timing_enabled: bool,
     ) {
         if depth > 10 {
-            dugong::layout_dagreish(graph);
+            if timing_enabled {
+                timings.dagre_calls += 1;
+                let start = std::time::Instant::now();
+                dugong::layout_dagreish(graph);
+                timings.dagre_total += start.elapsed();
+            } else {
+                dugong::layout_dagreish(graph);
+            }
             apply_mermaid_subgraph_title_shifts(graph, extracted, subgraph_id_set, y_shift);
             return;
         }
@@ -1789,6 +1842,8 @@ pub fn layout_flowchart_v2(
                 y_shift,
                 cluster_node_labels,
                 title_total_margin,
+                timings,
+                timing_enabled,
             );
 
             // In Mermaid, `updateNodeBounds(...)` measures the recursively rendered `<g class="root">`
@@ -1832,10 +1887,18 @@ pub fn layout_flowchart_v2(
             }
         }
 
-        dugong::layout_dagreish(graph);
+        if timing_enabled {
+            timings.dagre_calls += 1;
+            let start = std::time::Instant::now();
+            dugong::layout_dagreish(graph);
+            timings.dagre_total += start.elapsed();
+        } else {
+            dugong::layout_dagreish(graph);
+        }
         apply_mermaid_subgraph_title_shifts(graph, extracted, subgraph_id_set, y_shift);
     }
 
+    let layout_start = timing_enabled.then(std::time::Instant::now);
     layout_graph_with_recursive_clusters(
         &mut g,
         None,
@@ -1845,7 +1908,12 @@ pub fn layout_flowchart_v2(
         y_shift,
         &cluster_node_labels,
         title_total_margin,
+        &mut timings,
+        timing_enabled,
     );
+    if let Some(s) = layout_start {
+        timings.layout_recursive = s.elapsed();
+    }
 
     let mut leaf_rects: std::collections::HashMap<String, Rect> = std::collections::HashMap::new();
     let mut base_pos: std::collections::HashMap<String, (f64, f64)> =
@@ -2091,6 +2159,7 @@ pub fn layout_flowchart_v2(
         std::collections::HashMap::new();
     let mut extracted_cluster_rects: std::collections::HashMap<String, Rect> =
         std::collections::HashMap::new();
+    let place_start = timing_enabled.then(std::time::Instant::now);
     place_graph(
         &g,
         (0.0, 0.0),
@@ -2109,6 +2178,11 @@ pub fn layout_flowchart_v2(
         &mut edge_override_from_cluster,
         &mut edge_override_to_cluster,
     );
+    if let Some(s) = place_start {
+        timings.place_graph = s.elapsed();
+    }
+
+    let build_output_start = timing_enabled.then(std::time::Instant::now);
 
     let mut extra_children: std::collections::HashMap<String, Vec<String>> =
         std::collections::HashMap::new();
@@ -3155,6 +3229,32 @@ pub fn layout_flowchart_v2(
     }
 
     let bounds = compute_bounds(&out_nodes, &out_edges);
+
+    if let Some(s) = build_output_start {
+        timings.build_output = s.elapsed();
+    }
+    if let Some(s) = total_start {
+        timings.total = s.elapsed();
+        let dagre_overhead = timings
+            .layout_recursive
+            .checked_sub(timings.dagre_total)
+            .unwrap_or_default();
+        eprintln!(
+            "[layout-timing] diagram=flowchart-v2 total={:?} deserialize={:?} expand_self_loops={:?} build_graph={:?} extract_clusters={:?} dom_order={:?} layout_recursive={:?} dagre_calls={} dagre_total={:?} dagre_overhead={:?} place_graph={:?} build_output={:?}",
+            timings.total,
+            timings.deserialize,
+            timings.expand_self_loops,
+            timings.build_graph,
+            timings.extract_clusters,
+            timings.dom_order,
+            timings.layout_recursive,
+            timings.dagre_calls,
+            timings.dagre_total,
+            dagre_overhead,
+            timings.place_graph,
+            timings.build_output,
+        );
+    }
 
     Ok(FlowchartV2Layout {
         nodes: out_nodes,
