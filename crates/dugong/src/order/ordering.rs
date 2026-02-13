@@ -1,6 +1,7 @@
+use super::layer_graph::{build_layer_graph_with_root, create_root_node};
 use super::{
-    OrderEdgeWeight, OrderNodeLabel, Relationship, add_subgraph_constraints, build_layer_graph,
-    cross_count, init_order, sort_subgraph,
+    OrderEdgeWeight, OrderNodeLabel, Relationship, add_subgraph_constraints, cross_count,
+    init_order, sort_subgraph,
 };
 use crate::graphlib::{Graph, GraphOptions};
 use std::collections::BTreeMap;
@@ -79,6 +80,8 @@ where
         return;
     }
 
+    let root = create_root_node(g);
+
     let mut best_cc: f64 = f64::INFINITY;
     let mut best_layering: Option<Vec<Vec<String>>> = None;
 
@@ -103,6 +106,7 @@ where
                 &ranks_down,
                 Relationship::InEdges,
                 bias_right,
+                &root,
             );
             if let Some(s) = sweep_start {
                 timings.sweeps += s.elapsed();
@@ -115,6 +119,7 @@ where
                 &ranks_up,
                 Relationship::OutEdges,
                 bias_right,
+                &root,
             );
             if let Some(s) = sweep_start {
                 timings.sweeps += s.elapsed();
@@ -182,6 +187,7 @@ fn sweep<N, E, G>(
     ranks: &[i32],
     relationship: Relationship,
     bias_right: bool,
+    root: &str,
 ) where
     N: Default + Clone + OrderNodeLabel + 'static,
     E: Default + OrderEdgeWeight + 'static,
@@ -194,10 +200,8 @@ fn sweep<N, E, G>(
             .get(&rank)
             .map(|v| v.as_slice())
             .unwrap_or(&[]);
-        let lg = build_layer_graph(g, rank, relationship, Some(nodes));
-        let root = lg.graph().root.clone();
-
-        let sorted = sort_subgraph(&lg, &root, &cg, bias_right);
+        let lg = build_layer_graph_with_root(g, rank, relationship, root, Some(nodes));
+        let sorted = sort_subgraph(&lg, root, &cg, bias_right);
         for (i, v) in sorted.vs.iter().enumerate() {
             if let Some(n) = g.node_mut(v) {
                 n.set_order(i);

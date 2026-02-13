@@ -22,26 +22,26 @@ where
     movable
         .iter()
         .map(|v| {
-            let in_edges = g.in_edges(v, None);
-            if in_edges.is_empty() {
-                return BarycenterEntry {
-                    v: v.clone(),
-                    barycenter: None,
-                    weight: None,
-                };
-            }
-
+            let mut saw_edge = false;
             let mut sum: f64 = 0.0;
             let mut weight: f64 = 0.0;
-            for e in in_edges {
-                let edge_weight = g.edge_by_key(&e).map(|e| e.weight()).unwrap_or(0.0);
+            g.for_each_in_edge(v, None, |ek, lbl| {
+                saw_edge = true;
+                let edge_weight = lbl.weight();
                 let u_order = g
-                    .node(&e.v)
+                    .node(&ek.v)
                     .and_then(|n| n.order())
                     .map(|n| n as f64)
                     .unwrap_or(0.0);
                 sum += edge_weight * u_order;
                 weight += edge_weight;
+            });
+            if !saw_edge {
+                return BarycenterEntry {
+                    v: v.clone(),
+                    barycenter: None,
+                    weight: None,
+                };
             }
 
             BarycenterEntry {

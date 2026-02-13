@@ -18,22 +18,34 @@ where
     G: Default,
 {
     let root = create_root_node(g);
+    build_layer_graph_with_root(g, rank, relationship, &root, nodes_with_rank)
+}
+
+pub(super) fn build_layer_graph_with_root<N, E, G>(
+    g: &Graph<N, E, G>,
+    rank: i32,
+    relationship: Relationship,
+    root: &str,
+    nodes_with_rank: Option<&[String]>,
+) -> Graph<N, WeightLabel, LayerGraphLabel>
+where
+    N: Default + Clone + 'static + OrderNodeRange,
+    E: Default + 'static + OrderEdgeWeight,
+    G: Default,
+{
     let mut result: Graph<N, WeightLabel, LayerGraphLabel> = Graph::new(GraphOptions {
         compound: true,
         multigraph: false,
         ..Default::default()
     });
-    result.set_graph(LayerGraphLabel { root: root.clone() });
-    result.set_node(root.clone(), N::default());
+    result.set_graph(LayerGraphLabel {
+        root: root.to_string(),
+    });
+    result.set_node(root.to_string(), N::default());
 
-    let nodes: Vec<String> = match nodes_with_rank {
-        Some(vs) => vs.to_vec(),
-        None => g.nodes().map(|v| v.to_string()).collect(),
-    };
-
-    for v in nodes {
-        let node = g.node(&v).cloned().unwrap_or_default();
-        let parent = g.parent(&v).map(|p| p.to_string());
+    let mut visit_node = |v: &str| {
+        let node = g.node(v).cloned().unwrap_or_default();
+        let parent = g.parent(v);
 
         let in_range = node.rank() == Some(rank)
             || (node.min_rank().is_some()
@@ -42,46 +54,84 @@ where
                 && node.max_rank().is_some_and(|max| rank <= max));
 
         if !in_range {
-            continue;
+            return;
         }
 
-        result.set_node(v.clone(), node.clone());
-        result.set_parent(v.clone(), parent.unwrap_or_else(|| root.clone()));
+        result.set_node(v.to_string(), node.clone());
+        result.set_parent(
+            v.to_string(),
+            parent
+                .map(|p| p.to_string())
+                .unwrap_or_else(|| root.to_string()),
+        );
 
-        let incident_edges = match relationship {
-            Relationship::InEdges => g.in_edges(&v, None),
-            Relationship::OutEdges => g.out_edges(&v, None),
-        };
+        match relationship {
+            Relationship::InEdges => {
+                g.for_each_in_edge(v, None, |ek, lbl| {
+                    let u = ek.v.as_str();
 
-        for e in incident_edges {
-            let u = if e.v == v { e.w.clone() } else { e.v.clone() };
+                    if !result.has_node(u) {
+                        let lbl = g.node(u).cloned().unwrap_or_default();
+                        result.set_node(u.to_string(), lbl);
+                    }
 
-            if !result.has_node(&u) {
-                let lbl = g.node(&u).cloned().unwrap_or_default();
-                result.set_node(u.clone(), lbl);
+                    let existing_weight = result.edge(u, v, None).map(|l| l.weight).unwrap_or(0.0);
+                    let weight = lbl.weight();
+                    result.set_edge_with_label(
+                        u.to_string(),
+                        v.to_string(),
+                        WeightLabel {
+                            weight: weight + existing_weight,
+                        },
+                    );
+                });
             }
+            Relationship::OutEdges => {
+                // Reverse out-edges so `barycenter(...)` can always read `in_edges(...)`.
+                g.for_each_out_edge(v, None, |ek, lbl| {
+                    let u = ek.w.as_str();
 
-            let existing_weight = result.edge(&u, &v, None).map(|l| l.weight).unwrap_or(0.0);
-            let weight = g.edge_by_key(&e).map(|l| l.weight()).unwrap_or(0.0);
-            result.set_edge_with_label(
-                u,
-                v.clone(),
-                WeightLabel {
-                    weight: weight + existing_weight,
-                },
-            );
+                    if !result.has_node(u) {
+                        let lbl = g.node(u).cloned().unwrap_or_default();
+                        result.set_node(u.to_string(), lbl);
+                    }
+
+                    let existing_weight = result.edge(u, v, None).map(|l| l.weight).unwrap_or(0.0);
+                    let weight = lbl.weight();
+                    result.set_edge_with_label(
+                        u.to_string(),
+                        v.to_string(),
+                        WeightLabel {
+                            weight: weight + existing_weight,
+                        },
+                    );
+                });
+            }
         }
 
         if node.has_min_rank() {
             let override_label = node.subgraph_layer_label(rank);
-            result.set_node(v, override_label);
+            result.set_node(v.to_string(), override_label);
+        }
+    };
+
+    match nodes_with_rank {
+        Some(vs) => {
+            for v in vs {
+                visit_node(v.as_str());
+            }
+        }
+        None => {
+            for v in g.nodes() {
+                visit_node(v);
+            }
         }
     }
 
     result
 }
 
-fn create_root_node<N, E, G>(g: &Graph<N, E, G>) -> String
+pub(super) fn create_root_node<N, E, G>(g: &Graph<N, E, G>) -> String
 where
     N: Default + 'static,
     E: Default + 'static,

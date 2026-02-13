@@ -13,18 +13,18 @@ pub fn add_subgraph_constraints<N, E, G, CN, CE, CG>(
     CE: Default + 'static,
     CG: Default,
 {
-    let mut prev: HashMap<String, String> = HashMap::default();
-    let mut root_prev: Option<String> = None;
+    let mut prev: HashMap<&str, &str> = HashMap::default();
+    let mut root_prev: Option<&str> = None;
 
     for v in vs {
-        let mut child = g.parent(v).map(|s| s.to_string());
-        while let Some(c) = child.clone() {
-            let parent = g.parent(&c).map(|s| s.to_string());
+        let mut child = g.parent(v.as_str());
+        while let Some(c) = child {
+            let parent = g.parent(c);
 
-            let prev_child = if let Some(p) = parent.as_deref() {
-                prev.insert(p.to_string(), c.clone())
+            let prev_child = if let Some(p) = parent {
+                prev.insert(p, c)
             } else {
-                root_prev.replace(c.clone())
+                root_prev.replace(c)
             };
 
             if let Some(prev_child) = prev_child {
