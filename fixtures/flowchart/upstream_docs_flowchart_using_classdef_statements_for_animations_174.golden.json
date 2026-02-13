@@ -76,7 +76,9 @@
         "label": null,
         "labelType": "text",
         "style": [],
-        "classes": [],
+        "classes": [
+          "animate"
+        ],
         "interpolate": null,
         "animate": null,
         "animation": null

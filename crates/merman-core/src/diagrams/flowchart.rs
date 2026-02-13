@@ -2613,6 +2613,7 @@ fn apply_semantic_statements(
                     add_class_to_target(
                         nodes,
                         node_index,
+                        edges,
                         subgraphs,
                         subgraph_index,
                         target,
@@ -2628,6 +2629,7 @@ fn apply_semantic_statements(
                     add_class_to_target(
                         nodes,
                         node_index,
+                        edges,
                         subgraphs,
                         subgraph_index,
                         id,
@@ -2762,6 +2764,7 @@ fn apply_semantic_statements(
 fn add_class_to_target(
     nodes: &mut [Node],
     node_index: &HashMap<String, usize>,
+    edges: &mut [Edge],
     subgraphs: &mut [FlowSubGraph],
     subgraph_index: &HashMap<String, usize>,
     target: &str,
@@ -2769,10 +2772,14 @@ fn add_class_to_target(
 ) {
     if let Some(&idx) = subgraph_index.get(target) {
         subgraphs[idx].classes.push(class_name.to_string());
-        return;
     }
     if let Some(&idx) = node_index.get(target) {
         nodes[idx].classes.push(class_name.to_string());
+    }
+    for e in edges.iter_mut() {
+        if e.id.as_deref() == Some(target) {
+            e.classes.push(class_name.to_string());
+        }
     }
 }
 
