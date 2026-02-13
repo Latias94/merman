@@ -20,3 +20,5 @@
 /fixtures/**/upstream_docs_examples_*.golden.json
 /fixtures/**/upstream_docs_examples_*.layout.golden.json
 /fixtures/upstream-svgs/**/upstream_docs_examples_*.svg
+
+__pycache__/
