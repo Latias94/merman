@@ -3,7 +3,6 @@ use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint, MindmapDiagramLa
 use crate::text::WrapMode;
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
-use serde::Deserialize;
 use serde_json::Value;
 
 fn config_f64(cfg: &Value, path: &[&str]) -> Option<f64> {
@@ -22,41 +21,8 @@ fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
     v.as_str().map(|s| s.to_string())
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct MindmapNodeModel {
-    id: String,
-    label: String,
-    #[serde(default, rename = "labelType")]
-    label_type: String,
-    #[serde(default)]
-    shape: String,
-    #[serde(default)]
-    #[allow(dead_code)]
-    level: i64,
-    #[serde(default)]
-    padding: f64,
-    #[serde(default)]
-    #[allow(dead_code)]
-    width: f64,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct MindmapEdgeModel {
-    id: String,
-    start: String,
-    end: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct MindmapModel {
-    #[serde(default)]
-    nodes: Vec<MindmapNodeModel>,
-    #[serde(default)]
-    edges: Vec<MindmapEdgeModel>,
-}
+type MindmapModel = merman_core::diagrams::mindmap::MindmapDiagramRenderModel;
+type MindmapNodeModel = merman_core::diagrams::mindmap::MindmapDiagramRenderNode;
 
 fn mindmap_text_style(effective_config: &Value) -> TextStyle {
     // Mermaid mindmap labels are rendered via HTML `<foreignObject>` and inherit the global font.
@@ -218,20 +184,39 @@ pub fn layout_mindmap_diagram(
     text_measurer: &dyn TextMeasurer,
     use_manatee_layout: bool,
 ) -> Result<MindmapDiagramLayout> {
-    let mut model: MindmapModel = from_value_ref(model)?;
+    let model: MindmapModel = from_value_ref(model)?;
+    layout_mindmap_diagram_model(&model, effective_config, text_measurer, use_manatee_layout)
+}
 
+pub fn layout_mindmap_diagram_typed(
+    model: &MindmapModel,
+    effective_config: &Value,
+    text_measurer: &dyn TextMeasurer,
+    use_manatee_layout: bool,
+) -> Result<MindmapDiagramLayout> {
+    layout_mindmap_diagram_model(model, effective_config, text_measurer, use_manatee_layout)
+}
+
+fn layout_mindmap_diagram_model(
+    model: &MindmapModel,
+    effective_config: &Value,
+    text_measurer: &dyn TextMeasurer,
+    use_manatee_layout: bool,
+) -> Result<MindmapDiagramLayout> {
     let text_style = mindmap_text_style(effective_config);
     let max_node_width_px = config_f64(effective_config, &["mindmap", "maxNodeWidth"])
         .unwrap_or(200.0)
         .max(1.0);
 
-    model.nodes.sort_by_cached_key(|n| {
-        let num = n.id.parse::<i64>().unwrap_or(i64::MAX);
-        (num, n.id.clone())
+    let mut nodes_sorted: Vec<&MindmapNodeModel> = model.nodes.iter().collect();
+    nodes_sorted.sort_by(|a, b| {
+        let na = a.id.parse::<i64>().unwrap_or(i64::MAX);
+        let nb = b.id.parse::<i64>().unwrap_or(i64::MAX);
+        na.cmp(&nb).then_with(|| a.id.cmp(&b.id))
     });
 
     let mut nodes: Vec<LayoutNode> = Vec::with_capacity(model.nodes.len());
-    for n in &model.nodes {
+    for n in nodes_sorted {
         let (width, height) =
             mindmap_node_dimensions_px(n, text_measurer, &text_style, max_node_width_px);
 
@@ -304,7 +289,7 @@ pub fn layout_mindmap_diagram(
     }
 
     let mut edges: Vec<LayoutEdge> = Vec::new();
-    for e in model.edges {
+    for e in &model.edges {
         let Some((sx, sy)) = node_pos.get(e.start.as_str()).copied() else {
             return Err(Error::InvalidModel {
                 message: format!("edge start node not found: {}", e.start),
@@ -317,9 +302,9 @@ pub fn layout_mindmap_diagram(
         };
         let points = vec![LayoutPoint { x: sx, y: sy }, LayoutPoint { x: tx, y: ty }];
         edges.push(LayoutEdge {
-            id: e.id,
-            from: e.start,
-            to: e.end,
+            id: e.id.clone(),
+            from: e.start.clone(),
+            to: e.end.clone(),
             from_cluster: None,
             to_cluster: None,
             points,

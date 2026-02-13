@@ -230,6 +230,42 @@ pub fn render_layout_svg_parts(
     }
 }
 
+pub fn render_layout_svg_parts_for_render_model(
+    layout: &crate::model::LayoutDiagram,
+    semantic: &merman_core::RenderSemanticModel,
+    effective_config: &serde_json::Value,
+    title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    use crate::model::LayoutDiagram;
+    use merman_core::RenderSemanticModel;
+
+    match (layout, semantic) {
+        (LayoutDiagram::MindmapDiagram(layout), RenderSemanticModel::Mindmap(model)) => {
+            mindmap::render_mindmap_diagram_svg_model(layout, model, effective_config, options)
+        }
+        (LayoutDiagram::StateDiagramV2(layout), RenderSemanticModel::State(model)) => {
+            // TODO(perf): avoid `serde_json::Value` materialization by rendering directly from the typed model.
+            let semantic = serde_json::to_value(model).map_err(Error::Json)?;
+            render_state_diagram_v2_svg(
+                layout,
+                &semantic,
+                effective_config,
+                title,
+                measurer,
+                options,
+            )
+        }
+        (_, RenderSemanticModel::Json(semantic)) => {
+            render_layout_svg_parts(layout, semantic, effective_config, title, measurer, options)
+        }
+        _ => Err(Error::InvalidModel {
+            message: "semantic model does not match layout diagram type".to_string(),
+        }),
+    }
+}
+
 pub fn render_flowchart_v2_debug_svg(
     layout: &FlowchartV2Layout,
     options: &SvgRenderOptions,

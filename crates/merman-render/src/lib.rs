@@ -40,7 +40,7 @@ pub mod xychart;
 
 use crate::model::{LayoutDiagram, LayoutMeta, LayoutedDiagram};
 use crate::text::{DeterministicTextMeasurer, TextMeasurer};
-use merman_core::ParsedDiagram;
+use merman_core::{ParsedDiagram, ParsedDiagramRender, RenderSemanticModel};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -256,4 +256,179 @@ pub fn layout_parsed_layout_only(
         }
     };
     Ok(layout)
+}
+
+pub fn layout_parsed_render_layout_only(
+    parsed: &ParsedDiagramRender,
+    options: &LayoutOptions,
+) -> Result<LayoutDiagram> {
+    let diagram_type = parsed.meta.diagram_type.as_str();
+    let effective_config = parsed.meta.effective_config.as_value();
+    let title = parsed.meta.title.as_deref();
+
+    match (&parsed.model, diagram_type) {
+        (RenderSemanticModel::Mindmap(model), "mindmap") => Ok(LayoutDiagram::MindmapDiagram(
+            mindmap::layout_mindmap_diagram_typed(
+                model,
+                effective_config,
+                options.text_measurer.as_ref(),
+                options.use_manatee_layout,
+            )?,
+        )),
+        (RenderSemanticModel::State(model), "stateDiagram" | "state") => Ok(
+            LayoutDiagram::StateDiagramV2(state::layout_state_diagram_v2_typed(
+                model,
+                effective_config,
+                options.text_measurer.as_ref(),
+            )?),
+        ),
+        (RenderSemanticModel::Json(semantic), _) => {
+            let layout = match diagram_type {
+                "error" => LayoutDiagram::ErrorDiagram(error::layout_error_diagram(
+                    semantic,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                )?),
+                "block" => LayoutDiagram::BlockDiagram(block::layout_block_diagram(
+                    semantic,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                )?),
+                "architecture" => {
+                    LayoutDiagram::ArchitectureDiagram(architecture::layout_architecture_diagram(
+                        semantic,
+                        effective_config,
+                        options.text_measurer.as_ref(),
+                        options.use_manatee_layout,
+                    )?)
+                }
+                "requirement" => {
+                    LayoutDiagram::RequirementDiagram(requirement::layout_requirement_diagram(
+                        semantic,
+                        effective_config,
+                        options.text_measurer.as_ref(),
+                    )?)
+                }
+                "radar" => LayoutDiagram::RadarDiagram(radar::layout_radar_diagram(
+                    semantic,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                )?),
+                "treemap" => LayoutDiagram::TreemapDiagram(treemap::layout_treemap_diagram(
+                    semantic,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                )?),
+                "flowchart-v2" => LayoutDiagram::FlowchartV2(flowchart::layout_flowchart_v2(
+                    semantic,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                )?),
+                "stateDiagram" => LayoutDiagram::StateDiagramV2(state::layout_state_diagram_v2(
+                    semantic,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                )?),
+                "classDiagram" | "class" => {
+                    LayoutDiagram::ClassDiagramV2(class::layout_class_diagram_v2(
+                        semantic,
+                        effective_config,
+                        options.text_measurer.as_ref(),
+                    )?)
+                }
+                "er" | "erDiagram" => LayoutDiagram::ErDiagram(er::layout_er_diagram(
+                    semantic,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                )?),
+                "sequence" | "zenuml" => {
+                    LayoutDiagram::SequenceDiagram(sequence::layout_sequence_diagram(
+                        semantic,
+                        effective_config,
+                        options.text_measurer.as_ref(),
+                    )?)
+                }
+                "info" => LayoutDiagram::InfoDiagram(info::layout_info_diagram(
+                    semantic,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                )?),
+                "packet" => LayoutDiagram::PacketDiagram(packet::layout_packet_diagram(
+                    semantic,
+                    title,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                )?),
+                "timeline" => LayoutDiagram::TimelineDiagram(timeline::layout_timeline_diagram(
+                    semantic,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                )?),
+                "gantt" => LayoutDiagram::GanttDiagram(gantt::layout_gantt_diagram(
+                    semantic,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                )?),
+                "c4" => LayoutDiagram::C4Diagram(c4::layout_c4_diagram(
+                    semantic,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                    options.viewport_width,
+                    options.viewport_height,
+                )?),
+                "journey" => LayoutDiagram::JourneyDiagram(journey::layout_journey_diagram(
+                    semantic,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                )?),
+                "gitGraph" => LayoutDiagram::GitGraphDiagram(gitgraph::layout_gitgraph_diagram(
+                    semantic,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                )?),
+                "kanban" => LayoutDiagram::KanbanDiagram(kanban::layout_kanban_diagram(
+                    semantic,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                )?),
+                "pie" => LayoutDiagram::PieDiagram(pie::layout_pie_diagram(
+                    semantic,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                )?),
+                "xychart" => LayoutDiagram::XyChartDiagram(xychart::layout_xychart_diagram(
+                    semantic,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                )?),
+                "quadrantChart" => LayoutDiagram::QuadrantChartDiagram(
+                    quadrantchart::layout_quadrantchart_diagram(
+                        semantic,
+                        effective_config,
+                        options.text_measurer.as_ref(),
+                    )?,
+                ),
+                "mindmap" => LayoutDiagram::MindmapDiagram(mindmap::layout_mindmap_diagram(
+                    semantic,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                    options.use_manatee_layout,
+                )?),
+                "sankey" => LayoutDiagram::SankeyDiagram(sankey::layout_sankey_diagram(
+                    semantic,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                )?),
+                other => {
+                    return Err(Error::UnsupportedDiagram {
+                        diagram_type: other.to_string(),
+                    });
+                }
+            };
+            Ok(layout)
+        }
+        _ => Err(Error::InvalidModel {
+            message: format!("unexpected render model variant for diagram type: {diagram_type}"),
+        }),
+    }
 }

@@ -2035,94 +2035,11 @@ mod svg_bbox_tests {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct StateSvgModel {
-    #[serde(default, rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(default, rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    #[serde(default)]
-    pub nodes: Vec<StateSvgNode>,
-    #[serde(default)]
-    pub edges: Vec<StateSvgEdge>,
-    #[serde(default)]
-    pub links: std::collections::HashMap<String, StateSvgLink>,
-    #[serde(default)]
-    pub states: std::collections::HashMap<String, StateSvgState>,
-    #[serde(default, rename = "styleClasses")]
-    pub style_classes: IndexMap<String, StateSvgStyleClass>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct StateSvgStyleClass {
-    pub id: String,
-    #[serde(default)]
-    pub styles: Vec<String>,
-    #[serde(default, rename = "textStyles")]
-    pub text_styles: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct StateSvgState {
-    #[serde(default)]
-    pub note: Option<StateSvgNote>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct StateSvgNote {
-    #[serde(default)]
-    pub position: Option<String>,
-    #[serde(default)]
-    pub text: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct StateSvgLink {
-    #[serde(default)]
-    pub url: String,
-    #[serde(default)]
-    pub tooltip: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct StateSvgNode {
-    pub id: String,
-    #[serde(default, rename = "labelStyle")]
-    #[allow(dead_code)]
-    pub label_style: String,
-    #[serde(default)]
-    pub label: Option<serde_json::Value>,
-    #[serde(default)]
-    pub description: Option<Vec<String>>,
-    #[serde(default, rename = "domId")]
-    pub dom_id: String,
-    #[serde(default, rename = "isGroup")]
-    pub is_group: bool,
-    #[serde(default, rename = "parentId")]
-    pub parent_id: Option<String>,
-    #[serde(default, rename = "cssClasses")]
-    pub css_classes: String,
-    #[serde(default, rename = "cssCompiledStyles")]
-    pub css_compiled_styles: Vec<String>,
-    #[serde(default, rename = "cssStyles")]
-    pub css_styles: Vec<String>,
-    pub shape: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct StateSvgEdge {
-    pub id: String,
-    #[serde(rename = "start")]
-    pub start: String,
-    #[serde(rename = "end")]
-    pub end: String,
-    #[serde(default)]
-    pub classes: String,
-    #[serde(default, rename = "arrowTypeEnd")]
-    pub arrow_type_end: String,
-    #[serde(default)]
-    pub label: String,
-}
+type StateSvgModel = merman_core::diagrams::state::StateDiagramRenderModel;
+type StateSvgState = merman_core::diagrams::state::StateDiagramRenderState;
+type StateSvgLink = merman_core::diagrams::state::StateDiagramRenderLink;
+type StateSvgNode = merman_core::diagrams::state::StateDiagramRenderNode;
+type StateSvgEdge = merman_core::diagrams::state::StateDiagramRenderEdge;
 
 struct StateRenderCtx<'a> {
     diagram_id: String,

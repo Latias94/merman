@@ -120,47 +120,17 @@ pub(super) fn render_mindmap_diagram_svg(
     _effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    #[derive(Debug, Clone, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct MindmapSemanticNode {
-        id: String,
-        #[serde(rename = "domId")]
-        dom_id: String,
-        #[serde(rename = "cssClasses")]
-        css_classes: String,
-        #[serde(default, rename = "labelType")]
-        label_type: String,
-        label: String,
-        shape: String,
-        #[serde(default)]
-        width: f64,
-        #[serde(default)]
-        padding: f64,
-        #[serde(default)]
-        icon: Option<String>,
-    }
+    let model: merman_core::diagrams::mindmap::MindmapDiagramRenderModel =
+        crate::json::from_value_ref(semantic)?;
+    render_mindmap_diagram_svg_model(layout, &model, _effective_config, options)
+}
 
-    #[derive(Debug, Clone, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct MindmapSemanticEdge {
-        id: String,
-        start: String,
-        end: String,
-        #[serde(default)]
-        curve: String,
-        classes: String,
-        thickness: String,
-    }
-
-    #[derive(Debug, Clone, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct MindmapSemanticModel {
-        #[serde(default)]
-        nodes: Vec<MindmapSemanticNode>,
-        #[serde(default)]
-        edges: Vec<MindmapSemanticEdge>,
-    }
-
+pub(super) fn render_mindmap_diagram_svg_model(
+    layout: &MindmapDiagramLayout,
+    model: &merman_core::diagrams::mindmap::MindmapDiagramRenderModel,
+    _effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
     #[derive(Debug, Clone, serde::Serialize)]
     struct Pt {
         x: f64,
@@ -264,8 +234,6 @@ pub(super) fn render_mindmap_diagram_svg(
             id = escape_xml(edge_id),
         );
     }
-
-    let model: MindmapSemanticModel = crate::json::from_value_ref(semantic)?;
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("mindmap");
     let diagram_id_esc = escape_xml(diagram_id);

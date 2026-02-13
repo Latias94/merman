@@ -5,7 +5,6 @@ use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{EdgeKey, Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
-use serde::Deserialize;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -14,73 +13,11 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 // Dagre, which can shift the end node center by ~0.0066px and affect root `viewBox/max-width`.
 const STATE_END_NODE_DAGRE_WIDTH_PX_11_12_2: f64 = 14.013_293_266_296_387;
 
-#[derive(Debug, Clone, Deserialize)]
-struct StateDiagramModel {
-    #[serde(default = "default_dir")]
-    pub direction: String,
-    pub nodes: Vec<StateNode>,
-    pub edges: Vec<StateEdge>,
-    #[serde(default)]
-    pub states: HashMap<String, StateDbState>,
-}
+type StateDiagramModel = merman_core::diagrams::state::StateDiagramRenderModel;
+type StateNode = merman_core::diagrams::state::StateDiagramRenderNode;
 
-fn default_dir() -> String {
-    "TB".to_string()
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct StateNode {
-    pub id: String,
-    #[serde(default, rename = "domId")]
-    pub dom_id: String,
-    pub label: Option<Value>,
-    #[serde(default)]
-    pub description: Option<Vec<String>>,
-    #[serde(rename = "isGroup")]
-    pub is_group: bool,
-    #[serde(rename = "parentId")]
-    pub parent_id: Option<String>,
-    #[serde(default, rename = "cssCompiledStyles")]
-    pub css_compiled_styles: Vec<String>,
-    #[serde(default, rename = "cssStyles")]
-    pub css_styles: Vec<String>,
-    pub dir: Option<String>,
-    pub padding: Option<f64>,
-    pub rx: Option<f64>,
-    pub ry: Option<f64>,
-    pub shape: String,
-    #[serde(default)]
-    #[allow(dead_code)]
-    pub position: Option<String>,
-}
-
-impl StateNode {
-    fn is_effective_group(&self) -> bool {
-        self.is_group && self.shape != "note"
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct StateEdge {
-    pub id: String,
-    pub start: String,
-    pub end: String,
-    #[serde(default)]
-    pub label: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-struct StateDbState {
-    #[serde(default)]
-    pub note: Option<StateDbNote>,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
-struct StateDbNote {
-    #[serde(default)]
-    pub position: Option<String>,
-    #[serde(default)]
-    pub text: String,
+fn state_node_is_effective_group(n: &StateNode) -> bool {
+    n.is_group && n.shape != "note"
 }
 
 fn json_f64(v: &Value) -> Option<f64> {
@@ -1128,7 +1065,22 @@ pub fn layout_state_diagram_v2(
     measurer: &dyn TextMeasurer,
 ) -> Result<StateDiagramV2Layout> {
     let model: StateDiagramModel = crate::json::from_value_ref(semantic)?;
+    layout_state_diagram_v2_inner(&model, effective_config, measurer)
+}
 
+pub fn layout_state_diagram_v2_typed(
+    model: &StateDiagramModel,
+    effective_config: &Value,
+    measurer: &dyn TextMeasurer,
+) -> Result<StateDiagramV2Layout> {
+    layout_state_diagram_v2_inner(model, effective_config, measurer)
+}
+
+fn layout_state_diagram_v2_inner(
+    model: &StateDiagramModel,
+    effective_config: &Value,
+    measurer: &dyn TextMeasurer,
+) -> Result<StateDiagramV2Layout> {
     // Mermaid accepts some historical "floating note" syntaxes in the parser but does not render them.
     // Keep them in the semantic model/snapshots, but exclude them from layout so they do not shift
     // visible nodes/edges (and therefore do not affect root viewBox/max-width parity).
@@ -1209,7 +1161,7 @@ pub fn layout_state_diagram_v2(
             .get(&n.id)
             .cloned()
             .unwrap_or_else(|| n.id.clone());
-        if n.is_effective_group() {
+        if state_node_is_effective_group(n) {
             g.set_node(
                 dagre_id,
                 NodeLabel {
@@ -1494,7 +1446,7 @@ pub fn layout_state_diagram_v2(
             });
         };
 
-        if !n.is_effective_group() {
+        if !state_node_is_effective_group(n) {
             out_nodes.push(LayoutNode {
                 id: n.id.clone(),
                 x: pos.x,
@@ -1545,7 +1497,7 @@ pub fn layout_state_diagram_v2(
         if state_is_hidden_id(&hidden_prefixes, n.id.as_str()) {
             continue;
         }
-        if !n.is_effective_group() {
+        if !state_node_is_effective_group(n) {
             continue;
         }
         let dagre_id = dagre_id_by_semantic_id
@@ -2121,7 +2073,7 @@ pub fn debug_build_state_diagram_v2_dagre_graph(
             .get(&n.id)
             .cloned()
             .unwrap_or_else(|| n.id.clone());
-        if n.is_effective_group() {
+        if state_node_is_effective_group(n) {
             g.set_node(
                 dagre_id,
                 NodeLabel {
