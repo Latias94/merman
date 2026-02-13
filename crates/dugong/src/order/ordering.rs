@@ -1,5 +1,6 @@
 use super::barycenter::SortSubgraphTimings;
-use super::layer_graph::{build_layer_graph_with_root, create_root_node};
+use super::layer_graph::{build_layer_graph_with_root_lite, create_root_node};
+use super::types::OrderNodeLite;
 use super::{
     LayerGraphLabel, OrderEdgeWeight, OrderNodeLabel, Relationship, WeightLabel,
     add_subgraph_constraints, cross_count, init_order, sort_subgraph,
@@ -98,9 +99,9 @@ where
     let root = create_root_node(g);
 
     let build_cache_start = timing_enabled.then(std::time::Instant::now);
-    let mut layer_graphs_in: BTreeMap<i32, Graph<N, WeightLabel, LayerGraphLabel>> =
+    let mut layer_graphs_in: BTreeMap<i32, Graph<OrderNodeLite, WeightLabel, LayerGraphLabel>> =
         BTreeMap::new();
-    let mut layer_graphs_out: BTreeMap<i32, Graph<N, WeightLabel, LayerGraphLabel>> =
+    let mut layer_graphs_out: BTreeMap<i32, Graph<OrderNodeLite, WeightLabel, LayerGraphLabel>> =
         BTreeMap::new();
     for rank in 0..=max_rank {
         let nodes = nodes_by_rank
@@ -109,11 +110,11 @@ where
             .unwrap_or(&[]);
         layer_graphs_in.insert(
             rank,
-            build_layer_graph_with_root(g, rank, Relationship::InEdges, &root, Some(nodes)),
+            build_layer_graph_with_root_lite(g, rank, Relationship::InEdges, &root, Some(nodes)),
         );
         layer_graphs_out.insert(
             rank,
-            build_layer_graph_with_root(g, rank, Relationship::OutEdges, &root, Some(nodes)),
+            build_layer_graph_with_root_lite(g, rank, Relationship::OutEdges, &root, Some(nodes)),
         );
     }
     if let Some(s) = build_cache_start {
@@ -245,7 +246,7 @@ fn sweep<N, E, G>(
     relationship: Relationship,
     bias_right: bool,
     root: &str,
-    layer_graphs: &mut BTreeMap<i32, Graph<N, WeightLabel, LayerGraphLabel>>,
+    layer_graphs: &mut BTreeMap<i32, Graph<OrderNodeLite, WeightLabel, LayerGraphLabel>>,
     timing_enabled: bool,
     timings: &mut OrderTimings,
 ) where
@@ -267,7 +268,7 @@ fn sweep<N, E, G>(
             None => {
                 layer_graphs.insert(
                     rank,
-                    build_layer_graph_with_root(g, rank, relationship, root, Some(nodes)),
+                    build_layer_graph_with_root_lite(g, rank, relationship, root, Some(nodes)),
                 );
                 layer_graphs.get_mut(&rank).expect("just inserted")
             }
@@ -322,7 +323,7 @@ fn sweep<N, E, G>(
 
 fn sync_layer_graph_orders<N, E, G>(
     original: &Graph<N, E, G>,
-    layer_graph: &mut Graph<N, WeightLabel, LayerGraphLabel>,
+    layer_graph: &mut Graph<OrderNodeLite, WeightLabel, LayerGraphLabel>,
     root: &str,
 ) where
     N: Default + OrderNodeLabel + 'static,

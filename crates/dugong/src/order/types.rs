@@ -126,3 +126,69 @@ impl OrderNodeLabel for crate::NodeLabel {
         self.border_right.first().and_then(|v| v.as_deref())
     }
 }
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct OrderNodeLite {
+    rank: Option<i32>,
+    order: Option<usize>,
+    min_rank: Option<i32>,
+    max_rank: Option<i32>,
+    border_left: Option<String>,
+    border_right: Option<String>,
+}
+
+impl OrderNodeLite {
+    pub fn from_node<N: OrderNodeLabel>(node: &N) -> Self {
+        Self {
+            rank: node.rank(),
+            order: node.order(),
+            min_rank: node.min_rank(),
+            max_rank: node.max_rank(),
+            border_left: None,
+            border_right: None,
+        }
+    }
+
+    pub fn subgraph_layer_label<N: OrderNodeRange>(node: &N, rank: i32) -> Self {
+        Self {
+            rank: None,
+            order: None,
+            min_rank: None,
+            max_rank: None,
+            border_left: node.border_left_at(rank),
+            border_right: node.border_right_at(rank),
+        }
+    }
+}
+
+impl OrderNodeRange for OrderNodeLite {
+    fn rank(&self) -> Option<i32> {
+        self.rank
+    }
+
+    fn min_rank(&self) -> Option<i32> {
+        self.min_rank
+    }
+
+    fn max_rank(&self) -> Option<i32> {
+        self.max_rank
+    }
+}
+
+impl OrderNodeLabel for OrderNodeLite {
+    fn order(&self) -> Option<usize> {
+        self.order
+    }
+
+    fn set_order(&mut self, order: usize) {
+        self.order = Some(order);
+    }
+
+    fn border_left(&self) -> Option<&str> {
+        self.border_left.as_deref()
+    }
+
+    fn border_right(&self) -> Option<&str> {
+        self.border_right.as_deref()
+    }
+}

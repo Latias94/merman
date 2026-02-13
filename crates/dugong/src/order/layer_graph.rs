@@ -3,7 +3,10 @@
 //! This mirrors upstream Dagre's `buildLayerGraph` helper, materializing a rank-local graph used
 //! for barycenter-based sorting.
 
-use super::{LayerGraphLabel, OrderEdgeWeight, OrderNodeRange, Relationship, WeightLabel};
+use super::types::OrderNodeLite;
+use super::{
+    LayerGraphLabel, OrderEdgeWeight, OrderNodeLabel, OrderNodeRange, Relationship, WeightLabel,
+};
 use crate::graphlib::{Graph, GraphOptions};
 
 pub fn build_layer_graph<N, E, G>(
@@ -112,6 +115,120 @@ where
         if node.has_min_rank() {
             let override_label = node.subgraph_layer_label(rank);
             result.set_node(v.to_string(), override_label);
+        }
+    };
+
+    match nodes_with_rank {
+        Some(vs) => {
+            for v in vs {
+                visit_node(v.as_str());
+            }
+        }
+        None => {
+            for v in g.nodes() {
+                visit_node(v);
+            }
+        }
+    }
+
+    result
+}
+
+pub(super) fn build_layer_graph_with_root_lite<N, E, G>(
+    g: &Graph<N, E, G>,
+    rank: i32,
+    relationship: Relationship,
+    root: &str,
+    nodes_with_rank: Option<&[String]>,
+) -> Graph<OrderNodeLite, WeightLabel, LayerGraphLabel>
+where
+    N: Default + 'static + OrderNodeLabel,
+    E: Default + 'static + OrderEdgeWeight,
+    G: Default,
+{
+    let root_id = root.to_string();
+    let mut result: Graph<OrderNodeLite, WeightLabel, LayerGraphLabel> = Graph::new(GraphOptions {
+        compound: true,
+        multigraph: false,
+        ..Default::default()
+    });
+    result.set_graph(LayerGraphLabel {
+        root: root_id.clone(),
+    });
+    result.set_node(root_id.clone(), OrderNodeLite::default());
+
+    let mut visit_node = |v: &str| {
+        let Some(node) = g.node(v) else {
+            return;
+        };
+        let parent = g.parent(v);
+
+        let in_range = node.rank() == Some(rank)
+            || (node.min_rank().is_some()
+                && node.max_rank().is_some()
+                && node.min_rank().is_some_and(|min| min <= rank)
+                && node.max_rank().is_some_and(|max| rank <= max));
+
+        if !in_range {
+            return;
+        }
+
+        let lbl = if node.has_min_rank() {
+            OrderNodeLite::subgraph_layer_label(node, rank)
+        } else {
+            OrderNodeLite::from_node(node)
+        };
+
+        result.set_node(v.to_string(), lbl);
+        result.set_parent(
+            v.to_string(),
+            parent
+                .map(|p| p.to_string())
+                .unwrap_or_else(|| root_id.clone()),
+        );
+
+        match relationship {
+            Relationship::InEdges => {
+                g.for_each_in_edge(v, None, |ek, lbl| {
+                    let u = ek.v.as_str();
+
+                    if !result.has_node(u) {
+                        let u_lbl = g.node(u).map(OrderNodeLite::from_node).unwrap_or_default();
+                        result.set_node(u.to_string(), u_lbl);
+                    }
+
+                    let existing_weight = result.edge(u, v, None).map(|l| l.weight).unwrap_or(0.0);
+                    let weight = lbl.weight();
+                    result.set_edge_with_label(
+                        u.to_string(),
+                        v.to_string(),
+                        WeightLabel {
+                            weight: weight + existing_weight,
+                        },
+                    );
+                });
+            }
+            Relationship::OutEdges => {
+                // Reverse out-edges so `barycenter(...)` can always read `in_edges(...)`.
+                g.for_each_out_edge(v, None, |ek, lbl| {
+                    let u = ek.w.as_str();
+
+                    if !result.has_node(u) {
+                        let u_lbl = g.node(u).map(OrderNodeLite::from_node).unwrap_or_default();
+                        result.set_node(u.to_string(), u_lbl);
+                    }
+
+                    let existing_weight = result.edge(u, v, None).map(|l| l.weight).unwrap_or(0.0);
+                    let weight = lbl.weight();
+                    result.set_edge_with_label(
+                        u.to_string(),
+                        v.to_string(),
+                        WeightLabel {
+                            weight: weight + existing_weight,
+                        },
+                    );
+                });
+            }
         }
     };
 
