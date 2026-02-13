@@ -125,12 +125,17 @@ impl<'input> Lexer<'input> {
     }
 
     fn starts_with(&self, s: &str) -> bool {
-        self.input[self.pos..].starts_with(s)
+        let hay = self.input.as_bytes();
+        let pat = s.as_bytes();
+        hay.get(self.pos..)
+            .is_some_and(|tail| tail.starts_with(pat))
     }
 
     fn starts_with_ci(&self, s: &str) -> bool {
-        self.input[self.pos..].len() >= s.len()
-            && self.input[self.pos..self.pos + s.len()].eq_ignore_ascii_case(s)
+        let hay = self.input.as_bytes();
+        let pat = s.as_bytes();
+        hay.len() >= self.pos + pat.len()
+            && hay[self.pos..self.pos + pat.len()].eq_ignore_ascii_case(pat)
     }
 
     fn starts_with_word_ci(&self, s: &str) -> bool {
@@ -143,12 +148,6 @@ impl<'input> Lexer<'input> {
         }
         let b = self.input.as_bytes()[after];
         b.is_ascii_whitespace() || matches!(b, b'{' | b'}' | b'[' | b']' | b'"' | b':' | b';')
-    }
-
-    fn bump(&mut self) -> Option<u8> {
-        let b = self.peek()?;
-        self.pos += 1;
-        Some(b)
     }
 
     fn skip_ws(&mut self) {
@@ -293,7 +292,8 @@ impl<'input> Lexer<'input> {
         if self.peek() == Some(b'{') {
             self.pos += 1;
             let body_start = self.pos;
-            let Some(end_rel) = self.input[self.pos..].find('}') else {
+            let tail = &self.input.as_bytes()[self.pos..];
+            let Some(end_rel) = tail.iter().position(|&b| b == b'}') else {
                 return Some(Err(LexError {
                     message: "Unterminated accDescr block; missing '}'".to_string(),
                 }));
@@ -423,7 +423,11 @@ impl<'input> Lexer<'input> {
 
                 self.read_to_newline().trim().to_string()
             } else {
-                let rest = &self.input[self.pos..];
+                let Some(rest) = self.input.get(self.pos..) else {
+                    return Some(Err(LexError {
+                        message: "Internal lexer error: invalid UTF-8 boundary".to_string(),
+                    }));
+                };
                 let rest_lower = rest.to_ascii_lowercase();
                 let Some(idx) = rest_lower.find("end note") else {
                     return Some(Err(LexError {
@@ -591,7 +595,11 @@ impl<'input> Lexer<'input> {
         }
 
         // Fork/join/choice markers are recognized using the rest of the line.
-        let rel = &self.input[self.pos..];
+        let Some(rel) = self.input.get(self.pos..) else {
+            return Some(Err(LexError {
+                message: "Internal lexer error: invalid UTF-8 boundary".to_string(),
+            }));
+        };
         let eol = rel.find('\n').unwrap_or(rel.len());
         let line = &rel[..eol];
         let trimmed = line.trim().to_string();
@@ -847,7 +855,12 @@ impl Iterator for Lexer<'_> {
             return Some(Ok(tok));
         }
 
-        let bad = self.bump().unwrap_or(b'?') as char;
+        let bad = self
+            .input
+            .get(self.pos..)
+            .and_then(|s| s.chars().next())
+            .unwrap_or('?');
+        self.pos += bad.len_utf8().max(1);
         Some(Err(LexError {
             message: format!("Unexpected character '{bad}'"),
         }))
@@ -1706,48 +1719,72 @@ fn build_layout_data(
         });
 
         // Apply description statements like Mermaid's `dataFetcher.ts`.
-        if let Some(descr) = parsed_item.description.as_deref() {
-            let base_label = sanitize_text(&item_id, config);
+        //
+        // Note: Mermaid supports a compact form that combines a quoted label and a trailing `: ...`
+        // description on the same line:
+        //
+        //   state "Some long name" as S1: The description
+        //
+        // The lexer captures `S1: The description` as a single `Id` token, which the grammar splits
+        // into `id="S1"` + `descriptions=["The description"]`. Apply both the primary `description`
+        // and any extra `descriptions` in order so the resulting `label` array becomes:
+        //   ["Some long name", "The description"]
+        // which later converts to (label, description[]) via `StateDB.extract()`.
+        let mut descrs: Vec<&str> = Vec::new();
+        if let Some(d) = parsed_item.description.as_deref() {
+            if !d.trim().is_empty() {
+                descrs.push(d);
+            }
+        }
+        for d in &parsed_item.descriptions {
+            if !d.trim().is_empty() {
+                descrs.push(d);
+            }
+        }
 
-            match &mut entry.label {
-                Value::Array(arr) => {
-                    entry.shape = SHAPE_STATE_WITH_DESC.to_string();
-                    arr.push(Value::String(descr.to_string()));
-                }
-                Value::String(s) => {
-                    if !s.is_empty() {
+        if !descrs.is_empty() {
+            let base_label = sanitize_text(&item_id, config);
+            for descr in descrs {
+                match &mut entry.label {
+                    Value::Array(arr) => {
                         entry.shape = SHAPE_STATE_WITH_DESC.to_string();
-                        if *s == base_label {
-                            entry.label = Value::Array(vec![Value::String(descr.to_string())]);
+                        arr.push(Value::String(descr.to_string()));
+                    }
+                    Value::String(s) => {
+                        if !s.is_empty() {
+                            entry.shape = SHAPE_STATE_WITH_DESC.to_string();
+                            if *s == base_label {
+                                entry.label = Value::Array(vec![Value::String(descr.to_string())]);
+                            } else {
+                                entry.label = Value::Array(vec![
+                                    Value::String(s.clone()),
+                                    Value::String(descr.to_string()),
+                                ]);
+                            }
                         } else {
-                            entry.label = Value::Array(vec![
-                                Value::String(s.clone()),
-                                Value::String(descr.to_string()),
-                            ]);
+                            entry.shape = SHAPE_STATE.to_string();
+                            entry.label = Value::String(descr.to_string());
                         }
-                    } else {
+                    }
+                    _ => {
                         entry.shape = SHAPE_STATE.to_string();
                         entry.label = Value::String(descr.to_string());
                     }
                 }
-                _ => {
-                    entry.shape = SHAPE_STATE.to_string();
-                    entry.label = Value::String(descr.to_string());
-                }
             }
 
             entry.label = sanitize_text_or_array(&entry.label, config);
-        }
 
-        // If there's only 1 description entry, just use a regular state shape.
-        if entry.shape == SHAPE_STATE_WITH_DESC {
-            if let Some(arr) = entry.label.as_array() {
-                if arr.len() == 1 {
-                    entry.shape = if entry.node_type.as_deref() == Some("group") {
-                        SHAPE_GROUP.to_string()
-                    } else {
-                        SHAPE_STATE.to_string()
-                    };
+            // If there's only 1 description entry, just use a regular state shape.
+            if entry.shape == SHAPE_STATE_WITH_DESC {
+                if let Some(arr) = entry.label.as_array() {
+                    if arr.len() == 1 {
+                        entry.shape = if entry.node_type.as_deref() == Some("group") {
+                            SHAPE_GROUP.to_string()
+                        } else {
+                            SHAPE_STATE.to_string()
+                        };
+                    }
                 }
             }
         }
