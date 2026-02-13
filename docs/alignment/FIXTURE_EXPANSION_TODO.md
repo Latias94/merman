@@ -49,6 +49,8 @@ Recently imported (keep gates green after each batch):
 - 2026-02-11: Class `classDiagram.md` docs examples batch import (13 new fixtures, including `hideEmptyMembersBox` and inline style variants).
 - 2026-02-11: GitGraph `gitgraph.md` docs examples batch import (5 new fixtures: branch/line hiding and theme variants).
 - 2026-02-11: External fixtures from `mermaid-rs-renderer` (Mindmap + Kanban + Flowchart + Sequence + Architecture: 5 fixtures).
+- 2026-02-12: State Cypress rendering fixtures batch import (19 fixtures from `repo-ref/mermaid/cypress/integration/rendering/*.spec.{js,ts}` for state diagrams). Refreshed State root viewport overrides and hardened State SVG parity for `config.look=default` and composite self-loop nesting rules, keeping the global `parity-root` gate green.
+- 2026-02-13: State Cypress rendering fixtures second batch import (8 fixtures; 27 total). Hardened State edge path handling by resolving `state-<id>-<n>` cluster endpoint references to the actual cluster bounds, and refreshed State root viewport overrides as needed to keep the global `parity-root` gate green.
 
 ## Medium priority (coverage growth)
 

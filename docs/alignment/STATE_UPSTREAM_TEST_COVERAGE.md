@@ -104,6 +104,17 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/state/stateDiagram-v2.sp
 - default diagram direction when unspecified: `fixtures/state/upstream_stateDiagram_direction_default_spec.mmd`
 - explicit diagram direction (`direction LR`): `fixtures/state/upstream_stateDiagram_direction_lr_spec.mmd`
 
+## Cypress rendering specs
+
+Source: `repo-ref/mermaid/cypress/integration/rendering/`
+
+These fixtures are extracted from Cypress browser rendering specs (`imgSnapshotTest` / `renderGraph`)
+and are parity-gated against upstream SVG baselines:
+
+- Imported fixtures: `fixtures/state/upstream_cypress_*.mmd` (27 fixtures)
+- Import tool: `cargo run -p xtask -- import-upstream-cypress --diagram state`
+- Baselines: `cargo run -p xtask -- gen-upstream-svgs --diagram state --filter upstream_cypress_`
+
 ## `repo-ref/mermaid/packages/mermaid/src/docs/syntax/stateDiagram.md`
 
 Source: `repo-ref/mermaid/packages/mermaid/src/docs/syntax/stateDiagram.md`
