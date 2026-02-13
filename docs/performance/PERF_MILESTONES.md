@@ -16,12 +16,12 @@ allocations for `mindmap`/`stateDiagram`).
   - Latest canary set (`flowchart_medium,class_medium,state_medium,mindmap_medium`):
     - `parse`: `~2.3–2.6x` (run-to-run variance is noticeable)
     - `layout`: `~1.2–1.3x` (gmean hides that `flowchart`/`mindmap` layout are still large)
-    - `render`: `~4.0–4.8x`
+    - `render`: `~3.8–4.8x`
     - `end_to_end`: `~1.1–1.4x` (gmean is skewed by `class`/`state` being < 1x)
   - Notable outliers in a recent run:
-    - `state_medium`: `render ~9x` (RoughJS + leaf node work; typed model still serializes to JSON for renderer)
+    - `state_medium`: `render ~6–9x` (RoughJS + leaf node work; typed model still serializes to JSON for renderer)
     - `mindmap_medium`: `layout ~3.5–5.2x`, `end_to_end ~2.4–2.9x`
-    - `flowchart_medium`: `layout ~2.2–2.6x`, `render ~3.8–5.0x`, `end_to_end ~1.7–2.1x`
+    - `flowchart_medium`: `layout ~1.6–2.6x`, `render ~3.8–5.0x`, `end_to_end ~1.7–2.1x`
 
 Root-cause direction:
 
@@ -43,7 +43,7 @@ Useful debug toggles:
 This fixture is useful as a counter-example:
 
 - Spotcheck shows `layout` is already faster than `mmdr` (`~0.48x`), and end-to-end can be faster
-  (`~0.65–0.75x` in recent runs), but `render` is still far behind (`~5–6x`).
+  (`~0.65–0.75x` in recent runs), but `render` is still far behind (`~4–6x`).
 - Implication: once we fix flowchart layout, **render optimizations will pay off across diagram
   types**, not only flowcharts.
 - `MERMAN_RENDER_TIMING=1` now also emits a `[render-timing] diagram=classDiagram ...` line, so we
