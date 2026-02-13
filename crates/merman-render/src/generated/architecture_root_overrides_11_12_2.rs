@@ -49,6 +49,12 @@ pub fn lookup_architecture_root_viewport_override(
             "-889.9099731445312 -270.7564392089844 1859.8199462890625 672.5128784179688",
             "1859.8199462890625",
         )),
+        "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_a_reasonable_height_011" => {
+            Some((
+                "-889.9099731445312 -270.7564392089844 1859.8199462890625 672.5128784179688",
+                "1859.8199462890625",
+            ))
+        }
         "upstream_architecture_layout_reasonable_height" => Some((
             "-889.9099731445312 -270.7564392089844 1859.8199462890625 672.5128784179688",
             "1859.8199462890625",
@@ -59,6 +65,15 @@ pub fn lookup_architecture_root_viewport_override(
         )),
         "upstream_architecture_cypress_fallback_icon" => {
             Some(("-49.8515625 -22 179.953125 184.1875", "179.953125"))
+        }
+        "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_the_fallback_icon_004" => {
+            Some(("-49.8515625 -22 179.953125 184.1875", "179.953125"))
+        }
+        "upstream_cypress_architecture_spec_should_render_a_simple_architecture_diagram_with_titleandaccessi_002" => {
+            Some((
+                "-183.41357421875 -165.96131896972656 446.8271484375 462.922607421875",
+                "446.8271484375",
+            ))
         }
         _ => None,
     }
