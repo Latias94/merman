@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::*;
+use std::sync::{Arc, Mutex, OnceLock};
 
 // State diagram SVG renderer implementation (split from parity.rs).
 
@@ -88,6 +89,22 @@ struct StateRoughCacheKey {
     a: u64,
     b: u64,
     seed: u64,
+}
+
+fn state_global_rough_circle_cache(
+) -> &'static Mutex<std::collections::HashMap<StateRoughCacheKey, Arc<String>>> {
+    static CACHE: OnceLock<Mutex<std::collections::HashMap<StateRoughCacheKey, Arc<String>>>> =
+        OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
+
+fn state_global_rough_paths_cache() -> &'static Mutex<
+    std::collections::HashMap<StateRoughCacheKey, (Arc<String>, Arc<String>)>,
+> {
+    static CACHE: OnceLock<
+        Mutex<std::collections::HashMap<StateRoughCacheKey, (Arc<String>, Arc<String>)>>,
+    > = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
 }
 
 #[inline]
@@ -2132,9 +2149,9 @@ struct StateRenderCtx<'a> {
     measurer: &'a dyn TextMeasurer,
     text_style: crate::text::TextStyle,
     rough_circle_cache:
-        std::cell::RefCell<std::collections::HashMap<StateRoughCacheKey, std::rc::Rc<String>>>,
+        std::cell::RefCell<std::collections::HashMap<StateRoughCacheKey, Arc<String>>>,
     rough_paths_cache: std::cell::RefCell<
-        std::collections::HashMap<StateRoughCacheKey, (std::rc::Rc<String>, std::rc::Rc<String>)>,
+        std::collections::HashMap<StateRoughCacheKey, (Arc<String>, Arc<String>)>,
     >,
 }
 
@@ -4263,16 +4280,32 @@ fn render_state_node_svg(
         ctx: &StateRenderCtx<'_>,
         key: StateRoughCacheKey,
         build: impl FnOnce() -> String,
-    ) -> std::rc::Rc<String> {
+    ) -> Arc<String> {
         let existing = { ctx.rough_circle_cache.borrow().get(&key).cloned() };
         if let Some(v) = existing {
             return v;
         }
-        let d = std::rc::Rc::new(build());
+
+        if let Ok(global) = state_global_rough_circle_cache().lock() {
+            if let Some(v) = global.get(&key) {
+                let v = Arc::clone(v);
+                ctx.rough_circle_cache
+                    .borrow_mut()
+                    .insert(key, Arc::clone(&v));
+                return v;
+            }
+        }
+
+        let built = Arc::new(build());
+        let cached = if let Ok(mut global) = state_global_rough_circle_cache().lock() {
+            Arc::clone(global.entry(key).or_insert_with(|| Arc::clone(&built)))
+        } else {
+            Arc::clone(&built)
+        };
         ctx.rough_circle_cache
             .borrow_mut()
-            .insert(key, std::rc::Rc::clone(&d));
-        d
+            .insert(key, Arc::clone(&cached));
+        cached
     }
 
     #[inline]
@@ -4280,19 +4313,36 @@ fn render_state_node_svg(
         ctx: &StateRenderCtx<'_>,
         key: StateRoughCacheKey,
         build: impl FnOnce() -> (String, String),
-    ) -> (std::rc::Rc<String>, std::rc::Rc<String>) {
+    ) -> (Arc<String>, Arc<String>) {
         let existing = { ctx.rough_paths_cache.borrow().get(&key).cloned() };
         if let Some(v) = existing {
             return v;
         }
+
+        if let Ok(global) = state_global_rough_paths_cache().lock() {
+            if let Some((fill_d, stroke_d)) = global.get(&key) {
+                let v = (Arc::clone(fill_d), Arc::clone(stroke_d));
+                ctx.rough_paths_cache
+                    .borrow_mut()
+                    .insert(key, (Arc::clone(&v.0), Arc::clone(&v.1)));
+                return v;
+            }
+        }
+
         let (fill_d, stroke_d) = build();
-        let fill_d = std::rc::Rc::new(fill_d);
-        let stroke_d = std::rc::Rc::new(stroke_d);
-        ctx.rough_paths_cache.borrow_mut().insert(
-            key,
-            (std::rc::Rc::clone(&fill_d), std::rc::Rc::clone(&stroke_d)),
-        );
-        (fill_d, stroke_d)
+        let built = (Arc::new(fill_d), Arc::new(stroke_d));
+        let cached = if let Ok(mut global) = state_global_rough_paths_cache().lock() {
+            let entry = global
+                .entry(key)
+                .or_insert_with(|| (Arc::clone(&built.0), Arc::clone(&built.1)));
+            (Arc::clone(&entry.0), Arc::clone(&entry.1))
+        } else {
+            (Arc::clone(&built.0), Arc::clone(&built.1))
+        };
+        ctx.rough_paths_cache
+            .borrow_mut()
+            .insert(key, (Arc::clone(&cached.0), Arc::clone(&cached.1)));
+        cached
     }
 
     let node_class = if node.css_classes.trim().is_empty() {
