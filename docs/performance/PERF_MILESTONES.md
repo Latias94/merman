@@ -11,10 +11,10 @@ Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) still shows that **flowchar
 end-to-end bottleneck**, and the remaining gap is dominated by Dagre-ish ordering sweeps:
 
 - Spotcheck (`tools/bench/stage_spotcheck.py`, 30 samples / 2s warmup / 3s measurement):
-  - `parse`: ~`2.3x` slower (`~670 µs` vs `~287 µs`)
-  - `layout`: ~`2.3x` slower (`~9.0 ms` vs `~4.0 ms`)
-  - `render`: ~`7.6x` slower (`~1.03 ms` vs `~136 µs`)
-  - `end_to_end`: ~`2.6x` slower (`~10.4 ms` vs `~4.0 ms`)
+  - `parse`: `2.66x` slower (`601.76 µs` vs `226.27 µs`)
+  - `layout`: `1.83x` slower (`7.4041 ms` vs `4.0514 ms`)
+  - `render`: `3.59x` slower (`678.51 µs` vs `188.77 µs`)
+  - `end_to_end`: `2.31x` slower (`9.6824 ms` vs `4.1845 ms`)
 - Micro-timing (deterministic text measurer) indicates `dugong::order` is the hotspot:
   - After caching per-rank layer graphs, `order` is split roughly as:
     - `build_layer_graph_cache ~2.7ms`
@@ -41,6 +41,8 @@ This fixture is useful as a counter-example:
   (`~0.93x`), but `render` is still far behind (`~6.29x`).
 - Implication: once we fix flowchart layout, **render optimizations will pay off across diagram
   types**, not only flowcharts.
+- `MERMAN_RENDER_TIMING=1` now also emits a `[render-timing] diagram=classDiagram ...` line, so we
+  can attribute class renderer hotspots without a profiler.
 
 ## Milestones
 
@@ -58,11 +60,12 @@ Work items:
 - Fast path for plain text labels in `flowchart_label_html(...)`.
 - Skip icon regex expansion when the label cannot contain `:fa-...` syntax.
 
-### M2 — Flowchart layout: make Dagre-ish ordering fast (In progress)
+### M2 — Flowchart layout: make Dagre-ish ordering fast (Mostly done)
 
 Goal: cut `layout/flowchart_medium` substantially.
 
 Primary target: reduce the spotcheck ratio from ~`5.0x` → `< 2.0x` without changing layout output.
+Current: `~1.8x` on `flowchart_medium` in a recent spotcheck run.
 
 What we know:
 
