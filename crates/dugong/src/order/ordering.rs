@@ -1,9 +1,10 @@
 use super::barycenter::SortSubgraphTimings;
-use super::layer_graph::{build_layer_graph_with_root_lite, create_root_node};
+use super::constraints::add_subgraph_constraints_ix;
+use super::cross_count::cross_count_ix;
+use super::layer_graph::{build_layer_graph_with_root_lite_ix, create_root_node};
 use super::types::OrderNodeLite;
 use super::{
-    LayerGraphLabel, OrderEdgeWeight, OrderNodeLabel, Relationship, WeightLabel,
-    add_subgraph_constraints, cross_count, init_order, sort_subgraph,
+    LayerGraphLabel, OrderEdgeWeight, OrderNodeLabel, Relationship, WeightLabel, init_order,
 };
 use crate::graphlib::{Graph, GraphOptions};
 use std::collections::BTreeMap;
@@ -52,26 +53,34 @@ where
     let mut timings = OrderTimings::default();
 
     let mut max_rank: i32 = i32::MIN;
-    let mut nodes_by_rank: BTreeMap<i32, Vec<String>> = BTreeMap::new();
+    let mut nodes_by_rank: Vec<Vec<usize>> = Vec::new();
 
     let build_nodes_by_rank_start = timing_enabled.then(std::time::Instant::now);
-    for v in g.nodes() {
-        let Some(node) = g.node(v) else {
-            continue;
-        };
-        if let Some(rank) = node.rank() {
+    g.for_each_node_ix(|v_ix, _id, node| {
+        let mut push_rank = |rank: i32| {
+            if rank < 0 {
+                return;
+            }
+            let idx = rank as usize;
+            if nodes_by_rank.len() <= idx {
+                nodes_by_rank.resize_with(idx + 1, Vec::new);
+            }
+            nodes_by_rank[idx].push(v_ix);
             max_rank = max_rank.max(rank);
-            nodes_by_rank.entry(rank).or_default().push(v.to_string());
+        };
+
+        if let Some(rank) = node.rank() {
+            push_rank(rank);
         }
         if let (Some(min_rank), Some(max_rank_node)) = (node.min_rank(), node.max_rank()) {
             for r in min_rank..=max_rank_node {
                 if node.rank() == Some(r) {
                     continue;
                 }
-                nodes_by_rank.entry(r).or_default().push(v.to_string());
+                push_rank(r);
             }
         }
-    }
+    });
     if let Some(s) = build_nodes_by_rank_start {
         timings.build_nodes_by_rank = s.elapsed();
     }
@@ -105,16 +114,16 @@ where
         BTreeMap::new();
     for rank in 0..=max_rank {
         let nodes = nodes_by_rank
-            .get(&rank)
+            .get(rank as usize)
             .map(|v| v.as_slice())
             .unwrap_or(&[]);
         layer_graphs_in.insert(
             rank,
-            build_layer_graph_with_root_lite(g, rank, Relationship::InEdges, &root, Some(nodes)),
+            build_layer_graph_with_root_lite_ix(g, rank, Relationship::InEdges, &root, nodes),
         );
         layer_graphs_out.insert(
             rank,
-            build_layer_graph_with_root_lite(g, rank, Relationship::OutEdges, &root, Some(nodes)),
+            build_layer_graph_with_root_lite_ix(g, rank, Relationship::OutEdges, &root, nodes),
         );
     }
     if let Some(s) = build_cache_start {
@@ -122,7 +131,7 @@ where
     }
 
     let mut best_cc: f64 = f64::INFINITY;
-    let mut best_layering: Option<Vec<Vec<String>>> = None;
+    let mut best_layering: Option<Vec<Vec<usize>>> = None;
 
     let ranks_down: Vec<i32> = (1..=max_rank).collect();
     let ranks_up: Vec<i32> = if max_rank >= 1 {
@@ -172,13 +181,13 @@ where
         }
 
         let build_layer_matrix_start = timing_enabled.then(std::time::Instant::now);
-        let layering_now = build_layer_matrix(g, max_rank);
+        let layering_now = build_layer_matrix_ix(g, max_rank);
         if let Some(s) = build_layer_matrix_start {
             timings.build_layer_matrix += s.elapsed();
         }
 
         let cross_count_start = timing_enabled.then(std::time::Instant::now);
-        let cc = cross_count(g, &layering_now);
+        let cc = cross_count_ix(g, &layering_now);
         if let Some(s) = cross_count_start {
             timings.cross_count += s.elapsed();
         }
@@ -193,7 +202,7 @@ where
     }
 
     if let Some(best) = best_layering {
-        assign_order(g, &best);
+        assign_order_ix(g, &best);
     }
 
     if let Some(s) = total_start {
@@ -241,7 +250,7 @@ where
 
 fn sweep<N, E, G>(
     g: &mut Graph<N, E, G>,
-    nodes_by_rank: &BTreeMap<i32, Vec<String>>,
+    nodes_by_rank: &[Vec<usize>],
     ranks: &[i32],
     relationship: Relationship,
     bias_right: bool,
@@ -258,7 +267,7 @@ fn sweep<N, E, G>(
 
     for &rank in ranks {
         let nodes = nodes_by_rank
-            .get(&rank)
+            .get(rank as usize)
             .map(|v| v.as_slice())
             .unwrap_or(&[]);
 
@@ -268,7 +277,7 @@ fn sweep<N, E, G>(
             None => {
                 layer_graphs.insert(
                     rank,
-                    build_layer_graph_with_root_lite(g, rank, relationship, root, Some(nodes)),
+                    build_layer_graph_with_root_lite_ix(g, rank, relationship, root, nodes),
                 );
                 layer_graphs.get_mut(&rank).expect("just inserted")
             }
@@ -286,9 +295,9 @@ fn sweep<N, E, G>(
         let sort_start = timing_enabled.then(std::time::Instant::now);
         let mut sg_timings = timing_enabled.then(SortSubgraphTimings::default);
         let sorted = if let Some(t) = sg_timings.as_mut() {
-            super::barycenter::sort_subgraph_with_timings(lg, root, &cg, bias_right, t)
+            super::barycenter::sort_subgraph_with_timings_ix(lg, root, &cg, bias_right, t)
         } else {
-            sort_subgraph(lg, root, &cg, bias_right)
+            super::barycenter::sort_subgraph_ix(lg, root, &cg, bias_right)
         };
         if let Some(s) = sort_start {
             timings.sweep_sort_subgraph += s.elapsed();
@@ -304,8 +313,14 @@ fn sweep<N, E, G>(
         }
 
         let apply_order_start = timing_enabled.then(std::time::Instant::now);
-        for (i, v) in sorted.vs.iter().enumerate() {
-            if let Some(n) = g.node_mut(v) {
+        for (i, &v_ix) in sorted.vs.iter().enumerate() {
+            let Some(id) = lg.node_id_by_ix(v_ix) else {
+                continue;
+            };
+            let Some(original_ix) = g.node_ix(id) else {
+                continue;
+            };
+            if let Some(n) = g.node_label_mut_by_ix(original_ix) {
                 n.set_order(i);
             }
         }
@@ -314,7 +329,7 @@ fn sweep<N, E, G>(
         }
 
         let constraints_start = timing_enabled.then(std::time::Instant::now);
-        add_subgraph_constraints(&lg, &mut cg, &sorted.vs);
+        add_subgraph_constraints_ix(&lg, &mut cg, &sorted.vs);
         if let Some(s) = constraints_start {
             timings.sweep_add_constraints += s.elapsed();
         }
@@ -342,29 +357,47 @@ fn sync_layer_graph_orders<N, E, G>(
     });
 }
 
-fn build_layer_matrix<N, E, G>(g: &Graph<N, E, G>, max_rank: i32) -> Vec<Vec<String>>
+fn build_layer_matrix_ix<N, E, G>(g: &Graph<N, E, G>, max_rank: i32) -> Vec<Vec<usize>>
 where
     N: Default + OrderNodeLabel + 'static,
     E: Default + 'static,
     G: Default,
 {
-    let mut layers: Vec<Vec<(usize, String)>> = vec![Vec::new(); (max_rank + 1) as usize];
-    for v in g.nodes() {
-        let Some(node) = g.node(v) else {
-            continue;
-        };
+    let mut layers: Vec<Vec<(usize, usize)>> = vec![Vec::new(); (max_rank + 1).max(0) as usize];
+    g.for_each_node_ix(|v_ix, _id, node| {
         let Some(rank) = node.rank() else {
-            continue;
+            return;
         };
+        if rank < 0 {
+            return;
+        }
         let Some(order) = node.order() else {
-            continue;
+            return;
         };
-        layers[rank.max(0) as usize].push((order, v.to_string()));
-    }
-    let mut out: Vec<Vec<String>> = Vec::with_capacity(layers.len());
+        let idx = rank as usize;
+        if let Some(layer) = layers.get_mut(idx) {
+            layer.push((order, v_ix));
+        }
+    });
+    let mut out: Vec<Vec<usize>> = Vec::with_capacity(layers.len());
     for mut layer in layers {
         layer.sort_by_key(|(o, _)| *o);
         out.push(layer.into_iter().map(|(_, v)| v).collect());
     }
     out
+}
+
+fn assign_order_ix<N, E, G>(g: &mut Graph<N, E, G>, layering: &[Vec<usize>])
+where
+    N: Default + OrderNodeLabel + 'static,
+    E: Default + 'static,
+    G: Default,
+{
+    for layer in layering {
+        for (i, &v_ix) in layer.iter().enumerate() {
+            if let Some(node) = g.node_label_mut_by_ix(v_ix) {
+                node.set_order(i);
+            }
+        }
+    }
 }

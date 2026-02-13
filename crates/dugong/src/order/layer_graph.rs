@@ -134,12 +134,12 @@ where
     result
 }
 
-pub(super) fn build_layer_graph_with_root_lite<N, E, G>(
+pub(super) fn build_layer_graph_with_root_lite_ix<N, E, G>(
     g: &Graph<N, E, G>,
     rank: i32,
     relationship: Relationship,
     root: &str,
-    nodes_with_rank: Option<&[String]>,
+    nodes_with_rank: &[usize],
 ) -> Graph<OrderNodeLite, WeightLabel, LayerGraphLabel>
 where
     N: Default + 'static + OrderNodeLabel,
@@ -232,17 +232,11 @@ where
         }
     };
 
-    match nodes_with_rank {
-        Some(vs) => {
-            for v in vs {
-                visit_node(v.as_str());
-            }
-        }
-        None => {
-            for v in g.nodes() {
-                visit_node(v);
-            }
-        }
+    for &ix in nodes_with_rank {
+        let Some(v) = g.node_id_by_ix(ix) else {
+            continue;
+        };
+        visit_node(v);
     }
 
     result

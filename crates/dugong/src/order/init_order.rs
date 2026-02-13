@@ -12,7 +12,7 @@ where
 
     let simple_nodes: Vec<String> = g
         .nodes()
-        .filter(|v| g.children(v).is_empty())
+        .filter(|v| g.children_iter(v).next().is_none())
         .map(|v| v.to_string())
         .collect();
 

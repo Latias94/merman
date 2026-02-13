@@ -1386,6 +1386,13 @@ where
         self.parent.get(child).map(|s| s.as_str())
     }
 
+    pub fn children_iter<'a>(&'a self, parent: &str) -> impl Iterator<Item = &'a str> + 'a {
+        self.children
+            .get(parent)
+            .into_iter()
+            .flat_map(|v| v.iter().map(|s| s.as_str()))
+    }
+
     pub fn children(&self, parent: &str) -> Vec<&str> {
         self.children
             .get(parent)

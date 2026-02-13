@@ -14,14 +14,14 @@ allocations for `mindmap`/`stateDiagram`).
 
 - Spotcheck (`tools/bench/stage_spotcheck.py`, 20 samples / 1s warmup / 1s measurement):
   - Latest canary set (`flowchart_medium,class_medium,state_medium,mindmap_medium`):
-    - `parse`: `~2.3–2.6x` (run-to-run variance is noticeable)
-    - `layout`: `~1.2–1.3x` (gmean hides that `flowchart`/`mindmap` layout are still large)
-    - `render`: `~3.8–4.8x`
-    - `end_to_end`: `~1.1–1.4x` (gmean is skewed by `class`/`state` being < 1x)
+    - `parse`: `~2.6–2.7x` (run-to-run variance is noticeable)
+    - `layout`: `~1.1–1.2x` (gmean hides that `flowchart`/`mindmap` layout can still be large)
+    - `render`: `~3.5–3.7x`
+    - `end_to_end`: `~1.1–1.2x` (gmean is skewed by `class`/`state` being < 1x)
   - Notable outliers in a recent run:
-    - `state_medium`: `render ~6–9x` (RoughJS + leaf node work; typed model still serializes to JSON for renderer)
-    - `mindmap_medium`: `layout ~3.5–5.2x`, `end_to_end ~2.4–2.9x`
-    - `flowchart_medium`: `layout ~1.6–2.6x`, `render ~3.8–5.0x`, `end_to_end ~1.7–2.1x`
+    - `state_medium`: `render ~5–7x` (RoughJS + leaf node work; typed model still serializes to JSON for renderer)
+    - `mindmap_medium`: `layout ~5–6x`, `end_to_end ~2.8–2.9x`
+    - `flowchart_medium`: `layout ~1.4–2.4x`, `render ~3.7x`, `end_to_end ~1.2–1.8x`
 
 Root-cause direction:
 
@@ -77,7 +77,7 @@ Work items:
 Goal: cut `layout/flowchart_medium` substantially.
 
 Primary target: reduce the spotcheck ratio from `~5x` → `< 2.0x` without changing layout output.
-Current: `~2.2–2.6x` on `flowchart_medium` in the latest canary runs (numbers fluctuate).
+Current: `~1.4–2.4x` on `flowchart_medium` in the latest canary runs (numbers fluctuate).
 
 What we know:
 
@@ -92,9 +92,10 @@ Next work items (ordered by expected ROI):
    (Done: `sort_subgraph_*` breakdown is now available in `[dugong-timing] stage=order ...`.)
 2. Reduce allocations / cloning inside `sweeps` (reuse scratch buffers; avoid building temporary
    `Vec<String>` / `HashMap<String, ...>` where a borrowed view works).
-   (In progress: conflict resolution was a major contributor; `resolve_conflicts` now operates on
-   dense indices rather than cloning node ids repeatedly. On `flowchart_medium`, local timing showed
-   `sort_subgraph_resolve_conflicts` dropping from ~`0.78ms` → ~`0.29ms`.)
+   (In progress: `sort_subgraph(...)` now runs on node indices end-to-end (movable/barycenter/
+   conflict-resolution/subgraph expansion/sort), and the order evaluator (`build_layer_matrix` +
+   `cross_count`) is index-based as well. Remaining overhead is now dominated by layer-graph
+   materialization + constraint-graph building.)
 3. Reduce `build_layer_graph_cache` costs (this is outside `sweeps`, but still inside `order`):
    - Build cached layer graphs using a lightweight node label rather than cloning full `NodeLabel`.
    - On `flowchart_medium`, local timing showed `build_layer_graph_cache` dropping from ~`2.0ms` → ~`0.7ms`,
@@ -104,6 +105,8 @@ Next work items (ordered by expected ROI):
    - map external `NodeKey` → dense `usize` once per `order(...)` call
    - represent adjacency as `Vec<Vec<usize>>` (or a flat CSR-style structure)
    - keep stable output by translating indices back to `NodeKey` at the boundary
+   (Partially done: the sweep algorithm now works primarily on dense `usize` ids and only resolves
+   back to node ids at the boundary when applying orders.)
 5. Algorithmic improvement: early-exit sweeps when crossing count stops improving; avoid “fixed
    number of sweeps” when the order has converged.
 
