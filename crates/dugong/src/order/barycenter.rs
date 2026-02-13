@@ -248,78 +248,84 @@ pub(crate) struct SortSubgraphTimings {
 }
 
 pub fn sort(entries: &[SortEntry], bias_right: bool) -> SortResult {
-    let mut sortable: Vec<SortEntry> = Vec::new();
-    let mut unsortable: Vec<SortEntry> = Vec::new();
+    let mut total_len: usize = 0;
+    let mut sortable: Vec<usize> = Vec::new();
+    let mut unsortable: Vec<usize> = Vec::new();
 
-    for entry in entries {
+    for (ix, entry) in entries.iter().enumerate() {
+        total_len += entry.vs.len();
         if entry.barycenter.is_some() {
-            sortable.push(entry.clone());
+            sortable.push(ix);
         } else {
-            unsortable.push(entry.clone());
+            unsortable.push(ix);
         }
     }
 
-    unsortable.sort_by(|a, b| b.i.cmp(&a.i));
+    unsortable.sort_by(|&a, &b| entries[b].i.cmp(&entries[a].i));
 
-    sortable.sort_by(|a, b| {
-        let a_bc = a.barycenter.unwrap_or(0.0);
-        let b_bc = b.barycenter.unwrap_or(0.0);
+    sortable.sort_by(|&a, &b| {
+        let a_entry = &entries[a];
+        let b_entry = &entries[b];
+        let a_bc = a_entry.barycenter.unwrap_or(0.0);
+        let b_bc = b_entry.barycenter.unwrap_or(0.0);
         if a_bc < b_bc {
             std::cmp::Ordering::Less
         } else if a_bc > b_bc {
             std::cmp::Ordering::Greater
         } else if !bias_right {
-            a.i.cmp(&b.i)
+            a_entry.i.cmp(&b_entry.i)
         } else {
-            b.i.cmp(&a.i)
+            b_entry.i.cmp(&a_entry.i)
         }
     });
 
-    let mut parts: Vec<Vec<String>> = Vec::new();
+    let mut out: Vec<String> = Vec::with_capacity(total_len);
     let mut sum: f64 = 0.0;
     let mut weight: f64 = 0.0;
     let mut vs_index: usize = 0;
 
     fn consume_unsortable(
-        parts: &mut Vec<Vec<String>>,
-        unsortable: &mut Vec<SortEntry>,
+        out: &mut Vec<String>,
+        entries: &[SortEntry],
+        unsortable: &mut Vec<usize>,
         mut index: usize,
     ) -> usize {
-        while let Some(last) = unsortable.last() {
+        while let Some(&last_ix) = unsortable.last() {
+            let last = &entries[last_ix];
             if last.i > index {
                 break;
             }
-            let Some(last) = unsortable.pop() else {
+            let Some(last_ix) = unsortable.pop() else {
                 break;
             };
-            parts.push(last.vs);
+            out.extend(entries[last_ix].vs.iter().cloned());
             index += 1;
         }
         index
     }
 
-    vs_index = consume_unsortable(&mut parts, &mut unsortable, vs_index);
+    vs_index = consume_unsortable(&mut out, entries, &mut unsortable, vs_index);
 
-    for entry in sortable {
+    for entry_ix in sortable {
+        let entry = &entries[entry_ix];
         vs_index += entry.vs.len();
-        parts.push(entry.vs.clone());
+        out.extend(entry.vs.iter().cloned());
         if let (Some(bc), Some(w)) = (entry.barycenter, entry.weight) {
             sum += bc * w;
             weight += w;
         }
-        vs_index = consume_unsortable(&mut parts, &mut unsortable, vs_index);
+        vs_index = consume_unsortable(&mut out, entries, &mut unsortable, vs_index);
     }
 
-    let vs: Vec<String> = parts.into_iter().flatten().collect();
     if weight != 0.0 {
         SortResult {
-            vs,
+            vs: out,
             barycenter: Some(sum / weight),
             weight: Some(weight),
         }
     } else {
         SortResult {
-            vs,
+            vs: out,
             barycenter: None,
             weight: None,
         }
