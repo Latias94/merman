@@ -162,6 +162,14 @@ def cargo_bench_cmd(
 
 
 def main(argv: list[str]) -> int:
+    # Windows consoles often default to a legacy code page (e.g. GBK/CP936). Our report contains
+    # the micro sign ("µ") in timing units, which can raise UnicodeEncodeError when writing to
+    # stdout. Force UTF-8 output when possible to keep the script usable without extra env vars.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
     ap = argparse.ArgumentParser()
     ap.add_argument(
         "--fixtures",
