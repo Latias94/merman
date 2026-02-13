@@ -591,7 +591,13 @@ fn class_rough_seed(diagram_id: &str, dom_id: &str) -> u64 {
     h
 }
 
-fn class_rough_line_double_path(x1: f64, y1: f64, x2: f64, y2: f64, mut seed: u64) -> String {
+fn class_rough_line_double_path_and_bounds(
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    mut seed: u64,
+) -> (String, super::path_bounds::SvgPathBounds) {
     let dx = x2 - x1;
     let dy = y2 - y1;
 
@@ -617,7 +623,7 @@ fn class_rough_line_double_path(x1: f64, y1: f64, x2: f64, y2: f64, mut seed: u6
     let c4x = x1 + dx * t4;
     let c4y = y1 + dy * t4;
 
-    format!(
+    let d = format!(
         "M{} {} C{} {}, {} {}, {} {} M{} {} C{} {}, {} {}, {} {}",
         fmt(x1),
         fmt(y1),
@@ -635,43 +641,56 @@ fn class_rough_line_double_path(x1: f64, y1: f64, x2: f64, y2: f64, mut seed: u6
         fmt(c4y),
         fmt(x2),
         fmt(y2),
-    )
+    );
+
+    let mut pb = super::path_bounds::SvgPathBounds {
+        min_x: x1,
+        min_y: y1,
+        max_x: x1,
+        max_y: y1,
+    };
+    super::path_bounds::svg_path_bounds_include_cubic(&mut pb, x1, y1, c1x, c1y, c2x, c2y, x2, y2);
+    super::path_bounds::svg_path_bounds_include_cubic(&mut pb, x1, y1, c3x, c3y, c4x, c4y, x2, y2);
+
+    (d, pb)
 }
 
-fn class_rough_rect_stroke_path(left: f64, top: f64, width: f64, height: f64, seed: u64) -> String {
+fn class_rough_rect_stroke_path_and_bounds(
+    left: f64,
+    top: f64,
+    width: f64,
+    height: f64,
+    seed: u64,
+) -> (String, super::path_bounds::SvgPathBounds) {
     let right = left + width;
     let bottom = top + height;
 
     let mut out = String::new();
-    out.push_str(&class_rough_line_double_path(
-        left,
-        top,
-        right,
-        top,
-        seed ^ 0x01,
-    ));
-    out.push_str(&class_rough_line_double_path(
-        right,
-        top,
-        right,
-        bottom,
-        seed ^ 0x02,
-    ));
-    out.push_str(&class_rough_line_double_path(
-        right,
-        bottom,
-        left,
-        bottom,
-        seed ^ 0x03,
-    ));
-    out.push_str(&class_rough_line_double_path(
-        left,
-        bottom,
-        left,
-        top,
-        seed ^ 0x04,
-    ));
-    out
+    let (d1, mut pb) = class_rough_line_double_path_and_bounds(left, top, right, top, seed ^ 0x01);
+    out.push_str(&d1);
+    let (d2, pb2) = class_rough_line_double_path_and_bounds(right, top, right, bottom, seed ^ 0x02);
+    out.push_str(&d2);
+    pb.min_x = pb.min_x.min(pb2.min_x);
+    pb.min_y = pb.min_y.min(pb2.min_y);
+    pb.max_x = pb.max_x.max(pb2.max_x);
+    pb.max_y = pb.max_y.max(pb2.max_y);
+
+    let (d3, pb3) =
+        class_rough_line_double_path_and_bounds(right, bottom, left, bottom, seed ^ 0x03);
+    out.push_str(&d3);
+    pb.min_x = pb.min_x.min(pb3.min_x);
+    pb.min_y = pb.min_y.min(pb3.min_y);
+    pb.max_x = pb.max_x.max(pb3.max_x);
+    pb.max_y = pb.max_y.max(pb3.max_y);
+
+    let (d4, pb4) = class_rough_line_double_path_and_bounds(left, bottom, left, top, seed ^ 0x04);
+    out.push_str(&d4);
+    pb.min_x = pb.min_x.min(pb4.min_x);
+    pb.min_y = pb.min_y.min(pb4.min_y);
+    pb.max_x = pb.max_x.max(pb4.max_x);
+    pb.max_y = pb.max_y.max(pb4.max_y);
+
+    (out, pb)
 }
 
 pub(super) fn render_class_diagram_v2_svg(
@@ -805,6 +824,21 @@ pub(super) fn render_class_diagram_v2_svg(
                 pb.max_y + dy,
             );
         }
+    }
+
+    fn include_path_bounds(
+        bounds: &mut Option<Bounds>,
+        pb: &super::path_bounds::SvgPathBounds,
+        dx: f64,
+        dy: f64,
+    ) {
+        include_rect(
+            bounds,
+            pb.min_x + dx,
+            pb.min_y + dy,
+            pb.max_x + dx,
+            pb.max_y + dy,
+        );
     }
 
     const VIEWBOX_PLACEHOLDER: &str = "__MERMAID_VIEWBOX__";
@@ -987,9 +1021,13 @@ pub(super) fn render_class_diagram_v2_svg(
                         },
                     );
                 }
-                let d = curve_basis_path_d(&curve_points);
+                let (d, d_pb) = super::curve::curve_basis_path_d_and_bounds(&curve_points);
                 let path_bounds_start = timing_enabled.then(std::time::Instant::now);
-                include_path_d(content_bounds, &d, bounds_dx, bounds_dy);
+                if let Some(pb) = d_pb.as_ref() {
+                    include_path_bounds(content_bounds, pb, bounds_dx, bounds_dy);
+                } else {
+                    include_path_d(content_bounds, &d, bounds_dx, bounds_dy);
+                }
                 if let Some(s) = path_bounds_start {
                     detail.path_bounds += s.elapsed();
                     detail.path_bounds_calls += 1;
@@ -1249,7 +1287,7 @@ pub(super) fn render_class_diagram_v2_svg(
             let top = -h / 2.0;
             let label_x = -fo_w / 2.0;
             let label_y = -fo_h / 2.0;
-            let note_stroke_d = class_rough_rect_stroke_path(
+            let (note_stroke_d, note_stroke_pb) = class_rough_rect_stroke_path_and_bounds(
                 left,
                 top,
                 w,
@@ -1275,9 +1313,9 @@ pub(super) fn render_class_diagram_v2_svg(
                 fo_h,
             );
             let path_bounds_start = timing_enabled.then(std::time::Instant::now);
-            include_path_d(
+            include_path_bounds(
                 &mut content_bounds,
-                &note_stroke_d,
+                &note_stroke_pb,
                 node_bounds_tx,
                 node_bounds_ty,
             );
@@ -1459,7 +1497,8 @@ pub(super) fn render_class_diagram_v2_svg(
             fmt(top + h),
             escape_attr(node_fill)
         );
-        let stroke_d = class_rough_rect_stroke_path(left, top, w, h, rough_seed);
+        let (stroke_d, stroke_pb) =
+            class_rough_rect_stroke_path_and_bounds(left, top, w, h, rough_seed);
         include_xywh(
             &mut content_bounds,
             node_bounds_tx + left,
@@ -1468,9 +1507,9 @@ pub(super) fn render_class_diagram_v2_svg(
             h,
         );
         let path_bounds_start = timing_enabled.then(std::time::Instant::now);
-        include_path_d(
+        include_path_bounds(
             &mut content_bounds,
-            &stroke_d,
+            &stroke_pb,
             node_bounds_tx,
             node_bounds_ty,
         );
@@ -1661,9 +1700,15 @@ pub(super) fn render_class_diagram_v2_svg(
         if !(hide_empty_members_box && members_rows == 0 && methods_rows == 0) {
             for y in [divider1_y, divider2_y] {
                 out.push_str(r#"<g class="divider" style="">"#);
-                let d = class_rough_line_double_path(left, y, left + w, y, rough_seed ^ 0x55);
+                let (d, d_pb) = class_rough_line_double_path_and_bounds(
+                    left,
+                    y,
+                    left + w,
+                    y,
+                    rough_seed ^ 0x55,
+                );
                 let path_bounds_start = timing_enabled.then(std::time::Instant::now);
-                include_path_d(&mut content_bounds, &d, node_bounds_tx, node_bounds_ty);
+                include_path_bounds(&mut content_bounds, &d_pb, node_bounds_tx, node_bounds_ty);
                 if let Some(s) = path_bounds_start {
                     detail.path_bounds += s.elapsed();
                     detail.path_bounds_calls += 1;

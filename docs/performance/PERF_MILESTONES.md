@@ -31,6 +31,9 @@ Root-cause direction:
   then re-parsing it to approximate `getBBox()`. We now compute cubic bounds during curve emission
   for the viewBox approximation, avoiding `svg_path_bounds_from_d(...)` in the flowchart viewbox
   prepass (still builds the `d`, but no longer parses it).
+- Class diagram viewport work had the same pattern: we were accumulating `path_bounds` by parsing
+  the emitted `d` strings. We now compute bounds during path emission for class edges + RoughJS-like
+  strokes, and `path_bounds` micro-timing dropped from ~`O(50µs)` to ~`O(1–3µs)` for `class_medium`.
 - `state_medium` render is dominated by leaf node work, especially RoughJS path generation and emit.
 - `mindmap_medium` overall gap is now mostly layout (COSE port / bbox work) rather than parse.
 
