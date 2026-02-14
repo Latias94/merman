@@ -19,6 +19,12 @@ pub fn lookup_requirement_root_viewport_override(
         "upstream_docs_requirementdiagram_larger_example_010" => {
             Some(("0 0 855.671875 1442", "855.672"))
         }
+        "upstream_html_demos_requirements_requirement_diagram_demos_001" => {
+            Some(("0 0 855.671875 1442", "855.672"))
+        }
+        "upstream_html_demos_requirements_requirement_diagram_demos_002" => {
+            Some(("0 0 939.79296875 1466", "939.793"))
+        }
         _ => None,
     }
 }

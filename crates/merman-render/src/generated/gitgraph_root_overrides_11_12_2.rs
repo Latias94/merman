@@ -82,6 +82,86 @@ pub fn lookup_gitgraph_root_viewport_override(
             "-114.3515625 -19 572.3515625 236.35057067871094",
             "572.3515625",
         )),
+        "upstream_html_demos_git_cherry_pick_from_branch_graph_013" => Some((
+            "-139.578125 -50 406.3798828125 204.81568908691406",
+            "406.3798828125",
+        )),
+        "upstream_html_demos_git_cherry_pick_from_branch_graph_014" => Some((
+            "-124.47250366210938 -50 347.265625 378.5620422363281",
+            "347.265625",
+        )),
+        "upstream_html_demos_git_cherry_pick_from_branch_graph_015" => Some((
+            "-124.47250366210938 -50 347.265625 361",
+            "347.265625",
+        )),
+        "upstream_html_demos_git_cherry_pick_from_main_graph_016" => Some((
+            "-117.5078125 -50 375.5078125 205.11708068847656",
+            "375.5078125",
+        )),
+        "upstream_html_demos_git_cherry_pick_from_main_graph_017" => Some((
+            "-104.87841796875 -50 331.5625 358.5738525390625",
+            "331.5625",
+        )),
+        "upstream_html_demos_git_cherry_pick_then_merge_graph_019" => Some((
+            "-139.578125 -50 447.578125 204.81568908691406",
+            "447.578125",
+        )),
+        "upstream_html_demos_git_cherry_pick_then_merge_graph_020" => Some((
+            "-121.42562866210938 -50 341.171875 388",
+            "341.171875",
+        )),
+        "upstream_html_demos_git_cherry_pick_then_merge_graph_021" => Some((
+            "-121.42562866210938 -50 341.171875 411",
+            "341.171875",
+        )),
+        "upstream_html_demos_git_continuous_development_graph_004" => Some((
+            "-117.5078125 -50 375.5078125 205.11708068847656",
+            "375.5078125",
+        )),
+        "upstream_html_demos_git_continuous_development_graph_005" => Some((
+            "-131.08526611328125 -50 349.65625 338",
+            "349.65625",
+        )),
+        "upstream_html_demos_git_continuous_development_graph_006" => Some((
+            "-131.08526611328125 -50 349.65625 361",
+            "349.65625",
+        )),
+        "upstream_html_demos_git_three_branches_and_a_cherry_pick_from_each_graph_031" => Some((
+            "-124.078125 -50 732.078125 278.6350402832031",
+            "732.078125",
+        )),
+        "upstream_html_demos_git_three_branches_and_a_cherry_pick_from_each_graph_032" => Some((
+            "-144.70376586914062 -50 508.90625 688",
+            "508.90625",
+        )),
+        "upstream_html_demos_git_three_branches_and_a_cherry_pick_from_each_graph_033" => Some((
+            "-144.70376586914062 -50 508.90625 711",
+            "508.90625",
+        )),
+        "upstream_html_demos_git_two_branches_from_same_commit_graph_028" => Some((
+            "-145.125 -50 453.125 295.5024719238281",
+            "453.125",
+        )),
+        "upstream_html_demos_git_two_branches_from_same_commit_graph_029" => Some((
+            "-92.12482452392578 -50 416.40625 388",
+            "416.40625",
+        )),
+        "upstream_html_demos_git_two_branches_from_same_commit_graph_030" => Some((
+            "-92.12482452392578 -50 416.40625 411",
+            "416.40625",
+        )),
+        "upstream_html_demos_git_two_way_merges_010" => Some((
+            "-117.5078125 -50 475.5078125 205.11709594726562",
+            "475.5078125",
+        )),
+        "upstream_html_demos_git_two_way_merges_011" => Some((
+            "-98.67864990234375 -50 283.71875 438",
+            "283.71875",
+        )),
+        "upstream_html_demos_git_two_way_merges_012" => Some((
+            "-98.67864990234375 -50 283.71875 461",
+            "283.71875",
+        )),
         _ => None,
     }
 }

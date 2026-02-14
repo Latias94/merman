@@ -260,6 +260,7 @@ pub fn render_layouted_svg(
             layout,
             &diagram.semantic,
             &diagram.meta.effective_config,
+            diagram.meta.title.as_deref(),
             measurer,
             options,
         ),
@@ -473,10 +474,18 @@ pub fn render_gitgraph_diagram_svg(
     layout: &crate::model::GitGraphDiagramLayout,
     semantic: &serde_json::Value,
     _effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    gitgraph::render_gitgraph_diagram_svg(layout, semantic, _effective_config, measurer, options)
+    gitgraph::render_gitgraph_diagram_svg(
+        layout,
+        semantic,
+        _effective_config,
+        diagram_title,
+        measurer,
+        options,
+    )
 }
 
 pub fn render_gantt_diagram_svg(
