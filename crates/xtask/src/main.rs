@@ -1210,6 +1210,8 @@ fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> {
         let s = s.replace("&amp;", "&");
         let s = s.replace("&lt;", "<").replace("&gt;", ">");
         let s = s.replace("&quot;", "\"").replace("&#39;", "'");
+        let s = s.replace("&nbsp;", " ");
+        let s = s.replace("&#160;", " ").replace("&#xA0;", " ");
         s
     }
 
@@ -1422,7 +1424,7 @@ fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> {
         static PRE_RE: OnceLock<Regex> = OnceLock::new();
         static H_RE: OnceLock<Regex> = OnceLock::new();
         let pre_re = PRE_RE.get_or_init(|| {
-            Regex::new(r"(?is)<pre\b(?P<attrs>[^>]*)>(?P<body>.*?)</pre>").expect("valid regex")
+            Regex::new(r"(?is)<pre\b(?P<attrs>[^>]*)>(?P<body>.*?)</pre\\s*>").expect("valid regex")
         });
         let h_re = H_RE.get_or_init(|| {
             Regex::new(r"(?is)<h[1-6]\b[^>]*>(?P<body>.*?)</h[1-6]>").expect("valid regex")
@@ -1692,6 +1694,33 @@ fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> {
                 || first.contains(r#"style="max-width: 16px"#)
         }
 
+        fn should_defer_fixture(diagram_dir: &str, fixture_text: &str) -> Option<&'static str> {
+            match diagram_dir {
+                "flowchart" => {
+                    if fixture_text.contains("\n  layout: elk")
+                        || fixture_text.contains("\nlayout: elk")
+                    {
+                        return Some("flowchart frontmatter config.layout=elk (deferred)");
+                    }
+                    if fixture_text
+                        .lines()
+                        .any(|l| l.trim_start().starts_with("flowchart-elk"))
+                    {
+                        return Some("flowchart diagram type flowchart-elk (deferred)");
+                    }
+                }
+                "sequence" => {
+                    if fixture_text.contains("$$") {
+                        return Some(
+                            "sequence math rendering uses <foreignObject> upstream (deferred)",
+                        );
+                    }
+                }
+                _ => {}
+            }
+            None
+        }
+
         fn defer_fixture_files_keep_baselines(workspace_root: &Path, f: &CreatedFixture) {
             let deferred_dir = workspace_root
                 .join("fixtures")
@@ -1750,6 +1779,23 @@ fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> {
                     "defer (upstream svg generation failed): {} ({err})",
                     f.path.display()
                 ));
+                defer_fixture_files_keep_baselines(&workspace_root, f);
+                continue;
+            }
+
+            let fixture_text = match fs::read_to_string(&f.path) {
+                Ok(v) => v,
+                Err(err) => {
+                    skipped.push(format!(
+                        "defer (failed to read fixture after import): {} ({err})",
+                        f.path.display()
+                    ));
+                    defer_fixture_files_keep_baselines(&workspace_root, f);
+                    continue;
+                }
+            };
+            if let Some(reason) = should_defer_fixture(&f.diagram_dir, &fixture_text) {
+                skipped.push(format!("defer ({reason}): {}", f.path.display()));
                 defer_fixture_files_keep_baselines(&workspace_root, f);
                 continue;
             }
@@ -1955,6 +2001,8 @@ fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
         let s = s.replace("&amp;", "&");
         let s = s.replace("&lt;", "<").replace("&gt;", ">");
         let s = s.replace("&quot;", "\"").replace("&#39;", "'");
+        let s = s.replace("&nbsp;", " ");
+        let s = s.replace("&#160;", " ").replace("&#xA0;", " ");
         s
     }
 
