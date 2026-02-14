@@ -3269,7 +3269,9 @@ fn state_edge_cut_path_at_intersect(
 
     for point in input {
         if !state_edge_outside_node(boundary, point) && !is_inside {
-            let inter = state_edge_rect_intersection(boundary, &last_point_outside, point);
+            // Mermaid's dagre-wrapper cuts an edge as it *enters* a cluster boundary.
+            // `state_edge_rect_intersection` expects the point *inside* the rectangle first.
+            let inter = state_edge_rect_intersection(boundary, point, &last_point_outside);
             if !out
                 .iter()
                 .any(|p| (p.x - inter.x).abs() <= EPS && (p.y - inter.y).abs() <= EPS)
