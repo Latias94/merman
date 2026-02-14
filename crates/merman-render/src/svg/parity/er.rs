@@ -502,8 +502,6 @@ pub(super) fn render_er_diagram_svg(
     let diagram_title = diagram_title.map(str::trim).filter(|t| !t.is_empty());
 
     let mut content_bounds = bounds.clone();
-    let mut title_x = 0.0;
-    let mut title_y = 0.0;
     if let Some(title) = diagram_title {
         let title_style = crate::text::TextStyle {
             font_family: Some(font_family.clone()),
@@ -512,8 +510,8 @@ pub(super) fn render_er_diagram_svg(
         };
         let measure = measurer.measure(title, &title_style);
         let w = (content_bounds.max_x - content_bounds.min_x).max(1.0);
-        title_x = content_bounds.min_x + w / 2.0;
-        title_y = -title_top_margin;
+        let title_x = content_bounds.min_x + w / 2.0;
+        let title_y = -title_top_margin;
         let title_min_x = title_x - measure.width / 2.0;
         let title_max_x = title_x + measure.width / 2.0;
         // Approximate the SVG text bbox using the measured height above the baseline.
@@ -543,9 +541,11 @@ pub(super) fn render_er_diagram_svg(
     let mut w_attr = fmt(vb_w_attr);
     let mut h_attr = fmt(vb_h_attr);
     let mut max_w_style = fmt_max_width_px(vb_w_attr);
+    let mut viewbox_attr = format!("0 0 {} {}", w_attr, h_attr);
     if let Some((viewbox, max_w)) =
         crate::generated::er_root_overrides_11_12_2::lookup_er_root_viewport_override(diagram_id)
     {
+        viewbox_attr = viewbox.to_string();
         let mut it = viewbox.split_whitespace();
         let _ = it.next(); // min-x
         let _ = it.next(); // min-y
@@ -556,22 +556,20 @@ pub(super) fn render_er_diagram_svg(
     if use_max_width {
         let _ = write!(
             &mut out,
-            r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="erDiagram" style="max-width: {}px; background-color: white;" viewBox="0 0 {} {}" role="graphics-document document" aria-roledescription="{}""#,
+            r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="erDiagram" style="max-width: {}px; background-color: white;" viewBox="{}" role="graphics-document document" aria-roledescription="{}""#,
             escape_xml(diagram_id),
             max_w_style,
-            w_attr,
-            h_attr,
+            viewbox_attr,
             diagram_type
         );
     } else {
         let _ = write!(
             &mut out,
-            r#"<svg id="{}" width="{}" height="{}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="erDiagram" style="background-color: white;" viewBox="0 0 {} {}" role="graphics-document document" aria-roledescription="{}""#,
+            r#"<svg id="{}" width="{}" height="{}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="erDiagram" style="background-color: white;" viewBox="{}" role="graphics-document document" aria-roledescription="{}""#,
             escape_xml(diagram_id),
             w_attr,
             h_attr,
-            w_attr,
-            h_attr,
+            viewbox_attr,
             diagram_type
         );
     }
@@ -647,16 +645,6 @@ pub(super) fn render_er_diagram_svg(
     );
 
     let _ = writeln!(&mut out, r#"<g class="root">"#);
-
-    if let Some(title) = diagram_title {
-        let _ = writeln!(
-            &mut out,
-            r#"<text class="erDiagramTitleText" x="{}" y="{}">{}</text>"#,
-            fmt(title_x + translate_x),
-            fmt(title_y + translate_y),
-            escape_xml(title)
-        );
-    }
 
     let mut entity_by_id: std::collections::HashMap<&str, &crate::er::ErEntity> =
         std::collections::HashMap::new();
@@ -848,7 +836,17 @@ pub(super) fn render_er_diagram_svg(
                     fmt(h)
                 );
                 out.push_str(r#"<div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>"#);
-                escape_xml_into(&mut out, rel_text);
+                // Mermaid ER relationship labels are rendered as HTML (foreignObject) and treat
+                // `<br>`-style tags as actual line breaks (not escaped text).
+                for (idx, part) in crate::text::split_html_br_lines(rel_text)
+                    .iter()
+                    .enumerate()
+                {
+                    if idx > 0 {
+                        out.push_str("<br />");
+                    }
+                    escape_xml_into(&mut out, part);
+                }
                 out.push_str(r#"</p></span></div></foreignObject></g></g>"#);
             } else {
                 out.push_str(r#"<g class="edgeLabel"><g class="label""#);
@@ -1043,10 +1041,46 @@ pub(super) fn render_er_diagram_svg(
             if text.is_empty() {
                 return format!(r#"<span class="nodeLabel"{}></span>"#, span_style_attr);
             }
+
+            let lower = text.to_ascii_lowercase();
+            let has_inline_html =
+                lower.contains("<br") || lower.contains("<strong") || lower.contains("<em");
+            let has_markdown = text.contains('*') || text.contains('_');
+
             // Mermaid's DOM serialization for generics (`type<T>`) avoids nested HTML tags.
-            if text.contains('<') || text.contains('>') {
+            if (text.contains('<') || text.contains('>')) && !has_inline_html {
                 return escape_xml(text);
             }
+
+            if has_markdown || has_inline_html {
+                // Mermaid converts label text into HTML using a Markdown pipeline, then injects
+                // the fragment into an XHTML `<foreignObject>`.
+                let mut html_out = String::new();
+                let parser = pulldown_cmark::Parser::new_ext(
+                    text,
+                    pulldown_cmark::Options::ENABLE_TABLES
+                        | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
+                        | pulldown_cmark::Options::ENABLE_TASKLISTS,
+                )
+                .map(|ev| match ev {
+                    pulldown_cmark::Event::SoftBreak => pulldown_cmark::Event::HardBreak,
+                    other => other,
+                });
+                pulldown_cmark::html::push_html(&mut html_out, parser);
+                let html_out = html_out.trim().to_string();
+
+                // `foreignObject` content is XML, so ensure XHTML void tags (`<br />`).
+                let html_out = html_out
+                    .replace("<br>", "<br />")
+                    .replace("<br/>", "<br />")
+                    .replace("<br >", "<br />");
+
+                return format!(
+                    r#"<span class="nodeLabel"{}>{}</span>"#,
+                    span_style_attr, html_out
+                );
+            }
+
             format!(
                 r#"<span class="nodeLabel"{}><p>{}</p></span>"#,
                 span_style_attr,
@@ -1258,8 +1292,12 @@ pub(super) fn render_er_diagram_svg(
         out.push_str("</g>");
 
         // Row rectangles
-        let odd_fill = "hsl(240, 100%, 100%)";
-        let even_fill = "hsl(240, 100%, 97.2745098039%)";
+        let odd_fill = theme_color(effective_config, "rowOdd", "hsl(240, 100%, 100%)");
+        let even_fill = theme_color(
+            effective_config,
+            "rowEven",
+            "hsl(240, 100%, 97.2745098039%)",
+        );
         let mut y = sep_y;
         for (idx, row) in measure.rows.iter().enumerate() {
             let row_h = row.height.max(1.0);
@@ -1272,7 +1310,11 @@ pub(super) fn render_er_diagram_svg(
             } else {
                 "row-rect-even"
             };
-            let row_fill = if is_odd { odd_fill } else { even_fill };
+            let row_fill = if is_odd {
+                odd_fill.as_str()
+            } else {
+                even_fill.as_str()
+            };
             let _ = write!(
                 &mut out,
                 r#"<g {} class="{}">"#,
@@ -1303,7 +1345,7 @@ pub(super) fn render_er_diagram_svg(
                 &mut out,
                 r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"{} />"#,
                 roughjs46_rect_fill_path_d(box_x0, y0, box_x1, y1),
-                row_fill,
+                escape_xml(row_fill),
                 row_override_style_attr
             );
             let _ = write!(
@@ -1519,7 +1561,9 @@ pub(super) fn render_er_diagram_svg(
             stroke_width_attr,
             divider_style
         );
-        // Two rough strokes for the header separator.
+        // Mermaid `erBox.ts` draws the header separator twice:
+        // - once as the explicit "Name line"
+        // - once via the later `yOffsets` pass (which always contains `0`)
         let d_h1 = rough_line_path_d(hand_drawn_seed, box_x0, sep_y, box_x1, sep_y);
         let d_h2 = rough_line_path_d(hand_drawn_seed, box_x0, sep_y, box_x1, sep_y);
         let _ = write!(
@@ -1530,7 +1574,7 @@ pub(super) fn render_er_diagram_svg(
 
         let mut divider_xs: Vec<f64> = Vec::new();
         divider_xs.push(ox + type_col_w);
-        if measure.has_key || measure.has_comment {
+        if measure.has_key {
             divider_xs.push(ox + type_col_w + name_col_w);
         }
         if measure.has_comment {
@@ -1555,7 +1599,37 @@ pub(super) fn render_er_diagram_svg(
     }
     out.push_str("</g>\n");
 
-    out.push_str("</g>\n</g>\n</svg>\n");
+    out.push_str("</g>\n</g>\n");
+
+    if let Some(title) = diagram_title {
+        // Mermaid `utils.insertTitle(...)` appends the title after rendering the graph content.
+        // - `text-anchor="middle"`
+        // - `x = bounds.x + bounds.width / 2`
+        // - `y = -titleTopMargin` (default: 25)
+        let title_top_margin = effective_config
+            .get("er")
+            .and_then(|v| v.get("titleTopMargin"))
+            .and_then(|v| v.as_f64())
+            .unwrap_or(25.0);
+
+        let (vb_min_x, vb_w) = viewbox_attr
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .get(0..3)
+            .and_then(|p| Some((p[0].parse::<f64>().ok()?, p[2].parse::<f64>().ok()?)))
+            .unwrap_or((0.0, vb_w_attr));
+
+        let _ = write!(
+            &mut out,
+            r#"<text text-anchor="middle" x="{}" y="{}" class="erDiagramTitleText">{}"#,
+            fmt(vb_min_x + vb_w / 2.0),
+            fmt(-title_top_margin),
+            escape_xml(title)
+        );
+        out.push_str("</text>\n");
+    }
+
+    out.push_str("</svg>\n");
     Ok(out)
 }
 
