@@ -78,6 +78,9 @@ pub fn lookup_state_root_viewport_override(
         }
         "upstream_docs_statediagram_concurrency_030" => Some(("0 0 1193.71875 573", "1193.72")),
         "upstream_docs_statediagram_notes_028" => Some(("0 0 724.71484375 322", "724.715")),
+        "upstream_html_demos_state_this_shows_composite_states_007" => {
+            Some(("0 0 464.87109375 1060", "464.871"))
+        }
         "upstream_docs_statediagram_states_006" => Some(("0 0 81.671875 56", "81.6719")),
         "upstream_docs_statediagram_transitions_014" => Some(("0 0 98.359375 170", "98.3594")),
         "upstream_stateDiagram_docs_classdef_and_class_statements" => {
