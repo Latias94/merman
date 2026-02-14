@@ -1,0 +1,127 @@
+{
+  "diagramType": "packet",
+  "model": {
+    "type": "packet",
+    "title": "Forest theme",
+    "accTitle": null,
+    "accDescr": null,
+    "packet": [
+      [
+        {
+          "start": 0,
+          "end": 15,
+          "bits": 16,
+          "label": "Source Port"
+        },
+        {
+          "start": 16,
+          "end": 31,
+          "bits": 16,
+          "label": "Destination Port"
+        }
+      ],
+      [
+        {
+          "start": 32,
+          "end": 63,
+          "bits": 32,
+          "label": "Sequence Number"
+        }
+      ],
+      [
+        {
+          "start": 64,
+          "end": 95,
+          "bits": 32,
+          "label": "Acknowledgment Number"
+        }
+      ],
+      [
+        {
+          "start": 96,
+          "end": 99,
+          "bits": 4,
+          "label": "Data Offset"
+        },
+        {
+          "start": 100,
+          "end": 105,
+          "bits": 6,
+          "label": "Reserved"
+        },
+        {
+          "start": 106,
+          "end": 106,
+          "bits": 1,
+          "label": "URG"
+        },
+        {
+          "start": 107,
+          "end": 107,
+          "bits": 1,
+          "label": "ACK"
+        },
+        {
+          "start": 108,
+          "end": 108,
+          "bits": 1,
+          "label": "PSH"
+        },
+        {
+          "start": 109,
+          "end": 109,
+          "bits": 1,
+          "label": "RST"
+        },
+        {
+          "start": 110,
+          "end": 110,
+          "bits": 1,
+          "label": "SYN"
+        },
+        {
+          "start": 111,
+          "end": 111,
+          "bits": 1,
+          "label": "FIN"
+        },
+        {
+          "start": 112,
+          "end": 127,
+          "bits": 16,
+          "label": "Window"
+        }
+      ],
+      [
+        {
+          "start": 128,
+          "end": 143,
+          "bits": 16,
+          "label": "Checksum"
+        },
+        {
+          "start": 144,
+          "end": 159,
+          "bits": 16,
+          "label": "Urgent Pointer"
+        }
+      ],
+      [
+        {
+          "start": 160,
+          "end": 191,
+          "bits": 32,
+          "label": "(Options and Padding)"
+        }
+      ],
+      [
+        {
+          "start": 192,
+          "end": 223,
+          "bits": 32,
+          "label": "data"
+        }
+      ]
+    ]
+  }
+}
