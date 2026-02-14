@@ -13,16 +13,16 @@ Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is 
 - `layout` is the dominant gap for `mindmap`,
 - `architecture` is now primarily a `layout` + `render` gap (typed parse fast path landed).
 
-- Spotcheck (`tools/bench/stage_spotcheck.py`, 12 samples / 2s warmup / 6s measurement, 2026-02-14):
+- Spotcheck (`tools/bench/stage_spotcheck.py`, 10 samples / 1s warmup / 4s measurement, 2026-02-14):
   - Canary set (`flowchart_medium,class_medium,sequence_medium,mindmap_medium,architecture_medium`):
-    - `parse` gmean: `1.47x`
-    - `layout` gmean: `1.26x`
-    - `render` gmean: `1.94x`
-    - `end_to_end` gmean: `1.10x`
+    - `parse` gmean: `1.53x`
+    - `layout` gmean: `1.27x`
+    - `render` gmean: `1.60x`
+    - `end_to_end` gmean: `1.35x`
   - Notable outliers in this run:
-    - `architecture_medium`: `layout 5.10x`, `render 2.69x`, `end_to_end 2.90x`
-    - `mindmap_medium`: `layout 3.88x`, `end_to_end 1.64x`
-    - `flowchart_medium`: `render 2.84x` (layout is relatively close; render still dominates)
+    - `architecture_medium`: `layout 6.72x`, `end_to_end 4.99x` (absolute times are tiny, but ratio is large)
+    - `mindmap_medium`: `layout 3.94x`, `end_to_end 1.54x`
+    - `flowchart_medium`: `render 2.84x`, `end_to_end 1.37x`
 
 Root-cause direction:
 
