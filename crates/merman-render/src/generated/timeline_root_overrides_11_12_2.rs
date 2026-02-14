@@ -17,6 +17,9 @@ pub fn lookup_timeline_root_viewport_override(
         "upstream_cypress_timeline_spec_12_should_render_timeline_with_proper_vertical_line_lengths_for_012" => {
             Some(("100 -57 2190 879.4000244140625", "2190"))
         }
+        "upstream_html_demos_timeline_medical_device_lifecycle_timeline_002" => {
+            Some(("100 -61 1990 1046.800048828125", "1990"))
+        }
         _ => None,
     }
 }
