@@ -1,0 +1,30 @@
+---
+title: Demo Class Diagram
+---
+classDiagram
+  accTitle: Demo Class Diagram
+  accDescr: This class diagram show the abstract Animal class, and 3 classes that inherit from it: Duck, Fish, and Zebra.
+
+  Animal <|-- Duck
+  Animal <|-- Fish
+  Animal <|-- Zebra
+  Animal : +int age
+  Animal : +String gender
+  Animal: +isMammal()
+  Animal: +mate()
+
+  class Duck{
+    +String beakColor
+    +swim()
+    +quack()
+  }
+  class Fish{
+    -Listint sizeInFeet
+    -canEat()
+  }
+  class Zebra{
+    +bool is_wild
+    +run(List~T~, List~OT~)
+    %% +run-composite(List~T, K~)
+    +run-nested(List~List~OT~~)
+  }

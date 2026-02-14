@@ -134,6 +134,36 @@ pub fn lookup_class_root_viewport_override(
         "upstream_cypress_classdiagram_v2_spec_renders_a_class_diagram_with_nested_namespaces_and_relationships_035" => {
             Some(("-8 0 808.234375 448", "808.234"))
         }
+        "upstream_html_demos_classchart_class_diagram_demos_001" => {
+            Some(("0 -48 700.1875 474", "700.188"))
+        }
+        "upstream_html_demos_classchart_class_diagram_demos_002" => {
+            Some(("0 0 790.71875 742", "790.719"))
+        }
+        "upstream_html_demos_classchart_class_diagram_demos_003" => {
+            Some(("0 0 422.4921875 208", "422.492"))
+        }
+        "upstream_html_demos_classchart_class_diagram_demos_004" => {
+            Some(("0 0 834.421875 742", "834.422"))
+        }
+        "upstream_html_demos_classchart_class_diagram_demos_006" => {
+            Some(("0 0 393.140625 316", "393.141"))
+        }
+        "upstream_html_demos_classchart_class_diagram_demos_007" => {
+            Some(("0 0 282.0390625 390", "282.039"))
+        }
+        "upstream_html_demos_classchart_class_diagram_demos_009" => {
+            Some(("-8 0 308.6640625 236", "308.664"))
+        }
+        "upstream_html_demos_classchart_class_diagram_demos_010" => {
+            Some(("0 0 314.71875 466", "314.719"))
+        }
+        "upstream_html_demos_classchart_class_diagram_demos_011" => {
+            Some(("-8 0 808.234375 448", "808.234"))
+        }
+        "upstream_html_demos_classchart_class_diagram_demos_012" => {
+            Some(("0 0 926.544921875 606", "926.545"))
+        }
         "upstream_cypress_classdiagram_elk_v3_spec_elk_12_1_should_render_a_simple_class_diagram_with_generic_types_022" => {
             Some(("0 0 296.9765625 208", "296.977"))
         }

@@ -1,0 +1,308 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Shape": {
+        "id": "Shape",
+        "type": "",
+        "label": "Shape",
+        "text": "Shape",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "calculateArea",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "double",
+            "displayText": "+calculateArea() : double",
+            "cssStyle": ""
+          }
+        ],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Shape-0",
+        "parent": "Shapes",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Circle": {
+        "id": "Circle",
+        "type": "",
+        "label": "Circle",
+        "text": "Circle",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "double radius",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+double radius",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Circle-1",
+        "parent": "Shapes",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Square": {
+        "id": "Square",
+        "type": "",
+        "label": "Square",
+        "text": "Square",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "double side",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+double side",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Square-2",
+        "parent": "Shapes",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Vehicle": {
+        "id": "Vehicle",
+        "type": "",
+        "label": "Vehicle",
+        "text": "Vehicle",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "String brand",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+String brand",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Vehicle-3",
+        "parent": "Vehicles",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Car": {
+        "id": "Car",
+        "type": "",
+        "label": "Car",
+        "text": "Car",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "int horsepower",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+int horsepower",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Car-4",
+        "parent": "Vehicles",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Bike": {
+        "id": "Bike",
+        "type": "",
+        "label": "Bike",
+        "text": "Bike",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "boolean hasGears",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+boolean hasGears",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Bike-5",
+        "parent": "Vehicles",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "Shape",
+        "id2": "Circle",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "",
+        "relation": {
+          "type1": 1,
+          "type2": -1,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "1",
+        "id1": "Shape",
+        "id2": "Square",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "",
+        "relation": {
+          "type1": 1,
+          "type2": -1,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "2",
+        "id1": "Vehicle",
+        "id2": "Car",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "",
+        "relation": {
+          "type1": 1,
+          "type2": -1,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "3",
+        "id1": "Vehicle",
+        "id2": "Bike",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "",
+        "relation": {
+          "type1": 1,
+          "type2": -1,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "4",
+        "id1": "Car",
+        "id2": "Circle",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "\"Logo Shape\"",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "5",
+        "id1": "Bike",
+        "id2": "Square",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "\"Logo Shape\"",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      }
+    ],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {
+      "Shapes": {
+        "id": "Shapes",
+        "domId": "classId-Shapes-0",
+        "classIds": [
+          "Shape",
+          "Circle",
+          "Square"
+        ]
+      },
+      "Vehicles": {
+        "id": "Vehicles",
+        "domId": "classId-Vehicles-1",
+        "classIds": [
+          "Vehicle",
+          "Car",
+          "Bike"
+        ]
+      }
+    },
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}
