@@ -157,21 +157,14 @@ where
     });
     result.set_node(root_id.clone(), OrderNodeLite::default());
 
+    // Note: `nodes_with_rank` is derived from `nodes_by_rank` in `order(...)`, which already
+    // materializes nodes that are in-range for this rank (including subgraph nodes with
+    // `min_rank..=max_rank`). Avoid re-checking rank ranges here.
     let mut visit_node = |v: &str| {
         let Some(node) = g.node(v) else {
             return;
         };
         let parent = g.parent(v);
-
-        let in_range = node.rank() == Some(rank)
-            || (node.min_rank().is_some()
-                && node.max_rank().is_some()
-                && node.min_rank().is_some_and(|min| min <= rank)
-                && node.max_rank().is_some_and(|max| rank <= max));
-
-        if !in_range {
-            return;
-        }
 
         let lbl = if node.has_min_rank() {
             OrderNodeLite::subgraph_layer_label(node, rank)
