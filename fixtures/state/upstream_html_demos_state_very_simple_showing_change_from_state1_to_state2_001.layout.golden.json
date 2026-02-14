@@ -1,0 +1,63 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "nodes": [
+        {
+          "id": "State1",
+          "x": 38.953,
+          "y": 28.0,
+          "width": 61.906,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "State2",
+          "x": 38.953,
+          "y": 118.0,
+          "width": 61.906,
+          "height": 40.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge0",
+          "from": "State1",
+          "to": "State2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 39.453,
+              "y": 48.5
+            },
+            {
+              "x": 38.953,
+              "y": 73.0
+            },
+            {
+              "x": 39.453,
+              "y": 98.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 69.906,
+        "max_y": 138.0
+      }
+    }
+  }
+}
