@@ -1,0 +1,117 @@
+{
+  "diagramType": "flowchart-v2",
+  "model": {
+    "type": "flowchart-v2",
+    "keyword": "flowchart",
+    "direction": "LR",
+    "accTitle": "A simple linear flowchart.",
+    "accDescr": "A Database has input to a circle System has output to a square Customer.",
+    "classDefs": {},
+    "tooltips": {},
+    "edgeDefaults": {
+      "style": [],
+      "interpolate": null
+    },
+    "vertexCalls": [
+      "DataStore",
+      "Process",
+      "Entity"
+    ],
+    "nodes": [
+      {
+        "id": "DataStore",
+        "label": "Database",
+        "labelType": "text",
+        "shape": "rect",
+        "layoutShape": "rect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "Process",
+        "label": "System",
+        "labelType": "text",
+        "shape": "circle",
+        "layoutShape": "circle",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "Entity",
+        "label": "Customer",
+        "labelType": "text",
+        "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      }
+    ],
+    "edges": [
+      {
+        "from": "DataStore",
+        "to": "Process",
+        "id": "L_DataStore_Process_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": "input",
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "Process",
+        "to": "Entity",
+        "id": "L_Process_Entity_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": "output",
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      }
+    ],
+    "subgraphs": []
+  }
+}

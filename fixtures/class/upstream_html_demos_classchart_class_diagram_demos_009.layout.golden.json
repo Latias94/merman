@@ -1,0 +1,55 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "Company.Project.Module",
+          "x": 137.26,
+          "y": 112.5,
+          "width": 274.52,
+          "height": 225.0,
+          "is_cluster": true
+        },
+        {
+          "id": "GenericClass",
+          "x": 137.26,
+          "y": 112.5,
+          "width": 199.52,
+          "height": 150.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "clusters": [
+        {
+          "id": "Company.Project.Module",
+          "x": 137.26,
+          "y": 112.5,
+          "width": 274.52,
+          "height": 225.0,
+          "diff": -15.0,
+          "offset_y": 16.5,
+          "title": "Company.Project.Module",
+          "title_label": {
+            "x": 137.26,
+            "y": 12.0,
+            "width": 159.84,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 15.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 274.52,
+        "max_y": 225.0
+      }
+    }
+  }
+}

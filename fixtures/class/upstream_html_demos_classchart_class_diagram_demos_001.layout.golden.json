@@ -1,0 +1,137 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "Animal",
+          "x": 289.12,
+          "y": 96.0,
+          "width": 141.76,
+          "height": 192.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Duck",
+          "x": 79.16,
+          "y": 326.0,
+          "width": 158.32,
+          "height": 168.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Fish",
+          "x": 289.12,
+          "y": 326.0,
+          "width": 161.6,
+          "height": 144.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Zebra",
+          "x": 540.32,
+          "y": 326.0,
+          "width": 240.8,
+          "height": 168.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "0",
+          "from": "Animal",
+          "to": "Duck",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 218.24,
+              "y": 136.848
+            },
+            {
+              "x": 79.16,
+              "y": 217.0
+            },
+            {
+              "x": 79.16,
+              "y": 242.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "1",
+          "from": "Animal",
+          "to": "Fish",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 289.12,
+              "y": 192.0
+            },
+            {
+              "x": 289.12,
+              "y": 217.0
+            },
+            {
+              "x": 289.12,
+              "y": 254.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "2",
+          "from": "Animal",
+          "to": "Zebra",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 360.0,
+              "y": 130.142
+            },
+            {
+              "x": 540.32,
+              "y": 217.0
+            },
+            {
+              "x": 540.32,
+              "y": 242.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 660.72,
+        "max_y": 410.0
+      }
+    }
+  }
+}

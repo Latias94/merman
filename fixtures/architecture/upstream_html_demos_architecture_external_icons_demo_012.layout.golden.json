@@ -1,0 +1,48 @@
+{
+  "diagramType": "architecture",
+  "layout": {
+    "ArchitectureDiagram": {
+      "nodes": [
+        {
+          "id": "s3",
+          "x": -270.0,
+          "y": 0.0,
+          "width": 80.0,
+          "height": 80.0,
+          "is_cluster": false
+        },
+        {
+          "id": "ec2",
+          "x": -90.0,
+          "y": 0.0,
+          "width": 80.0,
+          "height": 80.0,
+          "is_cluster": false
+        },
+        {
+          "id": "api",
+          "x": 90.0,
+          "y": 0.0,
+          "width": 80.0,
+          "height": 80.0,
+          "is_cluster": false
+        },
+        {
+          "id": "fa",
+          "x": 270.0,
+          "y": 0.0,
+          "width": 80.0,
+          "height": 80.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "bounds": {
+        "min_x": -270.0,
+        "min_y": 0.0,
+        "max_x": 350.0,
+        "max_y": 80.0
+      }
+    }
+  }
+}

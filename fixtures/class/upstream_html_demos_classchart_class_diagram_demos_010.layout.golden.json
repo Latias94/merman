@@ -1,0 +1,135 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "Admin",
+          "x": 141.36,
+          "y": 88.0,
+          "width": 160.96,
+          "height": 126.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Company.Project.Module",
+          "x": 141.36,
+          "y": 88.0,
+          "width": 230.96,
+          "height": 176.0,
+          "is_cluster": true
+        },
+        {
+          "id": "Company.Project.Module.SubModule",
+          "x": 141.36,
+          "y": 350.0,
+          "width": 282.72,
+          "height": 200.0,
+          "is_cluster": true
+        },
+        {
+          "id": "Report",
+          "x": 141.36,
+          "y": 350.0,
+          "width": 212.72,
+          "height": 150.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "0",
+          "from": "Admin",
+          "to": "Report",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 141.36,
+              "y": 151.0
+            },
+            {
+              "x": 141.36,
+              "y": 176.0
+            },
+            {
+              "x": 141.36,
+              "y": 213.0
+            },
+            {
+              "x": 141.36,
+              "y": 250.0
+            },
+            {
+              "x": 141.36,
+              "y": 275.0
+            }
+          ],
+          "label": {
+            "x": 141.36,
+            "y": 213.0,
+            "width": 61.92,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "Company.Project.Module",
+          "x": 141.36,
+          "y": 88.0,
+          "width": 230.96,
+          "height": 176.0,
+          "diff": -15.0,
+          "offset_y": 16.5,
+          "title": "Company.Project.Module",
+          "title_label": {
+            "x": 141.36,
+            "y": 12.0,
+            "width": 159.84,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 15.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "Company.Project.Module.SubModule",
+          "x": 141.36,
+          "y": 350.0,
+          "width": 282.72,
+          "height": 200.0,
+          "diff": -15.0,
+          "offset_y": 16.5,
+          "title": "Company.Project.Module.SubModule",
+          "title_label": {
+            "x": 141.36,
+            "y": 262.0,
+            "width": 229.28,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 15.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 282.72,
+        "max_y": 450.0
+      }
+    }
+  }
+}

@@ -111,3 +111,10 @@ These fixtures are parity-gated against upstream SVG baselines (DOM parity, root
 - `fixtures/mindmap/upstream_cypress_mindmap_spec_adding_grand_children_016.mmd`
 - `fixtures/mindmap/upstream_cypress_mindmap_spec_formatted_label_with_linebreak_and_a_wrapping_label_and_emojis_017.mmd`
 - `fixtures/mindmap/upstream_cypress_mindmap_spec_has_a_label_with_char_sequence_graph_018.mmd`
+
+## HTML demo fixtures
+
+Source: `repo-ref/mermaid/demos/mindmap.html` (via `<pre class="mermaid">` blocks).
+
+- `fixtures/mindmap/upstream_html_demos_mindmap_mindmap_diagram_demo_001.mmd`
+- `fixtures/mindmap/upstream_html_demos_mindmap_mindmap_with_root_wrapping_text_and_a_shape_002.mmd`

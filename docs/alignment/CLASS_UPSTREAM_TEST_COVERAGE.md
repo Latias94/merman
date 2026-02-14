@@ -158,8 +158,29 @@ Source: `repo-ref/mermaid/docs/syntax/classDiagram.md`
   - default class and CSS classes:
     `fixtures/class/upstream_docs_classdiagram_default_class_070.mmd`,
     `fixtures/class/upstream_docs_classdiagram_css_classes_073.mmd`
-  - hide empty members box:
-    `fixtures/class/upstream_docs_classdiagram_members_box_075.mmd`
+- hide empty members box:
+  `fixtures/class/upstream_docs_classdiagram_members_box_075.mmd`
+
+## HTML demo fixtures
+
+Source: `repo-ref/mermaid/demos/classchart.html` (via `<pre class=\"mermaid\">` blocks).
+
+Imported (parity-gated with upstream SVG baselines):
+
+- `fixtures/class/upstream_html_demos_classchart_class_diagram_demos_001.mmd`
+- `fixtures/class/upstream_html_demos_classchart_class_diagram_demos_002.mmd`
+- `fixtures/class/upstream_html_demos_classchart_class_diagram_demos_003.mmd`
+- `fixtures/class/upstream_html_demos_classchart_class_diagram_demos_004.mmd`
+- `fixtures/class/upstream_html_demos_classchart_class_diagram_demos_006.mmd`
+- `fixtures/class/upstream_html_demos_classchart_class_diagram_demos_007.mmd`
+- `fixtures/class/upstream_html_demos_classchart_class_diagram_demos_009.mmd`
+- `fixtures/class/upstream_html_demos_classchart_class_diagram_demos_010.mmd`
+- `fixtures/class/upstream_html_demos_classchart_class_diagram_demos_011.mmd`
+- `fixtures/class/upstream_html_demos_classchart_class_diagram_demos_012.mmd`
+
+Deferred (upstream Mermaid CLI `@11.12.2` parse error, so no SVG baseline yet):
+
+- `repo-ref/mermaid/demos/classchart.html` block that contains the line `class People List~List~Person~~`
 
 ## Headless layout coverage (Stage A)
 

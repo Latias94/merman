@@ -75,6 +75,10 @@ pub fn lookup_architecture_root_viewport_override(
                 "446.8271484375",
             ))
         }
+        "upstream_html_demos_architecture_external_icons_demo_012" => Some((
+            "-174.01507568359375 -165.18142700195312 440.8895568847656 470.55035400390625",
+            "440.8895568847656",
+        )),
         _ => None,
     }
 }

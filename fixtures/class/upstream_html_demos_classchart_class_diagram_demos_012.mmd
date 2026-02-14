@@ -1,0 +1,32 @@
+classDiagram
+  namespace Shapes {
+    class Shape {
+      +calculateArea() double
+    }
+    class Circle {
+      +double radius
+    }
+    class Square {
+      +double side
+    }
+  }
+
+  Shape <|-- Circle
+  Shape <|-- Square
+
+  namespace Vehicles {
+    class Vehicle {
+      +String brand
+    }
+    class Car {
+      +int horsepower
+    }
+    class Bike {
+      +boolean hasGears
+    }
+  }
+
+  Vehicle <|-- Car
+  Vehicle <|-- Bike
+  Car --> Circle : "Logo Shape"
+  Bike --> Square : "Logo Shape"

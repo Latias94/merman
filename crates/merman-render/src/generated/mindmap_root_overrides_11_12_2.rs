@@ -106,6 +106,12 @@ pub fn lookup_mindmap_root_viewport_override(
         "upstream_docs_intro_how_can_i_help_001" => {
             Some(("5 5 893.5901489257812 384.7295837402344", "893.59"))
         }
+        "upstream_html_demos_mindmap_mindmap_diagram_demo_001" => {
+            Some(("5 5 604.0132446289062 428.640869140625", "604.013"))
+        }
+        "upstream_html_demos_mindmap_mindmap_with_root_wrapping_text_and_a_shape_002" => {
+            Some(("5 5 260 112", "260"))
+        }
         _ => None,
     }
 }

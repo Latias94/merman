@@ -164,6 +164,31 @@ The batch currently includes examples for:
 - multi-directional arrows (circle/cross/double-ended): `fixtures/flowchart/upstream_docs_flowchart_multi_directional_arrows_180.mmd`
 - edge-curve style overrides via edge ids: `fixtures/flowchart/upstream_docs_flowchart_edge_level_curve_style_using_edge_ids_v11_10_0_216.mmd`
 
+## HTML demo fixtures
+
+Source: `repo-ref/mermaid/demos/flowchart.html` (via `<pre class="mermaid">` blocks).
+
+These fixtures are imported from Mermaid's HTML demo pages and are parity-gated against upstream SVG
+baselines:
+
+- `fixtures/flowchart/upstream_html_demos_flowchart_graph_001.mmd`
+- `fixtures/flowchart/upstream_html_demos_flowchart_graph_013.mmd`
+- `fixtures/flowchart/upstream_html_demos_flowchart_graph_035.mmd`
+- `fixtures/flowchart/upstream_html_demos_flowchart_graph_037.mmd`
+- `fixtures/flowchart/upstream_html_demos_flowchart_flowchart_002.mmd`
+- `fixtures/flowchart/upstream_html_demos_flowchart_flowchart_010.mmd`
+- `fixtures/flowchart/upstream_html_demos_flowchart_flowchart_036.mmd`
+- `fixtures/flowchart/upstream_html_demos_flowchart_flowchart_038.mmd`
+- `fixtures/flowchart/upstream_html_demos_flowchart_flowchart_045.mmd`
+- `fixtures/flowchart/upstream_html_demos_flowchart_flowchart_049.mmd`
+- `fixtures/flowchart/upstream_html_demos_flowchart_flowchart_051.mmd`
+- `fixtures/flowchart/upstream_html_demos_flowchart_flowchart_062.mmd`
+
+Source: `repo-ref/mermaid/demos/dataflowchart.html` (via `<pre class="mermaid">` blocks).
+
+- `fixtures/flowchart/upstream_html_demos_dataflowchart_data_flow_diagram_demos_001.mmd`
+- `fixtures/flowchart/upstream_html_demos_dataflowchart_borders_example_002.mmd`
+
 ## Parser specs
 
 ### `parser/flow-comments.spec.js`

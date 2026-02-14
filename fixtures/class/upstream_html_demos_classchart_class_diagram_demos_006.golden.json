@@ -1,0 +1,133 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Dog": {
+        "id": "Dog",
+        "type": "",
+        "label": "Dog",
+        "text": "Dog",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "",
+            "id": "bark",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "bark()",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "",
+            "id": "species",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "species()",
+            "cssStyle": ""
+          }
+        ],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Dog-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Cat": {
+        "id": "Cat",
+        "type": "",
+        "label": "Cat",
+        "text": "Cat",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Cat-1",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "interface0",
+        "id2": "Dog",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "",
+        "relation": {
+          "type1": 4,
+          "type2": -1,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "1",
+        "id1": "interface1",
+        "id2": "Cat",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "",
+        "relation": {
+          "type1": 4,
+          "type2": -1,
+          "lineType": 0
+        }
+      }
+    ],
+    "notes": [
+      {
+        "id": "note0",
+        "class": "Cat",
+        "text": "should have no members area"
+      }
+    ],
+    "interfaces": [
+      {
+        "id": "interface0",
+        "label": "Animal",
+        "classId": "Dog"
+      },
+      {
+        "id": "interface1",
+        "label": "Animal",
+        "classId": "Cat"
+      }
+    ],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

@@ -216,6 +216,26 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_cypress_flowchart_v2_spec_should_render_raw_strings_072" => {
             Some(("0 0 231.4375 70", "231.438"))
         }
+        "upstream_html_demos_flowchart_flowchart_002" => {
+            Some(("0 -50 1534.03125 510.07421875", "1534.03"))
+        }
+        "upstream_html_demos_flowchart_flowchart_010" => {
+            Some(("0 0 2004.41015625 1046", "2004.41"))
+        }
+        "upstream_html_demos_flowchart_flowchart_045" => Some(("0 0 1534.03125 452", "1534.03")),
+        "upstream_html_demos_flowchart_flowchart_049" => {
+            Some(("0 0 2004.41015625 1046", "2004.41"))
+        }
+        "upstream_html_demos_flowchart_flowchart_062" => {
+            Some(("0 0 563.5078125 719.140625", "563.508"))
+        }
+        "upstream_html_demos_flowchart_graph_001" => Some(("0 -50 1534.03125 502", "1534.03")),
+        "upstream_html_demos_dataflowchart_data_flow_diagram_demos_001" => {
+            Some(("0 0 519.859375 81.421875", "519.859"))
+        }
+        "upstream_html_demos_dataflowchart_borders_example_002" => {
+            Some(("0 0 1499.203125 94", "1499.2"))
+        }
         _ => None,
     }
 }
