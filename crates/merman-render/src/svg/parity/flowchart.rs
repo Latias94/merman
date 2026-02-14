@@ -63,6 +63,7 @@ struct FlowchartEdgeDataPointsScratch {
     json: String,
     b64: String,
     ryu: ryu_js::Buffer,
+    local_points: Vec<crate::model::LayoutPoint>,
 }
 
 impl Default for FlowchartEdgeDataPointsScratch {
@@ -71,6 +72,7 @@ impl Default for FlowchartEdgeDataPointsScratch {
             json: String::new(),
             b64: String::new(),
             ryu: ryu_js::Buffer::new(),
+            local_points: Vec::new(),
         }
     }
 }
@@ -2329,13 +2331,15 @@ fn flowchart_compute_edge_path_geom(
         return None;
     }
 
-    let mut local_points: Vec<crate::model::LayoutPoint> = Vec::new();
+    scratch.local_points.clear();
+    scratch.local_points.reserve(le.points.len());
     for p in &le.points {
-        local_points.push(crate::model::LayoutPoint {
+        scratch.local_points.push(crate::model::LayoutPoint {
             x: p.x + ctx.tx - origin_x,
             y: p.y + ctx.ty - origin_y,
         });
     }
+    let local_points = scratch.local_points.as_slice();
 
     #[derive(Debug, Clone, Copy)]
     struct BoundaryNode {
@@ -2574,7 +2578,7 @@ fn flowchart_compute_edge_path_geom(
     }
 
     let is_cyclic_special = edge.id.contains("-cyclic-special-");
-    let mut base_points = dedup_consecutive_points(&local_points);
+    let mut base_points = dedup_consecutive_points(local_points);
     maybe_normalize_selfedge_loop_points(&mut base_points);
 
     fn is_rounded_intersect_shift_shape(layout_shape: Option<&str>) -> bool {
@@ -4253,7 +4257,7 @@ fn flowchart_compute_edge_path_geom(
     }
     if points_for_render.len() == 1 {
         // Avoid emitting a degenerate `M x,y` path for clipped cluster-adjacent edges.
-        points_for_render = local_points.clone();
+        points_for_render = scratch.local_points.clone();
     }
 
     // D3's `curveBasis` emits only a straight `M ... L ...` when there are exactly two points.
