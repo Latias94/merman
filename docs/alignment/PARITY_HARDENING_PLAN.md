@@ -5,7 +5,7 @@ Baseline version: Mermaid `@11.12.2`.
 As of 2026-02-14:
 
 - `parity` full compare: 0 mismatch.
-- `parity-root` full compare: 0 mismatch (1120/1120 upstream SVG baselines).
+- `parity-root` full compare: 0 mismatch (1125/1125 upstream SVG baselines).
 
 This document defines the next hardening phases after reaching baseline 100% parity for the
 current fixture set.
@@ -21,7 +21,7 @@ current fixture set.
 ### Upstream SVG Corpus
 
 - Total diagrams covered: 23
-- Total upstream SVG baselines: 1120
+- Total upstream SVG baselines: 1125
 
 ### Upstream Syntax Docs Inventory (11.12.2)
 

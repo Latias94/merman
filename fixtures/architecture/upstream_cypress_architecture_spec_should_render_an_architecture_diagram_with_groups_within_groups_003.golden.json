@@ -1,0 +1,281 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [
+      {
+        "id": "api",
+        "icon": null,
+        "title": "API",
+        "in": null
+      },
+      {
+        "id": "public",
+        "icon": null,
+        "title": "Public API",
+        "in": "api"
+      },
+      {
+        "id": "private",
+        "icon": null,
+        "title": "Private API",
+        "in": "api"
+      }
+    ],
+    "nodes": [
+      {
+        "id": "serv1",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "serv1",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "serv2",
+            "rhsDir": "T",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "serv1",
+            "lhsDir": "L",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "gateway",
+            "rhsDir": "R",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Server",
+        "in": "public"
+      },
+      {
+        "id": "serv2",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "serv1",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "serv2",
+            "rhsDir": "T",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "serv2",
+            "lhsDir": "L",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "R",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Server",
+        "in": "private"
+      },
+      {
+        "id": "db",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "serv2",
+            "lhsDir": "L",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "R",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "database",
+        "iconText": null,
+        "title": "Database",
+        "in": "private"
+      },
+      {
+        "id": "gateway",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "serv1",
+            "lhsDir": "L",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "gateway",
+            "rhsDir": "R",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "internet",
+        "iconText": null,
+        "title": "Gateway",
+        "in": "api"
+      }
+    ],
+    "services": [
+      {
+        "id": "serv1",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "serv1",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "serv2",
+            "rhsDir": "T",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "serv1",
+            "lhsDir": "L",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "gateway",
+            "rhsDir": "R",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Server",
+        "in": "public"
+      },
+      {
+        "id": "serv2",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "serv1",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "serv2",
+            "rhsDir": "T",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "serv2",
+            "lhsDir": "L",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "R",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Server",
+        "in": "private"
+      },
+      {
+        "id": "db",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "serv2",
+            "lhsDir": "L",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "R",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "database",
+        "iconText": null,
+        "title": "Database",
+        "in": "private"
+      },
+      {
+        "id": "gateway",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "serv1",
+            "lhsDir": "L",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "gateway",
+            "rhsDir": "R",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "internet",
+        "iconText": null,
+        "title": "Gateway",
+        "in": "api"
+      }
+    ],
+    "junctions": [],
+    "edges": [
+      {
+        "lhsId": "serv1",
+        "lhsDir": "B",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "serv2",
+        "rhsDir": "T",
+        "rhsInto": null,
+        "rhsGroup": null,
+        "title": null
+      },
+      {
+        "lhsId": "serv2",
+        "lhsDir": "L",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "db",
+        "rhsDir": "R",
+        "rhsInto": null,
+        "rhsGroup": null,
+        "title": null
+      },
+      {
+        "lhsId": "serv1",
+        "lhsDir": "L",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "gateway",
+        "rhsDir": "R",
+        "rhsInto": null,
+        "rhsGroup": null,
+        "title": null
+      }
+    ]
+  }
+}
