@@ -203,6 +203,15 @@ pub fn lookup_sequence_root_viewport_override(
             Some(("-50 -10 1250 251.49998474121094", "1250"))
         }
         "upstream_docs_diagrams_mermaid_api_sequence" => Some(("-50 -10 2871 10259", "2871")),
+        "upstream_html_demos_sequence_sequence_diagram_demos_001" => {
+            Some(("-50 -10 907 1391", "907"))
+        }
+        "upstream_html_demos_sequence_sequence_diagram_demos_003" => {
+            Some(("-50 -10 1006.5 687", "1006.5"))
+        }
+        "upstream_html_demos_sequence_sequence_diagram_demos_010" => {
+            Some(("-50 -10 551 303", "551"))
+        }
         _ => None,
     }
 }

@@ -46,6 +46,8 @@ All override maps live in `crates/merman-render/src/generated/`:
   - `lookup_gitgraph_root_viewport_override(diagram_id)`
 - `timeline_root_overrides_11_12_2.rs`
   - `lookup_timeline_root_viewport_override(diagram_id)`
+- `kanban_root_overrides_11_12_2.rs`
+  - `lookup_kanban_root_viewport_override(diagram_id)`
 
 State diagram also uses text/bbox overrides in:
 
