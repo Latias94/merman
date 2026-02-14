@@ -1,0 +1,188 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "actors": {
+      "A": {
+        "name": "A",
+        "description": "A",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "B": {
+        "name": "B",
+        "description": "B",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "C": {
+        "name": "C",
+        "description": "C",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "D": {
+        "name": "D",
+        "description": "D",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "A",
+        "to": "B",
+        "message": "1",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": null,
+        "to": null,
+        "message": "rgb(204, 0, 102)",
+        "wrap": false,
+        "type": 22,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": null,
+        "to": null,
+        "message": "check C",
+        "wrap": false,
+        "type": 10,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "C",
+        "to": "C",
+        "message": "Every 10 seconds",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 11,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 23,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "A",
+        "to": "B",
+        "message": "2",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": null,
+        "to": null,
+        "message": "check D",
+        "wrap": false,
+        "type": 10,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "C",
+        "to": "D",
+        "message": "3",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": null,
+        "to": null,
+        "message": "rgb(153, 153, 255)",
+        "wrap": false,
+        "type": 22,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": "D",
+        "to": "D",
+        "message": "5",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "11",
+        "from": "D",
+        "to": "C",
+        "message": "4",
+        "wrap": false,
+        "type": 6,
+        "activate": false
+      },
+      {
+        "id": "12",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 23,
+        "activate": false
+      },
+      {
+        "id": "13",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 11,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

@@ -1,0 +1,113 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "C1",
+          "x": 40.8,
+          "y": 42.0,
+          "width": 81.6,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C10",
+          "x": 1404.48,
+          "y": 42.0,
+          "width": 140.48,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C11",
+          "x": 1600.8,
+          "y": 42.0,
+          "width": 152.16,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C12",
+          "x": 1822.24,
+          "y": 42.0,
+          "width": 190.72,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C13",
+          "x": 2076.16,
+          "y": 42.0,
+          "width": 217.12,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C2",
+          "x": 188.56,
+          "y": 42.0,
+          "width": 113.92,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C3",
+          "x": 361.2,
+          "y": 42.0,
+          "width": 131.36,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C4",
+          "x": 542.56,
+          "y": 42.0,
+          "width": 131.36,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C5",
+          "x": 723.92,
+          "y": 42.0,
+          "width": 131.36,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C7",
+          "x": 900.72,
+          "y": 42.0,
+          "width": 122.24,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C8",
+          "x": 1073.44,
+          "y": 42.0,
+          "width": 123.2,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C9",
+          "x": 1234.64,
+          "y": 42.0,
+          "width": 99.2,
+          "height": 84.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "clusters": [],
+      "bounds": {
+        "min_x": -0.0,
+        "min_y": 0.0,
+        "max_x": 2184.72,
+        "max_y": 84.0
+      }
+    }
+  }
+}

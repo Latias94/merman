@@ -143,6 +143,8 @@ struct SequenceSvgActor {
     #[serde(rename = "type")]
     actor_type: String,
     #[serde(default)]
+    wrap: bool,
+    #[serde(default)]
     links: serde_json::Map<String, serde_json::Value>,
     #[serde(default)]
     properties: serde_json::Map<String, serde_json::Value>,
@@ -209,7 +211,7 @@ pub(super) fn render_sequence_diagram_svg(
     semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
     _diagram_title: Option<&str>,
-    _measurer: &dyn TextMeasurer,
+    measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let model: SequenceSvgModel = crate::json::from_value_ref(semantic)?;
@@ -260,6 +262,16 @@ pub(super) fn render_sequence_diagram_svg(
         .get("rightAngles")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
+    let wrap_padding = seq_cfg
+        .get("wrapPadding")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(10.0)
+        .max(0.0);
+    let sequence_width = seq_cfg
+        .get("width")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(150.0)
+        .max(1.0);
     let actor_label_font_size = seq_cfg
         .get("messageFontSize")
         .and_then(|v| v.as_f64())
@@ -279,6 +291,7 @@ pub(super) fn render_sequence_diagram_svg(
         font_size: actor_label_font_size,
         font_weight: Some("400".to_string()),
     };
+    let actor_wrap_width = (sequence_width - 2.0 * wrap_padding).max(1.0);
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
@@ -317,60 +330,42 @@ pub(super) fn render_sequence_diagram_svg(
     fn node_left_top(n: &LayoutNode) -> (f64, f64) {
         (n.x - n.width / 2.0, n.y - n.height / 2.0)
     }
-
-    fn split_html_br_lines(text: &str) -> Vec<&str> {
-        let b = text.as_bytes();
-        let mut parts: Vec<&str> = Vec::new();
-        let mut start = 0usize;
-        let mut i = 0usize;
-        while i + 3 < b.len() {
-            if b[i] != b'<' {
-                i += 1;
-                continue;
-            }
-            let b1 = b[i + 1];
-            let b2 = b[i + 2];
-            if !matches!(b1, b'b' | b'B') || !matches!(b2, b'r' | b'R') {
-                i += 1;
-                continue;
-            }
-            let mut j = i + 3;
-            while j < b.len() && matches!(b[j], b' ' | b'\t' | b'\r' | b'\n') {
-                j += 1;
-            }
-            if j < b.len() && b[j] == b'/' {
-                j += 1;
-            }
-            if j < b.len() && b[j] == b'>' {
-                parts.push(&text[start..i]);
-                start = j + 1;
-                i = start;
-                continue;
-            }
-            i += 1;
-        }
-        parts.push(&text[start..]);
-        parts
-    }
-
-    fn write_actor_label(out: &mut String, cx: f64, cy: f64, label: &str, font_size: f64) {
-        let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(label);
-        let lines = split_html_br_lines(decoded.as_ref());
-        let n = lines.len().max(1) as f64;
-        for (i, line) in lines.into_iter().enumerate() {
+    fn write_actor_label(
+        out: &mut String,
+        cx: f64,
+        cy: f64,
+        label: &str,
+        wrap: bool,
+        wrap_width_px: f64,
+        measurer: &dyn TextMeasurer,
+        style: &TextStyle,
+    ) {
+        // Split/wrap before decoding Mermaid entities so escaped `<br>` (`#lt;br#gt;`) remains
+        // literal text rather than being treated as an actual `<br>` break.
+        let raw_lines: Vec<String> = if wrap {
+            crate::text::wrap_label_like_mermaid_lines(label, measurer, style, wrap_width_px)
+        } else {
+            crate::text::split_html_br_lines(label)
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect()
+        };
+        let n = raw_lines.len().max(1) as f64;
+        for (i, raw) in raw_lines.into_iter().enumerate() {
+            let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(&raw);
             let dy = if n <= 1.0 {
                 0.0
             } else {
-                (i as f64 - (n - 1.0) / 2.0) * font_size
+                (i as f64 - (n - 1.0) / 2.0) * style.font_size
             };
             let _ = write!(
                 out,
                 r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor actor-box" style="text-anchor: middle; font-size: {fs}px; font-weight: 400;"><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
                 x = fmt(cx),
                 y = fmt(cy),
-                fs = fmt(font_size),
+                fs = fmt(style.font_size),
                 dy = fmt(dy),
-                text = escape_xml_display(line)
+                text = escape_xml_display(decoded.as_ref())
             );
         }
     }
@@ -448,7 +443,7 @@ pub(super) fn render_sequence_diagram_svg(
             .boxes
             .iter()
             .filter_map(|b| b.name.as_deref())
-            .map(|s| s.split("<br>").count().max(1) as f64 * line_h)
+            .map(|s| crate::text::split_html_br_lines(s).len().max(1) as f64 * line_h)
             .fold(0.0, f64::max)
     } else {
         0.0
@@ -642,7 +637,16 @@ pub(super) fn render_sequence_diagram_svg(
                     h = fmt(n.height),
                     name = escape_xml_display(actor_id)
                 );
-                write_actor_label(&mut out, cx, cy, &actor.description, actor_label_font_size);
+                write_actor_label(
+                    &mut out,
+                    cx,
+                    cy,
+                    &actor.description,
+                    actor.wrap,
+                    actor_wrap_width,
+                    measurer,
+                    &loop_text_style,
+                );
                 out.push_str("</g>");
             }
             "queue" => {
@@ -679,7 +683,10 @@ pub(super) fn render_sequence_diagram_svg(
                     n.x,
                     y_mid,
                     &actor.description,
-                    actor_label_font_size,
+                    actor.wrap,
+                    actor_wrap_width,
+                    measurer,
+                    &loop_text_style,
                 );
                 out.push_str("</g>");
             }
@@ -712,7 +719,10 @@ pub(super) fn render_sequence_diagram_svg(
                     n.x,
                     y_text,
                     &actor.description,
-                    actor_label_font_size,
+                    actor.wrap,
+                    actor_wrap_width,
+                    measurer,
+                    &loop_text_style,
                 );
                 out.push_str("</g>");
             }
@@ -734,7 +744,10 @@ pub(super) fn render_sequence_diagram_svg(
                     n.x,
                     n.y,
                     &actor.description,
-                    actor_label_font_size,
+                    actor.wrap,
+                    actor_wrap_width,
+                    measurer,
+                    &loop_text_style,
                 );
                 out.push_str("</g>");
             }
@@ -822,7 +835,16 @@ pub(super) fn render_sequence_diagram_svg(
                     h = fmt(top.height),
                     name = escape_xml(actor_id),
                 );
-                write_actor_label(&mut out, cx, cy, &actor.description, actor_label_font_size);
+                write_actor_label(
+                    &mut out,
+                    cx,
+                    cy,
+                    &actor.description,
+                    actor.wrap,
+                    actor_wrap_width,
+                    measurer,
+                    &loop_text_style,
+                );
                 out.push_str("</g></g>");
             }
             "queue" => {
@@ -868,7 +890,10 @@ pub(super) fn render_sequence_diagram_svg(
                     top.x,
                     y_mid,
                     &actor.description,
-                    actor_label_font_size,
+                    actor.wrap,
+                    actor_wrap_width,
+                    measurer,
+                    &loop_text_style,
                 );
                 out.push_str("</g></g>");
             }
@@ -907,7 +932,10 @@ pub(super) fn render_sequence_diagram_svg(
                     top.x,
                     y_text,
                     &actor.description,
-                    actor_label_font_size,
+                    actor.wrap,
+                    actor_wrap_width,
+                    measurer,
+                    &loop_text_style,
                 );
                 out.push_str("</g></g>");
             }
@@ -938,7 +966,10 @@ pub(super) fn render_sequence_diagram_svg(
                     top.x,
                     top.y,
                     &actor.description,
-                    actor_label_font_size,
+                    actor.wrap,
+                    actor_wrap_width,
+                    measurer,
+                    &loop_text_style,
                 );
                 out.push_str("</g></g>");
             }
@@ -1344,7 +1375,7 @@ pub(super) fn render_sequence_diagram_svg(
         max_width: Option<f64>,
     ) -> Vec<String> {
         let mut lines: Vec<String> = Vec::new();
-        for line in split_html_br_lines(text) {
+        for line in crate::text::split_html_br_lines(text) {
             if let Some(w) = max_width {
                 lines.extend(wrap_svg_text_line(line, measurer, style, w));
             } else {
@@ -1876,24 +1907,27 @@ pub(super) fn render_sequence_diagram_svg(
                     w = fmt(n.width),
                     h = fmt(n.height)
                 );
-                let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(raw);
                 let lines: Vec<String> = if msg.wrap {
-                    // Mermaid's `wrap:` notes wrap to the default note width rather than widening.
-                    // Model the line count using our heuristic wrapper (text content is parity-masked).
-                    let wrap_w = (n.width - 20.0).max(1.0);
-                    crate::text::wrap_text_lines_px(
-                        decoded.as_ref(),
+                    // Mermaid@11.12.2 (Sequence) wraps notes *after* placement width is known:
+                    //   noteModel.message = wrapLabel(msg.message, noteModel.width - 2*wrapPadding, noteFont)
+                    //
+                    // Layout already computed the note box width (`n.width`) to match Mermaid's
+                    // `noteModel.width`, so wrap to `n.width - 2*wrapPadding` here.
+                    let wrap_w = (n.width - 2.0 * wrap_padding).max(1.0);
+                    crate::text::wrap_label_like_mermaid_lines_floored_bbox(
+                        raw,
+                        measurer,
                         &note_text_style,
-                        Some(wrap_w),
-                        crate::text::WrapMode::SvgLike,
+                        wrap_w,
                     )
                 } else {
-                    split_html_br_lines(decoded.as_ref())
+                    crate::text::split_html_br_lines(raw)
                         .into_iter()
                         .map(|s| s.to_string())
                         .collect()
                 };
                 for (i, line) in lines.iter().enumerate() {
+                    let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(line);
                     let y = text_y + (i as f64) * line_step;
                     let _ = write!(
                         &mut out,
@@ -1901,7 +1935,7 @@ pub(super) fn render_sequence_diagram_svg(
                         x = fmt(cx),
                         y = fmt(y),
                         fs = fmt(actor_label_font_size),
-                        text = escape_xml(line)
+                        text = escape_xml(decoded.as_ref())
                     );
                 }
                 out.push_str("</g>");
@@ -1984,7 +2018,7 @@ pub(super) fn render_sequence_diagram_svg(
                                 .unwrap_or_else(|| "\u{200B}".to_string());
                             let wrapped = wrap_svg_text_lines(
                                 &label,
-                                _measurer,
+                                measurer,
                                 &loop_text_style,
                                 Some(max_w),
                             );
@@ -2110,7 +2144,7 @@ pub(super) fn render_sequence_diagram_svg(
                                 let max_w = (frame_x2 - label_box_right).max(0.0);
                                 write_loop_text_lines(
                                     &mut out,
-                                    _measurer,
+                                    measurer,
                                     &loop_text_style,
                                     main_text_x,
                                     y,
@@ -2123,7 +2157,7 @@ pub(super) fn render_sequence_diagram_svg(
                             let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
                             write_loop_text_lines(
                                 &mut out,
-                                _measurer,
+                                measurer,
                                 &loop_text_style,
                                 center_text_x,
                                 y,
@@ -2291,7 +2325,7 @@ pub(super) fn render_sequence_diagram_svg(
                                 let max_w = (frame_x2 - label_box_right).max(0.0);
                                 write_loop_text_lines(
                                     &mut out,
-                                    _measurer,
+                                    measurer,
                                     &loop_text_style,
                                     main_text_x,
                                     y,
@@ -2304,7 +2338,7 @@ pub(super) fn render_sequence_diagram_svg(
                             let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
                             write_loop_text_lines(
                                 &mut out,
-                                _measurer,
+                                measurer,
                                 &loop_text_style,
                                 center_text_x,
                                 y,
@@ -2418,7 +2452,7 @@ pub(super) fn render_sequence_diagram_svg(
                         let max_w = (frame_x2 - label_box_right).max(0.0);
                         write_loop_text_lines(
                             &mut out,
-                            _measurer,
+                            measurer,
                             &loop_text_style,
                             text_x,
                             text_y,
@@ -2528,7 +2562,7 @@ pub(super) fn render_sequence_diagram_svg(
                         let max_w = (frame_x2 - label_box_right).max(0.0);
                         write_loop_text_lines(
                             &mut out,
-                            _measurer,
+                            measurer,
                             &loop_text_style,
                             text_x,
                             text_y,
@@ -2633,7 +2667,7 @@ pub(super) fn render_sequence_diagram_svg(
                         let max_w = (frame_x2 - label_box_right).max(0.0);
                         write_loop_text_lines(
                             &mut out,
-                            _measurer,
+                            measurer,
                             &loop_text_style,
                             text_x,
                             text_y,
@@ -2699,7 +2733,7 @@ pub(super) fn render_sequence_diagram_svg(
                             let max_w = (frame_x2 - label_box_right).max(0.0);
                             let wrapped = wrap_svg_text_lines(
                                 &label_text,
-                                _measurer,
+                                measurer,
                                 &loop_text_style,
                                 Some(max_w),
                             );
@@ -2822,7 +2856,7 @@ pub(super) fn render_sequence_diagram_svg(
                                 let max_w = (frame_x2 - label_box_right).max(0.0);
                                 write_loop_text_lines(
                                     &mut out,
-                                    _measurer,
+                                    measurer,
                                     &loop_text_style,
                                     main_text_x,
                                     y,
@@ -2835,7 +2869,7 @@ pub(super) fn render_sequence_diagram_svg(
                             let y = sep_ys.get(i - 1).copied().unwrap_or(frame_y1) + 18.0;
                             write_loop_text_lines(
                                 &mut out,
-                                _measurer,
+                                measurer,
                                 &loop_text_style,
                                 center_text_x,
                                 y,
@@ -2900,18 +2934,42 @@ pub(super) fn render_sequence_diagram_svg(
         let text = msg.message.as_str().unwrap_or_default();
         if let Some(lbl) = &edge.label {
             let line_step = actor_label_font_size * 1.1875;
-            let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(text);
-            let lines = split_html_br_lines(decoded.as_ref());
-            for (i, line) in lines.into_iter().enumerate() {
+            let bounded_width = (edge.points[0].x - edge.points[1].x).abs().max(0.0);
+            let raw_lines: Vec<String> = if msg.wrap && !text.is_empty() {
+                // Mermaid's `wrapLabel(...)` uses DOM-backed SVG text bbox widths. Our headless
+                // vendored metrics are close but can be slightly more conservative in some edge
+                // cases; give message wrapping a bit of extra horizontal slack so line breaks match
+                // upstream Cypress baselines.
+                let wrap_w = (bounded_width + 4.5 * wrap_padding)
+                    .max(sequence_width)
+                    .max(1.0);
+                crate::text::wrap_label_like_mermaid_lines_floored_bbox(
+                    text,
+                    measurer,
+                    &loop_text_style,
+                    wrap_w,
+                )
+            } else {
+                crate::text::split_html_br_lines(text)
+                    .into_iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            };
+            for (i, raw) in raw_lines.into_iter().enumerate() {
                 let y = lbl.y + (i as f64) * line_step;
-                let line = if line.is_empty() { "\u{200B}" } else { line };
+                let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(&raw);
+                let line = if decoded.as_ref().is_empty() {
+                    "\u{200B}".to_string()
+                } else {
+                    decoded.as_ref().to_string()
+                };
                 let _ = write!(
                     &mut out,
                     r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="messageText" dy="1em" style="font-size: {fs}px; font-weight: 400;">{text}</text>"#,
                     x = fmt(lbl.x.round()),
                     y = fmt(y),
                     fs = fmt(actor_label_font_size),
-                    text = escape_xml(line)
+                    text = escape_xml(&line)
                 );
             }
         }

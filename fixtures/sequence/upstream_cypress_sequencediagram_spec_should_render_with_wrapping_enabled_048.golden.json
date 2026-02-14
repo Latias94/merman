@@ -1,0 +1,80 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "A",
+      "John"
+    ],
+    "actors": {
+      "A": {
+        "name": "A",
+        "description": "Alice, the talkative one",
+        "wrap": true,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "John": {
+        "name": "John",
+        "description": "John",
+        "wrap": true,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "A",
+        "to": "John",
+        "message": "Hello John, how are you today? I'm feeling quite verbose today.",
+        "wrap": true,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "A",
+        "to": "John",
+        "message": "John, can you hear me? If you are not available, we can talk later.",
+        "wrap": true,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "John",
+        "to": "A",
+        "message": "Hi Alice, I can hear you! I was finishing up an important meeting.",
+        "wrap": true,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "John",
+        "to": "A",
+        "message": "I feel great! I was not ignoring you. I am sorry you had to wait for a response.",
+        "wrap": true,
+        "type": 1,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

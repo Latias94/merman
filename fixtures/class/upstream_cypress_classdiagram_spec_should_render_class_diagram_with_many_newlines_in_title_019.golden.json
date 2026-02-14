@@ -1,0 +1,111 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "This\nTitle\nHas\nMany\nNewlines": {
+        "id": "This\nTitle\nHas\nMany\nNewlines",
+        "type": "",
+        "label": "This\nTitle\nHas\nMany\nNewlines",
+        "text": "This\nTitle\nHas\nMany\nNewlines",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "And",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+And()",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "-",
+            "id": "Many",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-Many()",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "#",
+            "id": "Methods",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "#Methods()",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "String Also",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+String Also",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "String Many",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-String Many",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "#",
+            "id": "int Members",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "#int Members",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-This\nTitle\nHas\nMany\nNewlines-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}
