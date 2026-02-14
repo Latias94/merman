@@ -1,0 +1,65 @@
+{
+  "diagramType": "journey",
+  "model": {
+    "type": "journey",
+    "title": null,
+    "accTitle": "Very simple journey demo",
+    "accDescr": "2 main sections: work and home, each with just a few tasks",
+    "sections": [
+      "Go to work",
+      "Go home"
+    ],
+    "tasks": [
+      {
+        "score": 5,
+        "people": [
+          "Me"
+        ],
+        "section": "Go to work",
+        "type": "Go to work",
+        "task": "  Make tea"
+      },
+      {
+        "score": 3,
+        "people": [
+          "Me"
+        ],
+        "section": "Go to work",
+        "type": "Go to work",
+        "task": "  Go upstairs"
+      },
+      {
+        "score": 1,
+        "people": [
+          "Me",
+          "Cat"
+        ],
+        "section": "Go to work",
+        "type": "Go to work",
+        "task": "  Do work"
+      },
+      {
+        "score": 5,
+        "people": [
+          "Me"
+        ],
+        "section": "Go home",
+        "type": "Go home",
+        "task": "  Go downstairs"
+      },
+      {
+        "score": 3,
+        "people": [
+          "Me"
+        ],
+        "section": "Go home",
+        "type": "Go home",
+        "task": "  Sit down"
+      }
+    ],
+    "actors": [
+      "Cat",
+      "Me"
+    ]
+  }
+}
