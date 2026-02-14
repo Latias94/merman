@@ -285,7 +285,7 @@ fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str)
         diagram_id: &str,
         diagram_marker_class: &str,
         name: &str,
-        class: &str,
+        kind: &str,
         ref_x: &str,
         ref_y: &str,
         marker_w: &str,
@@ -294,16 +294,17 @@ fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str)
     ) {
         let _ = write!(
             out,
-            r#"<defs><marker id="{}_{}-{}" class="{}" refX="{}" refY="{}" markerWidth="{}" markerHeight="{}" orient="auto"><path d="{}"/></marker></defs>"#,
-            escape_xml(diagram_id),
-            escape_xml(diagram_marker_class),
-            escape_xml(name),
-            escape_xml(class),
+            r#"<defs><marker id="{}_{}-{}" class="marker {} {}" refX="{}" refY="{}" markerWidth="{}" markerHeight="{}" orient="auto"><path d="{}"/></marker></defs>"#,
+            escape_xml_display(diagram_id),
+            escape_xml_display(diagram_marker_class),
+            escape_xml_display(name),
+            escape_xml_display(kind),
+            escape_xml_display(diagram_marker_class),
             ref_x,
             ref_y,
             marker_w,
             marker_h,
-            escape_xml(d)
+            escape_xml_display(d)
         );
     }
 
@@ -312,7 +313,7 @@ fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str)
         diagram_id: &str,
         diagram_marker_class: &str,
         name: &str,
-        class: &str,
+        kind: &str,
         ref_x: &str,
         ref_y: &str,
         marker_w: &str,
@@ -320,11 +321,12 @@ fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str)
     ) {
         let _ = write!(
             out,
-            r#"<defs><marker id="{}_{}-{}" class="{}" refX="{}" refY="{}" markerWidth="{}" markerHeight="{}" orient="auto"><circle stroke="black" fill="transparent" cx="7" cy="7" r="6"/></marker></defs>"#,
-            escape_xml(diagram_id),
-            escape_xml(diagram_marker_class),
-            escape_xml(name),
-            escape_xml(class),
+            r#"<defs><marker id="{}_{}-{}" class="marker {} {}" refX="{}" refY="{}" markerWidth="{}" markerHeight="{}" orient="auto"><circle stroke="black" fill="transparent" cx="7" cy="7" r="6"/></marker></defs>"#,
+            escape_xml_display(diagram_id),
+            escape_xml_display(diagram_marker_class),
+            escape_xml_display(name),
+            escape_xml_display(kind),
+            escape_xml_display(diagram_marker_class),
             ref_x,
             ref_y,
             marker_w,
@@ -332,18 +334,12 @@ fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str)
         );
     }
 
-    let aggregation = format!("marker aggregation {diagram_marker_class}");
-    let extension = format!("marker extension {diagram_marker_class}");
-    let composition = format!("marker composition {diagram_marker_class}");
-    let dependency = format!("marker dependency {diagram_marker_class}");
-    let lollipop = format!("marker lollipop {diagram_marker_class}");
-
     marker_path(
         out,
         diagram_id,
         diagram_marker_class,
         "aggregationStart",
-        &aggregation,
+        "aggregation",
         "18",
         "7",
         "190",
@@ -355,7 +351,7 @@ fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str)
         diagram_id,
         diagram_marker_class,
         "aggregationEnd",
-        &aggregation,
+        "aggregation",
         "1",
         "7",
         "20",
@@ -368,7 +364,7 @@ fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str)
         diagram_id,
         diagram_marker_class,
         "extensionStart",
-        &extension,
+        "extension",
         "18",
         "7",
         "190",
@@ -380,7 +376,7 @@ fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str)
         diagram_id,
         diagram_marker_class,
         "extensionEnd",
-        &extension,
+        "extension",
         "1",
         "7",
         "20",
@@ -393,7 +389,7 @@ fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str)
         diagram_id,
         diagram_marker_class,
         "compositionStart",
-        &composition,
+        "composition",
         "18",
         "7",
         "190",
@@ -405,7 +401,7 @@ fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str)
         diagram_id,
         diagram_marker_class,
         "compositionEnd",
-        &composition,
+        "composition",
         "1",
         "7",
         "20",
@@ -418,7 +414,7 @@ fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str)
         diagram_id,
         diagram_marker_class,
         "dependencyStart",
-        &dependency,
+        "dependency",
         "6",
         "7",
         "190",
@@ -430,7 +426,7 @@ fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str)
         diagram_id,
         diagram_marker_class,
         "dependencyEnd",
-        &dependency,
+        "dependency",
         "13",
         "7",
         "20",
@@ -443,7 +439,7 @@ fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str)
         diagram_id,
         diagram_marker_class,
         "lollipopStart",
-        &lollipop,
+        "lollipop",
         "13",
         "7",
         "190",
@@ -454,7 +450,7 @@ fn class_markers(out: &mut String, diagram_id: &str, diagram_marker_class: &str)
         diagram_id,
         diagram_marker_class,
         "lollipopEnd",
-        &lollipop,
+        "lollipop",
         "1",
         "7",
         "190",
@@ -846,27 +842,32 @@ pub(super) fn render_class_diagram_v2_svg(
     const MAX_WIDTH_PLACEHOLDER: &str = "__MERMAID_MAX_WIDTH__";
 
     let render_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.render_svg));
-    let mut out = String::new();
+    let estimated_svg_bytes = 2048usize
+        + model.classes.len().saturating_mul(512)
+        + model.relations.len().saturating_mul(384)
+        + model.notes.len().saturating_mul(256)
+        + model.namespaces.len().saturating_mul(128);
+    let mut out = String::with_capacity(estimated_svg_bytes);
     let _ = write!(
         &mut out,
         r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="classDiagram" style="max-width: {}px; background-color: white;" viewBox="{}" role="graphics-document document" aria-roledescription="{}""#,
-        escape_xml(diagram_id),
+        escape_xml_display(diagram_id),
         MAX_WIDTH_PLACEHOLDER,
         VIEWBOX_PLACEHOLDER,
-        escape_attr(aria_roledescription)
+        escape_attr_display(aria_roledescription)
     );
     if has_acc_title {
         let _ = write!(
             &mut out,
             r#" aria-labelledby="chart-title-{}""#,
-            escape_xml(diagram_id)
+            escape_xml_display(diagram_id)
         );
     }
     if has_acc_descr {
         let _ = write!(
             &mut out,
             r#" aria-describedby="chart-desc-{}""#,
-            escape_xml(diagram_id)
+            escape_xml_display(diagram_id)
         );
     }
     out.push('>');
@@ -875,8 +876,8 @@ pub(super) fn render_class_diagram_v2_svg(
         let _ = write!(
             &mut out,
             r#"<title id="chart-title-{}">{}"#,
-            escape_xml(diagram_id),
-            escape_xml(model.acc_title.as_deref().unwrap_or_default())
+            escape_xml_display(diagram_id),
+            escape_xml_display(model.acc_title.as_deref().unwrap_or_default())
         );
         out.push_str("</title>");
     }
@@ -884,8 +885,8 @@ pub(super) fn render_class_diagram_v2_svg(
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{}">{}"#,
-            escape_xml(diagram_id),
-            escape_xml(model.acc_descr.as_deref().unwrap_or_default())
+            escape_xml_display(diagram_id),
+            escape_xml_display(model.acc_descr.as_deref().unwrap_or_default())
         );
         out.push_str("</desc>");
     }
@@ -2137,8 +2138,11 @@ pub(super) fn render_class_diagram_v2_svg(
             vb_w = 1704.16015625;
         }
     }
-    let mut max_w_attr = fmt_max_width_px(vb_w.max(1.0));
-    let mut view_box_attr = format!(
+    let mut max_w_attr = String::new();
+    super::util::fmt_max_width_px_into(&mut max_w_attr, vb_w.max(1.0));
+    let mut view_box_attr = String::with_capacity(64);
+    let _ = write!(
+        &mut view_box_attr,
         "{} {} {} {}",
         fmt(vb_min_x),
         fmt(vb_min_y),

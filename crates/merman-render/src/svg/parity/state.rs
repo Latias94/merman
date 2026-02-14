@@ -398,11 +398,19 @@ pub(super) fn render_state_diagram_v2_svg(
     const MAX_WIDTH_PLACEHOLDER: &str = "__MERMAID_MAX_WIDTH__";
     const TITLE_PLACEHOLDER_COMMENT: &str = "<!--__MERMAID_TITLE__-->";
 
-    let mut out = String::new();
+    // Mermaid emits a single `<style>` element with diagram-scoped CSS.
+    let css = state_css(diagram_id, &model, effective_config);
+
+    let estimated_svg_bytes = 2048usize
+        + css.len()
+        + layout.nodes.len().saturating_mul(512)
+        + layout.edges.len().saturating_mul(384)
+        + layout.clusters.len().saturating_mul(256);
+    let mut out = String::with_capacity(estimated_svg_bytes);
     let _ = write!(
         &mut out,
         r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="statediagram" style="max-width: {}px; background-color: white;" viewBox="{}" role="graphics-document document" aria-roledescription="stateDiagram""#,
-        escape_xml(diagram_id),
+        escape_xml_display(diagram_id),
         MAX_WIDTH_PLACEHOLDER,
         VIEWBOX_PLACEHOLDER
     );
@@ -410,14 +418,14 @@ pub(super) fn render_state_diagram_v2_svg(
         let _ = write!(
             &mut out,
             r#" aria-labelledby="chart-title-{}""#,
-            escape_xml(diagram_id)
+            escape_xml_display(diagram_id)
         );
     }
     if has_acc_descr {
         let _ = write!(
             &mut out,
             r#" aria-describedby="chart-desc-{}""#,
-            escape_xml(diagram_id)
+            escape_xml_display(diagram_id)
         );
     }
     out.push('>');
@@ -426,8 +434,8 @@ pub(super) fn render_state_diagram_v2_svg(
         let _ = write!(
             &mut out,
             r#"<title id="chart-title-{}">{}"#,
-            escape_xml(diagram_id),
-            escape_xml(model.acc_title.as_deref().unwrap_or_default())
+            escape_xml_display(diagram_id),
+            escape_xml_display(model.acc_title.as_deref().unwrap_or_default())
         );
         out.push_str("</title>");
     }
@@ -435,14 +443,12 @@ pub(super) fn render_state_diagram_v2_svg(
         let _ = write!(
             &mut out,
             r#"<desc id="chart-desc-{}">{}"#,
-            escape_xml(diagram_id),
-            escape_xml(model.acc_descr.as_deref().unwrap_or_default())
+            escape_xml_display(diagram_id),
+            escape_xml_display(model.acc_descr.as_deref().unwrap_or_default())
         );
         out.push_str("</desc>");
     }
 
-    // Mermaid emits a single `<style>` element with diagram-scoped CSS.
-    let css = state_css(diagram_id, &model, effective_config);
     let _ = write!(&mut out, "<style>{}</style>", css);
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
@@ -528,11 +534,13 @@ pub(super) fn render_state_diagram_v2_svg(
         content_bounds.min_y = content_bounds.min_y.min(title_y - ascent);
         content_bounds.max_y = content_bounds.max_y.max(title_y + descent);
 
-        title_svg = format!(
+        title_svg = String::with_capacity(title.len() + 128);
+        let _ = write!(
+            &mut title_svg,
             r#"<text text-anchor="middle" x="{}" y="{}" class="statediagramTitleText">{}</text>"#,
             fmt(title_x),
             fmt(title_y),
-            escape_xml(title)
+            escape_xml_display(title)
         );
     }
 
@@ -544,8 +552,11 @@ pub(super) fn render_state_diagram_v2_svg(
     let vb_w = (vb_w as f32) as f64;
     let vb_h = (vb_h as f32) as f64;
 
-    let mut max_w_attr = fmt_max_width_px(vb_w.max(1.0));
-    let mut view_box_attr = format!(
+    let mut max_w_attr = String::new();
+    super::util::fmt_max_width_px_into(&mut max_w_attr, vb_w.max(1.0));
+    let mut view_box_attr = String::with_capacity(64);
+    let _ = write!(
+        &mut view_box_attr,
         "{} {} {} {}",
         fmt(vb_min_x),
         fmt(vb_min_y),
