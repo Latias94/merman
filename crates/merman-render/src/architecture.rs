@@ -435,6 +435,8 @@ fn layout_architecture_diagram_model(
             width: icon_size,
             height: icon_size,
             is_cluster: false,
+            label_width: None,
+            label_height: None,
         });
     }
 

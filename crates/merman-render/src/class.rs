@@ -658,6 +658,8 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
                 width: n.width,
                 height: n.height,
                 is_cluster,
+                label_width: None,
+                label_height: None,
             },
         );
     }

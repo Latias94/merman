@@ -1285,6 +1285,8 @@ fn layout_flowchart_v2_with_model(
 
     let mut leaf_node_labels: std::collections::HashMap<String, NodeLabel> =
         std::collections::HashMap::new();
+    let mut leaf_label_metrics_by_id: HashMap<String, (f64, f64)> = HashMap::new();
+    leaf_label_metrics_by_id.reserve(model.nodes.len() + empty_subgraph_ids.len());
     for n in &model.nodes {
         // Mermaid treats the subgraph id as the "group node" id (a cluster can be referenced in
         // edges). Avoid introducing a separate leaf node that would collide with the cluster node
@@ -1324,6 +1326,7 @@ fn layout_flowchart_v2_with_model(
                 node_text_style.as_ref(),
             );
         }
+        leaf_label_metrics_by_id.insert(n.id.clone(), (metrics.width, metrics.height));
         let (width, height) = node_layout_dimensions(
             n.layout_shape.as_deref(),
             metrics,
@@ -1358,6 +1361,7 @@ fn layout_flowchart_v2_with_model(
             Some(cluster_title_wrapping_width),
             node_wrap_mode,
         );
+        leaf_label_metrics_by_id.insert(sg.id.clone(), (metrics.width, metrics.height));
         let (width, height) =
             node_layout_dimensions(Some("squareRect"), metrics, cluster_padding, state_padding);
         leaf_node_labels.insert(
@@ -2605,6 +2609,8 @@ fn layout_flowchart_v2_with_model(
             width,
             height,
             is_cluster: false,
+            label_width: leaf_label_metrics_by_id.get(&n.id).map(|v| v.0),
+            label_height: leaf_label_metrics_by_id.get(&n.id).map(|v| v.1),
         });
     }
     for id in &empty_subgraph_ids {
@@ -2627,6 +2633,8 @@ fn layout_flowchart_v2_with_model(
             width,
             height,
             is_cluster: false,
+            label_width: leaf_label_metrics_by_id.get(id).map(|v| v.0),
+            label_height: leaf_label_metrics_by_id.get(id).map(|v| v.1),
         });
     }
     for id in &self_loop_label_node_ids {
@@ -2649,6 +2657,8 @@ fn layout_flowchart_v2_with_model(
             width,
             height,
             is_cluster: false,
+            label_width: None,
+            label_height: None,
         });
     }
 
@@ -2988,6 +2998,8 @@ fn layout_flowchart_v2_with_model(
             width: rect.width(),
             height: rect.height(),
             is_cluster: true,
+            label_width: None,
+            label_height: None,
         });
     }
     clusters.sort_by(|a, b| a.id.cmp(&b.id));

@@ -513,6 +513,8 @@ pub fn layout_sequence_diagram(
             width: w,
             height: visual_h,
             is_cluster: false,
+            label_width: None,
+            label_height: None,
         });
     }
 
@@ -1268,6 +1270,8 @@ pub fn layout_sequence_diagram(
                         width: rect_w,
                         height: rect_h,
                         is_cluster: false,
+                        label_width: None,
+                        label_height: None,
                     });
 
                     if let Some(parent) = rect_stack.last_mut() {
@@ -1393,6 +1397,8 @@ pub fn layout_sequence_diagram(
                 width: note_w.max(1.0),
                 height: note_h,
                 is_cluster: false,
+                label_width: None,
+                label_height: None,
             });
 
             for open in rect_stack.iter_mut() {
@@ -1662,6 +1668,8 @@ pub fn layout_sequence_diagram(
             width: w,
             height: visual_h,
             is_cluster: false,
+            label_width: None,
+            label_height: None,
         });
 
         let top_center_y = created_actor_top_center_y

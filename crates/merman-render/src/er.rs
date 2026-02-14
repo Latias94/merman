@@ -849,6 +849,8 @@ pub fn layout_er_diagram(
             width: n.width,
             height: n.height,
             is_cluster: false,
+            label_width: None,
+            label_height: None,
         });
     }
     nodes.sort_by(|a, b| a.id.cmp(&b.id));

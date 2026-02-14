@@ -876,6 +876,8 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
                 width: n.width,
                 height: n.height,
                 is_cluster: false,
+                label_width: None,
+                label_height: None,
             },
         );
     }
@@ -1454,6 +1456,8 @@ fn layout_state_diagram_v2_inner(
                 width: pos.width,
                 height: pos.height,
                 is_cluster: false,
+                label_width: None,
+                label_height: None,
             });
         }
     }
@@ -1489,6 +1493,8 @@ fn layout_state_diagram_v2_inner(
             width: pos.width,
             height: pos.height,
             is_cluster: false,
+            label_width: None,
+            label_height: None,
         });
     }
 
@@ -1590,6 +1596,8 @@ fn layout_state_diagram_v2_inner(
             width: rect.width(),
             height: rect.height(),
             is_cluster: true,
+            label_width: None,
+            label_height: None,
         });
     }
 

@@ -229,6 +229,8 @@ fn layout_mindmap_diagram_model(
             width: width.max(1.0),
             height: height.max(1.0),
             is_cluster: false,
+            label_width: None,
+            label_height: None,
         });
     }
 
