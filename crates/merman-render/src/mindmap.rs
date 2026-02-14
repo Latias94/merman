@@ -203,20 +203,36 @@ fn layout_mindmap_diagram_model(
     text_measurer: &dyn TextMeasurer,
     use_manatee_layout: bool,
 ) -> Result<MindmapDiagramLayout> {
+    let timing_enabled = std::env::var("MERMAN_MINDMAP_LAYOUT_TIMING")
+        .ok()
+        .as_deref()
+        == Some("1");
+    #[derive(Debug, Default, Clone)]
+    struct MindmapLayoutTimings {
+        total: std::time::Duration,
+        measure_nodes: std::time::Duration,
+        manatee: std::time::Duration,
+        build_edges: std::time::Duration,
+        bounds: std::time::Duration,
+    }
+    let mut timings = MindmapLayoutTimings::default();
+    let total_start = timing_enabled.then(std::time::Instant::now);
+
     let text_style = mindmap_text_style(effective_config);
     let max_node_width_px = config_f64(effective_config, &["mindmap", "maxNodeWidth"])
         .unwrap_or(200.0)
         .max(1.0);
 
-    let mut nodes_sorted: Vec<&MindmapNodeModel> = model.nodes.iter().collect();
-    nodes_sorted.sort_by(|a, b| {
-        let na = a.id.parse::<i64>().unwrap_or(i64::MAX);
-        let nb = b.id.parse::<i64>().unwrap_or(i64::MAX);
-        na.cmp(&nb).then_with(|| a.id.cmp(&b.id))
-    });
+    let measure_nodes_start = timing_enabled.then(std::time::Instant::now);
+    let mut nodes_sorted: Vec<(i64, &MindmapNodeModel)> = model
+        .nodes
+        .iter()
+        .map(|n| (n.id.parse::<i64>().unwrap_or(i64::MAX), n))
+        .collect();
+    nodes_sorted.sort_by(|(na, a), (nb, b)| na.cmp(nb).then_with(|| a.id.cmp(&b.id)));
 
     let mut nodes: Vec<LayoutNode> = Vec::with_capacity(model.nodes.len());
-    for n in nodes_sorted {
+    for (_id_num, n) in nodes_sorted {
         let (width, height) =
             mindmap_node_dimensions_px(n, text_measurer, &text_style, max_node_width_px);
 
@@ -233,8 +249,12 @@ fn layout_mindmap_diagram_model(
             label_height: None,
         });
     }
+    if let Some(s) = measure_nodes_start {
+        timings.measure_nodes = s.elapsed();
+    }
 
     if use_manatee_layout {
+        let manatee_start = timing_enabled.then(std::time::Instant::now);
         let graph = manatee::Graph {
             nodes: nodes
                 .iter()
@@ -272,6 +292,9 @@ fn layout_mindmap_diagram_model(
                 n.y = p.y;
             }
         }
+        if let Some(s) = manatee_start {
+            timings.manatee = s.elapsed();
+        }
     }
 
     // Mermaid's COSE-Bilkent post-layout normalizes to a positive coordinate space via
@@ -284,6 +307,7 @@ fn layout_mindmap_diagram_model(
         shift_nodes_to_positive_bounds(&mut nodes, 15.0);
     }
 
+    let build_edges_start = timing_enabled.then(std::time::Instant::now);
     let mut node_pos: std::collections::HashMap<&str, (f64, f64)> =
         std::collections::HashMap::with_capacity(nodes.len());
     for n in &nodes {
@@ -320,8 +344,28 @@ fn layout_mindmap_diagram_model(
             stroke_dasharray: None,
         });
     }
+    if let Some(s) = build_edges_start {
+        timings.build_edges = s.elapsed();
+    }
 
+    let bounds_start = timing_enabled.then(std::time::Instant::now);
     let bounds = compute_bounds(&nodes, &edges);
+    if let Some(s) = bounds_start {
+        timings.bounds = s.elapsed();
+    }
+    if let Some(s) = total_start {
+        timings.total = s.elapsed();
+        eprintln!(
+            "[layout-timing] diagram=mindmap total={:?} measure_nodes={:?} manatee={:?} build_edges={:?} bounds={:?} nodes={} edges={}",
+            timings.total,
+            timings.measure_nodes,
+            timings.manatee,
+            timings.build_edges,
+            timings.bounds,
+            nodes.len(),
+            edges.len(),
+        );
+    }
     Ok(MindmapDiagramLayout {
         nodes,
         edges,
