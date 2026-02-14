@@ -1088,9 +1088,23 @@ fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<DateTimeFixed> 
 
     let base_date = Local::now().date_naive();
 
+    // Dayjs strict parsing defaults missing calendar fields to the *start* of the larger unit:
+    // - `YYYY` => Jan 1st
+    // - `YYYY-MM` => 1st of the month
+    //
+    // If the format omits the year entirely (e.g. `MM-DD`), the current year is used.
     let year = parts.year.unwrap_or(base_date.year());
-    let month = parts.month.unwrap_or(base_date.month());
-    let day = parts.day.unwrap_or(base_date.day());
+    let month = match (parts.month, parts.year) {
+        (Some(m), _) => m,
+        (None, Some(_)) => 1,
+        (None, None) => base_date.month(),
+    };
+    let day = match (parts.day, parts.month, parts.year) {
+        (Some(d), _, _) => d,
+        (None, Some(_), _) => 1,
+        (None, None, Some(_)) => 1,
+        (None, None, None) => base_date.day(),
+    };
 
     let mut hour = parts.hour24.unwrap_or(0);
     if parts.hour24.is_none() {
