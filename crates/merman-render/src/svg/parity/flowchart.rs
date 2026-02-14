@@ -4732,19 +4732,8 @@ fn render_flowchart_edge_path(
         (g.d.as_str(), g.data_points_b64.as_str())
     };
 
-    let mut merged_styles: Vec<String> = Vec::new();
-    merged_styles.extend(ctx.default_edge_style.iter().cloned());
-    merged_styles.extend(edge.style.iter().cloned());
-
-    let style_attr_value = if merged_styles.is_empty() {
-        ";".to_string()
-    } else {
-        let joined = merged_styles.join(";");
-        format!("{joined};;;{joined}")
-    };
-
     let mut marker_color: Option<&str> = None;
-    for raw in &merged_styles {
+    for raw in ctx.default_edge_style.iter().chain(edge.style.iter()) {
         // Mirror Mermaid@11.12.2: marker coloring uses the `stroke:` style capture without
         // trimming (see `edges.js` + `edgeMarker.ts`).
         let s = raw.trim_start();
@@ -4762,6 +4751,10 @@ fn render_flowchart_edge_path(
     // We approximate this by compiling the edge styles using class defs and reusing the resulting
     // `stroke` value for the marker id suffix.
     let compiled_marker_color = if marker_color.is_none() && !edge.classes.is_empty() {
+        let mut merged_styles: Vec<String> =
+            Vec::with_capacity(ctx.default_edge_style.len() + edge.style.len());
+        merged_styles.extend(ctx.default_edge_style.iter().cloned());
+        merged_styles.extend(edge.style.iter().cloned());
         flowchart_compile_styles(&ctx.class_defs, &edge.classes, &merged_styles).stroke
     } else {
         None
@@ -4776,27 +4769,45 @@ fn render_flowchart_edge_path(
     let marker_end = flowchart_edge_marker_end_base(edge)
         .map(|base| flowchart_marker_id(&ctx.diagram_id, base, marker_color));
 
-    let marker_start_attr = marker_start
-        .as_deref()
-        .map(|m| format!(r#" marker-start="url(#{})""#, escape_xml_display(m)))
-        .unwrap_or_default();
-    let marker_end_attr = marker_end
-        .as_deref()
-        .map(|m| format!(r#" marker-end="url(#{})""#, escape_xml_display(m)))
-        .unwrap_or_default();
+    fn write_style_joined(out: &mut String, a: &[String], b: &[String]) {
+        let mut first = true;
+        for part in a.iter().chain(b.iter()) {
+            if first {
+                first = false;
+            } else {
+                out.push(';');
+            }
+            let _ = write!(out, "{}", escape_xml_display(part));
+        }
+    }
 
     let _ = write!(
         out,
-        r#"<path d="{}" id="{}" class="{}" style="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}"{}{} />"#,
+        r#"<path d="{}" id="{}" class="{}" style=""#,
         d,
         escape_xml_display(&edge.id),
         escape_xml_display(&class_attr),
-        escape_xml_display(&style_attr_value),
+    );
+    if ctx.default_edge_style.is_empty() && edge.style.is_empty() {
+        out.push(';');
+    } else {
+        write_style_joined(out, &ctx.default_edge_style, &edge.style);
+        out.push_str(";;;");
+        write_style_joined(out, &ctx.default_edge_style, &edge.style);
+    }
+    let _ = write!(
+        out,
+        r#"" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
         escape_xml_display(&edge.id),
         data_points_b64,
-        marker_start_attr,
-        marker_end_attr
     );
+    if let Some(m) = marker_start.as_deref() {
+        let _ = write!(out, r#" marker-start="url(#{})""#, escape_xml_display(m));
+    }
+    if let Some(m) = marker_end.as_deref() {
+        let _ = write!(out, r#" marker-end="url(#{})""#, escape_xml_display(m));
+    }
+    out.push_str(" />");
 }
 
 pub(super) fn render_flowchart_edge_label(
@@ -10402,7 +10413,8 @@ pub(super) fn render_flowchart_v2_svg_with_config(
     {
         let _g = section(timing_enabled, &mut viewbox_edge_curve_bounds);
         let mut scratch = FlowchartEdgeDataPointsScratch::default();
-        let mut root_offsets: FxHashMap<&str, FlowchartRootOffsets> = FxHashMap::default();
+        let mut root_offsets: FxHashMap<&str, FlowchartRootOffsets> =
+            FxHashMap::with_capacity_and_hasher(8, Default::default());
         root_offsets.insert(
             "",
             FlowchartRootOffsets {
