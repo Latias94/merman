@@ -1220,8 +1220,10 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
         Some((sign * (hh * 60 + mm), rest))
     }
 
-    fn js_year_len_is_iso_utc(year_str: &str) -> bool {
-        year_str.len() == 4
+    fn js_date_only_is_iso_utc(year_str: &str, month_str: &str, day_str: &str) -> bool {
+        // JavaScript treats date-only ISO 8601 strings (`YYYY-MM-DD`) as UTC. Non-ISO variants
+        // such as `2019-09-1` (non-zero-padded day) are interpreted as local time in V8.
+        year_str.len() == 4 && month_str.len() == 2 && day_str.len() == 2
     }
 
     let (date_part, mut rest) = {
@@ -1263,7 +1265,7 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
     rest = rest.trim_start();
     if rest.is_empty() {
         let naive = date.and_hms_milli_opt(0, 0, 0, 0)?;
-        if sep == '-' && js_year_len_is_iso_utc(year_str) {
+        if sep == '-' && js_date_only_is_iso_utc(year_str, month_str, day_str) {
             let dt_utc =
                 chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive, chrono::Utc);
             return Some(dt_utc.with_timezone(&FixedOffset::east_opt(0)?));

@@ -1,0 +1,498 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": "Projects Timeline",
+    "accTitle": null,
+    "accDescr": null,
+    "dateFormat": "",
+    "axisFormat": "",
+    "tickInterval": null,
+    "todayMarker": "",
+    "includes": [],
+    "excludes": [
+      "weekdays",
+      "2017-01-10"
+    ],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
+    "sections": [
+      "asdf",
+      "CEL",
+      "DEX",
+      "Events",
+      "Plasma Calls & updates"
+    ],
+    "tasks": [
+      {
+        "section": "asdf",
+        "type": "asdf",
+        "task": "specs ",
+        "id": ":ps",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": true,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2019-06-29T08:00:00.000",
+        "raw": {
+          "data": ":done, :ps, 2019-05-10, 50d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2019-05-10"
+          },
+          "endTime": {
+            "data": "50d"
+          }
+        },
+        "startTime": "2019-05-10T08:00:00.000",
+        "endTime": "2019-06-29T08:00:00.000"
+      },
+      {
+        "section": "asdf",
+        "type": "asdf",
+        "task": "Plasma      ",
+        "id": "pc",
+        "prevTaskId": ":ps",
+        "order": 1,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2019-08-19T08:00:00.000",
+        "raw": {
+          "data": ":pc, 2019-06-20, 60d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2019-06-20"
+          },
+          "endTime": {
+            "data": "60d"
+          }
+        },
+        "startTime": "2019-06-20T08:00:00.000",
+        "endTime": "2019-08-19T08:00:00.000"
+      },
+      {
+        "section": "asdf",
+        "type": "asdf",
+        "task": "Rollup  ",
+        "id": "or",
+        "prevTaskId": "pc",
+        "order": 2,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2019-10-09T08:00:00.000",
+        "raw": {
+          "data": ":or, 2019-08-20, 50d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2019-08-20"
+          },
+          "endTime": {
+            "data": "50d"
+          }
+        },
+        "startTime": "2019-08-20T08:00:00.000",
+        "endTime": "2019-10-09T08:00:00.000"
+      },
+      {
+        "section": "CEL",
+        "type": "CEL",
+        "task": "plasma-chamber      ",
+        "id": ":pc",
+        "prevTaskId": "or",
+        "order": 3,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": true,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2019-07-19T08:00:00.000",
+        "raw": {
+          "data": ":done, :pc, 2019-05-20, 60d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2019-05-20"
+          },
+          "endTime": {
+            "data": "60d"
+          }
+        },
+        "startTime": "2019-05-20T08:00:00.000",
+        "endTime": "2019-07-19T08:00:00.000"
+      },
+      {
+        "section": "CEL",
+        "type": "CEL",
+        "task": "Plasma Implementation (Rust)      ",
+        "id": "por",
+        "prevTaskId": ":pc",
+        "order": 4,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2019-10-18T08:00:00.000",
+        "raw": {
+          "data": ":por, 2019-06-20, 120d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2019-06-20"
+          },
+          "endTime": {
+            "data": "120d"
+          }
+        },
+        "startTime": "2019-06-20T08:00:00.000",
+        "endTime": "2019-10-18T08:00:00.000"
+      },
+      {
+        "section": "CEL",
+        "type": "CEL",
+        "task": "Predicates (Atomic Swap)      ",
+        "id": "pred",
+        "prevTaskId": "por",
+        "order": 5,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2019-09-18T08:00:00.000",
+        "raw": {
+          "data": ":pred, 2019-07-20, 60d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2019-07-20"
+          },
+          "endTime": {
+            "data": "60d"
+          }
+        },
+        "startTime": "2019-07-20T08:00:00.000",
+        "endTime": "2019-09-18T08:00:00.000"
+      },
+      {
+        "section": "DEX",
+        "type": "DEX",
+        "task": "History zkSNARK  ",
+        "id": "hs",
+        "prevTaskId": "pred",
+        "order": 6,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2019-09-19T08:00:00.000",
+        "raw": {
+          "data": ":hs, 2019-08-10, 40d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2019-08-10"
+          },
+          "endTime": {
+            "data": "40d"
+          }
+        },
+        "startTime": "2019-08-10T08:00:00.000",
+        "endTime": "2019-09-19T08:00:00.000"
+      },
+      {
+        "section": "DEX",
+        "type": "DEX",
+        "task": "Exit           ",
+        "id": "vs",
+        "prevTaskId": "hs",
+        "order": 7,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2019-11-18T08:00:00.000",
+        "raw": {
+          "data": ":vs, after hs, 60d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after hs"
+          },
+          "endTime": {
+            "data": "60d"
+          }
+        },
+        "startTime": "2019-09-19T08:00:00.000",
+        "endTime": "2019-11-18T08:00:00.000"
+      },
+      {
+        "section": "DEX",
+        "type": "DEX",
+        "task": "PredicateSpec          ",
+        "id": "ps",
+        "prevTaskId": "vs",
+        "order": 8,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2019-09-21T00:00:00.000",
+        "raw": {
+          "data": ":ps, 2019-09-1, 20d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2019-09-1"
+          },
+          "endTime": {
+            "data": "20d"
+          }
+        },
+        "startTime": "2019-09-01T00:00:00.000",
+        "endTime": "2019-09-21T00:00:00.000"
+      },
+      {
+        "section": "DEX",
+        "type": "DEX",
+        "task": "PlasmaIntegration     ",
+        "id": "pi",
+        "prevTaskId": "ps",
+        "order": 9,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2019-10-31T00:00:00.000",
+        "raw": {
+          "data": ":pi, after ps,40d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after ps"
+          },
+          "endTime": {
+            "data": "40d"
+          }
+        },
+        "startTime": "2019-09-21T00:00:00.000",
+        "endTime": "2019-10-31T00:00:00.000"
+      },
+      {
+        "section": "Events",
+        "type": "Events",
+        "task": "ETHBoston ",
+        "id": ":eb",
+        "prevTaskId": "pi",
+        "order": 10,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": true,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2019-09-11T08:00:00.000",
+        "raw": {
+          "data": ":done, :eb, 2019-09-08, 3d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2019-09-08"
+          },
+          "endTime": {
+            "data": "3d"
+          }
+        },
+        "startTime": "2019-09-08T08:00:00.000",
+        "endTime": "2019-09-11T08:00:00.000"
+      },
+      {
+        "section": "Events",
+        "type": "Events",
+        "task": "DevCon ",
+        "id": ":dc",
+        "prevTaskId": ":eb",
+        "order": 11,
+        "processed": true,
+        "classes": [],
+        "active": true,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2019-10-11T08:00:00.000",
+        "raw": {
+          "data": ":active, :dc, 2019-10-08, 3d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2019-10-08"
+          },
+          "endTime": {
+            "data": "3d"
+          }
+        },
+        "startTime": "2019-10-08T08:00:00.000",
+        "endTime": "2019-10-11T08:00:00.000"
+      },
+      {
+        "section": "Plasma Calls & updates",
+        "type": "Plasma Calls & updates",
+        "task": "OVM      ",
+        "id": "ovm",
+        "prevTaskId": ":dc",
+        "order": 12,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2019-11-09T08:00:00.000",
+        "raw": {
+          "data": ":ovm, 2019-07-12, 120d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2019-07-12"
+          },
+          "endTime": {
+            "data": "120d"
+          }
+        },
+        "startTime": "2019-07-12T08:00:00.000",
+        "endTime": "2019-11-09T08:00:00.000"
+      },
+      {
+        "section": "Plasma Calls & updates",
+        "type": "Plasma Calls & updates",
+        "task": "Plasma call 26 ",
+        "id": "pc26",
+        "prevTaskId": "ovm",
+        "order": 13,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2019-08-22T08:00:00.000",
+        "raw": {
+          "data": ":pc26, 2019-08-21, 1d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2019-08-21"
+          },
+          "endTime": {
+            "data": "1d"
+          }
+        },
+        "startTime": "2019-08-21T08:00:00.000",
+        "endTime": "2019-08-22T08:00:00.000"
+      },
+      {
+        "section": "Plasma Calls & updates",
+        "type": "Plasma Calls & updates",
+        "task": "Plasma call 27 ",
+        "id": "pc27",
+        "prevTaskId": "pc26",
+        "order": 14,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2019-09-04T08:00:00.000",
+        "raw": {
+          "data": ":pc27, 2019-09-03, 1d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2019-09-03"
+          },
+          "endTime": {
+            "data": "1d"
+          }
+        },
+        "startTime": "2019-09-03T08:00:00.000",
+        "endTime": "2019-09-04T08:00:00.000"
+      },
+      {
+        "section": "Plasma Calls & updates",
+        "type": "Plasma Calls & updates",
+        "task": "Plasma call 28 ",
+        "id": "pc28",
+        "prevTaskId": "pc27",
+        "order": 15,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2019-09-18T08:00:00.000",
+        "raw": {
+          "data": ":pc28, 2019-09-17, 1d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2019-09-17"
+          },
+          "endTime": {
+            "data": "1d"
+          }
+        },
+        "startTime": "2019-09-17T08:00:00.000",
+        "endTime": "2019-09-18T08:00:00.000"
+      }
+    ],
+    "links": {},
+    "clickEvents": {}
+  }
+}

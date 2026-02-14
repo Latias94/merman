@@ -74,6 +74,7 @@ Recently imported (keep gates green after each batch):
 - 2026-02-14: Sequence HTML demo fixtures import (5 fixtures from `repo-ref/mermaid/demos/sequence.html` via `<pre class="mermaid">`, with upstream SVG baselines). Added Sequence root viewport overrides for the new fixture IDs to keep the global `parity-root` gate green. (Math/KaTeX `$$...$$` demo fixtures remain deferred due to upstream `<foreignObject>` rendering.)
 - 2026-02-14: Timeline Cypress rendering fixtures import (12 fixtures from `repo-ref/mermaid/cypress/integration/rendering/timeline.spec.*`, with upstream SVG baselines). Added Timeline root viewport overrides for 2 stacked-event fixtures to keep the global `parity-root` gate green.
 - 2026-02-14: Kanban Cypress rendering fixtures import (6 fixtures from `repo-ref/mermaid/cypress/integration/rendering/kanban.spec.*`, with upstream SVG baselines). Added Kanban root viewport overrides for a wrapping-height fixture to keep the global `parity-root` gate green.
+- 2026-02-14: Gantt Cypress rendering fixtures import (25 fixtures from `repo-ref/mermaid/cypress/integration/rendering/gantt.spec.*` + `theme.spec.*`, with upstream SVG baselines). Hardened Gantt parity for d3 `axisFormat` directives (`%L`) + exclude-layer edge cases + JS date-only parsing rules to keep the global `parity-root` gate green.
 
 ## Medium priority (coverage growth)
 

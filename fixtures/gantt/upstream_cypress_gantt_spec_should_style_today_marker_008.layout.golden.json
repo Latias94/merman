@@ -1,0 +1,182 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1184.0,
+        "max_y": 148.0
+      },
+      "width": 1184.0,
+      "height": 148.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "YYYY-MM-DD",
+      "axis_format": "%d",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "stroke-width:5px,stroke:#00f,opacity:0.5",
+      "categories": [
+        "Section1"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "Section1",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 74.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Section1"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task1",
+          "task": "Yesterday",
+          "section": "Section1",
+          "task_type": "Section1",
+          "order": 0.0,
+          "start_ms": -30270441600000.0,
+          "end_ms": -30270355200000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task1",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 517.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "task1-text",
+            "text": "Yesterday",
+            "font_size": 11.0,
+            "width": 45.76,
+            "x": 333.5,
+            "y": 63.5,
+            "class": "taskText taskText0 width-45.760000000000005"
+          }
+        },
+        {
+          "id": "task2",
+          "task": "Today",
+          "section": "Section1",
+          "task_type": "Section1",
+          "order": 1.0,
+          "start_ms": -30270355200000.0,
+          "end_ms": -30270268800000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task2",
+            "x": 592.0,
+            "y": 74.0,
+            "width": 517.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "task2-text",
+            "text": "Today",
+            "font_size": 11.0,
+            "width": 26.84,
+            "x": 850.5,
+            "y": 87.5,
+            "class": "taskText taskText0 width-26.84"
+          }
+        }
+      ],
+      "excludes": [],
+      "has_excludes_layer": false,
+      "bottom_ticks": [
+        {
+          "time_ms": -30270441600000.0,
+          "x": 75.0,
+          "label": "09"
+        },
+        {
+          "time_ms": -30270420000000.0,
+          "x": 204.0,
+          "label": "09"
+        },
+        {
+          "time_ms": -30270398400000.0,
+          "x": 334.0,
+          "label": "09"
+        },
+        {
+          "time_ms": -30270376800000.0,
+          "x": 463.0,
+          "label": "09"
+        },
+        {
+          "time_ms": -30270355200000.0,
+          "x": 592.0,
+          "label": "10"
+        },
+        {
+          "time_ms": -30270333600000.0,
+          "x": 721.0,
+          "label": "10"
+        },
+        {
+          "time_ms": -30270312000000.0,
+          "x": 851.0,
+          "label": "10"
+        },
+        {
+          "time_ms": -30270290400000.0,
+          "x": 980.0,
+          "label": "10"
+        },
+        {
+          "time_ms": -30270268800000.0,
+          "x": 1109.0,
+          "label": "11"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Style today marker (vertical line should be 5px wide and half-transparent blue)",
+      "title_x": 592.0,
+      "title_y": 25.0
+    }
+  }
+}

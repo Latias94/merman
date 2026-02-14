@@ -1,0 +1,472 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1184.0,
+        "max_y": 196.0
+      },
+      "width": 1184.0,
+      "height": 196.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "  YYYY-MM-DD",
+      "axis_format": "  %H:%M",
+      "tick_interval": "15minute",
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "Section",
+        "Another"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 2.0,
+          "x": 0.0,
+          "y": 96.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section1"
+        },
+        {
+          "index": 3.0,
+          "x": 0.0,
+          "y": 120.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section1"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "Section",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 74.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Section"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        },
+        {
+          "section": "Another",
+          "index": 1.0,
+          "x": 10.0,
+          "y": 122.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Another"
+          ],
+          "class": "sectionTitle sectionTitle1"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "a1",
+          "task": "A task           ",
+          "section": "Section",
+          "task_type": "Section",
+          "order": 0.0,
+          "start_ms": 1664726400000.0,
+          "end_ms": 1664748000000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "a1",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 517.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "a1-text",
+            "text": "A task           ",
+            "font_size": 11.0,
+            "width": 30.47,
+            "x": 333.5,
+            "y": 63.5,
+            "class": "taskText taskText0 width-30.469999999999995"
+          }
+        },
+        {
+          "id": "task2",
+          "task": "Task in sec      ",
+          "section": "Another",
+          "task_type": "Another",
+          "order": 2.0,
+          "start_ms": 1664726400000.0,
+          "end_ms": 1664737200000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task2",
+            "x": 75.0,
+            "y": 98.0,
+            "width": 259.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task1"
+          },
+          "label": {
+            "id": "task2-text",
+            "text": "Task in sec      ",
+            "font_size": 11.0,
+            "width": 51.37,
+            "x": 204.5,
+            "y": 111.5,
+            "class": "taskText taskText1 width-51.37"
+          }
+        },
+        {
+          "id": "task3",
+          "task": "another task     ",
+          "section": "Another",
+          "task_type": "Another",
+          "order": 3.0,
+          "start_ms": 1664737200000.0,
+          "end_ms": 1664748000000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task3",
+            "x": 334.0,
+            "y": 122.0,
+            "width": 258.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task1"
+          },
+          "label": {
+            "id": "task3-text",
+            "text": "another task     ",
+            "font_size": 11.0,
+            "width": 56.98,
+            "x": 463.0,
+            "y": 135.5,
+            "class": "taskText taskText1 width-56.98"
+          }
+        },
+        {
+          "id": "task1",
+          "task": "Another task     ",
+          "section": "Section",
+          "task_type": "Section",
+          "order": 1.0,
+          "start_ms": 1664748000000.0,
+          "end_ms": 1664769600000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task1",
+            "x": 592.0,
+            "y": 74.0,
+            "width": 517.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "task1-text",
+            "text": "Another task     ",
+            "font_size": 11.0,
+            "width": 58.85,
+            "x": 850.5,
+            "y": 87.5,
+            "class": "taskText taskText0 width-58.849999999999994"
+          }
+        }
+      ],
+      "excludes": [],
+      "has_excludes_layer": true,
+      "bottom_ticks": [
+        {
+          "time_ms": 1664726400000.0,
+          "x": 75.0,
+          "label": "  00:00"
+        },
+        {
+          "time_ms": 1664727300000.0,
+          "x": 97.0,
+          "label": "  00:15"
+        },
+        {
+          "time_ms": 1664728200000.0,
+          "x": 118.0,
+          "label": "  00:30"
+        },
+        {
+          "time_ms": 1664729100000.0,
+          "x": 140.0,
+          "label": "  00:45"
+        },
+        {
+          "time_ms": 1664730000000.0,
+          "x": 161.0,
+          "label": "  01:00"
+        },
+        {
+          "time_ms": 1664730900000.0,
+          "x": 183.0,
+          "label": "  01:15"
+        },
+        {
+          "time_ms": 1664731800000.0,
+          "x": 204.0,
+          "label": "  01:30"
+        },
+        {
+          "time_ms": 1664732700000.0,
+          "x": 226.0,
+          "label": "  01:45"
+        },
+        {
+          "time_ms": 1664733600000.0,
+          "x": 247.0,
+          "label": "  02:00"
+        },
+        {
+          "time_ms": 1664734500000.0,
+          "x": 269.0,
+          "label": "  02:15"
+        },
+        {
+          "time_ms": 1664735400000.0,
+          "x": 290.0,
+          "label": "  02:30"
+        },
+        {
+          "time_ms": 1664736300000.0,
+          "x": 312.0,
+          "label": "  02:45"
+        },
+        {
+          "time_ms": 1664737200000.0,
+          "x": 334.0,
+          "label": "  03:00"
+        },
+        {
+          "time_ms": 1664738100000.0,
+          "x": 355.0,
+          "label": "  03:15"
+        },
+        {
+          "time_ms": 1664739000000.0,
+          "x": 377.0,
+          "label": "  03:30"
+        },
+        {
+          "time_ms": 1664739900000.0,
+          "x": 398.0,
+          "label": "  03:45"
+        },
+        {
+          "time_ms": 1664740800000.0,
+          "x": 420.0,
+          "label": "  04:00"
+        },
+        {
+          "time_ms": 1664741700000.0,
+          "x": 441.0,
+          "label": "  04:15"
+        },
+        {
+          "time_ms": 1664742600000.0,
+          "x": 463.0,
+          "label": "  04:30"
+        },
+        {
+          "time_ms": 1664743500000.0,
+          "x": 484.0,
+          "label": "  04:45"
+        },
+        {
+          "time_ms": 1664744400000.0,
+          "x": 506.0,
+          "label": "  05:00"
+        },
+        {
+          "time_ms": 1664745300000.0,
+          "x": 527.0,
+          "label": "  05:15"
+        },
+        {
+          "time_ms": 1664746200000.0,
+          "x": 549.0,
+          "label": "  05:30"
+        },
+        {
+          "time_ms": 1664747100000.0,
+          "x": 570.0,
+          "label": "  05:45"
+        },
+        {
+          "time_ms": 1664748000000.0,
+          "x": 592.0,
+          "label": "  06:00"
+        },
+        {
+          "time_ms": 1664748900000.0,
+          "x": 614.0,
+          "label": "  06:15"
+        },
+        {
+          "time_ms": 1664749800000.0,
+          "x": 635.0,
+          "label": "  06:30"
+        },
+        {
+          "time_ms": 1664750700000.0,
+          "x": 657.0,
+          "label": "  06:45"
+        },
+        {
+          "time_ms": 1664751600000.0,
+          "x": 678.0,
+          "label": "  07:00"
+        },
+        {
+          "time_ms": 1664752500000.0,
+          "x": 700.0,
+          "label": "  07:15"
+        },
+        {
+          "time_ms": 1664753400000.0,
+          "x": 721.0,
+          "label": "  07:30"
+        },
+        {
+          "time_ms": 1664754300000.0,
+          "x": 743.0,
+          "label": "  07:45"
+        },
+        {
+          "time_ms": 1664755200000.0,
+          "x": 764.0,
+          "label": "  08:00"
+        },
+        {
+          "time_ms": 1664756100000.0,
+          "x": 786.0,
+          "label": "  08:15"
+        },
+        {
+          "time_ms": 1664757000000.0,
+          "x": 807.0,
+          "label": "  08:30"
+        },
+        {
+          "time_ms": 1664757900000.0,
+          "x": 829.0,
+          "label": "  08:45"
+        },
+        {
+          "time_ms": 1664758800000.0,
+          "x": 851.0,
+          "label": "  09:00"
+        },
+        {
+          "time_ms": 1664759700000.0,
+          "x": 872.0,
+          "label": "  09:15"
+        },
+        {
+          "time_ms": 1664760600000.0,
+          "x": 894.0,
+          "label": "  09:30"
+        },
+        {
+          "time_ms": 1664761500000.0,
+          "x": 915.0,
+          "label": "  09:45"
+        },
+        {
+          "time_ms": 1664762400000.0,
+          "x": 937.0,
+          "label": "  10:00"
+        },
+        {
+          "time_ms": 1664763300000.0,
+          "x": 958.0,
+          "label": "  10:15"
+        },
+        {
+          "time_ms": 1664764200000.0,
+          "x": 980.0,
+          "label": "  10:30"
+        },
+        {
+          "time_ms": 1664765100000.0,
+          "x": 1001.0,
+          "label": "  10:45"
+        },
+        {
+          "time_ms": 1664766000000.0,
+          "x": 1023.0,
+          "label": "  11:00"
+        },
+        {
+          "time_ms": 1664766900000.0,
+          "x": 1044.0,
+          "label": "  11:15"
+        },
+        {
+          "time_ms": 1664767800000.0,
+          "x": 1066.0,
+          "label": "  11:30"
+        },
+        {
+          "time_ms": 1664768700000.0,
+          "x": 1087.0,
+          "label": "  11:45"
+        },
+        {
+          "time_ms": 1664769600000.0,
+          "x": 1109.0,
+          "label": "  12:00"
+        }
+      ],
+      "top_ticks": [],
+      "title": "A Gantt Diagram",
+      "title_x": 592.0,
+      "title_y": 25.0
+    }
+  }
+}

@@ -1,0 +1,182 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1184.0,
+        "max_y": 148.0
+      },
+      "width": 1184.0,
+      "height": 148.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "YYYY-MM-DD",
+      "axis_format": "%m-%d",
+      "tick_interval": "1week",
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "Vacation"
+      ],
+      "rows": [
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "Vacation",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 74.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Vacation"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task2",
+          "task": "London ",
+          "section": "Vacation",
+          "task_type": "Vacation",
+          "order": 1.0,
+          "start_ms": -55763884800000.0,
+          "end_ms": -55763280000000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task2",
+            "x": 75.0,
+            "y": 74.0,
+            "width": 0.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "task2-text",
+            "text": "London ",
+            "font_size": 11.0,
+            "width": 30.25,
+            "x": 80.0,
+            "y": 87.5,
+            "class": "taskTextOutsideRight taskTextOutside0 width-30.25"
+          }
+        },
+        {
+          "id": "task1",
+          "task": "London ",
+          "section": "Vacation",
+          "task_type": "Vacation",
+          "order": 0.0,
+          "start_ms": 1732982400000.0,
+          "end_ms": 1733587200000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task1",
+            "x": 1109.0,
+            "y": 50.0,
+            "width": 0.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "task1-text",
+            "text": "London ",
+            "font_size": 11.0,
+            "width": 30.25,
+            "x": 1114.0,
+            "y": 63.5,
+            "class": "taskTextOutsideRight taskTextOutside0 width-30.25"
+          }
+        }
+      ],
+      "excludes": [],
+      "has_excludes_layer": false,
+      "bottom_ticks": [
+        {
+          "time_ms": -49544467200000.0,
+          "x": 187.0,
+          "label": "01-01"
+        },
+        {
+          "time_ms": -43233033600000.0,
+          "x": 300.0,
+          "label": "01-01"
+        },
+        {
+          "time_ms": -36921686400000.0,
+          "x": 414.0,
+          "label": "01-01"
+        },
+        {
+          "time_ms": -30610252800000.0,
+          "x": 527.0,
+          "label": "01-01"
+        },
+        {
+          "time_ms": -24298905600000.0,
+          "x": 641.0,
+          "label": "01-01"
+        },
+        {
+          "time_ms": -17987472000000.0,
+          "x": 754.0,
+          "label": "01-01"
+        },
+        {
+          "time_ms": -11676124800000.0,
+          "x": 868.0,
+          "label": "01-01"
+        },
+        {
+          "time_ms": -5364691200000.0,
+          "x": 981.0,
+          "label": "01-01"
+        },
+        {
+          "time_ms": 946656000000.0,
+          "x": 1095.0,
+          "label": "01-01"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Schedule",
+      "title_x": 592.0,
+      "title_y": 25.0
+    }
+  }
+}

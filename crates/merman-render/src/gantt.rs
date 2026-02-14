@@ -785,18 +785,178 @@ fn add_d3_time_day_every(ms: i64, every: i64) -> Option<i64> {
 }
 
 fn axis_format_to_strftime(axis_format: &str, date_format: &str, cfg_axis_format: &str) -> String {
-    let user = axis_format.trim();
-    if !user.is_empty() {
-        return user.to_string();
+    if !axis_format.trim().is_empty() {
+        // Mermaid preserves any leading/trailing whitespace in `axisFormat` (it is treated as
+        // literal text by d3-time-format). Keep the raw string for DOM parity.
+        return axis_format.to_string();
     }
     if date_format.trim() == "D" {
         return "%d".to_string();
     }
-    let conf = cfg_axis_format.trim();
-    if !conf.is_empty() {
-        return conf.to_string();
+    if !cfg_axis_format.trim().is_empty() {
+        return cfg_axis_format.to_string();
     }
     "%Y-%m-%d".to_string()
+}
+
+fn is_chrono_strftime_directive(directive: char) -> bool {
+    matches!(
+        directive,
+        'a' | 'A'
+            | 'b'
+            | 'B'
+            | 'c'
+            | 'C'
+            | 'd'
+            | 'D'
+            | 'e'
+            | 'F'
+            | 'g'
+            | 'G'
+            | 'H'
+            | 'I'
+            | 'j'
+            | 'k'
+            | 'l'
+            | 'm'
+            | 'M'
+            | 'n'
+            | 'p'
+            | 'P'
+            | 'r'
+            | 'R'
+            | 'S'
+            | 't'
+            | 'T'
+            | 'u'
+            | 'U'
+            | 'V'
+            | 'w'
+            | 'W'
+            | 'x'
+            | 'X'
+            | 'y'
+            | 'Y'
+            | 'z'
+            | 'Z'
+            | '+'
+            | '%'
+            | 'f'
+    )
+}
+
+fn format_axis_tick_label(d: chrono::DateTime<Local>, axis_format: &str) -> String {
+    fn flush(out: &mut String, buf: &mut String, d: chrono::DateTime<Local>) {
+        if buf.is_empty() {
+            return;
+        }
+        out.push_str(&d.format(buf.as_str()).to_string());
+        buf.clear();
+    }
+
+    let mut out = String::new();
+    let mut buf = String::new();
+    let mut it = axis_format.chars().peekable();
+
+    while let Some(ch) = it.next() {
+        if ch != '%' {
+            buf.push(ch);
+            continue;
+        }
+
+        let Some(next) = it.next() else {
+            // Trailing `%` in the format string: treat it as a literal percent.
+            buf.push_str("%%");
+            break;
+        };
+
+        if next == '%' {
+            buf.push_str("%%");
+            continue;
+        }
+
+        // Mermaid uses d3-time-format directives for gantt `axisFormat`. Most overlap with
+        // chrono's strftime, except for a few extras (e.g. `%L`).
+        let (modifier, directive) = if matches!(next, '-' | '_' | '0') {
+            let Some(dir) = it.next() else {
+                flush(&mut out, &mut buf, d);
+                out.push('%');
+                out.push(next);
+                break;
+            };
+            (Some(next), dir)
+        } else {
+            (None, next)
+        };
+
+        match (modifier, directive) {
+            (None, 'L') => {
+                // d3: milliseconds (000-999)
+                flush(&mut out, &mut buf, d);
+                out.push_str(&format!("{:03}", d.timestamp_subsec_millis()));
+            }
+            (None, 'Q') => {
+                // d3: milliseconds since UNIX epoch
+                flush(&mut out, &mut buf, d);
+                out.push_str(&d.with_timezone(&chrono::Utc).timestamp_millis().to_string());
+            }
+            (None, 's') => {
+                // d3: seconds since UNIX epoch
+                flush(&mut out, &mut buf, d);
+                out.push_str(&d.with_timezone(&chrono::Utc).timestamp().to_string());
+            }
+            (None, 'q') => {
+                // d3: quarter of the year [1, 4]
+                flush(&mut out, &mut buf, d);
+                let q = (d.month0() / 3) + 1;
+                out.push_str(&q.to_string());
+            }
+            _ => {
+                // Special case: chrono supports `%.<digits>f` subseconds precision. Keep it in
+                // the buffered chrono format to preserve existing behavior.
+                if modifier.is_none() && directive == '.' {
+                    let mut tmp = String::new();
+                    tmp.push('%');
+                    tmp.push('.');
+                    while let Some(peek) = it.peek().copied() {
+                        if peek.is_ascii_digit() {
+                            tmp.push(it.next().unwrap());
+                        } else {
+                            break;
+                        }
+                    }
+                    if let Some('f') = it.peek().copied() {
+                        tmp.push('f');
+                        let _ = it.next();
+                        buf.push_str(&tmp);
+                        continue;
+                    }
+                    flush(&mut out, &mut buf, d);
+                    out.push_str(&tmp);
+                    continue;
+                }
+
+                if is_chrono_strftime_directive(directive) {
+                    buf.push('%');
+                    if let Some(m) = modifier {
+                        buf.push(m);
+                    }
+                    buf.push(directive);
+                } else {
+                    // Avoid panics from chrono by treating unknown directives as literals.
+                    flush(&mut out, &mut buf, d);
+                    out.push('%');
+                    if let Some(m) = modifier {
+                        out.push(m);
+                    }
+                    out.push(directive);
+                }
+            }
+        }
+    }
+
+    flush(&mut out, &mut buf, d);
+    out
 }
 
 fn build_ticks(
@@ -808,7 +968,37 @@ fn build_ticks(
     tick_interval: Option<&str>,
     week_start: Option<&str>,
 ) -> Vec<GanttAxisTickLayout> {
-    let parsed = tick_interval.and_then(parse_tick_interval);
+    const MAX_TICK_COUNT: f64 = 10_000.0;
+
+    fn estimate_ticks(min_ms: i64, max_ms: i64, every: i64, unit: &str) -> f64 {
+        if every <= 0 || min_ms > max_ms {
+            return f64::INFINITY;
+        }
+
+        let time_diff_ms = (max_ms - min_ms).abs().max(1) as f64;
+        let interval_ms = match unit {
+            "millisecond" => every as f64,
+            "second" => (every as f64) * 1_000.0,
+            "minute" => (every as f64) * 60_000.0,
+            "hour" => (every as f64) * 3_600_000.0,
+            "day" => (every as f64) * (MS_PER_DAY as f64),
+            "week" => (every as f64) * (MS_PER_DAY as f64) * 7.0,
+            // dayjs.duration({ month: n }).asMilliseconds() uses a fixed 30-day lattice.
+            "month" => (every as f64) * (MS_PER_DAY as f64) * 30.0,
+            _ => return f64::INFINITY,
+        };
+        if interval_ms <= 0.0 {
+            return f64::INFINITY;
+        }
+
+        (time_diff_ms / interval_ms).ceil()
+    }
+
+    // Mermaid skips applying custom ticks when the interval would generate an excessive amount of
+    // tick marks (it falls back to d3's automatic tick selection instead).
+    let parsed = tick_interval
+        .and_then(parse_tick_interval)
+        .filter(|(every, unit)| estimate_ticks(min_ms, max_ms, *every, unit) <= MAX_TICK_COUNT);
     let (every, unit) = parsed.unwrap_or_else(|| auto_tick_interval(min_ms, max_ms));
     let week_start = if parsed.is_some() && unit == "week" {
         week_start
@@ -825,7 +1015,7 @@ fn build_ticks(
         }
         let x = scale_time(cur, min_ms, max_ms, range) + left_padding;
         let label = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(cur)
-            .map(|d| d.with_timezone(&Local).format(axis_format).to_string())
+            .map(|d| format_axis_tick_label(d.with_timezone(&Local), axis_format))
             .unwrap_or_default();
         ticks.push(GanttAxisTickLayout {
             time_ms: cur,
@@ -937,7 +1127,9 @@ pub fn layout_gantt_diagram(
         (0, 0)
     };
     let range = (width - left_padding - right_padding).max(1.0);
-    let has_excludes_layer = has_tasks && (!m.excludes.is_empty() || !m.includes.is_empty());
+    let span_days = (max_ms - min_ms).abs() / MS_PER_DAY;
+    let has_excludes_layer =
+        has_tasks && (!m.excludes.is_empty() || !m.includes.is_empty()) && span_days <= 365 * 5;
 
     // Sort by start time for rendering.
     m.tasks.sort_by(|a, b| a.start_ms.cmp(&b.start_ms));
@@ -945,45 +1137,22 @@ pub fn layout_gantt_diagram(
     // Exclude day ranges.
     let mut excludes_layout: Vec<GanttExcludeRangeLayout> = Vec::new();
     if has_excludes_layer {
-        let span_days = (max_ms - min_ms).abs() / MS_PER_DAY;
-        if span_days <= 365 * 5 {
-            let mut cur = start_of_day_ms(min_ms).unwrap_or(min_ms);
-            let max_day = start_of_day_ms(max_ms).unwrap_or(max_ms);
-            let mut range_start: Option<i64> = None;
-            let mut range_end: Option<i64> = None;
+        let mut cur = start_of_day_ms(min_ms).unwrap_or(min_ms);
+        let max_day = start_of_day_ms(max_ms).unwrap_or(max_ms);
+        let mut range_start: Option<i64> = None;
+        let mut range_end: Option<i64> = None;
 
-            while cur <= max_day {
-                let invalid =
-                    is_invalid_date(cur, &m.date_format, &m.excludes, &m.includes, &m.weekend);
-                if invalid {
-                    if range_start.is_none() {
-                        range_start = Some(cur);
-                        range_end = Some(cur);
-                    } else {
-                        range_end = Some(cur);
-                    }
-                } else if let (Some(s), Some(e)) = (range_start.take(), range_end.take()) {
-                    let id = format!(
-                        "exclude-{}",
-                        format_yyyy_mm_dd(s).unwrap_or_else(|| "invalid".to_string())
-                    );
-                    let x0 = scale_time(s, min_ms, max_ms, range) + left_padding;
-                    let eod = end_of_day_ms(e).unwrap_or(e);
-                    let x1 = scale_time(eod, min_ms, max_ms, range) + left_padding;
-                    excludes_layout.push(GanttExcludeRangeLayout {
-                        id,
-                        start_ms: s,
-                        end_ms: eod,
-                        x: x0,
-                        y: grid_line_start_padding,
-                        width: (x1 - x0).max(0.0),
-                        height: (height - top_padding - grid_line_start_padding).max(0.0),
-                    });
+        while cur <= max_day {
+            let invalid =
+                is_invalid_date(cur, &m.date_format, &m.excludes, &m.includes, &m.weekend);
+            if invalid {
+                if range_start.is_none() {
+                    range_start = Some(cur);
+                    range_end = Some(cur);
+                } else {
+                    range_end = Some(cur);
                 }
-                cur += MS_PER_DAY;
-            }
-
-            if let (Some(s), Some(e)) = (range_start.take(), range_end.take()) {
+            } else if let (Some(s), Some(e)) = (range_start.take(), range_end.take()) {
                 let id = format!(
                     "exclude-{}",
                     format_yyyy_mm_dd(s).unwrap_or_else(|| "invalid".to_string())
@@ -1001,6 +1170,7 @@ pub fn layout_gantt_diagram(
                     height: (height - top_padding - grid_line_start_padding).max(0.0),
                 });
             }
+            cur += MS_PER_DAY;
         }
     }
 

@@ -1,0 +1,144 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": "A Gantt Diagram",
+    "accTitle": null,
+    "accDescr": null,
+    "dateFormat": "x",
+    "axisFormat": "%L",
+    "tickInterval": null,
+    "todayMarker": "",
+    "includes": [],
+    "excludes": [],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
+    "sections": [
+      "Section",
+      "Another"
+    ],
+    "tasks": [
+      {
+        "section": "Section",
+        "type": "Section",
+        "task": "A task           ",
+        "id": "a1",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":a1, 0, 30ms",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "0"
+          },
+          "endTime": {
+            "data": "30ms"
+          }
+        },
+        "startTime": 0,
+        "endTime": 30
+      },
+      {
+        "section": "Section",
+        "type": "Section",
+        "task": "Another task     ",
+        "id": "task1",
+        "prevTaskId": "a1",
+        "order": 1,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":after a1, 20ms",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after a1"
+          },
+          "endTime": {
+            "data": "20ms"
+          }
+        },
+        "startTime": 30,
+        "endTime": 50
+      },
+      {
+        "section": "Another",
+        "type": "Another",
+        "task": "Another another task      ",
+        "id": "b1",
+        "prevTaskId": "task1",
+        "order": 2,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":b1, 20, 12ms",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "20"
+          },
+          "endTime": {
+            "data": "12ms"
+          }
+        },
+        "startTime": 20,
+        "endTime": 32
+      },
+      {
+        "section": "Another",
+        "type": "Another",
+        "task": "Another another another task     ",
+        "id": "task2",
+        "prevTaskId": "b1",
+        "order": 3,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":after b1, 0.024s",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after b1"
+          },
+          "endTime": {
+            "data": "0.024s"
+          }
+        },
+        "startTime": 32,
+        "endTime": 56
+      }
+    ],
+    "links": {},
+    "clickEvents": {}
+  }
+}
