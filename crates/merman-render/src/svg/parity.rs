@@ -218,9 +218,14 @@ pub fn render_layout_svg_parts(
         LayoutDiagram::KanbanDiagram(layout) => {
             render_kanban_diagram_svg(layout, semantic, effective_config, options)
         }
-        LayoutDiagram::GitGraphDiagram(layout) => {
-            render_gitgraph_diagram_svg(layout, semantic, effective_config, measurer, options)
-        }
+        LayoutDiagram::GitGraphDiagram(layout) => render_gitgraph_diagram_svg(
+            layout,
+            semantic,
+            effective_config,
+            title,
+            measurer,
+            options,
+        ),
         LayoutDiagram::GanttDiagram(layout) => {
             render_gantt_diagram_svg(layout, semantic, effective_config, options)
         }

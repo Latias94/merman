@@ -794,7 +794,7 @@ pub(super) fn render_gitgraph_diagram_svg(
         let vb_min_x = it.next().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
         let _vb_min_y = it.next().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
         let vb_w = it.next().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
-        let title_x = fmt(vb_min_x + vb_w / 2.0);
+        let title_x = fmt_string(vb_min_x + vb_w / 2.0);
 
         out = out.replacen(VIEWBOX_PLACEHOLDER, view_box, 1);
         out = out.replacen(MAX_WIDTH_PLACEHOLDER, max_width, 1);

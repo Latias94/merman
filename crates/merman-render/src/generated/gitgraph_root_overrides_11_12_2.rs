@@ -90,10 +90,9 @@ pub fn lookup_gitgraph_root_viewport_override(
             "-124.47250366210938 -50 347.265625 378.5620422363281",
             "347.265625",
         )),
-        "upstream_html_demos_git_cherry_pick_from_branch_graph_015" => Some((
-            "-124.47250366210938 -50 347.265625 361",
-            "347.265625",
-        )),
+        "upstream_html_demos_git_cherry_pick_from_branch_graph_015" => {
+            Some(("-124.47250366210938 -50 347.265625 361", "347.265625"))
+        }
         "upstream_html_demos_git_cherry_pick_from_main_graph_016" => Some((
             "-117.5078125 -50 375.5078125 205.11708068847656",
             "375.5078125",
@@ -106,114 +105,90 @@ pub fn lookup_gitgraph_root_viewport_override(
             "-139.578125 -50 447.578125 204.81568908691406",
             "447.578125",
         )),
-        "upstream_html_demos_git_cherry_pick_then_merge_graph_020" => Some((
-            "-121.42562866210938 -50 341.171875 388",
-            "341.171875",
-        )),
-        "upstream_html_demos_git_cherry_pick_then_merge_graph_021" => Some((
-            "-121.42562866210938 -50 341.171875 411",
-            "341.171875",
-        )),
+        "upstream_html_demos_git_cherry_pick_then_merge_graph_020" => {
+            Some(("-121.42562866210938 -50 341.171875 388", "341.171875"))
+        }
+        "upstream_html_demos_git_cherry_pick_then_merge_graph_021" => {
+            Some(("-121.42562866210938 -50 341.171875 411", "341.171875"))
+        }
         "upstream_html_demos_git_continuous_development_graph_004" => Some((
             "-117.5078125 -50 375.5078125 205.11708068847656",
             "375.5078125",
         )),
-        "upstream_html_demos_git_continuous_development_graph_005" => Some((
-            "-131.08526611328125 -50 349.65625 338",
-            "349.65625",
-        )),
-        "upstream_html_demos_git_continuous_development_graph_006" => Some((
-            "-131.08526611328125 -50 349.65625 361",
-            "349.65625",
-        )),
-        "upstream_html_demos_git_three_branches_and_a_cherry_pick_from_each_graph_031" => Some((
-            "-124.078125 -50 732.078125 278.6350402832031",
-            "732.078125",
-        )),
-        "upstream_html_demos_git_three_branches_and_a_cherry_pick_from_each_graph_032" => Some((
-            "-144.70376586914062 -50 508.90625 688",
-            "508.90625",
-        )),
-        "upstream_html_demos_git_three_branches_and_a_cherry_pick_from_each_graph_033" => Some((
-            "-144.70376586914062 -50 508.90625 711",
-            "508.90625",
-        )),
-        "upstream_html_demos_git_two_branches_from_same_commit_graph_028" => Some((
-            "-145.125 -50 453.125 295.5024719238281",
-            "453.125",
-        )),
-        "upstream_html_demos_git_two_branches_from_same_commit_graph_029" => Some((
-            "-92.12482452392578 -50 416.40625 388",
-            "416.40625",
-        )),
-        "upstream_html_demos_git_two_branches_from_same_commit_graph_030" => Some((
-            "-92.12482452392578 -50 416.40625 411",
-            "416.40625",
-        )),
+        "upstream_html_demos_git_continuous_development_graph_005" => {
+            Some(("-131.08526611328125 -50 349.65625 338", "349.65625"))
+        }
+        "upstream_html_demos_git_continuous_development_graph_006" => {
+            Some(("-131.08526611328125 -50 349.65625 361", "349.65625"))
+        }
+        "upstream_html_demos_git_three_branches_and_a_cherry_pick_from_each_graph_031" => {
+            Some(("-124.078125 -50 732.078125 278.6350402832031", "732.078125"))
+        }
+        "upstream_html_demos_git_three_branches_and_a_cherry_pick_from_each_graph_032" => {
+            Some(("-144.70376586914062 -50 508.90625 688", "508.90625"))
+        }
+        "upstream_html_demos_git_three_branches_and_a_cherry_pick_from_each_graph_033" => {
+            Some(("-144.70376586914062 -50 508.90625 711", "508.90625"))
+        }
+        "upstream_html_demos_git_two_branches_from_same_commit_graph_028" => {
+            Some(("-145.125 -50 453.125 295.5024719238281", "453.125"))
+        }
+        "upstream_html_demos_git_two_branches_from_same_commit_graph_029" => {
+            Some(("-92.12482452392578 -50 416.40625 388", "416.40625"))
+        }
+        "upstream_html_demos_git_two_branches_from_same_commit_graph_030" => {
+            Some(("-92.12482452392578 -50 416.40625 411", "416.40625"))
+        }
         "upstream_html_demos_git_two_way_merges_010" => Some((
             "-117.5078125 -50 475.5078125 205.11709594726562",
             "475.5078125",
         )),
-        "upstream_html_demos_git_two_way_merges_011" => Some((
-            "-98.67864990234375 -50 283.71875 438",
-            "283.71875",
-        )),
-        "upstream_html_demos_git_two_way_merges_012" => Some((
-            "-98.67864990234375 -50 283.71875 461",
-            "283.71875",
-        )),
-        "upstream_html_demos_git_simple_branch_and_merge_graph_001" => Some((
-            "-165.0625 -50 348.546875 205.11708068847656",
-            "348.546875",
-        )),
-        "upstream_html_demos_git_simple_branch_and_merge_graph_002" => Some((
-            "-134.18487548828125 -50 366.890625 238",
-            "366.890625",
-        )),
-        "upstream_html_demos_git_simple_branch_and_merge_graph_003" => Some((
-            "-134.18487548828125 -50 366.890625 261",
-            "366.890625",
-        )),
-        "upstream_html_demos_git_merge_feature_to_advanced_main_graph_007" => Some((
-            "-163.8203125 -50 395.0625 205.11708068847656",
-            "395.0625",
-        )),
-        "upstream_html_demos_git_merge_feature_to_advanced_main_graph_008" => Some((
-            "-157.94268798828125 -50 413.40625 288",
-            "413.40625",
-        )),
-        "upstream_html_demos_git_merge_feature_to_advanced_main_graph_009" => Some((
-            "-157.94268798828125 -50 413.40625 311",
-            "413.40625",
-        )),
-        "upstream_html_demos_git_cherry_pick_from_main_graph_018" => Some((
-            "-104.87841796875 -50 331.5625 361",
-            "331.5625",
-        )),
+        "upstream_html_demos_git_two_way_merges_011" => {
+            Some(("-98.67864990234375 -50 283.71875 438", "283.71875"))
+        }
+        "upstream_html_demos_git_two_way_merges_012" => {
+            Some(("-98.67864990234375 -50 283.71875 461", "283.71875"))
+        }
+        "upstream_html_demos_git_simple_branch_and_merge_graph_001" => {
+            Some(("-165.0625 -50 348.546875 205.11708068847656", "348.546875"))
+        }
+        "upstream_html_demos_git_simple_branch_and_merge_graph_002" => {
+            Some(("-134.18487548828125 -50 366.890625 238", "366.890625"))
+        }
+        "upstream_html_demos_git_simple_branch_and_merge_graph_003" => {
+            Some(("-134.18487548828125 -50 366.890625 261", "366.890625"))
+        }
+        "upstream_html_demos_git_merge_feature_to_advanced_main_graph_007" => {
+            Some(("-163.8203125 -50 395.0625 205.11708068847656", "395.0625"))
+        }
+        "upstream_html_demos_git_merge_feature_to_advanced_main_graph_008" => {
+            Some(("-157.94268798828125 -50 413.40625 288", "413.40625"))
+        }
+        "upstream_html_demos_git_merge_feature_to_advanced_main_graph_009" => {
+            Some(("-157.94268798828125 -50 413.40625 311", "413.40625"))
+        }
+        "upstream_html_demos_git_cherry_pick_from_main_graph_018" => {
+            Some(("-104.87841796875 -50 331.5625 361", "331.5625"))
+        }
         "upstream_html_demos_git_merge_from_main_onto_undeveloped_branch_graph_022" => Some((
             "-195.36328125 -50 480.21875 205.11708068847656",
             "480.21875",
         )),
-        "upstream_html_demos_git_merge_from_main_onto_undeveloped_branch_graph_023" => Some((
-            "-206.03836059570312 -50 498.5625 288",
-            "498.5625",
-        )),
-        "upstream_html_demos_git_merge_from_main_onto_undeveloped_branch_graph_024" => Some((
-            "-206.03836059570312 -50 498.5625 311",
-            "498.5625",
-        )),
-        "upstream_html_demos_git_merge_from_main_onto_developed_branch_graph_025" => Some((
-            "-160.53515625 -50 460.5625 205.11708068847656",
-            "460.5625",
-        )),
-        "upstream_html_demos_git_merge_from_main_onto_developed_branch_graph_026" => Some((
-            "-196.20245361328125 -50 478.890625 338",
-            "478.890625",
-        )),
-        "upstream_html_demos_git_merge_from_main_onto_developed_branch_graph_027" => Some((
-            "-196.20245361328125 -50 478.890625 361",
-            "478.890625",
-        )),
+        "upstream_html_demos_git_merge_from_main_onto_undeveloped_branch_graph_023" => {
+            Some(("-206.03836059570312 -50 498.5625 288", "498.5625"))
+        }
+        "upstream_html_demos_git_merge_from_main_onto_undeveloped_branch_graph_024" => {
+            Some(("-206.03836059570312 -50 498.5625 311", "498.5625"))
+        }
+        "upstream_html_demos_git_merge_from_main_onto_developed_branch_graph_025" => {
+            Some(("-160.53515625 -50 460.5625 205.11708068847656", "460.5625"))
+        }
+        "upstream_html_demos_git_merge_from_main_onto_developed_branch_graph_026" => {
+            Some(("-196.20245361328125 -50 478.890625 338", "478.890625"))
+        }
+        "upstream_html_demos_git_merge_from_main_onto_developed_branch_graph_027" => {
+            Some(("-196.20245361328125 -50 478.890625 361", "478.890625"))
+        }
         _ => None,
     }
 }
