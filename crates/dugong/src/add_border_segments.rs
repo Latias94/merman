@@ -5,16 +5,58 @@
 
 use crate::graphlib::Graph;
 use crate::{EdgeLabel, GraphLabel, NodeLabel};
+use rustc_hash::FxHashMap;
+
+#[derive(Default)]
+struct DummyNodeIdGen {
+    next_suffix: FxHashMap<&'static str, usize>,
+}
+
+impl DummyNodeIdGen {
+    fn add_dummy_node(
+        &mut self,
+        g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        label: NodeLabel,
+        prefix: &'static str,
+    ) -> String {
+        let suffix = match self.next_suffix.get(&prefix).copied() {
+            Some(v) => v,
+            None => {
+                if !g.has_node(prefix) {
+                    g.set_node(prefix, label);
+                    self.next_suffix.insert(prefix, 1);
+                    return prefix.to_string();
+                }
+                self.next_suffix.insert(prefix, 1);
+                1
+            }
+        };
+
+        // The legacy port used `for i in 1.. { format!("{prefix}{i}") ; has_node(...) }`,
+        // which is O(n^2) and alloc-heavy. Keep the exact naming scheme but use a per-prefix
+        // monotonic counter to make the common case O(1).
+        let mut next = suffix;
+        loop {
+            let id = format!("{prefix}{next}");
+            if !g.has_node(&id) {
+                g.set_node(id.clone(), label);
+                self.next_suffix.insert(prefix, next + 1);
+                return id;
+            }
+            next += 1;
+        }
+    }
+}
 
 pub fn add_border_segments(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
     if !g.options().compound {
         return;
     }
 
-    fn dfs(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, v: &str) {
-        let children: Vec<String> = g.children(v).into_iter().map(|s| s.to_string()).collect();
+    fn dfs(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, v: &str, ids: &mut DummyNodeIdGen) {
+        let children: Vec<String> = g.children_iter(v).map(|s| s.to_string()).collect();
         for c in children {
-            dfs(g, &c);
+            dfs(g, &c, ids);
         }
 
         let Some((min_rank, max_rank)) = g.node(v).and_then(|n| Some((n.min_rank?, n.max_rank?)))
@@ -28,9 +70,35 @@ pub fn add_border_segments(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             n.border_right = vec![None; max_rank_usize + 1];
         }
 
+        let mut prev_left: Option<String> = None;
+        let mut prev_right: Option<String> = None;
+
         for rank in min_rank..=max_rank {
-            add_border_node(g, "borderLeft", "_bl", v, rank, true);
-            add_border_node(g, "borderRight", "_br", v, rank, false);
+            let left = add_border_node(g, ids, "borderLeft", "_bl", v, rank, true);
+            if let Some(prev) = prev_left {
+                g.set_edge_with_label(
+                    prev,
+                    left.clone(),
+                    EdgeLabel {
+                        weight: 1.0,
+                        ..Default::default()
+                    },
+                );
+            }
+            prev_left = Some(left);
+
+            let right = add_border_node(g, ids, "borderRight", "_br", v, rank, false);
+            if let Some(prev) = prev_right {
+                g.set_edge_with_label(
+                    prev,
+                    right.clone(),
+                    EdgeLabel {
+                        weight: 1.0,
+                        ..Default::default()
+                    },
+                );
+            }
+            prev_right = Some(right);
         }
     }
 
@@ -39,32 +107,22 @@ pub fn add_border_segments(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         .into_iter()
         .map(|s| s.to_string())
         .collect();
+    let mut ids = DummyNodeIdGen::default();
     for v in roots {
-        dfs(g, &v);
+        dfs(g, &v, &mut ids);
     }
 }
 
 fn add_border_node(
     g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    ids: &mut DummyNodeIdGen,
     prop: &str,
-    prefix: &str,
+    prefix: &'static str,
     sg: &str,
     rank: i32,
     is_left: bool,
-) {
-    let prev = g
-        .node(sg)
-        .and_then(|n| {
-            let idx = (rank - 1) as usize;
-            if is_left {
-                n.border_left.get(idx).and_then(|v| v.clone())
-            } else {
-                n.border_right.get(idx).and_then(|v| v.clone())
-            }
-        })
-        .unwrap_or_default();
-
-    let curr = add_dummy_node(
+) -> String {
+    let curr = ids.add_dummy_node(
         g,
         NodeLabel {
             width: 0.0,
@@ -80,46 +138,12 @@ fn add_border_node(
     if let Some(n) = g.node_mut(sg) {
         let idx = rank.max(0) as usize;
         if is_left {
-            if idx >= n.border_left.len() {
-                n.border_left.resize(idx + 1, None);
-            }
             n.border_left[idx] = Some(curr.clone());
         } else {
-            if idx >= n.border_right.len() {
-                n.border_right.resize(idx + 1, None);
-            }
             n.border_right[idx] = Some(curr.clone());
         }
     }
 
     g.set_parent(curr.clone(), sg.to_string());
-    if !prev.is_empty() {
-        g.set_edge_with_label(
-            prev,
-            curr,
-            EdgeLabel {
-                weight: 1.0,
-                ..Default::default()
-            },
-        );
-    }
-}
-
-fn add_dummy_node(
-    g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    label: NodeLabel,
-    prefix: &str,
-) -> String {
-    if !g.has_node(prefix) {
-        g.set_node(prefix, label);
-        return prefix.to_string();
-    }
-    for i in 1usize.. {
-        let v = format!("{prefix}{i}");
-        if !g.has_node(&v) {
-            g.set_node(&v, label.clone());
-            return v;
-        }
-    }
-    unreachable!()
+    curr
 }
