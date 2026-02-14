@@ -4,23 +4,23 @@
 
 ## Environment
 
-- Timestamp: "2026-02-12 18:48:13 +0800"
+- Timestamp: "2026-02-14 09:05:03 +0800"
 - OS: "Windows-11-10.0.26200-SP0"
 - Machine: "AMD64"
 - CPU: "13th Gen Intel(R) Core(TM) i9-13900KF"
 - Python: "3.13.11"
-- merman: `e71a6bb4ee208f4e4d67663514f653002ed16607`
+- merman: `8b860cb3ddfb51af9ca02d4e555c98b62b4a7065`
 - mermaid-rs-renderer: `859253415e69dce28bd65cd5a7c1d1ae8b39f4a1`
 - mermaid-js: unknown
 - Rust:
 
 ```
-rustc 1.93.0 (254b59607 2026-01-19)
+rustc 1.93.1 (01f6ddf75 2026-02-11)
 binary: rustc
-commit-hash: 254b59607d4417e9dffbc307138ae5c86280fe4c
-commit-date: 2026-01-19
+commit-hash: 01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf
+commit-date: 2026-02-11
 host: x86_64-pc-windows-msvc
-release: 1.93.0
+release: 1.93.1
 LLVM version: 21.1.8
 ```
 
@@ -28,21 +28,14 @@ LLVM version: 21.1.8
 
 - `merman`: `cargo bench -p merman --features render --bench pipeline -- ...`
 - `mermaid-rs-renderer` (mmdr): `cargo bench --bench renderer -- ...`
-- Filter: "end_to_end/(flowchart_tiny|flowchart_medium|flowchart_large|sequence_tiny|sequence_medium|state_tiny|state_medium|class_tiny|class_medium)"
+- Filter: "end_to_end/flowchart_medium"
 - Sample size: 10, warm-up: 1s, measurement: 1s
 
 ## Results (end_to_end, mid estimate)
 
 | benchmark | merman | mermaid-rs-renderer | mermaid-js (puppeteer) | ratio (merman / mmdr) | ratio (merman / mermaid-js) |
 |---|---:|---:|---:|---:|---:|
-| end_to_end/class_medium | 13.55 ms | 2.27 ms | - | 6.0x | - |
-| end_to_end/class_tiny | 535.52 µs | 32.84 µs | - | 16.3x | - |
-| end_to_end/flowchart_medium | 31.85 ms | 6.34 ms | - | 5.0x | - |
-| end_to_end/flowchart_tiny | 690.72 µs | 35.58 µs | - | 19.4x | - |
-| end_to_end/sequence_medium | 252.79 µs | 281.40 µs | - | 0.9x | - |
-| end_to_end/sequence_tiny | 116.38 µs | 20.29 µs | - | 5.7x | - |
-| end_to_end/state_medium | 6.83 ms | 1.90 ms | - | 3.6x | - |
-| end_to_end/state_tiny | 929.50 µs | 31.48 µs | - | 29.5x | - |
+| end_to_end/flowchart_medium | 7.80 ms | 4.09 ms | - | 1.9x | - |
 
 ## Notes
 

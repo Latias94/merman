@@ -161,6 +161,8 @@ Work items (expected ROI order):
 - Cache per-diagram derived values that are reused many times (e.g. sanitized labels / class names),
   but keep caches scoped to the render call to avoid cross-diagram leaks.
 - Keep fast-paths for common label cases (plain text, no HTML entities, no icon syntax).
+- Flowchart: compute edge path geometry once per render (reused for viewbox curve-bounds + edgePaths),
+  caching `d` + `data-points` + bounds to avoid paying for D3 curve evaluation twice.
 - Viewport bounds: avoid “build SVG path `d` → parse `d`” patterns by computing bounds during path
   generation; extend this beyond flowcharts (e.g. class diagram `path_bounds` hot section).
 

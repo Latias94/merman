@@ -75,12 +75,73 @@ impl Default for FlowchartEdgeDataPointsScratch {
     }
 }
 
+#[derive(Debug, Clone)]
+struct FlowchartEdgePathGeom {
+    d: String,
+    pb: Option<super::path_bounds::SvgPathBounds>,
+    data_points_b64: String,
+}
+
+#[derive(Debug, Clone)]
+struct FlowchartEdgePathCacheEntry {
+    origin_x: f64,
+    origin_y: f64,
+    abs_top_transform: f64,
+    geom: FlowchartEdgePathGeom,
+}
+
 #[inline]
 fn detail_guard<'a>(
     enabled: bool,
     dst: &'a mut std::time::Duration,
 ) -> Option<super::timing::TimingGuard<'a>> {
     enabled.then(|| super::timing::TimingGuard::new(dst))
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FlowchartRootOffsets {
+    origin_x: f64,
+    origin_y: f64,
+    abs_top_transform: f64,
+}
+
+// Mermaid flowchart-v2 uses nested `.root` groups for extracted clusters. The `<g class="root">`
+// is positioned by the cluster node transform, and its internal content starts at a fixed 8px
+// margin (graph marginx/marginy in Mermaid's Dagre config).
+fn flowchart_cluster_root_offsets(
+    ctx: &FlowchartRenderCtx<'_>,
+    cid: &str,
+) -> Option<FlowchartRootOffsets> {
+    const ROOT_MARGIN_PX: f64 = 8.0;
+    let cluster = ctx.layout_clusters_by_id.get(cid)?;
+
+    let abs_left = (cluster.x - cluster.width / 2.0) + ctx.tx - ROOT_MARGIN_PX;
+    let title_total_margin = (cluster.title_margin_top + cluster.title_margin_bottom).max(0.0);
+    let title_y_shift = title_total_margin / 2.0;
+
+    let my_parent = flowchart_effective_parent(ctx, cid);
+    let has_empty_sibling = ctx.subgraphs_by_id.iter().any(|(id, sg)| {
+        *id != cid
+            && sg.nodes.is_empty()
+            && ctx.layout_clusters_by_id.contains_key(id)
+            && flowchart_effective_parent(ctx, id) == my_parent
+    });
+
+    let base_top = (cluster.y - cluster.height / 2.0) + ctx.ty - ROOT_MARGIN_PX;
+    let extra_transform_y = if has_empty_sibling {
+        cluster.offset_y.max(0.0) * 2.0
+    } else {
+        0.0
+    };
+
+    let abs_top_transform = base_top + extra_transform_y;
+    let abs_top_content = base_top + title_y_shift;
+
+    Some(FlowchartRootOffsets {
+        origin_x: abs_left,
+        origin_y: abs_top_content,
+        abs_top_transform,
+    })
 }
 
 pub(super) fn flowchart_node_dom_indices<'a>(
@@ -995,42 +1056,17 @@ fn render_flowchart_root(
     parent_origin_y: f64,
     timing_enabled: bool,
     details: &mut FlowchartRenderDetails,
+    edge_cache: Option<&FxHashMap<&str, FlowchartEdgePathCacheEntry>>,
 ) {
     details.root_calls += 1;
 
-    // Mermaid flowchart-v2 uses nested `.root` groups for extracted clusters. The `<g class="root">`
-    // is positioned by the cluster node transform, and its internal content starts at a fixed 8px
-    // margin (graph marginx/marginy in Mermaid's Dagre config).
-    const ROOT_MARGIN_PX: f64 = 8.0;
     let (origin_x, origin_y, transform_attr) = if let Some(cid) = cluster_id {
-        if let Some(cluster) = ctx.layout_clusters_by_id.get(cid) {
-            let abs_left = (cluster.x - cluster.width / 2.0) + ctx.tx - ROOT_MARGIN_PX;
-            let title_total_margin =
-                (cluster.title_margin_top + cluster.title_margin_bottom).max(0.0);
-            let title_y_shift = title_total_margin / 2.0;
-
-            let my_parent = flowchart_effective_parent(ctx, cid);
-            let has_empty_sibling = ctx.subgraphs_by_id.iter().any(|(id, sg)| {
-                *id != cid
-                    && sg.nodes.is_empty()
-                    && ctx.layout_clusters_by_id.contains_key(id)
-                    && flowchart_effective_parent(ctx, id) == my_parent
-            });
-
-            let base_top = (cluster.y - cluster.height / 2.0) + ctx.ty - ROOT_MARGIN_PX;
-            let extra_transform_y = if has_empty_sibling {
-                cluster.offset_y.max(0.0) * 2.0
-            } else {
-                0.0
-            };
-
-            let abs_top_transform = base_top + extra_transform_y;
-            let abs_top_content = base_top + title_y_shift;
-            let rel_x = abs_left - parent_origin_x;
-            let rel_y = abs_top_transform - parent_origin_y;
+        if let Some(off) = flowchart_cluster_root_offsets(ctx, cid) {
+            let rel_x = off.origin_x - parent_origin_x;
+            let rel_y = off.abs_top_transform - parent_origin_y;
             (
-                abs_left,
-                abs_top_content,
+                off.origin_x,
+                off.origin_y,
                 format!(
                     r#" transform="translate({}, {})""#,
                     fmt_display(rel_x),
@@ -1162,7 +1198,15 @@ fn render_flowchart_root(
         out.push_str(r#"<g class="edgePaths">"#);
         let mut scratch = FlowchartEdgeDataPointsScratch::default();
         for e in &edges {
-            render_flowchart_edge_path(out, ctx, e, origin_x, content_origin_y, &mut scratch);
+            render_flowchart_edge_path(
+                out,
+                ctx,
+                e,
+                origin_x,
+                content_origin_y,
+                &mut scratch,
+                edge_cache,
+            );
         }
         out.push_str("</g>");
     }
@@ -1230,6 +1274,7 @@ fn render_flowchart_root(
                     origin_y,
                     timing_enabled,
                     details,
+                    edge_cache,
                 );
                 if let Some(s) = nested_start {
                     details.nested_roots += s.elapsed();
@@ -2269,19 +2314,19 @@ pub(super) fn flowchart_edge_path_d_for_bbox(
     Some((d, pb))
 }
 
-fn render_flowchart_edge_path(
-    out: &mut String,
+fn flowchart_compute_edge_path_geom(
     ctx: &FlowchartRenderCtx<'_>,
     edge: &crate::flowchart::FlowEdge,
     origin_x: f64,
     origin_y: f64,
     scratch: &mut FlowchartEdgeDataPointsScratch,
-) {
+    trace_enabled: bool,
+) -> Option<FlowchartEdgePathGeom> {
     let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()) else {
-        return;
+        return None;
     };
     if le.points.len() < 2 {
-        return;
+        return None;
     }
 
     let mut local_points: Vec<crate::model::LayoutPoint> = Vec::new();
@@ -3369,10 +3414,6 @@ fn render_flowchart_edge_path(
     // Mermaid sets `data-points` as `btoa(JSON.stringify(points))` *before* any cluster clipping
     // (`cutPathAtIntersect`). Keep that exact ordering for strict DOM parity.
     let mut points_for_data_points = points_after_intersect.clone();
-    let trace_edge = std::env::var("MERMAN_TRACE_FLOWCHART_EDGE").ok();
-    let trace_enabled = trace_edge
-        .as_deref()
-        .is_some_and(|id| id == edge.id.as_str());
 
     #[derive(serde::Serialize)]
     struct TracePoint {
@@ -4541,19 +4582,19 @@ fn render_flowchart_edge_path(
     };
     let line_data = line_with_offset_points(&line_data, arrow_type_start, arrow_type_end);
 
-    let mut d = match interpolate {
-        "linear" => curve_linear_path_d(&line_data),
-        "natural" => curve_natural_path_d(&line_data),
-        "bumpY" => curve_bump_y_path_d(&line_data),
-        "catmullRom" => curve_catmull_rom_path_d(&line_data),
-        "step" => curve_step_path_d(&line_data),
-        "stepAfter" => curve_step_after_path_d(&line_data),
-        "stepBefore" => curve_step_before_path_d(&line_data),
-        "cardinal" => curve_cardinal_path_d(&line_data, 0.0),
-        "monotoneX" => curve_monotone_x_path_d(&line_data),
-        "monotoneY" => curve_monotone_y_path_d(&line_data),
+    let (mut d, pb) = match interpolate {
+        "linear" => super::curve::curve_linear_path_d_and_bounds(&line_data),
+        "natural" => super::curve::curve_natural_path_d_and_bounds(&line_data),
+        "bumpY" => super::curve::curve_bump_y_path_d_and_bounds(&line_data),
+        "catmullRom" => super::curve::curve_catmull_rom_path_d_and_bounds(&line_data),
+        "step" => super::curve::curve_step_path_d_and_bounds(&line_data),
+        "stepAfter" => super::curve::curve_step_after_path_d_and_bounds(&line_data),
+        "stepBefore" => super::curve::curve_step_before_path_d_and_bounds(&line_data),
+        "cardinal" => super::curve::curve_cardinal_path_d_and_bounds(&line_data, 0.0),
+        "monotoneX" => super::curve::curve_monotone_path_d_and_bounds(&line_data, false),
+        "monotoneY" => super::curve::curve_monotone_path_d_and_bounds(&line_data, true),
         // Mermaid defaults to `basis` for flowchart edges.
-        _ => curve_basis_path_d(&line_data),
+        _ => super::curve::curve_basis_path_d_and_bounds(&line_data),
     };
     // Mermaid flowchart-v2 can emit a degenerate edge path when linking a subgraph to one of its
     // strict descendants (e.g. `Sub --> In` where `In` is declared inside `subgraph Sub`). Upstream
@@ -4630,9 +4671,55 @@ fn render_flowchart_edge_path(
 
     scratch.json.clear();
     json_stringify_points_into(&mut scratch.json, &points_for_data_points, &mut scratch.ryu);
-    scratch.b64.clear();
+    let mut data_points_b64 = String::new();
     base64::engine::general_purpose::STANDARD
-        .encode_string(scratch.json.as_bytes(), &mut scratch.b64);
+        .encode_string(scratch.json.as_bytes(), &mut data_points_b64);
+
+    Some(FlowchartEdgePathGeom {
+        d,
+        pb,
+        data_points_b64,
+    })
+}
+
+fn render_flowchart_edge_path(
+    out: &mut String,
+    ctx: &FlowchartRenderCtx<'_>,
+    edge: &crate::flowchart::FlowEdge,
+    origin_x: f64,
+    origin_y: f64,
+    scratch: &mut FlowchartEdgeDataPointsScratch,
+    edge_cache: Option<&FxHashMap<&str, FlowchartEdgePathCacheEntry>>,
+) {
+    let trace_edge = std::env::var("MERMAN_TRACE_FLOWCHART_EDGE").ok();
+    let trace_enabled = trace_edge
+        .as_deref()
+        .is_some_and(|id| id == edge.id.as_str());
+
+    let cached_geom = (!trace_enabled)
+        .then(|| {
+            edge_cache
+                .and_then(|m| m.get(edge.id.as_str()))
+                .filter(|c| {
+                    (c.origin_x - origin_x).abs() <= 1e-9 && (c.origin_y - origin_y).abs() <= 1e-9
+                })
+                .map(|c| &c.geom)
+        })
+        .flatten();
+
+    let owned_geom = if cached_geom.is_none() {
+        flowchart_compute_edge_path_geom(ctx, edge, origin_x, origin_y, scratch, trace_enabled)
+    } else {
+        None
+    };
+    let (d, data_points_b64) = if let Some(g) = cached_geom {
+        (g.d.as_str(), g.data_points_b64.as_str())
+    } else {
+        let Some(g) = owned_geom.as_ref() else {
+            return;
+        };
+        (g.d.as_str(), g.data_points_b64.as_str())
+    };
 
     let mut merged_styles: Vec<String> = Vec::new();
     merged_styles.extend(ctx.default_edge_style.iter().cloned());
@@ -4695,7 +4782,7 @@ fn render_flowchart_edge_path(
         escape_xml_display(&class_attr),
         escape_xml_display(&style_attr_value),
         escape_xml_display(&edge.id),
-        escape_xml_display(&scratch.b64),
+        escape_xml_display(data_points_b64),
         marker_start_attr,
         marker_end_attr
     );
@@ -9863,13 +9950,69 @@ pub(super) fn render_flowchart_v2_svg_with_config(
         layout_clusters_by_id.insert(c.id.as_str(), c);
     }
 
-    let default_edge_interpolate_for_bbox = model
+    // Mermaid flowchart-v2 does not translate the root `.root` group; node/edge coordinates are
+    // already in the Dagre coordinate space (including Dagre's fixed `marginx/marginy=8`).
+    // `diagramPadding` is applied only when computing the final SVG viewBox.
+    let tx = 0.0;
+    let ty = 0.0;
+
+    let node_dom_index = flowchart_node_dom_indices(&model);
+
+    let cfg_curve = config_string(effective_config_value, &["flowchart", "curve"]);
+    let default_edge_interpolate = model
         .edge_defaults
         .as_ref()
         .and_then(|d| d.interpolate.as_deref())
-        .unwrap_or("basis");
+        .or(cfg_curve.as_deref())
+        .unwrap_or("basis")
+        .to_string();
+    let default_edge_style = model
+        .edge_defaults
+        .as_ref()
+        .map(|d| d.style.clone())
+        .unwrap_or_default();
 
-    let node_dom_index = flowchart_node_dom_indices(&model);
+    let node_border_color = theme_color(effective_config_value, "nodeBorder", "#9370DB");
+    let node_fill_color = theme_color(effective_config_value, "mainBkg", "#ECECFF");
+
+    let ctx = FlowchartRenderCtx {
+        diagram_id: diagram_id.to_string(),
+        tx,
+        ty,
+        diagram_type: diagram_type.to_string(),
+        measurer,
+        config: effective_config.clone(),
+        node_html_labels,
+        edge_html_labels,
+        class_defs: model.class_defs.clone(),
+        node_border_color,
+        node_fill_color,
+        default_edge_interpolate,
+        default_edge_style,
+        node_order,
+        subgraph_order,
+        edge_order,
+        nodes_by_id,
+        edges_by_id,
+        subgraphs_by_id,
+        tooltips: model.tooltips.clone(),
+        recursive_clusters,
+        parent,
+        layout_nodes_by_id,
+        layout_edges_by_id,
+        layout_clusters_by_id,
+        dom_node_order_by_root: &layout.dom_node_order_by_root,
+        node_dom_index,
+        node_padding,
+        wrapping_width,
+        node_wrap_mode,
+        edge_wrap_mode,
+        text_style,
+        diagram_title: diagram_title.map(|s| s.to_string()),
+    };
+
+    let mut edge_path_cache: FxHashMap<&str, FlowchartEdgePathCacheEntry> =
+        FxHashMap::with_capacity_and_hasher(render_edges.len(), Default::default());
 
     let subgraph_title_y_shift = {
         let top = config_f64(
@@ -9910,15 +10053,15 @@ pub(super) fn render_flowchart_v2_svg_with_config(
     let _g_viewbox = section(timing_enabled, &mut timings.viewbox);
 
     let effective_parent_for_id = |id: &str| -> Option<&str> {
-        let mut cur = parent.get(id).copied();
+        let mut cur = ctx.parent.get(id).copied();
         if cur.is_none() {
             if let Some(base) = self_loop_label_base_node_id(id) {
-                cur = parent.get(base).copied();
+                cur = ctx.parent.get(base).copied();
             }
         }
         while let Some(p) = cur {
-            if subgraphs_by_id.contains_key(p) && !recursive_clusters.contains(p) {
-                cur = parent.get(p).copied();
+            if ctx.subgraphs_by_id.contains_key(p) && !ctx.recursive_clusters.contains(p) {
+                cur = ctx.parent.get(p).copied();
                 continue;
             }
             return Some(p);
@@ -9926,20 +10069,20 @@ pub(super) fn render_flowchart_v2_svg_with_config(
         None
     };
 
-    let lca_for_ids = |a: &str, b: &str| -> Option<String> {
-        let mut ancestors: std::collections::HashSet<String> = std::collections::HashSet::new();
-        let mut cur = effective_parent_for_id(a).map(|s| s.to_string());
+    let lca_for_ids = |a: &str, b: &str| -> Option<&str> {
+        let mut ancestors: FxHashSet<&str> = FxHashSet::default();
+        let mut cur = effective_parent_for_id(a);
         while let Some(p) = cur {
-            ancestors.insert(p.clone());
-            cur = effective_parent_for_id(&p).map(|s| s.to_string());
+            ancestors.insert(p);
+            cur = effective_parent_for_id(p);
         }
 
-        let mut cur = effective_parent_for_id(b).map(|s| s.to_string());
+        let mut cur = effective_parent_for_id(b);
         while let Some(p) = cur {
-            if ancestors.contains(&p) {
+            if ancestors.contains(p) {
                 return Some(p);
             }
-            cur = effective_parent_for_id(&p).map(|s| s.to_string());
+            cur = effective_parent_for_id(p);
         }
         None
     };
@@ -9976,7 +10119,7 @@ pub(super) fn render_flowchart_v2_svg_with_config(
         };
 
         for c in &layout.clusters {
-            let root = if recursive_clusters.contains(c.id.as_str()) {
+            let root = if ctx.recursive_clusters.contains(c.id.as_str()) {
                 Some(c.id.as_str())
             } else {
                 effective_parent_for_id(&c.id)
@@ -9997,18 +10140,19 @@ pub(super) fn render_flowchart_v2_svg_with_config(
         }
 
         for n in &layout.nodes {
-            let root = if n.is_cluster && recursive_clusters.contains(n.id.as_str()) {
+            let root = if n.is_cluster && ctx.recursive_clusters.contains(n.id.as_str()) {
                 Some(n.id.as_str())
             } else {
                 effective_parent_for_id(&n.id)
             };
             let y_off = y_offset_for_root(root);
-            if n.is_cluster || node_dom_index.contains_key(n.id.as_str()) {
+            if n.is_cluster || ctx.node_dom_index.contains_key(n.id.as_str()) {
                 let mut left_hw = n.width / 2.0;
                 let mut right_hw = left_hw;
                 let mut hh = n.height / 2.0;
                 if !n.is_cluster {
-                    if let Some(shape) = nodes_by_id
+                    if let Some(shape) = ctx
+                        .nodes_by_id
                         .get(n.id.as_str())
                         .and_then(|node| node.layout_shape.as_deref())
                     {
@@ -10052,29 +10196,32 @@ pub(super) fn render_flowchart_v2_svg_with_config(
                         // viewport comes from DOM `getBBox()`, so adjust the left/right extents to
                         // match the rendered path's asymmetric bbox.
                         if matches!(shape, "delay" | "curv-trap") {
-                            if let Some(flow_node) = nodes_by_id.get(n.id.as_str()) {
+                            if let Some(flow_node) = ctx.nodes_by_id.get(n.id.as_str()) {
                                 let label = flow_node.label.as_deref().unwrap_or("");
                                 let label_type = flow_node
                                     .label_type
                                     .as_deref()
-                                    .unwrap_or(if node_html_labels { "html" } else { "text" });
-                                let label_plain =
-                                    flowchart_label_plain_text(label, label_type, node_html_labels);
+                                    .unwrap_or(if ctx.node_html_labels { "html" } else { "text" });
+                                let label_plain = flowchart_label_plain_text(
+                                    label,
+                                    label_type,
+                                    ctx.node_html_labels,
+                                );
                                 let node_text_style =
                                     crate::flowchart::flowchart_effective_text_style_for_classes(
-                                        &text_style,
-                                        &model.class_defs,
+                                        &ctx.text_style,
+                                        &ctx.class_defs,
                                         &flow_node.classes,
                                         &flow_node.styles,
                                     );
                                 let mut metrics =
                                     crate::flowchart::flowchart_label_metrics_for_layout(
-                                        measurer,
+                                        ctx.measurer,
                                         label,
                                         label_type,
                                         &node_text_style,
-                                        Some(wrapping_width),
-                                        node_wrap_mode,
+                                        Some(ctx.wrapping_width),
+                                        ctx.node_wrap_mode,
                                     );
                                 let span_css_height_parity = flow_node.classes.iter().any(|c| {
                                     model.class_defs.get(c.as_str()).is_some_and(|styles| {
@@ -10139,7 +10286,7 @@ pub(super) fn render_flowchart_v2_svg_with_config(
 
         for e in &layout.edges {
             let root = lca_for_ids(&e.from, &e.to);
-            let y_off = y_offset_for_root(root.as_deref());
+            let y_off = y_offset_for_root(root);
             for lbl in [
                 e.label.as_ref(),
                 e.start_label_left.as_ref(),
@@ -10171,8 +10318,6 @@ pub(super) fn render_flowchart_v2_svg_with_config(
     // Mermaid flowchart-v2 does not translate the root `.root` group; node/edge coordinates are
     // already in the Dagre coordinate space (including Dagre's fixed `marginx/marginy=8`).
     // `diagramPadding` is applied only when computing the final SVG viewBox.
-    let tx = 0.0;
-    let ty = 0.0;
 
     // Mermaid computes the final viewport using `svg.getBBox()` after inserting the title, then
     // applies `setupViewPortForSVG(svg, diagramPadding)` which sets:
@@ -10215,17 +10360,26 @@ pub(super) fn render_flowchart_v2_svg_with_config(
         }
 
         let mut max_y: f64 = 0.0;
-        for &cid in &recursive_clusters {
-            let Some(cluster) = layout_clusters_by_id.get(cid) else {
+        for &cid in &ctx.recursive_clusters {
+            let Some(cluster) = ctx.layout_clusters_by_id.get(cid) else {
                 continue;
             };
-            let my_parent = effective_parent(&parent, &subgraphs_by_id, &recursive_clusters, cid);
-            let has_empty_sibling = subgraphs_by_id.iter().any(|(&id, &sg)| {
+            let my_parent = effective_parent(
+                &ctx.parent,
+                &ctx.subgraphs_by_id,
+                &ctx.recursive_clusters,
+                cid,
+            );
+            let has_empty_sibling = ctx.subgraphs_by_id.iter().any(|(&id, &sg)| {
                 id != cid
                     && sg.nodes.is_empty()
-                    && layout_clusters_by_id.contains_key(id)
-                    && effective_parent(&parent, &subgraphs_by_id, &recursive_clusters, id)
-                        == my_parent
+                    && ctx.layout_clusters_by_id.contains_key(id)
+                    && effective_parent(
+                        &ctx.parent,
+                        &ctx.subgraphs_by_id,
+                        &ctx.recursive_clusters,
+                        id,
+                    ) == my_parent
             });
             if has_empty_sibling {
                 max_y = max_y.max(cluster.offset_y.max(0.0) * 2.0);
@@ -10240,24 +10394,53 @@ pub(super) fn render_flowchart_v2_svg_with_config(
     // edge path `d` into our base bbox.
     {
         let _g = section(timing_enabled, &mut viewbox_edge_curve_bounds);
+        let mut scratch = FlowchartEdgeDataPointsScratch::default();
+        let mut root_offsets: FxHashMap<&str, FlowchartRootOffsets> = FxHashMap::default();
+        root_offsets.insert(
+            "",
+            FlowchartRootOffsets {
+                origin_x: 0.0,
+                origin_y: 0.0,
+                abs_top_transform: 0.0,
+            },
+        );
         for e in &render_edges {
-            let edge_root = lca_for_ids(&e.from, &e.to);
-            let edge_y_off = y_offset_for_root(edge_root.as_deref());
-            let Some((_d, pb)) = flowchart_edge_path_d_for_bbox(
-                &layout_edges_by_id,
-                &layout_clusters_by_id,
-                tx,
-                ty + edge_y_off,
-                default_edge_interpolate_for_bbox,
-                edge_html_labels,
+            let root_id = lca_for_ids(&e.from, &e.to).unwrap_or("");
+            let off = *root_offsets.entry(root_id).or_insert_with(|| {
+                flowchart_cluster_root_offsets(&ctx, root_id).unwrap_or(FlowchartRootOffsets {
+                    origin_x: 0.0,
+                    origin_y: 0.0,
+                    abs_top_transform: 0.0,
+                })
+            });
+
+            let Some(geom) = flowchart_compute_edge_path_geom(
+                &ctx,
                 e,
+                off.origin_x,
+                off.origin_y,
+                &mut scratch,
+                false,
             ) else {
                 continue;
             };
-            bbox_min_x = bbox_min_x.min(pb.min_x);
-            bbox_min_y = bbox_min_y.min(pb.min_y);
-            bbox_max_x = bbox_max_x.max(pb.max_x);
-            bbox_max_y = bbox_max_y.max(pb.max_y);
+
+            if let Some(pb) = geom.pb {
+                bbox_min_x = bbox_min_x.min(pb.min_x + off.origin_x);
+                bbox_min_y = bbox_min_y.min(pb.min_y + off.abs_top_transform);
+                bbox_max_x = bbox_max_x.max(pb.max_x + off.origin_x);
+                bbox_max_y = bbox_max_y.max(pb.max_y + off.abs_top_transform);
+            }
+
+            edge_path_cache.insert(
+                e.id.as_str(),
+                FlowchartEdgePathCacheEntry {
+                    origin_x: off.origin_x,
+                    origin_y: off.origin_y,
+                    abs_top_transform: off.abs_top_transform,
+                    geom,
+                },
+            );
         }
     }
 
@@ -10325,9 +10508,6 @@ pub(super) fn render_flowchart_v2_svg_with_config(
         font_size,
         &model.class_defs,
     );
-
-    let node_border_color = theme_color(effective_config_value, "nodeBorder", "#9370DB");
-    let node_fill_color = theme_color(effective_config_value, "mainBkg", "#ECECFF");
 
     let mut out = String::new();
     let mut vb_min_x_attr = fmt_string(vb_min_x);
@@ -10423,59 +10603,18 @@ pub(super) fn render_flowchart_v2_svg_with_config(
     out.push_str("<g>");
     flowchart_markers(&mut out, diagram_id);
 
-    let cfg_curve = config_string(effective_config_value, &["flowchart", "curve"]);
-    let default_edge_interpolate = model
-        .edge_defaults
-        .as_ref()
-        .and_then(|d| d.interpolate.as_deref())
-        .or(cfg_curve.as_deref())
-        .unwrap_or("basis")
-        .to_string();
-    let default_edge_style = model
-        .edge_defaults
-        .as_ref()
-        .map(|d| d.style.clone())
-        .unwrap_or_default();
-
-    let ctx = FlowchartRenderCtx {
-        diagram_id: diagram_id.to_string(),
-        tx,
-        ty,
-        diagram_type: diagram_type.to_string(),
-        measurer,
-        config: effective_config.clone(),
-        node_html_labels,
-        edge_html_labels,
-        class_defs: model.class_defs.clone(),
-        node_border_color,
-        node_fill_color,
-        default_edge_interpolate,
-        default_edge_style,
-        node_order,
-        subgraph_order,
-        edge_order,
-        nodes_by_id,
-        edges_by_id,
-        subgraphs_by_id,
-        tooltips: model.tooltips.clone(),
-        recursive_clusters,
-        parent,
-        layout_nodes_by_id,
-        layout_edges_by_id,
-        layout_clusters_by_id,
-        dom_node_order_by_root: &layout.dom_node_order_by_root,
-        node_dom_index,
-        node_padding,
-        wrapping_width,
-        node_wrap_mode,
-        edge_wrap_mode,
-        text_style,
-        diagram_title: diagram_title.map(|s| s.to_string()),
-    };
-
     let extra_marker_colors = flowchart_collect_edge_marker_colors(&ctx);
     let mut detail = FlowchartRenderDetails::default();
-    render_flowchart_root(&mut out, &ctx, None, 0.0, 0.0, timing_enabled, &mut detail);
+    render_flowchart_root(
+        &mut out,
+        &ctx,
+        None,
+        0.0,
+        0.0,
+        timing_enabled,
+        &mut detail,
+        Some(&edge_path_cache),
+    );
 
     flowchart_extra_markers(&mut out, diagram_id, &extra_marker_colors);
     out.push_str("</g>");
