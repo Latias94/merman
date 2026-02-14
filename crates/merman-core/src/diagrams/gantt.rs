@@ -1121,7 +1121,7 @@ fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<DateTimeFixed> 
 fn parse_js_date_fallback(s: &str) -> Result<DateTimeFixed> {
     let s = s.trim();
 
-    if let Some(dt) = parse_js_like_ymd_datetime(s) {
+    if let Some(dt) = parse_js_like_ymd_datetime(s).or_else(|| parse_js_like_mdy_hm_datetime(s)) {
         let year = dt.year();
         if !(-10000..=10000).contains(&year) {
             return Err(Error::DiagramParse {
@@ -1326,6 +1326,87 @@ fn parse_js_like_ymd_datetime(s: &str) -> Option<DateTimeFixed> {
         return offset.from_local_datetime(&naive).single();
     }
 
+    Some(local_from_naive(naive))
+}
+
+fn parse_js_like_mdy_hm_datetime(s: &str) -> Option<DateTimeFixed> {
+    // V8 parses strings like `08-08-09-01:00` as local time using an `MM-DD-YY-HH:mm` heuristic.
+    // Mermaid gantt falls back to `new Date(str)` when dayjs strict parsing fails, so we mirror
+    // that behavior for parity (see `repo-ref/mermaid/packages/mermaid/src/diagrams/gantt/ganttDb.js`).
+    //
+    // Notes:
+    // - Two-digit years follow JS Date semantics: 00–49 => 2000–2049, 50–99 => 1950–1999.
+    // - No timezone/offset is present; interpret as local time.
+    let s = s.trim();
+    let mut parts = s.splitn(4, '-');
+    let month_str = parts.next()?;
+    let day_str = parts.next()?;
+    let year_str = parts.next()?;
+    let time_str = parts.next()?;
+
+    fn parse_u32(s: &str) -> Option<u32> {
+        if s.is_empty() || !s.chars().all(|c| c.is_ascii_digit()) {
+            return None;
+        }
+        s.parse().ok()
+    }
+
+    let month = parse_u32(month_str)?;
+    let day = parse_u32(day_str)?;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+
+    let year_raw: i32 = year_str.parse().ok()?;
+    let year = if year_str.len() == 2 {
+        if (0..=49).contains(&year_raw) {
+            2000 + year_raw
+        } else if (50..=99).contains(&year_raw) {
+            1900 + year_raw
+        } else {
+            return None;
+        }
+    } else {
+        year_raw
+    };
+
+    let (hour_str, rest) = time_str.split_once(':')?;
+    let minute_str = rest.get(..2).unwrap_or(rest);
+    let rest = rest.get(2..).unwrap_or("");
+    let minute = parse_u32(minute_str)?;
+    let hour = parse_u32(hour_str)?;
+    if hour > 23 || minute > 59 {
+        return None;
+    }
+
+    let (second, millis) = if let Some(rest) = rest.strip_prefix(':') {
+        let second_str = rest.get(..2).unwrap_or(rest);
+        let rest = rest.get(2..).unwrap_or("");
+        let second = parse_u32(second_str)?;
+        if second > 59 {
+            return None;
+        }
+        let millis = if let Some(rest) = rest.strip_prefix('.') {
+            let ms_str = rest
+                .chars()
+                .take_while(|c| c.is_ascii_digit())
+                .collect::<String>();
+            if ms_str.is_empty() {
+                0
+            } else {
+                let ms = parse_u32(&ms_str).unwrap_or(0);
+                ms.min(999)
+            }
+        } else {
+            0
+        };
+        (second, millis)
+    } else {
+        (0u32, 0u32)
+    };
+
+    let date = NaiveDate::from_ymd_opt(year, month, day)?;
+    let naive = date.and_hms_milli_opt(hour, minute, second, millis)?;
     Some(local_from_naive(naive))
 }
 
@@ -1762,7 +1843,10 @@ fn split_statement_suffix_semi_only(s: &str) -> &str {
 }
 
 fn starts_with_ci(s: &str, prefix: &str) -> bool {
-    s.len() >= prefix.len() && s[..prefix.len()].eq_ignore_ascii_case(prefix)
+    // Avoid slicing by raw bytes: non-ASCII leading characters would panic if `prefix.len()` is
+    // not on a UTF-8 boundary (e.g. task lines that start with CJK labels).
+    s.get(..prefix.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
 }
 
 fn parse_keyword_arg<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
@@ -2356,6 +2440,20 @@ test1: id1,202304,1d
 
         let err = parse_js_date_fallback("10001").unwrap_err();
         assert!(err.to_string().contains("Invalid date:10001"));
+    }
+
+    #[test]
+    fn gantt_js_date_fallback_parses_mdy_hm_strings_like_v8() {
+        use chrono::{Datelike, Timelike};
+
+        // Mermaid's gantt parser falls back to `new Date(str)`; in V8, the string
+        // `08-08-09-01:00` parses as local time `2009-08-08 01:00`.
+        let dt = parse_js_date_fallback("08-08-09-01:00").unwrap();
+        assert_eq!(dt.year(), 2009);
+        assert_eq!(dt.month(), 8);
+        assert_eq!(dt.day(), 8);
+        assert_eq!(dt.hour(), 1);
+        assert_eq!(dt.minute(), 0);
     }
 
     #[test]
