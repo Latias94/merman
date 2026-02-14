@@ -15,14 +15,14 @@ Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is 
 
 - Spotcheck (`tools/bench/stage_spotcheck.py`, 10 samples / 1s warmup / 4s measurement, 2026-02-14):
   - Canary set (`flowchart_medium,class_medium,sequence_medium,mindmap_medium,architecture_medium`):
-    - `parse` gmean: `1.82x`
-    - `layout` gmean: `1.24x`
-    - `render` gmean: `2.11x`
-    - `end_to_end` gmean: `1.34x`
+    - `parse` gmean: `1.39x`
+    - `layout` gmean: `1.33x`
+    - `render` gmean: `2.10x`
+    - `end_to_end` gmean: `1.22x`
   - Notable outliers in this run:
-    - `architecture_medium`: `layout 4.85x`, `render 3.23x`, `end_to_end 3.54x` (absolute times are tiny, but ratio is large)
-    - `mindmap_medium`: `layout 3.61x`, `end_to_end 2.23x`
-    - `flowchart_medium`: `render 3.14x`, `end_to_end 1.11x`
+    - `mindmap_medium`: `layout 4.70x`, `end_to_end 2.31x`
+    - `architecture_medium`: `layout 3.97x`, `end_to_end 3.10x` (absolute times are tiny, but ratio is large)
+    - `flowchart_medium`: `render 3.68x`, `end_to_end 1.20x`
 
 Near-term priorities (updated plan):
 
@@ -39,8 +39,8 @@ Root-cause direction:
   - flowchart parse now has a typed render-model fast path, and can be close to parity,
   - render has high fixed overhead from SVG emission (many small writes + style resolution),
   - layout is in the same ballpark but can still regress on `order` / `position_x`.
-  - Latest canary numbers (spotcheck mid estimate): `parse 1.72x`, `layout 1.26x`, `render 3.14x`,
-    `end_to_end 1.11x`.
+  - Latest canary numbers (spotcheck mid estimate): `parse 1.09x`, `layout 1.34x`, `render 3.68x`,
+    `end_to_end 1.20x`.
 - BK x-positioning (`dugong::position::bk::position_x`) was a measurable secondary hotspot after
   ordering. We now reuse the already-computed `layering` matrix from the Dagre-ish pipeline and use
   `&str`-based temporary maps plus an index-based block-graph pass to reduce hashing + allocation.
@@ -89,7 +89,7 @@ Useful debug toggles:
 This fixture is useful as a counter-example:
 
 - Spotcheck shows `layout` is already faster than `mmdr` (`~0.32x`), and end-to-end can be faster
-  (`~0.82x` in the latest canary run), but `render` is still far behind (`~3–4x`).
+  (`~0.48x` in the latest canary run), but `render` is still far behind (`~4x`).
 - Implication: once we fix flowchart layout, **render optimizations will pay off across diagram
   types**, not only flowcharts.
 - `MERMAN_RENDER_TIMING=1` now also emits a `[render-timing] diagram=classDiagram ...` line, so we
@@ -116,7 +116,7 @@ Work items:
 Goal: cut `layout/flowchart_medium` substantially.
 
 Primary target: keep `layout/flowchart_medium` at `<= 1.0x` vs `mmdr` without changing layout output.
-Current: `~1.26x` on `flowchart_medium` in the latest canary run (spotcheck variance applies).
+Current: `~1.34x` on `flowchart_medium` in the latest canary run (spotcheck variance applies).
 
 What we know:
 
@@ -214,6 +214,8 @@ Work items (expected ROI order):
 - (In progress) Reduce per-node overhead for the hot path:
   - avoid cloning the base `TextStyle` when a node has no class/style overrides
   - pre-parse class text overrides once per render call (so we don't re-split decl strings per node)
+- (Done) Reduce HTML label style overhead by extracting `color/font-*` fields during style compilation
+  (avoid rescanning `label_style` strings per node/edge label).
 - (Planned) Avoid cloning `effective_config` JSON in the hot render path; pass `MermaidConfig`
   (Arc-backed) through the render API so diagram renderers can read config without deep-cloning.
 - (Planned) Cache per-diagram derived values that are reused many times (e.g. sanitized labels /
