@@ -442,6 +442,45 @@ pub(super) fn escape_attr(text: &str) -> String {
     out
 }
 
+pub(super) fn replace_placeholders_once(out: &str, replacements: &[(&str, &str)]) -> String {
+    if replacements.is_empty() {
+        return out.to_string();
+    }
+
+    let mut hits: Vec<(usize, &str, &str)> = Vec::new();
+    hits.reserve(replacements.len());
+    for (needle, value) in replacements {
+        let Some(pos) = out.find(needle) else {
+            continue;
+        };
+        hits.push((pos, *needle, *value));
+    }
+
+    if hits.is_empty() {
+        return out.to_string();
+    }
+
+    hits.sort_by_key(|(pos, _, _)| *pos);
+
+    let mut cap = out.len();
+    for (_pos, needle, value) in &hits {
+        cap = cap.saturating_sub(needle.len()).saturating_add(value.len());
+    }
+
+    let mut rebuilt = String::with_capacity(cap);
+    let mut cursor: usize = 0;
+    for (pos, needle, value) in hits {
+        if pos < cursor {
+            continue;
+        }
+        rebuilt.push_str(&out[cursor..pos]);
+        rebuilt.push_str(value);
+        cursor = pos + needle.len();
+    }
+    rebuilt.push_str(&out[cursor..]);
+    rebuilt
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

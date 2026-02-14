@@ -4782,7 +4782,7 @@ fn render_flowchart_edge_path(
         escape_xml_display(&class_attr),
         escape_xml_display(&style_attr_value),
         escape_xml_display(&edge.id),
-        escape_xml_display(data_points_b64),
+        data_points_b64,
         marker_start_attr,
         marker_end_attr
     );

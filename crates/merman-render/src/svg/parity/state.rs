@@ -396,7 +396,7 @@ pub(super) fn render_state_diagram_v2_svg(
     // bboxes for the SVG elements we generate (`rect`/`path`/`circle`/`foreignObject`, etc).
     const VIEWBOX_PLACEHOLDER: &str = "__MERMAID_VIEWBOX__";
     const MAX_WIDTH_PLACEHOLDER: &str = "__MERMAID_MAX_WIDTH__";
-    const TITLE_PLACEHOLDER: &str = "__MERMAID_TITLE__";
+    const TITLE_PLACEHOLDER_COMMENT: &str = "<!--__MERMAID_TITLE__-->";
 
     let mut out = String::new();
     let _ = write!(
@@ -466,7 +466,7 @@ pub(super) fn render_state_diagram_v2_svg(
     let bounds_scan_end = out.len();
 
     out.push_str("</g>");
-    let _ = write!(&mut out, "<!--{}-->", TITLE_PLACEHOLDER);
+    out.push_str(TITLE_PLACEHOLDER_COMMENT);
     out.push_str("</svg>\n");
 
     drop(_g_render_svg);
@@ -564,9 +564,14 @@ pub(super) fn render_state_diagram_v2_svg(
     drop(_g_viewbox);
     let _g_finalize = section(timing_enabled, &mut timings.finalize_svg);
 
-    out = out.replacen(MAX_WIDTH_PLACEHOLDER, &max_w_attr, 1);
-    out = out.replacen(VIEWBOX_PLACEHOLDER, &view_box_attr, 1);
-    out = out.replacen(&format!("<!--{}-->", TITLE_PLACEHOLDER), &title_svg, 1);
+    out = super::util::replace_placeholders_once(
+        &out,
+        &[
+            (MAX_WIDTH_PLACEHOLDER, max_w_attr.as_str()),
+            (VIEWBOX_PLACEHOLDER, view_box_attr.as_str()),
+            (TITLE_PLACEHOLDER_COMMENT, title_svg.as_str()),
+        ],
+    );
 
     drop(_g_finalize);
     timings.total = total_start.elapsed();
@@ -3583,11 +3588,11 @@ fn render_state_edge_path(
             let _ = write!(
                 out,
                 r#"<path d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
-                escape_xml_display(&d),
+                d,
                 escape_xml_display(sid),
                 escape_xml_display(&classes),
                 escape_xml_display(sid),
-                escape_xml_display(&data_points)
+                data_points
             );
             if let Some(m) = marker {
                 let _ = write!(out, r#" marker-end="{}""#, escape_xml_display(m));
@@ -3609,11 +3614,11 @@ fn render_state_edge_path(
     let _ = write!(
         out,
         r#"<path d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
-        escape_xml_display(&d),
+        d,
         escape_xml_display(&edge.id),
         escape_xml_display(&classes),
         escape_xml_display(&edge.id),
-        escape_xml_display(&data_points)
+        data_points
     );
     if let Some(m) = marker_end {
         let _ = write!(out, r#" marker-end="{}""#, escape_xml_display(&m));

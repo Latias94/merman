@@ -2184,8 +2184,13 @@ pub(super) fn render_class_diagram_v2_svg(
     drop(viewbox_guard);
     let finalize_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.finalize_svg));
 
-    out = out.replacen(MAX_WIDTH_PLACEHOLDER, &max_w_attr, 1);
-    out = out.replacen(VIEWBOX_PLACEHOLDER, &view_box_attr, 1);
+    out = super::util::replace_placeholders_once(
+        &out,
+        &[
+            (MAX_WIDTH_PLACEHOLDER, max_w_attr.as_str()),
+            (VIEWBOX_PLACEHOLDER, view_box_attr.as_str()),
+        ],
+    );
 
     out.push_str("</svg>");
     drop(finalize_guard);
