@@ -742,6 +742,104 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
         candidates.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.stem.cmp(&b.stem)));
     }
 
+    if install && !with_baselines {
+        return Err(XtaskError::SnapshotUpdateFailed(
+            "`--install` only applies when `--with-baselines` is set".to_string(),
+        ));
+    }
+
+    fn deferred_with_baselines_reason(
+        diagram_dir: &str,
+        fixture_text: &str,
+    ) -> Option<&'static str> {
+        // Keep `--with-baselines` aligned with the current parity hardening scope.
+        //
+        // Some examples require upstream (browser) features we have not yet replicated in the
+        // headless pipeline. Import them later in dedicated parity work items (tracked in
+        // `docs/alignment/FIXTURE_EXPANSION_TODO.md`).
+        match diagram_dir {
+            "flowchart" => {
+                // ELK layout is currently out of scope for the headless layout engine.
+                if fixture_text.contains("\n  layout: elk")
+                    || fixture_text.contains("\nlayout: elk")
+                {
+                    return Some("flowchart frontmatter config.layout=elk (deferred)");
+                }
+                // Flowchart "look" variants change DOM structure and markers; only classic is in scope.
+                if fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:") {
+                    if !fixture_text.contains("\n  look: classic")
+                        && !fixture_text.contains("\nlook: classic")
+                    {
+                        return Some("flowchart frontmatter config.look!=classic (deferred)");
+                    }
+                }
+                // Math rendering depends on browser KaTeX + foreignObject details.
+                if fixture_text.contains("$$") {
+                    return Some("flowchart math (deferred)");
+                }
+            }
+            "sequence" => {
+                // Math rendering depends on browser KaTeX + font metrics.
+                if fixture_text.contains("$$") {
+                    return Some("sequence math (deferred)");
+                }
+                // Some docs examples rely on wrap/width behavior not yet matched in headless layout.
+                if fixture_text.contains("%%{init:")
+                    && (fixture_text.contains("\"wrap\": true")
+                        || fixture_text.contains("\"width\""))
+                {
+                    return Some("sequence wrap/width directive (deferred)");
+                }
+            }
+            _ => {}
+        }
+        None
+    }
+
+    fn is_suspicious_blank_svg(svg_path: &Path) -> bool {
+        // Mermaid CLI often emits a tiny 16x16 SVG for "empty" diagrams (e.g. `graph LR` with
+        // no nodes/edges). These are usually unhelpful as parity fixtures and tend to create
+        // noisy root viewport diffs.
+        //
+        // Treat them as "output anomalies" for fixture import purposes: keep the candidate
+        // traceable via the report and skip importing it for now.
+        let Ok(head) = fs::read_to_string(svg_path) else {
+            return false;
+        };
+        let first = head.lines().next().unwrap_or_default();
+        first.contains(r#"viewBox="-8 -8 16 16""#)
+            || first.contains(r#"viewBox="0 0 16 16""#)
+            || first.contains(r#"style="max-width: 16px"#)
+    }
+
+    fn cleanup_fixture_files(workspace_root: &Path, f: &CreatedFixture) {
+        let _ = fs::remove_file(&f.path);
+        let _ = fs::remove_file(
+            workspace_root
+                .join("fixtures")
+                .join("upstream-svgs")
+                .join(&f.diagram_dir)
+                .join(format!("{}.svg", f.stem)),
+        );
+        let _ = fs::remove_file(
+            workspace_root
+                .join("fixtures")
+                .join(&f.diagram_dir)
+                .join(format!("{}.golden.json", f.stem)),
+        );
+        let _ = fs::remove_file(
+            workspace_root
+                .join("fixtures")
+                .join(&f.diagram_dir)
+                .join(format!("{}.layout.golden.json", f.stem)),
+        );
+    }
+
+    let report_path = workspace_root
+        .join("target")
+        .join("import-upstream-docs.report.txt");
+    let mut report_lines: Vec<String> = Vec::new();
+
     let mut imported = 0usize;
     for c in candidates {
         let existing = existing_by_diagram
@@ -768,18 +866,152 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
                 out_path.display()
             ))
         })?;
-        existing.insert(c.body.clone(), out_path.clone());
 
-        created.push(CreatedFixture {
+        let f = CreatedFixture {
             diagram_dir: c.diagram_dir,
             stem: c.stem,
-            path: out_path,
+            path: out_path.clone(),
             source_md: c.md_block.source_md.clone(),
             source_idx_in_file: c.md_block.idx_in_file,
             source_info: c.md_block.info.clone(),
             source_heading: c.md_block.heading.clone(),
-        });
+        };
 
+        if !with_baselines {
+            existing.insert(c.body.clone(), out_path);
+            created.push(f);
+            imported += 1;
+            if let Some(max) = limit {
+                if imported >= max {
+                    break;
+                }
+            }
+            continue;
+        }
+
+        // `--with-baselines`: treat `--limit` as the number of fixtures that survive upstream
+        // rendering + snapshot updates (instead of the number of files written).
+        if let Some(reason) = deferred_with_baselines_reason(&f.diagram_dir, &c.body) {
+            report_lines.push(format!(
+                "DEFERRED_WITH_BASELINES\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}\treason={reason}",
+                f.diagram_dir,
+                f.stem,
+                f.source_md.display(),
+                f.source_idx_in_file,
+                f.source_info,
+                f.source_heading.clone().unwrap_or_default(),
+            ));
+            skipped.push(format!(
+                "skip (deferred for --with-baselines): {} ({reason})",
+                f.path.display(),
+            ));
+            cleanup_fixture_files(&workspace_root, &f);
+            continue;
+        }
+
+        let mut svg_args = vec![
+            "--diagram".to_string(),
+            f.diagram_dir.clone(),
+            "--filter".to_string(),
+            f.stem.clone(),
+        ];
+        if install {
+            svg_args.push("--install".to_string());
+        }
+        match gen_upstream_svgs(svg_args) {
+            Ok(()) => {}
+            Err(XtaskError::UpstreamSvgFailed(msg)) => {
+                report_lines.push(format!(
+                    "UPSTREAM_SVG_FAILED\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}\tmsg={}",
+                    f.diagram_dir,
+                    f.stem,
+                    f.source_md.display(),
+                    f.source_idx_in_file,
+                    f.source_info,
+                    f.source_heading.clone().unwrap_or_default(),
+                    msg.lines().next().unwrap_or("unknown upstream error"),
+                ));
+                skipped.push(format!(
+                    "skip (upstream svg failed): {} ({})",
+                    f.path.display(),
+                    msg.lines().next().unwrap_or("unknown upstream error")
+                ));
+                cleanup_fixture_files(&workspace_root, &f);
+                continue;
+            }
+            Err(other) => return Err(other),
+        }
+
+        let svg_path = workspace_root
+            .join("fixtures")
+            .join("upstream-svgs")
+            .join(&f.diagram_dir)
+            .join(format!("{}.svg", f.stem));
+        if is_suspicious_blank_svg(&svg_path) {
+            report_lines.push(format!(
+                "UPSTREAM_SVG_SUSPICIOUS_BLANK\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}",
+                f.diagram_dir,
+                f.stem,
+                f.source_md.display(),
+                f.source_idx_in_file,
+                f.source_info,
+                f.source_heading.clone().unwrap_or_default(),
+            ));
+            skipped.push(format!(
+                "skip (suspicious upstream svg output): {} (blank 16x16-like svg)",
+                f.path.display(),
+            ));
+            cleanup_fixture_files(&workspace_root, &f);
+            continue;
+        }
+
+        if let Err(err) = update_snapshots(vec![
+            "--diagram".to_string(),
+            f.diagram_dir.clone(),
+            "--filter".to_string(),
+            f.stem.clone(),
+        ]) {
+            report_lines.push(format!(
+                "SNAPSHOT_UPDATE_FAILED\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}\terr={err}",
+                f.diagram_dir,
+                f.stem,
+                f.source_md.display(),
+                f.source_idx_in_file,
+                f.source_info,
+                f.source_heading.clone().unwrap_or_default(),
+            ));
+            skipped.push(format!(
+                "skip (snapshot update failed): {} ({err})",
+                f.path.display(),
+            ));
+            cleanup_fixture_files(&workspace_root, &f);
+            continue;
+        }
+        if let Err(err) = update_layout_snapshots(vec![
+            "--diagram".to_string(),
+            f.diagram_dir.clone(),
+            "--filter".to_string(),
+            f.stem.clone(),
+        ]) {
+            report_lines.push(format!(
+                "LAYOUT_SNAPSHOT_UPDATE_FAILED\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}\terr={err}",
+                f.diagram_dir,
+                f.stem,
+                f.source_md.display(),
+                f.source_idx_in_file,
+                f.source_info,
+                f.source_heading.clone().unwrap_or_default(),
+            ));
+            skipped.push(format!(
+                "skip (layout snapshot update failed): {} ({err})",
+                f.path.display(),
+            ));
+            cleanup_fixture_files(&workspace_root, &f);
+            continue;
+        }
+
+        existing.insert(c.body.clone(), out_path);
+        created.push(f);
         imported += 1;
         if let Some(max) = limit {
             if imported >= max {
@@ -788,284 +1020,29 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
+    if with_baselines && !report_lines.is_empty() {
+        if let Some(parent) = report_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let header = format!(
+            "# import-upstream-docs report (Mermaid@11.12.2)\n# generated_at={}\n",
+            chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%z")
+        );
+        let mut out = String::new();
+        out.push_str(&header);
+        out.push_str(&report_lines.join("\n"));
+        out.push('\n');
+        let _ = fs::write(&report_path, out);
+        eprintln!("Wrote import report: {}", report_path.display());
+    }
+
     if created.is_empty() {
-        return Err(XtaskError::SnapshotUpdateFailed(
+        return Err(XtaskError::SnapshotUpdateFailed(if with_baselines {
+            "no fixtures were imported (all candidates failed upstream rendering)".to_string()
+        } else {
             "no fixtures were imported (use --diagram <name> and optionally --filter/--limit)"
-                .to_string(),
-        ));
-    }
-
-    if install && !with_baselines {
-        return Err(XtaskError::SnapshotUpdateFailed(
-            "`--install` only applies when `--with-baselines` is set".to_string(),
-        ));
-    }
-
-    if with_baselines {
-        // Generate upstream SVGs + semantic + layout snapshots for each imported fixture.
-        //
-        // This is intentionally per-fixture (filter=stem) so we don't accidentally regenerate or
-        // fail on unrelated upstream fixtures in the same folder.
-        let report_path = workspace_root
-            .join("target")
-            .join("import-upstream-docs.report.txt");
-        let mut report_lines: Vec<String> = Vec::new();
-
-        fn deferred_with_baselines_reason(
-            diagram_dir: &str,
-            fixture_text: &str,
-        ) -> Option<&'static str> {
-            // Keep `--with-baselines` aligned with the current parity hardening scope.
-            //
-            // Some examples require upstream (browser) features we have not yet replicated in the
-            // headless pipeline. Import them later in dedicated parity work items (tracked in
-            // `docs/alignment/FIXTURE_EXPANSION_TODO.md`).
-            match diagram_dir {
-                "flowchart" => {
-                    // ELK layout is currently out of scope for the headless layout engine.
-                    if fixture_text.contains("\n  layout: elk")
-                        || fixture_text.contains("\nlayout: elk")
-                    {
-                        return Some("flowchart frontmatter config.layout=elk (deferred)");
-                    }
-                    // Flowchart "look" variants change DOM structure and markers; only classic is in scope.
-                    if fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:") {
-                        if !fixture_text.contains("\n  look: classic")
-                            && !fixture_text.contains("\nlook: classic")
-                        {
-                            return Some("flowchart frontmatter config.look!=classic (deferred)");
-                        }
-                    }
-                    // Math rendering depends on browser KaTeX + foreignObject details.
-                    if fixture_text.contains("$$") {
-                        return Some("flowchart math (deferred)");
-                    }
-                }
-                "sequence" => {
-                    // Math rendering depends on browser KaTeX + font metrics.
-                    if fixture_text.contains("$$") {
-                        return Some("sequence math (deferred)");
-                    }
-                    // Some docs examples rely on wrap/width behavior not yet matched in headless layout.
-                    if fixture_text.contains("%%{init:")
-                        && (fixture_text.contains("\"wrap\": true")
-                            || fixture_text.contains("\"width\""))
-                    {
-                        return Some("sequence wrap/width directive (deferred)");
-                    }
-                }
-                _ => {}
-            }
-            None
-        }
-
-        fn is_suspicious_blank_svg(svg_path: &Path) -> bool {
-            // Mermaid CLI often emits a tiny 16x16 SVG for "empty" diagrams (e.g. `graph LR` with
-            // no nodes/edges). These are usually unhelpful as parity fixtures and tend to create
-            // noisy root viewport diffs.
-            //
-            // Treat them as "output anomalies" for fixture import purposes: keep the candidate
-            // traceable via the report and skip importing it for now.
-            let Ok(head) = fs::read_to_string(svg_path) else {
-                return false;
-            };
-            let first = head.lines().next().unwrap_or_default();
-            first.contains(r#"viewBox="-8 -8 16 16""#)
-                || first.contains(r#"viewBox="0 0 16 16""#)
-                || first.contains(r#"style="max-width: 16px"#)
-        }
-
-        fn cleanup_fixture_files(workspace_root: &Path, f: &CreatedFixture) {
-            let _ = fs::remove_file(&f.path);
-            let _ = fs::remove_file(
-                workspace_root
-                    .join("fixtures")
-                    .join("upstream-svgs")
-                    .join(&f.diagram_dir)
-                    .join(format!("{}.svg", f.stem)),
-            );
-            let _ = fs::remove_file(
-                workspace_root
-                    .join("fixtures")
-                    .join(&f.diagram_dir)
-                    .join(format!("{}.golden.json", f.stem)),
-            );
-            let _ = fs::remove_file(
-                workspace_root
-                    .join("fixtures")
-                    .join(&f.diagram_dir)
-                    .join(format!("{}.layout.golden.json", f.stem)),
-            );
-        }
-
-        let mut kept: Vec<CreatedFixture> = Vec::with_capacity(created.len());
-        for f in &created {
-            let fixture_text = match fs::read_to_string(&f.path) {
-                Ok(v) => v,
-                Err(err) => {
-                    report_lines.push(format!(
-                        "READ_FIXTURE_FAILED\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}\terr={err}",
-                        f.diagram_dir,
-                        f.stem,
-                        f.source_md.display(),
-                        f.source_idx_in_file,
-                        f.source_info,
-                        f.source_heading.clone().unwrap_or_default(),
-                    ));
-                    skipped.push(format!(
-                        "skip (failed to read imported fixture): {} ({err})",
-                        f.path.display(),
-                    ));
-                    cleanup_fixture_files(&workspace_root, f);
-                    continue;
-                }
-            };
-            if let Some(reason) = deferred_with_baselines_reason(&f.diagram_dir, &fixture_text) {
-                report_lines.push(format!(
-                    "DEFERRED_WITH_BASELINES\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}\treason={reason}",
-                    f.diagram_dir,
-                    f.stem,
-                    f.source_md.display(),
-                    f.source_idx_in_file,
-                    f.source_info,
-                    f.source_heading.clone().unwrap_or_default(),
-                ));
-                skipped.push(format!(
-                    "skip (deferred for --with-baselines): {} ({reason})",
-                    f.path.display(),
-                ));
-                cleanup_fixture_files(&workspace_root, f);
-                continue;
-            }
-
-            let mut svg_args = vec![
-                "--diagram".to_string(),
-                f.diagram_dir.clone(),
-                "--filter".to_string(),
-                f.stem.clone(),
-            ];
-            if install {
-                svg_args.push("--install".to_string());
-            }
-            match gen_upstream_svgs(svg_args) {
-                Ok(()) => {}
-                Err(XtaskError::UpstreamSvgFailed(msg)) => {
-                    report_lines.push(format!(
-                        "UPSTREAM_SVG_FAILED\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}\tmsg={}",
-                        f.diagram_dir,
-                        f.stem,
-                        f.source_md.display(),
-                        f.source_idx_in_file,
-                        f.source_info,
-                        f.source_heading.clone().unwrap_or_default(),
-                        msg.lines().next().unwrap_or("unknown upstream error"),
-                    ));
-                    skipped.push(format!(
-                        "skip (upstream svg failed): {} ({})",
-                        f.path.display(),
-                        msg.lines().next().unwrap_or("unknown upstream error")
-                    ));
-
-                    // Best-effort cleanup: do not leave half-imported fixtures behind.
-                    cleanup_fixture_files(&workspace_root, f);
-                    continue;
-                }
-                Err(other) => return Err(other),
-            }
-
-            let svg_path = workspace_root
-                .join("fixtures")
-                .join("upstream-svgs")
-                .join(&f.diagram_dir)
-                .join(format!("{}.svg", f.stem));
-            if is_suspicious_blank_svg(&svg_path) {
-                report_lines.push(format!(
-                    "UPSTREAM_SVG_SUSPICIOUS_BLANK\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}",
-                    f.diagram_dir,
-                    f.stem,
-                    f.source_md.display(),
-                    f.source_idx_in_file,
-                    f.source_info,
-                    f.source_heading.clone().unwrap_or_default(),
-                ));
-                skipped.push(format!(
-                    "skip (suspicious upstream svg output): {} (blank 16x16-like svg)",
-                    f.path.display(),
-                ));
-                cleanup_fixture_files(&workspace_root, f);
-                continue;
-            }
-
-            if let Err(err) = update_snapshots(vec![
-                "--diagram".to_string(),
-                f.diagram_dir.clone(),
-                "--filter".to_string(),
-                f.stem.clone(),
-            ]) {
-                report_lines.push(format!(
-                    "SNAPSHOT_UPDATE_FAILED\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}\terr={err}",
-                    f.diagram_dir,
-                    f.stem,
-                    f.source_md.display(),
-                    f.source_idx_in_file,
-                    f.source_info,
-                    f.source_heading.clone().unwrap_or_default(),
-                ));
-                skipped.push(format!(
-                    "skip (snapshot update failed): {} ({err})",
-                    f.path.display(),
-                ));
-                cleanup_fixture_files(&workspace_root, f);
-                continue;
-            }
-            if let Err(err) = update_layout_snapshots(vec![
-                "--diagram".to_string(),
-                f.diagram_dir.clone(),
-                "--filter".to_string(),
-                f.stem.clone(),
-            ]) {
-                report_lines.push(format!(
-                    "LAYOUT_SNAPSHOT_UPDATE_FAILED\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}\terr={err}",
-                    f.diagram_dir,
-                    f.stem,
-                    f.source_md.display(),
-                    f.source_idx_in_file,
-                    f.source_info,
-                    f.source_heading.clone().unwrap_or_default(),
-                ));
-                skipped.push(format!(
-                    "skip (layout snapshot update failed): {} ({err})",
-                    f.path.display(),
-                ));
-                cleanup_fixture_files(&workspace_root, f);
-                continue;
-            }
-
-            kept.push(f.clone());
-        }
-        created = kept;
-
-        if !report_lines.is_empty() {
-            if let Some(parent) = report_path.parent() {
-                let _ = fs::create_dir_all(parent);
-            }
-            let header = format!(
-                "# import-upstream-docs report (Mermaid@11.12.2)\n# generated_at={}\n",
-                chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%z")
-            );
-            let mut out = String::new();
-            out.push_str(&header);
-            out.push_str(&report_lines.join("\n"));
-            out.push('\n');
-            let _ = fs::write(&report_path, out);
-            eprintln!("Wrote import report: {}", report_path.display());
-        }
-
-        if created.is_empty() {
-            return Err(XtaskError::SnapshotUpdateFailed(
-                "no fixtures were imported (all candidates failed upstream rendering)".to_string(),
-            ));
-        }
+                .to_string()
+        }));
     }
 
     eprintln!("Imported {} fixtures:", created.len());
@@ -1424,7 +1401,7 @@ fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> {
         static PRE_RE: OnceLock<Regex> = OnceLock::new();
         static H_RE: OnceLock<Regex> = OnceLock::new();
         let pre_re = PRE_RE.get_or_init(|| {
-            Regex::new(r"(?is)<pre\b(?P<attrs>[^>]*)>(?P<body>.*?)</pre\\s*>").expect("valid regex")
+            Regex::new(r"(?is)<pre\b(?P<attrs>[^>]*)>(?P<body>.*?)</pre\s*>").expect("valid regex")
         });
         let h_re = H_RE.get_or_init(|| {
             Regex::new(r"(?is)<h[1-6]\b[^>]*>(?P<body>.*?)</h[1-6]>").expect("valid regex")
@@ -2285,6 +2262,7 @@ fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
             "journey" => Some("journey".to_string()),
             "xychart" => Some("xychart".to_string()),
             "requirement" => Some("requirement".to_string()),
+            "architecture-beta" => Some("architecture".to_string()),
             "architecture" | "block" | "c4" | "gantt" | "info" | "kanban" | "mindmap"
             | "packet" | "pie" | "radar" | "sankey" | "sequence" | "timeline" | "treemap" => {
                 Some(detected.to_string())
