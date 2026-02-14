@@ -1,0 +1,159 @@
+{
+  "diagramType": "er",
+  "layout": {
+    "ErDiagram": {
+      "nodes": [
+        {
+          "id": "entity-Address//StreetAddress::[DELIVERY ADDRESS]-3",
+          "x": 551.862,
+          "y": 378.875,
+          "width": 502.089,
+          "height": 384.75,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-ORDER-1",
+          "x": 110.817,
+          "y": 378.875,
+          "width": 100.0,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-Person . CUSTOMER-0",
+          "x": 331.34,
+          "y": 42.75,
+          "width": 175.84,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-a_~`!@#$^&*()-_=+[]{}|/;:'.?¡⁄™€£‹¢›∞ﬁ§‡•°ª·º‚≠±œŒ∑„®†ˇ¥Á¨ˆˆØπ∏“«»åÅßÍ∂ÎƒÏ©˙Ó∆Ô˚¬Ò…ÚæÆΩ¸≈π˛çÇ√◊∫ı˜µÂ≤¯≥˘÷¿-4",
+          "x": 1060.02,
+          "y": 42.75,
+          "width": 1001.52,
+          "height": 85.5,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-€£LINE_ITEM ¥-2",
+          "x": 110.817,
+          "y": 821.875,
+          "width": 221.634,
+          "height": 299.25,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "er-rel-0",
+          "from": "entity-Person . CUSTOMER-0",
+          "to": "entity-ORDER-1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 243.42,
+              "y": 79.928
+            },
+            {
+              "x": 110.817,
+              "y": 136.0
+            },
+            {
+              "x": 110.817,
+              "y": 336.875
+            }
+          ],
+          "label": {
+            "x": 110.817,
+            "y": 136.0,
+            "width": 39.531,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ZERO_OR_MORE_END",
+          "stroke_dasharray": null
+        },
+        {
+          "id": "er-rel-1",
+          "from": "entity-ORDER-1",
+          "to": "entity-€£LINE_ITEM ¥-2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 110.817,
+              "y": 420.875
+            },
+            {
+              "x": 110.817,
+              "y": 621.75
+            },
+            {
+              "x": 110.817,
+              "y": 672.25
+            }
+          ],
+          "label": {
+            "x": 110.817,
+            "y": 621.75,
+            "width": 52.313,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ONE_OR_MORE_END",
+          "stroke_dasharray": null
+        },
+        {
+          "id": "er-rel-2",
+          "from": "entity-Person . CUSTOMER-0",
+          "to": "entity-Address//StreetAddress::[DELIVERY ADDRESS]-3",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 419.26,
+              "y": 79.928
+            },
+            {
+              "x": 551.862,
+              "y": 136.0
+            },
+            {
+              "x": 551.862,
+              "y": 186.5
+            }
+          ],
+          "label": {
+            "x": 551.862,
+            "y": 136.0,
+            "width": 26.625,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONE_OR_MORE_START",
+          "end_marker": "ONE_OR_MORE_END",
+          "stroke_dasharray": "8,8"
+        }
+      ],
+      "bounds": {
+        "min_x": -0.0,
+        "min_y": 0.0,
+        "max_x": 1560.78,
+        "max_y": 971.5
+      }
+    }
+  }
+}

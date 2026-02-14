@@ -1,0 +1,153 @@
+{
+  "diagramType": "er",
+  "model": {
+    "type": "er",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "entities": {
+      "c": {
+        "id": "entity-c-3",
+        "label": "c",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "email",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "Customer Account Tertiary",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "a": {
+        "id": "entity-a-1",
+        "label": "a",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "email",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "Customer Account",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "b": {
+        "id": "entity-b-2",
+        "label": "b",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "email",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "Customer Account Secondary",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "d": {
+        "id": "entity-d-4",
+        "label": "d",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "email",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "Customer Account Nth",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "p": {
+        "id": "entity-p-0",
+        "label": "p",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "firstName",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "lastName",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "Person",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-p-0",
+        "roleA": "has<br />one",
+        "entityB": "entity-a-1",
+        "relSpec": {
+          "cardA": "ZERO_OR_ONE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-p-0",
+        "roleA": "has<br />one<br />two",
+        "entityB": "entity-b-2",
+        "relSpec": {
+          "cardA": "ZERO_OR_ONE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-p-0",
+        "roleA": "has<br />one<br />two<br />three",
+        "entityB": "entity-c-3",
+        "relSpec": {
+          "cardA": "ZERO_OR_ONE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-p-0",
+        "roleA": "has<br />one<br />two<br />three<br />...<br />Nth",
+        "entityB": "entity-d-4",
+        "relSpec": {
+          "cardA": "ZERO_OR_ONE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      }
+    ],
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}

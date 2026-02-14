@@ -1,0 +1,22 @@
+erDiagram
+CAR ||--o{ NAMED-DRIVER : allows
+CAR ::: Pine {
+    string registrationNumber PK "Primary Key<br><strong>Unique registration number</strong>"
+    string make "Car make<br><strong>e.g., Toyota</strong>"
+    string model "Model of the car<br><strong>e.g., Corolla</strong>"
+    string[] parts "List of parts<br><strong>Stored as array</strong>"
+}
+PERSON ||--o{ NAMED-DRIVER : is
+PERSON ::: someclass {
+    string driversLicense PK "The license #<br><strong>Primary Key</strong>"
+    string(99) firstName "Only 99 characters <br>are allowed <br> <strong>e.g., Smith</strong>"
+    string lastName "Last name of person<br><strong>e.g., Smith</strong>"
+    string phone UK "Unique phone number<br><strong>Used for contact</strong>"
+    int age "Age of the person<br><strong>Must be numeric</strong>"
+}
+NAMED-DRIVER {
+    string carRegistrationNumber PK, FK, UK, PK "Foreign key to CAR<br><strong>Also part of PK</strong>"
+    string driverLicence PK, FK "Foreign key to PERSON<br><strong>Also part of PK</strong>"
+}
+MANUFACTURER only one to zero or more CAR : makesx      
+            

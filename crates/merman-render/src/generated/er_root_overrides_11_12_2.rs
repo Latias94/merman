@@ -8,6 +8,17 @@
 
 pub fn lookup_er_root_viewport_override(diagram_id: &str) -> Option<(&'static str, &'static str)> {
     match diagram_id {
+        "upstream_html_demos_er_example_001" => Some(("0 -48 1636.14453125 1059.5", "1636.14")),
+        "upstream_html_demos_er_example_002" => Some(("0 0 257.703125 315.25", "257.703")),
+        "upstream_html_demos_er_example_003" => Some(("0 0 279.734375 315.25", "279.734")),
+        "upstream_html_demos_er_example_004" => Some(("0 0 954.203125 686.75", "954.203")),
+        "upstream_html_demos_er_example_005" => Some(("0 0 195.578125 330.75", "195.578")),
+        "upstream_html_demos_er_example_006" => Some(("0 0 1322.5625 435.75", "1322.56")),
+        "upstream_html_demos_er_example_007" => Some(("0 0 436.8125 400.75", "436.812")),
+        "upstream_html_demos_er_multiline_example_001" => {
+            Some(("0 0 1121.578125 878.75", "1121.58"))
+        }
+        "upstream_html_demos_er_multiline_example_002" => Some(("0 0 529.359375 320.5", "529.359")),
         "upstream_docs_entityrelationshipdiagram_classes_034" => {
             Some(("0 0 786.203125 187", "786.203"))
         }

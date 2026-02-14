@@ -1,0 +1,193 @@
+{
+  "diagramType": "er",
+  "layout": {
+    "ErDiagram": {
+      "nodes": [
+        {
+          "id": "entity-a-1",
+          "x": 84.76,
+          "y": 377.0,
+          "width": 169.52,
+          "height": 85.5,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-b-2",
+          "x": 430.2,
+          "y": 377.0,
+          "width": 241.36,
+          "height": 85.5,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-c-3",
+          "x": 806.92,
+          "y": 377.0,
+          "width": 232.08,
+          "height": 85.5,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-d-4",
+          "x": 1162.04,
+          "y": 377.0,
+          "width": 198.16,
+          "height": 85.5,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-p-0",
+          "x": 618.56,
+          "y": 64.125,
+          "width": 158.215,
+          "height": 128.25,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "er-rel-0",
+          "from": "entity-p-0",
+          "to": "entity-a-1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 539.452,
+              "y": 88.892
+            },
+            {
+              "x": 84.76,
+              "y": 231.25
+            },
+            {
+              "x": 84.76,
+              "y": 334.25
+            }
+          ],
+          "label": {
+            "x": 84.76,
+            "y": 231.25,
+            "width": 18.06,
+            "height": 42.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ZERO_OR_ONE_END",
+          "stroke_dasharray": null
+        },
+        {
+          "id": "er-rel-1",
+          "from": "entity-p-0",
+          "to": "entity-b-2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 546.287,
+              "y": 128.25
+            },
+            {
+              "x": 430.2,
+              "y": 231.25
+            },
+            {
+              "x": 430.2,
+              "y": 334.25
+            }
+          ],
+          "label": {
+            "x": 430.2,
+            "y": 231.25,
+            "width": 22.96,
+            "height": 63.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ZERO_OR_ONE_END",
+          "stroke_dasharray": null
+        },
+        {
+          "id": "er-rel-2",
+          "from": "entity-p-0",
+          "to": "entity-c-3",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 690.833,
+              "y": 128.25
+            },
+            {
+              "x": 806.92,
+              "y": 231.25
+            },
+            {
+              "x": 806.92,
+              "y": 334.25
+            }
+          ],
+          "label": {
+            "x": 806.92,
+            "y": 231.25,
+            "width": 30.1,
+            "height": 84.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ZERO_OR_ONE_END",
+          "stroke_dasharray": null
+        },
+        {
+          "id": "er-rel-3",
+          "from": "entity-p-0",
+          "to": "entity-d-4",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 697.667,
+              "y": 88.451
+            },
+            {
+              "x": 1162.04,
+              "y": 231.25
+            },
+            {
+              "x": 1162.04,
+              "y": 334.25
+            }
+          ],
+          "label": {
+            "x": 1162.04,
+            "y": 231.25,
+            "width": 30.1,
+            "height": 126.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ZERO_OR_ONE_END",
+          "stroke_dasharray": null
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1261.12,
+        "max_y": 419.75
+      }
+    }
+  }
+}
