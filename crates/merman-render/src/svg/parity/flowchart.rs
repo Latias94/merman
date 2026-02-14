@@ -5543,7 +5543,7 @@ fn render_flowchart_node(
     let tooltip_enabled = !tooltip.trim().is_empty();
 
     let dom_idx: Option<usize>;
-    let class_attr: String;
+    let class_attr_base: &str;
     let wrapped_in_a: bool;
     let href: Option<&str>;
     let mut label_text: &str;
@@ -5563,18 +5563,11 @@ fn render_flowchart_node(
             shape = node.layout_shape.as_deref().unwrap_or("squareRect");
 
             // Mermaid flowchart-v2 uses a distinct wrapper class for icon/image nodes.
-            let mut cls = if shape == "imageSquare" {
-                "image-shape default".to_string()
+            class_attr_base = if shape == "imageSquare" {
+                "image-shape default"
             } else {
-                "node default".to_string()
+                "node default"
             };
-            for c in &node.classes {
-                if !c.trim().is_empty() {
-                    cls.push(' ');
-                    cls.push_str(c.trim());
-                }
-            }
-            class_attr = cls;
 
             let link = node
                 .link
@@ -5607,17 +5600,7 @@ fn render_flowchart_node(
             shape = "squareRect";
             wrapped_in_a = false;
             href = None;
-
-            let mut cls = "node".to_string();
-            for c in &sg.classes {
-                let c = c.trim();
-                if c.is_empty() {
-                    continue;
-                }
-                cls.push(' ');
-                cls.push_str(c);
-            }
-            class_attr = cls;
+            class_attr_base = "node";
 
             label_text = sg.title.as_str();
             label_type = sg.label_type.as_deref().unwrap_or("text");
@@ -5628,6 +5611,18 @@ fn render_flowchart_node(
             node_asset_height = None;
             node_styles = &[];
             node_classes = &sg.classes;
+        }
+    }
+
+    fn write_class_attr(out: &mut String, base: &str, classes: &[String]) {
+        escape_xml_into(out, base);
+        for c in classes {
+            let t = c.trim();
+            if t.is_empty() {
+                continue;
+            }
+            out.push(' ');
+            escape_xml_into(out, t);
         }
     }
 
@@ -5648,41 +5643,37 @@ fn render_flowchart_node(
                 fmt_display(y)
             );
         }
+        out.push_str(r#"<g class=""#);
+        write_class_attr(out, class_attr_base, node_classes);
         if let Some(dom_idx) = dom_idx {
-            let _ = write!(
-                out,
-                r#"<g class="{}" id="flowchart-{}-{}""#,
-                escape_xml_display(&class_attr),
-                escape_xml_display(node_id),
-                dom_idx,
-            );
+            out.push_str(r#"" id="flowchart-"#);
+            escape_xml_into(out, node_id);
+            let _ = write!(out, "-{dom_idx}\"");
         } else {
-            let _ = write!(
-                out,
-                r#"<g class="{}" id="{}""#,
-                escape_xml_display(&class_attr),
-                escape_xml_display(node_id),
-            );
+            out.push_str(r#"" id=""#);
+            escape_xml_into(out, node_id);
+            out.push('"');
         }
     } else {
+        out.push_str(r#"<g class=""#);
+        write_class_attr(out, class_attr_base, node_classes);
         if let Some(dom_idx) = dom_idx {
+            out.push_str(r#"" id="flowchart-"#);
+            escape_xml_into(out, node_id);
             let _ = write!(
                 out,
-                r#"<g class="{}" id="flowchart-{}-{}" transform="translate({}, {})""#,
-                escape_xml_display(&class_attr),
-                escape_xml_display(node_id),
-                dom_idx,
+                r#"-{dom_idx}" transform="translate({}, {})""#,
                 fmt_display(x),
-                fmt_display(y),
+                fmt_display(y)
             );
         } else {
+            out.push_str(r#"" id=""#);
+            escape_xml_into(out, node_id);
             let _ = write!(
                 out,
-                r#"<g class="{}" id="{}" transform="translate({}, {})""#,
-                escape_xml_display(&class_attr),
-                escape_xml_display(node_id),
+                r#"" transform="translate({}, {})""#,
                 fmt_display(x),
-                fmt_display(y),
+                fmt_display(y)
             );
         }
     }
