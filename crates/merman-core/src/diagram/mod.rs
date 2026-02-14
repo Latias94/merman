@@ -86,6 +86,7 @@ pub enum RenderSemanticModel {
     Mindmap(crate::diagrams::mindmap::MindmapDiagramRenderModel),
     State(crate::diagrams::state::StateDiagramRenderModel),
     Flowchart(crate::diagrams::flowchart::FlowchartV2Model),
+    Architecture(crate::diagrams::architecture::ArchitectureDiagramRenderModel),
 }
 
 #[derive(Debug, Clone)]

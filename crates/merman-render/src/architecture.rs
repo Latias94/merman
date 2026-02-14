@@ -3,6 +3,7 @@ use crate::model::{ArchitectureDiagramLayout, Bounds, LayoutEdge, LayoutNode, La
 use crate::text::TextMeasurer;
 use crate::{Error, Result};
 use indexmap::IndexMap;
+use merman_core::diagrams::architecture::ArchitectureDiagramRenderModel;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -66,6 +67,81 @@ struct ArchitectureModel {
     edges: Vec<ArchitectureEdgeModel>,
 }
 
+impl ArchitectureModel {
+    fn from_typed(model: &ArchitectureDiagramRenderModel) -> Self {
+        fn dir_to_string(d: char) -> Option<String> {
+            Some(d.to_string())
+        }
+
+        let edges: Vec<ArchitectureEdgeModel> = model
+            .edges
+            .iter()
+            .map(|e| ArchitectureEdgeModel {
+                lhs_id: e.lhs_id.clone(),
+                rhs_id: e.rhs_id.clone(),
+                lhs_dir: dir_to_string(e.lhs_dir),
+                rhs_dir: dir_to_string(e.rhs_dir),
+                lhs_group: e.lhs_group,
+                rhs_group: e.rhs_group,
+            })
+            .collect();
+
+        let mut nodes: Vec<ArchitectureNodeModel> = Vec::with_capacity(model.nodes.len());
+        for n in &model.nodes {
+            let node_type = match n.node_type {
+                merman_core::diagrams::architecture::ArchitectureRenderNodeType::Service => {
+                    "service"
+                }
+                merman_core::diagrams::architecture::ArchitectureRenderNodeType::Junction => {
+                    "junction"
+                }
+            }
+            .to_string();
+
+            let mut node_edges: Vec<ArchitectureEdgeModel> =
+                Vec::with_capacity(n.edge_indices.len());
+            for &idx in &n.edge_indices {
+                let Some(e) = model.edges.get(idx) else {
+                    continue;
+                };
+                node_edges.push(ArchitectureEdgeModel {
+                    lhs_id: e.lhs_id.clone(),
+                    rhs_id: e.rhs_id.clone(),
+                    lhs_dir: dir_to_string(e.lhs_dir),
+                    rhs_dir: dir_to_string(e.rhs_dir),
+                    lhs_group: e.lhs_group,
+                    rhs_group: e.rhs_group,
+                });
+            }
+
+            nodes.push(ArchitectureNodeModel {
+                id: n.id.clone(),
+                node_type,
+                edges: node_edges,
+                icon: n.icon.clone(),
+                title: n.title.clone(),
+                icon_text: n.icon_text.clone(),
+                in_group: n.in_group.clone(),
+            });
+        }
+
+        let groups: Vec<ArchitectureGroupModel> = model
+            .groups
+            .iter()
+            .map(|g| ArchitectureGroupModel {
+                id: g.id.clone(),
+                in_group: g.in_group.clone(),
+            })
+            .collect();
+
+        Self {
+            nodes,
+            groups,
+            edges,
+        }
+    }
+}
+
 fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
     let mut pts: Vec<(f64, f64)> = Vec::new();
     for n in nodes {
@@ -88,7 +164,25 @@ pub fn layout_architecture_diagram(
     use_manatee_layout: bool,
 ) -> Result<ArchitectureDiagramLayout> {
     let model: ArchitectureModel = from_value_ref(model)?;
+    layout_architecture_diagram_model(&model, effective_config, _text_measurer, use_manatee_layout)
+}
 
+pub fn layout_architecture_diagram_typed(
+    model: &ArchitectureDiagramRenderModel,
+    effective_config: &Value,
+    text_measurer: &dyn TextMeasurer,
+    use_manatee_layout: bool,
+) -> Result<ArchitectureDiagramLayout> {
+    let model = ArchitectureModel::from_typed(model);
+    layout_architecture_diagram_model(&model, effective_config, text_measurer, use_manatee_layout)
+}
+
+fn layout_architecture_diagram_model(
+    model: &ArchitectureModel,
+    effective_config: &Value,
+    _text_measurer: &dyn TextMeasurer,
+    use_manatee_layout: bool,
+) -> Result<ArchitectureDiagramLayout> {
     let icon_size = config_f64(effective_config, &["architecture", "iconSize"]).unwrap_or(80.0);
     let icon_size = icon_size.max(1.0);
     let half_icon = icon_size / 2.0;

@@ -370,6 +370,14 @@ pub fn render_layout_svg_parts_for_render_model(
     use merman_core::RenderSemanticModel;
 
     match (layout, semantic) {
+        (LayoutDiagram::ArchitectureDiagram(layout), RenderSemanticModel::Architecture(model)) => {
+            architecture::render_architecture_diagram_svg_typed(
+                layout,
+                model,
+                effective_config,
+                options,
+            )
+        }
         (LayoutDiagram::FlowchartV2(layout), RenderSemanticModel::Flowchart(model)) => {
             render_flowchart_v2_svg_model(layout, model, effective_config, title, measurer, options)
         }
@@ -409,6 +417,14 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
     use merman_core::RenderSemanticModel;
 
     match (layout, semantic) {
+        (LayoutDiagram::ArchitectureDiagram(layout), RenderSemanticModel::Architecture(model)) => {
+            architecture::render_architecture_diagram_svg_typed(
+                layout,
+                model,
+                effective_config.as_value(),
+                options,
+            )
+        }
         (LayoutDiagram::FlowchartV2(layout), RenderSemanticModel::Flowchart(model)) => {
             render_flowchart_v2_svg_model_with_config(
                 layout,

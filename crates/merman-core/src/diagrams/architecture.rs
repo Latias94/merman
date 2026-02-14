@@ -1,4 +1,5 @@
 use crate::{Error, ParseMetadata, Result};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
@@ -84,6 +85,67 @@ impl ArchitectureDb {
 
     fn set_acc_descr(&mut self, descr: String) {
         self.acc_descr = descr;
+    }
+
+    fn render_model(&self) -> ArchitectureDiagramRenderModel {
+        let title = (!self.title.trim().is_empty()).then(|| self.title.clone());
+        let acc_title = (!self.acc_title.trim().is_empty()).then(|| self.acc_title.clone());
+        let acc_descr = (!self.acc_descr.trim().is_empty()).then(|| self.acc_descr.clone());
+
+        let nodes: Vec<ArchitectureRenderNode> = self
+            .node_order
+            .iter()
+            .filter_map(|id| self.nodes.get(id))
+            .map(|n| ArchitectureRenderNode {
+                id: n.id.clone(),
+                node_type: match n.ty {
+                    ArchitectureNodeType::Service => ArchitectureRenderNodeType::Service,
+                    ArchitectureNodeType::Junction => ArchitectureRenderNodeType::Junction,
+                },
+                edge_indices: n.edges.clone(),
+                icon: n.icon.clone(),
+                icon_text: n.icon_text.clone(),
+                title: n.title.clone(),
+                in_group: n.in_group.clone(),
+            })
+            .collect();
+
+        let groups: Vec<ArchitectureRenderGroup> = self
+            .group_order
+            .iter()
+            .filter_map(|id| self.groups.get(id))
+            .map(|g| ArchitectureRenderGroup {
+                id: g.id.clone(),
+                icon: g.icon.clone(),
+                title: g.title.clone(),
+                in_group: g.in_group.clone(),
+            })
+            .collect();
+
+        let edges: Vec<ArchitectureRenderEdge> = self
+            .edges
+            .iter()
+            .map(|e| ArchitectureRenderEdge {
+                lhs_id: e.lhs_id.clone(),
+                lhs_dir: e.lhs_dir,
+                lhs_into: e.lhs_into,
+                lhs_group: e.lhs_group,
+                rhs_id: e.rhs_id.clone(),
+                rhs_dir: e.rhs_dir,
+                rhs_into: e.rhs_into,
+                rhs_group: e.rhs_group,
+                title: e.title.clone(),
+            })
+            .collect();
+
+        ArchitectureDiagramRenderModel {
+            title,
+            acc_title,
+            acc_descr,
+            nodes,
+            groups,
+            edges,
+        }
     }
 
     fn add_service(
@@ -1082,6 +1144,171 @@ pub fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Value> {
         "edges": edges,
         "config": config,
     }))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchitectureDiagramRenderModel {
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default, rename = "accTitle")]
+    pub acc_title: Option<String>,
+    #[serde(default, rename = "accDescr")]
+    pub acc_descr: Option<String>,
+    #[serde(default)]
+    pub nodes: Vec<ArchitectureRenderNode>,
+    #[serde(default)]
+    pub groups: Vec<ArchitectureRenderGroup>,
+    #[serde(default)]
+    pub edges: Vec<ArchitectureRenderEdge>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ArchitectureRenderNodeType {
+    #[serde(rename = "service")]
+    Service,
+    #[serde(rename = "junction")]
+    Junction,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchitectureRenderNode {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub node_type: ArchitectureRenderNodeType,
+    #[serde(default)]
+    pub edge_indices: Vec<usize>,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default, rename = "iconText")]
+    pub icon_text: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default, rename = "in")]
+    pub in_group: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchitectureRenderGroup {
+    pub id: String,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default, rename = "in")]
+    pub in_group: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchitectureRenderEdge {
+    #[serde(rename = "lhsId")]
+    pub lhs_id: String,
+    #[serde(rename = "lhsDir")]
+    pub lhs_dir: char,
+    #[serde(default, rename = "lhsInto")]
+    pub lhs_into: Option<bool>,
+    #[serde(default, rename = "lhsGroup")]
+    pub lhs_group: Option<bool>,
+    #[serde(rename = "rhsId")]
+    pub rhs_id: String,
+    #[serde(rename = "rhsDir")]
+    pub rhs_dir: char,
+    #[serde(default, rename = "rhsInto")]
+    pub rhs_into: Option<bool>,
+    #[serde(default, rename = "rhsGroup")]
+    pub rhs_group: Option<bool>,
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
+pub fn parse_architecture_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<ArchitectureDiagramRenderModel> {
+    let mut db = ArchitectureDb::default();
+    db.clear();
+
+    let mut lines = code.lines();
+    let mut found_header = false;
+    let mut header_tail: Option<String> = None;
+    for line in lines.by_ref() {
+        let t = strip_inline_comment(line);
+        let trimmed = t.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix("architecture-beta") {
+            let rest = rest.trim_start();
+            if !rest.is_empty() {
+                header_tail = Some(rest.to_string());
+            }
+            found_header = true;
+            break;
+        }
+        break;
+    }
+
+    if !found_header {
+        return Err(Error::DiagramParse {
+            diagram_type: meta.diagram_type.clone(),
+            message: "expected architecture-beta header".to_string(),
+        });
+    }
+
+    let mut process_line = |raw: &str, lines: &mut std::str::Lines<'_>| -> Result<()> {
+        let line = strip_inline_comment(raw);
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            return Ok(());
+        }
+
+        if let Some(v) = parse_title_stmt(trimmed) {
+            db.set_title(v);
+            return Ok(());
+        }
+        if let Some(v) = parse_acc_title_stmt(trimmed) {
+            db.set_acc_title(v);
+            return Ok(());
+        }
+        if let Some(v) = parse_acc_descr_stmt_single(trimmed) {
+            db.set_acc_descr(v);
+            return Ok(());
+        }
+        if let Some(v) = parse_acc_descr_block(lines, trimmed) {
+            db.set_acc_descr(v);
+            return Ok(());
+        }
+
+        if parse_group_stmt(&mut db, trimmed)? {
+            return Ok(());
+        }
+        if parse_service_stmt(&mut db, trimmed)? {
+            return Ok(());
+        }
+        if parse_junction_stmt(&mut db, trimmed)? {
+            return Ok(());
+        }
+        if parse_edge_stmt(&mut db, trimmed)? {
+            return Ok(());
+        }
+
+        Err(Error::DiagramParse {
+            diagram_type: meta.diagram_type.clone(),
+            message: format!("unrecognized statement: {trimmed}"),
+        })
+    };
+
+    if let Some(tail) = &header_tail {
+        process_line(tail, &mut lines)?;
+    }
+
+    while let Some(line) = lines.next() {
+        process_line(line, &mut lines)?;
+    }
+
+    Ok(db.render_model())
 }
 
 #[cfg(test)]
