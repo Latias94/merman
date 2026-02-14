@@ -3,7 +3,7 @@
 This document tracks the performance plan for `merman` with concrete, measurable milestones.
 It is intentionally fixture-driven and stage-attributed (parse/layout/render/end-to-end).
 
-## Current Status (2026-02-13)
+## Current Status (2026-02-14)
 
 ### Stage Attribution Snapshot (canaries)
 
@@ -27,6 +27,11 @@ Root-cause direction:
 
 - `flowchart_medium` is now a multi-stage problem: layout (`dugong::order`) is still expensive, and
   render spends a meaningful slice in DOM building + edge path work + viewport computation.
+- BK x-positioning (`dugong::position::bk::position_x`) was a measurable secondary hotspot after
+  ordering. We now reuse the already-computed `layering` matrix from the Dagre-ish pipeline and use
+  `&str`-based temporary maps plus an index-based block-graph pass to reduce hashing + allocation.
+  On this machine, `DUGONG_DAGREISH_TIMING=1` for `flowchart_medium` dropped `position_x` from
+  ~`1.0ms` → ~`0.66ms` (single-run signal; spotcheck variance still applies).
 - Flowchart viewport work had some pure overhead: we were generating an edge path `d` string and
   then re-parsing it to approximate `getBBox()`. We now compute cubic bounds during curve emission
   for the viewBox approximation, avoiding `svg_path_bounds_from_d(...)` in the flowchart viewbox
@@ -135,7 +140,7 @@ Status note:
   are to reduce per-leaf overhead (style resolution, SVG emission) and increase cache hit rate for
   RoughJS shapes.
 
-### M4 — Positioning: reduce `position_x` overhead (Planned)
+### M4 — Positioning: reduce `position_x` overhead (Done)
 
 Goal: after `order` is no longer dominant, reduce the next hotspot(s) without changing layout.
 
@@ -148,6 +153,13 @@ Work items:
 Acceptance criteria:
 
 - `position_x` time drops in `DUGONG_DAGREISH_TIMING=1` output for `flowchart_medium`.
+
+Status note:
+
+- Landed: `position_x_with_layering(...)` fast path that:
+  - reuses pipeline `layering` (no duplicate `build_layer_matrix`),
+  - keeps conflicts/alignment maps keyed by `&str` (no per-iteration `String` cloning),
+  - replaces the block-graph `Graph<(), f64, ()>` construction with an index-based edge list.
 
 ### M5 — Render: close the multi-diagram gap (Planned)
 
