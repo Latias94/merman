@@ -83,6 +83,7 @@ Recently imported (keep gates green after each batch):
 - 2026-02-14: ER HTML demo fixtures import (9 fixtures from `repo-ref/mermaid/demos/er.html` + `repo-ref/mermaid/demos/er-multiline.html` via `<pre class="mermaid">`, with upstream SVG baselines). Hardened ER parity for theme `forest` table striping (`rowOdd`/`rowEven`), Markdown/HTML labels inside `<foreignObject>`, and title placement (`utils.insertTitle`).
 - 2026-02-14: Block HTML demo fixtures import (11 fixtures from `repo-ref/mermaid/demos/block.html` via `<pre class="mermaid">`, with upstream SVG baselines; the demo page includes 1 Flowchart snippet which is intentionally skipped by the Block importer). Hardened Block parity for additional node shapes (`stadium`, `subroutine`, `cylinder`, `diamond`, `hexagon`, trapezoids/lean variants) and added fixture-derived root viewport overrides to keep the global `parity-root` gate green.
 - 2026-02-14: Packet HTML demo fixtures import (4 fixtures from `repo-ref/mermaid/demos/packet.html` via `<pre class="mermaid">`, with upstream SVG baselines). Hardened Packet layout parity for `config.packet.showBits` (including upstream `paddingY += 10` behavior when `showBits=true`) to keep `parity-root` green.
+- 2026-02-14: Timeline HTML demo fixtures import (2 fixtures from `repo-ref/mermaid/demos/timeline.html` via `<pre class="mermaid">`, with upstream SVG baselines). Refreshed Timeline root viewport overrides for the new fixture ID to keep `parity-root` green.
 
 ## Medium priority (coverage growth)
 
