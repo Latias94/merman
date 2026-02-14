@@ -1246,8 +1246,80 @@ fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
         out
     }
 
+    fn normalize_yaml_frontmatter_indentation(s: &str) -> String {
+        fn trim_front_ws(line: &str, n: usize) -> &str {
+            let mut removed = 0usize;
+            for (idx, ch) in line.char_indices() {
+                if removed >= n {
+                    return &line[idx..];
+                }
+                if ch == ' ' || ch == '\t' {
+                    removed += 1;
+                    continue;
+                }
+                return &line[idx..];
+            }
+            if removed >= n { "" } else { line }
+        }
+
+        let lines: Vec<&str> = s.lines().collect();
+        let mut first_non_empty = 0usize;
+        while first_non_empty < lines.len() && lines[first_non_empty].trim().is_empty() {
+            first_non_empty += 1;
+        }
+        if first_non_empty >= lines.len() {
+            return s.to_string();
+        }
+        if lines[first_non_empty].trim() != "---" {
+            return s.to_string();
+        }
+
+        let mut close_idx: Option<usize> = None;
+        for i in (first_non_empty + 1)..lines.len() {
+            if lines[i].trim() == "---" {
+                close_idx = Some(i);
+                break;
+            }
+        }
+        let Some(close_idx) = close_idx else {
+            return s.to_string();
+        };
+
+        let mut min_indent = None::<usize>;
+        for l in &lines[(first_non_empty + 1)..close_idx] {
+            if l.trim().is_empty() {
+                continue;
+            }
+            let indent = l
+                .as_bytes()
+                .iter()
+                .take_while(|b| **b == b' ' || **b == b'\t')
+                .count();
+            min_indent = Some(min_indent.map(|m| m.min(indent)).unwrap_or(indent));
+        }
+        let min_indent = min_indent.unwrap_or(0);
+
+        let mut out = String::with_capacity(s.len());
+        for (idx, line) in lines.iter().enumerate() {
+            if idx > 0 {
+                out.push('\n');
+            }
+            if idx == first_non_empty || idx == close_idx {
+                out.push_str("---");
+                continue;
+            }
+            if idx > first_non_empty && idx < close_idx {
+                out.push_str(trim_front_ws(line, min_indent));
+                continue;
+            }
+            out.push_str(line);
+        }
+        out
+    }
+
     fn normalize_cypress_fixture_text(raw: &str) -> String {
-        dedent(&html_unescape_basic(raw))
+        let s = dedent(&html_unescape_basic(raw));
+        normalize_yaml_frontmatter_indentation(&s)
     }
 
     fn collect_spec_files_recursively(
