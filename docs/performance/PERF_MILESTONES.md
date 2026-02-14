@@ -41,6 +41,8 @@ Root-cause direction:
   - layout is in the same ballpark but can still regress on `order` / `position_x`.
   - Latest canary numbers (spotcheck mid estimate): `parse 1.09x`, `layout 1.34x`, `render 3.68x`,
     `end_to_end 1.20x`.
+  - After reusing layout-provided label metrics in the flowchart renderer (flowchart-only spotcheck,
+    2026-02-14): `render 1.84x` (10 samples / 1s warmup / 4s measurement; spotcheck variance applies).
 - BK x-positioning (`dugong::position::bk::position_x`) was a measurable secondary hotspot after
   ordering. We now reuse the already-computed `layering` matrix from the Dagre-ish pipeline and use
   `&str`-based temporary maps plus an index-based block-graph pass to reduce hashing + allocation.
@@ -216,6 +218,8 @@ Work items (expected ROI order):
   - pre-parse class text overrides once per render call (so we don't re-split decl strings per node)
 - (Done) Reduce HTML label style overhead by extracting `color/font-*` fields during style compilation
   (avoid rescanning `label_style` strings per node/edge label).
+- (Done) Reuse flowchart node label metrics computed during layout (avoid re-measuring HTML/markdown
+  labels during render).
 - (Planned) Avoid cloning `effective_config` JSON in the hot render path; pass `MermaidConfig`
   (Arc-backed) through the render API so diagram renderers can read config without deep-cloning.
 - (Planned) Cache per-diagram derived values that are reused many times (e.g. sanitized labels /
