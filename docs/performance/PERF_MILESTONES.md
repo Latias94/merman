@@ -7,22 +7,22 @@ It is intentionally fixture-driven and stage-attributed (parse/layout/render/end
 
 ### Stage Attribution Snapshot (canaries)
 
-Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) indicates the remaining gap is dominated by
-**render** on flowchart-heavy fixtures. For `class` / `state`, layout is already materially
-faster than `mmdr`, so end-to-end can be better even though render is still behind.
+Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is *multi-source*:
 
-- Spotcheck (`tools/bench/stage_spotcheck.py`, 15 samples / 3s warmup / 8s measurement, 2026-02-14):
-  - Canary set (`flowchart_medium,class_medium,state_medium`):
-    - `parse` gmean: `2.53x`
-    - `layout` gmean: `0.56x` (skewed by `class`/`state` being faster; `flowchart` is slower)
-    - `render` gmean: `3.86x`
-    - `end_to_end` gmean: `0.72x`
+- `render` is still behind on several diagram types (flowchart/class/mindmap),
+- `layout` is the dominant gap for `mindmap`,
+- `parse` is the dominant gap for `architecture` (orders of magnitude on small inputs).
+
+- Spotcheck (`tools/bench/stage_spotcheck.py`, 10 samples / 2s warmup / 5s measurement, 2026-02-14):
+  - Canary set (`flowchart_medium,class_medium,sequence_medium,mindmap_medium,architecture_medium`):
+    - `parse` gmean: `3.17x`
+    - `layout` gmean: `1.20x`
+    - `render` gmean: `1.95x`
+    - `end_to_end` gmean: `1.78x`
   - Notable outliers in this run:
-    - `flowchart_medium`: `parse 2.78x`, `layout 1.17x`, `render 3.69x`, `end_to_end 1.25x`
-    - `state_medium`: `render 5.60x` (leaf work + emission fixed-costs still dominate)
-
-  - Flowchart-only spotcheck (same parameters, 2026-02-14):
-    - `flowchart_medium`: `parse 1.03x`, `layout 1.16x`, `render 2.71x`, `end_to_end 1.20x`
+    - `architecture_medium`: `parse 26.23x`, `end_to_end 7.98x` (tiny input; we're paying fixed-cost tax)
+    - `mindmap_medium`: `layout 3.33x`, `end_to_end 2.27x`
+    - `flowchart_medium`: `layout 1.29x`, `render 2.45x`, `end_to_end 1.56x`
 
 Root-cause direction:
 
@@ -59,10 +59,12 @@ Root-cause direction:
   strokes, and `path_bounds` micro-timing dropped from ~`O(50µs)` to ~`O(1–3µs)` for `class_medium`.
 - `state_medium` render is dominated by leaf node work, especially RoughJS path generation and emit.
 - `mindmap_medium` overall gap is now mostly layout (COSE port / bbox work) rather than parse.
+- `architecture_medium` overall gap is now mostly parse fixed-cost (preprocess + JSON model materialization).
 
 Useful debug toggles:
 
 - `MERMAN_RENDER_TIMING=1` (flowchart render stage attribution)
+- `MERMAN_RENDER_TIMING=1` (mindmap + architecture coarse attribution)
 - `MERMAN_PARSE_TIMING=1` (parse stage attribution: preprocess/detect/parse/sanitize)
 - `MERMAN_FLOWCHART_LAYOUT_TIMING=1` (flowchart layout stage attribution)
 - `DUGONG_DAGREISH_TIMING=1` (Dagre-ish pipeline stage attribution; shows `order` as dominant)
@@ -232,6 +234,23 @@ Guidance:
 - Do not switch to a parser combinator crate (e.g. `nom`) as a default move. That trade is mainly
   about maintainability and error reporting; it does not guarantee speed.
 
+### M7 — Architecture: cut parse fixed-costs (Planned)
+
+Motivation (from spotcheck):
+
+- `architecture_medium` is *dominated* by parse stage fixed costs (`~26x` vs `mmdr` in one run),
+  even on tiny inputs.
+
+Work items (ordered by expected ROI):
+
+1. Add a typed semantic model / typed render-model parse path for architecture (similar to flowchart).
+2. Reduce preprocess overhead for short diagrams (avoid unnecessary allocations/scans).
+3. Audit the architecture parser for avoidable `String` cloning and map churn (prefer `&str`/interning).
+
+Acceptance criteria:
+
+- Spotcheck: `parse/architecture_medium` ratio drops by an order of magnitude without changing goldens.
+
 ## Fixture-driven Targets
 
 We treat these fixtures as canaries:
@@ -239,6 +258,8 @@ We treat these fixtures as canaries:
 - `flowchart_medium`: layout-heavy + many node labels.
 - `state_medium`: render-heavy (shape generation / label handling).
 - `class_medium`: end-to-end sanity (already close).
+- `mindmap_medium`: layout-heavy (COSE port).
+- `architecture_medium`: parse fixed-cost canary (tiny input).
 
 When a milestone lands, record a new spotcheck report under `target/bench/` locally (do not commit)
 and update this doc with the latest ratios.
