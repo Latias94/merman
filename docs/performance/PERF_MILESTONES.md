@@ -8,23 +8,25 @@ It is intentionally fixture-driven and stage-attributed (parse/layout/render/end
 ### Stage Attribution Snapshot (canaries)
 
 Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) indicates the remaining gap is dominated by
-**render + flowchart layout**, with parse still behind but now a smaller share of total wall time for
-layout-heavy fixtures.
+**parse + render** on flowchart-heavy fixtures. For `class` / `state`, layout is already materially
+faster than `mmdr`, so end-to-end can be better even though render is still behind.
 
 - Spotcheck (`tools/bench/stage_spotcheck.py`, 15 samples / 3s warmup / 8s measurement, 2026-02-14):
   - Canary set (`flowchart_medium,class_medium,state_medium`):
-    - `parse` gmean: `~2.47x`
-    - `layout` gmean: `~0.60x` (skewed by `class`/`state` being faster; `flowchart` is still slower)
-    - `render` gmean: `~4.63x`
-    - `end_to_end` gmean: `~0.65x`
+    - `parse` gmean: `2.53x`
+    - `layout` gmean: `0.56x` (skewed by `class`/`state` being faster; `flowchart` is slower)
+    - `render` gmean: `3.86x`
+    - `end_to_end` gmean: `0.72x`
   - Notable outliers in this run:
-    - `flowchart_medium`: `parse ~2.73x`, `layout ~1.87x`, `render ~3.27x`, `end_to_end ~1.33x`
-    - `state_medium`: `render ~9.46x` (leaf work + emission fixed-costs still dominate)
+    - `flowchart_medium`: `parse 2.78x`, `layout 1.17x`, `render 3.69x`, `end_to_end 1.25x`
+    - `state_medium`: `render 5.60x` (leaf work + emission fixed-costs still dominate)
 
 Root-cause direction:
 
-- `flowchart_medium` is now a multi-stage problem: layout (`dugong::order`) is still expensive, and
-  render spends a meaningful slice in DOM building + edge path work + viewport computation.
+- `flowchart_medium` is now primarily a parse+render problem:
+  - parse still pays the `serde_json::Value` tax and downstream decode costs,
+  - render has high fixed overhead from SVG emission (many small writes + style resolution),
+  - layout is in the same ballpark but can still regress on `order` / `position_x`.
 - BK x-positioning (`dugong::position::bk::position_x`) was a measurable secondary hotspot after
   ordering. We now reuse the already-computed `layering` matrix from the Dagre-ish pipeline and use
   `&str`-based temporary maps plus an index-based block-graph pass to reduce hashing + allocation.
@@ -46,6 +48,9 @@ Root-cause direction:
   - Skip XML-escape scanning for `data-points` base64 payloads (and other known-safe path payloads).
   - Avoid repeated `String::replacen(...)` passes over the full SVG by doing placeholder replacement
     in a single rebuild pass (not 2–3 full copies).
+- Flowchart edge path emission was allocating aggressively per edge (style joins + marker attribute
+  formatting). We now write the style attribute and marker attrs directly into the output buffer to
+  cut per-edge allocations (golden fixtures unchanged).
 - Class diagram viewport work had the same pattern: we were accumulating `path_bounds` by parsing
   the emitted `d` strings. We now compute bounds during path emission for class edges + RoughJS-like
   strokes, and `path_bounds` micro-timing dropped from ~`O(50µs)` to ~`O(1–3µs)` for `class_medium`.
@@ -91,8 +96,8 @@ Work items:
 
 Goal: cut `layout/flowchart_medium` substantially.
 
-Primary target: reduce the spotcheck ratio from `~5x` → `< 2.0x` without changing layout output.
-Current: `~1.4–2.4x` on `flowchart_medium` in the latest canary runs (numbers fluctuate).
+Primary target: keep `layout/flowchart_medium` at `<= 1.0x` vs `mmdr` without changing layout output.
+Current: `~1.17x` on `flowchart_medium` in the latest canary run (spotcheck variance applies).
 
 What we know:
 
@@ -113,8 +118,8 @@ Next work items (ordered by expected ROI):
    materialization + constraint-graph building.)
 3. Reduce `build_layer_graph_cache` costs (this is outside `sweeps`, but still inside `order`):
    - Build cached layer graphs using a lightweight node label rather than cloning full `NodeLabel`.
-   - On `flowchart_medium`, local timing showed `build_layer_graph_cache` dropping from ~`2.0ms` → ~`0.7ms`,
-     and `order total` dropping from ~`4.5ms` → ~`3.3ms`.
+   - Recent `DUGONG_ORDER_TIMING=1` single-run timings for `flowchart_medium` are in the
+     `build_layer_graph_cache ~0.7ms` and `order total ~2.3ms` range (variance applies).
 4. Deeper refactor (likely required): introduce an index-based internal representation for ordering
    sweeps:
    - map external `NodeKey` → dense `usize` once per `order(...)` call
@@ -127,7 +132,7 @@ Next work items (ordered by expected ROI):
 
 Acceptance criteria:
 
-- Spotcheck: `layout/flowchart_medium` improves and end-to-end drops proportionally.
+- Spotcheck: `layout/flowchart_medium` stays at `<= 1.0x` and end-to-end drops proportionally.
 - Layout micro-timing: `order` and especially `sweeps` drop materially (single-digit ms is a
   reasonable medium-term target for the medium fixture).
 
@@ -184,6 +189,7 @@ Work items (expected ROI order):
   - replace placeholder `String::replacen(...)` passes with a single rebuild pass
 - (Done) Avoid allocating temporary `String` for common attribute escaping (Display-based attr escape
   in flowchart tooltip emission).
+- (Done) Reduce per-edge allocations in flowchart edge path emission (style attribute + marker attrs).
 - (In progress) Avoid repeated `String` growth by pre-sizing buffers and using a single `String`
   builder per SVG (especially for flowchart node emission).
 - (In progress) Reduce per-node overhead for the hot path:
