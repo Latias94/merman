@@ -850,10 +850,23 @@ pub(super) fn render_class_diagram_v2_svg(
     let mut out = String::with_capacity(estimated_svg_bytes);
     let _ = write!(
         &mut out,
-        r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="classDiagram" style="max-width: {}px; background-color: white;" viewBox="{}" role="graphics-document document" aria-roledescription="{}""#,
+        r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="classDiagram" style="max-width: "#,
         escape_xml_display(diagram_id),
-        MAX_WIDTH_PLACEHOLDER,
-        VIEWBOX_PLACEHOLDER,
+    );
+    let max_width_placeholder_range = {
+        let start = out.len();
+        out.push_str(MAX_WIDTH_PLACEHOLDER);
+        start..out.len()
+    };
+    out.push_str(r#"px; background-color: white;" viewBox=""#);
+    let viewbox_placeholder_range = {
+        let start = out.len();
+        out.push_str(VIEWBOX_PLACEHOLDER);
+        start..out.len()
+    };
+    let _ = write!(
+        &mut out,
+        r#"" role="graphics-document document" aria-roledescription="{}""#,
         escape_attr_display(aria_roledescription)
     );
     if has_acc_title {
@@ -2188,13 +2201,10 @@ pub(super) fn render_class_diagram_v2_svg(
     drop(viewbox_guard);
     let finalize_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.finalize_svg));
 
-    out = super::util::replace_placeholders_once(
-        &out,
-        &[
-            (MAX_WIDTH_PLACEHOLDER, max_w_attr.as_str()),
-            (VIEWBOX_PLACEHOLDER, view_box_attr.as_str()),
-        ],
-    );
+    // Avoid a full-string scan + allocation for placeholder replacement by patching the initial
+    // `<svg ...>` attributes in-place.
+    out.replace_range(viewbox_placeholder_range, view_box_attr.as_str());
+    out.replace_range(max_width_placeholder_range, max_w_attr.as_str());
 
     out.push_str("</svg>");
     drop(finalize_guard);
