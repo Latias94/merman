@@ -1,0 +1,110 @@
+{
+  "diagramType": "flowchart-v2",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "DataStore",
+          "x": 66.88,
+          "y": 41.26,
+          "width": 117.76,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Process",
+          "x": 241.02,
+          "y": 41.26,
+          "width": 66.52,
+          "height": 66.52,
+          "is_cluster": false
+        },
+        {
+          "id": "Entity",
+          "x": 427.24,
+          "y": 41.26,
+          "width": 123.36,
+          "height": 54.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_DataStore_Process_0",
+          "from": "DataStore",
+          "to": "Process",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 125.76,
+              "y": 41.26
+            },
+            {
+              "x": 166.76,
+              "y": 41.26
+            },
+            {
+              "x": 207.76,
+              "y": 41.26
+            }
+          ],
+          "label": {
+            "x": 166.76,
+            "y": 41.26,
+            "width": 32.0,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_Process_Entity_0",
+          "from": "Process",
+          "to": "Entity",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 274.28,
+              "y": 41.26
+            },
+            {
+              "x": 319.92,
+              "y": 41.26
+            },
+            {
+              "x": 365.56,
+              "y": 41.26
+            }
+          ],
+          "label": {
+            "x": 319.92,
+            "y": 41.26,
+            "width": 41.28,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 488.92,
+        "max_y": 74.52
+      }
+    }
+  }
+}

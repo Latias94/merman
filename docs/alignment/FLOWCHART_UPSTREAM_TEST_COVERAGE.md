@@ -184,6 +184,11 @@ baselines:
 - `fixtures/flowchart/upstream_html_demos_flowchart_flowchart_051.mmd`
 - `fixtures/flowchart/upstream_html_demos_flowchart_flowchart_062.mmd`
 
+Source: `repo-ref/mermaid/demos/dataflowchart.html` (via `<pre class="mermaid">` blocks).
+
+- `fixtures/flowchart/upstream_html_demos_dataflowchart_data_flow_diagram_demos_001.mmd`
+- `fixtures/flowchart/upstream_html_demos_dataflowchart_borders_example_002.mmd`
+
 ## Parser specs
 
 ### `parser/flow-comments.spec.js`
