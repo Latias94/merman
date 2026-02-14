@@ -1,0 +1,202 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1184.0,
+        "max_y": 148.0
+      },
+      "width": 1184.0,
+      "height": 148.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "YYYY-MM-DD",
+      "axis_format": "%d",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "Section1"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "Section1",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 74.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Section1"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "1",
+          "task": "2 Days",
+          "section": "Section1",
+          "task_type": "Section1",
+          "order": 0.0,
+          "start_ms": 1546272000000.0,
+          "end_ms": 1546444800000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "1",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 689.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "1-text",
+            "text": "2 Days",
+            "font_size": 11.0,
+            "width": 31.9,
+            "x": 419.5,
+            "y": 63.5,
+            "class": "taskText taskText0 width-31.900000000000006"
+          }
+        },
+        {
+          "id": "2",
+          "task": "Manual Date",
+          "section": "Section1",
+          "task_type": "Section1",
+          "order": 1.0,
+          "start_ms": 1546272000000.0,
+          "end_ms": 1546531200000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "2",
+            "x": 75.0,
+            "y": 74.0,
+            "width": 1034.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "2-text",
+            "text": "Manual Date",
+            "font_size": 11.0,
+            "width": 53.02,
+            "x": 592.0,
+            "y": 87.5,
+            "class": "taskText taskText0 width-53.019999999999996"
+          }
+        }
+      ],
+      "excludes": [],
+      "has_excludes_layer": false,
+      "bottom_ticks": [
+        {
+          "time_ms": 1546272000000.0,
+          "x": 75.0,
+          "label": "01"
+        },
+        {
+          "time_ms": 1546293600000.0,
+          "x": 161.0,
+          "label": "01"
+        },
+        {
+          "time_ms": 1546315200000.0,
+          "x": 247.0,
+          "label": "01"
+        },
+        {
+          "time_ms": 1546336800000.0,
+          "x": 334.0,
+          "label": "01"
+        },
+        {
+          "time_ms": 1546358400000.0,
+          "x": 420.0,
+          "label": "02"
+        },
+        {
+          "time_ms": 1546380000000.0,
+          "x": 506.0,
+          "label": "02"
+        },
+        {
+          "time_ms": 1546401600000.0,
+          "x": 592.0,
+          "label": "02"
+        },
+        {
+          "time_ms": 1546423200000.0,
+          "x": 678.0,
+          "label": "02"
+        },
+        {
+          "time_ms": 1546444800000.0,
+          "x": 764.0,
+          "label": "03"
+        },
+        {
+          "time_ms": 1546466400000.0,
+          "x": 851.0,
+          "label": "03"
+        },
+        {
+          "time_ms": 1546488000000.0,
+          "x": 937.0,
+          "label": "03"
+        },
+        {
+          "time_ms": 1546509600000.0,
+          "x": 1023.0,
+          "label": "03"
+        },
+        {
+          "time_ms": 1546531200000.0,
+          "x": 1109.0,
+          "label": "04"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Inclusive end dates (Manual date should end on 4th)",
+      "title_x": 592.0,
+      "title_y": 25.0
+    }
+  }
+}

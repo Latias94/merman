@@ -1,0 +1,144 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": "#; Gantt Diagrams Allow Semicolons and Hashtags #;!",
+    "accTitle": "A simple sample gantt diagram",
+    "accDescr": "2 sections with 2 tasks each, from 2014",
+    "dateFormat": " YYYY-MM-DD",
+    "axisFormat": "",
+    "tickInterval": null,
+    "todayMarker": "",
+    "includes": [],
+    "excludes": [],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
+    "sections": [
+      "#;Section",
+      "#;Another"
+    ],
+    "tasks": [
+      {
+        "section": "#;Section",
+        "type": "#;Section",
+        "task": "#;A task           ",
+        "id": "a1",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":a1, 2014-01-01, 30d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2014-01-01"
+          },
+          "endTime": {
+            "data": "30d"
+          }
+        },
+        "startTime": "2014-01-01T00:00:00.000",
+        "endTime": "2014-01-31T00:00:00.000"
+      },
+      {
+        "section": "#;Section",
+        "type": "#;Section",
+        "task": "#;Another task     ",
+        "id": "task1",
+        "prevTaskId": "a1",
+        "order": 1,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":after a1  , 20d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after a1"
+          },
+          "endTime": {
+            "data": "20d"
+          }
+        },
+        "startTime": "2014-01-31T00:00:00.000",
+        "endTime": "2014-02-20T00:00:00.000"
+      },
+      {
+        "section": "#;Another",
+        "type": "#;Another",
+        "task": "Task in sec      ",
+        "id": "task2",
+        "prevTaskId": "task1",
+        "order": 2,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":2014-01-12  , 12d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2014-01-12"
+          },
+          "endTime": {
+            "data": "12d"
+          }
+        },
+        "startTime": "2014-01-12T00:00:00.000",
+        "endTime": "2014-01-24T00:00:00.000"
+      },
+      {
+        "section": "#;Another",
+        "type": "#;Another",
+        "task": "another task      ",
+        "id": "task3",
+        "prevTaskId": "task2",
+        "order": 3,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 24d",
+          "startTime": {
+            "type": "prevTaskEnd",
+            "id": "task2"
+          },
+          "endTime": {
+            "data": "24d"
+          }
+        },
+        "startTime": "2014-01-24T00:00:00.000",
+        "endTime": "2014-02-17T00:00:00.000"
+      }
+    ],
+    "links": {},
+    "clickEvents": {}
+  }
+}

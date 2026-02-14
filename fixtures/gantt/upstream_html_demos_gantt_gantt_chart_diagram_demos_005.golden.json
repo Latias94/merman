@@ -1,0 +1,85 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": "Inclusive end dates (Manual date should end on 4th)",
+    "accTitle": null,
+    "accDescr": null,
+    "dateFormat": "YYYY-MM-DD",
+    "axisFormat": "%d",
+    "tickInterval": null,
+    "todayMarker": "",
+    "includes": [],
+    "excludes": [],
+    "inclusiveEndDates": true,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
+    "sections": [
+      "Section1"
+    ],
+    "tasks": [
+      {
+        "section": "Section1",
+        "type": "Section1",
+        "task": "2 Days",
+        "id": "1",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 1, 2019-01-01,2d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2019-01-01"
+          },
+          "endTime": {
+            "data": "2d"
+          }
+        },
+        "startTime": "2019-01-01T00:00:00.000",
+        "endTime": "2019-01-03T00:00:00.000"
+      },
+      {
+        "section": "Section1",
+        "type": "Section1",
+        "task": "Manual Date",
+        "id": "2",
+        "prevTaskId": "1",
+        "order": 1,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": true,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 2, 2019-01-01,2019-01-03",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2019-01-01"
+          },
+          "endTime": {
+            "data": "2019-01-03"
+          }
+        },
+        "startTime": "2019-01-01T00:00:00.000",
+        "endTime": "2019-01-04T00:00:00.000"
+      }
+    ],
+    "links": {},
+    "clickEvents": {}
+  }
+}

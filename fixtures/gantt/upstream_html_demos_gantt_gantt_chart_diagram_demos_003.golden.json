@@ -1,0 +1,182 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": "Airworks roadmap",
+    "accTitle": null,
+    "accDescr": null,
+    "dateFormat": "YYYY-MM-DD",
+    "axisFormat": "%m-%d %a",
+    "tickInterval": null,
+    "todayMarker": "",
+    "includes": [
+      "2021-10-09"
+    ],
+    "excludes": [
+      "weekends",
+      "2021-10-01",
+      "2021-10-04",
+      "2021-10-05",
+      "2021-10-06",
+      "2021-10-07"
+    ],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
+    "sections": [
+      "Airworks 3.4.1",
+      "Airworks 3.4.2"
+    ],
+    "tasks": [
+      {
+        "section": "Airworks 3.4.1",
+        "type": "Airworks 3.4.1",
+        "task": "开发\t",
+        "id": "b",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2021-10-13T00:00:00.000",
+        "raw": {
+          "data": ":b, 2021-10-07, 5d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2021-10-07"
+          },
+          "endTime": {
+            "data": "5d"
+          }
+        },
+        "startTime": "2021-10-07T00:00:00.000",
+        "endTime": "2021-10-13T00:00:00.000"
+      },
+      {
+        "section": "Airworks 3.4.1",
+        "type": "Airworks 3.4.1",
+        "task": "测试\t",
+        "id": "task1",
+        "prevTaskId": "b",
+        "order": 1,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2021-10-19T00:00:00.000",
+        "raw": {
+          "data": ":after b, 4d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after b"
+          },
+          "endTime": {
+            "data": "4d"
+          }
+        },
+        "startTime": "2021-10-13T00:00:00.000",
+        "endTime": "2021-10-19T00:00:00.000"
+      },
+      {
+        "section": "Airworks 3.4.1",
+        "type": "Airworks 3.4.1",
+        "task": "OK  ",
+        "id": "task2",
+        "prevTaskId": "task1",
+        "order": 2,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":milestore",
+          "startTime": {
+            "type": "prevTaskEnd",
+            "id": "task1"
+          },
+          "endTime": {
+            "data": "milestore"
+          }
+        },
+        "startTime": "2021-10-19T00:00:00.000",
+        "endTime": "2021-10-19T00:00:00.000"
+      },
+      {
+        "section": "Airworks 3.4.2",
+        "type": "Airworks 3.4.2",
+        "task": "开发\t",
+        "id": "a",
+        "prevTaskId": "task2",
+        "order": 3,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2021-10-14T00:00:00.000",
+        "raw": {
+          "data": ":a, 2021-10-09, 4d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2021-10-09"
+          },
+          "endTime": {
+            "data": "4d"
+          }
+        },
+        "startTime": "2021-10-09T00:00:00.000",
+        "endTime": "2021-10-14T00:00:00.000"
+      },
+      {
+        "section": "Airworks 3.4.2",
+        "type": "Airworks 3.4.2",
+        "task": "测试\t",
+        "id": "task3",
+        "prevTaskId": "a",
+        "order": 4,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2021-10-20T00:00:00.000",
+        "raw": {
+          "data": ":after a, 4d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after a"
+          },
+          "endTime": {
+            "data": "4d"
+          }
+        },
+        "startTime": "2021-10-14T00:00:00.000",
+        "endTime": "2021-10-20T00:00:00.000"
+      }
+    ],
+    "links": {},
+    "clickEvents": {}
+  }
+}

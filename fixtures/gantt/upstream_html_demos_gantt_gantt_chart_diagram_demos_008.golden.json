@@ -1,0 +1,562 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": "Adding GANTT diagram to mermaid",
+    "accTitle": null,
+    "accDescr": null,
+    "dateFormat": "YYYY-MM-DD",
+    "axisFormat": "%d/%m",
+    "tickInterval": null,
+    "todayMarker": "",
+    "includes": [],
+    "excludes": [
+      "weekdays",
+      "2014-01-10"
+    ],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
+    "sections": [
+      "A section",
+      "Critical tasks",
+      "Documentation",
+      "Clickable",
+      "Last section"
+    ],
+    "tasks": [
+      {
+        "section": "A section",
+        "type": "A section",
+        "task": "Completed task ",
+        "id": "des1",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": true,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": true,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":done, des1, 2014-01-06,2014-01-08",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2014-01-06"
+          },
+          "endTime": {
+            "data": "2014-01-08"
+          }
+        },
+        "startTime": "2014-01-06T00:00:00.000",
+        "endTime": "2014-01-08T00:00:00.000"
+      },
+      {
+        "section": "A section",
+        "type": "A section",
+        "task": "Active task ",
+        "id": "des2",
+        "prevTaskId": "des1",
+        "order": 1,
+        "processed": true,
+        "classes": [],
+        "active": true,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2014-01-13T00:00:00.000",
+        "raw": {
+          "data": ":active, des2, 2014-01-09, 3d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2014-01-09"
+          },
+          "endTime": {
+            "data": "3d"
+          }
+        },
+        "startTime": "2014-01-09T00:00:00.000",
+        "endTime": "2014-01-13T00:00:00.000"
+      },
+      {
+        "section": "A section",
+        "type": "A section",
+        "task": "Future task ",
+        "id": "des3",
+        "prevTaskId": "des2",
+        "order": 2,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2014-01-18T00:00:00.000",
+        "raw": {
+          "data": ": des3, after des2, 5d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after des2"
+          },
+          "endTime": {
+            "data": "5d"
+          }
+        },
+        "startTime": "2014-01-13T00:00:00.000",
+        "endTime": "2014-01-18T00:00:00.000"
+      },
+      {
+        "section": "A section",
+        "type": "A section",
+        "task": "Future task2 ",
+        "id": "des4",
+        "prevTaskId": "des3",
+        "order": 3,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2014-01-23T00:00:00.000",
+        "raw": {
+          "data": ": des4, after des3, 5d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after des3"
+          },
+          "endTime": {
+            "data": "5d"
+          }
+        },
+        "startTime": "2014-01-18T00:00:00.000",
+        "endTime": "2014-01-23T00:00:00.000"
+      },
+      {
+        "section": "Critical tasks",
+        "type": "Critical tasks",
+        "task": "Completed task in the critical line ",
+        "id": "task1",
+        "prevTaskId": "des4",
+        "order": 4,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": true,
+        "crit": true,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2014-01-07T00:00:00.000",
+        "raw": {
+          "data": ":crit, done, 2014-01-06,24h",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2014-01-06"
+          },
+          "endTime": {
+            "data": "24h"
+          }
+        },
+        "startTime": "2014-01-06T00:00:00.000",
+        "endTime": "2014-01-07T00:00:00.000"
+      },
+      {
+        "section": "Critical tasks",
+        "type": "Critical tasks",
+        "task": "Implement parser and jison ",
+        "id": "task2",
+        "prevTaskId": "task1",
+        "order": 5,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": true,
+        "crit": true,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2014-01-10T00:00:00.000",
+        "raw": {
+          "data": ":crit, done, after des1, 2d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after des1"
+          },
+          "endTime": {
+            "data": "2d"
+          }
+        },
+        "startTime": "2014-01-08T00:00:00.000",
+        "endTime": "2014-01-11T00:00:00.000"
+      },
+      {
+        "section": "Critical tasks",
+        "type": "Critical tasks",
+        "task": "Create tests for parser ",
+        "id": "task3",
+        "prevTaskId": "task2",
+        "order": 6,
+        "processed": true,
+        "classes": [],
+        "active": true,
+        "done": false,
+        "crit": true,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2014-01-14T00:00:00.000",
+        "raw": {
+          "data": ":crit, active, 3d",
+          "startTime": {
+            "type": "prevTaskEnd",
+            "id": "task2"
+          },
+          "endTime": {
+            "data": "3d"
+          }
+        },
+        "startTime": "2014-01-11T00:00:00.000",
+        "endTime": "2014-01-14T00:00:00.000"
+      },
+      {
+        "section": "Critical tasks",
+        "type": "Critical tasks",
+        "task": "Future task in critical line ",
+        "id": "task4",
+        "prevTaskId": "task3",
+        "order": 7,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": true,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2014-01-19T00:00:00.000",
+        "raw": {
+          "data": ":crit, 5d",
+          "startTime": {
+            "type": "prevTaskEnd",
+            "id": "task3"
+          },
+          "endTime": {
+            "data": "5d"
+          }
+        },
+        "startTime": "2014-01-14T00:00:00.000",
+        "endTime": "2014-01-19T00:00:00.000"
+      },
+      {
+        "section": "Critical tasks",
+        "type": "Critical tasks",
+        "task": "Create tests for renderer ",
+        "id": "task5",
+        "prevTaskId": "task4",
+        "order": 8,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2014-01-21T00:00:00.000",
+        "raw": {
+          "data": ":2d",
+          "startTime": {
+            "type": "prevTaskEnd",
+            "id": "task4"
+          },
+          "endTime": {
+            "data": "2d"
+          }
+        },
+        "startTime": "2014-01-19T00:00:00.000",
+        "endTime": "2014-01-21T00:00:00.000"
+      },
+      {
+        "section": "Critical tasks",
+        "type": "Critical tasks",
+        "task": "Add to mermaid ",
+        "id": "task6",
+        "prevTaskId": "task5",
+        "order": 9,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2014-01-22T00:00:00.000",
+        "raw": {
+          "data": ":1d",
+          "startTime": {
+            "type": "prevTaskEnd",
+            "id": "task5"
+          },
+          "endTime": {
+            "data": "1d"
+          }
+        },
+        "startTime": "2014-01-21T00:00:00.000",
+        "endTime": "2014-01-22T00:00:00.000"
+      },
+      {
+        "section": "Documentation",
+        "type": "Documentation",
+        "task": "Describe gantt syntax ",
+        "id": "a1",
+        "prevTaskId": "task6",
+        "order": 10,
+        "processed": true,
+        "classes": [],
+        "active": true,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2014-01-12T00:00:00.000",
+        "raw": {
+          "data": ":active, a1, after des1, 3d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after des1"
+          },
+          "endTime": {
+            "data": "3d"
+          }
+        },
+        "startTime": "2014-01-08T00:00:00.000",
+        "endTime": "2014-01-12T00:00:00.000"
+      },
+      {
+        "section": "Documentation",
+        "type": "Documentation",
+        "task": "Add gantt diagram to demo page ",
+        "id": "task7",
+        "prevTaskId": "a1",
+        "order": 11,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":after a1 , 20h",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after a1"
+          },
+          "endTime": {
+            "data": "20h"
+          }
+        },
+        "startTime": "2014-01-12T00:00:00.000",
+        "endTime": "2014-01-12T20:00:00.000"
+      },
+      {
+        "section": "Documentation",
+        "type": "Documentation",
+        "task": "Add another diagram to demo page ",
+        "id": "doc1",
+        "prevTaskId": "task7",
+        "order": 12,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2014-01-14T00:00:00.000",
+        "raw": {
+          "data": ":doc1, after a1 , 48h",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after a1"
+          },
+          "endTime": {
+            "data": "48h"
+          }
+        },
+        "startTime": "2014-01-12T00:00:00.000",
+        "endTime": "2014-01-14T00:00:00.000"
+      },
+      {
+        "section": "Clickable",
+        "type": "Clickable",
+        "task": "Visit mermaidjs ",
+        "id": "cl1",
+        "prevTaskId": "doc1",
+        "order": 13,
+        "processed": true,
+        "classes": [
+          "clickable"
+        ],
+        "active": true,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": true,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":active, cl1, 2014-01-07,2014-01-10",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2014-01-07"
+          },
+          "endTime": {
+            "data": "2014-01-10"
+          }
+        },
+        "startTime": "2014-01-07T00:00:00.000",
+        "endTime": "2014-01-10T00:00:00.000"
+      },
+      {
+        "section": "Clickable",
+        "type": "Clickable",
+        "task": "Calling a Callback (look at the console log) ",
+        "id": "cl2",
+        "prevTaskId": "cl1",
+        "order": 14,
+        "processed": true,
+        "classes": [
+          "clickable"
+        ],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2014-01-13T00:00:00.000",
+        "raw": {
+          "data": ":cl2, after cl1, 3d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after cl1"
+          },
+          "endTime": {
+            "data": "3d"
+          }
+        },
+        "startTime": "2014-01-10T00:00:00.000",
+        "endTime": "2014-01-13T00:00:00.000"
+      },
+      {
+        "section": "Last section",
+        "type": "Last section",
+        "task": "Describe gantt syntax ",
+        "id": "task8",
+        "prevTaskId": "cl2",
+        "order": 15,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2014-01-17T00:00:00.000",
+        "raw": {
+          "data": ":after doc1, 3d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after doc1"
+          },
+          "endTime": {
+            "data": "3d"
+          }
+        },
+        "startTime": "2014-01-14T00:00:00.000",
+        "endTime": "2014-01-17T00:00:00.000"
+      },
+      {
+        "section": "Last section",
+        "type": "Last section",
+        "task": "Add gantt diagram to demo page ",
+        "id": "task9",
+        "prevTaskId": "task8",
+        "order": 16,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 20h",
+          "startTime": {
+            "type": "prevTaskEnd",
+            "id": "task8"
+          },
+          "endTime": {
+            "data": "20h"
+          }
+        },
+        "startTime": "2014-01-17T00:00:00.000",
+        "endTime": "2014-01-17T20:00:00.000"
+      },
+      {
+        "section": "Last section",
+        "type": "Last section",
+        "task": "Add another diagram to demo page ",
+        "id": "task10",
+        "prevTaskId": "task9",
+        "order": 17,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2014-01-19T20:00:00.000",
+        "raw": {
+          "data": ": 48h",
+          "startTime": {
+            "type": "prevTaskEnd",
+            "id": "task9"
+          },
+          "endTime": {
+            "data": "48h"
+          }
+        },
+        "startTime": "2014-01-17T20:00:00.000",
+        "endTime": "2014-01-19T20:00:00.000"
+      }
+    ],
+    "links": {
+      "cl1": "https://mermaidjs.github.io/"
+    },
+    "clickEvents": {}
+  }
+}
