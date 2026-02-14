@@ -1246,8 +1246,160 @@ fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
         out
     }
 
+    fn normalize_yaml_frontmatter_indentation(s: &str) -> String {
+        fn trim_front_ws(line: &str, n: usize) -> &str {
+            let mut removed = 0usize;
+            for (idx, ch) in line.char_indices() {
+                if removed >= n {
+                    return &line[idx..];
+                }
+                if ch == ' ' || ch == '\t' {
+                    removed += 1;
+                    continue;
+                }
+                return &line[idx..];
+            }
+            if removed >= n { "" } else { line }
+        }
+
+        let lines: Vec<&str> = s.lines().collect();
+        let mut first_non_empty = 0usize;
+        while first_non_empty < lines.len() && lines[first_non_empty].trim().is_empty() {
+            first_non_empty += 1;
+        }
+        if first_non_empty >= lines.len() {
+            return s.to_string();
+        }
+        if lines[first_non_empty].trim() != "---" {
+            return s.to_string();
+        }
+
+        let mut close_idx: Option<usize> = None;
+        for i in (first_non_empty + 1)..lines.len() {
+            if lines[i].trim() == "---" {
+                close_idx = Some(i);
+                break;
+            }
+        }
+        let Some(close_idx) = close_idx else {
+            return s.to_string();
+        };
+
+        let mut min_indent = None::<usize>;
+        for l in &lines[(first_non_empty + 1)..close_idx] {
+            if l.trim().is_empty() {
+                continue;
+            }
+            let indent = l
+                .as_bytes()
+                .iter()
+                .take_while(|b| **b == b' ' || **b == b'\t')
+                .count();
+            min_indent = Some(min_indent.map(|m| m.min(indent)).unwrap_or(indent));
+        }
+        let min_indent = min_indent.unwrap_or(0);
+
+        let mut out = String::with_capacity(s.len());
+        for (idx, line) in lines.iter().enumerate() {
+            if idx > 0 {
+                out.push('\n');
+            }
+            if idx == first_non_empty || idx == close_idx {
+                out.push_str("---");
+                continue;
+            }
+            if idx > first_non_empty && idx < close_idx {
+                out.push_str(trim_front_ws(line, min_indent));
+                continue;
+            }
+            out.push_str(line);
+        }
+        out
+    }
+
     fn normalize_cypress_fixture_text(raw: &str) -> String {
-        dedent(&html_unescape_basic(raw))
+        let s = dedent(&html_unescape_basic(raw));
+        normalize_yaml_frontmatter_indentation(&s)
+    }
+
+    fn normalize_architecture_beta_legacy_edges(s: &str) -> String {
+        // Cypress architecture fixtures (`repo-ref/mermaid/cypress/integration/rendering/architecture.spec.ts`)
+        // use a legacy shorthand that is not accepted by Mermaid@11.12.2 CLI (Langium grammar):
+        //
+        // - `a L--R b`
+        // - `a (L--R) b`
+        // - `a L-[Label]-R b`
+        // - split parens across lines, e.g. `a (B--T b` / `a R--L) b`
+        //
+        // Normalize into CLI-compatible form:
+        //
+        // - `a:L -- R:b`
+        // - `a:L -[Label]- R:b`
+        static EDGE_DIR_RE: OnceLock<Regex> = OnceLock::new();
+        static EDGE_LABEL_RE: OnceLock<Regex> = OnceLock::new();
+        let edge_dir_re = EDGE_DIR_RE.get_or_init(|| {
+            Regex::new(
+                r"^(?P<indent>\s*)(?P<src>\S+)\s+\(?(?P<d1>[LTRB])--(?P<d2>[LTRB])\)?\s+(?P<dst>\S+)\s*$",
+            )
+            .expect("valid regex")
+        });
+        let edge_label_re = EDGE_LABEL_RE.get_or_init(|| {
+            Regex::new(
+                r"^(?P<indent>\s*)(?P<src>\S+)\s+(?P<d1>[LTRB])-\[(?P<label>[^\]]*)\]-(?P<d2>[LTRB])\s+(?P<dst>\S+)\s*$",
+            )
+            .expect("valid regex")
+        });
+
+        let mut out = String::with_capacity(s.len());
+        for (idx, raw_line) in s.lines().enumerate() {
+            if idx > 0 {
+                out.push('\n');
+            }
+            let line = raw_line.trim_end_matches(|c| c == ' ' || c == '\t');
+
+            if let Some(caps) = edge_label_re.captures(line) {
+                let indent = caps.name("indent").map(|m| m.as_str()).unwrap_or_default();
+                let src = caps.name("src").map(|m| m.as_str()).unwrap_or_default();
+                let d1 = caps.name("d1").map(|m| m.as_str()).unwrap_or_default();
+                let label = caps.name("label").map(|m| m.as_str()).unwrap_or_default();
+                let d2 = caps.name("d2").map(|m| m.as_str()).unwrap_or_default();
+                let dst = caps.name("dst").map(|m| m.as_str()).unwrap_or_default();
+
+                out.push_str(indent);
+                out.push_str(src);
+                out.push(':');
+                out.push_str(d1);
+                out.push_str(" -[");
+                out.push_str(label);
+                out.push_str("]- ");
+                out.push_str(d2);
+                out.push(':');
+                out.push_str(dst);
+                continue;
+            }
+
+            if let Some(caps) = edge_dir_re.captures(line) {
+                let indent = caps.name("indent").map(|m| m.as_str()).unwrap_or_default();
+                let src = caps.name("src").map(|m| m.as_str()).unwrap_or_default();
+                let d1 = caps.name("d1").map(|m| m.as_str()).unwrap_or_default();
+                let d2 = caps.name("d2").map(|m| m.as_str()).unwrap_or_default();
+                let dst = caps.name("dst").map(|m| m.as_str()).unwrap_or_default();
+
+                out.push_str(indent);
+                out.push_str(src);
+                out.push(':');
+                out.push_str(d1);
+                out.push_str(" -- ");
+                out.push_str(d2);
+                out.push(':');
+                out.push_str(dst);
+                continue;
+            }
+
+            out.push_str(line);
+        }
+
+        out
     }
 
     fn collect_spec_files_recursively(
@@ -1700,7 +1852,7 @@ fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
 
         let blocks = extract_cypress_blocks(&spec_path)?;
         for b in blocks {
-            let body = canonical_fixture_text(&normalize_cypress_fixture_text(&b.body));
+            let mut body = canonical_fixture_text(&normalize_cypress_fixture_text(&b.body));
             if body.trim().is_empty() {
                 continue;
             }
@@ -1747,6 +1899,10 @@ fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
             }
             if diagram != "all" && diagram_dir != diagram {
                 continue;
+            }
+
+            if diagram_dir == "architecture" {
+                body = canonical_fixture_text(&normalize_architecture_beta_legacy_edges(&body));
             }
 
             let fixtures_dir = workspace_root.join("fixtures").join(&diagram_dir);

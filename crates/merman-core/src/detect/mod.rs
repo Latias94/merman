@@ -37,7 +37,11 @@ impl DetectorRegistry {
     pub fn new() -> Self {
         Self {
             detectors: Vec::new(),
-            frontmatter_re: Regex::new(r"(?s)^-{3}\s*[\n\r](.*?)[\n\r]-{3}\s*[\n\r]+").unwrap(),
+            // Mermaid accepts frontmatter even when the source is indented (common in JS template
+            // literals used by Cypress snapshot tests). Match and strip it with optional leading
+            // whitespace on both the opening and closing `---` lines.
+            frontmatter_re: Regex::new(r"(?s)^\s*-{3}\s*[\n\r](.*?)[\n\r]\s*-{3}\s*[\n\r]+")
+                .unwrap(),
             any_comment_re: Regex::new(r"(?m)\s*%%.*\n").unwrap(),
         }
     }
