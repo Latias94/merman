@@ -389,6 +389,206 @@ pub(super) fn render_state_diagram_v2_svg(
     ctx.nested_roots = compute_state_nested_roots(&ctx);
 
     drop(_g_build_ctx);
+
+    let fast_viewport = prefer_fast_state_viewport_bounds();
+    if fast_viewport {
+        // In fast mode we can compute the root viewport purely from layout geometry, so we do not
+        // need placeholder replacement.
+        let css = state_css(diagram_id, &model, effective_config);
+
+        let viewbox_svg_scan = std::time::Duration::ZERO;
+        let _g_viewbox = section(timing_enabled, &mut timings.viewbox);
+        let mut content_bounds = state_viewport_bounds_from_layout(layout).unwrap_or(Bounds {
+            min_x: 0.0,
+            min_y: 0.0,
+            max_x: 100.0,
+            max_y: 100.0,
+        });
+
+        let mut title_svg = String::new();
+        if let Some(title) = diagram_title.as_deref() {
+            // Mermaid centers the title using the pre-title content bbox:
+            // `x = bbox.x + bbox.width/2`, `y = -titleTopMargin`.
+            let title_x = (content_bounds.min_x + content_bounds.max_x) / 2.0;
+            let title_y = -title_top_margin;
+
+            let mut title_style = crate::state::state_text_style(effective_config);
+            title_style.font_size = 18.0;
+            let (title_left, title_right) =
+                crate::generated::state_text_overrides_11_12_2::lookup_state_diagram_title_bbox_x_px(
+                    title_style.font_size,
+                    title,
+                )
+                .unwrap_or_else(|| measurer.measure_svg_title_bbox_x(title, &title_style));
+
+            // Mermaid uses SVG `getBBox()` which returns bbox y-extents relative to the baseline.
+            // Approximate that with a stable ascent/descent split.
+            let (ascent_em, descent_em) = if title_style
+                .font_family
+                .as_deref()
+                .unwrap_or_default()
+                .to_ascii_lowercase()
+                .contains("courier")
+            {
+                (0.8333333333333334, 0.25)
+            } else {
+                (0.9444444444, 0.262)
+            };
+            let ascent = 18.0 * ascent_em;
+            let descent = 18.0 * descent_em;
+
+            content_bounds.min_x = content_bounds.min_x.min(title_x - title_left);
+            content_bounds.max_x = content_bounds.max_x.max(title_x + title_right);
+            content_bounds.min_y = content_bounds.min_y.min(title_y - ascent);
+            content_bounds.max_y = content_bounds.max_y.max(title_y + descent);
+
+            title_svg = String::with_capacity(title.len() + 128);
+            let _ = write!(
+                &mut title_svg,
+                r#"<text text-anchor="middle" x="{}" y="{}" class="statediagramTitleText">{}</text>"#,
+                fmt(title_x),
+                fmt(title_y),
+                escape_xml_display(title)
+            );
+        }
+
+        let vb_min_x = content_bounds.min_x - viewport_padding;
+        let vb_min_y = content_bounds.min_y - viewport_padding;
+        let vb_w =
+            ((content_bounds.max_x - content_bounds.min_x) + 2.0 * viewport_padding).max(1.0);
+        let vb_h =
+            ((content_bounds.max_y - content_bounds.min_y) + 2.0 * viewport_padding).max(1.0);
+        // Mermaid's root viewBox widths/heights often land on a single-precision lattice.
+        let vb_w = (vb_w as f32) as f64;
+        let vb_h = (vb_h as f32) as f64;
+
+        let mut max_w_attr = String::new();
+        super::util::fmt_max_width_px_into(&mut max_w_attr, vb_w.max(1.0));
+        let mut view_box_attr = String::with_capacity(64);
+        let _ = write!(
+            &mut view_box_attr,
+            "{} {} {} {}",
+            fmt(vb_min_x),
+            fmt(vb_min_y),
+            fmt(vb_w),
+            fmt(vb_h)
+        );
+        if let Some((viewbox, max_w)) =
+            crate::generated::state_root_overrides_11_12_2::lookup_state_root_viewport_override(
+                diagram_id,
+            )
+        {
+            view_box_attr = viewbox.to_string();
+            max_w_attr = max_w.to_string();
+        }
+
+        drop(_g_viewbox);
+
+        let _g_render_svg = section(timing_enabled, &mut timings.render_svg);
+        let estimated_svg_bytes = 2048usize
+            + css.len()
+            + title_svg.len()
+            + max_w_attr.len()
+            + view_box_attr.len()
+            + layout.nodes.len().saturating_mul(512)
+            + layout.edges.len().saturating_mul(384)
+            + layout.clusters.len().saturating_mul(256);
+        let mut out = String::with_capacity(estimated_svg_bytes);
+        let _ = write!(
+            &mut out,
+            r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="statediagram" style="max-width: {}px; background-color: white;" viewBox="{}" role="graphics-document document" aria-roledescription="stateDiagram""#,
+            escape_xml_display(diagram_id),
+            max_w_attr,
+            view_box_attr
+        );
+        if has_acc_title {
+            let _ = write!(
+                &mut out,
+                r#" aria-labelledby="chart-title-{}""#,
+                escape_xml_display(diagram_id)
+            );
+        }
+        if has_acc_descr {
+            let _ = write!(
+                &mut out,
+                r#" aria-describedby="chart-desc-{}""#,
+                escape_xml_display(diagram_id)
+            );
+        }
+        out.push('>');
+
+        if has_acc_title {
+            let _ = write!(
+                &mut out,
+                r#"<title id="chart-title-{}">{}"#,
+                escape_xml_display(diagram_id),
+                escape_xml_display(model.acc_title.as_deref().unwrap_or_default())
+            );
+            out.push_str("</title>");
+        }
+        if has_acc_descr {
+            let _ = write!(
+                &mut out,
+                r#"<desc id="chart-desc-{}">{}"#,
+                escape_xml_display(diagram_id),
+                escape_xml_display(model.acc_descr.as_deref().unwrap_or_default())
+            );
+            out.push_str("</desc>");
+        }
+
+        let _ = write!(&mut out, "<style>{}</style>", css);
+
+        // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
+        out.push_str("<g>");
+        state_markers(&mut out, diagram_id);
+
+        let mut detail = StateRenderDetails::default();
+        render_state_root(
+            &mut out,
+            &ctx,
+            None,
+            origin_x,
+            origin_y,
+            timing_enabled,
+            &mut detail,
+        );
+
+        out.push_str("</g>");
+        out.push_str(&title_svg);
+        out.push_str("</svg>\n");
+        drop(_g_render_svg);
+
+        timings.total = total_start.elapsed();
+        if timing_enabled {
+            eprintln!(
+                "[render-timing] diagram=stateDiagram total={:?} deserialize={:?} build_ctx={:?} render_svg={:?} viewbox={:?} viewbox_svg_scan={:?} finalize={:?} fast_viewport={} root_calls={} clusters={:?} edge_paths={:?} edge_labels={:?} leaf_nodes={:?} leaf_style_parse={:?} leaf_roughjs={:?} leaf_roughjs_calls={} leaf_roughjs_unique={} leaf_measure={:?} leaf_label_html={:?} leaf_emit={:?} nested_roots={:?} self_loop_placeholders={:?}",
+                timings.total,
+                timings.deserialize_model,
+                timings.build_ctx,
+                timings.render_svg,
+                timings.viewbox,
+                viewbox_svg_scan,
+                timings.finalize_svg,
+                fast_viewport,
+                detail.root_calls,
+                detail.clusters,
+                detail.edge_paths,
+                detail.edge_labels,
+                detail.leaf_nodes,
+                detail.leaf_nodes_style_parse,
+                detail.leaf_nodes_roughjs,
+                detail.leaf_roughjs_calls,
+                detail.leaf_roughjs_unique.len(),
+                detail.leaf_nodes_measure,
+                detail.leaf_nodes_label_html,
+                detail.leaf_nodes_emit,
+                detail.nested_roots,
+                detail.self_loop_placeholders,
+            );
+        }
+        return Ok(out);
+    }
+
     let _g_render_svg = section(timing_enabled, &mut timings.render_svg);
 
     // Mermaid derives the final root viewport via `svg.getBBox()` (after rendering). We don't
