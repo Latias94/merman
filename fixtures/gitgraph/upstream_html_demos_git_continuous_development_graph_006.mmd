@@ -1,0 +1,14 @@
+---
+title: Continuous development (bottom-to-top)
+---
+gitGraph BT:
+commit
+branch develop
+checkout develop
+commit
+checkout main
+merge develop
+checkout develop
+commit
+checkout main
+merge develop

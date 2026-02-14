@@ -1,0 +1,14 @@
+---
+title: Two branches from same commit (left-to-right)
+---
+gitGraph LR:
+commit
+commit
+branch feature-001
+commit
+commit
+checkout main
+branch feature-002
+commit
+checkout feature-001
+merge feature-002

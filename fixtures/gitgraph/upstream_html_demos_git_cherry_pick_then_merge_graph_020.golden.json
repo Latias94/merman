@@ -1,0 +1,90 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "0-<dynamic>",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "Pick me",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "0-<dynamic>"
+        ],
+        "branch": "newbranch"
+      },
+      {
+        "id": "2-<dynamic>",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "0-<dynamic>"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "3-<dynamic>",
+        "message": "",
+        "seq": 3,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "Pick me"
+        ],
+        "branch": "newbranch"
+      },
+      {
+        "id": "4-<dynamic>",
+        "message": "cherry-picked  into main",
+        "seq": 4,
+        "type": 4,
+        "tags": [
+          "cherry-pick:Pick me"
+        ],
+        "parents": [
+          "2-<dynamic>",
+          "Pick me"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "5-<dynamic>",
+        "message": "merged branch newbranch into main",
+        "seq": 5,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "4-<dynamic>",
+          "3-<dynamic>"
+        ],
+        "branch": "main",
+        "customId": false
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "newbranch"
+      }
+    ],
+    "currentBranch": "main",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}

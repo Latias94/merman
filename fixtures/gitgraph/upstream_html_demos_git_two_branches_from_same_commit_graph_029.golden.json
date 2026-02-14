@@ -1,0 +1,90 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "0-<dynamic>",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "1-<dynamic>",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "0-<dynamic>"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "2-<dynamic>",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "1-<dynamic>"
+        ],
+        "branch": "feature-001"
+      },
+      {
+        "id": "3-<dynamic>",
+        "message": "",
+        "seq": 3,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "2-<dynamic>"
+        ],
+        "branch": "feature-001"
+      },
+      {
+        "id": "4-<dynamic>",
+        "message": "",
+        "seq": 4,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "1-<dynamic>"
+        ],
+        "branch": "feature-002"
+      },
+      {
+        "id": "5-<dynamic>",
+        "message": "merged branch feature-002 into feature-001",
+        "seq": 5,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "3-<dynamic>",
+          "4-<dynamic>"
+        ],
+        "branch": "feature-001",
+        "customId": false
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "feature-001"
+      },
+      {
+        "name": "feature-002"
+      }
+    ],
+    "currentBranch": "feature-001",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}

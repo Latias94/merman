@@ -1,0 +1,15 @@
+---
+title: Cherry-pick then merge (top-to-bottom)
+---
+gitGraph TB:
+commit
+branch newbranch
+checkout newbranch
+commit id: "Pick me"
+checkout main
+commit
+checkout newbranch
+commit
+checkout main
+cherry-pick id: "Pick me"
+merge newbranch
