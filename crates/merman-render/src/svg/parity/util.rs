@@ -442,6 +442,44 @@ pub(super) fn escape_attr(text: &str) -> String {
     out
 }
 
+pub(super) fn escape_attr_display(text: &str) -> EscapeAttrDisplay<'_> {
+    EscapeAttrDisplay(text)
+}
+
+pub(super) struct EscapeAttrDisplay<'a>(&'a str);
+
+impl std::fmt::Display for EscapeAttrDisplay<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text = self.0;
+        let bytes = text.as_bytes();
+        let mut start = 0usize;
+        for (i, &b) in bytes.iter().enumerate() {
+            let esc = match b {
+                b'\n' => Some("&#10;"),
+                b'\r' => Some("&#13;"),
+                b'\t' => Some("&#9;"),
+                b'&' => Some("&amp;"),
+                b'<' => Some("&lt;"),
+                b'"' => Some("&quot;"),
+                b'\'' => Some("&#39;"),
+                _ => None,
+            };
+            let Some(esc) = esc else {
+                continue;
+            };
+            if start < i {
+                f.write_str(&text[start..i])?;
+            }
+            f.write_str(esc)?;
+            start = i + 1;
+        }
+        if start < text.len() {
+            f.write_str(&text[start..])?;
+        }
+        Ok(())
+    }
+}
+
 pub(super) fn replace_placeholders_once(out: &str, replacements: &[(&str, &str)]) -> String {
     if replacements.is_empty() {
         return out.to_string();

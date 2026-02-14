@@ -3,6 +3,13 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 // Flowchart SVG renderer implementation (split from parity.rs).
 
+// In flowchart SVG emission, many attribute payloads are known to be short-lived (colors, inline
+// `d` strings, etc). Avoid allocating an owned `String` for attribute escaping by default.
+#[inline]
+fn escape_attr(text: &str) -> super::util::EscapeAttrDisplay<'_> {
+    escape_attr_display(text)
+}
+
 pub(super) struct FlowchartRenderCtx<'a> {
     pub(super) diagram_id: String,
     #[allow(dead_code)]
@@ -5522,11 +5529,7 @@ fn render_flowchart_node(
     };
 
     let tooltip = ctx.tooltips.get(node_id).map(|s| s.as_str()).unwrap_or("");
-    let tooltip_attr = if tooltip.trim().is_empty() {
-        String::new()
-    } else {
-        format!(r#" title="{}""#, escape_attr(tooltip))
-    };
+    let tooltip_enabled = !tooltip.trim().is_empty();
 
     let dom_idx: Option<usize>;
     let class_attr: String;
@@ -5637,45 +5640,45 @@ fn render_flowchart_node(
         if let Some(dom_idx) = dom_idx {
             let _ = write!(
                 out,
-                r#"<g class="{}" id="flowchart-{}-{}"{}>"#,
+                r#"<g class="{}" id="flowchart-{}-{}""#,
                 escape_xml_display(&class_attr),
                 escape_xml_display(node_id),
                 dom_idx,
-                tooltip_attr
             );
         } else {
             let _ = write!(
                 out,
-                r#"<g class="{}" id="{}"{}>"#,
+                r#"<g class="{}" id="{}""#,
                 escape_xml_display(&class_attr),
                 escape_xml_display(node_id),
-                tooltip_attr
             );
         }
     } else {
         if let Some(dom_idx) = dom_idx {
             let _ = write!(
                 out,
-                r#"<g class="{}" id="flowchart-{}-{}" transform="translate({}, {})"{}>"#,
+                r#"<g class="{}" id="flowchart-{}-{}" transform="translate({}, {})""#,
                 escape_xml_display(&class_attr),
                 escape_xml_display(node_id),
                 dom_idx,
                 fmt_display(x),
                 fmt_display(y),
-                tooltip_attr
             );
         } else {
             let _ = write!(
                 out,
-                r#"<g class="{}" id="{}" transform="translate({}, {})"{}>"#,
+                r#"<g class="{}" id="{}" transform="translate({}, {})""#,
                 escape_xml_display(&class_attr),
                 escape_xml_display(node_id),
                 fmt_display(x),
                 fmt_display(y),
-                tooltip_attr
             );
         }
     }
+    if tooltip_enabled {
+        let _ = write!(out, r#" title="{}""#, escape_attr_display(tooltip));
+    }
+    out.push('>');
 
     let style_start = timing_enabled.then(std::time::Instant::now);
     let mut compiled_styles = flowchart_compile_styles(&ctx.class_defs, node_classes, node_styles);
