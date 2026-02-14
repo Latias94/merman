@@ -1,0 +1,24 @@
+{
+  "diagramType": "pie",
+  "model": {
+    "type": "pie",
+    "showData": false,
+    "title": "Default text position: Animal adoption",
+    "accTitle": "simple pie char demo",
+    "accDescr": "pie chart with 3 sections: dogs, cats, rats. Most are dogs.",
+    "sections": [
+      {
+        "label": "Dogs",
+        "value": 386.0
+      },
+      {
+        "label": "Cats",
+        "value": 85.0
+      },
+      {
+        "label": "Rats",
+        "value": 15.0
+      }
+    ]
+  }
+}

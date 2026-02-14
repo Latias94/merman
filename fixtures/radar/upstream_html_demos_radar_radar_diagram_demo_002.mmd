@@ -1,0 +1,23 @@
+---
+config:
+  radar:
+    axisScaleFactor: 0.25
+    axisLabelFactor: 0.95
+---
+radar-beta 
+  title DevOps Radar
+  axis f["Feature Velocity"], s["Stability"]
+  axis r["Resilience"], e["Efficiency"]
+  axis c["Cost"], d["DevSecOps"]
+
+  curve app1["App1"]{
+    f 5, s 4.5, r 3.8, d 4.2, e 4.5, c 3.5
+  }
+  curve app2["App2"]{4, 3, 4, 3, 3, 4}, app3["App3"]{3, 2, 4, 3, 2, 3}
+  curve app4["App4"]{2, 1, 3.2, 2.5, 1, 2}
+
+  showLegend true
+  ticks 3
+  max 5
+  graticule polygon
+    

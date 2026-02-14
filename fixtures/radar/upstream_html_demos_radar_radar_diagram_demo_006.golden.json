@@ -1,0 +1,73 @@
+{
+  "diagramType": "radar",
+  "model": {
+    "type": "radar",
+    "title": "Custom colors, axisScaleFactor, curveTension, opacity",
+    "accTitle": null,
+    "accDescr": null,
+    "axes": [
+      {
+        "name": "A",
+        "label": "A"
+      },
+      {
+        "name": "B",
+        "label": "B"
+      },
+      {
+        "name": "C",
+        "label": "C"
+      },
+      {
+        "name": "D",
+        "label": "D"
+      },
+      {
+        "name": "E",
+        "label": "E"
+      }
+    ],
+    "curves": [
+      {
+        "name": "c1",
+        "label": "c1",
+        "entries": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ]
+      },
+      {
+        "name": "c2",
+        "label": "c2",
+        "entries": [
+          5,
+          4,
+          3,
+          2,
+          1
+        ]
+      },
+      {
+        "name": "c3",
+        "label": "c3",
+        "entries": [
+          3,
+          3,
+          3,
+          3,
+          3
+        ]
+      }
+    ],
+    "options": {
+      "showLegend": true,
+      "ticks": 5,
+      "max": null,
+      "min": 0,
+      "graticule": "circle"
+    }
+  }
+}
