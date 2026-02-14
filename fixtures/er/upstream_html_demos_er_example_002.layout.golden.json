@@ -1,0 +1,24 @@
+{
+  "diagramType": "er",
+  "layout": {
+    "ErDiagram": {
+      "nodes": [
+        {
+          "id": "entity-HOSPITAL-0",
+          "x": 110.764,
+          "y": 149.625,
+          "width": 221.529,
+          "height": 299.25,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 221.529,
+        "max_y": 299.25
+      }
+    }
+  }
+}

@@ -1,0 +1,201 @@
+{
+  "diagramType": "er",
+  "model": {
+    "type": "er",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "entities": {
+      "a_~`!@#$^&*()-_=+[]{}|/;:'.?¡⁄™€£‹¢›∞ﬁ§‡•°ª·º‚≠±œŒ∑„®†ˇ¥Á¨ˆˆØπ∏“«»åÅßÍ∂ÎƒÏ©˙Ó∆Ô˚¬Ò…ÚæÆΩ¸≈π˛çÇ√◊∫ı˜µÂ≤¯≥˘÷¿": {
+        "id": "entity-a_~`!@#$^&*()-_=+[]{}|/;:'.?¡⁄™€£‹¢›∞ﬁ§‡•°ª·º‚≠±œŒ∑„®†ˇ¥Á¨ˆˆØπ∏“«»åÅßÍ∂ÎƒÏ©˙Ó∆Ô˚¬Ò…ÚæÆΩ¸≈π˛çÇ√◊∫ı˜µÂ≤¯≥˘÷¿-4",
+        "label": "a_~`!@#$^&*()-_=+[]{}|/;:'.?¡⁄™€£‹¢›∞ﬁ§‡•°ª·º‚≠±œŒ∑„®†ˇ¥Á¨ˆˆØπ∏“«»åÅßÍ∂ÎƒÏ©˙Ó∆Ô˚¬Ò…ÚæÆΩ¸≈π˛çÇ√◊∫ı˜µÂ≤¯≥˘÷¿",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "name",
+            "keys": [],
+            "comment": "this is an entity with an absurd name just to show characters that are now acceptable as long as the name is in double quotes"
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "€£LINE_ITEM ¥": {
+        "id": "entity-€£LINE_ITEM ¥-2",
+        "label": "€£LINE_ITEM ¥",
+        "attributes": [
+          {
+            "type": "int",
+            "name": "orderID",
+            "keys": [
+              "FK"
+            ],
+            "comment": ""
+          },
+          {
+            "type": "int",
+            "name": "currencyId",
+            "keys": [
+              "FK"
+            ],
+            "comment": ""
+          },
+          {
+            "type": "number",
+            "name": "price",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "number",
+            "name": "quantity",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "number",
+            "name": "adjustment",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "number",
+            "name": "final_price",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "ORDER": {
+        "id": "entity-ORDER-1",
+        "label": "ORDER",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "Address//StreetAddress::[DELIVERY ADDRESS]": {
+        "id": "entity-Address//StreetAddress::[DELIVERY ADDRESS]-3",
+        "label": "Address//StreetAddress::[DELIVERY ADDRESS]",
+        "attributes": [
+          {
+            "type": "int",
+            "name": "customerID",
+            "keys": [
+              "FK"
+            ],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "line1",
+            "keys": [],
+            "comment": "this is the first address line comment"
+          },
+          {
+            "type": "string",
+            "name": "line2",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "city",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "region",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "state",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "string(5)",
+            "name": "postal_code",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "country",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "Person . CUSTOMER": {
+        "id": "entity-Person . CUSTOMER-0",
+        "label": "Person . CUSTOMER",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-Person . CUSTOMER-0",
+        "roleA": "places",
+        "entityB": "entity-ORDER-1",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-ORDER-1",
+        "roleA": "contains",
+        "entityB": "entity-€£LINE_ITEM ¥-2",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-Person . CUSTOMER-0",
+        "roleA": "uses",
+        "entityB": "entity-Address//StreetAddress::[DELIVERY ADDRESS]-3",
+        "relSpec": {
+          "cardA": "ONE_OR_MORE",
+          "cardB": "ONE_OR_MORE",
+          "relType": "NON_IDENTIFYING"
+        }
+      }
+    ],
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}

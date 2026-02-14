@@ -1,0 +1,24 @@
+{
+  "diagramType": "er",
+  "layout": {
+    "ErDiagram": {
+      "nodes": [
+        {
+          "id": "entity-_**testẽζ➕Ø😀㌕ぼ**_-0",
+          "x": 282.277,
+          "y": 152.25,
+          "width": 564.554,
+          "height": 304.5,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 564.554,
+        "max_y": 304.5
+      }
+    }
+  }
+}

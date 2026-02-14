@@ -1,0 +1,37 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "My day",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Go to work"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Go to work",
+        "type": "Go to work",
+        "task": "1930 ",
+        "score": 0,
+        "events": [
+          "first step ",
+          "second step",
+          "third step"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Go to work",
+        "type": "Go to work",
+        "task": "1940 ",
+        "score": 0,
+        "events": [
+          "fourth step ",
+          "fifth step"
+        ]
+      }
+    ]
+  }
+}

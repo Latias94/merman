@@ -1,0 +1,102 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "A",
+        "type": "na",
+        "label": "A",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "id-<id>-1-0",
+        "type": "space",
+        "label": "",
+        "children": [],
+        "width": 1
+      },
+      {
+        "id": "B",
+        "type": "na",
+        "label": "B",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "edges": [
+      {
+        "id": "1-A-B",
+        "type": "edge",
+        "label": "",
+        "children": [],
+        "start": "A",
+        "end": "B",
+        "arrowTypeEnd": "arrow_cross",
+        "arrowTypeStart": "arrow_open"
+      }
+    ],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "A",
+            "type": "na",
+            "label": "A",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "id-<id>-1-0",
+            "type": "space",
+            "label": "",
+            "children": [],
+            "width": 1
+          },
+          {
+            "id": "B",
+            "type": "na",
+            "label": "B",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ],
+        "columns": 5
+      },
+      {
+        "id": "A",
+        "type": "na",
+        "label": "A",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "id-<id>-1",
+        "type": "space",
+        "label": "",
+        "children": [],
+        "width": 1
+      },
+      {
+        "id": "id-<id>-1-0",
+        "type": "space",
+        "label": "",
+        "children": [],
+        "width": 1
+      },
+      {
+        "id": "B",
+        "type": "na",
+        "label": "B",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "classes": {},
+    "warnings": []
+  }
+}

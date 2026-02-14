@@ -1,0 +1,70 @@
+{
+  "diagramType": "er",
+  "model": {
+    "type": "er",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "entities": {
+      "_**testẽζ➕Ø😀㌕ぼ**_": {
+        "id": "entity-_**testẽζ➕Ø😀㌕ぼ**_-0",
+        "label": "_**testẽζ➕Ø😀㌕ぼ**_",
+        "attributes": [
+          {
+            "type": "*__List~List~int~~sdfds__*",
+            "name": "**driversLicense**",
+            "keys": [
+              "PK"
+            ],
+            "comment": "***The l😀icense #***"
+          },
+          {
+            "type": "string",
+            "name": "last*Name*",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "__phone__",
+            "keys": [
+              "UK"
+            ],
+            "comment": ""
+          },
+          {
+            "type": "*string(99)~T~~~~~~*",
+            "name": "firstName",
+            "keys": [],
+            "comment": "Only __99__ <br>characters are a<br>llowed dsfsdfsdfsdfs"
+          },
+          {
+            "type": "int",
+            "name": "_age_",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      }
+    },
+    "relationships": [],
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}

@@ -1,0 +1,112 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Medical Device Lifecycle",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Planning",
+      "Realization",
+      "Post-Production"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Planning",
+        "type": "Planning",
+        "task": "Quality Management System (4) ",
+        "score": 0,
+        "events": [
+          "Regulatory Compliance (4.1) ",
+          "Risk Management (4.1.3) ",
+          "Management Review (5.6) ",
+          "Infrastructure (6.3)"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Planning",
+        "type": "Planning",
+        "task": "Management Responsibility (5) ",
+        "score": 0,
+        "events": [
+          "Planning Activities (5.2) ",
+          "Human Resources (6.2) ",
+          "RnD Planning (7.3.2) ",
+          "Purchasing Process (7.4.1) ",
+          "Production Activities (7.5.1) ",
+          "Installation Activities (7.5.3) ",
+          "Servicing Activities (7.5.4)"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "Realization",
+        "type": "Realization",
+        "task": "Research and Development (7.3) ",
+        "score": 0,
+        "events": [
+          "Inputs (7.3.3) ",
+          "Outputs (7.3.4) ",
+          "Review (7.3.5) ",
+          "Verification (7.3.6) ",
+          "Validation (7.3.7)"
+        ]
+      },
+      {
+        "id": 3,
+        "section": "Realization",
+        "type": "Realization",
+        "task": "Purchasing (7.4) ",
+        "score": 0,
+        "events": [
+          "Purchasing Information (7.4.2) ",
+          "Production Feedback (8.2.1)"
+        ]
+      },
+      {
+        "id": 4,
+        "section": "Realization",
+        "type": "Realization",
+        "task": "Production (7.5) ",
+        "score": 0,
+        "events": [
+          "Production Feedback (8.2.1)"
+        ]
+      },
+      {
+        "id": 5,
+        "section": "Realization",
+        "type": "Realization",
+        "task": "Installation (7.5.3) ",
+        "score": 0,
+        "events": [
+          "Installation Activities (7.5.3)"
+        ]
+      },
+      {
+        "id": 6,
+        "section": "Realization",
+        "type": "Realization",
+        "task": "Servicing (7.5.4) ",
+        "score": 0,
+        "events": [
+          "Servicing Activities (7.5.4)"
+        ]
+      },
+      {
+        "id": 7,
+        "section": "Post-Production",
+        "type": "Post-Production",
+        "task": "Post-Market Activities (8) ",
+        "score": 0,
+        "events": [
+          "Feedback (8.2.1) ",
+          "Complaints (8.2.2) ",
+          "Adverse Events (8.2.3)"
+        ]
+      }
+    ]
+  }
+}

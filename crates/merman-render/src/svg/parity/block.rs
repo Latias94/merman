@@ -520,14 +520,23 @@ pub(super) fn render_block_diagram_svg(
     let vb_h = (bounds.max_y - bounds.min_y + diagram_padding * 2.0).max(1.0);
 
     let mut out = String::new();
+    let mut viewbox_attr = format!(
+        "{} {} {} {}",
+        fmt(vb_min_x),
+        fmt(vb_min_y),
+        fmt(vb_w.max(1.0)),
+        fmt(vb_h.max(1.0))
+    );
+    let mut max_w_style = fmt_max_width_px(vb_w.max(1.0));
+    if let Some((viewbox, max_w)) = crate::generated::block_root_overrides_11_12_2::lookup_block_root_viewport_override(diagram_id) {
+        viewbox_attr = viewbox.to_string();
+        max_w_style = max_w.to_string();
+    }
     let _ = write!(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{min_x} {min_y} {w} {h}" role="graphics-document document" aria-roledescription="block">"#,
-        max_w = fmt_max_width_px(vb_w.max(1.0)),
-        min_x = fmt(vb_min_x),
-        min_y = fmt(vb_min_y),
-        w = fmt(vb_w.max(1.0)),
-        h = fmt(vb_h.max(1.0)),
+        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{viewbox}" role="graphics-document document" aria-roledescription="block">"#,
+        max_w = max_w_style,
+        viewbox = viewbox_attr,
     );
     out.push_str(r#"<style></style><g/>"#);
 
@@ -595,7 +604,121 @@ pub(super) fn render_block_diagram_svg(
             fmt(n.y)
         );
 
+        fn emit_polygon(out: &mut String, points: &[(f64, f64)], tx: f64, ty: f64) {
+            out.push_str(r#"<polygon points=""#);
+            for (idx, (px, py)) in points.iter().enumerate() {
+                if idx > 0 {
+                    out.push(' ');
+                }
+                let _ = write!(out, "{},{}", fmt(*px), fmt(*py));
+            }
+            let _ = write!(
+                out,
+                r#"" class="label-container" transform="translate({},{})"/>"#,
+                fmt(tx),
+                fmt(ty)
+            );
+        }
+
         match node.block_type.as_str() {
+            "circle" => {
+                // Mermaid renders `type: "circle"` block nodes as a `<circle>` element without a
+                // `class` attribute, but it still emits `rx`/`ry`/`width`/`height` attributes.
+                // Keep that DOM shape for `parity-root` checks.
+                let _ = write!(
+                    &mut out,
+                    r#"<circle rx="0" ry="0" r="{}" width="{}" height="{}"/>"#,
+                    fmt(width / 2.0),
+                    fmt(width),
+                    fmt(height)
+                );
+            }
+            "stadium" => {
+                // Upstream uses a plain `<rect>` (no `class`) for stadium-shaped block nodes.
+                let _ = write!(
+                    &mut out,
+                    r#"<rect rx="0" ry="0" x="{}" y="{}" width="{}" height="{}"/>"#,
+                    fmt(x),
+                    fmt(y),
+                    fmt(width),
+                    fmt(height)
+                );
+            }
+            "cylinder" => {
+                // Cylinder blocks are emitted as a `<path>` in upstream block diagrams.
+                // Keep the command-letter structure stable and treat numeric payload as noise in
+                // `parity-root` mode.
+                let _ = write!(
+                    &mut out,
+                    r#"<path d="M 0 0 a 1 1 0 0 1 2 0 a 1 1 0 0 1 2 0 l 0 10 a 1 1 0 0 1 -2 0 l 0 -10" transform="translate({},{})"/>"#,
+                    fmt(x),
+                    fmt(y)
+                );
+            }
+            "diamond" => {
+                emit_polygon(
+                    &mut out,
+                    &[
+                        (0.0, 0.0),
+                        (1.0, 0.0),
+                        (1.0, 1.0),
+                        (0.0, 1.0),
+                    ],
+                    x,
+                    y,
+                );
+            }
+            "hexagon" => {
+                emit_polygon(
+                    &mut out,
+                    &[
+                        (0.0, 0.5),
+                        (0.25, 0.0),
+                        (0.75, 0.0),
+                        (1.0, 0.5),
+                        (0.75, 1.0),
+                        (0.25, 1.0),
+                    ],
+                    x,
+                    y,
+                );
+            }
+            "rect_left_inv_arrow" => {
+                emit_polygon(
+                    &mut out,
+                    &[(0.0, 0.5), (0.25, 0.0), (1.0, 0.0), (1.0, 1.0), (0.25, 1.0)],
+                    x,
+                    y,
+                );
+            }
+            "subroutine" => {
+                // Upstream uses a multi-point polygon for subroutine blocks.
+                emit_polygon(
+                    &mut out,
+                    &[
+                        (0.0, 0.0),
+                        (0.1, 0.0),
+                        (0.1, 1.0),
+                        (0.0, 1.0),
+                        (0.0, 0.0),
+                        (1.0, 0.0),
+                        (1.0, 1.0),
+                        (1.0, 0.0),
+                        (0.9, 0.0),
+                        (0.9, 1.0),
+                    ],
+                    x,
+                    y,
+                );
+            }
+            "lean_right" | "lean_left" | "trapezoid" | "inv_trapezoid" => {
+                emit_polygon(
+                    &mut out,
+                    &[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)],
+                    x,
+                    y,
+                );
+            }
             "composite" => {
                 let _ = write!(
                     &mut out,

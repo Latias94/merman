@@ -1,0 +1,147 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "A1",
+        "type": "square",
+        "label": "square",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "B1",
+        "type": "round",
+        "label": "rounded",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "C1",
+        "type": "circle",
+        "label": "circle",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "A2",
+        "type": "rect_left_inv_arrow",
+        "label": "rect_left_inv_arrow",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "B2",
+        "type": "diamond",
+        "label": "diamond",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "C2",
+        "type": "hexagon",
+        "label": "hexagon",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "edges": [],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "A1",
+            "type": "square",
+            "label": "square",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "B1",
+            "type": "round",
+            "label": "rounded",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "C1",
+            "type": "circle",
+            "label": "circle",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "A2",
+            "type": "rect_left_inv_arrow",
+            "label": "rect_left_inv_arrow",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "B2",
+            "type": "diamond",
+            "label": "diamond",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "C2",
+            "type": "hexagon",
+            "label": "hexagon",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ],
+        "columns": -1
+      },
+      {
+        "id": "A1",
+        "type": "square",
+        "label": "square",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "B1",
+        "type": "round",
+        "label": "rounded",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "C1",
+        "type": "circle",
+        "label": "circle",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "A2",
+        "type": "rect_left_inv_arrow",
+        "label": "rect_left_inv_arrow",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "B2",
+        "type": "diamond",
+        "label": "diamond",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "C2",
+        "type": "hexagon",
+        "label": "hexagon",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "classes": {},
+    "warnings": []
+  }
+}

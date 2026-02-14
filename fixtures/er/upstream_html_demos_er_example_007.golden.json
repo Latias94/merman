@@ -1,0 +1,88 @@
+{
+  "diagramType": "er",
+  "model": {
+    "type": "er",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "entities": {
+      "_customer_order": {
+        "id": "entity-_customer_order-0",
+        "label": "_customer_order",
+        "attributes": [
+          {
+            "type": "bigint",
+            "name": "id",
+            "keys": [
+              "PK"
+            ],
+            "comment": ""
+          },
+          {
+            "type": "bigint",
+            "name": "customer_id",
+            "keys": [
+              "FK"
+            ],
+            "comment": ""
+          },
+          {
+            "type": "text",
+            "name": "shipping_address",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "text",
+            "name": "delivery_method",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "timestamp_with_time_zone",
+            "name": "ordered_at",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "numeric",
+            "name": "total_tax_amount",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "numeric",
+            "name": "total_price",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "text",
+            "name": "payment_method",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      }
+    },
+    "relationships": [],
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}

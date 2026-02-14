@@ -1,0 +1,24 @@
+{
+  "diagramType": "er",
+  "layout": {
+    "ErDiagram": {
+      "nodes": [
+        {
+          "id": "entity-_customer_order-0",
+          "x": 189.37,
+          "y": 192.375,
+          "width": 378.741,
+          "height": 384.75,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 378.741,
+        "max_y": 384.75
+      }
+    }
+  }
+}

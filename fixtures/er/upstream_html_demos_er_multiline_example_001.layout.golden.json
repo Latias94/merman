@@ -1,0 +1,151 @@
+{
+  "diagramType": "er",
+  "layout": {
+    "ErDiagram": {
+      "nodes": [
+        {
+          "id": "entity-CAR-0",
+          "x": 300.333,
+          "y": 385.25,
+          "width": 600.666,
+          "height": 309.75,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-MANUFACTURER-3",
+          "x": 300.333,
+          "y": 42.0,
+          "width": 155.2,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-NAMED-DRIVER-1",
+          "x": 649.758,
+          "y": 774.625,
+          "width": 611.735,
+          "height": 176.25,
+          "is_cluster": false
+        },
+        {
+          "id": "entity-PERSON-2",
+          "x": 999.182,
+          "y": 385.25,
+          "width": 517.034,
+          "height": 400.5,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "er-rel-0",
+          "from": "entity-CAR-0",
+          "to": "entity-NAMED-DRIVER-1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 300.333,
+              "y": 540.125
+            },
+            {
+              "x": 300.333,
+              "y": 636.0
+            },
+            {
+              "x": 427.626,
+              "y": 686.5
+            }
+          ],
+          "label": {
+            "x": 300.333,
+            "y": 636.0,
+            "width": 36.82,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ZERO_OR_MORE_END",
+          "stroke_dasharray": null
+        },
+        {
+          "id": "er-rel-1",
+          "from": "entity-PERSON-2",
+          "to": "entity-NAMED-DRIVER-1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 999.182,
+              "y": 585.5
+            },
+            {
+              "x": 999.182,
+              "y": 636.0
+            },
+            {
+              "x": 871.89,
+              "y": 686.5
+            }
+          ],
+          "label": {
+            "x": 999.182,
+            "y": 636.0,
+            "width": 9.94,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ZERO_OR_MORE_END",
+          "stroke_dasharray": null
+        },
+        {
+          "id": "er-rel-2",
+          "from": "entity-MANUFACTURER-3",
+          "to": "entity-CAR-0",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 300.333,
+              "y": 84.0
+            },
+            {
+              "x": 300.333,
+              "y": 134.5
+            },
+            {
+              "x": 300.333,
+              "y": 230.375
+            }
+          ],
+          "label": {
+            "x": 300.333,
+            "y": 134.5,
+            "width": 42.7,
+            "height": 21.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": "ONLY_ONE_START",
+          "end_marker": "ZERO_OR_MORE_END",
+          "stroke_dasharray": null
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1257.699,
+        "max_y": 862.75
+      }
+    }
+  }
+}

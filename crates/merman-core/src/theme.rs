@@ -355,6 +355,20 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
     // Source: `theme-forest.js` constructor + `updateColors()`.
     set_if_missing(&mut tv, "mainBkg", Value::String(primary_color.clone()));
     set_if_missing(&mut tv, "secondBkg", Value::String(secondary_color.clone()));
+    // Table striping colors (used by ER diagrams).
+    // Source: `theme-forest.js`:
+    //   rowOdd  = lighten(mainBkg, 75) || '#ffffff'
+    //   rowEven = lighten(mainBkg, 20)
+    set_if_missing(
+        &mut tv,
+        "rowOdd",
+        Value::String(fmt_hsl(adjust_hsl(primary_hsl, 0.0, 0.0, 75.0))),
+    );
+    set_if_missing(
+        &mut tv,
+        "rowEven",
+        Value::String(fmt_hsl(adjust_hsl(primary_hsl, 0.0, 0.0, 20.0))),
+    );
 
     // `invert('white')` in `khroma` ends up as a pure black in Mermaid's serialized SVG output.
     set_if_missing(&mut tv, "lineColor", Value::String("#000000".to_string()));

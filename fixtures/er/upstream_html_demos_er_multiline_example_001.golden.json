@@ -1,0 +1,176 @@
+{
+  "diagramType": "er",
+  "model": {
+    "type": "er",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "entities": {
+      "CAR": {
+        "id": "entity-CAR-0",
+        "label": "CAR",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "registrationNumber",
+            "keys": [
+              "PK"
+            ],
+            "comment": "Primary Key<br><strong>Unique registration number</strong>"
+          },
+          {
+            "type": "string",
+            "name": "make",
+            "keys": [],
+            "comment": "Car make<br><strong>e.g., Toyota</strong>"
+          },
+          {
+            "type": "string",
+            "name": "model",
+            "keys": [],
+            "comment": "Model of the car<br><strong>e.g., Corolla</strong>"
+          },
+          {
+            "type": "string[]",
+            "name": "parts",
+            "keys": [],
+            "comment": "List of parts<br><strong>Stored as array</strong>"
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default Pine",
+        "cssStyles": []
+      },
+      "MANUFACTURER": {
+        "id": "entity-MANUFACTURER-3",
+        "label": "MANUFACTURER",
+        "attributes": [],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "NAMED-DRIVER": {
+        "id": "entity-NAMED-DRIVER-1",
+        "label": "NAMED-DRIVER",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "carRegistrationNumber",
+            "keys": [
+              "PK",
+              "FK",
+              "UK",
+              "PK"
+            ],
+            "comment": "Foreign key to CAR<br><strong>Also part of PK</strong>"
+          },
+          {
+            "type": "string",
+            "name": "driverLicence",
+            "keys": [
+              "PK",
+              "FK"
+            ],
+            "comment": "Foreign key to PERSON<br><strong>Also part of PK</strong>"
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      },
+      "PERSON": {
+        "id": "entity-PERSON-2",
+        "label": "PERSON",
+        "attributes": [
+          {
+            "type": "string",
+            "name": "driversLicense",
+            "keys": [
+              "PK"
+            ],
+            "comment": "The license #<br><strong>Primary Key</strong>"
+          },
+          {
+            "type": "string(99)",
+            "name": "firstName",
+            "keys": [],
+            "comment": "Only 99 characters <br>are allowed <br> <strong>e.g., Smith</strong>"
+          },
+          {
+            "type": "string",
+            "name": "lastName",
+            "keys": [],
+            "comment": "Last name of person<br><strong>e.g., Smith</strong>"
+          },
+          {
+            "type": "string",
+            "name": "phone",
+            "keys": [
+              "UK"
+            ],
+            "comment": "Unique phone number<br><strong>Used for contact</strong>"
+          },
+          {
+            "type": "int",
+            "name": "age",
+            "keys": [],
+            "comment": "Age of the person<br><strong>Must be numeric</strong>"
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default someclass",
+        "cssStyles": []
+      }
+    },
+    "relationships": [
+      {
+        "entityA": "entity-CAR-0",
+        "roleA": "allows",
+        "entityB": "entity-NAMED-DRIVER-1",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-PERSON-2",
+        "roleA": "is",
+        "entityB": "entity-NAMED-DRIVER-1",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      },
+      {
+        "entityA": "entity-MANUFACTURER-3",
+        "roleA": "makesx",
+        "entityB": "entity-CAR-0",
+        "relSpec": {
+          "cardA": "ZERO_OR_MORE",
+          "cardB": "ONLY_ONE",
+          "relType": "IDENTIFYING"
+        }
+      }
+    ],
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}

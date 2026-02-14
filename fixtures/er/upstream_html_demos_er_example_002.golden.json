@@ -1,0 +1,78 @@
+{
+  "diagramType": "er",
+  "model": {
+    "type": "er",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "entities": {
+      "HOSPITAL": {
+        "id": "entity-HOSPITAL-0",
+        "label": "HOSPITAL",
+        "attributes": [
+          {
+            "type": "int",
+            "name": "id",
+            "keys": [
+              "PK"
+            ],
+            "comment": ""
+          },
+          {
+            "type": "int",
+            "name": "doctor_id",
+            "keys": [
+              "FK"
+            ],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "address",
+            "keys": [
+              "UK"
+            ],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "name",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "phone_number",
+            "keys": [],
+            "comment": ""
+          },
+          {
+            "type": "string",
+            "name": "fax_number",
+            "keys": [],
+            "comment": ""
+          }
+        ],
+        "alias": "",
+        "shape": "erBox",
+        "cssClasses": "default",
+        "cssStyles": []
+      }
+    },
+    "relationships": [],
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "zeroOrOne": "ZERO_OR_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "mdParent": "MD_PARENT"
+      },
+      "identification": {
+        "nonIdentifying": "NON_IDENTIFYING",
+        "identifying": "IDENTIFYING"
+      }
+    }
+  }
+}
