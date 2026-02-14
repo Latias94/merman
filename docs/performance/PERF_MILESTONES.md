@@ -8,7 +8,7 @@ It is intentionally fixture-driven and stage-attributed (parse/layout/render/end
 ### Stage Attribution Snapshot (canaries)
 
 Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) indicates the remaining gap is dominated by
-**parse + render** on flowchart-heavy fixtures. For `class` / `state`, layout is already materially
+**render** on flowchart-heavy fixtures. For `class` / `state`, layout is already materially
 faster than `mmdr`, so end-to-end can be better even though render is still behind.
 
 - Spotcheck (`tools/bench/stage_spotcheck.py`, 15 samples / 3s warmup / 8s measurement, 2026-02-14):
@@ -21,10 +21,13 @@ faster than `mmdr`, so end-to-end can be better even though render is still behi
     - `flowchart_medium`: `parse 2.78x`, `layout 1.17x`, `render 3.69x`, `end_to_end 1.25x`
     - `state_medium`: `render 5.60x` (leaf work + emission fixed-costs still dominate)
 
+  - Flowchart-only spotcheck (same parameters, 2026-02-14):
+    - `flowchart_medium`: `parse 1.03x`, `layout 1.16x`, `render 2.71x`, `end_to_end 1.20x`
+
 Root-cause direction:
 
-- `flowchart_medium` is now primarily a parse+render problem:
-  - parse still pays the `serde_json::Value` tax and downstream decode costs,
+- `flowchart_medium` is now primarily a render problem:
+  - flowchart parse now has a typed render-model fast path, and can be close to parity,
   - render has high fixed overhead from SVG emission (many small writes + style resolution),
   - layout is in the same ballpark but can still regress on `order` / `position_x`.
 - BK x-positioning (`dugong::position::bk::position_x`) was a measurable secondary hotspot after
