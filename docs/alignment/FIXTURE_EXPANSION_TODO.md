@@ -77,6 +77,7 @@ Recently imported (keep gates green after each batch):
 - 2026-02-14: Gantt Cypress rendering fixtures import (25 fixtures from `repo-ref/mermaid/cypress/integration/rendering/gantt.spec.*` + `theme.spec.*`, with upstream SVG baselines). Hardened Gantt parity for d3 `axisFormat` directives (`%L`) + exclude-layer edge cases + JS date-only parsing rules to keep the global `parity-root` gate green.
 - 2026-02-14: Flowchart HTML demo fixtures import (12 fixtures from `repo-ref/mermaid/demos/flowchart.html` via `<pre class="mermaid">`, with upstream SVG baselines).
 - 2026-02-14: Flowchart HTML demo fixtures import (2 fixtures from `repo-ref/mermaid/demos/dataflowchart.html` via `<pre class="mermaid">`, with upstream SVG baselines).
+- 2026-02-14: Mindmap HTML demo fixtures import (2 fixtures from `repo-ref/mermaid/demos/mindmap.html` via `<pre class="mermaid">`, with upstream SVG baselines).
 
 ## Medium priority (coverage growth)
 
