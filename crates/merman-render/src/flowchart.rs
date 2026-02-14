@@ -78,13 +78,17 @@ fn split_mermaid_style_decls(s: &str) -> impl Iterator<Item = &str> {
     parts.into_iter()
 }
 
-pub(crate) fn flowchart_effective_text_style_for_classes(
-    base: &TextStyle,
+pub(crate) fn flowchart_effective_text_style_for_classes<'a>(
+    base: &'a TextStyle,
     class_defs: &IndexMap<String, Vec<String>>,
     classes: &[String],
     inline_styles: &[String],
-) -> TextStyle {
-    let mut style = base.clone();
+) -> std::borrow::Cow<'a, TextStyle> {
+    if classes.is_empty() && inline_styles.is_empty() {
+        return std::borrow::Cow::Borrowed(base);
+    }
+
+    let mut style = std::borrow::Cow::Borrowed(base);
 
     for class in classes {
         let Some(decls) = class_defs.get(class) else {
@@ -98,14 +102,14 @@ pub(crate) fn flowchart_effective_text_style_for_classes(
                 match k {
                     "font-size" => {
                         if let Some(px) = parse_css_px_f64(v) {
-                            style.font_size = px;
+                            style.to_mut().font_size = px;
                         }
                     }
                     "font-family" => {
-                        style.font_family = Some(normalize_css_font_family(v));
+                        style.to_mut().font_family = Some(normalize_css_font_family(v));
                     }
                     "font-weight" => {
-                        style.font_weight = Some(v.trim().to_string());
+                        style.to_mut().font_weight = Some(v.trim().to_string());
                     }
                     _ => {}
                 }
@@ -121,14 +125,14 @@ pub(crate) fn flowchart_effective_text_style_for_classes(
             match k {
                 "font-size" => {
                     if let Some(px) = parse_css_px_f64(v) {
-                        style.font_size = px;
+                        style.to_mut().font_size = px;
                     }
                 }
                 "font-family" => {
-                    style.font_family = Some(normalize_css_font_family(v));
+                    style.to_mut().font_family = Some(normalize_css_font_family(v));
                 }
                 "font-weight" => {
-                    style.font_weight = Some(v.trim().to_string());
+                    style.to_mut().font_weight = Some(v.trim().to_string());
                 }
                 _ => {}
             }
@@ -1365,7 +1369,7 @@ pub fn layout_flowchart_v2(
             measurer,
             raw_label,
             label_type,
-            &node_text_style,
+            node_text_style.as_ref(),
             Some(wrapping_width),
             node_wrap_mode,
         );
@@ -1382,7 +1386,7 @@ pub fn layout_flowchart_v2(
         if span_css_height_parity {
             crate::text::flowchart_apply_mermaid_styled_node_height_parity(
                 &mut metrics,
-                &node_text_style,
+                node_text_style.as_ref(),
             );
         }
         let (width, height) = node_layout_dimensions(
@@ -1415,7 +1419,7 @@ pub fn layout_flowchart_v2(
             measurer,
             &sg.title,
             label_type,
-            &sg_text_style,
+            sg_text_style.as_ref(),
             Some(cluster_title_wrapping_width),
             node_wrap_mode,
         );
@@ -1571,7 +1575,7 @@ pub fn layout_flowchart_v2(
                 measurer,
                 label_text,
                 label_type,
-                &edge_text_style,
+                edge_text_style.as_ref(),
                 Some(wrapping_width),
                 edge_wrap_mode,
             );
