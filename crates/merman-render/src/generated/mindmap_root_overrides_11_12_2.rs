@@ -85,6 +85,18 @@ pub fn lookup_mindmap_root_viewport_override(
             Some(("5 5 317.027587890625 345.3640441894531", "317.028"))
         }
         "mmdr_tests_mindmap_basic" => Some(("5 5 530.9208984375 72.1875", "530.921")),
+        "upstream_cypress_mindmap_tidy_tree_spec_example_001" => {
+            Some(("5 5 311.59832763671875 106.109375", "311.598"))
+        }
+        "upstream_cypress_mindmap_tidy_tree_spec_2_tidy_tree_should_render_a_simple_mindmap_002" => {
+            Some(("5 5 409.72393798828125 373.72052001953125", "409.724"))
+        }
+        "upstream_cypress_mindmap_tidy_tree_spec_3_tidy_tree_should_render_a_mindmap_with_different_shapes_003" => {
+            Some(("5 5 1144.203369140625 700.1749877929688", "1144.2"))
+        }
+        "upstream_cypress_mindmap_tidy_tree_spec_4_tidy_tree_should_render_a_mindmap_with_children_004" => {
+            Some(("5 5 687.355224609375 479.513671875", "687.355"))
+        }
         "upstream_docs_tidy_tree_example_usage_001" => {
             Some(("5 5 409.72393798828125 373.72052001953125", "409.724"))
         }
