@@ -79,7 +79,7 @@ Recently imported (keep gates green after each batch):
 - 2026-02-14: Flowchart HTML demo fixtures import (2 fixtures from `repo-ref/mermaid/demos/dataflowchart.html` via `<pre class="mermaid">`, with upstream SVG baselines).
 - 2026-02-14: Mindmap HTML demo fixtures import (2 fixtures from `repo-ref/mermaid/demos/mindmap.html` via `<pre class="mermaid">`, with upstream SVG baselines).
 - 2026-02-14: Architecture HTML demo fixtures import (11 fixtures from `repo-ref/mermaid/demos/architecture.html` via `<pre class="mermaid">`, with upstream SVG baselines).
-- 2026-02-14: Class HTML demo fixtures import (10 fixtures from `repo-ref/mermaid/demos/classchart.html` via `<pre class="mermaid">`, with upstream SVG baselines). (1 additional demo block deferred because Mermaid CLI `@11.12.2` fails to parse it: `fixtures/_deferred/class/upstream_html_demos_classchart_class_diagram_demos_008.mmd`.)
+- 2026-02-14: Class HTML demo fixtures import (10 fixtures from `repo-ref/mermaid/demos/classchart.html` via `<pre class="mermaid">`, with upstream SVG baselines). (1 additional demo block deferred because Mermaid CLI `@11.12.2` fails to parse it; the block contains the line `class People List~List~Person~~`.)
 
 ## Medium priority (coverage growth)
 

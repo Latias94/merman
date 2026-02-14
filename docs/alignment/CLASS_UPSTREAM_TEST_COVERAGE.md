@@ -180,7 +180,7 @@ Imported (parity-gated with upstream SVG baselines):
 
 Deferred (upstream Mermaid CLI `@11.12.2` parse error, so no SVG baseline yet):
 
-- `fixtures/_deferred/class/upstream_html_demos_classchart_class_diagram_demos_008.mmd`
+- `repo-ref/mermaid/demos/classchart.html` block that contains the line `class People List~List~Person~~`
 
 ## Headless layout coverage (Stage A)
 
