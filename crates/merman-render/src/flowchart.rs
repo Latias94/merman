@@ -8,8 +8,6 @@ use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use indexmap::IndexMap;
-use rustc_hash::FxHashMap;
-use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -142,110 +140,10 @@ pub(crate) fn flowchart_effective_text_style_for_classes<'a>(
     style
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub(crate) struct FlowchartV2Model {
-    #[serde(default, rename = "accDescr")]
-    pub acc_descr: Option<String>,
-    #[serde(default, rename = "accTitle")]
-    pub acc_title: Option<String>,
-    #[serde(default, rename = "classDefs")]
-    pub class_defs: IndexMap<String, Vec<String>>,
-    #[serde(default)]
-    pub direction: Option<String>,
-    #[serde(default, rename = "edgeDefaults")]
-    pub edge_defaults: Option<FlowEdgeDefaults>,
-    #[serde(default, rename = "vertexCalls")]
-    pub vertex_calls: Vec<String>,
-    pub nodes: Vec<FlowNode>,
-    pub edges: Vec<FlowEdge>,
-    #[serde(default)]
-    pub subgraphs: Vec<FlowSubgraph>,
-    #[serde(default)]
-    pub tooltips: FxHashMap<String, String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub(crate) struct FlowEdgeDefaults {
-    #[serde(default)]
-    pub interpolate: Option<String>,
-    #[serde(default)]
-    pub style: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub(crate) struct FlowNode {
-    pub id: String,
-    pub label: Option<String>,
-    #[serde(default, rename = "labelType")]
-    pub label_type: Option<String>,
-    #[serde(rename = "layoutShape")]
-    pub layout_shape: Option<String>,
-    #[serde(default)]
-    pub icon: Option<String>,
-    #[serde(default)]
-    pub form: Option<String>,
-    #[serde(default)]
-    pub pos: Option<String>,
-    #[serde(default)]
-    pub img: Option<String>,
-    #[serde(default)]
-    pub constraint: Option<String>,
-    #[serde(default, rename = "assetWidth")]
-    pub asset_width: Option<f64>,
-    #[serde(default, rename = "assetHeight")]
-    pub asset_height: Option<f64>,
-    #[serde(default)]
-    pub classes: Vec<String>,
-    #[serde(default)]
-    pub styles: Vec<String>,
-    #[serde(default)]
-    pub link: Option<String>,
-    #[serde(default, rename = "linkTarget")]
-    #[allow(dead_code)]
-    pub link_target: Option<String>,
-    #[serde(default, rename = "haveCallback")]
-    #[allow(dead_code)]
-    pub have_callback: bool,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub(crate) struct FlowEdge {
-    pub id: String,
-    pub from: String,
-    pub to: String,
-    pub label: Option<String>,
-    #[serde(default, rename = "labelType")]
-    pub label_type: Option<String>,
-    #[serde(default, rename = "type")]
-    pub edge_type: Option<String>,
-    #[serde(default)]
-    pub stroke: Option<String>,
-    #[serde(default)]
-    pub interpolate: Option<String>,
-    #[serde(default)]
-    pub classes: Vec<String>,
-    #[serde(default)]
-    pub style: Vec<String>,
-    #[serde(default)]
-    pub animate: Option<bool>,
-    #[serde(default)]
-    pub animation: Option<String>,
-    pub length: usize,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub(crate) struct FlowSubgraph {
-    pub id: String,
-    pub title: String,
-    pub dir: Option<String>,
-    #[serde(default, rename = "labelType")]
-    pub label_type: Option<String>,
-    #[serde(default)]
-    pub classes: Vec<String>,
-    #[serde(default)]
-    pub styles: Vec<String>,
-    pub nodes: Vec<String>,
-}
+pub(crate) type FlowchartV2Model = merman_core::diagrams::flowchart::FlowchartV2Model;
+pub(crate) type FlowNode = merman_core::diagrams::flowchart::FlowNode;
+pub(crate) type FlowEdge = merman_core::diagrams::flowchart::FlowEdge;
+pub(crate) type FlowSubgraph = merman_core::diagrams::flowchart::FlowSubgraph;
 
 fn json_f64(v: &Value) -> Option<f64> {
     v.as_f64()
@@ -1150,7 +1048,50 @@ pub fn layout_flowchart_v2(
     let timing_enabled = std::env::var("MERMAN_FLOWCHART_LAYOUT_TIMING")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
+    let total_start = timing_enabled.then(std::time::Instant::now);
 
+    let deserialize_start = timing_enabled.then(std::time::Instant::now);
+    let model: FlowchartV2Model = crate::json::from_value_ref(semantic)?;
+    let deserialize = deserialize_start.map(|s| s.elapsed()).unwrap_or_default();
+
+    layout_flowchart_v2_with_model(
+        &model,
+        effective_config,
+        measurer,
+        timing_enabled,
+        total_start,
+        deserialize,
+    )
+}
+
+pub fn layout_flowchart_v2_typed(
+    model: &FlowchartV2Model,
+    effective_config: &Value,
+    measurer: &dyn TextMeasurer,
+) -> Result<FlowchartV2Layout> {
+    let timing_enabled = std::env::var("MERMAN_FLOWCHART_LAYOUT_TIMING")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let total_start = timing_enabled.then(std::time::Instant::now);
+
+    layout_flowchart_v2_with_model(
+        model,
+        effective_config,
+        measurer,
+        timing_enabled,
+        total_start,
+        std::time::Duration::default(),
+    )
+}
+
+fn layout_flowchart_v2_with_model(
+    model: &FlowchartV2Model,
+    effective_config: &Value,
+    measurer: &dyn TextMeasurer,
+    timing_enabled: bool,
+    total_start: Option<std::time::Instant>,
+    deserialize: std::time::Duration,
+) -> Result<FlowchartV2Layout> {
     #[derive(Debug, Default, Clone)]
     struct FlowchartLayoutTimings {
         total: std::time::Duration,
@@ -1166,14 +1107,8 @@ pub fn layout_flowchart_v2(
         build_output: std::time::Duration,
     }
 
-    let total_start = timing_enabled.then(std::time::Instant::now);
-
-    let deserialize_start = timing_enabled.then(std::time::Instant::now);
-    let model: FlowchartV2Model = crate::json::from_value_ref(semantic)?;
     let mut timings = FlowchartLayoutTimings::default();
-    if let Some(s) = deserialize_start {
-        timings.deserialize = s.elapsed();
-    }
+    timings.deserialize = deserialize;
 
     // Mermaid's dagre adapter expands self-loop edges into a chain of two special label nodes plus
     // three edges. This avoids `v == w` edges in Dagre and is required for SVG parity (Mermaid

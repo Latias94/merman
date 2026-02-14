@@ -2,6 +2,8 @@ use crate::sanitize::sanitize_text;
 use crate::utils::format_url;
 use crate::{Error, MermaidConfig, ParseMetadata, Result};
 use indexmap::IndexMap;
+use rustc_hash::FxHashMap;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -10,6 +12,109 @@ lalrpop_util::lalrpop_mod!(
     flowchart_grammar,
     "/diagrams/flowchart_grammar.rs"
 );
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowchartV2Model {
+    #[serde(default, rename = "accDescr")]
+    pub acc_descr: Option<String>,
+    #[serde(default, rename = "accTitle")]
+    pub acc_title: Option<String>,
+    #[serde(default, rename = "classDefs")]
+    pub class_defs: IndexMap<String, Vec<String>>,
+    #[serde(default)]
+    pub direction: Option<String>,
+    #[serde(default, rename = "edgeDefaults")]
+    pub edge_defaults: Option<FlowEdgeDefaults>,
+    #[serde(default, rename = "vertexCalls")]
+    pub vertex_calls: Vec<String>,
+    pub nodes: Vec<FlowNode>,
+    pub edges: Vec<FlowEdge>,
+    #[serde(default)]
+    pub subgraphs: Vec<FlowSubgraph>,
+    #[serde(default)]
+    pub tooltips: FxHashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowEdgeDefaults {
+    #[serde(default)]
+    pub interpolate: Option<String>,
+    #[serde(default)]
+    pub style: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowNode {
+    pub id: String,
+    pub label: Option<String>,
+    #[serde(default, rename = "labelType")]
+    pub label_type: Option<String>,
+    #[serde(rename = "layoutShape")]
+    pub layout_shape: Option<String>,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub form: Option<String>,
+    #[serde(default)]
+    pub pos: Option<String>,
+    #[serde(default)]
+    pub img: Option<String>,
+    #[serde(default)]
+    pub constraint: Option<String>,
+    #[serde(default, rename = "assetWidth")]
+    pub asset_width: Option<f64>,
+    #[serde(default, rename = "assetHeight")]
+    pub asset_height: Option<f64>,
+    #[serde(default)]
+    pub classes: Vec<String>,
+    #[serde(default)]
+    pub styles: Vec<String>,
+    #[serde(default)]
+    pub link: Option<String>,
+    #[serde(default, rename = "linkTarget")]
+    pub link_target: Option<String>,
+    #[serde(default, rename = "haveCallback")]
+    pub have_callback: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowEdge {
+    pub id: String,
+    pub from: String,
+    pub to: String,
+    pub label: Option<String>,
+    #[serde(default, rename = "labelType")]
+    pub label_type: Option<String>,
+    #[serde(default, rename = "type")]
+    pub edge_type: Option<String>,
+    #[serde(default)]
+    pub stroke: Option<String>,
+    #[serde(default)]
+    pub interpolate: Option<String>,
+    #[serde(default)]
+    pub classes: Vec<String>,
+    #[serde(default)]
+    pub style: Vec<String>,
+    #[serde(default)]
+    pub animate: Option<bool>,
+    #[serde(default)]
+    pub animation: Option<String>,
+    pub length: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowSubgraph {
+    pub id: String,
+    pub title: String,
+    pub dir: Option<String>,
+    #[serde(default, rename = "labelType")]
+    pub label_type: Option<String>,
+    #[serde(default)]
+    pub classes: Vec<String>,
+    #[serde(default)]
+    pub styles: Vec<String>,
+    pub nodes: Vec<String>,
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct Node {
@@ -1544,6 +1649,186 @@ pub fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
     }))
 }
 
+pub fn parse_flowchart_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<FlowchartV2Model> {
+    let (code, acc_title, acc_descr) = extract_flowchart_accessibility_statements(code);
+    let ast = flowchart_grammar::FlowchartAstParser::new()
+        .parse(Lexer::new(&code))
+        .map_err(|e| Error::DiagramParse {
+            diagram_type: meta.diagram_type.clone(),
+            message: format!("{e:?}"),
+        })?;
+
+    let mut build = FlowchartBuildState::new();
+    build
+        .add_statements(&ast.statements)
+        .map_err(|e| Error::DiagramParse {
+            diagram_type: meta.diagram_type.clone(),
+            message: e,
+        })?;
+    let FlowchartBuildState {
+        nodes,
+        edges,
+        vertex_calls,
+        ..
+    } = build;
+    let mut nodes = nodes;
+    let mut edges = edges;
+
+    let inherit_dir = meta
+        .effective_config
+        .as_value()
+        .get("flowchart")
+        .and_then(|v| v.get("inheritDir"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let mut builder = SubgraphBuilder::new(inherit_dir, ast.direction.clone());
+    let _ = builder.eval_statements(&ast.statements);
+
+    let mut class_defs: IndexMap<String, Vec<String>> = IndexMap::new();
+    let mut tooltips: HashMap<String, String> = HashMap::new();
+    let mut edge_defaults = EdgeDefaults {
+        style: Vec::new(),
+        interpolate: None,
+    };
+
+    let mut node_index: HashMap<String, usize> = HashMap::new();
+    for (idx, n) in nodes.iter().enumerate() {
+        node_index.insert(n.id.clone(), idx);
+    }
+    let mut subgraph_index: HashMap<String, usize> = HashMap::new();
+    for (idx, sg) in builder.subgraphs.iter().enumerate() {
+        subgraph_index.insert(sg.id.clone(), idx);
+    }
+
+    let security_level_loose = meta.effective_config.get_str("securityLevel") == Some("loose");
+    apply_semantic_statements(
+        &ast.statements,
+        &mut nodes,
+        &mut node_index,
+        &mut edges,
+        &mut builder.subgraphs,
+        &mut subgraph_index,
+        &mut class_defs,
+        &mut tooltips,
+        &mut edge_defaults,
+        security_level_loose,
+        &meta.diagram_type,
+        &meta.effective_config,
+    )?;
+
+    fn get_layout_shape(n: &Node) -> String {
+        // Mirrors Mermaid FlowDB `getTypeFromVertex` logic at 11.12.2.
+        if n.img.is_some() {
+            return "imageSquare".to_string();
+        }
+        if n.icon.is_some() {
+            match n.form.as_deref() {
+                Some("circle") => return "iconCircle".to_string(),
+                Some("square") => return "iconSquare".to_string(),
+                Some("rounded") => return "iconRounded".to_string(),
+                _ => return "icon".to_string(),
+            }
+        }
+        match n.shape.as_deref() {
+            Some("square") | None => "squareRect".to_string(),
+            Some("round") => "roundedRect".to_string(),
+            Some("ellipse") => "ellipse".to_string(),
+            Some(other) => other.to_string(),
+        }
+    }
+
+    fn decode_mermaid_hash_entities(input: &str) -> std::borrow::Cow<'_, str> {
+        // Mermaid runs `encodeEntities(...)` before parsing and later decodes with browser
+        // `entityDecode(...)`. In our headless pipeline we decode into Unicode during parsing so
+        // layout + SVG output match upstream.
+        crate::entities::decode_mermaid_entities_to_unicode(input)
+    }
+
+    let nodes = nodes
+        .into_iter()
+        .map(|n| {
+            let layout_shape = get_layout_shape(&n);
+            let label_raw = n.label.clone().unwrap_or_else(|| n.id.clone());
+            let label_raw = decode_mermaid_hash_entities(&label_raw);
+            let mut label = sanitize_text(&label_raw, &meta.effective_config);
+            if label.len() >= 2 && label.starts_with('\"') && label.ends_with('\"') {
+                label = label[1..label.len() - 1].to_string();
+            }
+
+            FlowNode {
+                id: n.id,
+                label: Some(label),
+                label_type: Some(title_kind_str(&n.label_type).to_string()),
+                layout_shape: Some(layout_shape),
+                icon: n.icon,
+                form: n.form,
+                pos: n.pos,
+                img: n.img,
+                constraint: n.constraint,
+                asset_width: n.asset_width,
+                asset_height: n.asset_height,
+                classes: n.classes,
+                styles: n.styles,
+                link: n.link,
+                link_target: n.link_target,
+                have_callback: n.have_callback,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let edges = edges
+        .into_iter()
+        .map(|e| {
+            let label = e.label.as_ref().map(|s| {
+                let decoded = decode_mermaid_hash_entities(s);
+                sanitize_text(&decoded, &meta.effective_config)
+            });
+            let id = e.id.ok_or_else(|| Error::DiagramParse {
+                diagram_type: meta.diagram_type.clone(),
+                message: "flowchart edge id missing".to_string(),
+            })?;
+            Ok(FlowEdge {
+                id,
+                from: e.from,
+                to: e.to,
+                label,
+                label_type: Some(title_kind_str(&e.label_type).to_string()),
+                edge_type: Some(e.link.edge_type),
+                stroke: Some(e.link.stroke),
+                length: e.link.length,
+                style: e.style,
+                classes: e.classes,
+                interpolate: e.interpolate,
+                animate: e.animate,
+                animation: e.animation,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(FlowchartV2Model {
+        acc_descr,
+        acc_title,
+        class_defs,
+        direction: ast.direction,
+        edge_defaults: Some(FlowEdgeDefaults {
+            style: edge_defaults.style,
+            interpolate: edge_defaults.interpolate,
+        }),
+        vertex_calls,
+        nodes,
+        edges,
+        subgraphs: builder
+            .subgraphs
+            .into_iter()
+            .map(flow_subgraph_to_model)
+            .collect::<Vec<_>>(),
+        tooltips: tooltips.into_iter().collect(),
+    })
+}
+
 fn extract_flowchart_accessibility_statements(
     code: &str,
 ) -> (String, Option<String>, Option<String>) {
@@ -2201,6 +2486,18 @@ fn flow_subgraph_to_json(sg: FlowSubGraph) -> Value {
         "dir": sg.dir,
         "labelType": sg.label_type,
     })
+}
+
+fn flow_subgraph_to_model(sg: FlowSubGraph) -> FlowSubgraph {
+    FlowSubgraph {
+        id: sg.id,
+        nodes: sg.nodes,
+        title: sg.title,
+        classes: sg.classes,
+        styles: sg.styles,
+        dir: sg.dir,
+        label_type: Some(sg.label_type),
+    }
 }
 
 #[allow(dead_code)]

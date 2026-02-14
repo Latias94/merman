@@ -370,6 +370,10 @@ impl Engine {
                 crate::diagrams::state::parse_state_model_for_render(&code, &meta)
                     .map(RenderSemanticModel::State)
             }
+            "flowchart-v2" | "flowchart" | "flowchart-elk" => {
+                crate::diagrams::flowchart::parse_flowchart_model_for_render(&code, &meta)
+                    .map(RenderSemanticModel::Flowchart)
+            }
             _ => diagram::parse_or_unsupported(
                 &self.diagram_registry,
                 &meta.diagram_type,
@@ -425,6 +429,7 @@ impl Engine {
                 }
             }
             RenderSemanticModel::Mindmap(_) => {}
+            RenderSemanticModel::Flowchart(_) => {}
         }
         let sanitize = sanitize_start.map(|s| s.elapsed());
 
@@ -433,6 +438,7 @@ impl Engine {
                 RenderSemanticModel::Json(_) => "json",
                 RenderSemanticModel::State(_) => "state",
                 RenderSemanticModel::Mindmap(_) => "mindmap",
+                RenderSemanticModel::Flowchart(_) => "flowchart",
             };
             eprintln!(
                 "[parse-render-timing] diagram={} model={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
@@ -487,6 +493,10 @@ impl Engine {
                 crate::diagrams::state::parse_state_model_for_render(&code, &meta)
                     .map(RenderSemanticModel::State)
             }
+            "flowchart-v2" | "flowchart" | "flowchart-elk" => {
+                crate::diagrams::flowchart::parse_flowchart_model_for_render(&code, &meta)
+                    .map(RenderSemanticModel::Flowchart)
+            }
             _ => diagram::parse_or_unsupported(
                 &self.diagram_registry,
                 &meta.diagram_type,
@@ -542,6 +552,7 @@ impl Engine {
                 }
             }
             RenderSemanticModel::Mindmap(_) => {}
+            RenderSemanticModel::Flowchart(_) => {}
         }
         let sanitize = sanitize_start.map(|s| s.elapsed());
 
@@ -550,6 +561,7 @@ impl Engine {
                 RenderSemanticModel::Json(_) => "json",
                 RenderSemanticModel::State(_) => "state",
                 RenderSemanticModel::Mindmap(_) => "mindmap",
+                RenderSemanticModel::Flowchart(_) => "flowchart",
             };
             eprintln!(
                 "[parse-render-timing] diagram={} model={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",

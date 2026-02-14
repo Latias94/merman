@@ -370,6 +370,9 @@ pub fn render_layout_svg_parts_for_render_model(
     use merman_core::RenderSemanticModel;
 
     match (layout, semantic) {
+        (LayoutDiagram::FlowchartV2(layout), RenderSemanticModel::Flowchart(model)) => {
+            render_flowchart_v2_svg_model(layout, model, effective_config, title, measurer, options)
+        }
         (LayoutDiagram::MindmapDiagram(layout), RenderSemanticModel::Mindmap(model)) => {
             mindmap::render_mindmap_diagram_svg_model(layout, model, effective_config, options)
         }
@@ -406,6 +409,16 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
     use merman_core::RenderSemanticModel;
 
     match (layout, semantic) {
+        (LayoutDiagram::FlowchartV2(layout), RenderSemanticModel::Flowchart(model)) => {
+            render_flowchart_v2_svg_model_with_config(
+                layout,
+                model,
+                effective_config,
+                title,
+                measurer,
+                options,
+            )
+        }
         (LayoutDiagram::MindmapDiagram(layout), RenderSemanticModel::Mindmap(model)) => {
             mindmap::render_mindmap_diagram_svg_model(
                 layout,
@@ -775,6 +788,24 @@ pub fn render_flowchart_v2_svg(
     )
 }
 
+pub fn render_flowchart_v2_svg_model(
+    layout: &FlowchartV2Layout,
+    model: &merman_core::diagrams::flowchart::FlowchartV2Model,
+    effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    flowchart::render_flowchart_v2_svg_model(
+        layout,
+        model,
+        effective_config,
+        diagram_title,
+        measurer,
+        options,
+    )
+}
+
 pub fn render_flowchart_v2_svg_with_config(
     layout: &FlowchartV2Layout,
     semantic: &serde_json::Value,
@@ -786,6 +817,24 @@ pub fn render_flowchart_v2_svg_with_config(
     flowchart::render_flowchart_v2_svg_with_config(
         layout,
         semantic,
+        effective_config,
+        diagram_title,
+        measurer,
+        options,
+    )
+}
+
+pub fn render_flowchart_v2_svg_model_with_config(
+    layout: &FlowchartV2Layout,
+    model: &merman_core::diagrams::flowchart::FlowchartV2Model,
+    effective_config: &merman_core::MermaidConfig,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    flowchart::render_flowchart_v2_svg_model_with_config(
+        layout,
+        model,
         effective_config,
         diagram_title,
         measurer,

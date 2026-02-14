@@ -9706,6 +9706,58 @@ pub(super) fn render_flowchart_v2_svg(
     render_flowchart_v2_svg_with_config(layout, semantic, &config, diagram_title, measurer, options)
 }
 
+#[inline]
+fn section<'a>(
+    enabled: bool,
+    dst: &'a mut std::time::Duration,
+) -> Option<super::timing::TimingGuard<'a>> {
+    enabled.then(|| super::timing::TimingGuard::new(dst))
+}
+
+pub(super) fn render_flowchart_v2_svg_model(
+    layout: &FlowchartV2Layout,
+    model: &crate::flowchart::FlowchartV2Model,
+    effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let config = merman_core::MermaidConfig::from_value(effective_config.clone());
+    render_flowchart_v2_svg_model_with_config(
+        layout,
+        model,
+        &config,
+        diagram_title,
+        measurer,
+        options,
+    )
+}
+
+pub(super) fn render_flowchart_v2_svg_model_with_config(
+    layout: &FlowchartV2Layout,
+    model: &crate::flowchart::FlowchartV2Model,
+    effective_config: &merman_core::MermaidConfig,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let timing_enabled = super::timing::render_timing_enabled();
+    let mut timings = super::timing::RenderTimings::default();
+    let total_start = std::time::Instant::now();
+
+    render_flowchart_v2_svg_with_config_inner(
+        layout,
+        model,
+        effective_config,
+        diagram_title,
+        measurer,
+        options,
+        timing_enabled,
+        &mut timings,
+        total_start,
+    )
+}
+
 pub(super) fn render_flowchart_v2_svg_with_config(
     layout: &FlowchartV2Layout,
     semantic: &serde_json::Value,
@@ -9717,18 +9769,36 @@ pub(super) fn render_flowchart_v2_svg_with_config(
     let timing_enabled = super::timing::render_timing_enabled();
     let mut timings = super::timing::RenderTimings::default();
     let total_start = std::time::Instant::now();
-    fn section<'a>(
-        enabled: bool,
-        dst: &'a mut std::time::Duration,
-    ) -> Option<super::timing::TimingGuard<'a>> {
-        enabled.then(|| super::timing::TimingGuard::new(dst))
-    }
 
     let model: crate::flowchart::FlowchartV2Model = {
         let _g = section(timing_enabled, &mut timings.deserialize_model);
         crate::json::from_value_ref(semantic)?
     };
 
+    render_flowchart_v2_svg_with_config_inner(
+        layout,
+        &model,
+        effective_config,
+        diagram_title,
+        measurer,
+        options,
+        timing_enabled,
+        &mut timings,
+        total_start,
+    )
+}
+
+fn render_flowchart_v2_svg_with_config_inner(
+    layout: &FlowchartV2Layout,
+    model: &crate::flowchart::FlowchartV2Model,
+    effective_config: &merman_core::MermaidConfig,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+    timing_enabled: bool,
+    timings: &mut super::timing::RenderTimings,
+    total_start: std::time::Instant,
+) -> Result<String> {
     let effective_config_value = effective_config.as_value();
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");

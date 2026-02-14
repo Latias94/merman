@@ -36,6 +36,7 @@ url.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 ryu-js.workspace = true
+rustc-hash.workspace = true
 
 [build-dependencies]
 lalrpop.workspace = true

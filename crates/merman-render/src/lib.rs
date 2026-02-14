@@ -275,6 +275,15 @@ pub fn layout_parsed_render_layout_only(
                 options.use_manatee_layout,
             )?,
         )),
+        (RenderSemanticModel::Flowchart(model), "flowchart-v2" | "flowchart" | "flowchart-elk") => {
+            Ok(LayoutDiagram::FlowchartV2(
+                flowchart::layout_flowchart_v2_typed(
+                    model,
+                    effective_config,
+                    options.text_measurer.as_ref(),
+                )?,
+            ))
+        }
         (RenderSemanticModel::State(model), "stateDiagram" | "state") => Ok(
             LayoutDiagram::StateDiagramV2(state::layout_state_diagram_v2_typed(
                 model,

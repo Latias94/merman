@@ -1672,6 +1672,7 @@ dependencies = [
  "logos",
  "lol_html",
  "regex",
+ "rustc-hash",
  "ryu-js",
  "serde",
  "serde_json",
