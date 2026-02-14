@@ -4830,7 +4830,8 @@ fn render_state_node_svg(
             };
 
             let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
-            out.push_str(&format!(
+            let _ = write!(
+                out,
                 r##"<g class="{}" id="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="0 0" style="{}"/></g>{}<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g>{}</g>"##,
                 escape_xml_display(&node_class),
                 escape_xml_display(&node.dom_id),
@@ -4852,7 +4853,7 @@ fn render_state_node_svg(
                 div_style,
                 label_html,
                 link_close
-            ));
+            );
             drop(_g_emit);
         }
     }
