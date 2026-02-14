@@ -89,6 +89,9 @@ Recently imported (keep gates green after each batch):
 - 2026-02-14: Journey HTML demo fixtures import (1 fixture from `repo-ref/mermaid/demos/journey.html` via `<pre class="mermaid">`, with upstream SVG baselines), keeping `parity-root` green.
 - 2026-02-14: GitGraph HTML demo fixtures import (20 fixtures from `repo-ref/mermaid/demos/git.html` via `<pre class="mermaid">`, with upstream SVG baselines; imported with `--complex --limit 20`), keeping `parity-root` green.
 - 2026-02-14: GitGraph HTML demo fixtures import (remaining 13 fixtures from `repo-ref/mermaid/demos/git.html` via `<pre class="mermaid">`, with upstream SVG baselines), keeping `parity-root` green.
+- 2026-02-14: Info HTML demo fixtures import (2 fixtures from `repo-ref/mermaid/demos/info.html` via `<pre class="mermaid">`, with upstream SVG baselines), keeping `parity-root` green.
+- 2026-02-14: Pie HTML demo fixtures import (3 fixtures from `repo-ref/mermaid/demos/pie.html` via `<pre class="mermaid">`, with upstream SVG baselines). Added root viewport overrides for the new pie demo fixture IDs to keep `parity-root` green.
+- 2026-02-14: Radar HTML demo fixtures import (6 fixtures from `repo-ref/mermaid/demos/radar.html` via `<pre class="mermaid">`, with upstream SVG baselines), keeping `parity-root` green.
 
 ## Medium priority (coverage growth)
 
