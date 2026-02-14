@@ -36,6 +36,10 @@ Root-cause direction:
   then re-parsing it to approximate `getBBox()`. We now compute cubic bounds during curve emission
   for the viewBox approximation, avoiding `svg_path_bounds_from_d(...)` in the flowchart viewbox
   prepass (still builds the `d`, but no longer parses it).
+- SVG emission still has measurable fixed overhead. Two recent low-risk wins:
+  - Skip XML-escape scanning for `data-points` base64 payloads (and other known-safe path payloads).
+  - Avoid repeated `String::replacen(...)` passes over the full SVG by doing placeholder replacement
+    in a single rebuild pass (not 2–3 full copies).
 - Class diagram viewport work had the same pattern: we were accumulating `path_bounds` by parsing
   the emitted `d` strings. We now compute bounds during path emission for class edges + RoughJS-like
   strokes, and `path_bounds` micro-timing dropped from ~`O(50µs)` to ~`O(1–3µs)` for `class_medium`.
