@@ -35,6 +35,9 @@ Root-cause direction:
   scratch for *every* new node. Switching to a per-prefix monotonic counter keeps naming identical
   but makes id allocation amortized O(1). On `flowchart_medium`, `compound_border` dropped from
   ~`0.8–0.9ms` to ~`0.28–0.35ms` in local `DUGONG_DAGREISH_TIMING=1` spot runs.
+- The nesting graph pass (`nesting_run`) had the same O(n^2) dummy id scan pattern for `_root` /
+  `_bt` / `_bb`. We applied the same monotonic id strategy to keep it from scaling badly on large
+  compound graphs.
 - Flowchart viewport work had some pure overhead: we were generating an edge path `d` string and
   then re-parsing it to approximate `getBBox()`. We now compute cubic bounds during curve emission
   for the viewBox approximation, avoiding `svg_path_bounds_from_d(...)` in the flowchart viewbox
