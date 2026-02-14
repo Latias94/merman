@@ -880,35 +880,38 @@ where
         });
     }
 
-    for e in cg.edges() {
-        let Some(v_node_ix) = g.node_ix(e.v.as_str()) else {
-            continue;
+    let mut cg_ix_to_entry_ix: Vec<Option<usize>> = Vec::new();
+    cg.for_each_node_ix(|cg_ix, node_id, _| {
+        let Some(g_node_ix) = g.node_ix(node_id) else {
+            return;
         };
-        let Some(w_node_ix) = g.node_ix(e.w.as_str()) else {
-            continue;
+        let Some(&entry_ix) = id_to_ix.get(&g_node_ix) else {
+            return;
         };
+        if cg_ix_to_entry_ix.len() <= cg_ix {
+            cg_ix_to_entry_ix.resize(cg_ix + 1, None);
+        }
+        cg_ix_to_entry_ix[cg_ix] = Some(entry_ix);
+    });
 
-        let Some(&v_ix) = id_to_ix.get(&v_node_ix) else {
-            continue;
+    cg.for_each_edge_ix(|v_cg_ix, w_cg_ix, _ek, _lbl| {
+        let Some(&Some(v_ix)) = cg_ix_to_entry_ix.get(v_cg_ix) else {
+            return;
         };
-        let Some(&w_ix) = id_to_ix.get(&w_node_ix) else {
-            continue;
+        let Some(&Some(w_ix)) = cg_ix_to_entry_ix.get(w_cg_ix) else {
+            return;
         };
 
         conflicts[w_ix].indegree += 1;
         conflicts[v_ix].outs.push(w_ix);
-    }
+    });
 
-    let mut source_set: Vec<usize> = id_to_ix
-        .iter()
-        .filter_map(|(_, &ix)| {
-            if conflicts[ix].indegree == 0 {
-                Some(ix)
-            } else {
-                None
-            }
-        })
-        .collect();
+    let mut source_set: Vec<usize> = Vec::new();
+    for ix in 0..conflicts.len() {
+        if conflicts[ix].indegree == 0 {
+            source_set.push(ix);
+        }
+    }
 
     let mut processed: Vec<usize> = Vec::new();
     while let Some(v_ix) = source_set.pop() {
