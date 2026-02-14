@@ -353,10 +353,16 @@ impl Engine {
         text: &str,
         options: ParseOptions,
     ) -> Result<Option<ParsedDiagramRender>> {
+        let timing_enabled = Self::parse_timing_enabled();
+        let total_start = timing_enabled.then(std::time::Instant::now);
+
+        let preprocess_start = timing_enabled.then(std::time::Instant::now);
         let Some((code, meta)) = self.preprocess_and_detect(text, options)? else {
             return Ok(None);
         };
+        let preprocess = preprocess_start.map(|s| s.elapsed());
 
+        let parse_start = timing_enabled.then(std::time::Instant::now);
         let parse_res: Result<RenderSemanticModel> = match meta.diagram_type.as_str() {
             "mindmap" => crate::diagrams::mindmap::parse_mindmap_model_for_render(&code, &meta)
                 .map(RenderSemanticModel::Mindmap),
@@ -372,6 +378,7 @@ impl Engine {
             )
             .map(RenderSemanticModel::Json),
         };
+        let parse = parse_start.map(|s| s.elapsed());
 
         let mut model = match parse_res {
             Ok(v) => v,
@@ -387,6 +394,16 @@ impl Engine {
                     &mut error_model,
                     &error_meta.effective_config,
                 );
+                if let Some(start) = total_start {
+                    eprintln!(
+                        "[parse-render-timing] diagram=error model=json total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
+                        start.elapsed(),
+                        preprocess.unwrap_or_default(),
+                        parse.unwrap_or_default(),
+                        std::time::Duration::default(),
+                        text.len(),
+                    );
+                }
                 return Ok(Some(ParsedDiagramRender {
                     meta: error_meta,
                     model: RenderSemanticModel::Json(error_model),
@@ -394,6 +411,7 @@ impl Engine {
             }
         };
 
+        let sanitize_start = timing_enabled.then(std::time::Instant::now);
         match &mut model {
             RenderSemanticModel::Json(v) => {
                 common_db::apply_common_db_sanitization(v, &meta.effective_config);
@@ -408,6 +426,25 @@ impl Engine {
             }
             RenderSemanticModel::Mindmap(_) => {}
         }
+        let sanitize = sanitize_start.map(|s| s.elapsed());
+
+        if let Some(start) = total_start {
+            let model_kind = match &model {
+                RenderSemanticModel::Json(_) => "json",
+                RenderSemanticModel::State(_) => "state",
+                RenderSemanticModel::Mindmap(_) => "mindmap",
+            };
+            eprintln!(
+                "[parse-render-timing] diagram={} model={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
+                meta.diagram_type,
+                model_kind,
+                start.elapsed(),
+                preprocess.unwrap_or_default(),
+                parse.unwrap_or_default(),
+                sanitize.unwrap_or_default(),
+                text.len(),
+            );
+        }
 
         Ok(Some(ParsedDiagramRender { meta, model }))
     }
@@ -418,6 +455,124 @@ impl Engine {
         options: ParseOptions,
     ) -> Result<Option<ParsedDiagramRender>> {
         self.parse_diagram_for_render_model_sync(text, options)
+    }
+
+    /// Parses a diagram into a typed semantic render model when the diagram type is already known
+    /// (skips type detection).
+    ///
+    /// This is the preferred entrypoint for Markdown renderers and editors that already know the
+    /// diagram type from the code fence info string. It avoids the detection pass and can reduce a
+    /// small fixed overhead in tight render loops.
+    pub fn parse_diagram_for_render_model_as_sync(
+        &self,
+        diagram_type: &str,
+        text: &str,
+        options: ParseOptions,
+    ) -> Result<Option<ParsedDiagramRender>> {
+        let timing_enabled = Self::parse_timing_enabled();
+        let total_start = timing_enabled.then(std::time::Instant::now);
+
+        let preprocess_start = timing_enabled.then(std::time::Instant::now);
+        let Some((code, meta)) = self.preprocess_and_assume_type(diagram_type, text, options)?
+        else {
+            return Ok(None);
+        };
+        let preprocess = preprocess_start.map(|s| s.elapsed());
+
+        let parse_start = timing_enabled.then(std::time::Instant::now);
+        let parse_res: Result<RenderSemanticModel> = match meta.diagram_type.as_str() {
+            "mindmap" => crate::diagrams::mindmap::parse_mindmap_model_for_render(&code, &meta)
+                .map(RenderSemanticModel::Mindmap),
+            "stateDiagram" | "state" => {
+                crate::diagrams::state::parse_state_model_for_render(&code, &meta)
+                    .map(RenderSemanticModel::State)
+            }
+            _ => diagram::parse_or_unsupported(
+                &self.diagram_registry,
+                &meta.diagram_type,
+                &code,
+                &meta,
+            )
+            .map(RenderSemanticModel::Json),
+        };
+        let parse = parse_start.map(|s| s.elapsed());
+
+        let mut model = match parse_res {
+            Ok(v) => v,
+            Err(err) => {
+                if !options.suppress_errors {
+                    return Err(err);
+                }
+
+                let mut error_meta = meta.clone();
+                error_meta.diagram_type = "error".to_string();
+                let mut error_model = serde_json::json!({ "type": "error" });
+                common_db::apply_common_db_sanitization(
+                    &mut error_model,
+                    &error_meta.effective_config,
+                );
+                if let Some(start) = total_start {
+                    eprintln!(
+                        "[parse-render-timing] diagram=error model=json total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
+                        start.elapsed(),
+                        preprocess.unwrap_or_default(),
+                        parse.unwrap_or_default(),
+                        std::time::Duration::default(),
+                        text.len(),
+                    );
+                }
+                return Ok(Some(ParsedDiagramRender {
+                    meta: error_meta,
+                    model: RenderSemanticModel::Json(error_model),
+                }));
+            }
+        };
+
+        let sanitize_start = timing_enabled.then(std::time::Instant::now);
+        match &mut model {
+            RenderSemanticModel::Json(v) => {
+                common_db::apply_common_db_sanitization(v, &meta.effective_config);
+            }
+            RenderSemanticModel::State(v) => {
+                if let Some(s) = v.acc_title.as_deref() {
+                    v.acc_title = Some(common_db::sanitize_acc_title(s, &meta.effective_config));
+                }
+                if let Some(s) = v.acc_descr.as_deref() {
+                    v.acc_descr = Some(common_db::sanitize_acc_descr(s, &meta.effective_config));
+                }
+            }
+            RenderSemanticModel::Mindmap(_) => {}
+        }
+        let sanitize = sanitize_start.map(|s| s.elapsed());
+
+        if let Some(start) = total_start {
+            let model_kind = match &model {
+                RenderSemanticModel::Json(_) => "json",
+                RenderSemanticModel::State(_) => "state",
+                RenderSemanticModel::Mindmap(_) => "mindmap",
+            };
+            eprintln!(
+                "[parse-render-timing] diagram={} model={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
+                meta.diagram_type,
+                model_kind,
+                start.elapsed(),
+                preprocess.unwrap_or_default(),
+                parse.unwrap_or_default(),
+                sanitize.unwrap_or_default(),
+                text.len(),
+            );
+        }
+
+        Ok(Some(ParsedDiagramRender { meta, model }))
+    }
+
+    pub async fn parse_diagram_for_render_model_as(
+        &self,
+        diagram_type: &str,
+        text: &str,
+        options: ParseOptions,
+    ) -> Result<Option<ParsedDiagramRender>> {
+        self.parse_diagram_for_render_model_as_sync(diagram_type, text, options)
     }
 
     /// Parses a diagram when the diagram type is already known (skips type detection).
