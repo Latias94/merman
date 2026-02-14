@@ -132,7 +132,7 @@ pub(super) fn render_mindmap_diagram_svg_with_config(
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let model: merman_core::diagrams::mindmap::MindmapDiagramRenderModel =
-        crate::json::from_value_ref(semantic)?;
+        { crate::json::from_value_ref(semantic)? };
     render_mindmap_diagram_svg_model_with_config(layout, &model, effective_config, options)
 }
 
@@ -152,6 +152,16 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
     config: &merman_core::MermaidConfig,
     options: &SvgRenderOptions,
 ) -> Result<String> {
+    let timing_enabled = super::timing::render_timing_enabled();
+    let mut timings = super::timing::RenderTimings::default();
+    let total_start = std::time::Instant::now();
+    fn section<'a>(
+        enabled: bool,
+        dst: &'a mut std::time::Duration,
+    ) -> Option<super::timing::TimingGuard<'a>> {
+        enabled.then(|| super::timing::TimingGuard::new(dst))
+    }
+
     #[derive(Debug, Clone, serde::Serialize)]
     struct Pt {
         x: f64,
@@ -256,6 +266,8 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
         );
     }
 
+    let _g_build_ctx = section(timing_enabled, &mut timings.build_ctx);
+
     let diagram_id = options.diagram_id.as_deref().unwrap_or("mindmap");
     let diagram_id_esc = escape_xml(diagram_id);
 
@@ -264,6 +276,10 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
     for n in &layout.nodes {
         node_by_id.insert(n.id.clone(), n);
     }
+
+    drop(_g_build_ctx);
+
+    let _g_viewbox = section(timing_enabled, &mut timings.viewbox);
 
     let padding = 10.0;
     let (mut vx, mut vy, mut vw, mut vh) = layout
@@ -632,6 +648,10 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
         max_w_attr = up_max_width_px.to_string();
     }
 
+    drop(_g_viewbox);
+
+    let _g_render_svg = section(timing_enabled, &mut timings.render_svg);
+
     let mut out = String::new();
     let _ = write!(
         &mut out,
@@ -937,5 +957,23 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
     out.push_str("</g>");
 
     out.push_str("</g></svg>\n");
+
+    drop(_g_render_svg);
+
+    timings.total = total_start.elapsed();
+    if timing_enabled {
+        eprintln!(
+            "[render-timing] diagram=mindmap total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} render_svg={:?} finalize={:?} nodes={} edges={}",
+            timings.total,
+            timings.deserialize_model,
+            timings.build_ctx,
+            timings.viewbox,
+            timings.render_svg,
+            timings.finalize_svg,
+            model.nodes.len(),
+            model.edges.len(),
+        );
+    }
+
     Ok(out)
 }

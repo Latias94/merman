@@ -420,10 +420,10 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
             )
         }
         (LayoutDiagram::MindmapDiagram(layout), RenderSemanticModel::Mindmap(model)) => {
-            mindmap::render_mindmap_diagram_svg_model(
+            mindmap::render_mindmap_diagram_svg_model_with_config(
                 layout,
                 model,
-                effective_config.as_value(),
+                effective_config,
                 options,
             )
         }

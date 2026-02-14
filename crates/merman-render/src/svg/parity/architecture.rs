@@ -10,6 +10,16 @@ pub(super) fn render_architecture_diagram_svg(
     effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
+    let timing_enabled = super::timing::render_timing_enabled();
+    let mut timings = super::timing::RenderTimings::default();
+    let total_start = std::time::Instant::now();
+    fn section<'a>(
+        enabled: bool,
+        dst: &'a mut std::time::Duration,
+    ) -> Option<super::timing::TimingGuard<'a>> {
+        enabled.then(|| super::timing::TimingGuard::new(dst))
+    }
+
     fn arch_icon_body(name: &str) -> &'static str {
         // Copied from Mermaid@11.12.2 `packages/mermaid/src/diagrams/architecture/architectureIcons.ts`.
         //
@@ -219,7 +229,12 @@ pub(super) fn render_architecture_diagram_svg(
         edges: Vec<ArchitectureEdge>,
     }
 
-    let model: ArchitectureModel = crate::json::from_value_ref(semantic)?;
+    let model: ArchitectureModel = {
+        let _g = section(timing_enabled, &mut timings.deserialize_model);
+        crate::json::from_value_ref(semantic)?
+    };
+
+    let _g_render_svg = section(timing_enabled, &mut timings.render_svg);
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("architecture");
     let diagram_id_esc = escape_xml(diagram_id);
@@ -1933,6 +1948,21 @@ pub(super) fn render_architecture_diagram_svg(
         if let Some(max_w_attr) = max_w_attr {
             out = out.replacen(MAX_WIDTH_PLACEHOLDER, &max_w_attr, 1);
         }
+    }
+
+    drop(_g_render_svg);
+
+    timings.total = total_start.elapsed();
+    if timing_enabled {
+        eprintln!(
+            "[render-timing] diagram=architecture total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} render_svg={:?} finalize={:?}",
+            timings.total,
+            timings.deserialize_model,
+            timings.build_ctx,
+            timings.viewbox,
+            timings.render_svg,
+            timings.finalize_svg,
+        );
     }
 
     Ok(out)
