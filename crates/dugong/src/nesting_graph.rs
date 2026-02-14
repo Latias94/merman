@@ -5,36 +5,67 @@
 
 use crate::graphlib::{EdgeKey, Graph, alg};
 use crate::{EdgeLabel, GraphLabel, NodeLabel};
+use rustc_hash::FxHashMap;
 use std::collections::BTreeMap;
 
-fn unique_id(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>, prefix: &str) -> String {
-    if !g.has_node(prefix) {
-        return prefix.to_string();
-    }
-    for i in 1usize.. {
-        let v = format!("{prefix}{i}");
-        if !g.has_node(&v) {
-            return v;
+#[derive(Default)]
+struct DummyNodeIdGen {
+    next_suffix: FxHashMap<&'static str, usize>,
+}
+
+impl DummyNodeIdGen {
+    fn unique_id(
+        &mut self,
+        g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        prefix: &'static str,
+    ) -> String {
+        let suffix = match self.next_suffix.get(&prefix).copied() {
+            Some(v) => v,
+            None => {
+                if !g.has_node(prefix) {
+                    self.next_suffix.insert(prefix, 1);
+                    return prefix.to_string();
+                }
+                self.next_suffix.insert(prefix, 1);
+                1
+            }
+        };
+
+        // Keep the exact legacy naming scheme (`prefix`, `prefix1`, `prefix2`, ...) but avoid
+        // scanning from `1` on every call (which is O(n^2) with repeated allocations).
+        let mut next = suffix;
+        loop {
+            let id = format!("{prefix}{next}");
+            if !g.has_node(&id) {
+                self.next_suffix.insert(prefix, next + 1);
+                return id;
+            }
+            next += 1;
         }
     }
-    unreachable!()
 }
 
 fn add_dummy_node(
     g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    ids: &mut DummyNodeIdGen,
     dummy: &str,
     mut label: NodeLabel,
-    name: &str,
+    name: &'static str,
 ) -> String {
-    let id = unique_id(g, name);
+    let id = ids.unique_id(g, name);
     label.dummy = Some(dummy.to_string());
     g.set_node(id.clone(), label);
     id
 }
 
-fn add_border_node(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>, prefix: &str) -> String {
+fn add_border_node(
+    g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    ids: &mut DummyNodeIdGen,
+    prefix: &'static str,
+) -> String {
     add_dummy_node(
         g,
+        ids,
         "border",
         NodeLabel {
             width: 0.0,
@@ -52,7 +83,7 @@ fn tree_depths(g: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> BTreeMap<String, 
         depth: usize,
         out: &mut BTreeMap<String, usize>,
     ) {
-        for child in g.children(v) {
+        for child in g.children_iter(v) {
             dfs(g, child, depth + 1, out);
         }
         out.insert(v.to_string(), depth);
@@ -78,9 +109,10 @@ fn dfs(
     weight: f64,
     height: usize,
     depths: &BTreeMap<String, usize>,
+    ids: &mut DummyNodeIdGen,
     v: &str,
 ) {
-    let children: Vec<String> = g.children(v).into_iter().map(|s| s.to_string()).collect();
+    let children: Vec<String> = g.children_iter(v).map(|s| s.to_string()).collect();
     if children.is_empty() {
         if v != root {
             g.set_edge_with_label(
@@ -96,8 +128,8 @@ fn dfs(
         return;
     }
 
-    let top = add_border_node(g, "_bt");
-    let bottom = add_border_node(g, "_bb");
+    let top = add_border_node(g, ids, "_bt");
+    let bottom = add_border_node(g, ids, "_bb");
 
     g.set_parent(top.clone(), v.to_string());
     if let Some(lbl) = g.node_mut(v) {
@@ -109,7 +141,7 @@ fn dfs(
     }
 
     for child in children {
-        dfs(g, root, node_sep, weight, height, depths, &child);
+        dfs(g, root, node_sep, weight, height, depths, ids, &child);
 
         let child_node = g.node(&child).cloned().unwrap_or_default();
         let child_top = child_node
@@ -172,8 +204,10 @@ fn dfs(
 }
 
 pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+    let mut ids = DummyNodeIdGen::default();
     let root = add_dummy_node(
         g,
+        &mut ids,
         "root",
         NodeLabel {
             ..Default::default()
@@ -206,7 +240,9 @@ pub fn run(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         .map(|s| s.to_string())
         .collect::<Vec<_>>();
     for child in children {
-        dfs(g, &root, node_sep, weight, height, &depths, &child);
+        dfs(
+            g, &root, node_sep, weight, height, &depths, &mut ids, &child,
+        );
     }
 
     g.graph_mut().node_rank_factor = Some(node_sep);
