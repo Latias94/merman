@@ -92,6 +92,9 @@ Recently imported (keep gates green after each batch):
 - 2026-02-14: Info HTML demo fixtures import (2 fixtures from `repo-ref/mermaid/demos/info.html` via `<pre class="mermaid">`, with upstream SVG baselines), keeping `parity-root` green.
 - 2026-02-14: Pie HTML demo fixtures import (3 fixtures from `repo-ref/mermaid/demos/pie.html` via `<pre class="mermaid">`, with upstream SVG baselines). Added root viewport overrides for the new pie demo fixture IDs to keep `parity-root` green.
 - 2026-02-14: Radar HTML demo fixtures import (6 fixtures from `repo-ref/mermaid/demos/radar.html` via `<pre class="mermaid">`, with upstream SVG baselines), keeping `parity-root` green.
+- 2026-02-14: Packet docs fixtures import (1 fixture from `repo-ref/mermaid/docs/syntax/packet.md` via fenced code blocks, with upstream SVG baselines), keeping `parity-root` green. (Skipped the placeholder `start` / `... More Fields ...` syntax blocks because Mermaid CLI renders them as error SVGs.)
+- 2026-02-14: Kanban docs fixtures import (2 fixtures from `repo-ref/mermaid/docs/syntax/kanban.md` via fenced code blocks, with upstream SVG baselines), keeping `parity-root` green.
+- 2026-02-14: Gantt docs fixtures import (10 fixtures from `repo-ref/mermaid/docs/syntax/gantt.md` via fenced code blocks, with upstream SVG baselines). Fixed Gantt strict date defaults for partial formats and topAxis grid label/tick parity to keep `parity-root` green.
 
 ## Medium priority (coverage growth)
 

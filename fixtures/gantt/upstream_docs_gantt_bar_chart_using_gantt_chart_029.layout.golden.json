@@ -1,0 +1,377 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1184.0,
+        "max_y": 220.0
+      },
+      "width": 1184.0,
+      "height": 220.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "X",
+      "axis_format": "%s",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "Issue19062",
+        "Issue19401",
+        "Issue193",
+        "Issue7441",
+        "Issue1300"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section1"
+        },
+        {
+          "index": 2.0,
+          "x": 0.0,
+          "y": 96.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section2"
+        },
+        {
+          "index": 3.0,
+          "x": 0.0,
+          "y": 120.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section3"
+        },
+        {
+          "index": 4.0,
+          "x": 0.0,
+          "y": 144.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "Issue19062",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 62.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Issue19062"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        },
+        {
+          "section": "Issue19401",
+          "index": 1.0,
+          "x": 10.0,
+          "y": 86.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Issue19401"
+          ],
+          "class": "sectionTitle sectionTitle1"
+        },
+        {
+          "section": "Issue193",
+          "index": 2.0,
+          "x": 10.0,
+          "y": 110.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Issue193"
+          ],
+          "class": "sectionTitle sectionTitle2"
+        },
+        {
+          "section": "Issue7441",
+          "index": 3.0,
+          "x": 10.0,
+          "y": 134.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Issue7441"
+          ],
+          "class": "sectionTitle sectionTitle3"
+        },
+        {
+          "section": "Issue1300",
+          "index": 4.0,
+          "x": 10.0,
+          "y": 158.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Issue1300"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task1",
+          "task": "71   ",
+          "section": "Issue19062",
+          "task_type": "Issue19062",
+          "order": 0.0,
+          "start_ms": 0.0,
+          "end_ms": 71000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task1",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 1034.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "task1-text",
+            "text": "71   ",
+            "font_size": 11.0,
+            "width": 12.32,
+            "x": 592.0,
+            "y": 63.5,
+            "class": "taskText taskText0 width-12.32"
+          }
+        },
+        {
+          "id": "task2",
+          "task": "36   ",
+          "section": "Issue19401",
+          "task_type": "Issue19401",
+          "order": 1.0,
+          "start_ms": 0.0,
+          "end_ms": 36000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task2",
+            "x": 75.0,
+            "y": 74.0,
+            "width": 524.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task1"
+          },
+          "label": {
+            "id": "task2-text",
+            "text": "36   ",
+            "font_size": 11.0,
+            "width": 12.32,
+            "x": 337.0,
+            "y": 87.5,
+            "class": "taskText taskText1 width-12.32"
+          }
+        },
+        {
+          "id": "task3",
+          "task": "34   ",
+          "section": "Issue193",
+          "task_type": "Issue193",
+          "order": 2.0,
+          "start_ms": 0.0,
+          "end_ms": 34000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task3",
+            "x": 75.0,
+            "y": 98.0,
+            "width": 495.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task2"
+          },
+          "label": {
+            "id": "task3-text",
+            "text": "34   ",
+            "font_size": 11.0,
+            "width": 12.32,
+            "x": 322.5,
+            "y": 111.5,
+            "class": "taskText taskText2 width-12.32"
+          }
+        },
+        {
+          "id": "task4",
+          "task": "9    ",
+          "section": "Issue7441",
+          "task_type": "Issue7441",
+          "order": 3.0,
+          "start_ms": 0.0,
+          "end_ms": 9000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task4",
+            "x": 75.0,
+            "y": 122.0,
+            "width": 131.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task3"
+          },
+          "label": {
+            "id": "task4-text",
+            "text": "9    ",
+            "font_size": 11.0,
+            "width": 6.16,
+            "x": 140.5,
+            "y": 135.5,
+            "class": "taskText taskText3 width-6.16"
+          }
+        },
+        {
+          "id": "task5",
+          "task": "5    ",
+          "section": "Issue1300",
+          "task_type": "Issue1300",
+          "order": 4.0,
+          "start_ms": 0.0,
+          "end_ms": 5000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task5",
+            "x": 75.0,
+            "y": 146.0,
+            "width": 73.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "task5-text",
+            "text": "5    ",
+            "font_size": 11.0,
+            "width": 6.16,
+            "x": 111.5,
+            "y": 159.5,
+            "class": "taskText taskText0 width-6.16"
+          }
+        }
+      ],
+      "excludes": [],
+      "has_excludes_layer": false,
+      "bottom_ticks": [
+        {
+          "time_ms": 0.0,
+          "x": 75.0,
+          "label": "0"
+        },
+        {
+          "time_ms": 5000.0,
+          "x": 148.0,
+          "label": "5"
+        },
+        {
+          "time_ms": 10000.0,
+          "x": 221.0,
+          "label": "10"
+        },
+        {
+          "time_ms": 15000.0,
+          "x": 293.0,
+          "label": "15"
+        },
+        {
+          "time_ms": 20000.0,
+          "x": 366.0,
+          "label": "20"
+        },
+        {
+          "time_ms": 25000.0,
+          "x": 439.0,
+          "label": "25"
+        },
+        {
+          "time_ms": 30000.0,
+          "x": 512.0,
+          "label": "30"
+        },
+        {
+          "time_ms": 35000.0,
+          "x": 585.0,
+          "label": "35"
+        },
+        {
+          "time_ms": 40000.0,
+          "x": 658.0,
+          "label": "40"
+        },
+        {
+          "time_ms": 45000.0,
+          "x": 730.0,
+          "label": "45"
+        },
+        {
+          "time_ms": 50000.0,
+          "x": 803.0,
+          "label": "50"
+        },
+        {
+          "time_ms": 55000.0,
+          "x": 876.0,
+          "label": "55"
+        },
+        {
+          "time_ms": 60000.0,
+          "x": 949.0,
+          "label": "60"
+        },
+        {
+          "time_ms": 65000.0,
+          "x": 1022.0,
+          "label": "65"
+        },
+        {
+          "time_ms": 70000.0,
+          "x": 1094.0,
+          "label": "70"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Git Issues - days since last update",
+      "title_x": 592.0,
+      "title_y": 25.0
+    }
+  }
+}
