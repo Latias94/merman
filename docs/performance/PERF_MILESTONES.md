@@ -11,18 +11,18 @@ Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is 
 
 - `render` is still behind on several diagram types (flowchart/class/mindmap),
 - `layout` is the dominant gap for `mindmap`,
-- `parse` is the dominant gap for `architecture` (orders of magnitude on small inputs).
+- `architecture` is now primarily a `layout` + `render` gap (typed parse fast path landed).
 
-- Spotcheck (`tools/bench/stage_spotcheck.py`, 10 samples / 2s warmup / 5s measurement, 2026-02-14):
+- Spotcheck (`tools/bench/stage_spotcheck.py`, 12 samples / 2s warmup / 6s measurement, 2026-02-14):
   - Canary set (`flowchart_medium,class_medium,sequence_medium,mindmap_medium,architecture_medium`):
-    - `parse` gmean: `1.70x`
-    - `layout` gmean: `1.14x`
-    - `render` gmean: `2.15x`
-    - `end_to_end` gmean: `1.17x`
+    - `parse` gmean: `1.47x`
+    - `layout` gmean: `1.26x`
+    - `render` gmean: `1.94x`
+    - `end_to_end` gmean: `1.10x`
   - Notable outliers in this run:
-    - `architecture_medium`: `parse 0.83x`, `end_to_end 3.14x` (parse fixed-cost tax removed; layout/render still dominate)
-    - `mindmap_medium`: `layout 3.33x`, `end_to_end 2.27x`
-    - `flowchart_medium`: `layout 1.29x`, `render 2.45x`, `end_to_end 1.56x`
+    - `architecture_medium`: `layout 5.10x`, `render 2.69x`, `end_to_end 2.90x`
+    - `mindmap_medium`: `layout 3.88x`, `end_to_end 1.64x`
+    - `flowchart_medium`: `render 2.84x` (layout is relatively close; render still dominates)
 
 Root-cause direction:
 
@@ -51,6 +51,8 @@ Root-cause direction:
   - Skip XML-escape scanning for `data-points` base64 payloads (and other known-safe path payloads).
   - Avoid repeated `String::replacen(...)` passes over the full SVG by doing placeholder replacement
     in a single rebuild pass (not 2–3 full copies).
+  - Avoid building the flowchart `<svg ...>` open tag via nested `format!(...)` + intermediate
+    strings; write directly into the output buffer to reduce allocations.
 - Flowchart edge path emission was allocating aggressively per edge (style joins + marker attribute
   formatting). We now write the style attribute and marker attrs directly into the output buffer to
   cut per-edge allocations (golden fixtures unchanged).
