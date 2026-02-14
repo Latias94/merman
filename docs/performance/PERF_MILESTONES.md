@@ -15,12 +15,12 @@ Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is 
 
 - Spotcheck (`tools/bench/stage_spotcheck.py`, 10 samples / 2s warmup / 5s measurement, 2026-02-14):
   - Canary set (`flowchart_medium,class_medium,sequence_medium,mindmap_medium,architecture_medium`):
-    - `parse` gmean: `3.17x`
-    - `layout` gmean: `1.20x`
-    - `render` gmean: `1.95x`
-    - `end_to_end` gmean: `1.78x`
+    - `parse` gmean: `1.70x`
+    - `layout` gmean: `1.14x`
+    - `render` gmean: `2.15x`
+    - `end_to_end` gmean: `1.17x`
   - Notable outliers in this run:
-    - `architecture_medium`: `parse 26.23x`, `end_to_end 7.98x` (tiny input; we're paying fixed-cost tax)
+    - `architecture_medium`: `parse 0.83x`, `end_to_end 3.14x` (parse fixed-cost tax removed; layout/render still dominate)
     - `mindmap_medium`: `layout 3.33x`, `end_to_end 2.27x`
     - `flowchart_medium`: `layout 1.29x`, `render 2.45x`, `end_to_end 1.56x`
 
@@ -59,7 +59,7 @@ Root-cause direction:
   strokes, and `path_bounds` micro-timing dropped from ~`O(50µs)` to ~`O(1–3µs)` for `class_medium`.
 - `state_medium` render is dominated by leaf node work, especially RoughJS path generation and emit.
 - `mindmap_medium` overall gap is now mostly layout (COSE port / bbox work) rather than parse.
-- `architecture_medium` overall gap is now mostly parse fixed-cost (preprocess + JSON model materialization).
+- `architecture_medium` parse fixed-cost tax has been removed (typed render-model parse path); remaining gap is layout + SVG emission.
 
 Useful debug toggles:
 
@@ -234,22 +234,23 @@ Guidance:
 - Do not switch to a parser combinator crate (e.g. `nom`) as a default move. That trade is mainly
   about maintainability and error reporting; it does not guarantee speed.
 
-### M7 — Architecture: cut parse fixed-costs (Planned)
+### M7 — Architecture: cut parse fixed-costs (Done)
 
 Motivation (from spotcheck):
 
-- `architecture_medium` is *dominated* by parse stage fixed costs (`~26x` vs `mmdr` in one run),
+- `architecture_medium` was *dominated* by parse stage fixed costs (orders of magnitude vs `mmdr`),
   even on tiny inputs.
 
 Work items (ordered by expected ROI):
 
-1. Add a typed semantic model / typed render-model parse path for architecture (similar to flowchart).
-2. Reduce preprocess overhead for short diagrams (avoid unnecessary allocations/scans).
-3. Audit the architecture parser for avoidable `String` cloning and map churn (prefer `&str`/interning).
+1. Add a typed semantic model / typed render-model parse path for architecture (similar to flowchart). (Done)
+2. Reduce preprocess overhead for short diagrams (avoid unnecessary allocations/scans). (Deferred; only if needed)
+3. Audit the architecture parser for avoidable `String` cloning and map churn (prefer `&str`/interning). (Deferred; parse is no longer dominant)
 
 Acceptance criteria:
 
 - Spotcheck: `parse/architecture_medium` ratio drops by an order of magnitude without changing goldens.
+  - Status: achieved (`parse` now < `1.0x` in local runs; layout/render remain behind).
 
 ## Fixture-driven Targets
 
