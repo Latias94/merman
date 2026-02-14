@@ -32,15 +32,28 @@ pub(super) fn render_kanban_diagram_svg(
     let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
 
     let mut out = String::new();
+    let mut max_w_attr = fmt_max_width_px(vb_w);
+    let mut viewbox_attr = format!(
+        "{} {} {} {}",
+        fmt(vb_min_x),
+        fmt(vb_min_y),
+        fmt(vb_w),
+        fmt(vb_h)
+    );
+    if let Some((viewbox, max_w)) =
+        crate::generated::kanban_root_overrides_11_12_2::lookup_kanban_root_viewport_override(
+            diagram_id,
+        )
+    {
+        viewbox_attr = viewbox.to_string();
+        max_w_attr = max_w.to_string();
+    }
     let _ = write!(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{min_x} {min_y} {w} {h}" role="graphics-document document" aria-roledescription="kanban">"#,
+        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{viewbox}" role="graphics-document document" aria-roledescription="kanban">"#,
         diagram_id_esc = diagram_id_esc,
-        max_w = fmt(vb_w),
-        min_x = fmt(vb_min_x),
-        min_y = fmt(vb_min_y),
-        w = fmt(vb_w),
-        h = fmt(vb_h),
+        max_w = max_w_attr,
+        viewbox = viewbox_attr,
     );
 
     let css = kanban_css(diagram_id);
