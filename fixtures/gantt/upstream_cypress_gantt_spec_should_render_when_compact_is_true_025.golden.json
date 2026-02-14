@@ -1,0 +1,492 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": "GANTT compact",
+    "accTitle": null,
+    "accDescr": null,
+    "dateFormat": " HH:mm:ss",
+    "axisFormat": " %Hh%M",
+    "tickInterval": null,
+    "todayMarker": "",
+    "includes": [],
+    "excludes": [],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "compact",
+    "sections": [
+      "DB Clean",
+      "Sessions"
+    ],
+    "tasks": [
+      {
+        "section": "DB Clean",
+        "type": "DB Clean",
+        "task": "Clean",
+        "id": "task1",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 12:00:00, 10m",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "12:00:00"
+          },
+          "endTime": {
+            "data": "10m"
+          }
+        },
+        "startTime": "2026-02-14T12:00:00.000",
+        "endTime": "2026-02-14T12:10:00.000"
+      },
+      {
+        "section": "DB Clean",
+        "type": "DB Clean",
+        "task": "Clean",
+        "id": "task2",
+        "prevTaskId": "task1",
+        "order": 1,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 12:30:00, 12m",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "12:30:00"
+          },
+          "endTime": {
+            "data": "12m"
+          }
+        },
+        "startTime": "2026-02-14T12:30:00.000",
+        "endTime": "2026-02-14T12:42:00.000"
+      },
+      {
+        "section": "DB Clean",
+        "type": "DB Clean",
+        "task": "Clean",
+        "id": "task3",
+        "prevTaskId": "task2",
+        "order": 2,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 13:00:00, 8m",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "13:00:00"
+          },
+          "endTime": {
+            "data": "8m"
+          }
+        },
+        "startTime": "2026-02-14T13:00:00.000",
+        "endTime": "2026-02-14T13:08:00.000"
+      },
+      {
+        "section": "DB Clean",
+        "type": "DB Clean",
+        "task": "Clean",
+        "id": "task4",
+        "prevTaskId": "task3",
+        "order": 3,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 13:30:00, 9m",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "13:30:00"
+          },
+          "endTime": {
+            "data": "9m"
+          }
+        },
+        "startTime": "2026-02-14T13:30:00.000",
+        "endTime": "2026-02-14T13:39:00.000"
+      },
+      {
+        "section": "DB Clean",
+        "type": "DB Clean",
+        "task": "Clean",
+        "id": "task5",
+        "prevTaskId": "task4",
+        "order": 4,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 14:00:00, 13m",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "14:00:00"
+          },
+          "endTime": {
+            "data": "13m"
+          }
+        },
+        "startTime": "2026-02-14T14:00:00.000",
+        "endTime": "2026-02-14T14:13:00.000"
+      },
+      {
+        "section": "DB Clean",
+        "type": "DB Clean",
+        "task": "Clean",
+        "id": "task6",
+        "prevTaskId": "task5",
+        "order": 5,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 14:30:00, 10m",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "14:30:00"
+          },
+          "endTime": {
+            "data": "10m"
+          }
+        },
+        "startTime": "2026-02-14T14:30:00.000",
+        "endTime": "2026-02-14T14:40:00.000"
+      },
+      {
+        "section": "DB Clean",
+        "type": "DB Clean",
+        "task": "Clean",
+        "id": "task7",
+        "prevTaskId": "task6",
+        "order": 6,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 15:00:00, 11m",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "15:00:00"
+          },
+          "endTime": {
+            "data": "11m"
+          }
+        },
+        "startTime": "2026-02-14T15:00:00.000",
+        "endTime": "2026-02-14T15:11:00.000"
+      },
+      {
+        "section": "Sessions",
+        "type": "Sessions",
+        "task": "A",
+        "id": "task8",
+        "prevTaskId": "task7",
+        "order": 7,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 12:00:00, 63m",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "12:00:00"
+          },
+          "endTime": {
+            "data": "63m"
+          }
+        },
+        "startTime": "2026-02-14T12:00:00.000",
+        "endTime": "2026-02-14T13:03:00.000"
+      },
+      {
+        "section": "Sessions",
+        "type": "Sessions",
+        "task": "B",
+        "id": "task9",
+        "prevTaskId": "task8",
+        "order": 8,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 12:30:00, 12m",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "12:30:00"
+          },
+          "endTime": {
+            "data": "12m"
+          }
+        },
+        "startTime": "2026-02-14T12:30:00.000",
+        "endTime": "2026-02-14T12:42:00.000"
+      },
+      {
+        "section": "Sessions",
+        "type": "Sessions",
+        "task": "C",
+        "id": "task10",
+        "prevTaskId": "task9",
+        "order": 9,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 13:05:00, 12m",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "13:05:00"
+          },
+          "endTime": {
+            "data": "12m"
+          }
+        },
+        "startTime": "2026-02-14T13:05:00.000",
+        "endTime": "2026-02-14T13:17:00.000"
+      },
+      {
+        "section": "Sessions",
+        "type": "Sessions",
+        "task": "D",
+        "id": "task11",
+        "prevTaskId": "task10",
+        "order": 10,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 13:06:00, 33m",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "13:06:00"
+          },
+          "endTime": {
+            "data": "33m"
+          }
+        },
+        "startTime": "2026-02-14T13:06:00.000",
+        "endTime": "2026-02-14T13:39:00.000"
+      },
+      {
+        "section": "Sessions",
+        "type": "Sessions",
+        "task": "E",
+        "id": "task12",
+        "prevTaskId": "task11",
+        "order": 11,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 13:15:00, 55m",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "13:15:00"
+          },
+          "endTime": {
+            "data": "55m"
+          }
+        },
+        "startTime": "2026-02-14T13:15:00.000",
+        "endTime": "2026-02-14T14:10:00.000"
+      },
+      {
+        "section": "Sessions",
+        "type": "Sessions",
+        "task": "F",
+        "id": "task13",
+        "prevTaskId": "task12",
+        "order": 12,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 13:20:00, 12m",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "13:20:00"
+          },
+          "endTime": {
+            "data": "12m"
+          }
+        },
+        "startTime": "2026-02-14T13:20:00.000",
+        "endTime": "2026-02-14T13:32:00.000"
+      },
+      {
+        "section": "Sessions",
+        "type": "Sessions",
+        "task": "G",
+        "id": "task14",
+        "prevTaskId": "task13",
+        "order": 13,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 13:32:00, 18m",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "13:32:00"
+          },
+          "endTime": {
+            "data": "18m"
+          }
+        },
+        "startTime": "2026-02-14T13:32:00.000",
+        "endTime": "2026-02-14T13:50:00.000"
+      },
+      {
+        "section": "Sessions",
+        "type": "Sessions",
+        "task": "H",
+        "id": "task15",
+        "prevTaskId": "task14",
+        "order": 14,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 13:50:00, 20m",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "13:50:00"
+          },
+          "endTime": {
+            "data": "20m"
+          }
+        },
+        "startTime": "2026-02-14T13:50:00.000",
+        "endTime": "2026-02-14T14:10:00.000"
+      },
+      {
+        "section": "Sessions",
+        "type": "Sessions",
+        "task": "I",
+        "id": "task16",
+        "prevTaskId": "task15",
+        "order": 15,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 14:10:00, 10m",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "14:10:00"
+          },
+          "endTime": {
+            "data": "10m"
+          }
+        },
+        "startTime": "2026-02-14T14:10:00.000",
+        "endTime": "2026-02-14T14:20:00.000"
+      }
+    ],
+    "links": {},
+    "clickEvents": {}
+  }
+}

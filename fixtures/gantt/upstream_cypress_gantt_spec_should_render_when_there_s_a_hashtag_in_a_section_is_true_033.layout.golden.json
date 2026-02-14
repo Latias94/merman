@@ -1,0 +1,262 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1184.0,
+        "max_y": 196.0
+      },
+      "width": 1184.0,
+      "height": 196.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": " YYYY-MM-DD",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "#Section With a Hashtag",
+        "Another"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 2.0,
+          "x": 0.0,
+          "y": 96.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section1"
+        },
+        {
+          "index": 3.0,
+          "x": 0.0,
+          "y": 120.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section1"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "#Section With a Hashtag",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 74.0,
+          "dy_em": -0.0,
+          "lines": [
+            "#Section With a Hashtag"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        },
+        {
+          "section": "Another",
+          "index": 1.0,
+          "x": 10.0,
+          "y": 122.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Another"
+          ],
+          "class": "sectionTitle sectionTitle1"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "a1",
+          "task": "A task           ",
+          "section": "#Section With a Hashtag",
+          "task_type": "#Section With a Hashtag",
+          "order": 0.0,
+          "start_ms": 1388505600000.0,
+          "end_ms": 1391097600000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "a1",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 620.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "a1-text",
+            "text": "A task           ",
+            "font_size": 11.0,
+            "width": 30.47,
+            "x": 385.0,
+            "y": 63.5,
+            "class": "taskText taskText0 width-30.469999999999995"
+          }
+        },
+        {
+          "id": "task2",
+          "task": "Task in sec      ",
+          "section": "Another",
+          "task_type": "Another",
+          "order": 2.0,
+          "start_ms": 1389456000000.0,
+          "end_ms": 1390492800000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task2",
+            "x": 302.0,
+            "y": 98.0,
+            "width": 249.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task1"
+          },
+          "label": {
+            "id": "task2-text",
+            "text": "Task in sec      ",
+            "font_size": 11.0,
+            "width": 51.37,
+            "x": 426.5,
+            "y": 111.5,
+            "class": "taskText taskText1 width-51.37"
+          }
+        },
+        {
+          "id": "task3",
+          "task": "another task      ",
+          "section": "Another",
+          "task_type": "Another",
+          "order": 3.0,
+          "start_ms": 1390492800000.0,
+          "end_ms": 1392566400000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task3",
+            "x": 551.0,
+            "y": 122.0,
+            "width": 496.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task1"
+          },
+          "label": {
+            "id": "task3-text",
+            "text": "another task      ",
+            "font_size": 11.0,
+            "width": 56.98,
+            "x": 799.0,
+            "y": 135.5,
+            "class": "taskText taskText1 width-56.98"
+          }
+        },
+        {
+          "id": "task1",
+          "task": "Another task     ",
+          "section": "#Section With a Hashtag",
+          "task_type": "#Section With a Hashtag",
+          "order": 1.0,
+          "start_ms": 1391097600000.0,
+          "end_ms": 1392825600000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task1",
+            "x": 695.0,
+            "y": 74.0,
+            "width": 414.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "task1-text",
+            "text": "Another task     ",
+            "font_size": 11.0,
+            "width": 58.85,
+            "x": 902.0,
+            "y": 87.5,
+            "class": "taskText taskText0 width-58.849999999999994"
+          }
+        }
+      ],
+      "excludes": [],
+      "has_excludes_layer": false,
+      "bottom_ticks": [
+        {
+          "time_ms": 1388851200000.0,
+          "x": 158.0,
+          "label": "2014-01-05"
+        },
+        {
+          "time_ms": 1389456000000.0,
+          "x": 302.0,
+          "label": "2014-01-12"
+        },
+        {
+          "time_ms": 1390060800000.0,
+          "x": 447.0,
+          "label": "2014-01-19"
+        },
+        {
+          "time_ms": 1390665600000.0,
+          "x": 592.0,
+          "label": "2014-01-26"
+        },
+        {
+          "time_ms": 1391270400000.0,
+          "x": 737.0,
+          "label": "2014-02-02"
+        },
+        {
+          "time_ms": 1391875200000.0,
+          "x": 882.0,
+          "label": "2014-02-09"
+        },
+        {
+          "time_ms": 1392480000000.0,
+          "x": 1026.0,
+          "label": "2014-02-16"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Gantt Digram",
+      "title_x": 592.0,
+      "title_y": 25.0
+    }
+  }
+}

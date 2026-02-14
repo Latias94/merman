@@ -1,0 +1,146 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": "A Gantt Diagram",
+    "accTitle": null,
+    "accDescr": null,
+    "dateFormat": "  SSS",
+    "axisFormat": "  %Lms",
+    "tickInterval": "2millisecond",
+    "todayMarker": "",
+    "includes": [],
+    "excludes": [
+      "weekends"
+    ],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
+    "sections": [
+      "Section",
+      "Another"
+    ],
+    "tasks": [
+      {
+        "section": "Section",
+        "type": "Section",
+        "task": "A task           ",
+        "id": "a1",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": a1, 000, 6ms",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "000"
+          },
+          "endTime": {
+            "data": "6ms"
+          }
+        },
+        "startTime": "2026-02-14T00:00:00.000",
+        "endTime": "2026-02-14T00:00:00.006"
+      },
+      {
+        "section": "Section",
+        "type": "Section",
+        "task": "Another task     ",
+        "id": "task1",
+        "prevTaskId": "a1",
+        "order": 1,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": after a1, 6ms",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after a1"
+          },
+          "endTime": {
+            "data": "6ms"
+          }
+        },
+        "startTime": "2026-02-14T00:00:00.006",
+        "endTime": "2026-02-14T00:00:00.012"
+      },
+      {
+        "section": "Another",
+        "type": "Another",
+        "task": "Task in sec      ",
+        "id": "a2",
+        "prevTaskId": "task1",
+        "order": 2,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": a2, 006, 3ms",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "006"
+          },
+          "endTime": {
+            "data": "3ms"
+          }
+        },
+        "startTime": "2026-02-14T00:00:00.006",
+        "endTime": "2026-02-14T00:00:00.009"
+      },
+      {
+        "section": "Another",
+        "type": "Another",
+        "task": "another task     ",
+        "id": "task2",
+        "prevTaskId": "a2",
+        "order": 3,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 3ms",
+          "startTime": {
+            "type": "prevTaskEnd",
+            "id": "a2"
+          },
+          "endTime": {
+            "data": "3ms"
+          }
+        },
+        "startTime": "2026-02-14T00:00:00.009",
+        "endTime": "2026-02-14T00:00:00.012"
+      }
+    ],
+    "links": {},
+    "clickEvents": {}
+  }
+}

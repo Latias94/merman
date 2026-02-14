@@ -1,0 +1,413 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1184.0,
+        "max_y": 292.0
+      },
+      "width": 1184.0,
+      "height": 292.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": " YYYY-MM-DD",
+      "axis_format": " %d/%m",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "off",
+      "categories": [
+        "team's critical event",
+        "new intern"
+      ],
+      "rows": [
+        {
+          "index": 3.0,
+          "x": 0.0,
+          "y": 120.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section1"
+        },
+        {
+          "index": 4.0,
+          "x": 0.0,
+          "y": 144.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section1"
+        },
+        {
+          "index": 5.0,
+          "x": 0.0,
+          "y": 168.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section1"
+        },
+        {
+          "index": 2.0,
+          "x": 0.0,
+          "y": 96.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 6.0,
+          "x": 0.0,
+          "y": 192.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section1"
+        },
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 7.0,
+          "x": 0.0,
+          "y": 216.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section1"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "team's critical event",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 86.0,
+          "dy_em": -0.0,
+          "lines": [
+            "team's critical event"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        },
+        {
+          "section": "new intern",
+          "index": 1.0,
+          "x": 10.0,
+          "y": 182.0,
+          "dy_em": -0.0,
+          "lines": [
+            "new intern"
+          ],
+          "class": "sectionTitle sectionTitle1"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "onboarding",
+          "task": "onboarding           ",
+          "section": "new intern",
+          "task_type": "new intern",
+          "order": 3.0,
+          "start_ms": 1704124800000.0,
+          "end_ms": 1704729600000.0,
+          "render_end_ms": 1704729600000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "onboarding",
+            "x": 75.0,
+            "y": 122.0,
+            "width": 165.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task1"
+          },
+          "label": {
+            "id": "onboarding-text",
+            "text": "onboarding           ",
+            "font_size": 11.0,
+            "width": 45.65,
+            "x": 157.5,
+            "y": 135.5,
+            "class": "taskText taskText1 width-45.650000000000006"
+          }
+        },
+        {
+          "id": "litreview",
+          "task": "literature review    ",
+          "section": "new intern",
+          "task_type": "new intern",
+          "order": 4.0,
+          "start_ms": 1704124800000.0,
+          "end_ms": 1704988800000.0,
+          "render_end_ms": 1704988800000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "litreview",
+            "x": 75.0,
+            "y": 146.0,
+            "width": 235.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task1"
+          },
+          "label": {
+            "id": "litreview-text",
+            "text": "literature review    ",
+            "font_size": 11.0,
+            "width": 78.21,
+            "x": 192.5,
+            "y": 159.5,
+            "class": "taskText taskText1 width-78.21"
+          }
+        },
+        {
+          "id": "projectA",
+          "task": "project A            ",
+          "section": "new intern",
+          "task_type": "new intern",
+          "order": 5.0,
+          "start_ms": 1704988800000.0,
+          "end_ms": 1706371200000.0,
+          "render_end_ms": 1706371200000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "projectA",
+            "x": 310.0,
+            "y": 170.0,
+            "width": 376.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task1"
+          },
+          "label": {
+            "id": "projectA-text",
+            "text": "project A            ",
+            "font_size": 11.0,
+            "width": 43.34,
+            "x": 498.0,
+            "y": 183.5,
+            "class": "taskText taskText1 width-43.34"
+          }
+        },
+        {
+          "id": "bossaway",
+          "task": "boss on leave        ",
+          "section": "team's critical event",
+          "task_type": "team's critical event",
+          "order": 2.0,
+          "start_ms": 1706371200000.0,
+          "end_ms": 1707580800000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "bossaway",
+            "x": 686.0,
+            "y": 98.0,
+            "width": 329.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "bossaway-text",
+            "text": "boss on leave        ",
+            "font_size": 11.0,
+            "width": 57.64,
+            "x": 850.5,
+            "y": 111.5,
+            "class": "taskText taskText0 width-57.64"
+          }
+        },
+        {
+          "id": "chilling",
+          "task": "chilling             ",
+          "section": "new intern",
+          "task_type": "new intern",
+          "order": 6.0,
+          "start_ms": 1706371200000.0,
+          "end_ms": 1706716800000.0,
+          "render_end_ms": 1706716800000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "chilling",
+            "x": 686.0,
+            "y": 194.0,
+            "width": 94.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task1"
+          },
+          "label": {
+            "id": "chilling-text",
+            "text": "chilling             ",
+            "font_size": 11.0,
+            "width": 31.24,
+            "x": 733.0,
+            "y": 207.5,
+            "class": "taskText taskText1 width-31.240000000000002"
+          }
+        },
+        {
+          "id": "deadlineA",
+          "task": "deadline A           ",
+          "section": "team's critical event",
+          "task_type": "team's critical event",
+          "order": 0.0,
+          "start_ms": 1706716800000.0,
+          "end_ms": 1706716800000.0,
+          "render_end_ms": null,
+          "milestone": true,
+          "vert": false,
+          "bar": {
+            "id": "deadlineA",
+            "x": 770.0,
+            "y": 50.0,
+            "width": 20.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task milestone crit0"
+          },
+          "label": {
+            "id": "deadlineA-text",
+            "text": "deadline A           ",
+            "font_size": 11.0,
+            "width": 44.77,
+            "x": 795.0,
+            "y": 63.5,
+            "class": "taskTextOutsideRight taskTextOutside0 width-44.77"
+          }
+        },
+        {
+          "id": "projectB",
+          "task": "project B            ",
+          "section": "new intern",
+          "task_type": "new intern",
+          "order": 7.0,
+          "start_ms": 1706716800000.0,
+          "end_ms": 1707926400000.0,
+          "render_end_ms": 1707926400000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "projectB",
+            "x": 780.0,
+            "y": 218.0,
+            "width": 329.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task1"
+          },
+          "label": {
+            "id": "projectB-text",
+            "text": "project B            ",
+            "font_size": 11.0,
+            "width": 43.34,
+            "x": 944.5,
+            "y": 231.5,
+            "class": "taskText taskText1 width-43.34"
+          }
+        },
+        {
+          "id": "deadlineB",
+          "task": "deadline B           ",
+          "section": "team's critical event",
+          "task_type": "team's critical event",
+          "order": 1.0,
+          "start_ms": 1707926400000.0,
+          "end_ms": 1707926400000.0,
+          "render_end_ms": null,
+          "milestone": true,
+          "vert": false,
+          "bar": {
+            "id": "deadlineB",
+            "x": 1099.0,
+            "y": 74.0,
+            "width": 20.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task milestone crit0"
+          },
+          "label": {
+            "id": "deadlineB-text",
+            "text": "deadline B           ",
+            "font_size": 11.0,
+            "width": 44.77,
+            "x": 1094.0,
+            "y": 87.5,
+            "class": "taskTextOutsideLeft taskTextOutside0"
+          }
+        }
+      ],
+      "excludes": [],
+      "has_excludes_layer": true,
+      "bottom_ticks": [
+        {
+          "time_ms": 1704556800000.0,
+          "x": 193.0,
+          "label": " 07/01"
+        },
+        {
+          "time_ms": 1705161600000.0,
+          "x": 357.0,
+          "label": " 14/01"
+        },
+        {
+          "time_ms": 1705766400000.0,
+          "x": 522.0,
+          "label": " 21/01"
+        },
+        {
+          "time_ms": 1706371200000.0,
+          "x": 686.0,
+          "label": " 28/01"
+        },
+        {
+          "time_ms": 1706976000000.0,
+          "x": 851.0,
+          "label": " 04/02"
+        },
+        {
+          "time_ms": 1707580800000.0,
+          "x": 1015.0,
+          "label": " 11/02"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Adding GANTT diagram to mermaid",
+      "title_x": 592.0,
+      "title_y": 25.0
+    }
+  }
+}

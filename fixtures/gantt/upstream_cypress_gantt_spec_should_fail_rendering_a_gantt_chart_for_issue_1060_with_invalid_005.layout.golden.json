@@ -1,0 +1,761 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1184.0,
+        "max_y": 484.0
+      },
+      "width": 1184.0,
+      "height": 484.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "asdf",
+        "CEL",
+        "DEX",
+        "Events",
+        "Plasma Calls & updates"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 3.0,
+          "x": 0.0,
+          "y": 120.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section1"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 4.0,
+          "x": 0.0,
+          "y": 144.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section1"
+        },
+        {
+          "index": 12.0,
+          "x": 0.0,
+          "y": 336.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 5.0,
+          "x": 0.0,
+          "y": 168.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section1"
+        },
+        {
+          "index": 6.0,
+          "x": 0.0,
+          "y": 192.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section2"
+        },
+        {
+          "index": 2.0,
+          "x": 0.0,
+          "y": 96.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 13.0,
+          "x": 0.0,
+          "y": 360.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 8.0,
+          "x": 0.0,
+          "y": 240.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section2"
+        },
+        {
+          "index": 14.0,
+          "x": 0.0,
+          "y": 384.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 10.0,
+          "x": 0.0,
+          "y": 288.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section3"
+        },
+        {
+          "index": 15.0,
+          "x": 0.0,
+          "y": 408.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 7.0,
+          "x": 0.0,
+          "y": 216.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section2"
+        },
+        {
+          "index": 9.0,
+          "x": 0.0,
+          "y": 264.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section2"
+        },
+        {
+          "index": 11.0,
+          "x": 0.0,
+          "y": 312.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section3"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "asdf",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 86.0,
+          "dy_em": -0.0,
+          "lines": [
+            "asdf"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        },
+        {
+          "section": "CEL",
+          "index": 1.0,
+          "x": 10.0,
+          "y": 158.0,
+          "dy_em": -0.0,
+          "lines": [
+            "CEL"
+          ],
+          "class": "sectionTitle sectionTitle1"
+        },
+        {
+          "section": "DEX",
+          "index": 2.0,
+          "x": 10.0,
+          "y": 242.0,
+          "dy_em": -0.0,
+          "lines": [
+            "DEX"
+          ],
+          "class": "sectionTitle sectionTitle2"
+        },
+        {
+          "section": "Events",
+          "index": 3.0,
+          "x": 10.0,
+          "y": 314.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Events"
+          ],
+          "class": "sectionTitle sectionTitle3"
+        },
+        {
+          "section": "Plasma Calls & updates",
+          "index": 4.0,
+          "x": 10.0,
+          "y": 386.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Plasma Calls & updates"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": ":ps",
+          "task": "specs ",
+          "section": "asdf",
+          "task_type": "asdf",
+          "order": 0.0,
+          "start_ms": 1557446400000.0,
+          "end_ms": 1561766400000.0,
+          "render_end_ms": 1561766400000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": ":ps",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 269.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task done0"
+          },
+          "label": {
+            "id": ":ps-text",
+            "text": "specs ",
+            "font_size": 11.0,
+            "width": 23.65,
+            "x": 209.5,
+            "y": 63.5,
+            "class": "taskText taskText0 width-23.65"
+          }
+        },
+        {
+          "id": ":pc",
+          "task": "plasma-chamber      ",
+          "section": "CEL",
+          "task_type": "CEL",
+          "order": 3.0,
+          "start_ms": 1558310400000.0,
+          "end_ms": 1563494400000.0,
+          "render_end_ms": 1563494400000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": ":pc",
+            "x": 129.0,
+            "y": 122.0,
+            "width": 323.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task done1"
+          },
+          "label": {
+            "id": ":pc-text",
+            "text": "plasma-chamber      ",
+            "font_size": 11.0,
+            "width": 71.17,
+            "x": 290.5,
+            "y": 135.5,
+            "class": "taskText taskText1 width-71.17"
+          }
+        },
+        {
+          "id": "pc",
+          "task": "Plasma      ",
+          "section": "asdf",
+          "task_type": "asdf",
+          "order": 1.0,
+          "start_ms": 1560988800000.0,
+          "end_ms": 1566172800000.0,
+          "render_end_ms": 1566172800000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "pc",
+            "x": 296.0,
+            "y": 74.0,
+            "width": 323.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "pc-text",
+            "text": "Plasma      ",
+            "font_size": 11.0,
+            "width": 32.45,
+            "x": 457.5,
+            "y": 87.5,
+            "class": "taskText taskText0 width-32.45"
+          }
+        },
+        {
+          "id": "por",
+          "task": "Plasma Implementation (Rust)      ",
+          "section": "CEL",
+          "task_type": "CEL",
+          "order": 4.0,
+          "start_ms": 1560988800000.0,
+          "end_ms": 1571356800000.0,
+          "render_end_ms": 1571356800000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "por",
+            "x": 296.0,
+            "y": 146.0,
+            "width": 646.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task1"
+          },
+          "label": {
+            "id": "por-text",
+            "text": "Plasma Implementation (Rust)      ",
+            "font_size": 11.0,
+            "width": 136.95,
+            "x": 619.0,
+            "y": 159.5,
+            "class": "taskText taskText1 width-136.94999999999996"
+          }
+        },
+        {
+          "id": "ovm",
+          "task": "OVM      ",
+          "section": "Plasma Calls & updates",
+          "task_type": "Plasma Calls & updates",
+          "order": 12.0,
+          "start_ms": 1562889600000.0,
+          "end_ms": 1573257600000.0,
+          "render_end_ms": 1573257600000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "ovm",
+            "x": 414.0,
+            "y": 338.0,
+            "width": 647.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "ovm-text",
+            "text": "OVM      ",
+            "font_size": 11.0,
+            "width": 19.8,
+            "x": 737.5,
+            "y": 351.5,
+            "class": "taskText taskText0 width-19.799999999999997"
+          }
+        },
+        {
+          "id": "pred",
+          "task": "Predicates (Atomic Swap)      ",
+          "section": "CEL",
+          "task_type": "CEL",
+          "order": 5.0,
+          "start_ms": 1563580800000.0,
+          "end_ms": 1568764800000.0,
+          "render_end_ms": 1568764800000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "pred",
+            "x": 457.0,
+            "y": 170.0,
+            "width": 323.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task1"
+          },
+          "label": {
+            "id": "pred-text",
+            "text": "Predicates (Atomic Swap)      ",
+            "font_size": 11.0,
+            "width": 119.13,
+            "x": 618.5,
+            "y": 183.5,
+            "class": "taskText taskText1 width-119.12999999999998"
+          }
+        },
+        {
+          "id": "hs",
+          "task": "History zkSNARK  ",
+          "section": "DEX",
+          "task_type": "DEX",
+          "order": 6.0,
+          "start_ms": 1565395200000.0,
+          "end_ms": 1568851200000.0,
+          "render_end_ms": 1568851200000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "hs",
+            "x": 570.0,
+            "y": 194.0,
+            "width": 216.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task2"
+          },
+          "label": {
+            "id": "hs-text",
+            "text": "History zkSNARK  ",
+            "font_size": 11.0,
+            "width": 82.06,
+            "x": 678.0,
+            "y": 207.5,
+            "class": "taskText taskText2 width-82.05999999999999"
+          }
+        },
+        {
+          "id": "or",
+          "task": "Rollup  ",
+          "section": "asdf",
+          "task_type": "asdf",
+          "order": 2.0,
+          "start_ms": 1566259200000.0,
+          "end_ms": 1570579200000.0,
+          "render_end_ms": 1570579200000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "or",
+            "x": 624.0,
+            "y": 98.0,
+            "width": 270.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "or-text",
+            "text": "Rollup  ",
+            "font_size": 11.0,
+            "width": 26.95,
+            "x": 759.0,
+            "y": 111.5,
+            "class": "taskText taskText0 width-26.950000000000003"
+          }
+        },
+        {
+          "id": "pc26",
+          "task": "Plasma call 26 ",
+          "section": "Plasma Calls & updates",
+          "task_type": "Plasma Calls & updates",
+          "order": 13.0,
+          "start_ms": 1566345600000.0,
+          "end_ms": 1566432000000.0,
+          "render_end_ms": 1566432000000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "pc26",
+            "x": 630.0,
+            "y": 362.0,
+            "width": 5.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "pc26-text",
+            "text": "Plasma call 26 ",
+            "font_size": 11.0,
+            "width": 67.65,
+            "x": 640.0,
+            "y": 375.5,
+            "class": "taskTextOutsideRight taskTextOutside0 width-67.65000000000002"
+          }
+        },
+        {
+          "id": "ps",
+          "task": "PredicateSpec          ",
+          "section": "DEX",
+          "task_type": "DEX",
+          "order": 8.0,
+          "start_ms": 1567267200000.0,
+          "end_ms": 1568995200000.0,
+          "render_end_ms": 1568995200000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "ps",
+            "x": 687.0,
+            "y": 242.0,
+            "width": 108.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task2"
+          },
+          "label": {
+            "id": "ps-text",
+            "text": "PredicateSpec          ",
+            "font_size": 11.0,
+            "width": 63.58,
+            "x": 741.0,
+            "y": 255.5,
+            "class": "taskText taskText2 width-63.57999999999999"
+          }
+        },
+        {
+          "id": "pc27",
+          "task": "Plasma call 27 ",
+          "section": "Plasma Calls & updates",
+          "task_type": "Plasma Calls & updates",
+          "order": 14.0,
+          "start_ms": 1567468800000.0,
+          "end_ms": 1567555200000.0,
+          "render_end_ms": 1567555200000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "pc27",
+            "x": 700.0,
+            "y": 386.0,
+            "width": 5.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "pc27-text",
+            "text": "Plasma call 27 ",
+            "font_size": 11.0,
+            "width": 67.65,
+            "x": 710.0,
+            "y": 399.5,
+            "class": "taskTextOutsideRight taskTextOutside0 width-67.65000000000002"
+          }
+        },
+        {
+          "id": ":eb",
+          "task": "ETHBoston ",
+          "section": "Events",
+          "task_type": "Events",
+          "order": 10.0,
+          "start_ms": 1567900800000.0,
+          "end_ms": 1568160000000.0,
+          "render_end_ms": 1568160000000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": ":eb",
+            "x": 727.0,
+            "y": 290.0,
+            "width": 16.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task done3"
+          },
+          "label": {
+            "id": ":eb-text",
+            "text": "ETHBoston ",
+            "font_size": 11.0,
+            "width": 50.05,
+            "x": 748.0,
+            "y": 303.5,
+            "class": "taskTextOutsideRight taskTextOutside3 width-50.05"
+          }
+        },
+        {
+          "id": "pc28",
+          "task": "Plasma call 28 ",
+          "section": "Plasma Calls & updates",
+          "task_type": "Plasma Calls & updates",
+          "order": 15.0,
+          "start_ms": 1568678400000.0,
+          "end_ms": 1568764800000.0,
+          "render_end_ms": 1568764800000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "pc28",
+            "x": 775.0,
+            "y": 410.0,
+            "width": 5.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "pc28-text",
+            "text": "Plasma call 28 ",
+            "font_size": 11.0,
+            "width": 67.65,
+            "x": 785.0,
+            "y": 423.5,
+            "class": "taskTextOutsideRight taskTextOutside0 width-67.65000000000002"
+          }
+        },
+        {
+          "id": "vs",
+          "task": "Exit           ",
+          "section": "DEX",
+          "task_type": "DEX",
+          "order": 7.0,
+          "start_ms": 1568851200000.0,
+          "end_ms": 1574035200000.0,
+          "render_end_ms": 1574035200000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "vs",
+            "x": 786.0,
+            "y": 218.0,
+            "width": 323.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task2"
+          },
+          "label": {
+            "id": "vs-text",
+            "text": "Exit           ",
+            "font_size": 11.0,
+            "width": 19.14,
+            "x": 947.5,
+            "y": 231.5,
+            "class": "taskText taskText2 width-19.14"
+          }
+        },
+        {
+          "id": "pi",
+          "task": "PlasmaIntegration     ",
+          "section": "DEX",
+          "task_type": "DEX",
+          "order": 9.0,
+          "start_ms": 1568995200000.0,
+          "end_ms": 1572451200000.0,
+          "render_end_ms": 1572451200000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "pi",
+            "x": 795.0,
+            "y": 266.0,
+            "width": 215.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task2"
+          },
+          "label": {
+            "id": "pi-text",
+            "text": "PlasmaIntegration     ",
+            "font_size": 11.0,
+            "width": 81.4,
+            "x": 902.5,
+            "y": 279.5,
+            "class": "taskText taskText2 width-81.39999999999998"
+          }
+        },
+        {
+          "id": ":dc",
+          "task": "DevCon ",
+          "section": "Events",
+          "task_type": "Events",
+          "order": 11.0,
+          "start_ms": 1570492800000.0,
+          "end_ms": 1570752000000.0,
+          "render_end_ms": 1570752000000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": ":dc",
+            "x": 888.0,
+            "y": 314.0,
+            "width": 16.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task active3"
+          },
+          "label": {
+            "id": ":dc-text",
+            "text": "DevCon ",
+            "font_size": 11.0,
+            "width": 32.12,
+            "x": 909.0,
+            "y": 327.5,
+            "class": "taskTextOutsideRight taskTextOutside3 width-32.120000000000005"
+          }
+        }
+      ],
+      "excludes": [],
+      "has_excludes_layer": true,
+      "bottom_ticks": [
+        {
+          "time_ms": 1559318400000.0,
+          "x": 192.0,
+          "label": "2019-06-01"
+        },
+        {
+          "time_ms": 1561910400000.0,
+          "x": 353.0,
+          "label": "2019-07-01"
+        },
+        {
+          "time_ms": 1564588800000.0,
+          "x": 520.0,
+          "label": "2019-08-01"
+        },
+        {
+          "time_ms": 1567267200000.0,
+          "x": 687.0,
+          "label": "2019-09-01"
+        },
+        {
+          "time_ms": 1569859200000.0,
+          "x": 849.0,
+          "label": "2019-10-01"
+        },
+        {
+          "time_ms": 1572537600000.0,
+          "x": 1016.0,
+          "label": "2019-11-01"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Projects Timeline",
+      "title_x": 592.0,
+      "title_y": 25.0
+    }
+  }
+}
