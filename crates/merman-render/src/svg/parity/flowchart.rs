@@ -10,6 +10,31 @@ fn escape_attr(text: &str) -> super::util::EscapeAttrDisplay<'_> {
     escape_attr_display(text)
 }
 
+struct OptionalStyleAttr<'a>(&'a str);
+
+impl std::fmt::Display for OptionalStyleAttr<'_> {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.0.trim().is_empty() {
+            return Ok(());
+        }
+        write!(f, r#" style="{}""#, escape_attr(self.0))
+    }
+}
+
+struct OptionalStyleXmlAttr<'a>(&'a str);
+
+impl std::fmt::Display for OptionalStyleXmlAttr<'_> {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = self.0.trim();
+        if s.is_empty() {
+            return Ok(());
+        }
+        write!(f, r#" style="{}""#, escape_xml_display(s))
+    }
+}
+
 pub(super) struct FlowchartRenderCtx<'a> {
     pub(super) diagram_id: String,
     #[allow(dead_code)]
@@ -1521,11 +1546,7 @@ pub(super) fn render_flowchart_cluster(
     let label_h = cluster.title_label.height.max(0.0);
     let label_left = left + rect_w / 2.0 - label_w / 2.0;
 
-    let span_style_attr = if label_style.is_empty() {
-        String::new()
-    } else {
-        format!(r#" style="{}""#, escape_xml_display(label_style))
-    };
+    let span_style_attr = OptionalStyleXmlAttr(label_style);
 
     let _ = write!(
         out,
@@ -4824,35 +4845,20 @@ pub(super) fn render_flowchart_edge_label(
     edge_label_styles.extend(edge.style.iter().cloned());
     let compiled_label_styles =
         flowchart_compile_styles(&ctx.class_defs, &edge.classes, &edge_label_styles);
-    let span_style_attr = if compiled_label_styles.label_style.trim().is_empty() {
-        String::new()
-    } else {
-        format!(
-            r#" style="{}""#,
-            escape_xml_display(compiled_label_styles.label_style.trim())
-        )
-    };
-    let div_color_prefix = {
-        let mut color: Option<String> = None;
-        for part in compiled_label_styles.label_style.split(';') {
-            let p = part.trim();
-            let Some(rest) = p.strip_prefix("color:") else {
-                continue;
-            };
-            let v = rest
-                .trim()
-                .trim_end_matches("!important")
-                .trim()
-                .to_string();
-            if !v.is_empty() {
-                color = Some(v);
-            }
-        }
-        if let Some(v) = color {
-            format!("color: {} !important; ", v.to_ascii_lowercase())
-        } else {
+    let span_style_attr = OptionalStyleXmlAttr(compiled_label_styles.label_style.as_str());
+    let div_color_prefix = if let Some(color) = compiled_label_styles.label_color.as_deref() {
+        let color = color.trim();
+        if color.is_empty() {
             String::new()
+        } else {
+            let mut out = String::with_capacity(color.len() + 24);
+            out.push_str("color: ");
+            out.push_str(&color.to_ascii_lowercase());
+            out.push_str(" !important; ");
+            out
         }
+    } else {
+        String::new()
     };
 
     fn js_round(v: f64, decimals: i32) -> f64 {
@@ -5369,6 +5375,11 @@ pub(super) fn flowchart_inline_style_for_classes(
 pub(super) struct FlowchartCompiledStyles {
     node_style: String,
     label_style: String,
+    label_color: Option<String>,
+    label_font_family: Option<String>,
+    label_font_size: Option<String>,
+    label_font_weight: Option<String>,
+    label_opacity: Option<String>,
     fill: Option<String>,
     stroke: Option<String>,
     stroke_width: Option<String>,
@@ -5420,8 +5431,14 @@ pub(super) fn flowchart_compile_styles(
         m.set(k, v);
     }
 
-    let mut node_style_parts: Vec<String> = Vec::new();
-    let mut label_style_parts: Vec<String> = Vec::new();
+    let mut node_style = String::new();
+    let mut label_style = String::new();
+
+    let mut label_color: Option<String> = None;
+    let mut label_font_family: Option<String> = None;
+    let mut label_font_size: Option<String> = None;
+    let mut label_font_weight: Option<String> = None;
+    let mut label_opacity: Option<String> = None;
 
     let mut fill: Option<String> = None;
     let mut stroke: Option<String> = None;
@@ -5430,9 +5447,23 @@ pub(super) fn flowchart_compile_styles(
 
     for (k, v) in &m.order {
         if is_text_style_key(k) {
-            label_style_parts.push(format!("{k}:{v} !important"));
+            if !label_style.is_empty() {
+                label_style.push(';');
+            }
+            let _ = write!(&mut label_style, "{k}:{v} !important");
+            match k.as_str() {
+                "color" => label_color = Some(v.clone()),
+                "font-family" => label_font_family = Some(v.clone()),
+                "font-size" => label_font_size = Some(v.clone()),
+                "font-weight" => label_font_weight = Some(v.clone()),
+                "opacity" => label_opacity = Some(v.clone()),
+                _ => {}
+            }
         } else {
-            node_style_parts.push(format!("{k}:{v} !important"));
+            if !node_style.is_empty() {
+                node_style.push(';');
+            }
+            let _ = write!(&mut node_style, "{k}:{v} !important");
         }
         match k.as_str() {
             "fill" => fill = Some(v.clone()),
@@ -5444,8 +5475,13 @@ pub(super) fn flowchart_compile_styles(
     }
 
     FlowchartCompiledStyles {
-        node_style: node_style_parts.join(";"),
-        label_style: label_style_parts.join(";"),
+        node_style,
+        label_style,
+        label_color,
+        label_font_family,
+        label_font_size,
+        label_font_weight,
+        label_opacity,
         fill,
         stroke,
         stroke_width,
@@ -8317,11 +8353,7 @@ fn render_flowchart_node(
                 points_attr,
                 fmt_display(-w / 2.0),
                 fmt_display(h / 2.0),
-                if style.is_empty() {
-                    String::new()
-                } else {
-                    format!(r#" style="{}""#, escape_attr(&style))
-                }
+                OptionalStyleAttr(style.as_str())
             );
         }
         "cylinder" | "cyl" => {
@@ -8368,11 +8400,7 @@ fn render_flowchart_node(
                 fmt(-h / 2.0),
                 fmt(-w / 2.0 + 0.5),
                 fmt(h / 2.0),
-                if style.is_empty() {
-                    String::new()
-                } else {
-                    format!(r#" style="{}""#, escape_attr(&style))
-                }
+                OptionalStyleAttr(style.as_str())
             );
         }
         "circle" => {
@@ -8685,11 +8713,7 @@ fn render_flowchart_node(
                     fmt_display(0.0),
                     fmt_display(0.0),
                     fmt_display(0.0),
-                    if style.is_empty() {
-                        String::new()
-                    } else {
-                        format!(r#" style="{}""#, escape_attr(&style))
-                    }
+                    OptionalStyleAttr(style.as_str())
                 );
             }
         }
@@ -8713,11 +8737,7 @@ fn render_flowchart_node(
                 points_attr,
                 fmt_display(-w / 2.0),
                 fmt_display(h / 2.0),
-                if style.is_empty() {
-                    String::new()
-                } else {
-                    format!(r#" style="{}""#, escape_attr(&style))
-                }
+                OptionalStyleAttr(style.as_str())
             );
         }
         "lean_left" | "lean-l" | "lean-left" => {
@@ -8740,11 +8760,7 @@ fn render_flowchart_node(
                 points_attr,
                 fmt_display(-w / 2.0),
                 fmt_display(h / 2.0),
-                if style.is_empty() {
-                    String::new()
-                } else {
-                    format!(r#" style="{}""#, escape_attr(&style))
-                }
+                OptionalStyleAttr(style.as_str())
             );
         }
         "trapezoid" | "trap-b" => {
@@ -8767,11 +8783,7 @@ fn render_flowchart_node(
                 points_attr,
                 fmt_display(-w / 2.0),
                 fmt_display(h / 2.0),
-                if style.is_empty() {
-                    String::new()
-                } else {
-                    format!(r#" style="{}""#, escape_attr(&style))
-                }
+                OptionalStyleAttr(style.as_str())
             );
         }
         "inv_trapezoid" | "inv-trapezoid" | "trap-t" => {
@@ -8794,11 +8806,7 @@ fn render_flowchart_node(
                 points_attr,
                 fmt_display(-w / 2.0),
                 fmt_display(h / 2.0),
-                if style.is_empty() {
-                    String::new()
-                } else {
-                    format!(r#" style="{}""#, escape_attr(&style))
-                }
+                OptionalStyleAttr(style.as_str())
             );
         }
         "odd" => {
@@ -8861,11 +8869,7 @@ fn render_flowchart_node(
                     fmt(y),
                     fmt(dx),
                     fmt(0.0),
-                    if style.is_empty() {
-                        String::new()
-                    } else {
-                        format!(r#" style="{}""#, escape_attr(&style))
-                    }
+                    OptionalStyleAttr(style.as_str())
                 );
             }
         }
@@ -8896,38 +8900,6 @@ fn render_flowchart_node(
                 fmt(h)
             );
         }
-    }
-
-    fn label_color_rgb_string(style: &str) -> Option<String> {
-        for decl in style.split(';') {
-            let decl = decl.trim();
-            if decl.is_empty() {
-                continue;
-            }
-            let Some((k, v)) = decl.split_once(':') else {
-                continue;
-            };
-            if k.trim() != "color" {
-                continue;
-            }
-            let v = v.trim().trim_end_matches("!important").trim();
-            let hex = v.strip_prefix('#')?;
-            let (r, g, b) = match hex.len() {
-                6 => (
-                    u8::from_str_radix(&hex[0..2], 16).ok()?,
-                    u8::from_str_radix(&hex[2..4], 16).ok()?,
-                    u8::from_str_radix(&hex[4..6], 16).ok()?,
-                ),
-                3 => (
-                    u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?,
-                    u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?,
-                    u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?,
-                ),
-                _ => return None,
-            };
-            return Some(format!("rgb({r}, {g}, {b})"));
-        }
-        None
     }
 
     let label_text_plain = flowchart_label_plain_text(label_text, label_type, ctx.node_html_labels);
@@ -8988,13 +8960,7 @@ fn render_flowchart_node(
     } else {
         let label_html =
             label_html_timed!(flowchart_label_html(label_text, label_type, &ctx.config));
-        let mut span_style_attr = String::new();
-        if !compiled_styles.label_style.trim().is_empty() {
-            span_style_attr = format!(
-                r#" style="{}""#,
-                escape_xml_display(&compiled_styles.label_style)
-            );
-        }
+        let span_style_attr = OptionalStyleXmlAttr(compiled_styles.label_style.as_str());
         let needs_wrap = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
             let has_inline_style_tags = ctx.node_html_labels && label_type != "markdown" && {
                 let lower = label_text.to_ascii_lowercase();
@@ -9034,51 +9000,69 @@ fn render_flowchart_node(
             false
         };
 
-        let mut div_style = String::new();
-        if let Some(rgb) = label_color_rgb_string(&compiled_styles.label_style) {
-            div_style.push_str(&format!("color: {rgb} !important; "));
-        } else if let Some(color) = compiled_styles
-            .label_style
-            .split(';')
-            .rev()
-            .find_map(|decl| {
-                let decl = decl.trim();
-                let rest = decl.strip_prefix("color:")?;
-                let v = rest.trim().trim_end_matches("!important").trim();
-                if v.is_empty() {
-                    None
-                } else {
-                    Some(v.to_string())
-                }
-            })
-        {
-            div_style.push_str(&format!(
-                "color: {} !important; ",
-                color.to_ascii_lowercase()
-            ));
-        }
-        for decl in compiled_styles.label_style.split(';') {
-            let decl = decl.trim();
-            if decl.is_empty() {
-                continue;
-            }
-            let Some((k, v)) = decl.split_once(':') else {
-                continue;
-            };
-            let k = k.trim();
+        fn parse_hex_rgb_u8(v: &str) -> Option<(u8, u8, u8)> {
             let v = v.trim();
-            if k == "color" {
-                continue;
+            let hex = v.strip_prefix('#')?;
+            match hex.len() {
+                6 => {
+                    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+                    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+                    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+                    Some((r, g, b))
+                }
+                3 => {
+                    let r = u8::from_str_radix(&hex[0..1].repeat(2), 16).ok()?;
+                    let g = u8::from_str_radix(&hex[1..2].repeat(2), 16).ok()?;
+                    let b = u8::from_str_radix(&hex[2..3].repeat(2), 16).ok()?;
+                    Some((r, g, b))
+                }
+                _ => None,
             }
-            if matches!(k, "font-size" | "font-weight" | "font-family" | "opacity") {
-                div_style.push_str(&format!("{k}: {v}; "));
+        }
+
+        let mut div_style = String::new();
+        if let Some(color) = compiled_styles.label_color.as_deref() {
+            let color = color.trim();
+            if !color.is_empty() {
+                if let Some((r, g, b)) = parse_hex_rgb_u8(color) {
+                    let _ = write!(&mut div_style, "color: rgb({r}, {g}, {b}) !important; ");
+                } else {
+                    div_style.push_str("color: ");
+                    div_style.push_str(&color.to_ascii_lowercase());
+                    div_style.push_str(" !important; ");
+                }
+            }
+        }
+        if let Some(v) = compiled_styles.label_font_size.as_deref() {
+            let v = v.trim();
+            if !v.is_empty() {
+                let _ = write!(&mut div_style, "font-size: {v} !important; ");
+            }
+        }
+        if let Some(v) = compiled_styles.label_font_weight.as_deref() {
+            let v = v.trim();
+            if !v.is_empty() {
+                let _ = write!(&mut div_style, "font-weight: {v} !important; ");
+            }
+        }
+        if let Some(v) = compiled_styles.label_font_family.as_deref() {
+            let v = v.trim();
+            if !v.is_empty() {
+                let _ = write!(&mut div_style, "font-family: {v} !important; ");
+            }
+        }
+        if let Some(v) = compiled_styles.label_opacity.as_deref() {
+            let v = v.trim();
+            if !v.is_empty() {
+                let _ = write!(&mut div_style, "opacity: {v} !important; ");
             }
         }
         if needs_wrap {
-            div_style.push_str(&format!(
+            let _ = write!(
+                &mut div_style,
                 "display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: {}px;",
                 fmt_display(ctx.wrapping_width)
-            ));
+            );
         } else {
             div_style.push_str(
                 "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;",
@@ -9318,9 +9302,11 @@ pub(super) fn flowchart_label_html(
                     let src = extract_img_src(tag);
                     out.push_str("<img");
                     if let Some(src) = src {
-                        out.push_str(&format!(r#" src="{}""#, escape_attr(&src)));
+                        let _ = write!(out, r#" src="{}""#, escape_attr(&src));
                     }
-                    out.push_str(&format!(r#" style="{}""#, style));
+                    out.push_str(r#" style=""#);
+                    out.push_str(style);
+                    out.push('"');
                     out.push('>');
                     i += rel_end + 1;
                     continue;
