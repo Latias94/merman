@@ -71,9 +71,9 @@ pub struct LayoutNode {
     pub width: f64,
     pub height: f64,
     pub is_cluster: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip)]
     pub label_width: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip)]
     pub label_height: Option<f64>,
 }
 
