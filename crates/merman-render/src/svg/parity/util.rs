@@ -442,6 +442,21 @@ pub(super) fn escape_attr(text: &str) -> String {
     out
 }
 
+pub(super) fn escape_attr_into(out: &mut String, text: &str) {
+    for ch in text.chars() {
+        match ch {
+            '\n' => out.push_str("&#10;"),
+            '\r' => out.push_str("&#13;"),
+            '\t' => out.push_str("&#9;"),
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(ch),
+        }
+    }
+}
+
 pub(super) fn escape_attr_display(text: &str) -> EscapeAttrDisplay<'_> {
     EscapeAttrDisplay(text)
 }

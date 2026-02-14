@@ -10598,23 +10598,28 @@ fn render_flowchart_v2_svg_with_config_inner(
         &model.class_defs,
     );
 
-    let mut out = String::new();
-    let mut vb_min_x_attr = fmt_string(vb_min_x);
-    let mut vb_min_y_attr = fmt_string(vb_min_y);
-    let mut w_attr = fmt_string(vb_w.max(1.0));
-    let mut h_attr = fmt_string(vb_h.max(1.0));
-    let mut max_w_attr = fmt_max_width_px(vb_w.max(1.0));
+    let estimated_svg_bytes = 2048usize
+        + css.len()
+        + layout.nodes.len().saturating_mul(256)
+        + render_edges.len().saturating_mul(256)
+        + layout.clusters.len().saturating_mul(128);
+    let mut out = String::with_capacity(estimated_svg_bytes);
+
+    let vb_w = vb_w.max(1.0);
+    let vb_h = vb_h.max(1.0);
+
+    let mut viewbox_override: Option<(&str, &str, &str, &str, &str)> = None;
     if let Some((viewbox, max_w)) =
         crate::generated::flowchart_root_overrides_11_12_2::lookup_flowchart_root_viewport_override(
             diagram_id,
         )
     {
         let mut it = viewbox.split_whitespace();
-        vb_min_x_attr = it.next().unwrap_or("0").to_string();
-        vb_min_y_attr = it.next().unwrap_or("0").to_string();
-        w_attr = it.next().unwrap_or("0").to_string();
-        h_attr = it.next().unwrap_or("0").to_string();
-        max_w_attr = max_w.to_string();
+        let x = it.next().unwrap_or("0");
+        let y = it.next().unwrap_or("0");
+        let w = it.next().unwrap_or("0");
+        let h = it.next().unwrap_or("0");
+        viewbox_override = Some((x, y, w, h, max_w));
     }
 
     let acc_title = model
@@ -10630,64 +10635,115 @@ fn render_flowchart_v2_svg_with_config_inner(
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
 
-    let svg_open = if use_max_width {
-        format!(
-            r#"<svg id="{}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" style="max-width: {}px; background-color: white;" viewBox="{} {} {} {}" role="graphics-document document" aria-roledescription="{}"{}{}>"#,
-            escape_xml(diagram_id),
-            max_w_attr,
-            vb_min_x_attr,
-            vb_min_y_attr,
-            w_attr,
-            h_attr,
-            diagram_type,
-            aria_describedby
-                .as_deref()
-                .map(|id| format!(r#" aria-describedby="{}""#, escape_attr(id)))
-                .unwrap_or_default(),
-            aria_labelledby
-                .as_deref()
-                .map(|id| format!(r#" aria-labelledby="{}""#, escape_attr(id)))
-                .unwrap_or_default(),
-        )
-    } else {
-        format!(
-            r#"<svg id="{}" width="{}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" height="{}" viewBox="{} {} {} {}" role="graphics-document document" aria-roledescription="{}" style="background-color: white;"{}{}>"#,
-            escape_xml(diagram_id),
-            w_attr,
-            h_attr,
-            vb_min_x_attr,
-            vb_min_y_attr,
-            w_attr,
-            h_attr,
-            diagram_type,
-            aria_describedby
-                .as_deref()
-                .map(|id| format!(r#" aria-describedby="{}""#, escape_attr(id)))
-                .unwrap_or_default(),
-            aria_labelledby
-                .as_deref()
-                .map(|id| format!(r#" aria-labelledby="{}""#, escape_attr(id)))
-                .unwrap_or_default(),
-        )
-    };
-    out.push_str(&svg_open);
-    if let (Some(id), Some(title)) = (aria_labelledby.as_deref(), acc_title) {
-        let _ = write!(
-            &mut out,
-            r#"<title id="{}">{}</title>"#,
-            escape_attr(id),
-            escape_xml(title)
+    out.push_str(r#"<svg id=""#);
+    escape_xml_into(&mut out, diagram_id);
+    if use_max_width {
+        out.push_str(
+            r#"" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" style="max-width: "#,
         );
+        if let Some((_, _, _, _, max_w)) = viewbox_override {
+            out.push_str(max_w);
+        } else {
+            super::util::fmt_max_width_px_into(&mut out, vb_w);
+        }
+        out.push_str(r#"px; background-color: white;" viewBox=""#);
+        if let Some((x, y, w, h, _)) = viewbox_override {
+            out.push_str(x);
+            out.push(' ');
+            out.push_str(y);
+            out.push(' ');
+            out.push_str(w);
+            out.push(' ');
+            out.push_str(h);
+        } else {
+            super::util::fmt_into(&mut out, vb_min_x);
+            out.push(' ');
+            super::util::fmt_into(&mut out, vb_min_y);
+            out.push(' ');
+            super::util::fmt_into(&mut out, vb_w);
+            out.push(' ');
+            super::util::fmt_into(&mut out, vb_h);
+        }
+        out.push_str(r#"" role="graphics-document document" aria-roledescription=""#);
+        out.push_str(diagram_type);
+        out.push('"');
+        if let Some(id) = aria_describedby.as_deref() {
+            out.push_str(r#" aria-describedby=""#);
+            super::util::escape_attr_into(&mut out, id);
+            out.push('"');
+        }
+        if let Some(id) = aria_labelledby.as_deref() {
+            out.push_str(r#" aria-labelledby=""#);
+            super::util::escape_attr_into(&mut out, id);
+            out.push('"');
+        }
+        out.push('>');
+    } else {
+        out.push_str(r#"" width=""#);
+        if let Some((_, _, w, _, _)) = viewbox_override {
+            out.push_str(w);
+        } else {
+            super::util::fmt_into(&mut out, vb_w);
+        }
+        out.push_str(
+            r#"" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="flowchart" height=""#,
+        );
+        if let Some((_, _, _, h, _)) = viewbox_override {
+            out.push_str(h);
+        } else {
+            super::util::fmt_into(&mut out, vb_h);
+        }
+        out.push_str(r#"" viewBox=""#);
+        if let Some((x, y, w, h, _)) = viewbox_override {
+            out.push_str(x);
+            out.push(' ');
+            out.push_str(y);
+            out.push(' ');
+            out.push_str(w);
+            out.push(' ');
+            out.push_str(h);
+        } else {
+            super::util::fmt_into(&mut out, vb_min_x);
+            out.push(' ');
+            super::util::fmt_into(&mut out, vb_min_y);
+            out.push(' ');
+            super::util::fmt_into(&mut out, vb_w);
+            out.push(' ');
+            super::util::fmt_into(&mut out, vb_h);
+        }
+        out.push_str(r#"" role="graphics-document document" aria-roledescription=""#);
+        out.push_str(diagram_type);
+        out.push_str(r#"" style="background-color: white;""#);
+        if let Some(id) = aria_describedby.as_deref() {
+            out.push_str(r#" aria-describedby=""#);
+            super::util::escape_attr_into(&mut out, id);
+            out.push('"');
+        }
+        if let Some(id) = aria_labelledby.as_deref() {
+            out.push_str(r#" aria-labelledby=""#);
+            super::util::escape_attr_into(&mut out, id);
+            out.push('"');
+        }
+        out.push('>');
+    }
+
+    if let (Some(id), Some(title)) = (aria_labelledby.as_deref(), acc_title) {
+        out.push_str(r#"<title id=""#);
+        super::util::escape_attr_into(&mut out, id);
+        out.push_str(r#"">"#);
+        escape_xml_into(&mut out, title);
+        out.push_str("</title>");
     }
     if let (Some(id), Some(descr)) = (aria_describedby.as_deref(), acc_descr) {
-        let _ = write!(
-            &mut out,
-            r#"<desc id="{}">{}</desc>"#,
-            escape_attr(id),
-            escape_xml(descr)
-        );
+        out.push_str(r#"<desc id=""#);
+        super::util::escape_attr_into(&mut out, id);
+        out.push_str(r#"">"#);
+        escape_xml_into(&mut out, descr);
+        out.push_str("</desc>");
     }
-    let _ = write!(&mut out, "<style>{}</style>", css);
+    out.push_str("<style>");
+    out.push_str(&css);
+    out.push_str("</style>");
 
     out.push_str("<g>");
     flowchart_markers(&mut out, diagram_id);
