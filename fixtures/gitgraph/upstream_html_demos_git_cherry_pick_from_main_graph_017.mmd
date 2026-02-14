@@ -1,0 +1,12 @@
+---
+title: Cherry-pick from main (top-to-bottom)
+---
+gitGraph TB:
+commit
+branch develop
+commit
+checkout main
+commit id:"A"
+checkout develop
+commit
+cherry-pick id: "A"

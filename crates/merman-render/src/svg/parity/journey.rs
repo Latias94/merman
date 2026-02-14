@@ -127,7 +127,7 @@ pub(super) fn render_journey_diagram_svg(
     layout: &crate::model::JourneyDiagramLayout,
     semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
-    _diagram_title: Option<&str>,
+    diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
@@ -135,6 +135,14 @@ pub(super) fn render_journey_diagram_svg(
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
+
+    let diagram_title = layout
+        .title
+        .as_deref()
+        .or(diagram_title)
+        .map(str::trim)
+        .filter(|t| !t.is_empty());
+    let title_from_meta = layout.title.is_none() && diagram_title.is_some();
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -145,7 +153,14 @@ pub(super) fn render_journey_diagram_svg(
     let vb_min_x = bounds.min_x;
     let vb_min_y = bounds.min_y;
     let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
-    let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
+    let mut vb_h = (bounds.max_y - bounds.min_y).max(1.0);
+    // Mermaid journey titles can also come from YAML frontmatter (`---\ntitle: ...\n---`).
+    // When the title is supplied via frontmatter, our semantic/layout layer currently leaves
+    // `layout.title` empty. Upstream still accounts for the title when sizing the root viewBox,
+    // so mirror that here to keep `parity-root` stable.
+    if title_from_meta {
+        vb_h += 70.0;
+    }
 
     let task_font_size = effective_config
         .get("journey")
@@ -306,7 +321,7 @@ pub(super) fn render_journey_diagram_svg(
         min_y = fmt(vb_min_y),
         w = fmt(vb_w),
         h = fmt(vb_h),
-        svg_h = fmt(layout.svg_height),
+        svg_h = fmt(if vb_min_y < 0.0 { vb_h - vb_min_y } else { vb_h }),
         aria = aria,
     );
 
@@ -494,7 +509,7 @@ pub(super) fn render_journey_diagram_svg(
         out.push_str("</g>");
     }
 
-    if let Some(title) = layout.title.as_deref() {
+    if let Some(title) = diagram_title {
         let _ = write!(
             &mut out,
             r#"<text x="{x}" font-size="{fs}" font-weight="bold" y="{y}" fill="{fill}" font-family="{ff}">{text}</text>"#,

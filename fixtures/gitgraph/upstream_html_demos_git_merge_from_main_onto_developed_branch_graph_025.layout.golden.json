@@ -1,0 +1,154 @@
+{
+  "diagramType": "gitGraph",
+  "layout": {
+    "GitGraphDiagram": {
+      "bounds": {
+        "min_x": -106.773,
+        "min_y": -18.0,
+        "max_x": 258.0,
+        "max_y": 108.0
+      },
+      "direction": "LR",
+      "rotate_commit_label": true,
+      "show_branches": true,
+      "show_commit_label": true,
+      "parallel_commits": false,
+      "diagram_padding": 8.0,
+      "max_pos": 250.0,
+      "branches": [
+        {
+          "name": "main",
+          "index": 0.0,
+          "pos": 0.0,
+          "bbox_width": 30.719,
+          "bbox_height": 17.6
+        },
+        {
+          "name": "develop",
+          "index": 1.0,
+          "pos": 90.0,
+          "bbox_width": 45.773,
+          "bbox_height": 17.6
+        }
+      ],
+      "commits": [
+        {
+          "id": "0-<dynamic>",
+          "message": "",
+          "seq": 0.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [],
+          "branch": "main",
+          "pos": 0.0,
+          "pos_with_offset": 10.0,
+          "x": 10.0,
+          "y": 0.0
+        },
+        {
+          "id": "1-<dynamic>",
+          "message": "",
+          "seq": 1.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "0-<dynamic>"
+          ],
+          "branch": "develop",
+          "pos": 50.0,
+          "pos_with_offset": 60.0,
+          "x": 60.0,
+          "y": 90.0
+        },
+        {
+          "id": "2-<dynamic>",
+          "message": "",
+          "seq": 2.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "0-<dynamic>"
+          ],
+          "branch": "main",
+          "pos": 100.0,
+          "pos_with_offset": 110.0,
+          "x": 110.0,
+          "y": 0.0
+        },
+        {
+          "id": "3-<dynamic>",
+          "message": "",
+          "seq": 3.0,
+          "commit_type": 0.0,
+          "custom_type": null,
+          "custom_id": null,
+          "tags": [],
+          "parents": [
+            "1-<dynamic>"
+          ],
+          "branch": "develop",
+          "pos": 150.0,
+          "pos_with_offset": 160.0,
+          "x": 160.0,
+          "y": 90.0
+        },
+        {
+          "id": "4-<dynamic>",
+          "message": "merged branch main into develop",
+          "seq": 4.0,
+          "commit_type": 3.0,
+          "custom_type": null,
+          "custom_id": false,
+          "tags": [],
+          "parents": [
+            "3-<dynamic>",
+            "2-<dynamic>"
+          ],
+          "branch": "develop",
+          "pos": 200.0,
+          "pos_with_offset": 210.0,
+          "x": 210.0,
+          "y": 90.0
+        }
+      ],
+      "arrows": [
+        {
+          "from": "0-<dynamic>",
+          "to": "1-<dynamic>",
+          "class_index": 1.0,
+          "d": "M 10 0 L 10 70 A 20 20, 0, 0, 0, 30 90 L 60 90"
+        },
+        {
+          "from": "0-<dynamic>",
+          "to": "2-<dynamic>",
+          "class_index": 0.0,
+          "d": "M 10 0 L 110 0"
+        },
+        {
+          "from": "1-<dynamic>",
+          "to": "3-<dynamic>",
+          "class_index": 1.0,
+          "d": "M 60 90 L 160 90"
+        },
+        {
+          "from": "3-<dynamic>",
+          "to": "4-<dynamic>",
+          "class_index": 1.0,
+          "d": "M 160 90 L 210 90"
+        },
+        {
+          "from": "2-<dynamic>",
+          "to": "4-<dynamic>",
+          "class_index": 0.0,
+          "d": "M 110 0 L 110 35 A 10 10, 0, 0, 0, 120 45 L 200 45 A 10 10, 0, 0, 1, 210 55 L 210 90"
+        }
+      ]
+    }
+  }
+}

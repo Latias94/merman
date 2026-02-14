@@ -15,6 +15,7 @@ pub(super) fn render_gitgraph_diagram_svg(
     layout: &crate::model::GitGraphDiagramLayout,
     semantic: &serde_json::Value,
     _effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
@@ -23,6 +24,7 @@ pub(super) fn render_gitgraph_diagram_svg(
     const PY: f64 = 2.0;
     const VIEWBOX_PLACEHOLDER: &str = "__MERMAID_VIEWBOX__";
     const MAX_WIDTH_PLACEHOLDER: &str = "__MERMAID_MAX_WIDTH__";
+    const TITLE_X_PLACEHOLDER: &str = "__MERMAID_GITGRAPH_TITLE_X__";
     const VIEWBOX_PADDING_PX: f64 = 8.0;
 
     fn gitgraph_simple_text_bbox_width_px(
@@ -647,6 +649,15 @@ pub(super) fn render_gitgraph_diagram_svg(
     }
     out.push_str("</g>");
 
+    if let Some(title) = diagram_title.map(str::trim).filter(|t| !t.is_empty()) {
+        let _ = write!(
+            &mut out,
+            r#"<text text-anchor="middle" x="{x}" y="-25" class="gitTitleText" xmlns="http://www.w3.org/2000/svg">{text}</text>"#,
+            x = TITLE_X_PLACEHOLDER,
+            text = escape_xml(title),
+        );
+    }
+
     out.push_str("</svg>\n");
 
     // GitGraph renders rotated commit labels (e.g. `rotate(-45, ...)`) that are not represented
@@ -779,8 +790,15 @@ pub(super) fn render_gitgraph_diagram_svg(
             diagram_id,
         )
     {
+        let mut it = view_box.split_whitespace();
+        let vb_min_x = it.next().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+        let _vb_min_y = it.next().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+        let vb_w = it.next().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+        let title_x = fmt(vb_min_x + vb_w / 2.0);
+
         out = out.replacen(VIEWBOX_PLACEHOLDER, view_box, 1);
         out = out.replacen(MAX_WIDTH_PLACEHOLDER, max_width, 1);
+        out = out.replacen(TITLE_X_PLACEHOLDER, &title_x, 1);
         return Ok(out);
     }
 
@@ -788,5 +806,6 @@ pub(super) fn render_gitgraph_diagram_svg(
     // Mermaid gitGraph baselines stringify `max-width` directly from the computed `viewBox` width
     // (no fixed precision rounding), so keep the full `Number#toString()`-like output here.
     out = out.replacen(MAX_WIDTH_PLACEHOLDER, &fmt_string(vb_w), 1);
+    out = out.replacen(TITLE_X_PLACEHOLDER, &fmt_string(vb_min_x + vb_w / 2.0), 1);
     Ok(out)
 }

@@ -1,0 +1,56 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": "Hide today marker (vertical line should not be visible)",
+    "accTitle": null,
+    "accDescr": null,
+    "dateFormat": "Z",
+    "axisFormat": "%d/%m",
+    "tickInterval": null,
+    "todayMarker": "off",
+    "includes": [],
+    "excludes": [],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
+    "sections": [
+      "Section1"
+    ],
+    "tasks": [
+      {
+        "section": "Section1",
+        "type": "Section1",
+        "task": "Today",
+        "id": "1",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 1, 08-08-09-01:00, 5min",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "08-08-09-01:00"
+          },
+          "endTime": {
+            "data": "5min"
+          }
+        },
+        "startTime": "2009-08-08T01:00:00.000",
+        "endTime": "2009-08-08T01:00:00.000"
+      }
+    ],
+    "links": {},
+    "clickEvents": {}
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "diagramType": "pie",
+  "model": {
+    "type": "pie",
+    "showData": false,
+    "title": "Centralized labels: Languages",
+    "accTitle": "Key elements in Product X",
+    "accDescr": "This is a pie chart showing the key elements in Product X.",
+    "sections": [
+      {
+        "label": "JavaScript",
+        "value": 30.0
+      },
+      {
+        "label": "Python",
+        "value": 25.0
+      },
+      {
+        "label": "Java",
+        "value": 20.0
+      },
+      {
+        "label": "C#",
+        "value": 15.0
+      },
+      {
+        "label": "Others",
+        "value": 10.0
+      }
+    ]
+  }
+}

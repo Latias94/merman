@@ -18676,6 +18676,7 @@ fn compare_gitgraph_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             layout,
             &layouted.semantic,
             &layouted.meta.effective_config,
+            layouted.meta.title.as_deref(),
             layout_opts.text_measurer.as_ref(),
             &svg_opts,
         ) {

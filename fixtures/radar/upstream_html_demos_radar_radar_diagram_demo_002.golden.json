@@ -1,0 +1,92 @@
+{
+  "diagramType": "radar",
+  "model": {
+    "type": "radar",
+    "title": "DevOps Radar",
+    "accTitle": null,
+    "accDescr": null,
+    "axes": [
+      {
+        "name": "f",
+        "label": "Feature Velocity"
+      },
+      {
+        "name": "s",
+        "label": "Stability"
+      },
+      {
+        "name": "r",
+        "label": "Resilience"
+      },
+      {
+        "name": "e",
+        "label": "Efficiency"
+      },
+      {
+        "name": "c",
+        "label": "Cost"
+      },
+      {
+        "name": "d",
+        "label": "DevSecOps"
+      }
+    ],
+    "curves": [
+      {
+        "name": "app1",
+        "label": "App1",
+        "entries": [
+          5,
+          4.5,
+          3.8,
+          4.5,
+          3.5,
+          4.2
+        ]
+      },
+      {
+        "name": "app2",
+        "label": "App2",
+        "entries": [
+          4,
+          3,
+          4,
+          3,
+          3,
+          4
+        ]
+      },
+      {
+        "name": "app3",
+        "label": "App3",
+        "entries": [
+          3,
+          2,
+          4,
+          3,
+          2,
+          3
+        ]
+      },
+      {
+        "name": "app4",
+        "label": "App4",
+        "entries": [
+          2,
+          1,
+          0.2,
+          0.5,
+          1,
+          2
+        ]
+      }
+    ],
+    "options": {
+      "showLegend": true,
+      "ticks": 3,
+      "max": 5,
+      "min": 0,
+      "graticule": "polygon"
+    }
+  }
+}

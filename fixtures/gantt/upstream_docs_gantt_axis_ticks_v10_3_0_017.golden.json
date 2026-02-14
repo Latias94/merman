@@ -1,0 +1,24 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "dateFormat": "",
+    "axisFormat": "",
+    "tickInterval": "1week",
+    "todayMarker": "",
+    "includes": [],
+    "excludes": [],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "monday",
+    "weekend": "saturday",
+    "displayMode": "",
+    "sections": [],
+    "tasks": [],
+    "links": {},
+    "clickEvents": {}
+  }
+}

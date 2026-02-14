@@ -1,0 +1,255 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1184.0,
+        "max_y": 196.0
+      },
+      "width": 1184.0,
+      "height": 196.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        ""
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 3.0,
+          "x": 0.0,
+          "y": 120.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 2.0,
+          "x": 0.0,
+          "y": 96.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 98.0,
+          "dy_em": -0.0,
+          "lines": [
+            ""
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "a",
+          "task": "apple ",
+          "section": "",
+          "task_type": "",
+          "order": 0.0,
+          "start_ms": 1500508800000.0,
+          "end_ms": 1501113600000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "a",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 905.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "a-text",
+            "text": "apple ",
+            "font_size": 11.0,
+            "width": 22.0,
+            "x": 527.5,
+            "y": 63.5,
+            "class": "taskText taskText0 width-22"
+          }
+        },
+        {
+          "id": "d",
+          "task": "kiwi   ",
+          "section": "",
+          "task_type": "",
+          "order": 3.0,
+          "start_ms": 1500508800000.0,
+          "end_ms": 1500768000000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "d",
+            "x": 75.0,
+            "y": 122.0,
+            "width": 388.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "d-text",
+            "text": "kiwi   ",
+            "font_size": 11.0,
+            "width": 20.79,
+            "x": 269.0,
+            "y": 135.5,
+            "class": "taskText taskText0 width-20.790000000000003"
+          }
+        },
+        {
+          "id": "b",
+          "task": "banana ",
+          "section": "",
+          "task_type": "",
+          "order": 1.0,
+          "start_ms": 1500768000000.0,
+          "end_ms": 1500854400000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "b",
+            "x": 463.0,
+            "y": 74.0,
+            "width": 129.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task crit0"
+          },
+          "label": {
+            "id": "b-text",
+            "text": "banana ",
+            "font_size": 11.0,
+            "width": 28.38,
+            "x": 527.5,
+            "y": 87.5,
+            "class": "taskText taskText0 width-28.380000000000003"
+          }
+        },
+        {
+          "id": "c",
+          "task": "cherry ",
+          "section": "",
+          "task_type": "",
+          "order": 2.0,
+          "start_ms": 1501113600000.0,
+          "end_ms": 1501200000000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "c",
+            "x": 980.0,
+            "y": 98.0,
+            "width": 129.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task active0"
+          },
+          "label": {
+            "id": "c-text",
+            "text": "cherry ",
+            "font_size": 11.0,
+            "width": 29.7,
+            "x": 1044.5,
+            "y": 111.5,
+            "class": "taskText taskText0 width-29.700000000000003"
+          }
+        }
+      ],
+      "excludes": [],
+      "has_excludes_layer": false,
+      "bottom_ticks": [
+        {
+          "time_ms": 1500566400000.0,
+          "x": 161.0,
+          "label": "2017-07-21"
+        },
+        {
+          "time_ms": 1500652800000.0,
+          "x": 290.0,
+          "label": "2017-07-22"
+        },
+        {
+          "time_ms": 1500739200000.0,
+          "x": 420.0,
+          "label": "2017-07-23"
+        },
+        {
+          "time_ms": 1500825600000.0,
+          "x": 549.0,
+          "label": "2017-07-24"
+        },
+        {
+          "time_ms": 1500912000000.0,
+          "x": 678.0,
+          "label": "2017-07-25"
+        },
+        {
+          "time_ms": 1500998400000.0,
+          "x": 807.0,
+          "label": "2017-07-26"
+        },
+        {
+          "time_ms": 1501084800000.0,
+          "x": 937.0,
+          "label": "2017-07-27"
+        },
+        {
+          "time_ms": 1501171200000.0,
+          "x": 1066.0,
+          "label": "2017-07-28"
+        }
+      ],
+      "top_ticks": [],
+      "title": null,
+      "title_x": 592.0,
+      "title_y": 25.0
+    }
+  }
+}

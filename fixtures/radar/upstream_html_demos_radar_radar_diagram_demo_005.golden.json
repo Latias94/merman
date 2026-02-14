@@ -1,0 +1,73 @@
+{
+  "diagramType": "radar",
+  "model": {
+    "type": "radar",
+    "title": "Custom colors",
+    "accTitle": null,
+    "accDescr": null,
+    "axes": [
+      {
+        "name": "Agility",
+        "label": "Agility"
+      },
+      {
+        "name": "Speed",
+        "label": "Speed"
+      },
+      {
+        "name": "Strength",
+        "label": "Strength"
+      },
+      {
+        "name": "Stam",
+        "label": "Stamina"
+      },
+      {
+        "name": "Intel",
+        "label": "Intelligence"
+      }
+    ],
+    "curves": [
+      {
+        "name": "Ninja1",
+        "label": "Naruto",
+        "entries": [
+          2,
+          2,
+          3,
+          5,
+          0
+        ]
+      },
+      {
+        "name": "Ninja2",
+        "label": "Sasuke",
+        "entries": [
+          2,
+          3,
+          4,
+          1,
+          5
+        ]
+      },
+      {
+        "name": "Ninja3",
+        "label": "Ninja",
+        "entries": [
+          3,
+          2,
+          1,
+          5,
+          4
+        ]
+      }
+    ],
+    "options": {
+      "showLegend": true,
+      "ticks": 5,
+      "max": null,
+      "min": 0,
+      "graticule": "circle"
+    }
+  }
+}

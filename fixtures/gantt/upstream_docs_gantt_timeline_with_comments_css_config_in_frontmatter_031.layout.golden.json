@@ -1,0 +1,413 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 400.0,
+        "max_y": 196.0
+      },
+      "width": 400.0,
+      "height": 196.0,
+      "left_padding": 75.0,
+      "right_padding": 0.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 2.0,
+      "display_mode": "compact",
+      "date_format": "YYYY",
+      "axis_format": "%y",
+      "tick_interval": "1decade",
+      "top_axis": true,
+      "today_marker": "",
+      "categories": [
+        "Issue19062",
+        "Issue19401",
+        "Issue1300"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 400.0,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 2.0,
+          "x": 0.0,
+          "y": 96.0,
+          "width": 400.0,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 400.0,
+          "height": 24.0,
+          "class": "section section1"
+        },
+        {
+          "index": 3.0,
+          "x": 0.0,
+          "y": 120.0,
+          "width": 400.0,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "Issue19062",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 62.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Issue19062"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        },
+        {
+          "section": "Issue19401",
+          "index": 1.0,
+          "x": 10.0,
+          "y": 86.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Issue19401"
+          ],
+          "class": "sectionTitle sectionTitle1"
+        },
+        {
+          "section": "Issue1300",
+          "index": 2.0,
+          "x": 10.0,
+          "y": 122.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Issue1300"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "item71",
+          "task": "71   ",
+          "section": "Issue19062",
+          "task_type": "Issue19062",
+          "order": 0.0,
+          "start_ms": -2209017600000.0,
+          "end_ms": -1262332800000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "item71",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 279.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "item71-text",
+            "text": "71   ",
+            "font_size": 11.0,
+            "width": 12.32,
+            "x": 214.5,
+            "y": 63.5,
+            "class": "taskText taskText0 width-12.32"
+          }
+        },
+        {
+          "id": "task1",
+          "task": "9    ",
+          "section": "Issue1300",
+          "task_type": "Issue1300",
+          "order": 2.0,
+          "start_ms": -2019715200000.0,
+          "end_ms": -2019715200000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": true,
+          "bar": {
+            "id": "task1",
+            "x": 131.0,
+            "y": 35.0,
+            "width": 1.6,
+            "height": 208.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task vert task0"
+          },
+          "label": {
+            "id": "task1-text",
+            "text": "9    ",
+            "font_size": 11.0,
+            "width": 6.16,
+            "x": 131.0,
+            "y": 263.0,
+            "class": "taskTextOutsideRight taskTextOutside0 width-6.16"
+          }
+        },
+        {
+          "id": "item94",
+          "task": "94   ",
+          "section": "Issue1300",
+          "task_type": "Issue1300",
+          "order": 2.0,
+          "start_ms": -1893484800000.0,
+          "end_ms": -1735718400000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "item94",
+            "x": 168.0,
+            "y": 98.0,
+            "width": 46.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "item94-text",
+            "text": "94   ",
+            "font_size": 11.0,
+            "width": 12.32,
+            "x": 191.0,
+            "y": 111.5,
+            "class": "taskText taskText0 width-12.32"
+          }
+        },
+        {
+          "id": "item36",
+          "task": "36   ",
+          "section": "Issue19401",
+          "task_type": "Issue19401",
+          "order": 1.0,
+          "start_ms": -1798790400000.0,
+          "end_ms": -1104566400000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "item36",
+            "x": 196.0,
+            "y": 74.0,
+            "width": 204.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task1"
+          },
+          "label": {
+            "id": "item36-text",
+            "text": "36   ",
+            "font_size": 11.0,
+            "width": 12.32,
+            "x": 298.0,
+            "y": 87.5,
+            "class": "taskText taskText1 width-12.32"
+          }
+        },
+        {
+          "id": "item0",
+          "task": "0    ",
+          "section": "Issue1300",
+          "task_type": "Issue1300",
+          "order": 2.0,
+          "start_ms": -1641024000000.0,
+          "end_ms": -1641023999000.0,
+          "render_end_ms": null,
+          "milestone": true,
+          "vert": false,
+          "bar": {
+            "id": "item0",
+            "x": 232.0,
+            "y": 98.0,
+            "width": 20.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task milestone task0"
+          },
+          "label": {
+            "id": "item0-text",
+            "text": "0    ",
+            "font_size": 11.0,
+            "width": 6.16,
+            "x": 242.0,
+            "y": 111.5,
+            "class": "taskText taskText0 width-6.16"
+          }
+        },
+        {
+          "id": "item5",
+          "task": "5    ",
+          "section": "Issue1300",
+          "task_type": "Issue1300",
+          "order": 2.0,
+          "start_ms": -1577952000000.0,
+          "end_ms": -1420099200000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "item5",
+            "x": 261.0,
+            "y": 98.0,
+            "width": 46.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "item5-text",
+            "text": "5    ",
+            "font_size": 11.0,
+            "width": 6.16,
+            "x": 284.0,
+            "y": 111.5,
+            "class": "taskText taskText0 width-6.16"
+          }
+        },
+        {
+          "id": "workaround",
+          "task": "64   ",
+          "section": "Issue1300",
+          "task_type": "Issue1300",
+          "order": 3.0,
+          "start_ms": -1483257600000.0,
+          "end_ms": -1483257600000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "workaround",
+            "x": 289.0,
+            "y": 122.0,
+            "width": 0.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "workaround-text",
+            "text": "64   ",
+            "font_size": 11.0,
+            "width": 12.32,
+            "x": 294.0,
+            "y": 135.5,
+            "class": "taskTextOutsideRight taskTextOutside0 width-12.32"
+          }
+        }
+      ],
+      "excludes": [],
+      "has_excludes_layer": false,
+      "bottom_ticks": [
+        {
+          "time_ms": -2209017600000.0,
+          "x": 75.0,
+          "label": "00"
+        },
+        {
+          "time_ms": -2051251200000.0,
+          "x": 121.0,
+          "label": "05"
+        },
+        {
+          "time_ms": -1893484800000.0,
+          "x": 168.0,
+          "label": "10"
+        },
+        {
+          "time_ms": -1735718400000.0,
+          "x": 214.0,
+          "label": "15"
+        },
+        {
+          "time_ms": -1577952000000.0,
+          "x": 261.0,
+          "label": "20"
+        },
+        {
+          "time_ms": -1420099200000.0,
+          "x": 307.0,
+          "label": "25"
+        },
+        {
+          "time_ms": -1262332800000.0,
+          "x": 354.0,
+          "label": "30"
+        },
+        {
+          "time_ms": -1104566400000.0,
+          "x": 400.0,
+          "label": "35"
+        }
+      ],
+      "top_ticks": [
+        {
+          "time_ms": -2209017600000.0,
+          "x": 75.0,
+          "label": "00"
+        },
+        {
+          "time_ms": -2051251200000.0,
+          "x": 121.0,
+          "label": "05"
+        },
+        {
+          "time_ms": -1893484800000.0,
+          "x": 168.0,
+          "label": "10"
+        },
+        {
+          "time_ms": -1735718400000.0,
+          "x": 214.0,
+          "label": "15"
+        },
+        {
+          "time_ms": -1577952000000.0,
+          "x": 261.0,
+          "label": "20"
+        },
+        {
+          "time_ms": -1420099200000.0,
+          "x": 307.0,
+          "label": "25"
+        },
+        {
+          "time_ms": -1262332800000.0,
+          "x": 354.0,
+          "label": "30"
+        },
+        {
+          "time_ms": -1104566400000.0,
+          "x": 400.0,
+          "label": "35"
+        }
+      ],
+      "title": "Timeline - Gantt Sampler",
+      "title_x": 200.0,
+      "title_y": 25.0
+    }
+  }
+}

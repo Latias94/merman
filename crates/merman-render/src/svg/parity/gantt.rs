@@ -106,7 +106,14 @@ fn render_gantt_axis_group(
     with_dy: bool,
 ) {
     let range = (layout.width - layout.left_padding - layout.right_padding).max(1.0);
-    let tick_size = -layout.height + layout.top_padding + layout.grid_line_start_padding;
+    // Mermaid renders two possible axis grids:
+    // - bottom axis (ticks extend upward, label baseline uses `dy="1em"` at `y="3"`)
+    // - optional top axis (ticks extend downward, labels use `dy="0em"` at `y="-3"`)
+    let tick_size = if with_dy {
+        -layout.height + layout.top_padding + layout.grid_line_start_padding
+    } else {
+        layout.height - layout.top_padding - layout.grid_line_start_padding
+    };
 
     let _ = write!(
         out,
@@ -148,7 +155,7 @@ fn render_gantt_axis_group(
         } else {
             let _ = write!(
                 out,
-                r##"<text fill="#000" y="3" stroke="none" font-size="10" style="text-anchor: middle;">{}</text>"##,
+                r##"<text fill="#000" y="-3" dy="0em" stroke="none" font-size="10" style="text-anchor: middle;">{}</text>"##,
                 escape_xml(&t.label)
             );
         }

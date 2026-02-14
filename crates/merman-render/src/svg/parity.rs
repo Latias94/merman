@@ -341,9 +341,14 @@ pub fn render_layout_svg_parts_with_config(
         LayoutDiagram::KanbanDiagram(layout) => {
             render_kanban_diagram_svg(layout, semantic, effective_config_value, options)
         }
-        LayoutDiagram::GitGraphDiagram(layout) => {
-            render_gitgraph_diagram_svg(layout, semantic, effective_config_value, measurer, options)
-        }
+        LayoutDiagram::GitGraphDiagram(layout) => render_gitgraph_diagram_svg(
+            layout,
+            semantic,
+            effective_config_value,
+            title,
+            measurer,
+            options,
+        ),
         LayoutDiagram::GanttDiagram(layout) => {
             render_gantt_diagram_svg(layout, semantic, effective_config_value, options)
         }
@@ -662,10 +667,18 @@ pub fn render_gitgraph_diagram_svg(
     layout: &crate::model::GitGraphDiagramLayout,
     semantic: &serde_json::Value,
     _effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    gitgraph::render_gitgraph_diagram_svg(layout, semantic, _effective_config, measurer, options)
+    gitgraph::render_gitgraph_diagram_svg(
+        layout,
+        semantic,
+        _effective_config,
+        diagram_title,
+        measurer,
+        options,
+    )
 }
 
 pub fn render_gantt_diagram_svg(

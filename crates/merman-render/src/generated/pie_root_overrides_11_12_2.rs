@@ -8,6 +8,15 @@
 
 pub fn lookup_pie_root_viewport_override(diagram_id: &str) -> Option<(&'static str, &'static str)> {
     match diagram_id {
+        "upstream_html_demos_pie_pie_chart_demos_001" => {
+            Some(("0 0 547.08154296875 450", "547.082"))
+        }
+        "upstream_html_demos_pie_pie_chart_demos_002" => {
+            Some(("0 0 596.21875 450", "596.219"))
+        }
+        "upstream_html_demos_pie_pie_chart_demos_003" => {
+            Some(("0 0 590.81005859375 450", "590.81"))
+        }
         "upstream_docs_examples_basic_pie_chart_002" => {
             Some(("0 0 735.45849609375 450", "735.458"))
         }

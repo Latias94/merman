@@ -1,0 +1,77 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "0-<dynamic>",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "1-<dynamic>",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "0-<dynamic>"
+        ],
+        "branch": "develop"
+      },
+      {
+        "id": "A",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "0-<dynamic>"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "3-<dynamic>",
+        "message": "",
+        "seq": 3,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "1-<dynamic>"
+        ],
+        "branch": "develop"
+      },
+      {
+        "id": "4-<dynamic>",
+        "message": "cherry-picked  into develop",
+        "seq": 4,
+        "type": 4,
+        "tags": [
+          "cherry-pick:A"
+        ],
+        "parents": [
+          "3-<dynamic>",
+          "A"
+        ],
+        "branch": "develop"
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "develop"
+      }
+    ],
+    "currentBranch": "develop",
+    "direction": "BT",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}

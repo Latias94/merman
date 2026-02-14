@@ -1,0 +1,364 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1184.0,
+        "max_y": 220.0
+      },
+      "width": 1184.0,
+      "height": 220.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "YYYY-MM-DD",
+      "axis_format": "%m-%d %a",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "Airworks 3.4.1",
+        "Airworks 3.4.2"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 3.0,
+          "x": 0.0,
+          "y": 120.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section1"
+        },
+        {
+          "index": 1.0,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        },
+        {
+          "index": 4.0,
+          "x": 0.0,
+          "y": 144.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section1"
+        },
+        {
+          "index": 2.0,
+          "x": 0.0,
+          "y": 96.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "Airworks 3.4.1",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 86.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Airworks 3.4.1"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        },
+        {
+          "section": "Airworks 3.4.2",
+          "index": 1.0,
+          "x": 10.0,
+          "y": 146.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Airworks 3.4.2"
+          ],
+          "class": "sectionTitle sectionTitle1"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "b",
+          "task": "开发\t",
+          "section": "Airworks 3.4.1",
+          "task_type": "Airworks 3.4.1",
+          "order": 0.0,
+          "start_ms": 1633536000000.0,
+          "end_ms": 1634054400000.0,
+          "render_end_ms": 1634054400000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "b",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 477.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "b-text",
+            "text": "开发\t",
+            "font_size": 11.0,
+            "width": 13.2,
+            "x": 313.5,
+            "y": 63.5,
+            "class": "taskText taskText0 width-13.2"
+          }
+        },
+        {
+          "id": "a",
+          "task": "开发\t",
+          "section": "Airworks 3.4.2",
+          "task_type": "Airworks 3.4.2",
+          "order": 3.0,
+          "start_ms": 1633708800000.0,
+          "end_ms": 1634140800000.0,
+          "render_end_ms": 1634140800000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "a",
+            "x": 234.0,
+            "y": 122.0,
+            "width": 398.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task1"
+          },
+          "label": {
+            "id": "a-text",
+            "text": "开发\t",
+            "font_size": 11.0,
+            "width": 13.2,
+            "x": 433.0,
+            "y": 135.5,
+            "class": "taskText taskText1 width-13.2"
+          }
+        },
+        {
+          "id": "task1",
+          "task": "测试\t",
+          "section": "Airworks 3.4.1",
+          "task_type": "Airworks 3.4.1",
+          "order": 1.0,
+          "start_ms": 1634054400000.0,
+          "end_ms": 1634572800000.0,
+          "render_end_ms": 1634572800000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task1",
+            "x": 552.0,
+            "y": 74.0,
+            "width": 477.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "task1-text",
+            "text": "测试\t",
+            "font_size": 11.0,
+            "width": 13.2,
+            "x": 790.5,
+            "y": 87.5,
+            "class": "taskText taskText0 width-13.2"
+          }
+        },
+        {
+          "id": "task3",
+          "task": "测试\t",
+          "section": "Airworks 3.4.2",
+          "task_type": "Airworks 3.4.2",
+          "order": 4.0,
+          "start_ms": 1634140800000.0,
+          "end_ms": 1634659200000.0,
+          "render_end_ms": 1634659200000.0,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task3",
+            "x": 632.0,
+            "y": 146.0,
+            "width": 477.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task1"
+          },
+          "label": {
+            "id": "task3-text",
+            "text": "测试\t",
+            "font_size": 11.0,
+            "width": 13.2,
+            "x": 870.5,
+            "y": 159.5,
+            "class": "taskText taskText1 width-13.2"
+          }
+        },
+        {
+          "id": "task2",
+          "task": "OK  ",
+          "section": "Airworks 3.4.1",
+          "task_type": "Airworks 3.4.1",
+          "order": 2.0,
+          "start_ms": 1634572800000.0,
+          "end_ms": 1634572800000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "task2",
+            "x": 1029.0,
+            "y": 98.0,
+            "width": 0.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "task2-text",
+            "text": "OK  ",
+            "font_size": 11.0,
+            "width": 13.2,
+            "x": 1034.0,
+            "y": 111.5,
+            "class": "taskTextOutsideRight taskTextOutside0 width-13.2"
+          }
+        }
+      ],
+      "excludes": [
+        {
+          "id": "exclude-2021-10-07",
+          "start_ms": 1633536000000.0,
+          "end_ms": 1633622399999.0,
+          "x": 75.0,
+          "y": 35.0,
+          "width": 80.0,
+          "height": 135.0
+        },
+        {
+          "id": "exclude-2021-10-10",
+          "start_ms": 1633795200000.0,
+          "end_ms": 1633881599999.0,
+          "x": 314.0,
+          "y": 35.0,
+          "width": 79.0,
+          "height": 135.0
+        },
+        {
+          "id": "exclude-2021-10-16",
+          "start_ms": 1634313600000.0,
+          "end_ms": 1634486399999.0,
+          "x": 791.0,
+          "y": 35.0,
+          "width": 159.0,
+          "height": 135.0
+        }
+      ],
+      "has_excludes_layer": true,
+      "bottom_ticks": [
+        {
+          "time_ms": 1633536000000.0,
+          "x": 75.0,
+          "label": "10-07 Thu"
+        },
+        {
+          "time_ms": 1633622400000.0,
+          "x": 155.0,
+          "label": "10-08 Fri"
+        },
+        {
+          "time_ms": 1633708800000.0,
+          "x": 234.0,
+          "label": "10-09 Sat"
+        },
+        {
+          "time_ms": 1633795200000.0,
+          "x": 314.0,
+          "label": "10-10 Sun"
+        },
+        {
+          "time_ms": 1633881600000.0,
+          "x": 393.0,
+          "label": "10-11 Mon"
+        },
+        {
+          "time_ms": 1633968000000.0,
+          "x": 473.0,
+          "label": "10-12 Tue"
+        },
+        {
+          "time_ms": 1634054400000.0,
+          "x": 552.0,
+          "label": "10-13 Wed"
+        },
+        {
+          "time_ms": 1634140800000.0,
+          "x": 632.0,
+          "label": "10-14 Thu"
+        },
+        {
+          "time_ms": 1634227200000.0,
+          "x": 711.0,
+          "label": "10-15 Fri"
+        },
+        {
+          "time_ms": 1634313600000.0,
+          "x": 791.0,
+          "label": "10-16 Sat"
+        },
+        {
+          "time_ms": 1634400000000.0,
+          "x": 870.0,
+          "label": "10-17 Sun"
+        },
+        {
+          "time_ms": 1634486400000.0,
+          "x": 950.0,
+          "label": "10-18 Mon"
+        },
+        {
+          "time_ms": 1634572800000.0,
+          "x": 1029.0,
+          "label": "10-19 Tue"
+        },
+        {
+          "time_ms": 1634659200000.0,
+          "x": 1109.0,
+          "label": "10-20 Wed"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Airworks roadmap",
+      "title_x": 592.0,
+      "title_y": 25.0
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "diagramType": "packet",
+  "model": {
+    "type": "packet",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "packet": [
+      [
+        {
+          "start": 0,
+          "end": 15,
+          "bits": 16,
+          "label": "Source Port"
+        },
+        {
+          "start": 16,
+          "end": 31,
+          "bits": 16,
+          "label": "Destination Port"
+        }
+      ],
+      [
+        {
+          "start": 32,
+          "end": 63,
+          "bits": 32,
+          "label": "Sequence Number"
+        }
+      ]
+    ]
+  }
+}

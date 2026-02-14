@@ -1,0 +1,232 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": "Timeline - Gantt Sampler",
+    "accTitle": null,
+    "accDescr": null,
+    "dateFormat": "YYYY",
+    "axisFormat": "%y",
+    "tickInterval": "1decade",
+    "todayMarker": "",
+    "includes": [],
+    "excludes": [],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "compact",
+    "sections": [
+      "Issue19062",
+      "Issue19401",
+      "Issue1300"
+    ],
+    "tasks": [
+      {
+        "section": "Issue19062",
+        "type": "Issue19062",
+        "task": "71   ",
+        "id": "item71",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":            item71, 1900, 1930",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "1900"
+          },
+          "endTime": {
+            "data": "1930"
+          }
+        },
+        "startTime": "1900-01-01T00:00:00.000",
+        "endTime": "1930-01-01T00:00:00.000"
+      },
+      {
+        "section": "Issue19401",
+        "type": "Issue19401",
+        "task": "36   ",
+        "id": "item36",
+        "prevTaskId": "item71",
+        "order": 1,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":            item36, 1913, 1935",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "1913"
+          },
+          "endTime": {
+            "data": "1935"
+          }
+        },
+        "startTime": "1913-01-01T00:00:00.000",
+        "endTime": "1935-01-01T00:00:00.000"
+      },
+      {
+        "section": "Issue1300",
+        "type": "Issue1300",
+        "task": "94   ",
+        "id": "item94",
+        "prevTaskId": "item36",
+        "order": 2,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":            item94, 1910, 1915",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "1910"
+          },
+          "endTime": {
+            "data": "1915"
+          }
+        },
+        "startTime": "1910-01-01T00:00:00.000",
+        "endTime": "1915-01-01T00:00:00.000"
+      },
+      {
+        "section": "Issue1300",
+        "type": "Issue1300",
+        "task": "5    ",
+        "id": "item5",
+        "prevTaskId": "item94",
+        "order": 3,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":            item5,  1920, 1925",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "1920"
+          },
+          "endTime": {
+            "data": "1925"
+          }
+        },
+        "startTime": "1920-01-01T00:00:00.000",
+        "endTime": "1925-01-01T00:00:00.000"
+      },
+      {
+        "section": "Issue1300",
+        "type": "Issue1300",
+        "task": "0    ",
+        "id": "item0",
+        "prevTaskId": "item5",
+        "order": 4,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": true,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": milestone, item0,  1918, 1s",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "1918"
+          },
+          "endTime": {
+            "data": "1s"
+          }
+        },
+        "startTime": "1918-01-01T00:00:00.000",
+        "endTime": "1918-01-01T00:00:01.000"
+      },
+      {
+        "section": "Issue1300",
+        "type": "Issue1300",
+        "task": "9    ",
+        "id": "task1",
+        "prevTaskId": "item0",
+        "order": 5,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": true,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": vert,              1906, 1s   %% not yet official",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "1906"
+          },
+          "endTime": {
+            "data": "1s   %% not yet official"
+          }
+        },
+        "startTime": "1906-01-01T00:00:00.000",
+        "endTime": "1906-01-01T00:00:00.000"
+      },
+      {
+        "section": "Issue1300",
+        "type": "Issue1300",
+        "task": "64   ",
+        "id": "workaround",
+        "prevTaskId": "task1",
+        "order": 6,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": workaround,        1923, 1s   %% custom CSS object https://github.com/mermaid-js/mermaid/issues/3250",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "1923"
+          },
+          "endTime": {
+            "data": "1s   %% custom CSS object https://github.com/mermaid-js/mermaid/issues/3250"
+          }
+        },
+        "startTime": "1923-01-01T00:00:00.000",
+        "endTime": "1923-01-01T00:00:00.000"
+      }
+    ],
+    "links": {},
+    "clickEvents": {}
+  }
+}
