@@ -1,0 +1,189 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "A1",
+        "type": "stadium",
+        "label": "stadium",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "A2",
+        "type": "subroutine",
+        "label": "subroutine",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "B1",
+        "type": "cylinder",
+        "label": "cylinder",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "C1",
+        "type": "rect_left_inv_arrow",
+        "label": "surprise",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "A3",
+        "type": "lean_right",
+        "label": "lean right",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "B2",
+        "type": "lean_left",
+        "label": "lean left",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "C2",
+        "type": "trapezoid",
+        "label": "trapezoid",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "D2",
+        "type": "inv_trapezoid",
+        "label": "trapezoid",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "edges": [],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "A1",
+            "type": "stadium",
+            "label": "stadium",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "A2",
+            "type": "subroutine",
+            "label": "subroutine",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "B1",
+            "type": "cylinder",
+            "label": "cylinder",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "C1",
+            "type": "rect_left_inv_arrow",
+            "label": "surprise",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "A3",
+            "type": "lean_right",
+            "label": "lean right",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "B2",
+            "type": "lean_left",
+            "label": "lean left",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "C2",
+            "type": "trapezoid",
+            "label": "trapezoid",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "D2",
+            "type": "inv_trapezoid",
+            "label": "trapezoid",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ],
+        "columns": -1
+      },
+      {
+        "id": "A1",
+        "type": "stadium",
+        "label": "stadium",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "A2",
+        "type": "subroutine",
+        "label": "subroutine",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "B1",
+        "type": "cylinder",
+        "label": "cylinder",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "C1",
+        "type": "rect_left_inv_arrow",
+        "label": "surprise",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "A3",
+        "type": "lean_right",
+        "label": "lean right",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "B2",
+        "type": "lean_left",
+        "label": "lean left",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "C2",
+        "type": "trapezoid",
+        "label": "trapezoid",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "D2",
+        "type": "inv_trapezoid",
+        "label": "trapezoid",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "classes": {},
+    "warnings": []
+  }
+}

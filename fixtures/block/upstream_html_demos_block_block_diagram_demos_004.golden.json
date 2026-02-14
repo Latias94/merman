@@ -1,0 +1,104 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "e",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "f",
+            "type": "na",
+            "label": "f",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "g",
+            "type": "na",
+            "label": "g",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ],
+        "columns": 2,
+        "widthInColumns": 4
+      }
+    ],
+    "edges": [],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "e",
+            "type": "composite",
+            "label": "",
+            "children": [
+              {
+                "id": "f",
+                "type": "na",
+                "label": "f",
+                "children": [],
+                "widthInColumns": 1
+              },
+              {
+                "id": "g",
+                "type": "na",
+                "label": "g",
+                "children": [],
+                "widthInColumns": 1
+              }
+            ],
+            "columns": 2,
+            "widthInColumns": 4
+          }
+        ],
+        "columns": -1
+      },
+      {
+        "id": "e",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "f",
+            "type": "na",
+            "label": "f",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "g",
+            "type": "na",
+            "label": "g",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ],
+        "columns": 2,
+        "widthInColumns": 4
+      },
+      {
+        "id": "f",
+        "type": "na",
+        "label": "f",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "g",
+        "type": "na",
+        "label": "g",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "classes": {},
+    "warnings": []
+  }
+}

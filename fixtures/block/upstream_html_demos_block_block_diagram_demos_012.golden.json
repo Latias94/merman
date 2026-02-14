@@ -1,0 +1,84 @@
+{
+  "diagramType": "block",
+  "model": {
+    "type": "block",
+    "blocks": [
+      {
+        "id": "A1",
+        "type": "na",
+        "label": "A1",
+        "children": [],
+        "widthInColumns": 3
+      },
+      {
+        "id": "A2",
+        "type": "na",
+        "label": "A2",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "A3",
+        "type": "na",
+        "label": "A3",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "edges": [],
+    "blocksFlat": [
+      {
+        "id": "root",
+        "type": "composite",
+        "label": "",
+        "children": [
+          {
+            "id": "A1",
+            "type": "na",
+            "label": "A1",
+            "children": [],
+            "widthInColumns": 3
+          },
+          {
+            "id": "A2",
+            "type": "na",
+            "label": "A2",
+            "children": [],
+            "widthInColumns": 1
+          },
+          {
+            "id": "A3",
+            "type": "na",
+            "label": "A3",
+            "children": [],
+            "widthInColumns": 1
+          }
+        ],
+        "columns": -1
+      },
+      {
+        "id": "A1",
+        "type": "na",
+        "label": "A1",
+        "children": [],
+        "widthInColumns": 3
+      },
+      {
+        "id": "A2",
+        "type": "na",
+        "label": "A2",
+        "children": [],
+        "widthInColumns": 1
+      },
+      {
+        "id": "A3",
+        "type": "na",
+        "label": "A3",
+        "children": [],
+        "widthInColumns": 1
+      }
+    ],
+    "classes": {},
+    "warnings": []
+  }
+}
