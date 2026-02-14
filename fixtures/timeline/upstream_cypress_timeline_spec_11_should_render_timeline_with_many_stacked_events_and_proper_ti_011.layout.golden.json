@@ -1,0 +1,457 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "bounds": {
+        "min_x": 100.0,
+        "min_y": -61.0,
+        "max_x": 1490.0,
+        "max_y": 1066.2
+      },
+      "left_margin": 150.0,
+      "base_x": 200.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 990.0,
+      "sections": [
+        {
+          "node": {
+            "x": 200.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "Pre-Development",
+            "label_lines": [
+              "Pre-Development"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 200.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 85.4,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "Quality Management System ",
+                "label_lines": [
+                  "Quality   Management",
+                  "System"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 295.0,
+                "y1": 253.2,
+                "x2": 295.0,
+                "y2": 1016.2
+              },
+              "events": [
+                {
+                  "x": 200.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Regulatory Compliance ",
+                  "label_lines": [
+                    "Regulatory",
+                    "Compliance"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 443.2,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Risk Management",
+                  "label_lines": [
+                    "Risk   Management"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 400.0,
+            "y": 50.0,
+            "width": 390.0,
+            "height": 67.8,
+            "content_width": 350.0,
+            "padding": 20.0,
+            "section_class": "section-0",
+            "label": "Development",
+            "label_lines": [
+              "Development"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 400.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 85.4,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-0",
+                "label": "Management Responsibility ",
+                "label_lines": [
+                  "Management",
+                  "Responsibility"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 495.0,
+                "y1": 253.2,
+                "x2": 495.0,
+                "y2": 1016.2
+              },
+              "events": [
+                {
+                  "x": 400.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "Planning Activities ",
+                  "label_lines": [
+                    "Planning   Activities"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 400.0,
+                  "y": 427.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "Human Resources",
+                  "label_lines": [
+                    "Human   Resources"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            },
+            {
+              "node": {
+                "x": 600.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 85.4,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-0",
+                "label": "Resource Management ",
+                "label_lines": [
+                  "Resource",
+                  "Management"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 695.0,
+                "y1": 253.2,
+                "x2": 695.0,
+                "y2": 1016.2
+              },
+              "events": [
+                {
+                  "x": 600.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "Management Reviews ",
+                  "label_lines": [
+                    "Management   Reviews"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 600.0,
+                  "y": 427.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "Infrastructure",
+                  "label_lines": [
+                    "Infrastructure"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 800.0,
+            "y": 50.0,
+            "width": 390.0,
+            "height": 67.8,
+            "content_width": 350.0,
+            "padding": 20.0,
+            "section_class": "section-1",
+            "label": "Post-Development",
+            "label_lines": [
+              "Post-Development"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 800.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 85.4,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-1",
+                "label": "Product Realization Activities ",
+                "label_lines": [
+                  "Product   Realization",
+                  "Activities"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 895.0,
+                "y1": 253.2,
+                "x2": 895.0,
+                "y2": 1016.2
+              },
+              "events": [
+                {
+                  "x": 800.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-1",
+                  "label": "Planning Activities ",
+                  "label_lines": [
+                    "Planning   Activities"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 800.0,
+                  "y": 427.8,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-1",
+                  "label": "Customer-related Processes",
+                  "label_lines": [
+                    "Customer-related",
+                    "Processes"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            },
+            {
+              "node": {
+                "x": 1000.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 85.4,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-1",
+                "label": "Post-Production Activities ",
+                "label_lines": [
+                  "Post-Production",
+                  "Activities"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 1095.0,
+                "y1": 253.2,
+                "x2": 1095.0,
+                "y2": 1016.2
+              },
+              "events": [
+                {
+                  "x": 1000.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-1",
+                  "label": "Feedback ",
+                  "label_lines": [
+                    "Feedback"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 1000.0,
+                  "y": 427.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-1",
+                  "label": "Complaints ",
+                  "label_lines": [
+                    "Complaints"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 1000.0,
+                  "y": 487.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-1",
+                  "label": "Adverse Events",
+                  "label_lines": [
+                    "Adverse   Events"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 1000.0,
+                  "y": 547.8,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-1",
+                  "label": "Research and Development ",
+                  "label_lines": [
+                    "Research   and",
+                    "Development"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 1000.0,
+                  "y": 623.2,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-1",
+                  "label": "Purchasing Activities",
+                  "label_lines": [
+                    "Purchasing   Activities"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 1000.0,
+                  "y": 683.2,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-1",
+                  "label": "Production Activities ",
+                  "label_lines": [
+                    "Production   Activities"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 1000.0,
+                  "y": 743.2,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-1",
+                  "label": "Installation Activities",
+                  "label_lines": [
+                    "Installation",
+                    "Activities"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 1000.0,
+                  "y": 818.6,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-1",
+                  "label": "Servicing Activities ",
+                  "label_lines": [
+                    "Servicing   Activities"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 1000.0,
+                  "y": 878.6,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-1",
+                  "label": "Post-Market Surveillance",
+                  "label_lines": [
+                    "Post-Market",
+                    "Surveillance"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "orphan_tasks": [],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "y1": 303.2,
+        "x2": 1440.0,
+        "y2": 303.2
+      },
+      "title": "Medical Device Lifecycle",
+      "title_x": 345.0,
+      "title_y": 20.0
+    }
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Medical Device Lifecycle",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Pre-Development",
+      "Development",
+      "Post-Development"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Pre-Development",
+        "type": "Pre-Development",
+        "task": "Quality Management System ",
+        "score": 0,
+        "events": [
+          "Regulatory Compliance ",
+          "Risk Management"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Development",
+        "type": "Development",
+        "task": "Management Responsibility ",
+        "score": 0,
+        "events": [
+          "Planning Activities ",
+          "Human Resources"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "Development",
+        "type": "Development",
+        "task": "Resource Management ",
+        "score": 0,
+        "events": [
+          "Management Reviews ",
+          "Infrastructure"
+        ]
+      },
+      {
+        "id": 3,
+        "section": "Post-Development",
+        "type": "Post-Development",
+        "task": "Product Realization Activities ",
+        "score": 0,
+        "events": [
+          "Planning Activities ",
+          "Customer-related Processes"
+        ]
+      },
+      {
+        "id": 4,
+        "section": "Post-Development",
+        "type": "Post-Development",
+        "task": "Post-Production Activities ",
+        "score": 0,
+        "events": [
+          "Feedback ",
+          "Complaints ",
+          "Adverse Events",
+          "Research and Development ",
+          "Purchasing Activities",
+          "Production Activities ",
+          "Installation Activities",
+          "Servicing Activities ",
+          "Post-Market Surveillance"
+        ]
+      }
+    ]
+  }
+}

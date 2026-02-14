@@ -1,0 +1,65 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Timeline of Industrial Revolution",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "17th-20th century",
+      "21st century"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "17th-20th century",
+        "type": "17th-20th century",
+        "task": "Industry 1.0 ",
+        "score": 0,
+        "events": [
+          "Machinery, Water power, Steam <br>power"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "17th-20th century",
+        "type": "17th-20th century",
+        "task": "Industry 2.0 ",
+        "score": 0,
+        "events": [
+          "Electricity, Internal combustion engine, Mass production"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "17th-20th century",
+        "type": "17th-20th century",
+        "task": "Industry 3.0 ",
+        "score": 0,
+        "events": [
+          "Electronics, Computers, Automation"
+        ]
+      },
+      {
+        "id": 3,
+        "section": "21st century",
+        "type": "21st century",
+        "task": "Industry 4.0 ",
+        "score": 0,
+        "events": [
+          "Internet, Robotics, Internet of Things"
+        ]
+      },
+      {
+        "id": 4,
+        "section": "21st century",
+        "type": "21st century",
+        "task": "Industry 5.0 ",
+        "score": 0,
+        "events": [
+          "Artificial intelligence, Big data,3D printing"
+        ]
+      }
+    ]
+  }
+}
