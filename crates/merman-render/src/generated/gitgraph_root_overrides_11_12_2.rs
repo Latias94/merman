@@ -162,6 +162,58 @@ pub fn lookup_gitgraph_root_viewport_override(
             "-98.67864990234375 -50 283.71875 461",
             "283.71875",
         )),
+        "upstream_html_demos_git_simple_branch_and_merge_graph_001" => Some((
+            "-165.0625 -50 348.546875 205.11708068847656",
+            "348.546875",
+        )),
+        "upstream_html_demos_git_simple_branch_and_merge_graph_002" => Some((
+            "-134.18487548828125 -50 366.890625 238",
+            "366.890625",
+        )),
+        "upstream_html_demos_git_simple_branch_and_merge_graph_003" => Some((
+            "-134.18487548828125 -50 366.890625 261",
+            "366.890625",
+        )),
+        "upstream_html_demos_git_merge_feature_to_advanced_main_graph_007" => Some((
+            "-163.8203125 -50 395.0625 205.11708068847656",
+            "395.0625",
+        )),
+        "upstream_html_demos_git_merge_feature_to_advanced_main_graph_008" => Some((
+            "-157.94268798828125 -50 413.40625 288",
+            "413.40625",
+        )),
+        "upstream_html_demos_git_merge_feature_to_advanced_main_graph_009" => Some((
+            "-157.94268798828125 -50 413.40625 311",
+            "413.40625",
+        )),
+        "upstream_html_demos_git_cherry_pick_from_main_graph_018" => Some((
+            "-104.87841796875 -50 331.5625 361",
+            "331.5625",
+        )),
+        "upstream_html_demos_git_merge_from_main_onto_undeveloped_branch_graph_022" => Some((
+            "-195.36328125 -50 480.21875 205.11708068847656",
+            "480.21875",
+        )),
+        "upstream_html_demos_git_merge_from_main_onto_undeveloped_branch_graph_023" => Some((
+            "-206.03836059570312 -50 498.5625 288",
+            "498.5625",
+        )),
+        "upstream_html_demos_git_merge_from_main_onto_undeveloped_branch_graph_024" => Some((
+            "-206.03836059570312 -50 498.5625 311",
+            "498.5625",
+        )),
+        "upstream_html_demos_git_merge_from_main_onto_developed_branch_graph_025" => Some((
+            "-160.53515625 -50 460.5625 205.11708068847656",
+            "460.5625",
+        )),
+        "upstream_html_demos_git_merge_from_main_onto_developed_branch_graph_026" => Some((
+            "-196.20245361328125 -50 478.890625 338",
+            "478.890625",
+        )),
+        "upstream_html_demos_git_merge_from_main_onto_developed_branch_graph_027" => Some((
+            "-196.20245361328125 -50 478.890625 361",
+            "478.890625",
+        )),
         _ => None,
     }
 }
