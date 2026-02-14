@@ -864,10 +864,13 @@ where
     CE: Default + 'static,
     CG: Default,
 {
-    let mut id_to_ix: HashMap<usize, usize> = HashMap::default();
+    let max_v_ix = entries.iter().map(|e| e.v_ix).max().unwrap_or(0);
+    let mut node_ix_to_entry_ix: Vec<Option<usize>> = vec![None; max_v_ix.saturating_add(1)];
     let mut conflicts: Vec<ConflictEntryIx> = Vec::with_capacity(entries.len());
     for (ix, entry) in entries.iter().enumerate() {
-        id_to_ix.insert(entry.v_ix, ix);
+        if let Some(slot) = node_ix_to_entry_ix.get_mut(entry.v_ix) {
+            *slot = Some(ix);
+        }
         conflicts.push(ConflictEntryIx {
             indegree: 0,
             ins: Vec::new(),
@@ -885,7 +888,7 @@ where
         let Some(g_node_ix) = g.node_ix(node_id) else {
             return;
         };
-        let Some(&entry_ix) = id_to_ix.get(&g_node_ix) else {
+        let Some(Some(entry_ix)) = node_ix_to_entry_ix.get(g_node_ix).copied() else {
             return;
         };
         if cg_ix_to_entry_ix.len() <= cg_ix {
