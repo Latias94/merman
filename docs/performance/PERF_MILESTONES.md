@@ -15,14 +15,23 @@ Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is 
 
 - Spotcheck (`tools/bench/stage_spotcheck.py`, 10 samples / 1s warmup / 4s measurement, 2026-02-14):
   - Canary set (`flowchart_medium,class_medium,sequence_medium,mindmap_medium,architecture_medium`):
-    - `parse` gmean: `1.53x`
-    - `layout` gmean: `1.27x`
-    - `render` gmean: `1.60x`
-    - `end_to_end` gmean: `1.35x`
+    - `parse` gmean: `1.82x`
+    - `layout` gmean: `1.24x`
+    - `render` gmean: `2.11x`
+    - `end_to_end` gmean: `1.34x`
   - Notable outliers in this run:
-    - `architecture_medium`: `layout 6.72x`, `end_to_end 4.99x` (absolute times are tiny, but ratio is large)
-    - `mindmap_medium`: `layout 3.94x`, `end_to_end 1.54x`
-    - `flowchart_medium`: `render 2.84x`, `end_to_end 1.37x`
+    - `architecture_medium`: `layout 4.85x`, `render 3.23x`, `end_to_end 3.54x` (absolute times are tiny, but ratio is large)
+    - `mindmap_medium`: `layout 3.61x`, `end_to_end 2.23x`
+    - `flowchart_medium`: `render 3.14x`, `end_to_end 1.11x`
+
+Near-term priorities (updated plan):
+
+1. **Flowchart render**: bring `end_to_end/flowchart_medium` to `<= 1.0x` by attacking `render`
+   fixed costs (ratio is still ~`3x` even when layout is only ~`1.3x`).
+2. **Architecture layout+render**: `parse` is now fine, but both `layout` and `render` are still
+   multi-x. We should first identify whether this is pure fixed overhead (tiny diagrams paying setup
+   costs) vs algorithmic work.
+3. **Mindmap layout**: `layout/mindmap_medium` remains the dominant driver of the canary gmean gap.
 
 Root-cause direction:
 
@@ -30,6 +39,8 @@ Root-cause direction:
   - flowchart parse now has a typed render-model fast path, and can be close to parity,
   - render has high fixed overhead from SVG emission (many small writes + style resolution),
   - layout is in the same ballpark but can still regress on `order` / `position_x`.
+  - Latest canary numbers (spotcheck mid estimate): `parse 1.72x`, `layout 1.26x`, `render 3.14x`,
+    `end_to_end 1.11x`.
 - BK x-positioning (`dugong::position::bk::position_x`) was a measurable secondary hotspot after
   ordering. We now reuse the already-computed `layering` matrix from the Dagre-ish pipeline and use
   `&str`-based temporary maps plus an index-based block-graph pass to reduce hashing + allocation.
@@ -49,8 +60,9 @@ Root-cause direction:
   prepass (still builds the `d`, but no longer parses it).
 - SVG emission still has measurable fixed overhead. Two recent low-risk wins:
   - Skip XML-escape scanning for `data-points` base64 payloads (and other known-safe path payloads).
-  - Avoid repeated `String::replacen(...)` passes over the full SVG by doing placeholder replacement
-    in a single rebuild pass (not 2–3 full copies).
+  - Avoid repeated full-SVG rebuild passes for placeholder replacement:
+    - patch initial `<svg ...>` attribute placeholders in-place when we can record their ranges (class),
+    - otherwise do a single rebuild pass (state slow viewport finalize).
   - Avoid building the flowchart `<svg ...>` open tag via nested `format!(...)` + intermediate
     strings; write directly into the output buffer to reduce allocations.
 - Flowchart edge path emission was allocating aggressively per edge (style joins + marker attribute
@@ -76,8 +88,8 @@ Useful debug toggles:
 
 This fixture is useful as a counter-example:
 
-- Spotcheck shows `layout` is already faster than `mmdr` (`~0.48x`), and end-to-end can be faster
-  (`~0.65–0.75x` in recent runs), but `render` is still far behind (`~4–6x`).
+- Spotcheck shows `layout` is already faster than `mmdr` (`~0.32x`), and end-to-end can be faster
+  (`~0.82x` in the latest canary run), but `render` is still far behind (`~3–4x`).
 - Implication: once we fix flowchart layout, **render optimizations will pay off across diagram
   types**, not only flowcharts.
 - `MERMAN_RENDER_TIMING=1` now also emits a `[render-timing] diagram=classDiagram ...` line, so we
@@ -104,7 +116,7 @@ Work items:
 Goal: cut `layout/flowchart_medium` substantially.
 
 Primary target: keep `layout/flowchart_medium` at `<= 1.0x` vs `mmdr` without changing layout output.
-Current: `~1.17x` on `flowchart_medium` in the latest canary run (spotcheck variance applies).
+Current: `~1.26x` on `flowchart_medium` in the latest canary run (spotcheck variance applies).
 
 What we know:
 
@@ -193,7 +205,7 @@ Work items (expected ROI order):
   path generation (flowchart + class edges).
 - (Done) Reduce SVG finalize fixed overhead:
   - skip XML-escape scanning for known-safe `data-points` base64 payloads
-  - replace placeholder `String::replacen(...)` passes with a single rebuild pass
+  - reduce placeholder replacement overhead (in-place patching for class; state fast viewport skips the pass)
 - (Done) Avoid allocating temporary `String` for common attribute escaping (Display-based attr escape
   in flowchart tooltip emission).
 - (Done) Reduce per-edge allocations in flowchart edge path emission (style attribute + marker attrs).
