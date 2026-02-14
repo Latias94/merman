@@ -145,6 +145,19 @@ pub fn lookup_state_root_viewport_override(
         "upstream_cypress_statediagram_v2_spec_v2_width_of_compound_state_should_grow_with_title_if_title_is_wi_024" => {
             Some(("0 0 156.765625 246", "156.766"))
         }
+        "upstream_html_demos_state_and_these_are_how_they_are_applied_002" => {
+            Some(("-54.164127349853516 -50 180.5703125 414", "180.57"))
+        }
+        "upstream_html_demos_state_and_these_are_how_they_are_applied_003" => {
+            Some(("-22.04699993133545 0 117.2813720703125 364", "117.281"))
+        }
+        "upstream_html_demos_state_transition_labels_can_span_multiple_lines_using_br_tags_or_n_009" => {
+            Some(("0 0 427.5625 306", "427.562"))
+        }
+        "upstream_html_demos_state_very_simple_showing_change_from_state1_to_state2_001" => {
+            Some(("-51.8046875 -50 180.5703125 196", "180.57"))
+        }
+        "upstream_html_demos_state_you_can_add_notes_010" => Some(("0 0 908.75 470", "908.75")),
         _ => None,
     }
 }

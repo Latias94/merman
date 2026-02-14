@@ -70,6 +70,7 @@ Recently imported (keep gates green after each batch):
 - 2026-02-13: State Cypress rendering fixtures third batch import (35 fixtures; 62 total), with upstream SVG baselines. Hardened the State parser to preserve Mermaid’s `state "..." as ID: ...` label+description split and fixed a State lexer UTF-8 slicing panic, keeping the global `parity-root` gate green.
 - 2026-02-14: Mindmap Cypress tidy-tree rendering fixtures import (4 fixtures from `repo-ref/mermaid/cypress/integration/rendering/mindmap-tidy-tree.spec.js`, with upstream SVG baselines). Normalized indented YAML frontmatter in the Cypress import pipeline and added Mindmap root viewport overrides for the new fixture IDs to keep the global `parity-root` gate green.
 - 2026-02-14: Architecture Cypress rendering fixtures import (8 fixtures from `repo-ref/mermaid/cypress/integration/rendering/architecture.spec.ts`, with upstream SVG baselines). Normalized legacy architecture edge shorthands (`a L--R b`, `a (L--R) b`, `a L-[Label]-R b`) into Mermaid@11.12.2 CLI-compatible Langium grammar (`a:L -- R:b`, `a:L -[Label]- R:b`) during Cypress import to keep `gen-upstream-svgs --diagram architecture` seeded baselines working and the global `parity-root` gate green.
+- 2026-02-14: State HTML demo fixtures import (8 fixtures from `repo-ref/mermaid/demos/state.html` via `<pre class="mermaid">`, with upstream SVG baselines). Added State root viewport overrides for the new fixture IDs to keep the global `parity-root` gate green. (One additional composite-state demo fixture is deferred locally due to a non-trivial `<path d>` DOM mismatch; tracked below.)
 
 ## Medium priority (coverage growth)
 
@@ -97,6 +98,8 @@ Deferred (tracked for future import / parity work):
   as a dedicated Gantt parity item after additional renderer hardening.
 - Class Cypress `classdiagram_handdrawn_v3.spec.*` fixtures were deferred because they exercise the newer classDiagram-v3 DOM shape
   (different top-level group structure than Stage-B `render_class_diagram_v2_svg`).
+- State demo fixture `demos/state.html` “This shows composite states” is deferred locally due to a composite-state cluster border
+  `<path d>` command sequence mismatch (extra cubic segment vs. upstream).
 
 ## Special case: ZenUML (external diagram)
 
