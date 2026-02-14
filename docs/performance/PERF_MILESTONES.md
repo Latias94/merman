@@ -9,29 +9,29 @@ It is intentionally fixture-driven and stage-attributed (parse/layout/render/end
 
 Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is *multi-source*:
 
-- `render` is still behind on several diagram types (flowchart/class/mindmap),
-- `layout` is the dominant gap for `mindmap`,
-- `architecture` is now primarily a `layout` + `render` gap (typed parse fast path landed).
+- `render` is still behind on several diagram types (flowchart/class/mindmap/architecture),
+- `layout` is the dominant gap for `mindmap` and `architecture`,
+- `flowchart_medium` is still slower end-to-end mostly due to `layout` + `render`.
 
-- Spotcheck (`tools/bench/stage_spotcheck.py`, 10 samples / 1s warmup / 4s measurement, 2026-02-14):
+- Latest combined spotcheck report:
+  - `docs/performance/spotcheck_2026-02-14.md` (`tools/bench/stage_spotcheck.py`, 10 samples / 1s warmup / 3s measurement)
   - Canary set (`flowchart_medium,class_medium,sequence_medium,mindmap_medium,architecture_medium`):
-    - `parse` gmean: `1.39x`
-    - `layout` gmean: `1.33x`
-    - `render` gmean: `2.10x`
-    - `end_to_end` gmean: `1.22x`
-  - Notable outliers in this run:
-    - `mindmap_medium`: `layout 4.70x`, `end_to_end 2.31x`
-    - `architecture_medium`: `layout 3.97x`, `end_to_end 3.10x` (absolute times are tiny, but ratio is large)
-    - `flowchart_medium`: `render 3.68x`, `end_to_end 1.20x`
+    - `parse` gmean: `1.58x`
+    - `layout` gmean: `1.64x`
+    - `render` gmean: `2.03x`
+    - `end_to_end` gmean: `1.30x`
+  - Notable outliers:
+    - `mindmap_medium`: `layout 4.80x`, `end_to_end 2.21x`
+    - `architecture_medium`: `layout 6.63x`, `render 3.43x`, `end_to_end 3.34x` (absolute times are small; ratio is large)
+    - `class_medium`: `render 4.51x` (despite `layout 0.48x` and `end_to_end 0.52x`)
 
 Near-term priorities (updated plan):
 
-1. **Flowchart render**: bring `end_to_end/flowchart_medium` to `<= 1.0x` by attacking `render`
-   fixed costs (ratio is still ~`3x` even when layout is only ~`1.3x`).
-2. **Architecture layout+render**: `parse` is now fine, but both `layout` and `render` are still
-   multi-x. We should first identify whether this is pure fixed overhead (tiny diagrams paying setup
-   costs) vs algorithmic work.
-3. **Mindmap layout**: `layout/mindmap_medium` remains the dominant driver of the canary gmean gap.
+1. **Flowchart layout+render**: reduce `end_to_end/flowchart_medium` from `~1.23x` to `<= 1.0x`.
+   This is a top priority because flowcharts tend to dominate absolute runtime (ms-scale).
+2. **Mindmap layout**: reduce `layout/mindmap_medium` from `~4.8x` to `<= 2.0x` (COSE port / bbox).
+3. **Architecture layout+render**: reduce fixed overhead on tiny diagrams and/or add a fast-path for
+   common topologies to bring `end_to_end/architecture_medium` down from `~3.3x`.
 
 Root-cause direction:
 
@@ -39,8 +39,8 @@ Root-cause direction:
   - flowchart parse now has a typed render-model fast path, and can be close to parity,
   - render has high fixed overhead from SVG emission (many small writes + style resolution),
   - layout is in the same ballpark but can still regress on `order` / `position_x`.
-  - Latest canary numbers (spotcheck mid estimate): `parse 1.09x`, `layout 1.34x`, `render 3.68x`,
-    `end_to_end 1.20x`.
+  - Latest canary numbers (spotcheck mid estimate): `parse 1.30x`, `layout 1.57x`, `render 1.90x`,
+    `end_to_end 1.23x`.
   - After reusing layout-provided label metrics in the flowchart renderer (flowchart-only spotcheck,
     2026-02-14): `render 1.84x` (10 samples / 1s warmup / 4s measurement; spotcheck variance applies).
 - BK x-positioning (`dugong::position::bk::position_x`) was a measurable secondary hotspot after
@@ -75,7 +75,9 @@ Root-cause direction:
   strokes, and `path_bounds` micro-timing dropped from ~`O(50µs)` to ~`O(1–3µs)` for `class_medium`.
 - `state_medium` render is dominated by leaf node work, especially RoughJS path generation and emit.
 - `mindmap_medium` overall gap is now mostly layout (COSE port / bbox work) rather than parse.
-- `architecture_medium` parse fixed-cost tax has been removed (typed render-model parse path); remaining gap is layout + SVG emission.
+- `architecture_medium` remaining gap is layout + SVG emission.
+- Flowchart label metrics are now carried on `LayoutNode` for reuse in render, but are intentionally
+  not serialized in layout golden snapshots (runtime-only fields).
 
 Useful debug toggles:
 
@@ -83,6 +85,7 @@ Useful debug toggles:
 - `MERMAN_RENDER_TIMING=1` (mindmap + architecture coarse attribution)
 - `MERMAN_PARSE_TIMING=1` (parse stage attribution: preprocess/detect/parse/sanitize)
 - `MERMAN_FLOWCHART_LAYOUT_TIMING=1` (flowchart layout stage attribution)
+- `MERMAN_MINDMAP_LAYOUT_TIMING=1` (mindmap layout coarse attribution: measure/manatee/edges/bounds)
 - `DUGONG_DAGREISH_TIMING=1` (Dagre-ish pipeline stage attribution; shows `order` as dominant)
 - `DUGONG_ORDER_TIMING=1` (ordering stage breakdown inside Dagre-ish pipeline)
 
