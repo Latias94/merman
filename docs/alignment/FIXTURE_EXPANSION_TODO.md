@@ -78,6 +78,7 @@ Recently imported (keep gates green after each batch):
 - 2026-02-14: Flowchart HTML demo fixtures import (12 fixtures from `repo-ref/mermaid/demos/flowchart.html` via `<pre class="mermaid">`, with upstream SVG baselines).
 - 2026-02-14: Flowchart HTML demo fixtures import (2 fixtures from `repo-ref/mermaid/demos/dataflowchart.html` via `<pre class="mermaid">`, with upstream SVG baselines).
 - 2026-02-14: Mindmap HTML demo fixtures import (2 fixtures from `repo-ref/mermaid/demos/mindmap.html` via `<pre class="mermaid">`, with upstream SVG baselines).
+- 2026-02-14: Architecture HTML demo fixtures import (11 fixtures from `repo-ref/mermaid/demos/architecture.html` via `<pre class="mermaid">`, with upstream SVG baselines).
 
 ## Medium priority (coverage growth)
 

@@ -114,3 +114,19 @@ Source: `repo-ref/mermaid/docs/syntax/architecture.md`
 - docs code blocks imported with index-based naming (content-equivalent to the non-indexed docs fixtures):
   - `fixtures/architecture/upstream_docs_architecture_example_002.mmd`
   - `fixtures/architecture/upstream_docs_architecture_icons_018.mmd`
+
+## HTML demo fixtures (imported)
+
+Source: `repo-ref/mermaid/demos/architecture.html` (via `<pre class="mermaid">` blocks).
+
+- `fixtures/architecture/upstream_html_demos_architecture_simple_diagram_with_groups_001.mmd`
+- `fixtures/architecture/upstream_html_demos_architecture_groups_within_groups_002.mmd`
+- `fixtures/architecture/upstream_html_demos_architecture_split_direction_004.mmd`
+- `fixtures/architecture/upstream_html_demos_architecture_arrow_tests_005.mmd`
+- `fixtures/architecture/upstream_html_demos_architecture_arrow_tests_006.mmd`
+- `fixtures/architecture/upstream_html_demos_architecture_group_edges_007.mmd`
+- `fixtures/architecture/upstream_html_demos_architecture_edge_label_test_008.mmd`
+- `fixtures/architecture/upstream_html_demos_architecture_edge_label_test_009.mmd`
+- `fixtures/architecture/upstream_html_demos_architecture_junction_demo_010.mmd`
+- `fixtures/architecture/upstream_html_demos_architecture_junction_demo_groups_011.mmd`
+- `fixtures/architecture/upstream_html_demos_architecture_external_icons_demo_012.mmd`

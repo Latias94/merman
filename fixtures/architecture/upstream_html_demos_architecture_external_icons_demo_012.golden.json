@@ -1,0 +1,88 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [],
+    "nodes": [
+      {
+        "id": "s3",
+        "type": "service",
+        "edges": [],
+        "icon": "logos:aws-s3",
+        "iconText": null,
+        "title": "Cloud Store",
+        "in": null
+      },
+      {
+        "id": "ec2",
+        "type": "service",
+        "edges": [],
+        "icon": "logos:aws-ec2",
+        "iconText": null,
+        "title": "Server",
+        "in": null
+      },
+      {
+        "id": "api",
+        "type": "service",
+        "edges": [],
+        "icon": "logos:aws-api-gateway",
+        "iconText": null,
+        "title": "Api Gateway",
+        "in": null
+      },
+      {
+        "id": "fa",
+        "type": "service",
+        "edges": [],
+        "icon": "fa:image",
+        "iconText": null,
+        "title": "Font Awesome Icon",
+        "in": null
+      }
+    ],
+    "services": [
+      {
+        "id": "s3",
+        "type": "service",
+        "edges": [],
+        "icon": "logos:aws-s3",
+        "iconText": null,
+        "title": "Cloud Store",
+        "in": null
+      },
+      {
+        "id": "ec2",
+        "type": "service",
+        "edges": [],
+        "icon": "logos:aws-ec2",
+        "iconText": null,
+        "title": "Server",
+        "in": null
+      },
+      {
+        "id": "api",
+        "type": "service",
+        "edges": [],
+        "icon": "logos:aws-api-gateway",
+        "iconText": null,
+        "title": "Api Gateway",
+        "in": null
+      },
+      {
+        "id": "fa",
+        "type": "service",
+        "edges": [],
+        "icon": "fa:image",
+        "iconText": null,
+        "title": "Font Awesome Icon",
+        "in": null
+      }
+    ],
+    "junctions": [],
+    "edges": []
+  }
+}
