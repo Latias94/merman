@@ -8,20 +8,18 @@ It is intentionally fixture-driven and stage-attributed (parse/layout/render/end
 ### Stage Attribution Snapshot (canaries)
 
 Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) indicates the remaining gap is dominated by
-**render + flowchart layout**, with parse now substantially closer after moving the pipeline parse
-bench to the typed render semantic models (avoids per-field `serde_json::Value` object-key
-allocations for `mindmap`/`stateDiagram`).
+**render + flowchart layout**, with parse still behind but now a smaller share of total wall time for
+layout-heavy fixtures.
 
-- Spotcheck (`tools/bench/stage_spotcheck.py`, 20 samples / 1s warmup / 1s measurement):
-  - Latest canary set (`flowchart_medium,class_medium,state_medium,mindmap_medium`):
-    - `parse`: `~2.6–2.7x` (run-to-run variance is noticeable)
-    - `layout`: `~1.1–1.2x` (gmean hides that `flowchart`/`mindmap` layout can still be large)
-    - `render`: `~3.5–3.7x`
-    - `end_to_end`: `~1.1–1.2x` (gmean is skewed by `class`/`state` being < 1x)
-  - Notable outliers in a recent run:
-    - `state_medium`: `render ~5–7x` (RoughJS + leaf node work; typed model still serializes to JSON for renderer)
-    - `mindmap_medium`: `layout ~5–6x`, `end_to_end ~2.8–2.9x`
-    - `flowchart_medium`: `layout ~1.4–2.4x`, `render ~3.7x`, `end_to_end ~1.2–1.8x`
+- Spotcheck (`tools/bench/stage_spotcheck.py`, 15 samples / 3s warmup / 8s measurement, 2026-02-14):
+  - Canary set (`flowchart_medium,class_medium,state_medium`):
+    - `parse` gmean: `~2.47x`
+    - `layout` gmean: `~0.60x` (skewed by `class`/`state` being faster; `flowchart` is still slower)
+    - `render` gmean: `~4.63x`
+    - `end_to_end` gmean: `~0.65x`
+  - Notable outliers in this run:
+    - `flowchart_medium`: `parse ~2.73x`, `layout ~1.87x`, `render ~3.27x`, `end_to_end ~1.33x`
+    - `state_medium`: `render ~9.46x` (leaf work + emission fixed-costs still dominate)
 
 Root-cause direction:
 
@@ -165,22 +163,28 @@ Status note:
   - keeps conflicts/alignment maps keyed by `&str` (no per-iteration `String` cloning),
   - replaces the block-graph `Graph<(), f64, ()>` construction with an index-based edge list.
 
-### M5 — Render: close the multi-diagram gap (Planned)
+### M5 — Render: close the multi-diagram gap (In progress)
 
 Goal: reduce `render/*` ratios (flowchart + class + state) while preserving SVG output.
 
 Work items (expected ROI order):
 
-- Avoid repeated `String` growth by pre-sizing buffers and using a single `String` builder per SVG.
-- Avoid cloning `effective_config` JSON in the hot render path; pass `MermaidConfig` (Arc-backed)
-  through the render API so diagram renderers can read config without deep-cloning.
-- Cache per-diagram derived values that are reused many times (e.g. sanitized labels / class names),
-  but keep caches scoped to the render call to avoid cross-diagram leaks.
-- Keep fast-paths for common label cases (plain text, no HTML entities, no icon syntax).
-- Flowchart: compute edge path geometry once per render (reused for viewbox curve-bounds + edgePaths),
-  caching `d` + `data-points` + bounds to avoid paying for D3 curve evaluation twice.
-- Viewport bounds: avoid “build SVG path `d` → parse `d`” patterns by computing bounds during path
-  generation; extend this beyond flowcharts (e.g. class diagram `path_bounds` hot section).
+- (Done) Avoid “build SVG path `d` → parse `d`” viewport bounds patterns by computing bounds during
+  path generation (flowchart + class edges).
+- (Done) Reduce SVG finalize fixed overhead:
+  - skip XML-escape scanning for known-safe `data-points` base64 payloads
+  - replace placeholder `String::replacen(...)` passes with a single rebuild pass
+- (Done) Avoid allocating temporary `String` for common attribute escaping (Display-based attr escape
+  in flowchart tooltip emission).
+- (In progress) Avoid repeated `String` growth by pre-sizing buffers and using a single `String`
+  builder per SVG (especially for flowchart node emission).
+- (In progress) Reduce per-node overhead for the hot path:
+  - avoid cloning the base `TextStyle` when a node has no class/style overrides
+  - pre-parse class text overrides once per render call (so we don't re-split decl strings per node)
+- (Planned) Avoid cloning `effective_config` JSON in the hot render path; pass `MermaidConfig`
+  (Arc-backed) through the render API so diagram renderers can read config without deep-cloning.
+- (Planned) Cache per-diagram derived values that are reused many times (e.g. sanitized labels /
+  class names), scoped to the render call to avoid cross-diagram leaks.
 
 Acceptance criteria:
 
