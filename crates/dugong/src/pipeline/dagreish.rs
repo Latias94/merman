@@ -299,7 +299,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     }
 
     let position_x_start = timing_enabled.then(std::time::Instant::now);
-    let xs = position::bk::position_x(g);
+    let xs = position::bk::position_x_with_layering(g, &layering);
     g.for_each_node_mut(|id, n| {
         n.x = Some(xs.get(id).copied().unwrap_or(0.0));
     });
