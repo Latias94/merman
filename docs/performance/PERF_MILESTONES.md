@@ -16,21 +16,21 @@ Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is 
 - Latest combined spotcheck report:
   - `docs/performance/spotcheck_2026-02-15.md` (`tools/bench/stage_spotcheck.py`, 10 samples / 1s warmup / 3s measurement)
   - Canary set (`flowchart_medium,class_medium,sequence_medium,mindmap_medium,architecture_medium`):
-    - `parse` gmean: `1.60x`
-    - `layout` gmean: `1.24x`
-    - `render` gmean: `1.76x`
-    - `end_to_end` gmean: `1.20x`
+    - `parse` gmean: `1.34x`
+    - `layout` gmean: `1.23x`
+    - `render` gmean: `1.85x`
+    - `end_to_end` gmean: `1.19x`
   - Notable outliers:
-    - `architecture_medium`: `layout 5.90x`, `render 2.83x`, `end_to_end 2.99x` (absolute times are small; ratio is large)
-    - `mindmap_medium`: `layout 2.57x`, `end_to_end 1.98x`
-    - `flowchart_medium`: `render 2.06x` (despite `layout 1.00x` and `end_to_end 0.95x`)
-    - `class_medium`: `render 2.76x` (despite `layout 0.41x` and `end_to_end 0.55x`)
+    - `architecture_medium`: `layout 6.06x`, `render 3.12x`, `end_to_end 4.24x` (absolute times are small; ratio is large)
+    - `mindmap_medium`: `layout 2.61x`, `end_to_end 1.33x`
+    - `class_medium`: `render 3.36x` (despite `layout 0.36x` and `end_to_end 0.56x`)
+    - `flowchart_medium`: `render 1.99x` (despite `layout 1.17x` and `end_to_end 0.97x`)
 
 Near-term priorities (updated plan):
 
 1. **Flowchart render**: keep `end_to_end/flowchart_medium <= 1.0x` while reducing `render/flowchart_medium` from `~2.1x` to `<= 1.3x`.
     This is a top priority because flowcharts tend to dominate absolute runtime (ms-scale).
-2. **Mindmap layout**: reduce `layout/mindmap_medium` from `~4.1x` to `<= 2.0x` (COSE port / bbox).
+2. **Mindmap layout**: reduce `layout/mindmap_medium` from `~2.6x` to `<= 2.0x` (COSE port / bbox).
 3. **Architecture layout+render**: reduce fixed overhead on tiny diagrams and/or add a fast-path for
     common topologies to bring `end_to_end/architecture_medium` down from `~3.6x`.
 
