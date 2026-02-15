@@ -1,0 +1,285 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "bounds": {
+        "min_x": -105.0,
+        "min_y": -61.0,
+        "max_x": 690.0,
+        "max_y": 1377.8
+      },
+      "left_margin": 150.0,
+      "base_x": 200.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 190.0,
+      "sections": [
+        {
+          "node": {
+            "x": 200.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "Busy Day",
+            "label_lines": [
+              "Busy   Day"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 200.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "09-00",
+                "label_lines": [
+                  "09-00"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 295.0,
+                "y1": 235.6,
+                "x2": 295.0,
+                "y2": 1327.8
+              },
+              "events": [
+                {
+                  "x": 200.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Start work",
+                  "label_lines": [
+                    "Start   work"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 427.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Standup",
+                  "label_lines": [
+                    "Standup"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 487.8,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Code review",
+                  "label_lines": [
+                    "Code   review"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 547.8,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Implement feature A",
+                  "label_lines": [
+                    "Implement   feature",
+                    "A"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 623.2,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Fix bug B",
+                  "label_lines": [
+                    "Fix   bug   B"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 683.2,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Write tests",
+                  "label_lines": [
+                    "Write   tests"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 743.2,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Update docs",
+                  "label_lines": [
+                    "Update   docs"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 803.2,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Lunch break",
+                  "label_lines": [
+                    "Lunch   break"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 863.2,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Pair programming",
+                  "label_lines": [
+                    "Pair   programming"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 923.2,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Refactor module",
+                  "label_lines": [
+                    "Refactor   module"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 983.2,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Run benchmarks",
+                  "label_lines": [
+                    "Run   benchmarks"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 1043.2,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Deploy to staging",
+                  "label_lines": [
+                    "Deploy   to   staging"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 1103.2,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Verify metrics",
+                  "label_lines": [
+                    "Verify   metrics"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 1163.2,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Prepare release notes",
+                  "label_lines": [
+                    "Prepare   release",
+                    "notes"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 1238.6,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "End of day",
+                  "label_lines": [
+                    "End   of   day"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "orphan_tasks": [],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "y1": 285.6,
+        "x2": 640.0,
+        "y2": 285.6
+      },
+      "title": "Many events for one period",
+      "title_x": -55.0,
+      "title_y": 20.0
+    }
+  }
+}

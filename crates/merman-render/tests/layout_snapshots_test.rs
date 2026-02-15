@@ -1,3 +1,4 @@
+use chrono::NaiveDate;
 use merman_core::{Engine, ParseOptions};
 use merman_render::{LayoutOptions, layout_parsed};
 use regex::Regex;
@@ -136,7 +137,10 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
         fixtures_root.display()
     );
 
-    let engine = Engine::new();
+    // Keep time-dependent diagrams (e.g. Gantt) deterministic for fixtures.
+    let engine = Engine::new().with_fixed_today(Some(
+        NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
+    ));
     let layout_opts = LayoutOptions::default();
     let mut failures: Vec<String> = Vec::new();
 

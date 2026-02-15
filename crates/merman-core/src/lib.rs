@@ -22,6 +22,7 @@ pub mod generated;
 pub mod geom;
 pub mod models;
 pub mod preprocess;
+mod runtime;
 pub mod sanitize;
 mod theme;
 pub mod utils;
@@ -71,6 +72,7 @@ pub struct Engine {
     registry: DetectorRegistry,
     diagram_registry: DiagramRegistry,
     site_config: MermaidConfig,
+    fixed_today_local: Option<chrono::NaiveDate>,
 }
 
 impl Default for Engine {
@@ -81,6 +83,7 @@ impl Default for Engine {
             registry: DetectorRegistry::default_mermaid_11_12_2(),
             diagram_registry: DiagramRegistry::default_mermaid_11_12_2(),
             site_config,
+            fixed_today_local: None,
         }
     }
 }
@@ -96,6 +99,15 @@ impl Engine {
 
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Overrides the "today" value used by diagrams that depend on local time (e.g. Gantt).
+    ///
+    /// This exists primarily to make fixture snapshots deterministic. By default, Mermaid uses the
+    /// current local date.
+    pub fn with_fixed_today(mut self, today: Option<chrono::NaiveDate>) -> Self {
+        self.fixed_today_local = today;
+        self
     }
 
     pub fn with_site_config(mut self, site_config: MermaidConfig) -> Self {
@@ -215,12 +227,11 @@ impl Engine {
         let preprocess = preprocess_start.map(|s| s.elapsed());
 
         let parse_start = timing_enabled.then(std::time::Instant::now);
-        let mut model = match diagram::parse_or_unsupported(
-            &self.diagram_registry,
-            &meta.diagram_type,
-            &code,
-            &meta,
-        ) {
+        let parse = crate::runtime::with_fixed_today_local(self.fixed_today_local, || {
+            diagram::parse_or_unsupported(&self.diagram_registry, &meta.diagram_type, &code, &meta)
+        });
+
+        let mut model = match parse {
             Ok(v) => v,
             Err(err) => {
                 if !options.suppress_errors {
@@ -235,11 +246,12 @@ impl Engine {
                     &error_meta.effective_config,
                 );
                 if let Some(start) = total_start {
+                    let parse = parse_start.map(|s| s.elapsed()).unwrap_or_default();
                     eprintln!(
                         "[parse-timing] diagram=error total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
                         start.elapsed(),
                         preprocess.unwrap_or_default(),
-                        parse_start.map(|s| s.elapsed()).unwrap_or_default(),
+                        parse,
                         std::time::Duration::default(),
                         text.len(),
                     );
@@ -651,12 +663,11 @@ impl Engine {
             return Ok(None);
         };
 
-        let mut model = match diagram::parse_or_unsupported(
-            &self.diagram_registry,
-            &meta.diagram_type,
-            &code,
-            &meta,
-        ) {
+        let parse = crate::runtime::with_fixed_today_local(self.fixed_today_local, || {
+            diagram::parse_or_unsupported(&self.diagram_registry, &meta.diagram_type, &code, &meta)
+        });
+
+        let mut model = match parse {
             Ok(v) => v,
             Err(err) => {
                 if !options.suppress_errors {

@@ -1,0 +1,34 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "VeryLongUnbrokenWords",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Wrapping"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Wrapping",
+        "type": "Wrapping",
+        "task": "2024 ",
+        "score": 0,
+        "events": [
+          "SupercalifragilisticexpialidociousSupercalifragilisticexpialidociousSupercalifragilisticexpialidocious"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Wrapping",
+        "type": "Wrapping",
+        "task": "2025 ",
+        "score": 0,
+        "events": [
+          "AnotherLongTokenWithoutSpacesAnotherLongTokenWithoutSpacesAnotherLongTokenWithoutSpaces"
+        ]
+      }
+    ]
+  }
+}

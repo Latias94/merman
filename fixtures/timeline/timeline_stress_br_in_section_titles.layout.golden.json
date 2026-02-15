@@ -1,0 +1,309 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "bounds": {
+        "min_x": 100.0,
+        "min_y": -61.0,
+        "max_x": 1290.0,
+        "max_y": 701.8
+      },
+      "left_margin": 150.0,
+      "base_x": 200.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 790.0,
+      "sections": [
+        {
+          "node": {
+            "x": 200.0,
+            "y": 50.0,
+            "width": 390.0,
+            "height": 103.0,
+            "content_width": 350.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "2026 Q1 <br> Release Personal Tier",
+            "label_lines": [
+              "2026   Q1",
+              "Release   Personal   Tier"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 200.0,
+                "y": 203.0,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "Bullet 1 ",
+                "label_lines": [
+                  "Bullet   1"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 295.0,
+                "y1": 270.8,
+                "x2": 295.0,
+                "y2": 651.8
+              },
+              "events": [
+                {
+                  "x": 200.0,
+                  "y": 403.0,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "sub-point 1a ",
+                  "label_lines": [
+                    "sub-point   1a"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 463.0,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "sub-point 1b",
+                  "label_lines": [
+                    "sub-point   1b"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 200.0,
+                  "y": 523.0,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "sub-point 1c",
+                  "label_lines": [
+                    "sub-point   1c"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            },
+            {
+              "node": {
+                "x": 400.0,
+                "y": 203.0,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "Bullet 2 ",
+                "label_lines": [
+                  "Bullet   2"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 495.0,
+                "y1": 270.8,
+                "x2": 495.0,
+                "y2": 651.8
+              },
+              "events": [
+                {
+                  "x": 400.0,
+                  "y": 403.0,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "sub-point 2a ",
+                  "label_lines": [
+                    "sub-point   2a"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 400.0,
+                  "y": 463.0,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "sub-point 2b",
+                  "label_lines": [
+                    "sub-point   2b"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 600.0,
+            "y": 50.0,
+            "width": 390.0,
+            "height": 103.0,
+            "content_width": 350.0,
+            "padding": 20.0,
+            "section_class": "section-0",
+            "label": "2026 Q2 <br> Release Enterprise Tier",
+            "label_lines": [
+              "2026   Q2",
+              "Release   Enterprise   Tier"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 600.0,
+                "y": 203.0,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-0",
+                "label": "Bullet 3 ",
+                "label_lines": [
+                  "Bullet   3"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 695.0,
+                "y1": 270.8,
+                "x2": 695.0,
+                "y2": 651.8
+              },
+              "events": [
+                {
+                  "x": 600.0,
+                  "y": 403.0,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "sub-point <br> 3a ",
+                  "label_lines": [
+                    "sub-point",
+                    "3a"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 600.0,
+                  "y": 478.4,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "sub-point 3b",
+                  "label_lines": [
+                    "sub-point   3b"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 600.0,
+                  "y": 538.4,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "sub-point 3c",
+                  "label_lines": [
+                    "sub-point   3c"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            },
+            {
+              "node": {
+                "x": 800.0,
+                "y": 203.0,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section-0",
+                "label": "Bullet 4 ",
+                "label_lines": [
+                  "Bullet   4"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 895.0,
+                "y1": 270.8,
+                "x2": 895.0,
+                "y2": 651.8
+              },
+              "events": [
+                {
+                  "x": 800.0,
+                  "y": 403.0,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "sub-point 4a ",
+                  "label_lines": [
+                    "sub-point   4a"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 800.0,
+                  "y": 463.0,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "label": "sub-point 4b",
+                  "label_lines": [
+                    "sub-point   4b"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "orphan_tasks": [],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "y1": 320.8,
+        "x2": 1240.0,
+        "y2": 320.8
+      },
+      "title": "Section titles with <br>",
+      "title_x": 245.0,
+      "title_y": 20.0
+    }
+  }
+}

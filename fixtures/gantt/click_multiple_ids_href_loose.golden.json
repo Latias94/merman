@@ -84,8 +84,8 @@
       }
     ],
     "links": {
-      "a1": "https://example.com",
-      "a2": "https://example.com"
+      "a2": "https://example.com",
+      "a1": "https://example.com"
     },
     "clickEvents": {}
   }

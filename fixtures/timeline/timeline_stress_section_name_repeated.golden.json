@@ -1,0 +1,45 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Repeated section names",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Repeated",
+      "Repeated"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Repeated",
+        "type": "Repeated",
+        "task": "2000 ",
+        "score": 0,
+        "events": [
+          "First in repeated section"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Repeated",
+        "type": "Repeated",
+        "task": "2001 ",
+        "score": 0,
+        "events": [
+          "Second section with same name"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "Repeated",
+        "type": "Repeated",
+        "task": "2002 ",
+        "score": 0,
+        "events": [
+          "Third task"
+        ]
+      }
+    ]
+  }
+}

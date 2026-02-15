@@ -2,10 +2,10 @@
 
 Baseline version: Mermaid `@11.12.2`.
 
-As of 2026-02-14:
+As of 2026-02-15:
 
 - `parity` full compare: 0 mismatch.
-- `parity-root` full compare: 0 mismatch (1125/1125 upstream SVG baselines).
+- `parity-root` full compare: 0 mismatch (1328/1328 upstream SVG baselines).
 
 This document defines the next hardening phases after reaching baseline 100% parity for the
 current fixture set.
@@ -15,13 +15,14 @@ current fixture set.
 1. Keep global parity green (`parity` + `parity-root`) while the fixture corpus grows.
 2. Reduce fixture-scoped override dependence where feasible.
 3. Preserve deterministic, reproducible results for the pinned upstream version.
+4. Keep fixture snapshots deterministic (avoid time-dependent drift, e.g. Gantt "today").
 
 ## Current Inventory
 
 ### Upstream SVG Corpus
 
 - Total diagrams covered: 23
-- Total upstream SVG baselines: 1125
+- Total upstream SVG baselines: 1328
 
 ### Upstream Syntax Docs Inventory (11.12.2)
 
@@ -44,16 +45,16 @@ Largest fixture buckets:
 
 Root viewport overrides:
 
-- `architecture_root_overrides_11_12_2.rs`: 16 entries
-- `flowchart_root_overrides_11_12_2.rs`: 80 entries
-- `class_root_overrides_11_12_2.rs`: 89 entries
-- `mindmap_root_overrides_11_12_2.rs`: 39 entries
-- `gitgraph_root_overrides_11_12_2.rs`: 21 entries
-- `pie_root_overrides_11_12_2.rs`: 10 entries
+- `architecture_root_overrides_11_12_2.rs`: 17 entries
+- `flowchart_root_overrides_11_12_2.rs`: 88 entries
+- `class_root_overrides_11_12_2.rs`: 99 entries
+- `mindmap_root_overrides_11_12_2.rs`: 41 entries
+- `gitgraph_root_overrides_11_12_2.rs`: 54 entries
+- `pie_root_overrides_11_12_2.rs`: 13 entries
 - `sankey_root_overrides_11_12_2.rs`: 5 entries
-- `sequence_root_overrides_11_12_2.rs`: 69 entries
-- `state_root_overrides_11_12_2.rs`: 51 entries
-- `timeline_root_overrides_11_12_2.rs`: 1 entries
+- `sequence_root_overrides_11_12_2.rs`: 72 entries
+- `state_root_overrides_11_12_2.rs`: 57 entries
+- `timeline_root_overrides_11_12_2.rs`: 8 entries
 
 State text/bbox overrides:
 
@@ -73,6 +74,8 @@ Actions:
    - `architecture`, `class`, `mindmap`, `state`, `flowchart`, `sequence`.
 2. Keep additions version-pinned and traceable to upstream source path and commit.
 3. Add fixtures in small batches and require both global checks green after each batch.
+4. Keep fixture snapshots stable by pinning the fixture clock for time-dependent diagrams (currently
+   `Engine::with_fixed_today(Some(2026-02-15))` in snapshot tests and snapshot update tools).
 
 Exit criteria:
 

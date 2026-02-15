@@ -18,7 +18,7 @@ goldens/baselines. It is intentionally short and should stay true even as fixtur
 - Upstream SVG baselines (`fixtures/upstream-svgs/**`):
   - Scope: authoritative Mermaid end-to-end SVG output (generated via official CLI).
   - How-to: `docs/rendering/UPSTREAM_SVG_BASELINES.md`.
-  - Current corpus (2026-02-14): 1315 baselines across 23 diagrams.
+  - Current corpus (2026-02-15): 1328 baselines across 23 diagrams.
 - Raster previews (PNG/JPG/PDF via `merman-cli`):
   - Scope: best-effort output for previews/integrations (not pixel-identical to upstream).
   - Note: upstream uses browser rendering; pure-Rust rasterizers do not fully render SVG `<foreignObject>`.
@@ -94,12 +94,16 @@ hardened Class parity for multiline IDs (attribute `&#10;`), HTML label line bre
 and single-namespace wrapper DOM, keeping `parity-root` green.
 Recent progress (2026-02-13): imported Architecture Cypress rendering fixtures (with upstream SVG baselines) and
 refreshed Architecture root viewport overrides for the new fixture IDs, keeping `parity-root` green.
-As of 2026-02-14, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 0 DOM
-mismatches for the current fixture set (1254/1254 upstream SVG baselines, including root viewport parity).
+As of 2026-02-15, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 0 DOM
+mismatches for the current fixture set (1328/1328 upstream SVG baselines, including root viewport parity).
 
 Recent progress (2026-02-14): imported an additional batch of Gantt Cypress rendering fixtures (with upstream SVG
 baselines) and hardened Gantt parity for d3 axis format directives (`%L`) + exclude-layer edge cases + JS date-only
 parsing differences, keeping `parity-root` green.
+
+Recent progress (2026-02-15): imported a batch of Timeline stress fixtures (with upstream SVG baselines) and added
+fixture-derived Timeline root viewport overrides to keep `parity-root` green. Deferred a subset of Timeline stress
+fixtures to `fixtures/_deferred/timeline/` pending tighter text-wrapping parity.
 
 Post-baseline hardening plan (coverage growth + override consolidation + CI guardrails) is tracked in
 `docs/alignment/PARITY_HARDENING_PLAN.md`.

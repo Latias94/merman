@@ -1,0 +1,46 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Blank lines between statements",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "One",
+      "Two"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "One",
+        "type": "One",
+        "task": "2001 ",
+        "score": 0,
+        "events": [
+          "A"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "One",
+        "type": "One",
+        "task": "2002 ",
+        "score": 0,
+        "events": [
+          "B"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "Two",
+        "type": "Two",
+        "task": "2003 ",
+        "score": 0,
+        "events": [
+          "C",
+          "D"
+        ]
+      }
+    ]
+  }
+}

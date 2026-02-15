@@ -1,0 +1,262 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Many periods without sections",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "",
+        "type": "",
+        "task": "1990 ",
+        "score": 0,
+        "events": [
+          "Event 01"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "",
+        "type": "",
+        "task": "1991 ",
+        "score": 0,
+        "events": [
+          "Event 02"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "",
+        "type": "",
+        "task": "1992 ",
+        "score": 0,
+        "events": [
+          "Event 03"
+        ]
+      },
+      {
+        "id": 3,
+        "section": "",
+        "type": "",
+        "task": "1993 ",
+        "score": 0,
+        "events": [
+          "Event 04"
+        ]
+      },
+      {
+        "id": 4,
+        "section": "",
+        "type": "",
+        "task": "1994 ",
+        "score": 0,
+        "events": [
+          "Event 05"
+        ]
+      },
+      {
+        "id": 5,
+        "section": "",
+        "type": "",
+        "task": "1995 ",
+        "score": 0,
+        "events": [
+          "Event 06"
+        ]
+      },
+      {
+        "id": 6,
+        "section": "",
+        "type": "",
+        "task": "1996 ",
+        "score": 0,
+        "events": [
+          "Event 07"
+        ]
+      },
+      {
+        "id": 7,
+        "section": "",
+        "type": "",
+        "task": "1997 ",
+        "score": 0,
+        "events": [
+          "Event 08"
+        ]
+      },
+      {
+        "id": 8,
+        "section": "",
+        "type": "",
+        "task": "1998 ",
+        "score": 0,
+        "events": [
+          "Event 09"
+        ]
+      },
+      {
+        "id": 9,
+        "section": "",
+        "type": "",
+        "task": "1999 ",
+        "score": 0,
+        "events": [
+          "Event 10"
+        ]
+      },
+      {
+        "id": 10,
+        "section": "",
+        "type": "",
+        "task": "2000 ",
+        "score": 0,
+        "events": [
+          "Event 11"
+        ]
+      },
+      {
+        "id": 11,
+        "section": "",
+        "type": "",
+        "task": "2001 ",
+        "score": 0,
+        "events": [
+          "Event 12"
+        ]
+      },
+      {
+        "id": 12,
+        "section": "",
+        "type": "",
+        "task": "2002 ",
+        "score": 0,
+        "events": [
+          "Event 13"
+        ]
+      },
+      {
+        "id": 13,
+        "section": "",
+        "type": "",
+        "task": "2003 ",
+        "score": 0,
+        "events": [
+          "Event 14"
+        ]
+      },
+      {
+        "id": 14,
+        "section": "",
+        "type": "",
+        "task": "2004 ",
+        "score": 0,
+        "events": [
+          "Event 15"
+        ]
+      },
+      {
+        "id": 15,
+        "section": "",
+        "type": "",
+        "task": "2005 ",
+        "score": 0,
+        "events": [
+          "Event 16"
+        ]
+      },
+      {
+        "id": 16,
+        "section": "",
+        "type": "",
+        "task": "2006 ",
+        "score": 0,
+        "events": [
+          "Event 17"
+        ]
+      },
+      {
+        "id": 17,
+        "section": "",
+        "type": "",
+        "task": "2007 ",
+        "score": 0,
+        "events": [
+          "Event 18"
+        ]
+      },
+      {
+        "id": 18,
+        "section": "",
+        "type": "",
+        "task": "2008 ",
+        "score": 0,
+        "events": [
+          "Event 19"
+        ]
+      },
+      {
+        "id": 19,
+        "section": "",
+        "type": "",
+        "task": "2009 ",
+        "score": 0,
+        "events": [
+          "Event 20"
+        ]
+      },
+      {
+        "id": 20,
+        "section": "",
+        "type": "",
+        "task": "2010 ",
+        "score": 0,
+        "events": [
+          "Event 21"
+        ]
+      },
+      {
+        "id": 21,
+        "section": "",
+        "type": "",
+        "task": "2011 ",
+        "score": 0,
+        "events": [
+          "Event 22"
+        ]
+      },
+      {
+        "id": 22,
+        "section": "",
+        "type": "",
+        "task": "2012 ",
+        "score": 0,
+        "events": [
+          "Event 23"
+        ]
+      },
+      {
+        "id": 23,
+        "section": "",
+        "type": "",
+        "task": "2013 ",
+        "score": 0,
+        "events": [
+          "Event 24"
+        ]
+      },
+      {
+        "id": 24,
+        "section": "",
+        "type": "",
+        "task": "2014 ",
+        "score": 0,
+        "events": [
+          "Event 25"
+        ]
+      }
+    ]
+  }
+}

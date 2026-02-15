@@ -1,0 +1,45 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Task labels with punctuation",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Punctuation"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Punctuation",
+        "type": "Punctuation",
+        "task": "v1.0.0 ",
+        "score": 0,
+        "events": [
+          "Released (stable)"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Punctuation",
+        "type": "Punctuation",
+        "task": "v1.0.1 ",
+        "score": 0,
+        "events": [
+          "Hotfix; urgent"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "Punctuation",
+        "type": "Punctuation",
+        "task": "v1.1.0 ",
+        "score": 0,
+        "events": [
+          "Added feature X (beta) ",
+          "Added feature Y (alpha)"
+        ]
+      }
+    ]
+  }
+}

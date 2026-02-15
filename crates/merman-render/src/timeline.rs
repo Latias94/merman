@@ -143,7 +143,8 @@ fn wrap_lines(
     for tok in tokens {
         cur.push(tok.clone());
         let candidate = join_trim(&cur);
-        let candidate_width = measurer.measure(&candidate, style).width;
+        let (l, r) = measurer.measure_svg_text_bbox_x(&candidate, style);
+        let candidate_width = (l + r).round();
         if candidate_width > max_width || tok == "<br>" {
             cur.pop();
             lines.push(join_trim(&cur));

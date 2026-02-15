@@ -1,0 +1,96 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Multiple sections with stacked tasks",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Phase 1",
+      "Phase 2",
+      "Phase 3"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Phase 1",
+        "type": "Phase 1",
+        "task": "A ",
+        "score": 0,
+        "events": [
+          "Task A ",
+          "Event A1 ",
+          "Event A2"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Phase 1",
+        "type": "Phase 1",
+        "task": "B ",
+        "score": 0,
+        "events": [
+          "Task B ",
+          "Event B1"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "Phase 1",
+        "type": "Phase 1",
+        "task": "C ",
+        "score": 0,
+        "events": [
+          "Task C",
+          "Event C1"
+        ]
+      },
+      {
+        "id": 3,
+        "section": "Phase 2",
+        "type": "Phase 2",
+        "task": "D ",
+        "score": 0,
+        "events": [
+          "Task D ",
+          "Event D1 ",
+          "Event D2 ",
+          "Event D3"
+        ]
+      },
+      {
+        "id": 4,
+        "section": "Phase 2",
+        "type": "Phase 2",
+        "task": "E ",
+        "score": 0,
+        "events": [
+          "Task E"
+        ]
+      },
+      {
+        "id": 5,
+        "section": "Phase 3",
+        "type": "Phase 3",
+        "task": "F ",
+        "score": 0,
+        "events": [
+          "Task F ",
+          "Event F1"
+        ]
+      },
+      {
+        "id": 6,
+        "section": "Phase 3",
+        "type": "Phase 3",
+        "task": "G ",
+        "score": 0,
+        "events": [
+          "Task G ",
+          "Event G1 ",
+          "Event G2"
+        ]
+      }
+    ]
+  }
+}

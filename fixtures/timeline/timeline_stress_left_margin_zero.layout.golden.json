@@ -1,0 +1,144 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "bounds": {
+        "min_x": -50.0,
+        "min_y": -61.0,
+        "max_x": 490.0,
+        "max_y": 608.8
+      },
+      "left_margin": 0.0,
+      "base_x": 50.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 390.0,
+      "sections": [
+        {
+          "node": {
+            "x": 50.0,
+            "y": 50.0,
+            "width": 390.0,
+            "height": 67.8,
+            "content_width": 350.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "Tight",
+            "label_lines": [
+              "Tight"
+            ],
+            "kind": "section"
+          },
+          "tasks": [
+            {
+              "node": {
+                "x": 50.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "2020 ",
+                "label_lines": [
+                  "2020"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 145.0,
+                "y1": 235.6,
+                "x2": 145.0,
+                "y2": 558.8
+              },
+              "events": [
+                {
+                  "x": 50.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 100.6,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Node labels may overflow; viewport should include overhang",
+                  "label_lines": [
+                    "Node   labels   may",
+                    "overflow;   viewport",
+                    "should   include",
+                    "overhang"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            },
+            {
+              "node": {
+                "x": 250.0,
+                "y": 167.8,
+                "width": 190.0,
+                "height": 67.8,
+                "content_width": 150.0,
+                "padding": 20.0,
+                "section_class": "section--1",
+                "label": "2021 ",
+                "label_lines": [
+                  "2021"
+                ],
+                "kind": "task"
+              },
+              "connector": {
+                "kind": "task-events",
+                "x1": 345.0,
+                "y1": 235.6,
+                "x2": 345.0,
+                "y2": 558.8
+              },
+              "events": [
+                {
+                  "x": 250.0,
+                  "y": 367.8,
+                  "width": 190.0,
+                  "height": 65.4,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "Another event with wider text",
+                  "label_lines": [
+                    "Another   event   with",
+                    "wider   text"
+                  ],
+                  "kind": "event"
+                },
+                {
+                  "x": 250.0,
+                  "y": 443.2,
+                  "width": 190.0,
+                  "height": 50.0,
+                  "content_width": 150.0,
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "label": "WWWWWW iiiiii",
+                  "label_lines": [
+                    "WWWWWW   iiiiii"
+                  ],
+                  "kind": "event"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "orphan_tasks": [],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 0.0,
+        "y1": 285.6,
+        "x2": 390.0,
+        "y2": 285.6
+      },
+      "title": "Left margin = 0",
+      "title_x": 195.0,
+      "title_y": 20.0
+    }
+  }
+}
