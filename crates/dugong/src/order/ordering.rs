@@ -7,7 +7,6 @@ use super::{
     LayerGraphLabel, OrderEdgeWeight, OrderNodeLabel, Relationship, WeightLabel, init_order,
 };
 use crate::graphlib::{Graph, GraphOptions};
-use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct OrderOptions {
@@ -108,23 +107,29 @@ where
     let root = create_root_node(g);
 
     let build_cache_start = timing_enabled.then(std::time::Instant::now);
-    let mut layer_graphs_in: BTreeMap<i32, Graph<OrderNodeLite, WeightLabel, LayerGraphLabel>> =
-        BTreeMap::new();
-    let mut layer_graphs_out: BTreeMap<i32, Graph<OrderNodeLite, WeightLabel, LayerGraphLabel>> =
-        BTreeMap::new();
+    let mut layer_graphs_in: Vec<Graph<OrderNodeLite, WeightLabel, LayerGraphLabel>> =
+        Vec::with_capacity((max_rank + 1).max(0) as usize);
+    let mut layer_graphs_out: Vec<Graph<OrderNodeLite, WeightLabel, LayerGraphLabel>> =
+        Vec::with_capacity((max_rank + 1).max(0) as usize);
     for rank in 0..=max_rank {
         let nodes = nodes_by_rank
             .get(rank as usize)
             .map(|v| v.as_slice())
             .unwrap_or(&[]);
-        layer_graphs_in.insert(
+        layer_graphs_in.push(build_layer_graph_with_root_lite_ix(
+            g,
             rank,
-            build_layer_graph_with_root_lite_ix(g, rank, Relationship::InEdges, &root, nodes),
-        );
-        layer_graphs_out.insert(
+            Relationship::InEdges,
+            &root,
+            nodes,
+        ));
+        layer_graphs_out.push(build_layer_graph_with_root_lite_ix(
+            g,
             rank,
-            build_layer_graph_with_root_lite_ix(g, rank, Relationship::OutEdges, &root, nodes),
-        );
+            Relationship::OutEdges,
+            &root,
+            nodes,
+        ));
     }
     if let Some(s) = build_cache_start {
         timings.build_layer_graph_cache = s.elapsed();
@@ -150,9 +155,7 @@ where
             let sweep_start = timing_enabled.then(std::time::Instant::now);
             sweep(
                 g,
-                &nodes_by_rank,
                 &ranks_down,
-                Relationship::InEdges,
                 bias_right,
                 &root,
                 &mut layer_graphs_in,
@@ -166,9 +169,7 @@ where
             let sweep_start = timing_enabled.then(std::time::Instant::now);
             sweep(
                 g,
-                &nodes_by_rank,
                 &ranks_up,
-                Relationship::OutEdges,
                 bias_right,
                 &root,
                 &mut layer_graphs_out,
@@ -250,12 +251,10 @@ where
 
 fn sweep<N, E, G>(
     g: &mut Graph<N, E, G>,
-    nodes_by_rank: &[Vec<usize>],
     ranks: &[i32],
-    relationship: Relationship,
     bias_right: bool,
     root: &str,
-    layer_graphs: &mut BTreeMap<i32, Graph<OrderNodeLite, WeightLabel, LayerGraphLabel>>,
+    layer_graphs: &mut [Graph<OrderNodeLite, WeightLabel, LayerGraphLabel>],
     timing_enabled: bool,
     timings: &mut OrderTimings,
 ) where
@@ -266,22 +265,8 @@ fn sweep<N, E, G>(
     let mut cg: Graph<(), (), ()> = Graph::new(GraphOptions::default());
 
     for &rank in ranks {
-        let nodes = nodes_by_rank
-            .get(rank as usize)
-            .map(|v| v.as_slice())
-            .unwrap_or(&[]);
-
         let build_lg_start = timing_enabled.then(std::time::Instant::now);
-        let lg = match layer_graphs.get_mut(&rank) {
-            Some(v) => v,
-            None => {
-                layer_graphs.insert(
-                    rank,
-                    build_layer_graph_with_root_lite_ix(g, rank, relationship, root, nodes),
-                );
-                layer_graphs.get_mut(&rank).expect("just inserted")
-            }
-        };
+        let lg = layer_graphs.get_mut(rank as usize).expect("rank in range");
         if let Some(s) = build_lg_start {
             timings.sweep_build_layer_graph += s.elapsed();
         }

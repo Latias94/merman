@@ -473,6 +473,21 @@ where
         }
     }
 
+    pub fn with_capacity(
+        options: GraphOptions,
+        node_capacity: usize,
+        edge_capacity: usize,
+    ) -> Self {
+        let mut g = Self::new(options);
+        g.nodes.reserve(node_capacity);
+        g.edges.reserve(edge_capacity);
+        g.node_index.reserve(node_capacity);
+        g.edge_index.reserve(edge_capacity);
+        g.parent.reserve(node_capacity);
+        g.children.reserve(node_capacity);
+        g
+    }
+
     pub fn options(&self) -> GraphOptions {
         self.options
     }

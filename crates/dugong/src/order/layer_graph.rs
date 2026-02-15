@@ -147,11 +147,18 @@ where
     G: Default,
 {
     let root_id = root.to_string();
-    let mut result: Graph<OrderNodeLite, WeightLabel, LayerGraphLabel> = Graph::new(GraphOptions {
-        compound: true,
-        multigraph: false,
-        ..Default::default()
-    });
+    let mut result: Graph<OrderNodeLite, WeightLabel, LayerGraphLabel> = Graph::with_capacity(
+        GraphOptions {
+            compound: true,
+            multigraph: false,
+            ..Default::default()
+        },
+        // Root + at least current-rank nodes; edges can add adjacent nodes.
+        (nodes_with_rank.len() + 1).saturating_mul(2),
+        // Edges in the layer graph are limited to incident edges of current-rank nodes. Avoid
+        // reserving based on the full graph's edge count (can be much larger due to dummy nodes).
+        nodes_with_rank.len().saturating_mul(4).saturating_add(8),
+    );
     result.set_graph(LayerGraphLabel {
         root: root_id.clone(),
     });
