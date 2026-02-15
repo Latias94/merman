@@ -1312,9 +1312,28 @@ pub(super) fn render_sequence_diagram_svg(
             return vec![line.to_string()];
         }
 
+        // Mermaid's frame-label wrapping behaves as if the available width were slightly smaller
+        // than the raw `frame_x2 - (frame_x1 + label_box_width)` span, especially for narrow
+        // (single-actor-ish) frames. Apply a small pad only in that regime to avoid over-wrapping
+        // wide frames like `critical` headers.
+        let pad = if max_width <= 160.0 {
+            15.0
+        } else if max_width <= 230.0 {
+            8.0
+        } else {
+            0.0
+        };
+        let max_width = (max_width - pad).max(1.0);
+
+        fn svg_bbox_width_px(measurer: &dyn TextMeasurer, style: &TextStyle, text: &str) -> f64 {
+            let (l, r) = measurer.measure_svg_text_bbox_x(text, style);
+            (l + r).max(0.0)
+        }
+
         let mut tokens = VecDeque::from(split_line_to_words(line));
         let mut out: Vec<String> = Vec::new();
         let mut cur = String::new();
+        let mut force_break_after_next_non_space: bool = false;
 
         while let Some(tok) = tokens.pop_front() {
             if cur.is_empty() && tok == " " {
@@ -1322,8 +1341,13 @@ pub(super) fn render_sequence_diagram_svg(
             }
 
             let candidate = format!("{cur}{tok}");
-            if measurer.measure(&candidate, style).width <= max_width {
+            if svg_bbox_width_px(measurer, style, &candidate) <= max_width {
                 cur = candidate;
+                if force_break_after_next_non_space && tok != " " {
+                    out.push(cur.trim_end().to_string());
+                    cur.clear();
+                    force_break_after_next_non_space = false;
+                }
                 continue;
             }
 
@@ -1342,18 +1366,43 @@ pub(super) fn render_sequence_diagram_svg(
             let chars = tok.chars().collect::<Vec<_>>();
             let mut cut = 1usize;
             while cut < chars.len() {
-                let head: String = chars[..cut].iter().collect();
-                if measurer.measure(&head, style).width > max_width {
+                let mut head: String = chars[..cut].iter().collect();
+                let tail_len = chars.len().saturating_sub(cut);
+                let should_hyphenate = tail_len > 0
+                    && !head.ends_with('-')
+                    && head
+                        .chars()
+                        .last()
+                        .is_some_and(|ch| ch.is_ascii_alphanumeric());
+                if should_hyphenate {
+                    head.push('-');
+                }
+                if svg_bbox_width_px(measurer, style, &head) > max_width {
                     break;
                 }
                 cut += 1;
             }
             cut = cut.saturating_sub(1).max(1);
-            let head: String = chars[..cut].iter().collect();
+            let mut head: String = chars[..cut].iter().collect();
             let tail: String = chars[cut..].iter().collect();
+            let mut hyphenated = false;
+            if !tail.is_empty()
+                && !head.ends_with('-')
+                && head
+                    .chars()
+                    .last()
+                    .is_some_and(|ch| ch.is_ascii_alphanumeric())
+                && svg_bbox_width_px(measurer, style, &(head.clone() + "-")) <= max_width
+            {
+                head.push('-');
+                hyphenated = true;
+            }
             out.push(head);
             if !tail.is_empty() {
                 tokens.push_front(tail);
+                if hyphenated {
+                    force_break_after_next_non_space = true;
+                }
             }
         }
 
@@ -1809,11 +1858,18 @@ pub(super) fn render_sequence_diagram_svg(
         ) -> Option<(f64, f64, f64)> {
             const SIDE_PAD: f64 = 11.0;
             const GEOM_PAD: f64 = 10.0;
-            let mut min_cx = f64::INFINITY;
-            let mut max_cx = f64::NEG_INFINITY;
+            // For single-actor frames containing only self-messages, upstream Mermaid expands the
+            // frame to cover at least the actor box width (plus a small asymmetric pad that leaves
+            // room for the self-arrow loop on the right). Our deterministic layout edge points can
+            // be too narrow for short self-message labels, which would over-wrap frame titles.
+            const SELF_ONLY_FRAME_MIN_PAD_LEFT: f64 = 5.0;
+            const SELF_ONLY_FRAME_MIN_PAD_RIGHT: f64 = 15.0;
             let mut min_left = f64::INFINITY;
             let mut geom_min_x = f64::INFINITY;
             let mut geom_max_x = f64::NEG_INFINITY;
+            let mut min_cx = f64::INFINITY;
+            let mut max_cx = f64::NEG_INFINITY;
+            let mut self_only_actor: Option<&str> = None;
 
             for msg_id in message_ids {
                 // Notes are nodes (not edges); include their bounding boxes in frame extents.
@@ -1826,6 +1882,15 @@ pub(super) fn render_sequence_diagram_svg(
                 let Some((from, to)) = msg_endpoints.get(msg_id.as_str()).copied() else {
                     continue;
                 };
+                if from == to {
+                    self_only_actor = match self_only_actor {
+                        None => Some(from),
+                        Some(prev) if prev == from => Some(prev),
+                        _ => Some(""),
+                    };
+                } else {
+                    self_only_actor = Some("");
+                }
 
                 // Expand frames to cover message geometry and label overflow (especially important
                 // for single-actor blocks containing long self-message labels).
@@ -1860,6 +1925,20 @@ pub(super) fn render_sequence_diagram_svg(
             }
             if geom_max_x.is_finite() {
                 x2 = x2.max(geom_max_x);
+            }
+            if matches!(self_only_actor, Some(a) if !a.is_empty()) {
+                if let Some(n) = actor_nodes_by_id.get(self_only_actor.unwrap()).copied() {
+                    let left = n.x - n.width / 2.0;
+                    let right = n.x + n.width / 2.0;
+                    let min_x1 = left - SELF_ONLY_FRAME_MIN_PAD_LEFT;
+                    let min_x2 = right + SELF_ONLY_FRAME_MIN_PAD_RIGHT;
+                    // Only widen when the computed geometry is suspiciously narrow; avoid shifting
+                    // frames that already match upstream due to message label geometry.
+                    if (x2 - x1) < (min_x2 - min_x1) - 1.0 {
+                        x1 = x1.min(min_x1);
+                        x2 = x2.max(min_x2);
+                    }
+                }
             }
             Some((x1, x2, min_left))
         }
