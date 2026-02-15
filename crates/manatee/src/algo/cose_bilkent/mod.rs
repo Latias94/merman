@@ -1,12 +1,31 @@
 use crate::algo::CoseBilkentOptions;
 use crate::error::Result;
 use crate::graph::{Graph, LayoutResult, Point};
-use std::collections::{HashMap, HashSet, VecDeque};
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
+use std::collections::VecDeque;
 
 pub fn layout(graph: &Graph, _opts: &CoseBilkentOptions) -> Result<LayoutResult> {
     graph.validate()?;
 
+    let timing_enabled = std::env::var("MANATEE_COSE_TIMING").ok().as_deref() == Some("1");
+    #[derive(Debug, Default, Clone)]
+    struct CoseLayoutTimings {
+        total: std::time::Duration,
+        from_graph: std::time::Duration,
+        flat_forest: std::time::Duration,
+        radial: std::time::Duration,
+        spring: std::time::Duration,
+        transform: std::time::Duration,
+        output: std::time::Duration,
+    }
+    let mut timings = CoseLayoutTimings::default();
+    let total_start = timing_enabled.then(std::time::Instant::now);
+
+    let from_graph_start = timing_enabled.then(std::time::Instant::now);
     let mut sim = SimGraph::from_graph(graph);
+    if let Some(s) = from_graph_start {
+        timings.from_graph = s.elapsed();
+    }
 
     // COSE-Bilkent port for flat graphs (as used by Mermaid mindmap via Cytoscape).
     // This follows the upstream `cose-base` control flow:
@@ -14,16 +33,33 @@ pub fn layout(graph: &Graph, _opts: &CoseBilkentOptions) -> Result<LayoutResult>
     // - `reduceTrees()` / `growTree()` scaffolding (currently disabled until parity is verified)
     // - spring embedder ticks
     // - `doPostLayout()` -> `transform(0,0)` to move the graph into positive coordinates
+    let flat_forest_start = timing_enabled.then(std::time::Instant::now);
     let forest = sim.get_flat_forest();
+    if let Some(s) = flat_forest_start {
+        timings.flat_forest = s.elapsed();
+    }
     if !forest.is_empty() {
+        let radial_start = timing_enabled.then(std::time::Instant::now);
         sim.position_nodes_radially(&forest);
+        if let Some(s) = radial_start {
+            timings.radial = s.elapsed();
+        }
     } else {
         // Fallback: keep all nodes at their provided initial positions (typically (0,0)).
         // The full port will use `scatter()` / `positionNodesRandomly()` for non-forest graphs.
     }
+    let spring_start = timing_enabled.then(std::time::Instant::now);
     sim.run_spring_embedder();
+    if let Some(s) = spring_start {
+        timings.spring = s.elapsed();
+    }
+    let transform_start = timing_enabled.then(std::time::Instant::now);
     sim.transform_to_origin();
+    if let Some(s) = transform_start {
+        timings.transform = s.elapsed();
+    }
 
+    let output_start = timing_enabled.then(std::time::Instant::now);
     let mut positions: std::collections::BTreeMap<String, Point> =
         std::collections::BTreeMap::new();
     for n in &sim.nodes {
@@ -33,6 +69,26 @@ pub fn layout(graph: &Graph, _opts: &CoseBilkentOptions) -> Result<LayoutResult>
                 x: n.center_x(),
                 y: n.center_y(),
             },
+        );
+    }
+    if let Some(s) = output_start {
+        timings.output = s.elapsed();
+    }
+
+    if let Some(s) = total_start {
+        timings.total = s.elapsed();
+        eprintln!(
+            "[manatee-cose-timing] total={:?} from_graph={:?} flat_forest={:?} radial={:?} spring={:?} transform={:?} output={:?} nodes={} edges={} components={}",
+            timings.total,
+            timings.from_graph,
+            timings.flat_forest,
+            timings.radial,
+            timings.spring,
+            timings.transform,
+            timings.output,
+            sim.nodes.len(),
+            sim.edges.len(),
+            forest.len(),
         );
     }
 
@@ -209,13 +265,15 @@ impl SimGraph {
             });
         }
 
-        let mut id_to_idx: HashMap<&str, usize> = HashMap::with_capacity(graph.nodes.len());
+        let mut id_to_idx: HashMap<&str, usize> =
+            HashMap::with_capacity_and_hasher(graph.nodes.len(), Default::default());
         for (idx, n) in graph.nodes.iter().enumerate() {
             id_to_idx.insert(n.id.as_str(), idx);
         }
 
         // Mirror the cytoscape-cose-bilkent behavior: only keep one edge between any two nodes.
-        let mut seen_pairs: HashSet<(usize, usize)> = HashSet::with_capacity(graph.edges.len());
+        let mut seen_pairs: HashSet<(usize, usize)> =
+            HashSet::with_capacity_and_hasher(graph.edges.len(), Default::default());
         let mut edges: Vec<SimEdge> = Vec::with_capacity(graph.edges.len());
         for e in &graph.edges {
             let a = *id_to_idx.get(e.source.as_str()).expect("validated");
@@ -224,10 +282,9 @@ impl SimGraph {
                 continue;
             }
             let (u, v) = if a < b { (a, b) } else { (b, a) };
-            if seen_pairs.contains(&(u, v)) {
+            if !seen_pairs.insert((u, v)) {
                 continue;
             }
-            seen_pairs.insert((u, v));
             let ei = edges.len();
             edges.push(SimEdge { a, b, active: true });
             nodes[a].edges.push(ei);
@@ -252,31 +309,29 @@ impl SimGraph {
         }
     }
 
-    fn edges_between(&self, a: usize, b: usize) -> Vec<usize> {
-        let mut out = Vec::new();
-        for &ei in &self.nodes[a].edges {
-            if !self.edges[ei].active {
-                continue;
-            }
-            if self.edge_other_end(ei, a) == b {
-                out.push(ei);
-            }
-        }
-        out
-    }
-
-    fn neighbors_of(&self, node_idx: usize) -> Vec<usize> {
-        let mut out = Vec::new();
+    fn for_each_active_neighbor(&self, node_idx: usize, mut f: impl FnMut(usize)) {
         for &ei in &self.nodes[node_idx].edges {
             if !self.edges[ei].active {
                 continue;
             }
             let other = self.edge_other_end(ei, node_idx);
-            if self.nodes[other].active {
-                out.push(other);
+            if !self.nodes[other].active {
+                continue;
+            }
+            f(other);
+        }
+    }
+
+    fn active_edge_between(&self, a: usize, b: usize) -> Option<usize> {
+        for &ei in &self.nodes[a].edges {
+            if !self.edges[ei].active {
+                continue;
+            }
+            if self.edge_other_end(ei, a) == b {
+                return Some(ei);
             }
         }
-        out
+        None
     }
 
     /// Port of `layout-base` `Layout.getFlatForest()` for flat graphs.
@@ -363,7 +418,6 @@ impl SimGraph {
         flat_forest
     }
 
-    #[allow(dead_code)]
     fn active_degree(&self, node_idx: usize) -> usize {
         if !self.nodes[node_idx].active {
             return 0;
@@ -659,7 +713,7 @@ impl SimGraph {
         }
 
         for &node in &list {
-            let degree = self.neighbors_of(node).len();
+            let degree = self.active_degree(node);
             remaining_degrees[node] = degree;
             if degree == 1 {
                 removed_nodes.push(node);
@@ -670,7 +724,6 @@ impl SimGraph {
         let mut temp_list: Vec<usize> = removed_nodes.clone();
 
         while !found_center {
-            let _temp_list2 = temp_list.clone(); // preserved for parity with upstream logic
             temp_list.clear();
 
             // The upstream implementation mutates `list` while iterating over it. Replicate that.
@@ -679,16 +732,17 @@ impl SimGraph {
                 let node = list[i];
                 list.remove(i);
 
-                for neighbour in self.neighbors_of(node) {
-                    if !removed[neighbour] {
-                        let other_degree = remaining_degrees[neighbour];
-                        let new_degree = other_degree.saturating_sub(1);
-                        if new_degree == 1 {
-                            temp_list.push(neighbour);
-                        }
-                        remaining_degrees[neighbour] = new_degree;
+                self.for_each_active_neighbor(node, |neighbour| {
+                    if removed[neighbour] {
+                        return;
                     }
-                }
+                    let other_degree = remaining_degrees[neighbour];
+                    let new_degree = other_degree.saturating_sub(1);
+                    if new_degree == 1 {
+                        temp_list.push(neighbour);
+                    }
+                    remaining_degrees[neighbour] = new_degree;
+                });
 
                 i += 1;
             }
@@ -736,30 +790,20 @@ impl SimGraph {
         self.nodes[node].set_center(x_, y_);
 
         // Traverse all neighbors of this node and recursively call this function.
-        let mut neighbor_edges: Vec<usize> = self.nodes[node].edges.clone();
-        let mut child_count = neighbor_edges.len();
-        if parent.is_some() && child_count > 0 {
-            child_count -= 1;
-        }
-        let mut branch_count = 0usize;
+        let neighbor_edges: Vec<usize> = self.nodes[node].edges.clone();
         let inc_edges_count = neighbor_edges.len();
-
-        let mut edges_to_parent = parent
-            .map(|p| self.edges_between(node, p))
-            .unwrap_or_default();
-        while edges_to_parent.len() > 1 {
-            let temp = edges_to_parent.remove(0);
-            if let Some(pos) = neighbor_edges.iter().position(|&e| e == temp) {
-                neighbor_edges.remove(pos);
-            }
+        let edge_to_parent = parent.and_then(|p| self.active_edge_between(node, p));
+        let mut child_count = inc_edges_count;
+        if edge_to_parent.is_some() {
             child_count = child_count.saturating_sub(1);
         }
+        let mut branch_count = 0usize;
 
         let start_index: usize =
-            if parent.is_some() && !edges_to_parent.is_empty() && inc_edges_count > 0 {
+            if let Some(parent_edge) = edge_to_parent.filter(|_| inc_edges_count > 0) {
                 (neighbor_edges
                     .iter()
-                    .position(|&e| e == edges_to_parent[0])
+                    .position(|&e| e == parent_edge)
                     .unwrap_or(0)
                     + 1)
                     % inc_edges_count
