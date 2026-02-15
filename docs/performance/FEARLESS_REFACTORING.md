@@ -33,29 +33,25 @@ while preserving correctness.
 - Prefer stage breakdown (parse vs layout vs SVG emission), then end-to-end.
 - For SVG emission hotspots, use internal breakdown timings when available (see “Micro-timing” below).
 
-## Current Gap (as of 2026-02-12)
+## Current Gap (last checked 2026-02-15)
 
-From a local comparison run on a single machine (see `docs/performance/COMPARISON.md`,
-generated via `tools/bench/compare_mermaid_renderers.py`):
+Performance ratios have improved significantly since the early 2026-02-12 baseline numbers below
+(which were recorded during earlier alignment work). Treat the items in this doc as a *backlog*,
+and use the latest numbers in:
 
-- End-to-end geometric mean (8 fixtures): ~`6.8–6.9x` slower than `mermaid-rs-renderer` (mmdr).
-- Medium fixtures (4): ~`3.1x` slower than mmdr.
-- Tiny fixtures (4): ~`15.2x` slower than mmdr.
+- `docs/performance/PERF_MILESTONES.md` (stage-attributed canaries + priorities)
+- `docs/performance/COMPARISON.md` (single-filter end-to-end comparison)
 
-Stage spot-checks (same machine, Criterion, mid estimates; generate via
-`python tools/bench/stage_spotcheck.py --fixtures flowchart_tiny,flowchart_medium,state_tiny,state_medium,class_tiny,class_medium,sequence_tiny,sequence_medium --out target/bench/stage_spotcheck.md`):
+For a quick local stage attribution spotcheck (mid estimates):
 
-- `parse`: ~`10x` geometric mean slower than mmdr.
-- `layout`: ~`2.9x` geometric mean slower than mmdr.
-- `render`: ~`12–13x` geometric mean slower than mmdr.
-- `end_to_end`: ~`4.8x` geometric mean slower than mmdr.
+- `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,class_medium,sequence_medium --sample-size 20 --warm-up 1 --measurement 1`
 
-Interpretation:
+Typical current interpretation on this fixture set:
 
-- `render/*` is now the primary global outlier (especially `state_*` and `flowchart_*`).
-- `parse/*` still has outliers for some tiny fixtures, but is no longer the dominant medium-fixture cost.
-- `layout/*` is not the dominant stage overall, but it is the largest absolute cost for `flowchart_medium`
-  and therefore still a worthwhile target after the SVG emitter hotspots are under control.
+- `render/*` remains the most consistent stage gap (notably `flowchart_medium` + `class_medium`).
+- `parse/*` still lags for `sequence_*` (fixed overhead + allocations).
+- `layout/*` is often competitive or faster overall, but `flowchart_medium` layout is still a key
+  absolute-cost lever for end-to-end parity.
 
 ## Micro-timing (render sub-breakdowns)
 
