@@ -867,6 +867,9 @@ impl SimGraph {
         let mut last_total_displacement = 0.0f64;
 
         let iterations_start = timing_enabled.then(std::time::Instant::now);
+        let small_repulsion = self.nodes.len() <= 64;
+        let mut processed: Vec<bool> = vec![false; self.nodes.len()];
+        let mut disps: Vec<(f64, f64)> = vec![(0.0, 0.0); self.nodes.len()];
         loop {
             total_iterations += 1;
             if total_iterations == max_iterations {
@@ -941,13 +944,29 @@ impl SimGraph {
             // then reuses those "stale" surrounding lists for the next 9 iterations.
             let refresh_surrounding = (total_iterations % Self::GRID_CALCULATION_CHECK_PERIOD) == 1;
             if refresh_surrounding {
-                repulsion_grid = RepulsionGrid::build(&self.nodes, repulsion_range);
+                if small_repulsion {
+                    for i in 0..self.nodes.len() {
+                        self.nodes[i].surrounding.clear();
+                        for j in (i + 1)..self.nodes.len() {
+                            let dx = (self.nodes[i].center_x() - self.nodes[j].center_x()).abs()
+                                - (self.nodes[i].half_w() + self.nodes[j].half_w());
+                            let dy = (self.nodes[i].center_y() - self.nodes[j].center_y()).abs()
+                                - (self.nodes[i].half_h() + self.nodes[j].half_h());
+                            if dx <= repulsion_range && dy <= repulsion_range {
+                                self.nodes[i].surrounding.push(j);
+                            }
+                        }
+                    }
+                    repulsion_grid = None;
+                } else {
+                    repulsion_grid = RepulsionGrid::build(&self.nodes, repulsion_range);
+                }
             }
 
             if repulsion_range.is_finite() && repulsion_range > 0.0 {
-                let mut processed: Vec<bool> = vec![false; self.nodes.len()];
+                processed.fill(false);
                 for i in 0..self.nodes.len() {
-                    if refresh_surrounding {
+                    if refresh_surrounding && !small_repulsion {
                         if let Some(g) = &repulsion_grid {
                             g.refresh_node_surrounding(
                                 i,
@@ -960,9 +979,15 @@ impl SimGraph {
                         }
                     }
 
-                    let surrounding = self.nodes[i].surrounding.clone();
-                    for j in surrounding {
+                    let surrounding = std::mem::take(&mut self.nodes[i].surrounding);
+                    for &j in &surrounding {
                         if i == j {
+                            continue;
+                        }
+                        if j >= self.nodes.len() {
+                            continue;
+                        }
+                        if i >= j {
                             continue;
                         }
                         let (rfx, rfy) = calc_repulsion_force(
@@ -971,11 +996,15 @@ impl SimGraph {
                             min_repulsion_dist,
                             half_default_edge_length,
                         );
-                        self.nodes[i].repulsion_fx += rfx;
-                        self.nodes[i].repulsion_fy += rfy;
-                        self.nodes[j].repulsion_fx -= rfx;
-                        self.nodes[j].repulsion_fy -= rfy;
+                        let (left, right) = self.nodes.split_at_mut(j);
+                        let a = &mut left[i];
+                        let b = &mut right[0];
+                        a.repulsion_fx += rfx;
+                        a.repulsion_fy += rfy;
+                        b.repulsion_fx -= rfx;
+                        b.repulsion_fy -= rfy;
                     }
+                    self.nodes[i].surrounding = surrounding;
                     processed[i] = true;
                 }
             } else {
@@ -1020,8 +1049,7 @@ impl SimGraph {
             // positions after the move). Hard projection tends to over-separate constrained nodes
             // and can noticeably inflate root viewBox/max-width in parity-root mode.
             let max_d = cooling_factor * max_node_displacement;
-            let mut disps: Vec<(f64, f64)> = Vec::with_capacity(self.nodes.len());
-            for n in &self.nodes {
+            for (idx, n) in self.nodes.iter().enumerate() {
                 let mut mdx = cooling_factor * (n.spring_fx + n.repulsion_fx);
                 let mut mdy = cooling_factor * (n.spring_fy + n.repulsion_fy);
                 if mdx.abs() > max_d {
@@ -1030,7 +1058,9 @@ impl SimGraph {
                 if mdy.abs() > max_d {
                     mdy = max_d * mdy.signum();
                 }
-                disps.push((mdx, mdy));
+                if let Some(slot) = disps.get_mut(idx) {
+                    *slot = (mdx, mdy);
+                }
             }
 
             if let Some(rt) = constraint_rt.as_mut() {
@@ -1054,7 +1084,8 @@ impl SimGraph {
                 &mut disps,
             );
 
-            for (n, (mdx, mdy)) in self.nodes.iter_mut().zip(disps) {
+            for (idx, n) in self.nodes.iter_mut().enumerate() {
+                let (mdx, mdy) = disps.get(idx).copied().unwrap_or((0.0, 0.0));
                 n.move_by(mdx, mdy);
                 total_displacement += mdx.abs() + mdy.abs();
 
