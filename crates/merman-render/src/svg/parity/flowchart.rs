@@ -93,7 +93,7 @@ struct FlowchartRenderDetails {
 
 struct FlowchartEdgeDataPointsScratch {
     json: String,
-    b64: String,
+    style_escaped: String,
     ryu: ryu_js::Buffer,
     local_points: Vec<crate::model::LayoutPoint>,
     tmp_points_a: Vec<crate::model::LayoutPoint>,
@@ -106,7 +106,7 @@ impl Default for FlowchartEdgeDataPointsScratch {
     fn default() -> Self {
         Self {
             json: String::new(),
-            b64: String::new(),
+            style_escaped: String::new(),
             ryu: ryu_js::Buffer::new(),
             local_points: Vec::new(),
             tmp_points_a: Vec::new(),
@@ -4792,7 +4792,8 @@ fn flowchart_compute_edge_path_geom(
         points_for_data_points.as_slice(),
         &mut scratch.ryu,
     );
-    let mut data_points_b64 = String::new();
+    let mut data_points_b64 =
+        String::with_capacity(base64::encoded_len(scratch.json.len(), true).unwrap_or_default());
     base64::engine::general_purpose::STANDARD
         .encode_string(scratch.json.as_bytes(), &mut data_points_b64);
 
@@ -4901,9 +4902,15 @@ fn render_flowchart_edge_path(
     if ctx.default_edge_style.is_empty() && edge.style.is_empty() {
         out.push(';');
     } else {
-        write_style_joined(out, &ctx.default_edge_style, &edge.style);
+        scratch.style_escaped.clear();
+        write_style_joined(
+            &mut scratch.style_escaped,
+            &ctx.default_edge_style,
+            &edge.style,
+        );
+        out.push_str(&scratch.style_escaped);
         out.push_str(";;;");
-        write_style_joined(out, &ctx.default_edge_style, &edge.style);
+        out.push_str(&scratch.style_escaped);
     }
     let _ = write!(
         out,
@@ -5753,20 +5760,19 @@ fn render_flowchart_node(
 
     if wrapped_in_a {
         if let Some(href) = href {
-            let _ = write!(
-                out,
-                r#"<a xlink:href="{}" transform="translate({}, {})">"#,
-                escape_xml_display(href),
-                fmt_display(x),
-                fmt_display(y)
-            );
+            out.push_str(r#"<a xlink:href=""#);
+            escape_xml_into(out, href);
+            out.push_str(r#"" transform="translate("#);
+            super::util::fmt_into(out, x);
+            out.push_str(", ");
+            super::util::fmt_into(out, y);
+            out.push_str(r#")">"#);
         } else {
-            let _ = write!(
-                out,
-                r#"<a transform="translate({}, {})">"#,
-                fmt_display(x),
-                fmt_display(y)
-            );
+            out.push_str(r#"<a transform="translate("#);
+            super::util::fmt_into(out, x);
+            out.push_str(", ");
+            super::util::fmt_into(out, y);
+            out.push_str(r#")">"#);
         }
         out.push_str(r#"<g class=""#);
         write_class_attr(out, class_attr_base, node_classes);
@@ -5785,21 +5791,19 @@ fn render_flowchart_node(
         if let Some(dom_idx) = dom_idx {
             out.push_str(r#"" id="flowchart-"#);
             escape_xml_into(out, node_id);
-            let _ = write!(
-                out,
-                r#"-{dom_idx}" transform="translate({}, {})""#,
-                fmt_display(x),
-                fmt_display(y)
-            );
+            let _ = write!(out, r#"-{dom_idx}" transform="translate("#);
+            super::util::fmt_into(out, x);
+            out.push_str(", ");
+            super::util::fmt_into(out, y);
+            out.push_str(r#")""#);
         } else {
             out.push_str(r#"" id=""#);
             escape_xml_into(out, node_id);
-            let _ = write!(
-                out,
-                r#"" transform="translate({}, {})""#,
-                fmt_display(x),
-                fmt_display(y)
-            );
+            out.push_str(r#"" transform="translate("#);
+            super::util::fmt_into(out, x);
+            out.push_str(", ");
+            super::util::fmt_into(out, y);
+            out.push_str(r#")""#);
         }
     }
     if tooltip_enabled {
