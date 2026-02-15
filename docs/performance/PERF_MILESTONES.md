@@ -18,6 +18,11 @@ Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is 
   - gmeans: `parse 2.33x`, `layout 1.09x`, `render 2.41x`, `end_to_end 1.54x`
   - Interpretation: **tiny layout fixed-cost is now mostly solved**; the remaining tiny gap is
     dominated by **parse + SVG render fixed overhead**.
+  - Update (after class typed model routing):
+    - `docs/performance/spotcheck_2026-02-15_tiny_after_typed.md`
+    - gmeans: `parse 1.89x`, `layout 0.88x`, `render 2.13x`, `end_to_end 1.21x`
+    - Interpretation: tiny `end_to_end` is now close to parity; remaining outliers are
+      `parse/sequence_tiny` and `render/class_tiny`.
 
 - Latest combined spotcheck report:
   - `docs/performance/spotcheck_2026-02-15.md` (`tools/bench/stage_spotcheck.py`, 10 samples / 1s warmup / 5s measurement)
@@ -31,6 +36,9 @@ Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is 
     - `mindmap_medium`: `layout 2.67x`, `end_to_end 1.93x`
     - `class_medium`: `render 3.70x` (despite `layout 0.38x` and `end_to_end 0.62x`)
     - `flowchart_medium`: `render 1.75x` (despite `layout 1.04x` and `end_to_end 0.87x`)
+  - Update (after class typed model routing):
+    - `docs/performance/spotcheck_2026-02-15_class_medium_after_typed.md`
+    - `class_medium` now shows `parse 1.44x`, `render 2.57x`, `end_to_end 0.46x` in that spotcheck.
 
 Local re-run notes (same date, after merging local `main` + small renderer refactors):
 
