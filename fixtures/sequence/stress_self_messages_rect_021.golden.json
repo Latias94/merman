@@ -1,0 +1,151 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "S",
+      "DB"
+    ],
+    "actors": {
+      "S": {
+        "name": "S",
+        "description": "Service",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "DB": {
+        "name": "DB",
+        "description": "Database",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "S",
+        "to": "S",
+        "message": "refresh cache",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "S",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "S",
+        "to": "DB",
+        "message": "query()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "DB",
+        "to": "S",
+        "message": "rows",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "S",
+        "to": "S",
+        "message": "normalize()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "S",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": null,
+        "to": null,
+        "message": "rgba(0, 128, 255, 0.08)",
+        "wrap": false,
+        "type": 22,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "S",
+        "to": "S",
+        "message": "highlighted section",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 1
+      },
+      {
+        "id": "8",
+        "from": "S",
+        "to": "DB",
+        "message": "write()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": "DB",
+        "to": "S",
+        "message": "ok",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 23,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": "S",
+        "placement": 1,
+        "message": "highlighted section",
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

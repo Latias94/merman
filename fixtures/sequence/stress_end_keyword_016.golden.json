@@ -1,0 +1,127 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "(end)",
+      "A",
+      "B"
+    ],
+    "actors": {
+      "(end)": {
+        "name": "(end)",
+        "description": "end",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "A": {
+        "name": "A",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "B": {
+        "name": "B",
+        "description": "Bob",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "A",
+        "to": "(end)",
+        "message": "message about (end)",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "(end)",
+        "to": "A",
+        "message": "ack [end]",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "(end)",
+        "to": "A",
+        "message": "The word \"end\" is a participant label here.",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "3",
+        "from": null,
+        "to": null,
+        "message": "(end)",
+        "wrap": false,
+        "type": 10,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "A",
+        "to": "B",
+        "message": "step 1",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "B",
+        "to": "A",
+        "message": "ok",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 11,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": [
+          "(end)",
+          "A"
+        ],
+        "placement": 2,
+        "message": "The word \"end\" is a participant label here.",
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

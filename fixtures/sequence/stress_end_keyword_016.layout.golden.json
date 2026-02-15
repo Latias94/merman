@@ -1,0 +1,269 @@
+{
+  "diagramType": "sequence",
+  "layout": {
+    "SequenceDiagram": {
+      "nodes": [
+        {
+          "id": "actor-top-(end)",
+          "x": 75.0,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-A",
+          "x": 277.0,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-top-B",
+          "x": 477.0,
+          "y": 32.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "note-2",
+          "x": 176.0,
+          "y": 182.0,
+          "width": 252.0,
+          "height": 38.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-(end)",
+          "x": 75.0,
+          "y": 396.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-A",
+          "x": 277.0,
+          "y": 396.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        },
+        {
+          "id": "actor-bottom-B",
+          "x": 477.0,
+          "y": 396.5,
+          "width": 150.0,
+          "height": 65.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "msg-0",
+          "from": "A",
+          "to": "(end)",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 276.0,
+              "y": 109.0
+            },
+            {
+              "x": 79.0,
+              "y": 109.0
+            }
+          ],
+          "label": {
+            "x": 177.0,
+            "y": 80.0,
+            "width": 129.92,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-1",
+          "from": "(end)",
+          "to": "A",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 76.0,
+              "y": 153.0
+            },
+            {
+              "x": 273.0,
+              "y": 153.0
+            }
+          ],
+          "label": {
+            "x": 174.0,
+            "y": 124.0,
+            "width": 59.04,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-4",
+          "from": "A",
+          "to": "B",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 278.0,
+              "y": 290.0
+            },
+            {
+              "x": 473.0,
+              "y": 290.0
+            }
+          ],
+          "label": {
+            "x": 375.0,
+            "y": 261.0,
+            "width": 41.76,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "msg-5",
+          "from": "B",
+          "to": "A",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 476.0,
+              "y": 334.0
+            },
+            {
+              "x": 281.0,
+              "y": 334.0
+            }
+          ],
+          "label": {
+            "x": 378.0,
+            "y": 305.0,
+            "width": 15.68,
+            "height": 17.6
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-(end)",
+          "from": "actor-top-(end)",
+          "to": "actor-bottom-(end)",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 75.0,
+              "y": 65.0
+            },
+            {
+              "x": 75.0,
+              "y": 364.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-A",
+          "from": "actor-top-A",
+          "to": "actor-bottom-A",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 277.0,
+              "y": 65.0
+            },
+            {
+              "x": 277.0,
+              "y": 364.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "lifeline-B",
+          "from": "actor-top-B",
+          "to": "actor-bottom-B",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 477.0,
+              "y": 65.0
+            },
+            {
+              "x": 477.0,
+              "y": 364.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": -50.0,
+        "min_y": -10.0,
+        "max_x": 602.0,
+        "max_y": 440.0
+      }
+    }
+  }
+}

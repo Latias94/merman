@@ -1,0 +1,155 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "A",
+      "J",
+      "B",
+      "C"
+    ],
+    "actors": {
+      "A": {
+        "name": "A",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "J": {
+        "name": "J",
+        "description": "John",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "B": {
+        "name": "B",
+        "description": "Bob",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "C": {
+        "name": "C",
+        "description": "Charlie",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "A",
+        "to": "J",
+        "message": "inside box",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "A",
+        "to": "B",
+        "message": "cross boxes",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "B",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "B",
+        "to": "A",
+        "message": "ok",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "B",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "J",
+        "to": "C",
+        "message": "spanning note across boxes<br/>second line",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "6",
+        "from": "C",
+        "to": "J",
+        "message": "done",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": [
+          "J",
+          "C"
+        ],
+        "placement": 2,
+        "message": "spanning note across boxes<br/>second line",
+        "wrap": false
+      }
+    ],
+    "boxes": [
+      {
+        "name": "Aqua",
+        "wrap": false,
+        "fill": "transparent",
+        "actorKeys": [
+          "A",
+          "J"
+        ]
+      },
+      {
+        "name": "Another Group",
+        "wrap": false,
+        "fill": "rgba(33,66,99,0.35)",
+        "actorKeys": [
+          "B",
+          "C"
+        ]
+      }
+    ],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

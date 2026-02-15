@@ -12,6 +12,13 @@ pub fn lookup_sequence_root_viewport_override(
     match diagram_id {
         "participant_types" => Some(("-50 -10 1250 260", "1250")),
         "html_br_variants_and_wrap" => Some(("-50 -10 953 651", "953")),
+        "stress_deep_nested_frames_018" => Some(("-50 -10 850 967", "850")),
+        "stress_end_in_labels_025" => Some(("-50 -10 450 507", "450")),
+        "stress_end_keyword_016" => Some(("-50 -10 653 451", "653")),
+        "stress_self_messages_rect_021" => Some(("-50 -10 450 574", "450")),
+        "stress_semicolons_022" => Some(("-50 -10 523 308", "523")),
+        "stress_unicode_longish_messages_027" => Some(("-50 -10 710.5 333", "710.5")),
+        "stress_quoted_participants_and_types_023" => Some(("-50 -10 878 484", "878")),
         "upstream_cypress_sequencediagram_spec_should_render_bidirectional_arrows_003" => {
             Some(("-50 -10 513 435", "513"))
         }

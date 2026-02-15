@@ -1,0 +1,18 @@
+sequenceDiagram
+  box transparent Aqua
+    participant A as Alice
+    participant J as John
+  end
+  box rgba(33,66,99,0.35) Another Group
+    participant B as Bob
+    participant C as Charlie
+  end
+
+  A->>J: inside box
+  A->>B: cross boxes
+  activate B
+  B-->>A: ok
+  deactivate B
+  Note over J,C: spanning note across boxes<br/>second line
+  C->>J: done
+

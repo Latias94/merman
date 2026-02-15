@@ -1727,7 +1727,10 @@ impl VendoredFontMetricsTextMeasurer {
         // to behave like `0` after quantization/hinting, even for glyphs with a non-zero outline
         // overhang (e.g. `s`). To avoid systematic `viewBox`/`max-width` drift, treat ASCII
         // overhang as zero and only apply per-glyph overhang for non-ASCII.
-        let left_oh_em = if first.is_ascii() {
+        // Most ASCII glyph overhang tends to quantize away in upstream SVG `getBBox()` fixtures,
+        // but frame labels (e.g. `[opt ...]`, `[loop ...]`) start/end with bracket-like glyphs
+        // where keeping overhang improves wrapping parity.
+        let left_oh_em = if first.is_ascii() && !matches!(first, '[' | '(' | '{') {
             0.0
         } else {
             Self::lookup_overhang_em(
@@ -1736,7 +1739,7 @@ impl VendoredFontMetricsTextMeasurer {
                 first,
             )
         };
-        let right_oh_em = if last.is_ascii() {
+        let right_oh_em = if last.is_ascii() && !matches!(last, ']' | ')' | '}') {
             0.0
         } else {
             Self::lookup_overhang_em(
@@ -1786,7 +1789,7 @@ impl VendoredFontMetricsTextMeasurer {
         let advance_px = advance_px_unscaled * table.svg_scale;
         let half = Self::quantize_svg_half_px_nearest((advance_px / 2.0).max(0.0));
 
-        let left_oh_em = if first.is_ascii() {
+        let left_oh_em = if first.is_ascii() && !matches!(first, '[' | '(' | '{') {
             0.0
         } else {
             Self::lookup_overhang_em(
@@ -1795,7 +1798,7 @@ impl VendoredFontMetricsTextMeasurer {
                 first,
             )
         };
-        let right_oh_em = if last.is_ascii() {
+        let right_oh_em = if last.is_ascii() && !matches!(last, ']' | ')' | '}') {
             0.0
         } else {
             Self::lookup_overhang_em(

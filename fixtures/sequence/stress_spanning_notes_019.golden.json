@@ -1,0 +1,179 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "A",
+      "B",
+      "C"
+    ],
+    "actors": {
+      "A": {
+        "name": "A",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "B": {
+        "name": "B",
+        "description": "Bob",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "C": {
+        "name": "C",
+        "description": "Charlie",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "A",
+        "to": "B",
+        "message": "Shared context<br/>line 2",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "1",
+        "from": "A",
+        "to": "B",
+        "message": "ping",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "B",
+        "to": "B",
+        "message": "right note",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 1
+      },
+      {
+        "id": "3",
+        "from": "B",
+        "to": "A",
+        "message": "pong",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "B",
+        "to": "C",
+        "message": "B and C span",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "5",
+        "from": "B",
+        "to": "C",
+        "message": "forward",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "C",
+        "to": "C",
+        "message": "left note<br>with <br> tag",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 0
+      },
+      {
+        "id": "7",
+        "from": "C",
+        "to": "B",
+        "message": "ok",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "A",
+        "to": "C",
+        "message": "cross span long title: {A,C}",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      }
+    ],
+    "notes": [
+      {
+        "actor": [
+          "A",
+          "B"
+        ],
+        "placement": 2,
+        "message": "Shared context<br/>line 2",
+        "wrap": false
+      },
+      {
+        "actor": "B",
+        "placement": 1,
+        "message": "right note",
+        "wrap": false
+      },
+      {
+        "actor": [
+          "B",
+          "C"
+        ],
+        "placement": 2,
+        "message": "B and C span",
+        "wrap": false
+      },
+      {
+        "actor": "C",
+        "placement": 0,
+        "message": "left note<br>with <br> tag",
+        "wrap": false
+      },
+      {
+        "actor": [
+          "A",
+          "C"
+        ],
+        "placement": 2,
+        "message": "cross span long title: {A,C}",
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

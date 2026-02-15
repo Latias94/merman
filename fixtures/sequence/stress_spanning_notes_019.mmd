@@ -1,0 +1,15 @@
+sequenceDiagram
+  participant A as Alice
+  participant B as Bob
+  participant C as Charlie
+
+  Note over A,B: Shared context<br/>line 2
+  A->>B: ping
+  Note right of B: right note
+  B-->>A: pong
+  Note over B,C: B and C span
+  B->>C: forward
+  Note left of C: left note<br>with <br> tag
+  C-->>B: ok
+  Note over A,C: cross span long title: {A,C}
+

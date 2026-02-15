@@ -1,0 +1,15 @@
+sequenceDiagram
+  participant A as Alice
+  participant B as Bob
+
+  loop health(end)check
+    A->>B: send "(end)" marker
+    B-->>A: received [end]
+  end
+
+  alt should continue
+    A->>B: not the end
+  else actually end
+    Note over A,B: end is just text here
+  end
+

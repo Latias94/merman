@@ -1,0 +1,17 @@
+sequenceDiagram
+  box Purple Core
+    participant API
+    participant DB@{ "type" : "database" }
+  end
+  box rgb(220,220,220) Clients
+    actor Web
+    actor Mobile
+  end
+
+  Web->>API: GET /items
+  API->>DB: SELECT
+  DB-->>API: rows
+  API-->>Web: 200 OK
+  Note over Mobile,API: shared behavior<br/>two clients
+  Mobile->>API: GET /items
+
