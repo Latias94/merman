@@ -13,6 +13,12 @@ Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is 
 - `layout` is the dominant gap for `mindmap` and `architecture`,
 - `flowchart_medium` is still slower end-to-end mostly due to `layout` + `render`.
 
+- Tiny canaries (after Dagre-ish tiny fast-path):
+  - `docs/performance/spotcheck_2026-02-15_tiny.md`
+  - gmeans: `parse 2.33x`, `layout 1.09x`, `render 2.41x`, `end_to_end 1.54x`
+  - Interpretation: **tiny layout fixed-cost is now mostly solved**; the remaining tiny gap is
+    dominated by **parse + SVG render fixed overhead**.
+
 - Latest combined spotcheck report:
   - `docs/performance/spotcheck_2026-02-15.md` (`tools/bench/stage_spotcheck.py`, 10 samples / 1s warmup / 5s measurement)
   - Canary set (`flowchart_medium,class_medium,sequence_medium,mindmap_medium,architecture_medium`):
@@ -37,7 +43,8 @@ Local re-run notes (same date, after merging local `main` + small renderer refac
 
 Near-term priorities (updated plan):
 
-1. **Tiny overhead**: reduce fixed-cost overheads on `*_tiny` canaries (hashing, config access, small-map churn) so the tiny gmean moves from ~`2x` to `<= 1.3x`.
+1. **Tiny overhead (parse+render)**: reduce fixed overhead on `*_tiny` canaries so tiny `end_to_end`
+   moves from `~1.5x` to `<= 1.2x`.
 2. **Flowchart render**: keep `end_to_end/flowchart_medium <= 1.0x` while reducing `render/flowchart_medium` from `~1.8x` to `<= 1.3x`.
     This is a top priority because flowcharts tend to dominate absolute runtime (ms-scale).
 3. **Mindmap layout**: reduce `layout/mindmap_medium` from `~2.6x` to `<= 2.0x` (COSE port / bbox).
