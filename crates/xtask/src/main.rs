@@ -841,13 +841,30 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
         .join("target")
         .join("import-upstream-docs.report.txt");
     let mut report_lines: Vec<String> = Vec::new();
+    let mut report_total_candidates: usize = 0;
+    let mut report_skip_duplicate_content: usize = 0;
+    let mut report_skip_exists: usize = 0;
 
     let mut imported = 0usize;
     for c in candidates {
+        report_total_candidates += 1;
         let existing = existing_by_diagram
             .entry(c.diagram_dir.clone())
             .or_insert_with(|| load_existing_fixtures(&c.fixtures_dir));
         if let Some(existing_path) = existing.get(&c.body) {
+            if with_baselines {
+                report_skip_duplicate_content += 1;
+                report_lines.push(format!(
+                    "SKIP_DUPLICATE_CONTENT\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}\texisting={}",
+                    c.diagram_dir,
+                    c.stem,
+                    c.md_block.source_md.display(),
+                    c.md_block.idx_in_file,
+                    c.md_block.info,
+                    c.md_block.heading.clone().unwrap_or_default(),
+                    existing_path.display(),
+                ));
+            }
             skipped.push(format!(
                 "skip (duplicate content): {} -> {}",
                 c.md_block.source_md.display(),
@@ -858,6 +875,19 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
 
         let out_path = c.fixtures_dir.join(format!("{}.mmd", c.stem));
         if out_path.exists() && !overwrite {
+            if with_baselines {
+                report_skip_exists += 1;
+                report_lines.push(format!(
+                    "SKIP_EXISTS\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}\tpath={}",
+                    c.diagram_dir,
+                    c.stem,
+                    c.md_block.source_md.display(),
+                    c.md_block.idx_in_file,
+                    c.md_block.info,
+                    c.md_block.heading.clone().unwrap_or_default(),
+                    out_path.display(),
+                ));
+            }
             skipped.push(format!("skip (exists): {}", out_path.display()));
             continue;
         }
@@ -1022,17 +1052,25 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
         }
     }
 
-    if with_baselines && !report_lines.is_empty() {
+    if with_baselines {
         if let Some(parent) = report_path.parent() {
             let _ = fs::create_dir_all(parent);
         }
         let header = format!(
-            "# import-upstream-docs report (Mermaid@11.12.2)\n# generated_at={}\n",
-            chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%z")
+            "# import-upstream-docs report (Mermaid@11.12.2)\n# generated_at={}\n# total_candidates={}\n# skip_duplicate_content={}\n# skip_exists={}\n",
+            chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f%z"),
+            report_total_candidates,
+            report_skip_duplicate_content,
+            report_skip_exists,
         );
         let mut out = String::new();
         out.push_str(&header);
-        out.push_str(&report_lines.join("\n"));
+        if report_lines.is_empty() {
+            out.push_str("# (no per-candidate report lines were produced)\n");
+        } else {
+            out.push_str(&report_lines.join("\n"));
+            out.push('\n');
+        }
         out.push('\n');
         let _ = fs::write(&report_path, out);
         eprintln!("Wrote import report: {}", report_path.display());
