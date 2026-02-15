@@ -188,6 +188,8 @@ What we did:
 
 - Cache RoughJS-generated path strings across render calls (global cache keyed by rough shape params),
   so Criterion iterations and server-style repeated renders avoid recomputing identical shapes.
+- Render state diagrams directly from the typed `StateDiagramRenderModel` to avoid a
+  `serde_json::Value` roundtrip (previously `to_value` + `from_value_ref`).
 
 Acceptance criteria:
 
