@@ -65,7 +65,7 @@ pub fn parent_dummy_chains(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
 
             match &path_v {
                 Some(parent) => {
-                    g.set_parent(v.clone(), parent.clone());
+                    g.set_parent_ref(v.as_str(), parent.as_str());
                 }
                 None => {
                     g.clear_parent(&v);

@@ -144,6 +144,6 @@ fn add_border_node(
         }
     }
 
-    g.set_parent(curr.clone(), sg.to_string());
+    g.set_parent_ref(curr.as_str(), sg);
     curr
 }

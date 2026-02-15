@@ -131,11 +131,11 @@ fn dfs(
     let top = add_border_node(g, ids, "_bt");
     let bottom = add_border_node(g, ids, "_bb");
 
-    g.set_parent(top.clone(), v.to_string());
+    g.set_parent_ref(top.as_str(), v);
     if let Some(lbl) = g.node_mut(v) {
         lbl.border_top = Some(top.clone());
     }
-    g.set_parent(bottom.clone(), v.to_string());
+    g.set_parent_ref(bottom.as_str(), v);
     if let Some(lbl) = g.node_mut(v) {
         lbl.border_bottom = Some(bottom.clone());
     }

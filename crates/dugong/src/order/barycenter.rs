@@ -221,11 +221,8 @@ fn merge_conflict_entries(mapped: &mut [ConflictEntry], target: usize, source: u
         }
     }
 
-    let source_vs = std::mem::take(&mut s.vs);
-    let target_vs = std::mem::take(&mut t.vs);
-    let mut merged_vs: Vec<usize> = Vec::with_capacity(source_vs.len() + target_vs.len());
-    merged_vs.extend(source_vs);
-    merged_vs.extend(target_vs);
+    let mut merged_vs = std::mem::take(&mut s.vs);
+    merged_vs.extend(std::mem::take(&mut t.vs));
     t.vs = merged_vs;
 
     if weight != 0.0 {
@@ -1002,11 +999,8 @@ fn merge_conflict_entries_ix(mapped: &mut [ConflictEntryIx], target: usize, sour
         }
     }
 
-    let source_vs = std::mem::take(&mut s.vs);
-    let target_vs = std::mem::take(&mut t.vs);
-    let mut merged_vs: Vec<usize> = Vec::with_capacity(source_vs.len() + target_vs.len());
-    merged_vs.extend(source_vs);
-    merged_vs.extend(target_vs);
+    let mut merged_vs = std::mem::take(&mut s.vs);
+    merged_vs.extend(std::mem::take(&mut t.vs));
     t.vs = merged_vs;
 
     if weight != 0.0 {

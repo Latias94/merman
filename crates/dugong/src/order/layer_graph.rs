@@ -61,12 +61,7 @@ where
         }
 
         result.set_node(v.to_string(), node.clone());
-        result.set_parent(
-            v.to_string(),
-            parent
-                .map(|p| p.to_string())
-                .unwrap_or_else(|| root.to_string()),
-        );
+        result.set_parent_ref(v, parent.unwrap_or(root));
 
         match relationship {
             Relationship::InEdges => {
@@ -180,12 +175,7 @@ where
         };
 
         result.set_node(v.to_string(), lbl);
-        result.set_parent(
-            v.to_string(),
-            parent
-                .map(|p| p.to_string())
-                .unwrap_or_else(|| root_id.clone()),
-        );
+        result.set_parent_ref(v, parent.unwrap_or(root_id.as_str()));
 
         match relationship {
             Relationship::InEdges => {
