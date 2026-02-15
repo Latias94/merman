@@ -1,0 +1,411 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [
+      {
+        "id": "platform",
+        "icon": "cloud",
+        "title": "Platform",
+        "in": null
+      },
+      {
+        "id": "runtime",
+        "icon": "cloud",
+        "title": "Runtime",
+        "in": "platform"
+      },
+      {
+        "id": "data",
+        "icon": "cloud",
+        "title": "Data",
+        "in": "platform"
+      }
+    ],
+    "nodes": [
+      {
+        "id": "ingress",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "ingress",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "svc1",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "internet",
+        "iconText": null,
+        "title": "Ingress",
+        "in": null
+      },
+      {
+        "id": "svc1",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "ingress",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "svc1",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          },
+          {
+            "lhsId": "svc1",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "svc2",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Service 1",
+        "in": "runtime"
+      },
+      {
+        "id": "svc2",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "svc1",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "svc2",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "svc2",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "db",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": "write"
+          },
+          {
+            "lhsId": "svc2",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "obj",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": "backup"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Service 2",
+        "in": "runtime"
+      },
+      {
+        "id": "db",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "svc2",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "db",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": "write"
+          },
+          {
+            "lhsId": "db",
+            "lhsDir": "R",
+            "lhsInto": true,
+            "lhsGroup": null,
+            "rhsId": "obj",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "database",
+        "iconText": null,
+        "title": "PostgreSQL",
+        "in": "data"
+      },
+      {
+        "id": "obj",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "svc2",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "obj",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": "backup"
+          },
+          {
+            "lhsId": "db",
+            "lhsDir": "R",
+            "lhsInto": true,
+            "lhsGroup": null,
+            "rhsId": "obj",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
+        "title": "Object Store",
+        "in": "data"
+      }
+    ],
+    "services": [
+      {
+        "id": "ingress",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "ingress",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "svc1",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "internet",
+        "iconText": null,
+        "title": "Ingress",
+        "in": null
+      },
+      {
+        "id": "svc1",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "ingress",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "svc1",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          },
+          {
+            "lhsId": "svc1",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "svc2",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Service 1",
+        "in": "runtime"
+      },
+      {
+        "id": "svc2",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "svc1",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "svc2",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "svc2",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "db",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": "write"
+          },
+          {
+            "lhsId": "svc2",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "obj",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": "backup"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Service 2",
+        "in": "runtime"
+      },
+      {
+        "id": "db",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "svc2",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "db",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": "write"
+          },
+          {
+            "lhsId": "db",
+            "lhsDir": "R",
+            "lhsInto": true,
+            "lhsGroup": null,
+            "rhsId": "obj",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "database",
+        "iconText": null,
+        "title": "PostgreSQL",
+        "in": "data"
+      },
+      {
+        "id": "obj",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "svc2",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "obj",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": "backup"
+          },
+          {
+            "lhsId": "db",
+            "lhsDir": "R",
+            "lhsInto": true,
+            "lhsGroup": null,
+            "rhsId": "obj",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
+        "title": "Object Store",
+        "in": "data"
+      }
+    ],
+    "junctions": [],
+    "edges": [
+      {
+        "lhsId": "ingress",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": true,
+        "rhsId": "svc1",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": true,
+        "title": null
+      },
+      {
+        "lhsId": "svc1",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "svc2",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": null
+      },
+      {
+        "lhsId": "svc2",
+        "lhsDir": "B",
+        "lhsInto": null,
+        "lhsGroup": true,
+        "rhsId": "db",
+        "rhsDir": "T",
+        "rhsInto": true,
+        "rhsGroup": true,
+        "title": "write"
+      },
+      {
+        "lhsId": "svc2",
+        "lhsDir": "B",
+        "lhsInto": null,
+        "lhsGroup": true,
+        "rhsId": "obj",
+        "rhsDir": "T",
+        "rhsInto": true,
+        "rhsGroup": true,
+        "title": "backup"
+      },
+      {
+        "lhsId": "db",
+        "lhsDir": "R",
+        "lhsInto": true,
+        "lhsGroup": null,
+        "rhsId": "obj",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": null
+      }
+    ]
+  }
+}

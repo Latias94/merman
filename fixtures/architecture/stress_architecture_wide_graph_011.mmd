@@ -1,0 +1,20 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): wide chain + junction fan-out and bidirectional edges.
+
+service n_left(server)[Left]
+service n_mid1(server)[Mid 1]
+service n_mid2(server)[Mid 2]
+service n_right(server)[Right]
+service n_up(server)[Up]
+service n_down(server)[Down]
+junction jmid
+
+n_left:R -- L:n_mid1
+n_mid1:R -- L:n_mid2
+n_mid2:R -- L:n_right
+
+n_up:B --> T:jmid
+n_down:T <-- B:jmid
+jmid:L -[fan out]-> R:n_mid1
+jmid:R -[fan out]-> L:n_mid2
+n_up:R <--> L:n_right

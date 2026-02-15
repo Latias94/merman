@@ -1,0 +1,21 @@
+architecture-beta
+title Long Labels and Spacing
+%% Authored stress fixture (Mermaid@11.12.2): long labels + acc blocks + long edge labels.
+
+accTitle: Architecture Stress Long Labels
+accDescr {
+    This is a long accessibility description to ensure the parser handles blocks.
+    Second line should be preserved.
+}
+
+group g(cloud)[Group With Title]
+
+service a(server)[Service Name] in g
+service b(database)[Database Name] in g
+service c(disk)[Storage Name] in g
+service out(internet)[Outside]
+
+out{group}:R --> L:a{group}
+a:R --> L:b
+b:B --> T:c
+c{group}:T --> B:out{group}

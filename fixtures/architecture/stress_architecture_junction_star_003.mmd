@@ -1,0 +1,23 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): junction hub-and-spoke with multiple labeled splits and a feedback edge.
+
+service a(server)[A]
+service b(server)[B]
+service c(server)[C]
+service d(server)[D]
+service e(server)[E]
+
+junction hub
+junction j1
+junction j2
+
+a:R -- L:hub
+b:L -- R:hub
+c:B -- T:hub
+
+hub:R -- L:j1
+hub:B -- T:j2
+
+j1:R --> L:d
+j2:B --> T:e
+d:T -- B:hub
