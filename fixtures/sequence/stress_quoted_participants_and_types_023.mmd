@@ -1,0 +1,13 @@
+sequenceDiagram
+  participant API as "API Gateway"
+  participant DB as "DB (primary)"
+  participant Q@{ "type" : "queue" }
+  participant Logs@{ "type" : "database" }
+
+  API->>DB: SELECT * FROM items
+  DB-->>API: rows
+  API->>Q: publish(itemIds)
+  Q-->>API: accepted
+  API->>Logs: write audit log
+  Logs-->>API: ok
+  Note over API,Logs: quoted labels + typed participants

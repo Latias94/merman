@@ -1,0 +1,260 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "U",
+      "S",
+      "W",
+      "Q"
+    ],
+    "actors": {
+      "U": {
+        "name": "U",
+        "description": "User",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "S": {
+        "name": "S",
+        "description": "Service",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "W": {
+        "name": "W",
+        "description": "Worker",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Q": {
+        "name": "Q",
+        "description": "Queue",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "U",
+        "to": "S",
+        "message": "Request",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "S",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": null,
+        "to": null,
+        "message": "cache hit",
+        "wrap": false,
+        "type": 12,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "S",
+        "to": "U",
+        "message": "200 (cached)",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": null,
+        "to": null,
+        "message": "cache miss",
+        "wrap": false,
+        "type": 13,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "S",
+        "to": "Q",
+        "message": "enqueue job",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": null,
+        "to": null,
+        "message": "processing",
+        "wrap": false,
+        "type": 19,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "Q",
+        "to": "W",
+        "message": "deliver",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "W",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": null,
+        "to": null,
+        "message": "retry until ok",
+        "wrap": false,
+        "type": 10,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": "W",
+        "to": "W",
+        "message": "compute()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "11",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 11,
+        "activate": false
+      },
+      {
+        "id": "12",
+        "from": "W",
+        "to": "S",
+        "message": "result",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "13",
+        "from": "W",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "14",
+        "from": null,
+        "to": null,
+        "message": "telemetry",
+        "wrap": false,
+        "type": 20,
+        "activate": false
+      },
+      {
+        "id": "15",
+        "from": "S",
+        "to": "S",
+        "message": "log event",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "16",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 21,
+        "activate": false
+      },
+      {
+        "id": "17",
+        "from": null,
+        "to": null,
+        "message": "notify",
+        "wrap": false,
+        "type": 15,
+        "activate": false
+      },
+      {
+        "id": "18",
+        "from": "S",
+        "to": "U",
+        "message": "202 Accepted",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "19",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 16,
+        "activate": false
+      },
+      {
+        "id": "20",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 14,
+        "activate": false
+      },
+      {
+        "id": "21",
+        "from": "S",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

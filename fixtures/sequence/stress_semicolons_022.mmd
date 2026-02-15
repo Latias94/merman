@@ -1,0 +1,7 @@
+sequenceDiagram
+  participant A
+  participant B
+
+  A->>B: semicolon in text is #59; ok
+  Note over A,B: Semicolon in text must be escaped as #59;
+  B-->>A: ack

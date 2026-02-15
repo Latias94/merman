@@ -1,0 +1,16 @@
+sequenceDiagram
+  participant A as Alice
+  participant S as Service
+
+  A->>S: start
+  create participant W as Worker
+  S->>W: spawn
+  W-->>S: ready
+  destroy W
+  S-xW: terminate
+
+  create actor B as Bot
+  A->>B: hello
+  destroy B
+  A-xB: bye
+

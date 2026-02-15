@@ -1,0 +1,13 @@
+sequenceDiagram
+  participant (end) as end
+  participant A as Alice
+  participant B as Bob
+
+  A->>(end): message about (end)
+  (end)-->>A: ack [end]
+  Note over (end),A: The word "end" is a participant label here.
+
+  loop (end)
+    A->>B: step 1
+    B-->>A: ok
+  end

@@ -1,0 +1,146 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "API",
+      "DB",
+      "Web",
+      "Mobile"
+    ],
+    "actors": {
+      "API": {
+        "name": "API",
+        "description": "API",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "DB": {
+        "name": "DB",
+        "description": "DB",
+        "wrap": false,
+        "type": "database",
+        "links": {},
+        "properties": {}
+      },
+      "Web": {
+        "name": "Web",
+        "description": "Web",
+        "wrap": false,
+        "type": "actor",
+        "links": {},
+        "properties": {}
+      },
+      "Mobile": {
+        "name": "Mobile",
+        "description": "Mobile",
+        "wrap": false,
+        "type": "actor",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "Web",
+        "to": "API",
+        "message": "GET /items",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "API",
+        "to": "DB",
+        "message": "SELECT",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "DB",
+        "to": "API",
+        "message": "rows",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "API",
+        "to": "Web",
+        "message": "200 OK",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "Mobile",
+        "to": "API",
+        "message": "shared behavior<br/>two clients",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "5",
+        "from": "Mobile",
+        "to": "API",
+        "message": "GET /items",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": [
+          "Mobile",
+          "API"
+        ],
+        "placement": 2,
+        "message": "shared behavior<br/>two clients",
+        "wrap": false
+      }
+    ],
+    "boxes": [
+      {
+        "name": "Core",
+        "wrap": false,
+        "fill": "Purple",
+        "actorKeys": [
+          "API",
+          "DB"
+        ]
+      },
+      {
+        "name": "Clients",
+        "wrap": false,
+        "fill": "rgb(220,220,220)",
+        "actorKeys": [
+          "Web",
+          "Mobile"
+        ]
+      }
+    ],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

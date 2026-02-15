@@ -1,0 +1,9 @@
+sequenceDiagram
+  participant 中 as 中文
+  participant E as EmojiSafe
+  participant P as Punct
+
+  中->>P: 你好，世界！— punctuation test: “quotes”, (parens), [brackets], {braces}
+  P-->>中: symbols: ✓✗ αβγ #35; #9829; #infin;
+  E->>E: self-call with dashes -- and equals == should not break parsing
+

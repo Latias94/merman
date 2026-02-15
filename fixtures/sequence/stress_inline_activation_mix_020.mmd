@@ -1,0 +1,15 @@
+sequenceDiagram
+  participant A as Alice
+  participant B as Bob
+  participant C as Charlie
+
+  A->>+B: open
+  B->>+C: nested
+  C-->>-B: return C
+  B-->>-A: return B
+
+  activate A
+  A->>+B: explicit + inline
+  B-->>-A: done
+  deactivate A
+

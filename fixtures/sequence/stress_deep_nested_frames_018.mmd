@@ -1,0 +1,29 @@
+sequenceDiagram
+  participant U as User
+  participant S as Service
+  participant W as Worker
+  participant Q as Queue
+
+  U->>S: Request
+  activate S
+  alt cache hit
+    S-->>U: 200 (cached)
+  else cache miss
+    S->>Q: enqueue job
+    par processing
+      Q->>W: deliver
+      activate W
+      loop retry until ok
+        W->>W: compute()
+      end
+      W-->>S: result
+      deactivate W
+    and telemetry
+      S->>S: log event
+    end
+    opt notify
+      S-->>U: 202 Accepted
+    end
+  end
+  deactivate S
+

@@ -1,0 +1,17 @@
+sequenceDiagram
+  participant S as Service
+  participant DB as Database
+
+  S->>S: refresh cache
+  activate S
+  S->>DB: query()
+  DB-->>S: rows
+  S->>S: normalize()
+  deactivate S
+
+  rect rgba(0, 128, 255, 0.08)
+    Note right of S: highlighted section
+    S->>DB: write()
+    DB-->>S: ok
+  end
+
