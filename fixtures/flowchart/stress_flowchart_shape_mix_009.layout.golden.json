@@ -1,0 +1,398 @@
+{
+  "diagramType": "flowchart-v2",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "start",
+          "x": 154.325,
+          "y": 15.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "io",
+          "x": 154.325,
+          "y": 91.5,
+          "width": 146.16,
+          "height": 39.0,
+          "is_cluster": false
+        },
+        {
+          "id": "decision",
+          "x": 154.325,
+          "y": 219.28,
+          "width": 116.56,
+          "height": 116.56,
+          "is_cluster": false
+        },
+        {
+          "id": "circle",
+          "x": 59.555,
+          "y": 379.116,
+          "width": 54.2,
+          "height": 54.2,
+          "is_cluster": false
+        },
+        {
+          "id": "db",
+          "x": 249.095,
+          "y": 379.116,
+          "width": 34.2,
+          "height": 55.112,
+          "is_cluster": false
+        },
+        {
+          "id": "hex",
+          "x": 59.555,
+          "y": 476.172,
+          "width": 103.11,
+          "height": 39.0,
+          "is_cluster": false
+        },
+        {
+          "id": "pill",
+          "x": 249.095,
+          "y": 476.172,
+          "width": 83.29,
+          "height": 39.0,
+          "is_cluster": false
+        },
+        {
+          "id": "subr",
+          "x": 59.555,
+          "y": 565.172,
+          "width": 100.12,
+          "height": 39.0,
+          "is_cluster": false
+        },
+        {
+          "id": "trap",
+          "x": 249.095,
+          "y": 565.172,
+          "width": 178.96,
+          "height": 39.0,
+          "is_cluster": false
+        },
+        {
+          "id": "finish",
+          "x": 154.325,
+          "y": 658.852,
+          "width": 48.36,
+          "height": 48.36,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_start_io_0",
+          "from": "start",
+          "to": "io",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 154.325,
+              "y": 22.0
+            },
+            {
+              "x": 154.325,
+              "y": 47.0
+            },
+            {
+              "x": 154.325,
+              "y": 72.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_io_decision_0",
+          "from": "io",
+          "to": "decision",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 154.325,
+              "y": 111.0
+            },
+            {
+              "x": 154.325,
+              "y": 136.0
+            },
+            {
+              "x": 154.325,
+              "y": 161.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_decision_circle_0",
+          "from": "decision",
+          "to": "circle",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 125.263,
+              "y": 248.498
+            },
+            {
+              "x": 59.555,
+              "y": 314.56
+            },
+            {
+              "x": 59.555,
+              "y": 352.016
+            }
+          ],
+          "label": {
+            "x": 59.555,
+            "y": 314.56,
+            "width": 22.56,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_decision_db_0",
+          "from": "decision",
+          "to": "db",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 183.387,
+              "y": 248.498
+            },
+            {
+              "x": 249.095,
+              "y": 314.56
+            },
+            {
+              "x": 249.095,
+              "y": 351.56
+            }
+          ],
+          "label": {
+            "x": 249.095,
+            "y": 314.56,
+            "width": 13.76,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_circle_hex_0",
+          "from": "circle",
+          "to": "hex",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 59.555,
+              "y": 406.216
+            },
+            {
+              "x": 59.555,
+              "y": 431.672
+            },
+            {
+              "x": 59.555,
+              "y": 456.672
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_db_pill_0",
+          "from": "db",
+          "to": "pill",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 249.095,
+              "y": 406.672
+            },
+            {
+              "x": 249.095,
+              "y": 431.672
+            },
+            {
+              "x": 249.095,
+              "y": 456.672
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_hex_subr_0",
+          "from": "hex",
+          "to": "subr",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 59.555,
+              "y": 495.672
+            },
+            {
+              "x": 59.555,
+              "y": 520.672
+            },
+            {
+              "x": 59.555,
+              "y": 545.672
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_pill_trap_0",
+          "from": "pill",
+          "to": "trap",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 249.095,
+              "y": 495.672
+            },
+            {
+              "x": 249.095,
+              "y": 520.672
+            },
+            {
+              "x": 249.095,
+              "y": 545.672
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_subr_finish_0",
+          "from": "subr",
+          "to": "finish",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 59.555,
+              "y": 584.672
+            },
+            {
+              "x": 59.555,
+              "y": 609.672
+            },
+            {
+              "x": 130.145,
+              "y": 646.304
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_trap_finish_0",
+          "from": "trap",
+          "to": "finish",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 249.095,
+              "y": 584.672
+            },
+            {
+              "x": 249.095,
+              "y": 609.672
+            },
+            {
+              "x": 178.505,
+              "y": 646.304
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 338.575,
+        "max_y": 683.032
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+flowchart TB
+%% Authored stress fixture (Mermaid@11.12.2): global TB with per-subgraph LR/BT direction overrides.
+
+subgraph P["Pipeline (LR)"]
+direction LR
+  p1["ingest"] --> p2["transform"] --> p3["export"]
+end
+
+subgraph Q["Queue (BT)"]
+direction BT
+  q1[(topic)] --> q2[(consumer)]
+end
+
+p3 --> q1
+q2 --> done([done])

@@ -1,0 +1,24 @@
+flowchart TD
+%% Authored stress fixture (Mermaid@11.12.2): mixed node shapes and edge directions.
+
+start["Start"] --> io["Input / Output"]
+io --> decision["Decision?"]
+decision -->|yes| circle["Circle"]
+decision -->|no| db["DB"]
+circle --> hex["Hexagon"]
+db --> pill["Terminal"]
+hex --> subr["Subroutine"]
+pill --> trap["Trapezoid (bottom)"]
+subr --> finish["End"]
+trap --> finish
+
+start@{ shape: sm-circ }
+io@{ shape: lean-r }
+decision@{ shape: diam }
+circle@{ shape: circle }
+db@{ shape: cyl }
+hex@{ shape: hex }
+pill@{ shape: stadium }
+subr@{ shape: fr-rect }
+trap@{ shape: trap-b }
+finish@{ shape: dbl-circ }

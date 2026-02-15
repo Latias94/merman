@@ -1,0 +1,25 @@
+flowchart TD
+%% Authored stress fixture (Mermaid@11.12.2): nested subgraphs, direction changes, edge labels, and title padding.
+
+accTitle: Flowchart stress - nested subgraphs
+accDescr: Exercises subgraph title layout, padding, and edge label placement with mixed directions.
+
+subgraph A["Parent Cluster"]
+direction LR
+
+  subgraph A1["Child Cluster 1"]
+  direction TB
+    s([Start]) --> g{Gate?}
+    g -->|yes| b1[Do work]
+    g -->|no| c1[/Alternative path/]
+  end
+
+  subgraph A2["Child Cluster 2"]
+  direction TB
+    b1 --> d1[(DB)]
+    c1 --> d1
+    d1 --> r1([Result])
+  end
+end
+
+r1 --> e([End])

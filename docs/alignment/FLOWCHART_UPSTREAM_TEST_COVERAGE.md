@@ -27,6 +27,24 @@ are parity-gated against upstream SVG baselines:
 
 Reference: `docs/alignment/EXTERNAL_FIXTURES.md`.
 
+## Authored stress fixtures
+
+These fixtures are authored in this repository (not sourced from Mermaid's own test suite). They are
+parity-gated against upstream SVG baselines generated via the pinned Mermaid CLI:
+
+- `fixtures/flowchart/stress_flowchart_nested_subgraphs_titles_001.mmd`
+- `fixtures/flowchart/stress_flowchart_dense_parallel_edges_002.mmd`
+- `fixtures/flowchart/stress_flowchart_classdef_and_inline_classes_003.mmd`
+- `fixtures/flowchart/stress_flowchart_linkstyle_indexing_004.mmd`
+- `fixtures/flowchart/stress_flowchart_clicks_and_tooltips_005.mmd`
+- `fixtures/flowchart/stress_flowchart_long_labels_punctuation_unicode_006.mmd`
+- `fixtures/flowchart/stress_flowchart_edge_label_wrapping_007.mmd`
+- `fixtures/flowchart/stress_flowchart_subgraph_boundary_edges_008.mmd`
+- `fixtures/flowchart/stress_flowchart_shape_mix_009.mmd`
+- `fixtures/flowchart/stress_flowchart_comments_and_directives_010.mmd`
+- `fixtures/flowchart/stress_flowchart_multi_direction_graph_011.mmd`
+- `fixtures/flowchart/stress_flowchart_escape_sequences_and_quotes_012.mmd`
+
 ## Cypress rendering specs
 
 Source: `repo-ref/mermaid/cypress/integration/rendering/*flowchart*.spec.*`

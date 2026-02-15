@@ -1,0 +1,11 @@
+flowchart TB
+%% Authored stress fixture (Mermaid@11.12.2): dense graph with parallel declarations (`&`), cycles, and mixed edge labels.
+
+a["A (source)"] & b["B (source)"] & c["C (source)"] --> d["D (join)"] & e["E (join)"]
+d -->|x=1| f{Decision}
+e -->|x=2| f
+f -->|ok| g([Done])
+f -->|retry| b
+g --> h["Post-process"]
+h --> i["Audit"]
+i --> g

@@ -1,0 +1,166 @@
+{
+  "diagramType": "flowchart-v2",
+  "model": {
+    "type": "flowchart-v2",
+    "keyword": "flowchart",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "classDefs": {},
+    "tooltips": {
+      "db": "DB docs",
+      "api": "API docs",
+      "cache": "Cache docs"
+    },
+    "edgeDefaults": {
+      "style": [],
+      "interpolate": null
+    },
+    "vertexCalls": [
+      "u",
+      "api",
+      "api",
+      "db",
+      "api",
+      "cache"
+    ],
+    "nodes": [
+      {
+        "id": "u",
+        "label": "User",
+        "labelType": "string",
+        "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "api",
+        "label": "API",
+        "labelType": "string",
+        "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [
+          "clickable"
+        ],
+        "link": "https://example.com/api",
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "db",
+        "label": "DB",
+        "labelType": "text",
+        "shape": "cylinder",
+        "layoutShape": "cylinder",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [
+          "clickable"
+        ],
+        "link": "https://example.com/db",
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "cache",
+        "label": "Cache",
+        "labelType": "text",
+        "shape": "cylinder",
+        "layoutShape": "cylinder",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [
+          "clickable"
+        ],
+        "link": "https://example.com/cache",
+        "linkTarget": null,
+        "haveCallback": false
+      }
+    ],
+    "edges": [
+      {
+        "from": "u",
+        "to": "api",
+        "id": "L_u_api_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "api",
+        "to": "db",
+        "id": "L_api_db_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "api",
+        "to": "cache",
+        "id": "L_api_cache_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      }
+    ],
+    "subgraphs": []
+  }
+}

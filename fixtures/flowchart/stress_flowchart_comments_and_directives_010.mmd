@@ -1,0 +1,13 @@
+%%{init: {"themeVariables": {"fontFamily": "arial", "clusterBkg": "#f8f8f8", "clusterBorder": "#999999"}} }%%
+flowchart TD
+%% Authored stress fixture (Mermaid@11.12.2): init directive + comments inside and around subgraphs.
+
+%% top-level comment (should be ignored)
+subgraph S["Settings"]
+  %% internal comment
+  cfg["config.json"] --> parse["parse()"]
+  parse --> ok{ok?}
+end
+
+ok -->|yes| out["write output"]
+ok -->|no| err["raise error"]
