@@ -1,0 +1,287 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "U",
+      "W",
+      "A",
+      "D"
+    ],
+    "actors": {
+      "U": {
+        "name": "U",
+        "description": "User",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "W": {
+        "name": "W",
+        "description": "Web",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "A": {
+        "name": "A",
+        "description": "API",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "D": {
+        "name": "D",
+        "description": "DB",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "U",
+        "to": "W",
+        "message": "GET /items",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "W",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "W",
+        "to": "A",
+        "message": "fetchItems()",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "A",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "A",
+        "to": "D",
+        "message": "SELECT items",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "D",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "D",
+        "to": "A",
+        "message": "rows",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "D",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": null,
+        "to": null,
+        "message": "rows > 0",
+        "wrap": false,
+        "type": 12,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": "A",
+        "to": "W",
+        "message": "200 OK (items)",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": null,
+        "to": null,
+        "message": "cache enabled",
+        "wrap": false,
+        "type": 15,
+        "activate": false
+      },
+      {
+        "id": "11",
+        "from": "W",
+        "to": "W",
+        "message": "store in cache",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "12",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 16,
+        "activate": false
+      },
+      {
+        "id": "13",
+        "from": null,
+        "to": null,
+        "message": "empty",
+        "wrap": false,
+        "type": 13,
+        "activate": false
+      },
+      {
+        "id": "14",
+        "from": "A",
+        "to": "W",
+        "message": "200 OK ([])",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "15",
+        "from": null,
+        "to": null,
+        "message": "error",
+        "wrap": false,
+        "type": 13,
+        "activate": false
+      },
+      {
+        "id": "16",
+        "from": "A",
+        "to": "W",
+        "message": "500 Error",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "17",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 14,
+        "activate": false
+      },
+      {
+        "id": "18",
+        "from": null,
+        "to": null,
+        "message": "render list",
+        "wrap": false,
+        "type": 19,
+        "activate": false
+      },
+      {
+        "id": "19",
+        "from": "W",
+        "to": "U",
+        "message": "HTML response",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "20",
+        "from": null,
+        "to": null,
+        "message": "telemetry",
+        "wrap": false,
+        "type": 20,
+        "activate": false
+      },
+      {
+        "id": "21",
+        "from": "W",
+        "to": "W",
+        "message": "log \"items_listed\"",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "22",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 21,
+        "activate": false
+      },
+      {
+        "id": "23",
+        "from": "A",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "24",
+        "from": "W",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

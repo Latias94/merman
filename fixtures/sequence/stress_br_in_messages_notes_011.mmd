@@ -1,0 +1,9 @@
+sequenceDiagram
+  participant A as Alice
+  participant B as Bob
+
+  A->>B: Line 1<br/>Line 2<br/>Line 3
+  Note over A,B: Note line 1<br/>Note line 2
+  B-->>A: wrap: This is a longer message that should be wrapped by Mermaid's default behavior
+  A-->>B: nowrap: This message should not wrap even if it is long long long long long
+

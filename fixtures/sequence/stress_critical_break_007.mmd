@@ -1,0 +1,19 @@
+sequenceDiagram
+  participant A as Alice
+  participant B as Bob
+  participant C as Carol
+
+  critical Reserve seats
+    A->>B: lock()
+    option lock ok
+      B-->>A: locked
+    option lock failed
+      B-->>A: error
+  end
+
+  break invalid payment
+    A->>C: charge()
+    C-->>A: declined
+  end
+
+  A-->>B: done

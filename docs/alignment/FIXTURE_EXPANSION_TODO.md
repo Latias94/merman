@@ -101,6 +101,7 @@ Recently imported (keep gates green after each batch):
   - Deferred locally: `upstream_cypress_flowchart_v2_spec_should_be_possible_to_use_syntax_to_add_labels_with_trail_spaces_067` due to deeper SVG DOM structure deltas (node id ordinal mismatch that is not solvable by root viewport overrides).
 - 2026-02-15: Flowchart Cypress fixtures second batch import (17 fixtures across flowchart-handDrawn + flowchart-v2 + one ELK spec case, with upstream SVG baselines). Hardened parser-side `vertexCalls` ordering for `&`-separated shapeData statements (DOM id suffix parity) and added a root viewport override for the stadium node case (`068`) to keep the global `parity-root` gate green.
 - 2026-02-15: Mindmap authored stress fixtures batch (12 fixtures under `fixtures/mindmap/stress_*.mmd`, with upstream SVG baselines). Regenerated `mindmap_text_overrides_11_12_2.rs` and added fixture-derived Mindmap root viewport overrides to keep the global `parity-root` gate green.
+- 2026-02-15: Sequence stress fixtures batch (15 authored fixtures under `fixtures/sequence/stress_*.mmd` + 1 new upstream HTML demo fixture `upstream_html_demos_sequence_sequence_diagram_demos_011`, with upstream SVG baselines). Added sequence root viewport overrides for the new stress fixtures to keep the global `parity-root` gate green.
 
 ## Medium priority (coverage growth)
 

@@ -1,0 +1,18 @@
+sequenceDiagram
+  box rgb(240, 240, 255) Frontend
+    participant U as User
+    participant W as Web
+  end
+  box rgb(255, 240, 240) Backend
+    participant A as API
+    participant D as DB
+  end
+
+  U->>W: Login
+  Note right of W: validate input
+  W->>A: POST /login
+  A->>D: query user
+  Note over A,D: audit + rate limit
+  D-->>A: user row
+  A-->>W: 200 OK
+  W-->>U: redirect

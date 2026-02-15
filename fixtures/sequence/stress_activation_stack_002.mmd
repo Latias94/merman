@@ -1,0 +1,16 @@
+sequenceDiagram
+  participant A as Alice
+  participant B as Bob
+  participant C as Carol
+
+  A->>+B: First call
+  B->>+C: Nested call
+  C-->>-B: return C
+  B-->>-A: return B
+
+  A->>+B: Second call
+  activate B
+  B->>B: internal work
+  deactivate B
+  B-->>-A: done
+

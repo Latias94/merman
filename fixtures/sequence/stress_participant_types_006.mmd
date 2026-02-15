@@ -1,0 +1,23 @@
+sequenceDiagram
+  actor U as User
+  participant UI@{ "type" : "boundary" }
+  participant S@{ "type" : "control" }
+  participant M@{ "type" : "entity" }
+  participant DB@{ "type" : "database" }
+  participant C@{ "type" : "collections" }
+  participant Q@{ "type" : "queue" }
+
+  U->>UI: click
+  UI->>S: handle()
+  S->>C: get(key)
+  alt cache hit
+    C-->>S: value
+  else miss
+    S->>DB: query
+    DB-->>S: row
+    S->>C: set(key, value)
+  end
+  S->>Q: enqueue(job)
+  Q-->>S: accepted
+  S-->>UI: render(value)
+  UI-->>U: show

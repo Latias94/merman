@@ -1,0 +1,17 @@
+sequenceDiagram
+  participant A as Alice
+  participant B as Bob
+  participant C as Carol
+
+  rect rgb(230, 255, 230)
+    A->>B: start batch
+    par over A,B
+      A-->>B: p1
+    and over B,C
+      B-->>C: p2
+    and over A,C
+      A-->>C: p3
+    end
+    B-->>A: batch done
+  end
+

@@ -1,0 +1,11 @@
+sequenceDiagram
+  participant A as Alice
+  participant B as Bob
+
+  A->B: solid
+  A->>B: solid open
+  A-->>B: dashed open
+  A-xB: destroy-ish
+  A--)B: async-ish
+  B-->>A: reply
+

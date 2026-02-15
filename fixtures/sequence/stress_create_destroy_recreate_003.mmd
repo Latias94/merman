@@ -1,0 +1,14 @@
+sequenceDiagram
+  participant A as Alice
+  participant B as Bob
+
+  A->>B: start
+  create participant C
+  A->>C: hello C
+  destroy C
+  A-xC: bye C
+
+  create participant C2
+  B->>C2: welcome back
+  destroy C2
+  B-xC2: bye again
