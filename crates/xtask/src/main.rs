@@ -12131,9 +12131,13 @@ fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError> {
         source,
     })?;
 
-    let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
-        serde_json::json!({ "handDrawnSeed": 1 }),
-    ));
+    let engine = merman::Engine::new()
+        .with_site_config(merman::MermaidConfig::from_value(
+            serde_json::json!({ "handDrawnSeed": 1 }),
+        ))
+        .with_fixed_today(Some(
+            chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
+        ));
     let parsed =
         futures::executor::block_on(engine.parse_diagram(&text, merman::ParseOptions::default()))
             .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
@@ -12796,9 +12800,13 @@ fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
         )));
     }
 
-    let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
-        serde_json::json!({ "handDrawnSeed": 1 }),
-    ));
+    let engine = merman::Engine::new()
+        .with_site_config(merman::MermaidConfig::from_value(
+            serde_json::json!({ "handDrawnSeed": 1 }),
+        ))
+        .with_fixed_today(Some(
+            chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
+        ));
     let layout_opts = merman_render::LayoutOptions::default();
     let mut failures = Vec::new();
 

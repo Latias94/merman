@@ -462,8 +462,7 @@ fn parse_task_data(task_cnt: &mut i64, data_str: &str) -> TaskInfo {
 }
 
 fn today_midnight_local() -> DateTimeFixed {
-    let now = Local::now();
-    let date = now.date_naive();
+    let date = crate::runtime::today_naive_local();
     let naive = date.and_hms_opt(0, 0, 0).unwrap_or_else(|| {
         NaiveDate::from_ymd_opt(1970, 1, 1)
             .unwrap()
@@ -1086,7 +1085,7 @@ fn parse_dayjs_like_strict(date_format: &str, s: &str) -> Option<DateTimeFixed> 
         return Some(dt.with_timezone(&FixedOffset::east_opt(0).unwrap()));
     }
 
-    let base_date = Local::now().date_naive();
+    let base_date = crate::runtime::today_naive_local();
 
     // Dayjs strict parsing defaults missing calendar fields to the *start* of the larger unit:
     // - `YYYY` => Jan 1st

@@ -1,3 +1,4 @@
+use chrono::NaiveDate;
 use merman_core::{Engine, ParseOptions};
 use regex::Regex;
 use serde_json::{Map, Value};
@@ -187,7 +188,10 @@ fn fixtures_match_golden_snapshots() {
         fixtures_root().display()
     );
 
-    let engine = Engine::new();
+    // Keep time-dependent diagrams (e.g. Gantt) deterministic for fixtures.
+    let engine = Engine::new().with_fixed_today(Some(
+        NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
+    ));
     for mmd_path in fixtures {
         let text = std::fs::read_to_string(&mmd_path)
             .unwrap_or_else(|e| panic!("failed to read fixture {}: {e}", mmd_path.display()));
