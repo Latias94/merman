@@ -1,0 +1,13 @@
+flowchart LR
+%% Authored stress fixture (Mermaid@11.12.2): classDef + class + inline `:::` with punctuation-heavy labels.
+
+classDef hot fill:#ffdddd,stroke:#cc0000,stroke-width:2px,color:#330000;
+classDef cold fill:#ddeeff,stroke:#004488,stroke-width:2px,color:#001122;
+classDef muted fill:#f6f6f6,stroke:#999999,color:#333333;
+
+in["Input: raw-data"]:::cold --> parse["Parse (strict)"]:::hot
+parse --> validate{"Validate?"}:::hot
+validate -->|yes| store[(Store)]:::muted
+validate -->|no| reject["Reject: reason"]:::hot
+
+class store,in cold

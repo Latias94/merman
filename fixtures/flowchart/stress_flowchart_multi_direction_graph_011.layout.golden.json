@@ -1,0 +1,282 @@
+{
+  "diagramType": "flowchart-v2",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "p1",
+          "x": 106.76,
+          "y": 60.0,
+          "width": 98.88,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "p2",
+          "x": 106.76,
+          "y": 164.0,
+          "width": 127.52,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "p3",
+          "x": 106.76,
+          "y": 268.0,
+          "width": 101.28,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "q1",
+          "x": 106.76,
+          "y": 424.747,
+          "width": 47.0,
+          "height": 59.494,
+          "is_cluster": false
+        },
+        {
+          "id": "q2",
+          "x": 106.76,
+          "y": 538.131,
+          "width": 75.64,
+          "height": 67.275,
+          "is_cluster": false
+        },
+        {
+          "id": "done",
+          "x": 106.76,
+          "y": 666.269,
+          "width": 52.25,
+          "height": 39.0,
+          "is_cluster": false
+        },
+        {
+          "id": "P",
+          "x": 106.76,
+          "y": 164.0,
+          "width": 197.52,
+          "height": 312.0,
+          "is_cluster": true
+        },
+        {
+          "id": "Q",
+          "x": 106.76,
+          "y": 483.384,
+          "width": 145.64,
+          "height": 226.769,
+          "is_cluster": true
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_p1_p2_0",
+          "from": "p1",
+          "to": "p2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 106.76,
+              "y": 87.0
+            },
+            {
+              "x": 106.76,
+              "y": 112.0
+            },
+            {
+              "x": 106.76,
+              "y": 137.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_p2_p3_0",
+          "from": "p2",
+          "to": "p3",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 106.76,
+              "y": 191.0
+            },
+            {
+              "x": 106.76,
+              "y": 216.0
+            },
+            {
+              "x": 106.76,
+              "y": 241.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_q1_q2_0",
+          "from": "q1",
+          "to": "q2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 106.76,
+              "y": 454.494
+            },
+            {
+              "x": 106.76,
+              "y": 479.494
+            },
+            {
+              "x": 106.76,
+              "y": 504.494
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_p3_q1_0",
+          "from": "p3",
+          "to": "q1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 106.76,
+              "y": 295.0
+            },
+            {
+              "x": 106.76,
+              "y": 320.0
+            },
+            {
+              "x": 106.76,
+              "y": 345.0
+            },
+            {
+              "x": 106.76,
+              "y": 370.0
+            },
+            {
+              "x": 106.76,
+              "y": 395.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_q2_done_0",
+          "from": "q2",
+          "to": "done",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 106.76,
+              "y": 571.769
+            },
+            {
+              "x": 106.76,
+              "y": 596.769
+            },
+            {
+              "x": 106.76,
+              "y": 621.769
+            },
+            {
+              "x": 106.76,
+              "y": 646.769
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "P",
+          "x": 106.76,
+          "y": 164.0,
+          "width": 197.52,
+          "height": 312.0,
+          "diff": -4.0,
+          "offset_y": 20.0,
+          "title": "Pipeline (LR)",
+          "title_label": {
+            "x": 106.76,
+            "y": 20.0,
+            "width": 85.6,
+            "height": 24.0
+          },
+          "requested_dir": "LR",
+          "effective_dir": "LR",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "Q",
+          "x": 106.76,
+          "y": 483.384,
+          "width": 145.64,
+          "height": 226.769,
+          "diff": -4.0,
+          "offset_y": 20.0,
+          "title": "Queue (BT)",
+          "title_label": {
+            "x": 106.76,
+            "y": 382.0,
+            "width": 72.16,
+            "height": 24.0
+          },
+          "requested_dir": "BT",
+          "effective_dir": "BT",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 205.52,
+        "max_y": 685.769
+      }
+    }
+  }
+}

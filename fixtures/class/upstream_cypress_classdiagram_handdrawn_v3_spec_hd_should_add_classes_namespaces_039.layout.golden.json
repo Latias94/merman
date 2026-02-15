@@ -1,0 +1,109 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "C1",
+          "x": 58.78,
+          "y": 79.5,
+          "width": 42.56,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C2",
+          "x": 176.34,
+          "y": 79.5,
+          "width": 42.56,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C3",
+          "x": 306.4,
+          "y": 79.5,
+          "width": 42.56,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "C4",
+          "x": 398.96,
+          "y": 79.5,
+          "width": 42.56,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Namespace1",
+          "x": 117.56,
+          "y": 79.5,
+          "width": 235.12,
+          "height": 159.0,
+          "is_cluster": true
+        }
+      ],
+      "edges": [
+        {
+          "id": "0",
+          "from": "C1",
+          "to": "C2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 80.06,
+              "y": 79.5
+            },
+            {
+              "x": 117.56,
+              "y": 79.5
+            },
+            {
+              "x": 155.06,
+              "y": 79.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "Namespace1",
+          "x": 117.56,
+          "y": 79.5,
+          "width": 235.12,
+          "height": 159.0,
+          "diff": -15.0,
+          "offset_y": 16.5,
+          "title": "Namespace1",
+          "title_label": {
+            "x": 117.56,
+            "y": 12.0,
+            "width": 79.2,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 15.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 420.24,
+        "max_y": 159.0
+      }
+    }
+  }
+}

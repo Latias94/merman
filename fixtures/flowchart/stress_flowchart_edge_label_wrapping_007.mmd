@@ -1,0 +1,13 @@
+flowchart LR
+%% Authored stress fixture (Mermaid@11.12.2): long edge labels and label placement near clusters.
+
+subgraph L["Left cluster"]
+  a["alpha"] --> b["beta"]
+end
+
+subgraph R["Right cluster"]
+  c["gamma"] --> d["delta"]
+end
+
+b -->|this is a very long edge label that should wrap or at least avoid overlapping the node text| c
+a -->|short| d

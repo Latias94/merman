@@ -1,0 +1,68 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Class10": {
+        "id": "Class10",
+        "type": "",
+        "label": "Class10",
+        "text": "Class10",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Class10-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {
+      "pink": {
+        "id": "pink",
+        "styles": [
+          "fill:#f9f"
+        ],
+        "textStyles": []
+      },
+      "bold": {
+        "id": "bold",
+        "styles": [
+          "stroke:#333",
+          "stroke-width:6px",
+          "color:#fff"
+        ],
+        "textStyles": [
+          "color:#fff"
+        ]
+      }
+    },
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

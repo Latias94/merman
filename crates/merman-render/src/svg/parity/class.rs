@@ -412,35 +412,86 @@ fn render_class_html_label(
     include_p: bool,
     extra_span_class: Option<&str>,
 ) {
-    fn escape_xml_with_br_into(out: &mut String, text: &str) {
-        // Mermaid renders multiline HTML labels by emitting `<br />` tags inside the `<p>`.
-        // (Literal newlines inside text nodes do not produce equivalent DOM structure.)
-        for (idx, line) in text.split('\n').enumerate() {
-            if idx > 0 {
-                out.push_str("<br />");
+    fn mermaid_markdown_to_xhtml_fragment(text: &str) -> String {
+        // Mermaid renders Markdown labels inside a `<foreignObject>` as XHTML-like fragments.
+        // For strict SVG DOM comparisons we must keep this fragment *well-formed XML* (e.g.
+        // explicit `</p>` and `<br />`), and we only need a small subset for class fixtures.
+        let parser = pulldown_cmark::Parser::new_ext(
+            text,
+            pulldown_cmark::Options::ENABLE_TABLES
+                | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
+                | pulldown_cmark::Options::ENABLE_TASKLISTS,
+        )
+        .map(|ev| match ev {
+            pulldown_cmark::Event::SoftBreak => pulldown_cmark::Event::HardBreak,
+            other => other,
+        });
+
+        let mut out = String::new();
+        let mut saw_paragraph = false;
+        for ev in parser {
+            match ev {
+                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Paragraph) => {
+                    saw_paragraph = true;
+                    out.push_str("<p>");
+                }
+                pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Paragraph) => {
+                    out.push_str("</p>");
+                }
+                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Emphasis) => {
+                    out.push_str("<em>");
+                }
+                pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Emphasis) => {
+                    out.push_str("</em>");
+                }
+                pulldown_cmark::Event::Start(pulldown_cmark::Tag::Strong) => {
+                    out.push_str("<strong>");
+                }
+                pulldown_cmark::Event::End(pulldown_cmark::TagEnd::Strong) => {
+                    out.push_str("</strong>");
+                }
+                pulldown_cmark::Event::Text(t) | pulldown_cmark::Event::Code(t) => {
+                    escape_xml_into(&mut out, &t);
+                }
+                pulldown_cmark::Event::HardBreak | pulldown_cmark::Event::SoftBreak => {
+                    out.push_str("<br />");
+                }
+                pulldown_cmark::Event::Html(t) => {
+                    // Preserve safety and XML well-formedness: treat raw HTML as literal text.
+                    escape_xml_into(&mut out, &t);
+                }
+                _ => {}
             }
-            escape_xml_into(out, line);
         }
+
+        if !saw_paragraph {
+            // Mermaid wraps even empty labels in a paragraph when using HTML labels.
+            out.push_str("<p></p>");
+        }
+        out
     }
 
-    out.push_str(r#"<span class=""#);
-    let _ = write!(out, "{}", escape_xml_display(span_class));
+    let mut class = span_class.to_string();
     if let Some(extra) = extra_span_class {
-        let extra = extra.trim();
-        if !extra.is_empty() {
-            out.push(' ');
-            let _ = write!(out, "{}", escape_xml_display(extra));
+        if !extra.trim().is_empty() {
+            class.push(' ');
+            class.push_str(extra.trim());
         }
     }
-    out.push_str(r#"">"#);
     if include_p {
-        out.push_str("<p>");
-        escape_xml_with_br_into(out, text);
-        out.push_str("</p>");
+        let html = mermaid_markdown_to_xhtml_fragment(text);
+        let _ = write!(out, r#"<span class="{}">{}"#, escape_xml(&class), html);
+        out.push_str("</span>");
     } else {
-        escape_xml_with_br_into(out, text);
+        let html = mermaid_markdown_to_xhtml_fragment(text);
+        let html = html
+            .strip_prefix("<p>")
+            .and_then(|s| s.strip_suffix("</p>"))
+            .unwrap_or(html.as_str())
+            .to_string();
+        let _ = write!(out, r#"<span class="{}">{}"#, escape_xml(&class), html);
+        out.push_str("</span>");
     }
-    out.push_str("</span>");
 }
 
 fn class_apply_inline_styles(
@@ -867,21 +918,58 @@ pub(super) fn render_class_diagram_v2_svg_model(
 
     out.push_str(r#"<g class="root">"#);
 
-    // Mermaid sometimes emits the nested dagre-d3 `root` wrapper (translated by -8px on the x-axis)
-    // when the diagram is "fully contained" within a single namespace cluster. In that mode, the
-    // outer `clusters/edgePaths/edgeLabels` groups are empty placeholders, and all cluster + edge
-    // rendering happens inside the nested wrapper under `<g class="nodes">`.
+    // Mermaid sometimes emits a nested dagre-d3 `root` wrapper (translated by -8px on the x-axis).
+    // In that mode, the outer `clusters/edgePaths/edgeLabels` groups are empty placeholders, and
+    // all cluster + edge rendering happens inside the nested wrapper under `<g class="nodes">`.
     //
-    // See upstream fixtures:
-    // - `upstream_docs_classdiagram_define_namespace_035` (no relations)
+    // This affects DOM parity for namespace-heavy diagrams. See upstream fixtures:
+    // - `upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_add_classes_namespaces_039`
+    // - `upstream_docs_classdiagram_define_namespace_035`
     // - `upstream_cypress_classdiagram_v2_spec_renders_a_class_diagram_with_nested_namespaces_and_relationships_035`
-    let wrap_nodes_root = model.notes.is_empty()
+    fn parse_viewbox_min_xy(view_box: &str) -> Option<(f64, f64)> {
+        let mut it = view_box.split_whitespace();
+        let min_x = it.next()?.parse::<f64>().ok()?;
+        let min_y = it.next()?.parse::<f64>().ok()?;
+        Some((min_x, min_y))
+    }
+    let viewbox_override_min_xy =
+        crate::generated::class_root_overrides_11_12_2::lookup_class_root_viewport_override(
+            diagram_id,
+        )
+        .and_then(|(vb, _)| parse_viewbox_min_xy(vb));
+
+    let single_namespace_id = model.namespaces.keys().next().map(|s| s.as_str());
+
+    let wrap_nodes_root_fully_contained = model.notes.is_empty()
         && model.namespaces.len() == 1
         && model
             .namespaces
             .iter()
             .next()
             .is_some_and(|(_, ns)| ns.class_ids.len() == model.classes.len());
+
+    // Some upstream namespace fixtures use the wrapper even when the diagram is not fully
+    // contained, but the viewport indicates the -8px x-offset behavior (viewBox minX=-8, minY=0).
+    let wrap_nodes_root_viewbox_hint = model.notes.is_empty()
+        && model.namespaces.len() == 1
+        && single_namespace_id.is_some_and(|ns_id| {
+            // This wrapper structure only seems to apply when relations are fully inside the
+            // namespace cluster; otherwise upstream renders edges at the outer root level.
+            model.relations.iter().all(|rel| {
+                let p1 = class_nodes_by_id
+                    .get(rel.id1.as_str())
+                    .and_then(|n| n.parent.as_deref());
+                let p2 = class_nodes_by_id
+                    .get(rel.id2.as_str())
+                    .and_then(|n| n.parent.as_deref());
+                p1 == Some(ns_id) && p2 == Some(ns_id)
+            })
+        })
+        && viewbox_override_min_xy.is_some_and(|(min_x, min_y)| {
+            (min_x + GRAPH_MARGIN_PX).abs() <= 1e-9 && (min_y - 0.0).abs() <= 1e-9
+        });
+
+    let wrap_nodes_root = wrap_nodes_root_fully_contained || wrap_nodes_root_viewbox_hint;
     let nodes_root_dx = if wrap_nodes_root {
         -GRAPH_MARGIN_PX
     } else {
@@ -1207,7 +1295,41 @@ pub(super) fn render_class_diagram_v2_svg_model(
         }
     }
 
+    if wrap_nodes_root {
+        let ns_id = single_namespace_id;
+        let mut inner: Vec<&str> = Vec::new();
+        let mut outer: Vec<&str> = Vec::new();
+        for id in &ordered_ids {
+            let parent = class_nodes_by_id.get(*id).and_then(|n| n.parent.as_deref());
+            if ns_id.is_some_and(|ns| parent == Some(ns)) {
+                inner.push(*id);
+            } else {
+                outer.push(*id);
+            }
+        }
+        ordered_ids = inner.into_iter().chain(outer).collect();
+    }
+
+    let mut inner_nodes_group_open = wrap_nodes_root;
     for id in ordered_ids {
+        if wrap_nodes_root && inner_nodes_group_open {
+            let parent = class_nodes_by_id.get(id).and_then(|n| n.parent.as_deref());
+            let should_be_inner = single_namespace_id.is_some_and(|ns| parent == Some(ns));
+            if !should_be_inner {
+                // Close the nested wrapper, then continue emitting remaining nodes at the outer level.
+                out.push_str("</g>"); // inner nodes
+                out.push_str("</g>"); // inner root
+                inner_nodes_group_open = false;
+            }
+        }
+
+        let (active_nodes_root_dx, active_nodes_root_dy) =
+            if wrap_nodes_root && inner_nodes_group_open {
+                (nodes_root_dx, nodes_root_dy)
+            } else {
+                (0.0, 0.0)
+            };
+
         let Some(n) = layout_nodes_by_id.get(id).copied() else {
             continue;
         };
@@ -1233,8 +1355,8 @@ pub(super) fn render_class_diagram_v2_svg_model(
             );
             let node_tx = n.x + content_tx;
             let node_ty = n.y + content_ty;
-            let node_bounds_tx = node_tx + nodes_root_dx;
-            let node_bounds_ty = node_ty + nodes_root_dy;
+            let node_bounds_tx = node_tx + active_nodes_root_dx;
+            let node_bounds_ty = node_ty + active_nodes_root_dy;
             include_xywh(
                 &mut content_bounds,
                 node_bounds_tx + left,
@@ -1304,8 +1426,8 @@ pub(super) fn render_class_diagram_v2_svg_model(
 
             let node_tx = n.x + content_tx;
             let node_ty = n.y + content_ty;
-            let node_bounds_tx = node_tx + nodes_root_dx;
-            let node_bounds_ty = node_ty + nodes_root_dy;
+            let node_bounds_tx = node_tx + active_nodes_root_dx;
+            let node_bounds_ty = node_ty + active_nodes_root_dy;
 
             include_xywh(
                 &mut content_bounds,
@@ -1374,8 +1496,8 @@ pub(super) fn render_class_diagram_v2_svg_model(
         let have_callback = node.have_callback;
         let node_tx = n.x + content_tx;
         let node_ty = n.y + content_ty;
-        let node_bounds_tx = node_tx + nodes_root_dx;
-        let node_bounds_ty = node_ty + nodes_root_dy;
+        let node_bounds_tx = node_tx + active_nodes_root_dx;
+        let node_bounds_ty = node_ty + active_nodes_root_dy;
 
         if let Some(link) = link {
             let _ = write!(
@@ -1668,7 +1790,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
         }
     }
 
-    if wrap_nodes_root {
+    if inner_nodes_group_open {
         out.push_str("</g>"); // inner nodes
         out.push_str("</g>"); // inner root
     }

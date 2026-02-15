@@ -1,0 +1,16 @@
+flowchart TD
+%% Authored stress fixture (Mermaid@11.12.2): linkStyle indexing stability with multiple edges and a self-loop.
+
+s([Start]) --> a["Step A"]
+a --> b["Step B"]
+b --> c["Step C"]
+c --> d["Step D"]
+d --> e([End])
+
+b -->|fast-path| d
+c -->|rollback| b
+d --> d
+
+linkStyle 0 stroke:#2c7,stroke-width:3px
+linkStyle 5 stroke:#c72,stroke-width:3px,stroke-dasharray:3 3
+linkStyle 7 stroke:#777,stroke-width:2px

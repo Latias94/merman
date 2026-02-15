@@ -1,0 +1,90 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Person": {
+        "id": "Person",
+        "type": "",
+        "label": "Person",
+        "text": "Person",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "String name",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+String name",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "Int id",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "-Int id",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "#",
+            "id": "double age",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "#double age",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "Text demographicProfile",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+Text demographicProfile",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Person-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

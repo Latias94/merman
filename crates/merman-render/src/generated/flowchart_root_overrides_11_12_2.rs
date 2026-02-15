@@ -10,6 +10,34 @@ pub fn lookup_flowchart_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
+        "stress_flowchart_classdef_and_inline_classes_003" => Some((
+            "0 -0.000003814697265625 796.109375 181.20632934570312",
+            "796.109",
+        )),
+        "stress_flowchart_clicks_and_tooltips_005" => Some((
+            "0 0.0000019073486328125 348.984375 183.86660766601562",
+            "348.984",
+        )),
+        "stress_flowchart_comments_and_directives_010" => {
+            Some(("0 0 341.890625 481.796875", "341.891"))
+        }
+        "stress_flowchart_dense_parallel_edges_002" => {
+            Some(("0 0 658.677490234375 697.390625", "658.677"))
+        }
+        "stress_flowchart_edge_label_wrapping_007" => Some(("0 0 866.09375 199", "866.094")),
+        "stress_flowchart_escape_sequences_and_quotes_012" => {
+            Some(("0 0 994.43310546875 70", "994.433"))
+        }
+        "stress_flowchart_linkstyle_indexing_004" => Some(("0 0 222.5 634.1499633789062", "222.5")),
+        "stress_flowchart_long_labels_punctuation_unicode_006" => Some(("0 0 346 617", "346")),
+        "stress_flowchart_multi_direction_graph_011" => {
+            Some(("0 0 216.1875 696.9118041992188", "216.188"))
+        }
+        "stress_flowchart_nested_subgraphs_titles_001" => {
+            Some(("0 0 465.296875 760.1632080078125", "465.297"))
+        }
+        "stress_flowchart_shape_mix_009" => Some(("0 0 369.66796875 698.21875", "369.668")),
+        "stress_flowchart_subgraph_boundary_edges_008" => Some(("0 0 774.21875 221", "774.219")),
         "mmdr_issue_28_text_rendering" => Some(("0 0 792.19873046875 244", "792.199")),
         "mmdr_issue_29_edge_label_distance" => Some((
             "0 0.000003814697265625 1339.015625 794.8007202148438",

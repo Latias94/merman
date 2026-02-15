@@ -1,0 +1,97 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "A::B",
+          "x": 85.48,
+          "y": 201.0,
+          "width": 170.96,
+          "height": 134.0,
+          "is_cluster": true
+        },
+        {
+          "id": "IPC::Sender",
+          "x": 85.48,
+          "y": 201.0,
+          "width": 100.96,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "RenderProcessHost",
+          "x": 85.48,
+          "y": 42.0,
+          "width": 149.12,
+          "height": 84.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "0",
+          "from": "RenderProcessHost",
+          "to": "IPC::Sender",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 85.48,
+              "y": 84.0
+            },
+            {
+              "x": 85.48,
+              "y": 109.0
+            },
+            {
+              "x": 85.48,
+              "y": 134.0
+            },
+            {
+              "x": 85.48,
+              "y": 159.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "A::B",
+          "x": 85.48,
+          "y": 201.0,
+          "width": 170.96,
+          "height": 134.0,
+          "diff": -15.0,
+          "offset_y": 16.5,
+          "title": "A::B",
+          "title_label": {
+            "x": 85.48,
+            "y": 146.0,
+            "width": 28.16,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 15.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 170.96,
+        "max_y": 268.0
+      }
+    }
+  }
+}

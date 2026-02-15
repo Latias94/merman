@@ -1,0 +1,15 @@
+flowchart TB
+%% Authored stress fixture (Mermaid@11.12.2): edges crossing subgraph boundaries, multiple nesting levels.
+
+subgraph outer["Outer"]
+  direction LR
+  subgraph inner_a["Inner A"]
+    a1["a1"] --> a2["a2"]
+  end
+  subgraph inner_b["Inner B"]
+    b1["b1"] --> b2["b2"]
+  end
+end
+
+a2 --> b1
+b2 --> a1

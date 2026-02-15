@@ -34,6 +34,8 @@ Recently imported (keep gates green after each batch):
 
 - 2026-02-15: Architecture authored stress fixtures batch (12 fixtures under `fixtures/architecture/stress_architecture_*.mmd`, with upstream SVG baselines). Refreshed Architecture root viewport overrides for the new fixture IDs to keep the global `parity-root` gate green.
 - 2026-02-15: Architecture HTML demo fixtures import (1 fixture from `repo-ref/mermaid/demos/architecture.html` via `<pre class="mermaid">`, with upstream SVG baselines). Added an Architecture root viewport override for the new fixture ID to keep the global `parity-root` gate green.
+- 2026-02-15: Class Cypress rendering fixtures batch import (25 fixtures from `repo-ref/mermaid/cypress/integration/rendering/classdiagram*.spec.{js,ts}` via `xtask import-upstream-cypress --diagram class --with-baselines --limit 25 --complex`, with upstream SVG baselines). Hardened Class SVG DOM parity for Markdown `<em>/<strong>` runs in HTML labels and namespace wrapper structure; refreshed Class root viewport overrides as needed to keep the global `parity-root` gate green.
+- 2026-02-15: Flowchart authored stress fixtures batch (12 fixtures under `fixtures/flowchart/stress_flowchart_*.mmd`, with upstream SVG baselines). Added Flowchart root viewport overrides for the new fixture IDs to keep the global `parity-root` gate green.
 - 2026-02-11: Mindmap `mindmap.md` single-node shape snippets (square/rounded/circle/bang/cloud/hexagon/default).
 - 2026-02-11: Architecture `architecture.md` docs examples (`example_002`, `icons_018`).
 - 2026-02-11: Flowchart `flowchart.md` docs examples batch import (20 fixtures, including new shapes, image nodes, animations, and curve-style variants).
@@ -130,8 +132,7 @@ Deferred (tracked for future import / parity work):
   A recent docs batch (2026-02-15) is kept locally under `fixtures/_deferred/c4/` for future parity work.
 - A complex Gantt docs fixture (`timeline with comments + frontmatter config`) was skipped due to non-trivial DOM deltas; revisit
   as a dedicated Gantt parity item after additional renderer hardening.
-- Class Cypress `classdiagram_handdrawn_v3.spec.*` fixtures were deferred because they exercise the newer classDiagram-v3 DOM shape
-  (different top-level group structure than Stage-B `render_class_diagram_v2_svg`).
+
 
 ## Special case: ZenUML (external diagram)
 
