@@ -1,0 +1,174 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "nodes": [
+        {
+          "id": "Done",
+          "x": 39.602,
+          "y": 272.0,
+          "width": 46.234,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Review",
+          "x": 39.602,
+          "y": 182.0,
+          "width": 63.203,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Start",
+          "x": 39.602,
+          "y": 92.0,
+          "width": 53.125,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "root_end",
+          "x": 39.602,
+          "y": 349.0,
+          "width": 14.013,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "root_start",
+          "x": 39.602,
+          "y": 15.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge0",
+          "from": "root_start",
+          "to": "Start",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 39.602,
+              "y": 22.0
+            },
+            {
+              "x": 39.602,
+              "y": 47.0
+            },
+            {
+              "x": 40.102,
+              "y": 72.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge1",
+          "from": "Start",
+          "to": "Review",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 40.102,
+              "y": 112.5
+            },
+            {
+              "x": 39.602,
+              "y": 137.0
+            },
+            {
+              "x": 40.102,
+              "y": 162.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge2",
+          "from": "Review",
+          "to": "Done",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 40.102,
+              "y": 202.5
+            },
+            {
+              "x": 39.602,
+              "y": 227.0
+            },
+            {
+              "x": 40.102,
+              "y": 252.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge3",
+          "from": "Done",
+          "to": "root_end",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 40.102,
+              "y": 292.5
+            },
+            {
+              "x": 39.602,
+              "y": 317.0
+            },
+            {
+              "x": 39.602,
+              "y": 342.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 71.203,
+        "max_y": 356.0
+      }
+    }
+  }
+}

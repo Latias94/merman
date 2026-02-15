@@ -1,0 +1,22 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): fork/join + choice routing.
+
+[*] --> Fork
+
+state Fork <<fork>>
+Fork --> Load
+Fork --> Prepare
+
+Load --> Decide
+Prepare --> Decide
+
+state Decide <<choice>>
+Decide -->|ok| Join
+Decide -->|retry| Load
+Decide -->|fail| Abort
+
+state Join <<join>>
+Join --> Done
+
+Abort --> [*]
+Done --> [*]

@@ -1,0 +1,12 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): comments, spacing, and mixed declaration styles.
+
+%% comment line should be ignored
+[*]  -->   s1
+s1: described via colon
+
+state "Quoted description" as s2
+s1 --> s2 : spaced label
+
+%% another comment
+s2 --> [*]

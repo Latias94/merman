@@ -32,6 +32,7 @@ TODO:
 
 Recently imported (keep gates green after each batch):
 
+- 2026-02-15: State authored stress fixtures batch (12 fixtures under `fixtures/state/stress_state_*.mmd`, with upstream SVG baselines). Refreshed State root viewport overrides and hardened State SVG parity for floating note no-op semantics and duplicate self-loop label handling to keep the global `parity-root` gate green.
 - 2026-02-15: Architecture authored stress fixtures batch (12 fixtures under `fixtures/architecture/stress_architecture_*.mmd`, with upstream SVG baselines). Refreshed Architecture root viewport overrides for the new fixture IDs to keep the global `parity-root` gate green.
 - 2026-02-15: Architecture HTML demo fixtures import (1 fixture from `repo-ref/mermaid/demos/architecture.html` via `<pre class="mermaid">`, with upstream SVG baselines). Added an Architecture root viewport override for the new fixture ID to keep the global `parity-root` gate green.
 - 2026-02-15: Class Cypress rendering fixtures batch import (25 fixtures from `repo-ref/mermaid/cypress/integration/rendering/classdiagram*.spec.{js,ts}` via `xtask import-upstream-cypress --diagram class --with-baselines --limit 25 --complex`, with upstream SVG baselines). Hardened Class SVG DOM parity for Markdown `<em>/<strong>` runs in HTML labels and namespace wrapper structure; refreshed Class root viewport overrides as needed to keep the global `parity-root` gate green.

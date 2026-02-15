@@ -1,0 +1,633 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "nodes": [
+        {
+          "id": "A",
+          "x": 134.0,
+          "y": 634.0,
+          "width": 25.594,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "B",
+          "x": 134.0,
+          "y": 774.0,
+          "width": 25.594,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Idle",
+          "x": 133.941,
+          "y": 1241.0,
+          "width": 42.813,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Init",
+          "x": 134.0,
+          "y": 256.0,
+          "width": 39.047,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Running",
+          "x": 134.0,
+          "y": 704.0,
+          "width": 95.594,
+          "height": 508.0,
+          "is_cluster": true
+        },
+        {
+          "id": "Running_end",
+          "x": 134.0,
+          "y": 901.0,
+          "width": 14.013,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Running_start",
+          "x": 134.0,
+          "y": 507.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Sidecar",
+          "x": 134.0,
+          "y": 1266.0,
+          "width": 142.0,
+          "height": 418.0,
+          "is_cluster": true
+        },
+        {
+          "id": "Sidecar_start",
+          "x": 133.941,
+          "y": 1114.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Top",
+          "x": 134.0,
+          "y": 811.0,
+          "width": 252.0,
+          "height": 1478.0,
+          "is_cluster": true
+        },
+        {
+          "id": "Work",
+          "x": 133.941,
+          "y": 1405.0,
+          "width": 52.156,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "divider-id-1",
+          "x": 134.0,
+          "y": 211.5,
+          "width": 109.047,
+          "height": 204.0,
+          "is_cluster": true
+        },
+        {
+          "id": "divider-id-1_start",
+          "x": 134.0,
+          "y": 154.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "id-38dvt516gkfs-1",
+          "x": 134.0,
+          "y": 962.5,
+          "width": 212.0,
+          "height": 1100.0,
+          "is_cluster": true
+        },
+        {
+          "id": "root_end",
+          "x": 134.0,
+          "y": 1607.0,
+          "width": 14.013,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "root_start",
+          "x": 134.0,
+          "y": 15.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge0",
+          "from": "root_start",
+          "to": "Top",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 134.0,
+              "y": 22.0
+            },
+            {
+              "x": 134.0,
+              "y": 47.0
+            },
+            {
+              "x": 134.0,
+              "y": 811.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge1",
+          "from": "divider-id-1_start",
+          "to": "Init",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 134.0,
+              "y": 161.0
+            },
+            {
+              "x": 134.0,
+              "y": 198.5
+            },
+            {
+              "x": 134.5,
+              "y": 236.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge10",
+          "from": "Sidecar",
+          "to": "Running",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 134.0,
+              "y": 1266.0
+            },
+            {
+              "x": 170.719,
+              "y": 1007.5
+            },
+            {
+              "x": 134.0,
+              "y": 704.0
+            }
+          ],
+          "label": {
+            "x": 170.719,
+            "y": 1007.5,
+            "width": 25.125,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge11",
+          "from": "Top",
+          "to": "root_end",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 134.0,
+              "y": 811.0
+            },
+            {
+              "x": 134.0,
+              "y": 1575.0
+            },
+            {
+              "x": 134.0,
+              "y": 1600.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge2",
+          "from": "Init",
+          "to": "Running",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 134.5,
+              "y": 276.5
+            },
+            {
+              "x": 134.0,
+              "y": 313.5
+            },
+            {
+              "x": 134.0,
+              "y": 363.0
+            },
+            {
+              "x": 134.0,
+              "y": 412.5
+            },
+            {
+              "x": 134.0,
+              "y": 704.0
+            }
+          ],
+          "label": {
+            "x": 134.0,
+            "y": 363.0,
+            "width": 34.406,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge3",
+          "from": "Running_start",
+          "to": "A",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 134.0,
+              "y": 514.0
+            },
+            {
+              "x": 134.0,
+              "y": 564.0
+            },
+            {
+              "x": 134.5,
+              "y": 614.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge4",
+          "from": "A",
+          "to": "B",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 134.5,
+              "y": 654.5
+            },
+            {
+              "x": 134.0,
+              "y": 704.0
+            },
+            {
+              "x": 134.5,
+              "y": 754.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge5",
+          "from": "B",
+          "to": "Running_end",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 134.5,
+              "y": 794.5
+            },
+            {
+              "x": 134.0,
+              "y": 844.0
+            },
+            {
+              "x": 134.0,
+              "y": 894.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge6",
+          "from": "Sidecar_start",
+          "to": "Idle",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 133.941,
+              "y": 1121.0
+            },
+            {
+              "x": 133.941,
+              "y": 1171.0
+            },
+            {
+              "x": 134.441,
+              "y": 1221.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge7",
+          "from": "Idle",
+          "to": "Work",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 128.675,
+              "y": 1261.5
+            },
+            {
+              "x": 110.301,
+              "y": 1323.0
+            },
+            {
+              "x": 128.675,
+              "y": 1385.5
+            }
+          ],
+          "label": {
+            "x": 110.301,
+            "y": 1323.0,
+            "width": 27.047,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge8",
+          "from": "Work",
+          "to": "Idle",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 140.207,
+              "y": 1385.5
+            },
+            {
+              "x": 157.582,
+              "y": 1323.0
+            },
+            {
+              "x": 140.207,
+              "y": 1261.5
+            }
+          ],
+          "label": {
+            "x": 157.582,
+            "y": 1323.0,
+            "width": 27.516,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge9",
+          "from": "Running",
+          "to": "Sidecar",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 134.0,
+              "y": 704.0
+            },
+            {
+              "x": 101.0,
+              "y": 1007.5
+            },
+            {
+              "x": 134.0,
+              "y": 1266.0
+            }
+          ],
+          "label": {
+            "x": 101.0,
+            "y": 1007.5,
+            "width": 40.0,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "Running",
+          "x": 134.0,
+          "y": 704.0,
+          "width": 95.594,
+          "height": 508.0,
+          "diff": -8.0,
+          "offset_y": 20.0,
+          "title": "Running",
+          "title_label": {
+            "x": 134.0,
+            "y": 463.0,
+            "width": 48.484,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "Sidecar",
+          "x": 134.0,
+          "y": 1266.0,
+          "width": 142.0,
+          "height": 418.0,
+          "diff": -8.0,
+          "offset_y": 20.0,
+          "title": "Sidecar",
+          "title_label": {
+            "x": 134.0,
+            "y": 1070.0,
+            "width": 48.484,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "Top",
+          "x": 134.0,
+          "y": 811.0,
+          "width": 252.0,
+          "height": 1478.0,
+          "diff": -8.0,
+          "offset_y": 20.0,
+          "title": "Top",
+          "title_label": {
+            "x": 134.0,
+            "y": 85.0,
+            "width": 23.359,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "divider-id-1",
+          "x": 134.0,
+          "y": 211.5,
+          "width": 109.047,
+          "height": 204.0,
+          "diff": -8.0,
+          "offset_y": 0.0,
+          "title": "divider-id-1",
+          "title_label": {
+            "x": 134.0,
+            "y": 122.5,
+            "width": 74.234,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "id-38dvt516gkfs-1",
+          "x": 134.0,
+          "y": 962.5,
+          "width": 212.0,
+          "height": 1100.0,
+          "diff": -8.0,
+          "offset_y": 0.0,
+          "title": "id-38dvt516gkfs-1",
+          "title_label": {
+            "x": 134.0,
+            "y": 425.5,
+            "width": 125.766,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 260.0,
+        "max_y": 1614.0
+      }
+    }
+  }
+}

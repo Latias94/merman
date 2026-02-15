@@ -10,6 +10,21 @@ pub fn lookup_state_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
+        "stress_state_click_directives_005" => Some(("0 0 82.421875 364", "82.4219")),
+        "stress_state_cross_composite_transitions_007" => {
+            Some(("0 0 464.1205139160156 626", "464.121"))
+        }
+        "stress_state_direction_variants_011" => Some(("0 0 352.94183349609375 146", "352.942")),
+        "stress_state_fork_join_and_choice_002" => Some(("0 0 378.3822326660156 416", "378.382")),
+        "stress_state_frontmatter_accessibility_012" => {
+            Some(("-86.8125 -50 234.0546875 324", "234.055"))
+        }
+        "stress_state_long_descriptions_and_aliases_006" => Some(("0 0 513.890625 541", "513.891")),
+        "stress_state_nested_composite_concurrency_001" => Some(("0 0 273.296875 1622", "273.297")),
+        "stress_state_notes_multiline_and_floating_003" => Some(("0 0 534.765625 500", "534.766")),
+        "stress_state_self_loops_and_edge_labels_008" => {
+            Some(("0 0 262.06304931640625 382.25", "262.063"))
+        }
         "basic" => Some(("0 0 100.125 298", "100.125")),
         "mmdr_tests_state_state_basic" => Some(("0 0 178.203125 234", "178.203")),
         "mmdr_tests_state_state_note" => Some(("0 0 221.4418182373047 364", "221.442")),

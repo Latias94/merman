@@ -1,0 +1,28 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): deep composite nesting + concurrent regions.
+
+[*] --> Top
+
+state Top {
+  [*] --> Init
+  Init --> Running: start
+
+  state Running {
+    [*] --> A
+    A --> B
+    B --> [*]
+  }
+
+  --
+
+  state Sidecar {
+    [*] --> Idle
+    Idle --> Work: tick
+    Work --> Idle: done
+  }
+
+  Running --> Sidecar: spawn
+  Sidecar --> Running: join
+}
+
+Top --> [*]

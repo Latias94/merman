@@ -1,0 +1,18 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): left/right notes, multiline note blocks, floating notes.
+
+[*] --> s1
+s1 --> s2: transition label\\nwith newline
+
+note right of s1
+This is a note
+with multiple lines
+end note
+
+note left of s2: short note label
+
+note "Floating\\nnote" as N1
+N1 --> s2
+s2 --> N1
+
+s2 --> [*]

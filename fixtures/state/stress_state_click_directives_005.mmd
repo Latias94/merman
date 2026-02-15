@@ -1,0 +1,11 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): click directives + tooltips.
+
+[*] --> Start
+Start --> Review
+Review --> Done
+Done --> [*]
+
+click Start "https://example.com/start" "Start docs"
+click Review "https://example.com/review" "Review docs"
+click Done "https://example.com/done" "Done docs"
