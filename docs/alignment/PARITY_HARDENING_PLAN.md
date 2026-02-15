@@ -15,6 +15,7 @@ current fixture set.
 1. Keep global parity green (`parity` + `parity-root`) while the fixture corpus grows.
 2. Reduce fixture-scoped override dependence where feasible.
 3. Preserve deterministic, reproducible results for the pinned upstream version.
+4. Keep fixture snapshots deterministic (avoid time-dependent drift, e.g. Gantt "today").
 
 ## Current Inventory
 
@@ -73,6 +74,8 @@ Actions:
    - `architecture`, `class`, `mindmap`, `state`, `flowchart`, `sequence`.
 2. Keep additions version-pinned and traceable to upstream source path and commit.
 3. Add fixtures in small batches and require both global checks green after each batch.
+4. Keep fixture snapshots stable by pinning the fixture clock for time-dependent diagrams (currently
+   `Engine::with_fixed_today(Some(2026-02-15))` in snapshot tests and snapshot update tools).
 
 Exit criteria:
 
