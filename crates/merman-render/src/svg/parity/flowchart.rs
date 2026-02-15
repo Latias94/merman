@@ -3075,7 +3075,7 @@ pub(super) fn render_flowchart_edge_path(
         match layout_shape {
             Some("circle") => intersect_circle(node, point),
             Some("cylinder" | "cyl") => intersect_cylinder(node, point),
-            Some("diamond") => intersect_diamond(node, point),
+            Some("diamond" | "diam") => intersect_diamond(node, point),
             Some("stadium") => intersect_stadium(ctx, node_id, node, point),
             Some("hexagon" | "hex") => intersect_hexagon(ctx, node_id, node, point),
             Some(s) if is_polygon_layout_shape(Some(s)) => polygon_points_for_layout_shape(s, node)
@@ -3113,8 +3113,15 @@ pub(super) fn render_flowchart_edge_path(
                 fn force_intersect(layout_shape: Option<&str>) -> bool {
                     matches!(
                         layout_shape,
-                        Some("circle" | "diamond" | "roundedRect" | "rounded" | "cylinder" | "cyl")
-                            | Some("stadium")
+                        Some(
+                            "circle"
+                                | "diamond"
+                                | "diam"
+                                | "roundedRect"
+                                | "rounded"
+                                | "cylinder"
+                                | "cyl",
+                        ) | Some("stadium")
                     ) || is_polygon_layout_shape(layout_shape)
                 }
 
@@ -8096,7 +8103,7 @@ pub(super) fn render_flowchart_node(
                 fmt(-(h / 2.0 + ry))
             );
         }
-        "diamond" | "question" => {
+        "diamond" | "question" | "diam" => {
             let w = layout_node.width.max(1.0);
             let h = layout_node.height.max(1.0);
             let _ = write!(
@@ -9774,7 +9781,7 @@ pub(super) fn render_flowchart_v2_svg(
                         // pixel lattice as other nodes. This makes the DOM bbox slightly
                         // asymmetric around the node center and affects the root `getBBox()`
                         // width (and thus `viewBox` / `max-width`) by 0.5px.
-                        if shape == "diamond" || shape == "rhombus" {
+                        if shape == "diamond" || shape == "diam" || shape == "rhombus" {
                             left_hw = (left_hw - 0.5).max(0.0);
                             right_hw += 0.5;
                         }
