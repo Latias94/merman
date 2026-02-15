@@ -400,7 +400,10 @@ fn split_semicolons(line: &str) -> Vec<&str> {
 
 fn parse_colon_value_ci(line: &str, key: &str) -> Option<String> {
     let t = line.trim_start();
-    if t.len() < key.len() || !t[..key.len()].eq_ignore_ascii_case(key) {
+    if !t
+        .get(..key.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(key))
+    {
         return None;
     }
     let mut rest = &t[key.len()..];
@@ -413,7 +416,10 @@ fn parse_colon_value_ci(line: &str, key: &str) -> Option<String> {
 
 fn parse_keyword_rest_ci(line: &str, key: &str) -> Option<String> {
     let t = line.trim_start();
-    if t.len() < key.len() || !t[..key.len()].eq_ignore_ascii_case(key) {
+    if !t
+        .get(..key.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(key))
+    {
         return None;
     }
     let rest = &t[key.len()..];

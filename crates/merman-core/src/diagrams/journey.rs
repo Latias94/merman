@@ -80,7 +80,8 @@ impl JourneyDb {
 }
 
 fn starts_with_ci(s: &str, prefix: &str) -> bool {
-    s.len() >= prefix.len() && s[..prefix.len()].eq_ignore_ascii_case(prefix)
+    s.get(..prefix.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
 }
 
 fn split_hash_or_semi(s: &str) -> &str {

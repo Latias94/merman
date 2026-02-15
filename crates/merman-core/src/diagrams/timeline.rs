@@ -59,7 +59,8 @@ impl TimelineDb {
 }
 
 fn starts_with_ci(s: &str, prefix: &str) -> bool {
-    s.len() >= prefix.len() && s[..prefix.len()].eq_ignore_ascii_case(prefix)
+    s.get(..prefix.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
 }
 
 fn parse_keyword_arg_full_line_after_one_ws<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
