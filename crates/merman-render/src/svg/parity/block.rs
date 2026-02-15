@@ -528,7 +528,11 @@ pub(super) fn render_block_diagram_svg(
         fmt(vb_h.max(1.0))
     );
     let mut max_w_style = fmt_max_width_px(vb_w.max(1.0));
-    if let Some((viewbox, max_w)) = crate::generated::block_root_overrides_11_12_2::lookup_block_root_viewport_override(diagram_id) {
+    if let Some((viewbox, max_w)) =
+        crate::generated::block_root_overrides_11_12_2::lookup_block_root_viewport_override(
+            diagram_id,
+        )
+    {
         viewbox_attr = viewbox.to_string();
         max_w_style = max_w.to_string();
     }
@@ -658,12 +662,7 @@ pub(super) fn render_block_diagram_svg(
             "diamond" => {
                 emit_polygon(
                     &mut out,
-                    &[
-                        (0.0, 0.0),
-                        (1.0, 0.0),
-                        (1.0, 1.0),
-                        (0.0, 1.0),
-                    ],
+                    &[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)],
                     x,
                     y,
                 );

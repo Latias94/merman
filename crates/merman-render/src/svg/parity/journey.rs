@@ -321,7 +321,11 @@ pub(super) fn render_journey_diagram_svg(
         min_y = fmt(vb_min_y),
         w = fmt(vb_w),
         h = fmt(vb_h),
-        svg_h = fmt(if vb_min_y < 0.0 { vb_h - vb_min_y } else { vb_h }),
+        svg_h = fmt(if vb_min_y < 0.0 {
+            vb_h - vb_min_y
+        } else {
+            vb_h
+        }),
         aria = aria,
     );
 
