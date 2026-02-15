@@ -1,0 +1,16 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): group boundary traversal edges with ports + bidirectional arrows.
+
+group g1(cloud)[Group One]
+group g2(cloud)[Group Two]
+group g3(cloud)[Group Three] in g2
+
+service s1(server)[S1] in g1
+service s2(server)[S2] in g1
+service s3(server)[S3] in g2
+service s4(server)[S4] in g3
+
+s1{group}:R -[east]-> L:s3{group}
+s2{group}:B --> T:s4{group}
+s4{group}:L <--> R:s1{group}
+s3{group}:B --> T:s4{group}

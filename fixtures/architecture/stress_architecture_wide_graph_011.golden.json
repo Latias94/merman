@@ -1,0 +1,598 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [],
+    "nodes": [
+      {
+        "id": "n_left",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "n_left",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "n_mid1",
+            "rhsDir": "L",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Left",
+        "in": null
+      },
+      {
+        "id": "n_mid1",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "n_left",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "n_mid1",
+            "rhsDir": "L",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "n_mid1",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "n_mid2",
+            "rhsDir": "L",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "jmid",
+            "lhsDir": "L",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "n_mid1",
+            "rhsDir": "R",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "fan out"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Mid 1",
+        "in": null
+      },
+      {
+        "id": "n_mid2",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "n_mid1",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "n_mid2",
+            "rhsDir": "L",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "n_mid2",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "n_right",
+            "rhsDir": "L",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "jmid",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "n_mid2",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "fan out"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Mid 2",
+        "in": null
+      },
+      {
+        "id": "n_right",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "n_mid2",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "n_right",
+            "rhsDir": "L",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "n_up",
+            "lhsDir": "R",
+            "lhsInto": true,
+            "lhsGroup": null,
+            "rhsId": "n_right",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Right",
+        "in": null
+      },
+      {
+        "id": "n_up",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "n_up",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "jmid",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "n_up",
+            "lhsDir": "R",
+            "lhsInto": true,
+            "lhsGroup": null,
+            "rhsId": "n_right",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Up",
+        "in": null
+      },
+      {
+        "id": "n_down",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "n_down",
+            "lhsDir": "T",
+            "lhsInto": true,
+            "lhsGroup": null,
+            "rhsId": "jmid",
+            "rhsDir": "B",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Down",
+        "in": null
+      },
+      {
+        "id": "jmid",
+        "type": "junction",
+        "edges": [
+          {
+            "lhsId": "n_up",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "jmid",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "n_down",
+            "lhsDir": "T",
+            "lhsInto": true,
+            "lhsGroup": null,
+            "rhsId": "jmid",
+            "rhsDir": "B",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "jmid",
+            "lhsDir": "L",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "n_mid1",
+            "rhsDir": "R",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "fan out"
+          },
+          {
+            "lhsId": "jmid",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "n_mid2",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "fan out"
+          }
+        ],
+        "icon": null,
+        "iconText": null,
+        "title": null,
+        "in": null
+      }
+    ],
+    "services": [
+      {
+        "id": "n_left",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "n_left",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "n_mid1",
+            "rhsDir": "L",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Left",
+        "in": null
+      },
+      {
+        "id": "n_mid1",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "n_left",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "n_mid1",
+            "rhsDir": "L",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "n_mid1",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "n_mid2",
+            "rhsDir": "L",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "jmid",
+            "lhsDir": "L",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "n_mid1",
+            "rhsDir": "R",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "fan out"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Mid 1",
+        "in": null
+      },
+      {
+        "id": "n_mid2",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "n_mid1",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "n_mid2",
+            "rhsDir": "L",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "n_mid2",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "n_right",
+            "rhsDir": "L",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "jmid",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "n_mid2",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "fan out"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Mid 2",
+        "in": null
+      },
+      {
+        "id": "n_right",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "n_mid2",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "n_right",
+            "rhsDir": "L",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "n_up",
+            "lhsDir": "R",
+            "lhsInto": true,
+            "lhsGroup": null,
+            "rhsId": "n_right",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Right",
+        "in": null
+      },
+      {
+        "id": "n_up",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "n_up",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "jmid",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "n_up",
+            "lhsDir": "R",
+            "lhsInto": true,
+            "lhsGroup": null,
+            "rhsId": "n_right",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Up",
+        "in": null
+      },
+      {
+        "id": "n_down",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "n_down",
+            "lhsDir": "T",
+            "lhsInto": true,
+            "lhsGroup": null,
+            "rhsId": "jmid",
+            "rhsDir": "B",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Down",
+        "in": null
+      }
+    ],
+    "junctions": [
+      {
+        "id": "jmid",
+        "type": "junction",
+        "edges": [
+          {
+            "lhsId": "n_up",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "jmid",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "n_down",
+            "lhsDir": "T",
+            "lhsInto": true,
+            "lhsGroup": null,
+            "rhsId": "jmid",
+            "rhsDir": "B",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "jmid",
+            "lhsDir": "L",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "n_mid1",
+            "rhsDir": "R",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "fan out"
+          },
+          {
+            "lhsId": "jmid",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "n_mid2",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "fan out"
+          }
+        ],
+        "icon": null,
+        "iconText": null,
+        "title": null,
+        "in": null
+      }
+    ],
+    "edges": [
+      {
+        "lhsId": "n_left",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "n_mid1",
+        "rhsDir": "L",
+        "rhsInto": null,
+        "rhsGroup": null,
+        "title": null
+      },
+      {
+        "lhsId": "n_mid1",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "n_mid2",
+        "rhsDir": "L",
+        "rhsInto": null,
+        "rhsGroup": null,
+        "title": null
+      },
+      {
+        "lhsId": "n_mid2",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "n_right",
+        "rhsDir": "L",
+        "rhsInto": null,
+        "rhsGroup": null,
+        "title": null
+      },
+      {
+        "lhsId": "n_up",
+        "lhsDir": "B",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "jmid",
+        "rhsDir": "T",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": null
+      },
+      {
+        "lhsId": "n_down",
+        "lhsDir": "T",
+        "lhsInto": true,
+        "lhsGroup": null,
+        "rhsId": "jmid",
+        "rhsDir": "B",
+        "rhsInto": null,
+        "rhsGroup": null,
+        "title": null
+      },
+      {
+        "lhsId": "jmid",
+        "lhsDir": "L",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "n_mid1",
+        "rhsDir": "R",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": "fan out"
+      },
+      {
+        "lhsId": "jmid",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "n_mid2",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": "fan out"
+      },
+      {
+        "lhsId": "n_up",
+        "lhsDir": "R",
+        "lhsInto": true,
+        "lhsGroup": null,
+        "rhsId": "n_right",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": null
+      }
+    ]
+  }
+}

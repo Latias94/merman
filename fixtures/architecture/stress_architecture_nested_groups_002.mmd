@@ -1,0 +1,18 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): nested groups + cross-group edges with labels.
+
+group platform(cloud)[Platform]
+group runtime(cloud)[Runtime] in platform
+group data(cloud)[Data] in platform
+
+service ingress(internet)[Ingress]
+service svc1(server)[Service 1] in runtime
+service svc2(server)[Service 2] in runtime
+service db(database)[PostgreSQL] in data
+service obj(disk)[Object Store] in data
+
+ingress{group}:R --> L:svc1{group}
+svc1:R --> L:svc2
+svc2{group}:B -[write]-> T:db{group}
+svc2{group}:B -[backup]-> T:obj{group}
+db:R <--> L:obj

@@ -1,0 +1,15 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): mixed service forms (plain/icon/iconText) + junction routing.
+
+service plain
+service icon(server)[Has Icon]
+service icon_text "logos:aws-lambda" [Iconify Text]
+service unknown(iconnamedoesntexist)[Fallback]
+
+junction j
+
+plain:R -- L:j
+icon:L -- R:j
+icon_text:T --> B:j
+unknown:B -[label]-> T:j
+j:R -[out]-> L:plain

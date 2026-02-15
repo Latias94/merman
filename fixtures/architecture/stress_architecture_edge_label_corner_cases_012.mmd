@@ -1,0 +1,10 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): edge label corner cases (punctuation, slashes, spacing) across ports.
+
+service a(server)[A]
+service b(server)[B]
+service c(server)[C]
+
+a:R -[HTTP 2 gRPC]-> L:b
+b:B -[cache hit 97 5]-> T:c
+c:L -[path api v1 items id 42]-> R:a

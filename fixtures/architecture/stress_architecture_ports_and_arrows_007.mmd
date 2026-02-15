@@ -1,0 +1,16 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): port pairs + arrow variants + titled edges.
+
+service n_left(server)[Left]
+service n_right(server)[Right]
+service n_top(server)[Top]
+service n_bottom(server)[Bottom]
+junction center
+
+n_left:R -- L:center
+n_right:L <-- R:center
+n_top:B --> T:center
+n_bottom:T <--> B:center
+
+n_left:T -[L to T]-> B:n_top
+n_right:B -[R to B]- T:n_bottom

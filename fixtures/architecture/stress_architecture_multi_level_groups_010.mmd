@@ -1,0 +1,17 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): multi-level groups with mixed intra/inter edges.
+
+group a(cloud)[A]
+group a1(cloud)[A1] in a
+group a2(cloud)[A2] in a
+group b(cloud)[B]
+
+service s1(server)[s1] in a1
+service s2(server)[s2] in a2
+service s3(server)[s3] in b
+service s4(database)[s4] in b
+
+s1:B -- T:s2
+s2{group}:R --> L:s3{group}
+s3:R -[queries]-> L:s4
+s4{group}:L <-- R:s1{group}

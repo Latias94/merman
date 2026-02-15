@@ -1,0 +1,26 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): dense mesh with mixed arrows/labels and group boundary traversal.
+
+group core(cloud)[Core]
+
+service api(server)[API] in core
+service web(server)[Web] in core
+service db(database)[DB] in core
+service cache(disk)[Cache] in core
+service mq(server)[MQ] in core
+service auth(server)[Auth] in core
+
+service ext(internet)[Internet]
+service gw(internet)[Gateway]
+
+web:R -[calls]-> L:api
+auth:T --> B:api
+api:R --> L:db
+api:B -[reads]-> T:cache
+mq:L <--> R:api
+cache:R --> L:mq
+db:B -[replication]-> T:cache
+
+ext:B --> T:gw
+gw{group}:L --> R:web{group}
+gw{group}:R --> L:db{group}

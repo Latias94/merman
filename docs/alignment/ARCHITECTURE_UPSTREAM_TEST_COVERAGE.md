@@ -131,3 +131,22 @@ Source: `repo-ref/mermaid/demos/architecture.html` (via `<pre class="mermaid">` 
 - `fixtures/architecture/upstream_html_demos_architecture_junction_demo_010.mmd`
 - `fixtures/architecture/upstream_html_demos_architecture_junction_demo_groups_011.mmd`
 - `fixtures/architecture/upstream_html_demos_architecture_external_icons_demo_012.mmd`
+
+## Authored stress fixtures
+
+These fixtures are authored (not imported) to exercise architecture layout and renderer parity for
+dense graphs, nested groups, junction routing, and mixed service forms while keeping the global
+`parity-root` gate green.
+
+- `fixtures/architecture/stress_architecture_dense_mesh_001.mmd`
+- `fixtures/architecture/stress_architecture_nested_groups_002.mmd`
+- `fixtures/architecture/stress_architecture_junction_star_003.mmd`
+- `fixtures/architecture/stress_architecture_group_boundary_traversal_004.mmd`
+- `fixtures/architecture/stress_architecture_external_icons_005.mmd`
+- `fixtures/architecture/stress_architecture_long_labels_006.mmd`
+- `fixtures/architecture/stress_architecture_ports_and_arrows_007.mmd`
+- `fixtures/architecture/stress_architecture_grouped_junctions_008.mmd`
+- `fixtures/architecture/stress_architecture_mixed_service_forms_009.mmd`
+- `fixtures/architecture/stress_architecture_multi_level_groups_010.mmd`
+- `fixtures/architecture/stress_architecture_wide_graph_011.mmd`
+- `fixtures/architecture/stress_architecture_edge_label_corner_cases_012.mmd`

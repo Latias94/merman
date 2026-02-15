@@ -208,22 +208,73 @@ pub(super) fn render_architecture_diagram_svg(
         measurer: &dyn crate::text::TextMeasurer,
         style: &crate::text::TextStyle,
     ) -> Vec<String> {
+        // Mermaid Architecture uses SVG `<text>` output (no `<foreignObject>`), and its wrapping
+        // behavior breaks long tokens by character when they do not fit the available width.
+        //
+        // This differs from our generic word-wrapping helpers that keep long words intact.
+        // Preserve this behavior so upstream SVG baselines match for narrow edge labels.
         let mut out: Vec<String> = Vec::new();
+
         for raw_line in crate::text::DeterministicTextMeasurer::normalized_text_lines(text) {
-            let tokens = crate::text::DeterministicTextMeasurer::split_line_to_words(&raw_line);
-            let mut curr = String::new();
-            for tok in tokens {
-                let candidate = format!("{curr}{tok}");
+            let mut tokens = std::collections::VecDeque::from(
+                crate::text::DeterministicTextMeasurer::split_line_to_words(&raw_line),
+            );
+            let mut cur = String::new();
+
+            while let Some(tok) = tokens.pop_front() {
+                if cur.is_empty() && tok == " " {
+                    continue;
+                }
+
+                let candidate = format!("{cur}{tok}");
                 let w = measurer.measure(candidate.trim_end(), style).width;
-                if curr.is_empty() || w <= max_width_px {
-                    curr = candidate;
-                } else {
-                    out.push(curr.trim().to_string());
-                    curr = tok;
+                if cur.is_empty() || w <= max_width_px {
+                    cur = candidate;
+                    continue;
+                }
+
+                if !cur.trim().is_empty() {
+                    out.push(cur.trim_end().to_string());
+                    cur.clear();
+                    tokens.push_front(tok);
+                    continue;
+                }
+
+                // `tok` itself does not fit on an empty line: split it by characters.
+                if tok == " " {
+                    continue;
+                }
+
+                let mut head = String::new();
+                let mut consumed = 0usize;
+                for (idx, ch) in tok.chars().enumerate() {
+                    let next = format!("{head}{ch}");
+                    let w = measurer.measure(next.trim_end(), style).width;
+                    if !head.is_empty() && w > max_width_px {
+                        break;
+                    }
+                    head.push(ch);
+                    consumed = idx + 1;
+
+                    // If even a single character does not fit, keep making progress to avoid
+                    // an infinite loop.
+                    if head.len() == ch.len_utf8() && w > max_width_px {
+                        break;
+                    }
+                }
+
+                if !head.is_empty() {
+                    out.push(head.trim_end().to_string());
+                }
+                let tail: String = tok.chars().skip(consumed).collect();
+                if !tail.is_empty() {
+                    tokens.push_front(tail);
                 }
             }
-            out.push(curr.trim().to_string());
+
+            out.push(cur.trim_end().to_string());
         }
+
         out
     }
 
