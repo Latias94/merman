@@ -26,12 +26,22 @@ Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is 
     - `class_medium`: `render 3.70x` (despite `layout 0.38x` and `end_to_end 0.62x`)
     - `flowchart_medium`: `render 1.75x` (despite `layout 1.04x` and `end_to_end 0.87x`)
 
+Local re-run notes (same date, after merging local `main` + small renderer refactors):
+
+- Stage spot-check expanded to include `state_medium`:
+  - `target/bench/stage_spotcheck.latest.md` (10 samples / 1s warmup / 5s measurement; includes `state_medium`)
+  - Stage gmeans (6 fixtures): `parse ~1.50x`, `layout ~1.12x`, `render ~1.89x`, `end_to_end ~1.06x`.
+- End-to-end canary comparison (8 fixtures: `*_tiny` + `*_medium` for flowchart/class/state/sequence):
+  - `target/bench/COMPARISON.latest.after_state_and_sequence_fxhash.md` (10 samples / 1s warmup / 1s measurement; noisier)
+  - Interpretation: **medium fixtures are already competitive** (gmean < `1.0x`), while **tiny fixtures are still dominated by fixed overhead** (gmean ~`2x`).
+
 Near-term priorities (updated plan):
 
-1. **Flowchart render**: keep `end_to_end/flowchart_medium <= 1.0x` while reducing `render/flowchart_medium` from `~1.8x` to `<= 1.3x`.
+1. **Tiny overhead**: reduce fixed-cost overheads on `*_tiny` canaries (hashing, config access, small-map churn) so the tiny gmean moves from ~`2x` to `<= 1.3x`.
+2. **Flowchart render**: keep `end_to_end/flowchart_medium <= 1.0x` while reducing `render/flowchart_medium` from `~1.8x` to `<= 1.3x`.
     This is a top priority because flowcharts tend to dominate absolute runtime (ms-scale).
-2. **Mindmap layout**: reduce `layout/mindmap_medium` from `~2.6x` to `<= 2.0x` (COSE port / bbox).
-3. **Architecture layout+render**: reduce fixed overhead on tiny diagrams and/or add a fast-path for
+3. **Mindmap layout**: reduce `layout/mindmap_medium` from `~2.6x` to `<= 2.0x` (COSE port / bbox).
+4. **Architecture layout+render**: reduce fixed overhead on tiny diagrams and/or add a fast-path for
     common topologies to bring `end_to_end/architecture_medium` down from `~3.6x`.
 
 Root-cause direction:
