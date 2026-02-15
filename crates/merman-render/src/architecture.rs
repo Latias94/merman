@@ -286,14 +286,16 @@ fn layout_architecture_diagram_model(
     // Build adjacency list in Mermaid's insertion order:
     // - Outer order: `model.nodes` order.
     // - Inner order: `node.edges` list order, preserving first-insertion order for each dir pair.
-    let mut adjacency: std::collections::HashMap<String, IndexMap<&'static str, String>> =
-        std::collections::HashMap::new();
+    let mut adjacency: std::collections::HashMap<&str, IndexMap<&'static str, &str>> =
+        std::collections::HashMap::with_capacity(model.nodes.len().saturating_mul(2));
     for n in &model.nodes {
-        adjacency.insert(n.id.clone(), IndexMap::new());
+        adjacency.insert(n.id.as_str(), IndexMap::new());
     }
 
     for n in &model.nodes {
-        let entry = adjacency.entry(n.id.clone()).or_default();
+        let Some(entry) = adjacency.get_mut(n.id.as_str()) else {
+            continue;
+        };
         if !n.edge_indices.is_empty() {
             for &idx in &n.edge_indices {
                 let Some(e) = model.edges.get(idx) else {
@@ -309,11 +311,11 @@ fn layout_architecture_diagram_model(
 
                 if e.lhs_id == n.id {
                     if let Some(pair) = dir_pair_key(lhs_dir, rhs_dir) {
-                        entry.insert(pair, e.rhs_id.clone());
+                        entry.insert(pair, e.rhs_id.as_str());
                     }
                 } else if e.rhs_id == n.id {
                     if let Some(pair) = dir_pair_key(rhs_dir, lhs_dir) {
-                        entry.insert(pair, e.lhs_id.clone());
+                        entry.insert(pair, e.lhs_id.as_str());
                     }
                 }
             }
@@ -328,11 +330,11 @@ fn layout_architecture_diagram_model(
 
                 if e.lhs_id == n.id {
                     if let Some(pair) = dir_pair_key(lhs_dir, rhs_dir) {
-                        entry.insert(pair, e.rhs_id.clone());
+                        entry.insert(pair, e.rhs_id.as_str());
                     }
                 } else if e.rhs_id == n.id {
                     if let Some(pair) = dir_pair_key(rhs_dir, lhs_dir) {
-                        entry.insert(pair, e.lhs_id.clone());
+                        entry.insert(pair, e.lhs_id.as_str());
                     }
                 }
             }
@@ -345,40 +347,41 @@ fn layout_architecture_diagram_model(
     //
     // IMPORTANT: `shiftPositionByArchitectureDirectionPair` uses a y-up convention; when mapping
     // to SVG coordinates we invert the sign to keep y-down in pixel space.
-    let mut components: Vec<std::collections::BTreeMap<String, (i32, i32)>> = Vec::new();
+    let mut components: Vec<std::collections::BTreeMap<&str, (i32, i32)>> = Vec::new();
 
     // Deterministic component discovery: mimic Mermaid's `Object.keys(notVisited)[0]` by walking
     // `node_order` and taking the first not-yet-assigned id for each component.
-    let node_order: Vec<String> = model.nodes.iter().map(|n| n.id.clone()).collect();
-    let mut assigned: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for start_id in &node_order {
+    let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id.as_str()).collect();
+    let mut assigned: std::collections::HashSet<&str> =
+        std::collections::HashSet::with_capacity(model.nodes.len().saturating_mul(2));
+    for &start_id in &node_order {
         if assigned.contains(start_id) {
             continue;
         }
         // BFS over this component, assigning coordinates.
-        let mut spatial: std::collections::BTreeMap<String, (i32, i32)> =
-            std::collections::BTreeMap::new();
         use std::collections::VecDeque;
-        let mut q: VecDeque<String> = VecDeque::new();
-        spatial.insert(start_id.clone(), (0, 0));
-        q.push_back(start_id.clone());
-        assigned.insert(start_id.clone());
+        let mut spatial: std::collections::BTreeMap<&str, (i32, i32)> =
+            std::collections::BTreeMap::new();
+        let mut q: VecDeque<&str> = VecDeque::new();
+        spatial.insert(start_id, (0, 0));
+        q.push_back(start_id);
+        assigned.insert(start_id);
 
         while let Some(id) = q.pop_front() {
-            let Some(&(x, y)) = spatial.get(&id) else {
+            let Some(&(x, y)) = spatial.get(id) else {
                 continue;
             };
-            let Some(adj) = adjacency.get(&id) else {
+            let Some(adj) = adjacency.get(id) else {
                 continue;
             };
-            for (pair, rhs_id) in adj.iter() {
+            for (pair, &rhs_id) in adj.iter() {
                 if spatial.contains_key(rhs_id) {
                     continue;
                 }
                 let (nx, ny) = shift_position_by_arch_pair(x, y, pair);
-                spatial.insert(rhs_id.clone(), (nx, ny));
-                q.push_back(rhs_id.clone());
-                assigned.insert(rhs_id.clone());
+                spatial.insert(rhs_id, (nx, ny));
+                q.push_back(rhs_id);
+                assigned.insert(rhs_id);
             }
         }
 
@@ -395,8 +398,8 @@ fn layout_architecture_diagram_model(
     let component_gap = (grid_step / 2.0).max(1.0);
 
     // Convert grid coords to pixel coords, lay out disconnected components left-to-right.
-    let mut pos_px: std::collections::HashMap<String, (f64, f64)> =
-        std::collections::HashMap::new();
+    let mut pos_px: std::collections::HashMap<&str, (f64, f64)> =
+        std::collections::HashMap::with_capacity(model.nodes.len().saturating_mul(2));
     let mut offset_x = 0.0f64;
     for spatial in &components {
         // Compute component bbox in pixel space before offset.
@@ -408,14 +411,15 @@ fn layout_architecture_diagram_model(
             let y = -(*gy as f64) * grid_step;
             min_x = min_x.min(x);
             max_x = max_x.max(x + icon_size);
-            pos_px.insert(id.clone(), (x, y));
+            pos_px.insert(*id, (x, y));
         }
 
         // Apply component offset.
         let dx = offset_x - min_x;
         for id in spatial.keys() {
+            let id = *id;
             let (x, y) = pos_px.get(id).copied().unwrap_or((0.0, 0.0));
-            pos_px.insert(id.clone(), (x + dx, y));
+            pos_px.insert(id, (x + dx, y));
         }
 
         offset_x += (max_x - min_x) + component_gap;
@@ -468,7 +472,7 @@ fn layout_architecture_diagram_model(
             }
         }
 
-        let (x, y) = pos_px.get(&n.id).copied().unwrap_or((0.0, 0.0));
+        let (x, y) = pos_px.get(n.id.as_str()).copied().unwrap_or((0.0, 0.0));
         nodes.push(LayoutNode {
             id: n.id.clone(),
             x: x + shift_x,
@@ -680,7 +684,7 @@ fn layout_architecture_diagram_model(
         }
 
         // Build spatial maps in Mermaid's coordinate space (y-up), keyed by node id.
-        let spatial_maps: Vec<std::collections::BTreeMap<String, (i32, i32)>> = components.clone();
+        let spatial_maps: Vec<std::collections::BTreeMap<&str, (i32, i32)>> = components.clone();
 
         // AlignmentConstraint.
         let mut horizontal_all: Vec<Vec<String>> = Vec::new();
@@ -696,8 +700,9 @@ fn layout_architecture_diagram_model(
             > = std::collections::BTreeMap::new();
 
             for (id, (x, y)) in spatial_map {
+                let id = *id;
                 let node_group = node_group
-                    .get(id.as_str())
+                    .get(id)
                     .and_then(|v| *v)
                     .unwrap_or("default")
                     .to_string();
@@ -707,14 +712,14 @@ fn layout_architecture_diagram_model(
                     .or_default()
                     .entry(node_group.clone())
                     .or_default()
-                    .push(id.clone());
+                    .push(id.to_string());
 
                 vertical_alignments
                     .entry(*x)
                     .or_default()
                     .entry(node_group)
                     .or_default()
-                    .push(id.clone());
+                    .push(id.to_string());
             }
 
             let horiz_map = flatten_alignments(
@@ -746,7 +751,7 @@ fn layout_architecture_diagram_model(
             let mut inv: std::collections::BTreeMap<(i32, i32), String> =
                 std::collections::BTreeMap::new();
             for (id, (x, y)) in spatial_map {
-                inv.insert((*x, *y), id.clone());
+                inv.insert((*x, *y), (*id).to_string());
             }
 
             let mut queue: std::collections::VecDeque<(i32, i32)> =
