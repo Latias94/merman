@@ -61,6 +61,10 @@ impl DetectorRegistry {
             .any_comment_re
             .replace_all(no_directives.as_ref(), "\n");
 
+        if let Some(id) = fast_detect_by_leading_keyword(cleaned.as_ref()) {
+            return Ok(id);
+        }
+
         for det in &self.detectors {
             if (det.detector)(cleaned.as_ref(), config) {
                 return Ok(det.id);
@@ -80,6 +84,10 @@ impl DetectorRegistry {
         text: &str,
         config: &mut MermaidConfig,
     ) -> Result<&'static str> {
+        if let Some(id) = fast_detect_by_leading_keyword(text) {
+            return Ok(id);
+        }
+
         for det in &self.detectors {
             if (det.detector)(text, config) {
                 return Ok(det.id);
@@ -180,6 +188,62 @@ impl DetectorRegistry {
     pub fn default_mermaid_11_12_2() -> Self {
         Self::default_mermaid_11_12_2_tiny()
     }
+}
+
+fn fast_detect_by_leading_keyword(text: &str) -> Option<&'static str> {
+    fn has_boundary(rest: &str) -> bool {
+        rest.is_empty()
+            || rest
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_whitespace() || c == ';')
+    }
+
+    let t = text.trim_start();
+
+    // Prefer a fast string-prefix check for common "keyword header" diagrams.
+    // This avoids running dozens of regex detectors for tiny fixtures.
+    if let Some(rest) = t.strip_prefix("sequenceDiagram") {
+        return has_boundary(rest).then_some("sequence");
+    }
+    if let Some(rest) = t.strip_prefix("classDiagram") {
+        return has_boundary(rest).then_some("classDiagram");
+    }
+    if let Some(rest) = t.strip_prefix("stateDiagram") {
+        return has_boundary(rest).then_some("stateDiagram");
+    }
+    if let Some(rest) = t.strip_prefix("mindmap") {
+        return has_boundary(rest).then_some("mindmap");
+    }
+    if let Some(rest) = t.strip_prefix("architecture") {
+        return has_boundary(rest).then_some("architecture");
+    }
+    if let Some(rest) = t.strip_prefix("erDiagram") {
+        return has_boundary(rest).then_some("er");
+    }
+    if let Some(rest) = t.strip_prefix("gantt") {
+        return has_boundary(rest).then_some("gantt");
+    }
+    if let Some(rest) = t.strip_prefix("timeline") {
+        return has_boundary(rest).then_some("timeline");
+    }
+    if let Some(rest) = t.strip_prefix("journey") {
+        return has_boundary(rest).then_some("journey");
+    }
+    if let Some(rest) = t.strip_prefix("gitGraph") {
+        return has_boundary(rest).then_some("gitGraph");
+    }
+    if let Some(rest) = t.strip_prefix("quadrantChart") {
+        return has_boundary(rest).then_some("quadrantChart");
+    }
+    if let Some(rest) = t.strip_prefix("packet-beta") {
+        return has_boundary(rest).then_some("packet");
+    }
+    if let Some(rest) = t.strip_prefix("xychart-beta") {
+        return has_boundary(rest).then_some("xychart");
+    }
+
+    None
 }
 
 fn remove_directives(text: &str) -> Cow<'_, str> {
