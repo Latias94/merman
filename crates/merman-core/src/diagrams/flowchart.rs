@@ -1637,6 +1637,7 @@ impl FlowchartBuildState {
         for stmt in statements {
             match stmt {
                 Stmt::Chain { nodes, edges } => {
+                    let mut deferred_shape_data_vertex_calls: Vec<String> = Vec::new();
                     for mut n in nodes.iter().cloned() {
                         // Mermaid FlowDB `vertexCounter` increments on every `addVertex(...)` call.
                         // Our grammar models `shapeData` attachments in the AST, so we can replay the
@@ -1645,13 +1646,19 @@ impl FlowchartBuildState {
                         // - once more if a `@{ ... }` shapeData block is present
                         self.vertex_calls.push(n.id.clone());
                         if n.shape_data.is_some() {
-                            self.vertex_calls.push(n.id.clone());
+                            // For multi-vertex statements (notably `&`-separated nodes), the upstream
+                            // parser's reduction order can apply shapeData after the statement's
+                            // vertices have already been introduced. Record these shapeData calls
+                            // after we've visited every vertex in the statement.
+                            deferred_shape_data_vertex_calls.push(n.id.clone());
                         }
                         if let Some(sd) = n.shape_data.take() {
                             apply_shape_data_to_node(&mut n, &sd)?;
                         }
                         self.upsert_node(n);
                     }
+                    self.vertex_calls
+                        .extend(deferred_shape_data_vertex_calls.into_iter());
                     for e in edges.iter().cloned() {
                         self.push_edge(e);
                     }

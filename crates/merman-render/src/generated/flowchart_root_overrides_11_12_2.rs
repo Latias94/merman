@@ -207,6 +207,9 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_015" => {
             Some(("0 0 154.921875 364", "154.922"))
         }
+        "upstream_cypress_flowchart_v2_spec_should_render_a_stadium_shaped_node_068" => {
+            Some(("0 0 385.96875 159", "385.969"))
+        }
         "upstream_cypress_flowchart_v2_spec_should_render_a_diamond_shaped_node_using_shape_config_069" => {
             Some(("0 0 175.984375 236.3125", "175.984"))
         }
