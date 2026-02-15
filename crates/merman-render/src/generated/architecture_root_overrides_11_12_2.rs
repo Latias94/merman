@@ -66,6 +66,9 @@ pub fn lookup_architecture_root_viewport_override(
         "upstream_architecture_cypress_fallback_icon" => {
             Some(("-49.8515625 -22 179.953125 184.1875", "179.953125"))
         }
+        "upstream_html_demos_architecture_default_icon_from_unknown_icon_name_003" => {
+            Some(("-49.8515625 -22 179.953125 184.1875", "179.953125"))
+        }
         "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_the_fallback_icon_004" => {
             Some(("-49.8515625 -22 179.953125 184.1875", "179.953125"))
         }
