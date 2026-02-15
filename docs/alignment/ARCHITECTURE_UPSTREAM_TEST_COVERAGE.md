@@ -167,3 +167,15 @@ dense graphs, nested groups, junction routing, and mixed service forms while kee
 - `fixtures/architecture/stress_architecture_multi_group_crosslinks_022.mmd`
 - `fixtures/architecture/stress_architecture_nested_junctions_023.mmd`
 - `fixtures/architecture/stress_architecture_cycle_with_junctions_024.mmd`
+- `fixtures/architecture/stress_architecture_many_small_groups_025.mmd`
+- `fixtures/architecture/stress_architecture_junction_fork_join_026.mmd`
+- `fixtures/architecture/stress_architecture_deep_group_chain_027.mmd`
+- `fixtures/architecture/stress_architecture_crossing_edges_ring_028.mmd`
+- `fixtures/architecture/stress_architecture_ports_matrix_029.mmd`
+- `fixtures/architecture/stress_architecture_long_ids_030.mmd`
+- `fixtures/architecture/stress_architecture_bidirectional_arrows_031.mmd`
+- `fixtures/architecture/stress_architecture_disconnected_group_edges_032.mmd`
+- `fixtures/architecture/stress_architecture_mixed_icons_and_text_033.mmd`
+- `fixtures/architecture/stress_architecture_group_to_group_multi_034.mmd`
+- `fixtures/architecture/stress_architecture_dense_junction_grid_035.mmd`
+- `fixtures/architecture/stress_architecture_edge_titles_oneword_036.mmd`
