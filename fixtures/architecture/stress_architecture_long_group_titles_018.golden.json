@@ -1,0 +1,194 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [
+      {
+        "id": "g",
+        "icon": "cloud",
+        "title": "Very Long Group Title With Many Words And Spaces",
+        "in": null
+      }
+    ],
+    "nodes": [
+      {
+        "id": "s1",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "s1",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "s2",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "service one",
+        "in": "g"
+      },
+      {
+        "id": "s2",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "s1",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "s2",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "s2",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "s3",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "reads writes"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "service two",
+        "in": "g"
+      },
+      {
+        "id": "s3",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "s2",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "s3",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "reads writes"
+          }
+        ],
+        "icon": "database",
+        "iconText": null,
+        "title": "DB Primary",
+        "in": "g"
+      }
+    ],
+    "services": [
+      {
+        "id": "s1",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "s1",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "s2",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "service one",
+        "in": "g"
+      },
+      {
+        "id": "s2",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "s1",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "s2",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "s2",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "s3",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "reads writes"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "service two",
+        "in": "g"
+      },
+      {
+        "id": "s3",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "s2",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "s3",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "reads writes"
+          }
+        ],
+        "icon": "database",
+        "iconText": null,
+        "title": "DB Primary",
+        "in": "g"
+      }
+    ],
+    "junctions": [],
+    "edges": [
+      {
+        "lhsId": "s1",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "s2",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": null
+      },
+      {
+        "lhsId": "s2",
+        "lhsDir": "B",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "s3",
+        "rhsDir": "T",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": "reads writes"
+      }
+    ]
+  }
+}

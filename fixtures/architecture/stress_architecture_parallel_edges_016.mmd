@@ -1,0 +1,11 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): parallel and reciprocal edges between the same services with different labels/ports.
+
+group net(internet)[Net]
+service a(server)[A] in net
+service b(server)[B] in net
+service c(server)[C] in net
+
+a:R -[one]-> L:b
+b:B -[two]-> T:c
+c:L -[three]-> R:a

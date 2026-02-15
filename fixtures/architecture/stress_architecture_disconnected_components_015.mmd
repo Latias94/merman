@@ -1,0 +1,15 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): disconnected components (two clusters) to stress root viewBox union and max-width parity.
+
+group a(cloud)[Cluster A]
+service a1(server)[A1] in a
+service a2(server)[A2] in a
+a1:R --> L:a2
+
+group b(cloud)[Cluster B]
+service b1(database)[B1] in b
+service b2(disk)[B2] in b
+service b3(server)[B3] in b
+b1:R -- L:b3
+b2:T -- B:b3
+

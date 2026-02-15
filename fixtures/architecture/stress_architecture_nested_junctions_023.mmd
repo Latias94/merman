@@ -1,0 +1,17 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): junctions inside nested groups with group traversal edges.
+
+group top(cloud)[Top]
+group mid(cloud)[Mid] in top
+
+service t1(server)[T1] in top
+service m1(server)[M1] in mid
+service m2(server)[M2] in mid
+junction j1 in mid
+junction j2 in top
+
+m1:R --> L:j1
+m2:R --> L:j1
+j1{group}:B --> T:j2{group}
+t1:R --> L:j2
+

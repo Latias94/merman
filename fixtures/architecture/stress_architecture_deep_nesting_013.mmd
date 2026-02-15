@@ -1,0 +1,23 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): deep nested groups (4 levels) with cross-level edges and boundary traversal.
+
+group platform(cloud)[Platform]
+group edge(internet)[Edge] in platform
+group core(server)[Core] in platform
+group data(database)[Data Plane] in core
+
+service lb(internet)[LB] in edge
+service api(server)[API] in core
+service auth(server)[Auth] in core
+service db(database)[DB] in data
+service cache(disk)[Cache] in data
+service ext(internet)[External]
+
+ext:B --> T:lb
+lb:R --> L:api
+api:R -[reads]-> L:db
+api:B --> T:cache
+auth:R -[writes]-> L:db
+ext{group}:R --> L:db{group}
+cache{group}:T --> B:lb{group}
+

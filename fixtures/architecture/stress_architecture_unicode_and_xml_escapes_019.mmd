@@ -1,0 +1,13 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): label/whitespace stress without punctuation that breaks the Architecture grammar.
+
+group i(internet)[IO Observability]
+service metrics(server)[Metrics Exporter] in i
+service logs(server)[Log Collector] in i
+service store(database)[Store Query] in i
+service alert(server)[Alert Service] in i
+
+metrics:R -[push pull]-> L:store
+logs:R -[ship batch]-> L:store
+metrics:B -- T:logs
+alert:B -[notify]-> T:metrics

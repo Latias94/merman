@@ -1,0 +1,5 @@
+architecture-beta
+%% Source: repo-ref/mermaid/cypress/integration/other/xss.spec.js (sanitize icon labels in architecture diagrams).
+
+group api(cloud)[API]
+service db "<img src=x onerror=\"xssAttack()\">" [Database] in api

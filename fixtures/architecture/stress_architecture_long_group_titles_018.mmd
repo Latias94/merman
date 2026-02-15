@@ -1,0 +1,10 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): long group titles with many words to stress group title bbox + padding.
+
+group g(cloud)[Very Long Group Title With Many Words And Spaces]
+service s1(server)[service one] in g
+service s2(server)[service two] in g
+service s3(database)[DB Primary] in g
+
+s1:R --> L:s2
+s2:B -[reads writes]-> T:s3

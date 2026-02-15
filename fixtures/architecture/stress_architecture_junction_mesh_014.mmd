@@ -1,0 +1,25 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): multi-junction mesh across groups, mixed arrow directions, and labeled edges.
+
+group left(cloud)[Left]
+group right(cloud)[Right]
+
+service l1(server)[L1] in left
+service l2(server)[L2] in left
+service r1(server)[R1] in right
+service r2(server)[R2] in right
+junction jl in left
+junction jr in right
+junction jmid
+
+l1:B -- T:jl
+l2:T -- B:jl
+jr:B -- T:r1
+jr:T -- B:r2
+
+jl:R --> L:jmid
+jmid:R --> L:jr
+l1{group}:R -[sync]-> L:r1{group}
+l2{group}:R -[async]-> L:r2{group}
+r1{group}:L <--> R:jl{group}
+

@@ -1,0 +1,19 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): many leaf services with fan-in/out edges to stress spacing and edge ordering.
+
+group svc(cloud)[Services]
+service s1(server)[S1] in svc
+service s2(server)[S2] in svc
+service s3(server)[S3] in svc
+service s4(server)[S4] in svc
+service s5(server)[S5] in svc
+service db(database)[DB] in svc
+junction j
+
+s1:R --> L:j
+s2:R --> L:j
+s3:R --> L:j
+s4:R --> L:j
+s5:R --> L:j
+j:R --> L:db
+

@@ -1,0 +1,16 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): group boundary traversal with explicit ports and mixed arrow styles.
+
+group outer(cloud)[Outer]
+group inner(cloud)[Inner] in outer
+
+service in1(server)[In1] in inner
+service in2(server)[In2] in inner
+service out1(server)[Out1] in outer
+service ext(internet)[Ext]
+
+in1:R --> L:in2
+ext:R --> L:out1
+out1{group}:B --> T:in1{group}
+in2{group}:T -[exit]-> B:ext
+
