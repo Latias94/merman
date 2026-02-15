@@ -25,12 +25,15 @@ Latest local spotcheck (post-merge local `main`, 2026-02-15):
 - Notable outliers (ratios):
   - `layout/architecture_medium`: `5.42x` (fixed-cost + string-key maps dominate)
   - `layout/mindmap_medium`: `2.59x` (COSE port still expensive)
-  - `parse/sequence_tiny`: `3.69x` (tiny parse fixed overhead)
+  - `parse/sequence_tiny`: `3.69x` → `~2.18x` (tiny parse fixed overhead; improved after consuming model build + cheaper wrap parsing)
   - `render/class_medium`: `2.38x` and `render/class_tiny`: `2.78x` (SVG emission fixed overhead)
   - `render/flowchart_medium`: `1.21x` (still behind, but no longer the dominant overall outlier)
 - Notes:
   - Recent class render win: switch hot-path `escape_attr(...)` / `escape_xml(...)` allocations to
     `*_display(...)` wrappers.
+  - Recent sequence parse win (2026-02-15): `sequence_tiny` standalone spotcheck now reports
+    `parse ~5.2µs` vs `mmdr ~2.4µs` (ratio `~2.18x`). See
+    `target/bench/stage_spotcheck.2026-02-15-sequence_tiny_after_into_model.md`.
 
 - Tiny canaries (after Dagre-ish tiny fast-path):
   - `docs/performance/spotcheck_2026-02-15_tiny.md`

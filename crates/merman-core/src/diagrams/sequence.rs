@@ -1,6 +1,7 @@
 use crate::{Error, ParseMetadata, Result};
+use rustc_hash::FxHashMap;
 use serde_json::{Value, json};
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 
 lalrpop_util::lalrpop_mod!(
     #[allow(clippy::type_complexity, clippy::result_large_err)]
@@ -229,7 +230,7 @@ struct SeqBox {
 
 #[derive(Debug, Default)]
 struct SequenceDb {
-    actors: HashMap<String, Actor>,
+    actors: FxHashMap<String, Actor>,
     actor_order: Vec<String>,
     messages: Vec<Message>,
     notes: Vec<Note>,
@@ -237,8 +238,8 @@ struct SequenceDb {
     current_box: Option<usize>,
     wrap_enabled: Option<bool>,
 
-    created_actors: HashMap<String, usize>,
-    destroyed_actors: HashMap<String, usize>,
+    created_actors: FxHashMap<String, usize>,
+    destroyed_actors: FxHashMap<String, usize>,
     last_created: Option<String>,
     last_destroyed: Option<String>,
 
@@ -263,12 +264,13 @@ impl SequenceDb {
         if self.actors.contains_key(id) {
             return;
         }
-        self.actor_order.push(id.to_string());
+        let id_owned = id.to_string();
+        self.actor_order.push(id_owned.clone());
         self.actors.insert(
-            id.to_string(),
+            id_owned.clone(),
             Actor {
-                name: id.to_string(),
-                description: id.to_string(),
+                name: id_owned.clone(),
+                description: id_owned,
                 wrap: self.auto_wrap(),
                 actor_type: "participant".to_string(),
                 box_index: None,
@@ -364,16 +366,35 @@ impl SequenceDb {
 
     fn parse_message(&self, raw: &str) -> ParsedText {
         let trimmed = raw.trim();
-        let lower = trimmed.to_ascii_lowercase();
+        fn strip_prefix_ci<'a>(s: &'a str, prefix: &[u8]) -> Option<&'a str> {
+            let bytes = s.as_bytes();
+            if bytes.len() < prefix.len() {
+                return None;
+            }
+            for i in 0..prefix.len() {
+                if !bytes[i].eq_ignore_ascii_case(&prefix[i]) {
+                    return None;
+                }
+            }
+            Some(&s[prefix.len()..])
+        }
 
-        let (wrap, cleaned) = if lower.starts_with(":wrap:") {
-            (Some(true), trimmed[6..].trim())
-        } else if lower.starts_with("wrap:") {
-            (Some(true), trimmed[5..].trim())
-        } else if lower.starts_with(":nowrap:") {
-            (Some(false), trimmed[8..].trim())
-        } else if lower.starts_with("nowrap:") {
-            (Some(false), trimmed[7..].trim())
+        let (wrap, cleaned) = if trimmed.len() >= 5
+            && matches!(
+                trimmed.as_bytes().first().copied(),
+                Some(b':' | b'w' | b'W' | b'n' | b'N')
+            ) {
+            if let Some(rest) = strip_prefix_ci(trimmed, b":wrap:") {
+                (Some(true), rest.trim())
+            } else if let Some(rest) = strip_prefix_ci(trimmed, b"wrap:") {
+                (Some(true), rest.trim())
+            } else if let Some(rest) = strip_prefix_ci(trimmed, b":nowrap:") {
+                (Some(false), rest.trim())
+            } else if let Some(rest) = strip_prefix_ci(trimmed, b"nowrap:") {
+                (Some(false), rest.trim())
+            } else {
+                (None, trimmed)
+            }
         } else {
             (None, trimmed)
         };
@@ -732,39 +753,42 @@ impl SequenceDb {
         }
     }
 
-    fn to_model(&self, meta: &ParseMetadata) -> Value {
+    fn into_model(mut self, meta: &ParseMetadata) -> Value {
+        fn opt_string(v: Option<String>) -> Value {
+            v.map(Value::String).unwrap_or(Value::Null)
+        }
+
+        let mut actors = std::mem::take(&mut self.actors);
         let mut actors_json = serde_json::Map::new();
-        for id in &self.actor_order {
-            if let Some(a) = self.actors.get(id) {
-                actors_json.insert(
-                    id.clone(),
-                    json!({
-                        "name": a.name,
-                        "description": a.description,
-                        "wrap": a.wrap,
-                        "type": a.actor_type,
-                        "links": Value::Object(a.links.clone()),
-                        "properties": Value::Object(a.properties.clone()),
-                    }),
-                );
+        let mut actor_order_json: Vec<Value> = Vec::with_capacity(self.actor_order.len());
+        for id in std::mem::take(&mut self.actor_order) {
+            actor_order_json.push(Value::String(id.clone()));
+            if let Some(a) = actors.remove(&id) {
+                let mut obj = serde_json::Map::with_capacity(6);
+                obj.insert("name".to_string(), Value::String(a.name));
+                obj.insert("description".to_string(), Value::String(a.description));
+                obj.insert("wrap".to_string(), Value::Bool(a.wrap));
+                obj.insert("type".to_string(), Value::String(a.actor_type));
+                obj.insert("links".to_string(), Value::Object(a.links));
+                obj.insert("properties".to_string(), Value::Object(a.properties));
+                actors_json.insert(id, Value::Object(obj));
             }
         }
 
-        let messages_json: Vec<Value> = self
-            .messages
-            .iter()
+        let messages_json: Vec<Value> = std::mem::take(&mut self.messages)
+            .into_iter()
             .map(|m| {
                 let mut obj = serde_json::Map::new();
-                obj.insert("id".to_string(), Value::String(m.id.clone()));
+                obj.insert("id".to_string(), Value::String(m.id));
                 obj.insert(
                     "from".to_string(),
-                    m.from.clone().map(Value::String).unwrap_or(Value::Null),
+                    m.from.map(Value::String).unwrap_or(Value::Null),
                 );
                 obj.insert(
                     "to".to_string(),
-                    m.to.clone().map(Value::String).unwrap_or(Value::Null),
+                    m.to.map(Value::String).unwrap_or(Value::Null),
                 );
-                obj.insert("message".to_string(), m.message.clone());
+                obj.insert("message".to_string(), m.message);
                 obj.insert("wrap".to_string(), Value::Bool(m.wrap));
                 obj.insert("type".to_string(), Value::Number(m.message_type.into()));
                 obj.insert("activate".to_string(), Value::Bool(m.activate));
@@ -775,64 +799,72 @@ impl SequenceDb {
             })
             .collect();
 
-        let notes_json: Vec<Value> = self
-            .notes
-            .iter()
+        let notes_json: Vec<Value> = std::mem::take(&mut self.notes)
+            .into_iter()
             .map(|n| {
-                json!({
-                    "actor": n.actor,
-                    "placement": n.placement,
-                    "message": n.message,
-                    "wrap": n.wrap,
-                })
+                let mut obj = serde_json::Map::with_capacity(4);
+                obj.insert("actor".to_string(), n.actor);
+                obj.insert("placement".to_string(), Value::Number(n.placement.into()));
+                obj.insert("message".to_string(), Value::String(n.message));
+                obj.insert("wrap".to_string(), Value::Bool(n.wrap));
+                Value::Object(obj)
             })
             .collect();
 
-        let boxes_json: Vec<Value> = self
-            .boxes
-            .iter()
+        let boxes_json: Vec<Value> = std::mem::take(&mut self.boxes)
+            .into_iter()
             .map(|b| {
-                json!({
-                    "name": b.name,
-                    "wrap": b.wrap,
-                    "fill": b.fill,
-                    "actorKeys": b.actor_keys,
-                })
+                let mut obj = serde_json::Map::with_capacity(4);
+                obj.insert("name".to_string(), opt_string(b.name));
+                obj.insert("wrap".to_string(), Value::Bool(b.wrap));
+                obj.insert("fill".to_string(), Value::String(b.fill));
+                obj.insert(
+                    "actorKeys".to_string(),
+                    Value::Array(b.actor_keys.into_iter().map(Value::String).collect()),
+                );
+                Value::Object(obj)
             })
             .collect();
 
-        let created_json: serde_json::Map<String, Value> = self
-            .created_actors
-            .iter()
-            .map(|(k, v)| (k.clone(), Value::Number((*v as u64).into())))
+        let created_json: serde_json::Map<String, Value> = std::mem::take(&mut self.created_actors)
+            .into_iter()
+            .map(|(k, v)| (k, Value::Number((v as u64).into())))
             .collect();
 
-        let destroyed_json: serde_json::Map<String, Value> = self
-            .destroyed_actors
-            .iter()
-            .map(|(k, v)| (k.clone(), Value::Number((*v as u64).into())))
-            .collect();
+        let destroyed_json: serde_json::Map<String, Value> =
+            std::mem::take(&mut self.destroyed_actors)
+                .into_iter()
+                .map(|(k, v)| (k, Value::Number((v as u64).into())))
+                .collect();
 
-        json!({
-            "type": meta.diagram_type,
-            "title": self.title,
-            "accTitle": self.acc_title,
-            "accDescr": self.acc_descr,
-            "actorOrder": self.actor_order,
-            "actors": Value::Object(actors_json),
-            "messages": messages_json,
-            "notes": notes_json,
-            "boxes": boxes_json,
-            "createdActors": Value::Object(created_json),
-            "destroyedActors": Value::Object(destroyed_json),
-            "constants": {
-                "placement": {
-                    "leftOf": PLACEMENT_LEFT_OF,
-                    "rightOf": PLACEMENT_RIGHT_OF,
-                    "over": PLACEMENT_OVER,
-                }
-            }
-        })
+        let mut placement = serde_json::Map::with_capacity(3);
+        placement.insert(
+            "leftOf".to_string(),
+            Value::Number(PLACEMENT_LEFT_OF.into()),
+        );
+        placement.insert(
+            "rightOf".to_string(),
+            Value::Number(PLACEMENT_RIGHT_OF.into()),
+        );
+        placement.insert("over".to_string(), Value::Number(PLACEMENT_OVER.into()));
+        let mut constants = serde_json::Map::with_capacity(1);
+        constants.insert("placement".to_string(), Value::Object(placement));
+
+        let mut root = serde_json::Map::with_capacity(11);
+        root.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+        root.insert("title".to_string(), opt_string(self.title));
+        root.insert("accTitle".to_string(), opt_string(self.acc_title));
+        root.insert("accDescr".to_string(), opt_string(self.acc_descr));
+        root.insert("actorOrder".to_string(), Value::Array(actor_order_json));
+        root.insert("actors".to_string(), Value::Object(actors_json));
+        root.insert("messages".to_string(), Value::Array(messages_json));
+        root.insert("notes".to_string(), Value::Array(notes_json));
+        root.insert("boxes".to_string(), Value::Array(boxes_json));
+        root.insert("createdActors".to_string(), Value::Object(created_json));
+        root.insert("destroyedActors".to_string(), Value::Object(destroyed_json));
+        root.insert("constants".to_string(), Value::Object(constants));
+
+        Value::Object(root)
     }
 }
 
@@ -869,7 +901,7 @@ pub fn parse_sequence(code: &str, meta: &ParseMetadata) -> Result<Value> {
         })?;
     }
 
-    Ok(db.to_model(meta))
+    Ok(db.into_model(meta))
 }
 
 fn fast_parse_sequence_signals_only(
@@ -1022,7 +1054,9 @@ fn fast_parse_sequence_signals_only(
         })
     }
 
-    let mut lines: Vec<&str> = Vec::new();
+    let mut header_seen = false;
+    let mut non_empty_lines = 0usize;
+    let mut signals: Vec<Signal<'_>> = Vec::with_capacity(2);
     for raw in code.lines() {
         let t = raw.trim();
         if t.is_empty() {
@@ -1031,31 +1065,20 @@ fn fast_parse_sequence_signals_only(
         if t.starts_with("%%") {
             continue;
         }
-        lines.push(raw);
-        if lines.len() > 8 {
-            // Too many non-empty lines for the fast-path; fall back.
+        non_empty_lines += 1;
+        if non_empty_lines > 8 {
             return None;
         }
-    }
-
-    let header = lines.first()?.trim();
-    if !eq_ascii_ci(header, "sequenceDiagram") {
-        return None;
-    }
-
-    let mut signals: Vec<Signal<'_>> = Vec::new();
-    for raw in lines.iter().skip(1) {
-        let t = raw.trim();
-        if t.is_empty() {
-            continue;
-        }
-        if t.starts_with("%%") {
+        if !header_seen {
+            if !eq_ascii_ci(t, "sequenceDiagram") {
+                return None;
+            }
+            header_seen = true;
             continue;
         }
         let sig = parse_signal_line(t)?;
         signals.push(sig);
         if signals.len() > 4 {
-            // Keep the fast-path conservative: only tiny diagrams.
             return None;
         }
     }
@@ -1066,35 +1089,49 @@ fn fast_parse_sequence_signals_only(
 
     let mut db = SequenceDb::new(wrap_enabled);
     for sig in signals {
-        let from = sig.from.to_string();
-        let to = sig.to.to_string();
-        db.apply(Action::EnsureParticipant { id: from.clone() })
-            .ok()?;
-        db.apply(Action::EnsureParticipant { id: to.clone() })
-            .ok()?;
+        db.ensure_actor(sig.from);
+        db.ensure_actor(sig.to);
 
         let activate = matches!(sig.activation, Activation::Plus);
-        db.apply(Action::AddMessage {
-            from: from.clone(),
-            to: to.clone(),
-            signal_type: sig.ty,
-            text: sig.text.to_string(),
+        let msg = db.parse_message(sig.text);
+        db.add_signal(
+            Some(sig.from.to_string()),
+            Some(sig.to.to_string()),
+            Some(msg),
+            sig.ty,
             activate,
-        })
-        .ok()?;
+            None,
+        );
 
         match sig.activation {
             Activation::Plus => {
-                db.apply(Action::ActiveStart { actor: to }).ok()?;
+                db.add_signal(
+                    Some(sig.to.to_string()),
+                    None,
+                    None,
+                    LINETYPE_ACTIVE_START,
+                    false,
+                    None,
+                );
             }
             Activation::Minus => {
-                db.apply(Action::ActiveEnd { actor: from }).ok()?;
+                if db.activation_count(sig.from) < 1 {
+                    return None;
+                }
+                db.add_signal(
+                    Some(sig.from.to_string()),
+                    None,
+                    None,
+                    LINETYPE_ACTIVE_END,
+                    false,
+                    None,
+                );
             }
             Activation::None => {}
         }
     }
 
-    Some(db.to_model(meta))
+    Some(db.into_model(meta))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
