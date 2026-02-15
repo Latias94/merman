@@ -254,6 +254,81 @@ pub fn lookup_class_root_viewport_override(
         "upstream_cypress_classdiagram_v3_spec_should_render_a_full_class_diagram_using_elk_057" => {
             Some(("4 4 1330.953125 797.5", "1330.95"))
         }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_11_1_should_render_a_simple_class_diagram_with_return_type_o_020" => {
+            Some(("0 0 224.1953125 184", "224.195"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_1433_should_render_a_simple_class_with_a_title_032" => {
+            Some(("-34.2890625 -48 164.140625 148", "164.141"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_15_should_render_a_simple_class_diagram_with_css_classes_app_025" => {
+            Some(("0 0 225.125 100", "225.125"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_16a_should_render_a_simple_class_diagram_with_static_field_026" => {
+            Some(("0 0 131.6953125 136", "131.695"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_simple_class_diagram_with_classdef_definitio_046" => {
+            Some(("0 0 95.5625 100", "95.5625"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_simple_class_diagram_with_markdown_styling_w_050" => {
+            Some(("0 0 184.96875 256", "184.969"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_simple_class_diagram_with_no_attributes_only_042" => {
+            Some(("0 0 120.546875 166", "120.547"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_simple_class_diagram_with_no_methods_only_at_043" => {
+            Some(("0 0 184.953125 184", "184.953"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_simple_class_diagram_with_style_definition_044" => {
+            Some(("0 0 95.5625 100", "95.5625"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_a_simple_class_diagram_with_styles_and_the_han_052" => {
+            Some(("0 0 95.5625 100", "95.5625"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_classlabel_if_class_has_already_been_defined_e_038" => {
+            Some(("0 0 191.46875 234", "191.469"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_two_classes_with_text_labels_034" => {
+            Some(("0 0 205.796875 234", "205.797"))
+        }
+        "upstream_cypress_classdiagram_elk_v3_spec_example_001" => {
+            Some(("0 0 210.1640625 416", "210.164"))
+        }
+        "upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_add_classes_namespaces_039" => {
+            Some(("-8 0 446.6875 170", "446.688"))
+        }
+        "upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_two_classes_with_text_labels_034" => {
+            Some(("0 0 205.796875 234", "205.797"))
+        }
+        "upstream_cypress_classdiagram_spec_has_a_label_with_char_sequence_graph_023" => {
+            Some(("0 0 247.828125 208", "247.828"))
+        }
+        "upstream_cypress_classdiagram_spec_should_handle_backticks_for_namespace_and_class_names_024" => {
+            Some(("0 0 197.53125 284", "197.531"))
+        }
+        "upstream_cypress_classdiagram_v2_spec_11_should_render_a_simple_class_diagram_with_return_type_on_meth_013" => {
+            Some(("0 0 224.1953125 184", "224.195"))
+        }
+        "upstream_cypress_classdiagram_v2_spec_1433_should_render_a_simple_class_with_a_title_024" => {
+            Some(("-34.2890625 -48 164.140625 148", "164.141"))
+        }
+        "upstream_cypress_classdiagram_v2_spec_15_should_render_a_simple_class_diagram_with_css_classes_applied_017" => {
+            Some(("0 0 225.125 100", "225.125"))
+        }
+        "upstream_cypress_classdiagram_v2_spec_16a_should_render_a_simple_class_diagram_with_static_field_018" => {
+            Some(("0 0 131.6953125 136", "131.695"))
+        }
+        "upstream_cypress_classdiagram_v2_spec_5_should_render_a_simple_class_diagram_with_abstract_method_007" => {
+            Some(("0 0 170.375 300", "170.375"))
+        }
+        "upstream_cypress_classdiagram_v2_spec_6_should_render_a_simple_class_diagram_with_static_method_008" => {
+            Some(("0 0 169.265625 300", "169.266"))
+        }
+        "upstream_cypress_classdiagram_v2_spec_example_001" => {
+            Some(("0 0 210.1640625 416", "210.164"))
+        }
+        "upstream_cypress_classdiagram_v2_spec_should_render_a_simple_class_diagram_with_style_definition_033" => {
+            Some(("0 0 95.5625 100", "95.5625"))
+        }
         _ => None,
     }
 }

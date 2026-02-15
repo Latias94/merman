@@ -1,0 +1,90 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "IPC::Sender": {
+        "id": "IPC::Sender",
+        "type": "",
+        "label": "IPC::Sender",
+        "text": "IPC::Sender",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-IPC::Sender-0",
+        "parent": "A::B",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "RenderProcessHost": {
+        "id": "RenderProcessHost",
+        "type": "",
+        "label": "RenderProcessHost",
+        "text": "RenderProcessHost",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-RenderProcessHost-1",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "RenderProcessHost",
+        "id2": "IPC::Sender",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "",
+        "relation": {
+          "type1": -1,
+          "type2": 1,
+          "lineType": 0
+        }
+      }
+    ],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {
+      "A::B": {
+        "id": "A::B",
+        "domId": "classId-A::B-0",
+        "classIds": [
+          "IPC::Sender"
+        ]
+      }
+    },
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

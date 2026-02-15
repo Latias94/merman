@@ -1,0 +1,80 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Duck": {
+        "id": "Duck",
+        "type": "",
+        "label": "Duck",
+        "text": "Duck",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "String beakColor",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+String beakColor",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "int age",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+int age",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "float weight",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+float weight",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Duck-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

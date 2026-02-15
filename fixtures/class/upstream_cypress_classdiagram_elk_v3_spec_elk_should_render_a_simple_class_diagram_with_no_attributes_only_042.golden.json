@@ -1,0 +1,70 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Duck": {
+        "id": "Duck",
+        "type": "",
+        "label": "Duck",
+        "text": "Duck",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "swim",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+swim()",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "quack",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+quack()",
+            "cssStyle": ""
+          }
+        ],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Duck-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}
