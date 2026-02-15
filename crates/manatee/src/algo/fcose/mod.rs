@@ -6,21 +6,79 @@ use nalgebra as na;
 
 mod spectral;
 
+#[derive(Debug, Default, Clone)]
+struct FcoseLayoutTimings {
+    total: std::time::Duration,
+    from_graph: std::time::Duration,
+    constraints: std::time::Duration,
+    spring: FcoseSpringTimings,
+    translate: std::time::Duration,
+    output: std::time::Duration,
+}
+
+#[derive(Debug, Default, Clone)]
+struct FcoseSpringTimings {
+    total: std::time::Duration,
+    opts_prep: std::time::Duration,
+    spectral: std::time::Duration,
+    root_compound: std::time::Duration,
+    collapse_start_positions: std::time::Duration,
+    pre_constraints: std::time::Duration,
+    constraint_rt: std::time::Duration,
+    iterations: std::time::Duration,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct SpringStats {
+    iterations: usize,
+    spectral_applied: bool,
+}
+
 pub fn layout(graph: &Graph, opts: &FcoseOptions) -> Result<LayoutResult> {
     graph.validate()?;
 
+    let timing_enabled = std::env::var("MANATEE_FCOSE_TIMING").ok().as_deref() == Some("1");
+    let mut timings = FcoseLayoutTimings::default();
+    let total_start = timing_enabled.then(std::time::Instant::now);
+
+    let from_graph_start = timing_enabled.then(std::time::Instant::now);
     let mut sim = SimGraph::from_graph(graph);
+    if let Some(s) = from_graph_start {
+        timings.from_graph = s.elapsed();
+    }
+
+    let constraints_start = timing_enabled.then(std::time::Instant::now);
     let constraints = Constraints::from_opts(&sim, opts);
+    if let Some(s) = constraints_start {
+        timings.constraints = s.elapsed();
+    }
 
     // Mimic fcose's `aux.relocateComponent(...)`: keep the final component center aligned to the
     // original component center to avoid arbitrary global translations affecting viewBox parity.
     let orig_center = sim.bounding_box_center().unwrap_or((0.0, 0.0));
 
-    sim.run_spring_embedder(&constraints, opts);
+    let spring_start = timing_enabled.then(std::time::Instant::now);
+    let spring_stats = sim.run_spring_embedder(
+        &constraints,
+        opts,
+        if timing_enabled {
+            Some(&mut timings.spring)
+        } else {
+            None
+        },
+    );
+    if let Some(s) = spring_start {
+        timings.spring.total = s.elapsed();
+    }
 
     let new_center = sim.bounding_box_center().unwrap_or((0.0, 0.0));
+    let translate_start = timing_enabled.then(std::time::Instant::now);
     sim.translate(orig_center.0 - new_center.0, orig_center.1 - new_center.1);
+    if let Some(s) = translate_start {
+        timings.translate = s.elapsed();
+    }
 
+    let output_start = timing_enabled.then(std::time::Instant::now);
     let mut positions: std::collections::BTreeMap<String, Point> =
         std::collections::BTreeMap::new();
     for n in &sim.nodes {
@@ -30,6 +88,34 @@ pub fn layout(graph: &Graph, opts: &FcoseOptions) -> Result<LayoutResult> {
                 x: n.center_x(),
                 y: n.center_y(),
             },
+        );
+    }
+    if let Some(s) = output_start {
+        timings.output = s.elapsed();
+    }
+
+    if let Some(s) = total_start {
+        timings.total = s.elapsed();
+        eprintln!(
+            "[manatee-fcose-timing] total={:?} from_graph={:?} constraints={:?} spring_total={:?} spring_opts_prep={:?} spring_spectral={:?} spring_root_compound={:?} spring_collapse_start={:?} spring_pre_constraints={:?} spring_constraint_rt={:?} spring_iterations={:?} translate={:?} output={:?} nodes={} edges={} compounds={} iterations={} spectral_applied={}",
+            timings.total,
+            timings.from_graph,
+            timings.constraints,
+            timings.spring.total,
+            timings.spring.opts_prep,
+            timings.spring.spectral,
+            timings.spring.root_compound,
+            timings.spring.collapse_start_positions,
+            timings.spring.pre_constraints,
+            timings.spring.constraint_rt,
+            timings.spring.iterations,
+            timings.translate,
+            timings.output,
+            sim.nodes.len(),
+            sim.edges.len(),
+            sim.compound_parent.len(),
+            spring_stats.iterations,
+            spring_stats.spectral_applied,
         );
     }
 
@@ -631,14 +717,22 @@ impl SimGraph {
         Some(((min_x + max_x) / 2.0, (min_y + max_y) / 2.0))
     }
 
-    fn run_spring_embedder(&mut self, constraints: &Constraints, opts: &FcoseOptions) {
+    fn run_spring_embedder(
+        &mut self,
+        constraints: &Constraints,
+        opts: &FcoseOptions,
+        mut timings: Option<&mut FcoseSpringTimings>,
+    ) -> SpringStats {
         if self.nodes.is_empty() {
-            return;
+            return SpringStats::default();
         }
+
+        let timing_enabled = timings.is_some();
 
         let random_seed = opts.random_seed;
         let mut rng = XorShift64Star::new(random_seed);
 
+        let opts_prep_start = timing_enabled.then(std::time::Instant::now);
         // layout-base/CoSE uses a *global* `DEFAULT_EDGE_LENGTH` for multiple heuristics (minimum
         // repulsion distance, overlap separation buffer, repulsion grid range, convergence
         // thresholds, etc.). In upstream Cytoscape FCoSE this value is derived from the
@@ -659,16 +753,23 @@ impl SimGraph {
         // `idealEdgeLength` is set. For Mermaid Architecture this is always set (as a function),
         // so we scale the minimum repulsion distance with the average ideal length.
         let min_repulsion_dist = (default_edge_length / 10.0).max(0.0005);
+        if let (Some(t), Some(s)) = (timings.as_deref_mut(), opts_prep_start) {
+            t.opts_prep = s.elapsed();
+        }
 
         // FCoSE performs a spectral initialization when `randomize=true` (Mermaid defaults to
         // `randomize: true`). The upstream JS implementation relies on `Math.random`; in Rust we
         // make this explicit and deterministic via `random_seed`.
+        let spectral_start = timing_enabled.then(std::time::Instant::now);
         let spectral_applied = spectral::apply_spectral_start_positions(
             &mut self.nodes,
             &self.edges,
             &self.compound_parent,
             &mut rng,
         );
+        if let (Some(t), Some(s)) = (timings.as_deref_mut(), spectral_start) {
+            t.spectral = s.elapsed();
+        }
 
         let gravity_constant = Self::DEFAULT_GRAVITY_STRENGTH;
 
@@ -688,6 +789,7 @@ impl SimGraph {
         // surrounding set and refreshes it every `GRID_CALCULATION_CHECK_PERIOD` iterations.
         let mut repulsion_grid: Option<RepulsionGrid> = None;
 
+        let root_compound_start = timing_enabled.then(std::time::Instant::now);
         // Precompute root compound membership for each node.
         let node_root_compound: Vec<Option<String>> = self
             .nodes
@@ -708,10 +810,17 @@ impl SimGraph {
             }
         }
         let compound_padding = opts.compound_padding.unwrap_or(0.0).max(0.0);
+        if let (Some(t), Some(s)) = (timings.as_deref_mut(), root_compound_start) {
+            t.root_compound = s.elapsed();
+        }
 
         // Fallback for degenerate cases where spectral is skipped (e.g. very small graphs).
         if self.edges.is_empty() && !spectral_applied {
+            let collapse_start = timing_enabled.then(std::time::Instant::now);
             self.collapse_start_positions(default_edge_length, &mut rng);
+            if let (Some(t), Some(s)) = (timings.as_deref_mut(), collapse_start) {
+                t.collapse_start_positions = s.elapsed();
+            }
         }
 
         // Upstream `cose-base` runs a dedicated constraint handler before the spring embedder.
@@ -722,10 +831,18 @@ impl SimGraph {
             && constraints.align_vertical.is_empty()
             && constraints.relative.is_empty())
         {
+            let pre_constraints_start = timing_enabled.then(std::time::Instant::now);
             handle_constraints_pre_layout(&mut self.nodes, constraints);
+            if let (Some(t), Some(s)) = (timings.as_deref_mut(), pre_constraints_start) {
+                t.pre_constraints = s.elapsed();
+            }
         }
 
+        let constraint_rt_start = timing_enabled.then(std::time::Instant::now);
         let mut constraint_rt = ConstraintRuntime::new(&self.nodes, constraints);
+        if let (Some(t), Some(s)) = (timings.as_deref_mut(), constraint_rt_start) {
+            t.constraint_rt = s.elapsed();
+        }
 
         let n = self.nodes.len() as f64;
         let displacement_threshold_per_node = (3.0 * default_edge_length) / 100.0;
@@ -749,6 +866,7 @@ impl SimGraph {
         let mut old_total_displacement = 0.0f64;
         let mut last_total_displacement = 0.0f64;
 
+        let iterations_start = timing_enabled.then(std::time::Instant::now);
         loop {
             total_iterations += 1;
             if total_iterations == max_iterations {
@@ -948,6 +1066,14 @@ impl SimGraph {
 
             last_total_displacement = total_displacement;
         }
+        if let (Some(t), Some(s)) = (timings.as_deref_mut(), iterations_start) {
+            t.iterations = s.elapsed();
+        }
+
+        SpringStats {
+            iterations: total_iterations,
+            spectral_applied,
+        }
     }
 
     fn estimated_size(&self) -> f64 {
@@ -1050,7 +1176,7 @@ fn handle_constraints_pre_layout(nodes: &mut [SimNode], c: &Constraints) {
 }
 
 fn handle_relative_only_transform(x: &mut [f64], y: &mut [f64], rel: &[RelConstraint]) {
-    use std::collections::{BTreeMap, BTreeSet, VecDeque};
+    use std::collections::VecDeque;
 
     #[derive(Debug, Clone, Copy)]
     struct Edge {
@@ -1058,40 +1184,56 @@ fn handle_relative_only_transform(x: &mut [f64], y: &mut [f64], rel: &[RelConstr
         gap: f64,
     }
 
-    fn build_undirected(rel: &[RelConstraint]) -> BTreeMap<usize, Vec<usize>> {
-        let mut g: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
-        for r in rel {
-            let (a, b) = if let (Some(left), Some(right)) = (r.left, r.right) {
-                (left, right)
-            } else if let (Some(top), Some(bottom)) = (r.top, r.bottom) {
-                (top, bottom)
-            } else {
-                continue;
-            };
-            g.entry(a).or_default().push(b);
-            g.entry(b).or_default().push(a);
-        }
-        g
+    let n_total = x.len().min(y.len());
+    if n_total == 0 {
+        return;
     }
 
-    fn find_components(g: &BTreeMap<usize, Vec<usize>>) -> Vec<Vec<usize>> {
-        let mut visited: BTreeSet<usize> = BTreeSet::new();
+    let mut undirected: Vec<Vec<usize>> = vec![Vec::new(); n_total];
+    let mut present: Vec<bool> = vec![false; n_total];
+    for r in rel {
+        let (a, b) = if let (Some(left), Some(right)) = (r.left, r.right) {
+            (left, right)
+        } else if let (Some(top), Some(bottom)) = (r.top, r.bottom) {
+            (top, bottom)
+        } else {
+            continue;
+        };
+        if a >= n_total || b >= n_total {
+            continue;
+        }
+        undirected[a].push(b);
+        undirected[b].push(a);
+        present[a] = true;
+        present[b] = true;
+    }
+
+    let present_count = present.iter().filter(|&&v| v).count();
+    if present_count == 0 {
+        return;
+    }
+
+    fn find_components(g: &[Vec<usize>], present: &[bool], node_count: usize) -> Vec<Vec<usize>> {
+        let mut visited: Vec<bool> = vec![false; node_count];
         let mut out: Vec<Vec<usize>> = Vec::new();
-        for &start in g.keys() {
-            if visited.contains(&start) {
+        for start in 0..node_count {
+            if !present[start] || visited[start] {
                 continue;
             }
+
             let mut q: VecDeque<usize> = VecDeque::new();
             let mut comp: Vec<usize> = Vec::new();
-            visited.insert(start);
+            visited[start] = true;
             q.push_back(start);
             while let Some(cur) = q.pop_front() {
                 comp.push(cur);
-                if let Some(neigh) = g.get(&cur) {
-                    for &n in neigh {
-                        if visited.insert(n) {
-                            q.push_back(n);
-                        }
+                for &n in &g[cur] {
+                    if n >= node_count {
+                        continue;
+                    }
+                    if !visited[n] {
+                        visited[n] = true;
+                        q.push_back(n);
                     }
                 }
             }
@@ -1100,93 +1242,57 @@ fn handle_relative_only_transform(x: &mut [f64], y: &mut [f64], rel: &[RelConstr
         out
     }
 
-    fn build_axis_dag(
-        nodes: &[usize],
-        rel: &[RelConstraint],
-        axis: Axis,
-    ) -> (BTreeMap<usize, Vec<Edge>>, Vec<RelConstraint>) {
-        let in_set: BTreeSet<usize> = nodes.iter().copied().collect();
-        let mut dag: BTreeMap<usize, Vec<Edge>> = BTreeMap::new();
-        for &n in nodes {
-            dag.entry(n).or_default();
-        }
-
-        let mut component_constraints: Vec<RelConstraint> = Vec::new();
-        for r in rel {
-            match axis {
-                Axis::Horizontal => {
-                    if let (Some(left), Some(right)) = (r.left, r.right) {
-                        if in_set.contains(&left) && in_set.contains(&right) {
-                            dag.entry(left).or_default().push(Edge {
-                                id: right,
-                                gap: r.gap,
-                            });
-                            dag.entry(right).or_default();
-                            component_constraints.push(*r);
-                        }
-                    }
-                }
-                Axis::Vertical => {
-                    if let (Some(top), Some(bottom)) = (r.top, r.bottom) {
-                        if in_set.contains(&top) && in_set.contains(&bottom) {
-                            dag.entry(top).or_default().push(Edge {
-                                id: bottom,
-                                gap: r.gap,
-                            });
-                            dag.entry(bottom).or_default();
-                            component_constraints.push(*r);
-                        }
-                    }
-                }
-            }
-        }
-
-        (dag, component_constraints)
-    }
-
     fn find_appropriate_positions(
-        graph: &BTreeMap<usize, Vec<Edge>>,
+        nodes_sorted: &[usize],
+        in_comp: &[bool],
+        graph: &[Vec<Edge>],
         axis: Axis,
         x: &[f64],
         y: &[f64],
-    ) -> BTreeMap<usize, f64> {
-        let mut indeg: BTreeMap<usize, usize> = graph.keys().map(|&k| (k, 0)).collect();
-        for edges in graph.values() {
-            for e in edges {
-                *indeg.entry(e.id).or_insert(0) += 1;
+    ) -> Vec<f64> {
+        let node_count = x.len().min(y.len());
+        let mut indeg: Vec<usize> = vec![0; node_count];
+        for &src in nodes_sorted {
+            if src >= node_count {
+                continue;
+            }
+            for e in &graph[src] {
+                if e.id >= node_count || !in_comp[e.id] {
+                    continue;
+                }
+                indeg[e.id] = indeg[e.id].saturating_add(1);
             }
         }
 
-        let mut pos: BTreeMap<usize, f64> = BTreeMap::new();
+        let mut pos: Vec<f64> = vec![f64::NEG_INFINITY; node_count];
         let mut q: VecDeque<usize> = VecDeque::new();
-        for (&node, &d) in &indeg {
-            if d == 0 {
+        for &node in nodes_sorted {
+            if node >= node_count {
+                continue;
+            }
+            if indeg[node] == 0 {
                 q.push_back(node);
-                pos.insert(
-                    node,
-                    match axis {
-                        Axis::Horizontal => x[node],
-                        Axis::Vertical => y[node],
-                    },
-                );
-            } else {
-                pos.insert(node, f64::NEG_INFINITY);
+                pos[node] = match axis {
+                    Axis::Horizontal => x[node],
+                    Axis::Vertical => y[node],
+                };
             }
         }
 
         while let Some(cur) = q.pop_front() {
-            let cur_pos = *pos.get(&cur).unwrap_or(&f64::NEG_INFINITY);
-            if let Some(neigh) = graph.get(&cur) {
-                for e in neigh {
-                    let next_pos = cur_pos + e.gap;
-                    if pos.get(&e.id).copied().unwrap_or(f64::NEG_INFINITY) < next_pos {
-                        pos.insert(e.id, next_pos);
-                    }
-                    if let Some(v) = indeg.get_mut(&e.id) {
-                        *v = v.saturating_sub(1);
-                        if *v == 0 {
-                            q.push_back(e.id);
-                        }
+            let cur_pos = pos.get(cur).copied().unwrap_or(f64::NEG_INFINITY);
+            for e in graph.get(cur).into_iter().flatten() {
+                if e.id >= node_count || !in_comp[e.id] {
+                    continue;
+                }
+                let next_pos = cur_pos + e.gap;
+                if pos[e.id] < next_pos {
+                    pos[e.id] = next_pos;
+                }
+                if let Some(v) = indeg.get_mut(e.id) {
+                    *v = v.saturating_sub(1);
+                    if *v == 0 {
+                        q.push_back(e.id);
                     }
                 }
             }
@@ -1195,12 +1301,7 @@ fn handle_relative_only_transform(x: &mut [f64], y: &mut [f64], rel: &[RelConstr
         pos
     }
 
-    let undirected = build_undirected(rel);
-    if undirected.is_empty() {
-        return;
-    }
-
-    let components = find_components(&undirected);
+    let components = find_components(&undirected, &present, n_total);
     if components.is_empty() {
         return;
     }
@@ -1214,33 +1315,61 @@ fn handle_relative_only_transform(x: &mut [f64], y: &mut [f64], rel: &[RelConstr
         }
     }
 
-    let n = undirected.len();
-    if largest_sz * 2 < n {
+    if largest_sz * 2 < present_count {
         apply_reflection_for_relative_placement(x, y, rel);
         return;
     }
 
     let largest = &components[largest_idx];
+    let mut in_comp: Vec<bool> = vec![false; n_total];
+    for &idx in largest {
+        if idx < n_total {
+            in_comp[idx] = true;
+        }
+    }
+
+    let mut nodes_sorted: Vec<usize> = largest.clone();
+    nodes_sorted.sort_unstable();
 
     // Apply reflection votes based only on edges inside the dominant component (upstream behavior).
-    let (_h, mut in_comp_constraints_h) = build_axis_dag(largest, rel, Axis::Horizontal);
-    let (_v, mut in_comp_constraints_v) = build_axis_dag(largest, rel, Axis::Vertical);
-    in_comp_constraints_h.append(&mut in_comp_constraints_v);
-    apply_reflection_for_relative_placement(x, y, &in_comp_constraints_h);
+    let mut in_comp_constraints: Vec<RelConstraint> = Vec::new();
+    let mut dag_h: Vec<Vec<Edge>> = vec![Vec::new(); n_total];
+    let mut dag_v: Vec<Vec<Edge>> = vec![Vec::new(); n_total];
+    for r in rel {
+        if let (Some(left), Some(right)) = (r.left, r.right) {
+            if left < n_total && right < n_total && in_comp[left] && in_comp[right] {
+                dag_h[left].push(Edge {
+                    id: right,
+                    gap: r.gap,
+                });
+                in_comp_constraints.push(*r);
+            }
+        } else if let (Some(top), Some(bottom)) = (r.top, r.bottom) {
+            if top < n_total && bottom < n_total && in_comp[top] && in_comp[bottom] {
+                dag_v[top].push(Edge {
+                    id: bottom,
+                    gap: r.gap,
+                });
+                in_comp_constraints.push(*r);
+            }
+        }
+    }
+    apply_reflection_for_relative_placement(x, y, &in_comp_constraints);
 
     // Build axis DAGs and compute an "appropriate" coordinate per node using a topological
     // relaxation similar to `findAppropriatePositionForRelativePlacement`.
-    let (dag_h, _constraints_h) = build_axis_dag(largest, rel, Axis::Horizontal);
-    let (dag_v, _constraints_v) = build_axis_dag(largest, rel, Axis::Vertical);
-    let pos_h = find_appropriate_positions(&dag_h, Axis::Horizontal, x, y);
-    let pos_v = find_appropriate_positions(&dag_v, Axis::Vertical, x, y);
+    let pos_h = find_appropriate_positions(&nodes_sorted, &in_comp, &dag_h, Axis::Horizontal, x, y);
+    let pos_v = find_appropriate_positions(&nodes_sorted, &in_comp, &dag_v, Axis::Vertical, x, y);
 
     let mut source: Vec<na::Vector2<f64>> = Vec::with_capacity(largest.len());
     let mut target: Vec<na::Vector2<f64>> = Vec::with_capacity(largest.len());
     for &idx in largest {
+        if idx >= n_total {
+            continue;
+        }
         source.push(na::Vector2::new(x[idx], y[idx]));
-        let tx = pos_h.get(&idx).copied().unwrap_or(x[idx]);
-        let ty = pos_v.get(&idx).copied().unwrap_or(y[idx]);
+        let tx = pos_h.get(idx).copied().unwrap_or(x[idx]);
+        let ty = pos_v.get(idx).copied().unwrap_or(y[idx]);
         target.push(na::Vector2::new(tx, ty));
     }
 
@@ -1389,6 +1518,301 @@ fn enforce_relative_placement(x: &mut [f64], y: &mut [f64], c: &Constraints) {
 
     let n = x.len().min(y.len());
     if n == 0 {
+        return;
+    }
+
+    fn enforce_relative_placement_no_align_small(
+        x: &mut [f64],
+        y: &mut [f64],
+        rel: &[RelConstraint],
+        n: usize,
+    ) {
+        use std::collections::VecDeque;
+
+        fn build_axis_dag_keys(
+            axis: Axis,
+            rel: &[RelConstraint],
+            n: usize,
+        ) -> (Vec<usize>, Vec<Vec<Neighbor>>) {
+            let mut keys: Vec<usize> = Vec::new();
+            let mut seen: Vec<bool> = vec![false; n];
+            let mut dag: Vec<Vec<Neighbor>> = vec![Vec::new(); n];
+
+            for r in rel {
+                match axis {
+                    Axis::Horizontal => {
+                        let (Some(left), Some(right)) = (r.left, r.right) else {
+                            continue;
+                        };
+                        if left >= n || right >= n {
+                            continue;
+                        }
+                        if !seen[left] {
+                            seen[left] = true;
+                            keys.push(left);
+                        }
+                        if !seen[right] {
+                            seen[right] = true;
+                            keys.push(right);
+                        }
+                        dag[left].push(Neighbor {
+                            id: right,
+                            gap: r.gap,
+                        });
+                    }
+                    Axis::Vertical => {
+                        let (Some(top), Some(bottom)) = (r.top, r.bottom) else {
+                            continue;
+                        };
+                        if top >= n || bottom >= n {
+                            continue;
+                        }
+                        if !seen[top] {
+                            seen[top] = true;
+                            keys.push(top);
+                        }
+                        if !seen[bottom] {
+                            seen[bottom] = true;
+                            keys.push(bottom);
+                        }
+                        dag[top].push(Neighbor {
+                            id: bottom,
+                            gap: r.gap,
+                        });
+                    }
+                }
+            }
+
+            (keys, dag)
+        }
+
+        fn build_rev(keys: &[usize], dag: &[Vec<Neighbor>], n: usize) -> Vec<Vec<Neighbor>> {
+            let mut rev: Vec<Vec<Neighbor>> = vec![Vec::new(); n];
+            for &src in keys {
+                if src >= n {
+                    continue;
+                }
+                for e in &dag[src] {
+                    if e.id >= n {
+                        continue;
+                    }
+                    rev[e.id].push(Neighbor {
+                        id: src,
+                        gap: e.gap,
+                    });
+                }
+            }
+            rev
+        }
+
+        fn pos_before(key: usize, axis: Axis, x: &[f64], y: &[f64]) -> f64 {
+            match axis {
+                Axis::Horizontal => x[key],
+                Axis::Vertical => y[key],
+            }
+        }
+
+        fn component_sources(
+            keys: &[usize],
+            dag: &[Vec<Neighbor>],
+            rev: &[Vec<Neighbor>],
+            n: usize,
+        ) -> Vec<Vec<usize>> {
+            let mut undirected: Vec<Vec<usize>> = vec![Vec::new(); n];
+            for &src in keys {
+                if src >= n {
+                    continue;
+                }
+                for e in &dag[src] {
+                    if e.id >= n {
+                        continue;
+                    }
+                    undirected[src].push(e.id);
+                    undirected[e.id].push(src);
+                }
+            }
+
+            let mut visited: Vec<bool> = vec![false; n];
+            let mut out: Vec<Vec<usize>> = Vec::new();
+            for &start in keys {
+                if start >= n || visited[start] {
+                    continue;
+                }
+                let mut q: VecDeque<usize> = VecDeque::new();
+                let mut comp: Vec<usize> = Vec::new();
+                visited[start] = true;
+                q.push_back(start);
+                while let Some(cur) = q.pop_front() {
+                    comp.push(cur);
+                    for &next in &undirected[cur] {
+                        if next < n && !visited[next] {
+                            visited[next] = true;
+                            q.push_back(next);
+                        }
+                    }
+                }
+
+                let mut sources: Vec<usize> = Vec::new();
+                for &node in &comp {
+                    if node < n && rev[node].is_empty() {
+                        sources.push(node);
+                    }
+                }
+                out.push(sources);
+            }
+            out
+        }
+
+        fn find_appropriate_positions(
+            keys: &[usize],
+            dag: &[Vec<Neighbor>],
+            axis: Axis,
+            n: usize,
+            x: &[f64],
+            y: &[f64],
+            sources: &[Vec<usize>],
+        ) -> Vec<f64> {
+            let mut in_deg: Vec<usize> = vec![0; n];
+            for &src in keys {
+                for e in &dag[src] {
+                    in_deg[e.id] = in_deg[e.id].saturating_add(1);
+                }
+            }
+
+            let mut position: Vec<f64> = vec![0.0; n];
+            let mut past_bits: Vec<u64> = vec![0; n];
+            let mut past_order: Vec<Vec<usize>> = vec![Vec::new(); n];
+            let mut q: VecDeque<usize> = VecDeque::new();
+
+            for &k in keys {
+                position[k] = f64::NEG_INFINITY;
+                if in_deg[k] == 0 {
+                    q.push_back(k);
+                }
+                past_bits[k] = 1u64 << (k as u64);
+                past_order[k] = vec![k];
+            }
+
+            for component in sources {
+                if component.is_empty() {
+                    continue;
+                }
+                let mut sum = 0.0;
+                for &node in component {
+                    sum += pos_before(node, axis, x, y);
+                }
+                let avg = sum / (component.len() as f64);
+                for &node in component {
+                    position[node] = avg;
+                }
+            }
+
+            while let Some(cur) = q.pop_front() {
+                let cur_pos = position[cur];
+                for neigh in &dag[cur] {
+                    let want = cur_pos + neigh.gap;
+                    if position[neigh.id] < want {
+                        position[neigh.id] = want;
+                    }
+                    in_deg[neigh.id] = in_deg[neigh.id].saturating_sub(1);
+                    if in_deg[neigh.id] == 0 {
+                        q.push_back(neigh.id);
+                    }
+
+                    let mut merged_bits = past_bits[cur];
+                    let mut merged_order: Vec<usize> = past_order[cur].clone();
+                    for &v in &past_order[neigh.id] {
+                        let bit = 1u64 << (v as u64);
+                        if (merged_bits & bit) == 0 {
+                            merged_bits |= bit;
+                            merged_order.push(v);
+                        }
+                    }
+                    past_bits[neigh.id] = merged_bits;
+                    past_order[neigh.id] = merged_order;
+                }
+            }
+
+            let mut sink_nodes: Vec<usize> = Vec::new();
+            for &k in keys {
+                if dag[k].is_empty() {
+                    sink_nodes.push(k);
+                }
+            }
+
+            let mut comp_bits: Vec<u64> = Vec::new();
+            let mut comp_order: Vec<Vec<usize>> = Vec::new();
+            for &k in keys {
+                if !sink_nodes.contains(&k) || past_order[k].is_empty() {
+                    continue;
+                }
+                let first = past_order[k][0];
+                let first_bit = 1u64 << (first as u64);
+                if let Some(idx) = comp_bits.iter().position(|b| (*b & first_bit) != 0) {
+                    let mut bits = comp_bits[idx];
+                    let mut order = comp_order[idx].clone();
+                    for &v in &past_order[k] {
+                        let bit = 1u64 << (v as u64);
+                        if (bits & bit) == 0 {
+                            bits |= bit;
+                            order.push(v);
+                        }
+                    }
+                    comp_bits[idx] = bits;
+                    comp_order[idx] = order;
+                } else {
+                    comp_bits.push(past_bits[k]);
+                    comp_order.push(past_order[k].clone());
+                }
+            }
+
+            for comp in comp_order {
+                let mut min_before = f64::INFINITY;
+                let mut max_before = f64::NEG_INFINITY;
+                let mut min_after = f64::INFINITY;
+                let mut max_after = f64::NEG_INFINITY;
+                for &node in &comp {
+                    let before = pos_before(node, axis, x, y);
+                    let after = position[node];
+                    min_before = min_before.min(before);
+                    max_before = max_before.max(before);
+                    min_after = min_after.min(after);
+                    max_after = max_after.max(after);
+                }
+                let diff = ((min_before + max_before) / 2.0) - ((min_after + max_after) / 2.0);
+                for &node in &comp {
+                    position[node] += diff;
+                }
+            }
+
+            position
+        }
+
+        let (keys_h, dag_h) = build_axis_dag_keys(Axis::Horizontal, rel, n);
+        if !keys_h.is_empty() {
+            let rev_h = build_rev(&keys_h, &dag_h, n);
+            let sources = component_sources(&keys_h, &dag_h, &rev_h, n);
+            let pos =
+                find_appropriate_positions(&keys_h, &dag_h, Axis::Horizontal, n, x, y, &sources);
+            for &k in &keys_h {
+                x[k] = pos[k];
+            }
+        }
+
+        let (keys_v, dag_v) = build_axis_dag_keys(Axis::Vertical, rel, n);
+        if !keys_v.is_empty() {
+            let rev_v = build_rev(&keys_v, &dag_v, n);
+            let sources = component_sources(&keys_v, &dag_v, &rev_v, n);
+            let pos =
+                find_appropriate_positions(&keys_v, &dag_v, Axis::Vertical, n, x, y, &sources);
+            for &k in &keys_v {
+                y[k] = pos[k];
+            }
+        }
+    }
+
+    if c.align_vertical.is_empty() && c.align_horizontal.is_empty() && n <= 64 {
+        enforce_relative_placement_no_align_small(x, y, &c.relative, n);
         return;
     }
 
