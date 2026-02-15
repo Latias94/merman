@@ -1,0 +1,98 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "A",
+      "B"
+    ],
+    "actors": {
+      "A": {
+        "name": "A",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "B": {
+        "name": "B",
+        "description": "Bob",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "A",
+        "to": "B",
+        "message": "solid",
+        "wrap": false,
+        "type": 5,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "A",
+        "to": "B",
+        "message": "solid open",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "A",
+        "to": "B",
+        "message": "dashed open",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "A",
+        "to": "B",
+        "message": "destroy-ish",
+        "wrap": false,
+        "type": 3,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "A",
+        "to": "B",
+        "message": "async-ish",
+        "wrap": false,
+        "type": 25,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "B",
+        "to": "A",
+        "message": "reply",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

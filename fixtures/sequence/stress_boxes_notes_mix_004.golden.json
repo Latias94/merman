@@ -1,0 +1,171 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "U",
+      "W",
+      "A",
+      "D"
+    ],
+    "actors": {
+      "U": {
+        "name": "U",
+        "description": "User",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "W": {
+        "name": "W",
+        "description": "Web",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "A": {
+        "name": "A",
+        "description": "API",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "D": {
+        "name": "D",
+        "description": "DB",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "U",
+        "to": "W",
+        "message": "Login",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "W",
+        "to": "W",
+        "message": "validate input",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 1
+      },
+      {
+        "id": "2",
+        "from": "W",
+        "to": "A",
+        "message": "POST /login",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "A",
+        "to": "D",
+        "message": "query user",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "A",
+        "to": "D",
+        "message": "audit + rate limit",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "5",
+        "from": "D",
+        "to": "A",
+        "message": "user row",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "A",
+        "to": "W",
+        "message": "200 OK",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "W",
+        "to": "U",
+        "message": "redirect",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": "W",
+        "placement": 1,
+        "message": "validate input",
+        "wrap": false
+      },
+      {
+        "actor": [
+          "A",
+          "D"
+        ],
+        "placement": 2,
+        "message": "audit + rate limit",
+        "wrap": false
+      }
+    ],
+    "boxes": [
+      {
+        "name": "Frontend",
+        "wrap": false,
+        "fill": "rgb(240, 240, 255)",
+        "actorKeys": [
+          "U",
+          "W"
+        ]
+      },
+      {
+        "name": "Backend",
+        "wrap": false,
+        "fill": "rgb(255, 240, 240)",
+        "actorKeys": [
+          "A",
+          "D"
+        ]
+      }
+    ],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

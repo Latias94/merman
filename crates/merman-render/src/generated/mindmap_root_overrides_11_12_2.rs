@@ -112,6 +112,27 @@ pub fn lookup_mindmap_root_viewport_override(
         "upstream_html_demos_mindmap_mindmap_with_root_wrapping_text_and_a_shape_002" => {
             Some(("5 5 260 112", "260"))
         }
+        "stress_deep_nesting_001" => Some(("5 5 765.265869140625 767.9276733398438", "765.266")),
+        "stress_long_labels_br_icons_002" => {
+            Some(("5 5 650.4656982421875 701.2064819335938", "650.466"))
+        }
+        "stress_shapes_mix_003" => Some((
+            "7.105857849121094 5 681.14990234375 435.1829833984375",
+            "681.15",
+        )),
+        "stress_unicode_punct_004" => Some(("5 5 525.7081298828125 541.6168212890625", "525.708")),
+        "stress_many_siblings_005" => Some(("5 5 581.7508544921875 406.9787902832031", "581.751")),
+        "stress_multiline_nodes_006" => Some(("5 5 408.6500244140625 547.2468872070312", "408.65")),
+        "stress_icon_decorators_007" => Some(("5 5 327.7567138671875 524.3125", "327.757")),
+        "stress_wrap_long_word_008" => Some(("5 5 1126.3408203125 324.1378173828125", "1126.34")),
+        "stress_balanced_tree_009" => Some(("5 5 670.5387573242188 510.44244384765625", "670.539")),
+        "stress_mixed_br_and_shapes_010" => {
+            Some(("5 5 360.8953552246094 522.654541015625", "360.895"))
+        }
+        "stress_deep_wide_combo_011" => {
+            Some(("5 5 785.1439819335938 678.3199462890625", "785.144"))
+        }
+        "stress_label_escaping_012" => Some(("5 5 623.0265502929688 363.4689025878906", "623.027")),
         _ => None,
     }
 }

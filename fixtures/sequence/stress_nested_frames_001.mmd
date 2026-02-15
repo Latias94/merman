@@ -1,0 +1,35 @@
+sequenceDiagram
+  participant U as User
+  participant W as Web
+  participant A as API
+  participant D as DB
+
+  U->>W: GET /items
+  activate W
+  W->>A: fetchItems()
+  activate A
+  A->>D: SELECT items
+  activate D
+  D-->>A: rows
+  deactivate D
+
+  alt rows > 0
+    A-->>W: 200 OK (items)
+    opt cache enabled
+      W->>W: store in cache
+    end
+  else empty
+    A-->>W: 200 OK ([])
+  else error
+    A-->>W: 500 Error
+  end
+
+  par render list
+    W-->>U: HTML response
+  and telemetry
+    W->>W: log "items_listed"
+  end
+
+  deactivate A
+  deactivate W
+

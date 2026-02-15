@@ -1,0 +1,14 @@
+sequenceDiagram
+  participant a as Alice
+  participant b as Bob
+
+  links a: { "Repo": "https://repo.contoso.com/", "Dashboard": "https://dashboard.contoso.com/" }
+  link b: Profile @ https://bob.example.com/
+  properties a: { "role": "admin", "level": 3 }
+  properties b: { "role": "user", "level": 1 }
+  details a: svc-a
+  details b: svc-b
+
+  a->>b: hello
+  b-->>a: ok
+

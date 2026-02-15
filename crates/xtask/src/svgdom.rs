@@ -1,4 +1,5 @@
 use regex::Regex;
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
@@ -489,7 +490,23 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
 }
 
 pub(crate) fn dom_signature(svg: &str, mode: DomMode, decimals: u32) -> Result<SvgDomNode, String> {
-    let doc = roxmltree::Document::parse(svg).map_err(|e| e.to_string())?;
+    fn normalize_xml_entities(svg: &str) -> Cow<'_, str> {
+        // Mermaid SVG output (especially `<foreignObject>` XHTML) can contain HTML entity references
+        // like `&nbsp;`, which are not predefined in XML and thus fail strict parsers.
+        //
+        // Replace the most common cases with a plain space so we can parse and compare DOM trees
+        // deterministically. This only affects DOM comparison; it does not change SVG rendering.
+        if !(svg.contains("&nbsp;") || svg.contains("&#160;") || svg.contains("&#xA0;")) {
+            return Cow::Borrowed(svg);
+        }
+        let mut out = svg.to_string();
+        out = out.replace("&nbsp;", " ");
+        out = out.replace("&#160;", " ").replace("&#xA0;", " ");
+        Cow::Owned(out)
+    }
+
+    let svg = normalize_xml_entities(svg);
+    let doc = roxmltree::Document::parse(svg.as_ref()).map_err(|e| e.to_string())?;
     let root = doc
         .descendants()
         .find(|n| n.has_tag_name("svg"))

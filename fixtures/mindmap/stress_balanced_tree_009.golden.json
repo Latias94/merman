@@ -1,0 +1,703 @@
+{
+  "diagramType": "mindmap",
+  "model": {
+    "type": "mindmap",
+    "nodes": [
+      {
+        "id": "0",
+        "domId": "node_0",
+        "label": "Balanced",
+        "isGroup": false,
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-root section--1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 0,
+        "nodeId": "root",
+        "type": 3
+      },
+      {
+        "id": "1",
+        "domId": "node_1",
+        "label": "L",
+        "isGroup": false,
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 2,
+        "nodeId": "left",
+        "type": 3,
+        "section": 0
+      },
+      {
+        "id": "2",
+        "domId": "node_2",
+        "label": "L1",
+        "isGroup": false,
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "l1",
+        "type": 3,
+        "section": 0
+      },
+      {
+        "id": "3",
+        "domId": "node_3",
+        "label": "leaf",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 6,
+        "nodeId": "l1a",
+        "type": 2,
+        "section": 0
+      },
+      {
+        "id": "4",
+        "domId": "node_4",
+        "label": "leaf",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 6,
+        "nodeId": "l1b",
+        "type": 2,
+        "section": 0
+      },
+      {
+        "id": "5",
+        "domId": "node_5",
+        "label": "L2",
+        "isGroup": false,
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "l2",
+        "type": 3,
+        "section": 0
+      },
+      {
+        "id": "6",
+        "domId": "node_6",
+        "label": "leaf",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 6,
+        "nodeId": "l2a",
+        "type": 2,
+        "section": 0
+      },
+      {
+        "id": "7",
+        "domId": "node_7",
+        "label": "leaf",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 6,
+        "nodeId": "l2b",
+        "type": 2,
+        "section": 0
+      },
+      {
+        "id": "8",
+        "domId": "node_8",
+        "label": "R",
+        "isGroup": false,
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 2,
+        "nodeId": "right",
+        "type": 3,
+        "section": 1
+      },
+      {
+        "id": "9",
+        "domId": "node_9",
+        "label": "R1",
+        "isGroup": false,
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "r1",
+        "type": 3,
+        "section": 1
+      },
+      {
+        "id": "10",
+        "domId": "node_10",
+        "label": "leaf",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 6,
+        "nodeId": "r1a",
+        "type": 2,
+        "section": 1
+      },
+      {
+        "id": "11",
+        "domId": "node_11",
+        "label": "leaf",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 6,
+        "nodeId": "r1b",
+        "type": 2,
+        "section": 1
+      },
+      {
+        "id": "12",
+        "domId": "node_12",
+        "label": "R2",
+        "isGroup": false,
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "r2",
+        "type": 3,
+        "section": 1
+      },
+      {
+        "id": "13",
+        "domId": "node_13",
+        "label": "leaf",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 6,
+        "nodeId": "r2a",
+        "type": 2,
+        "section": 1
+      },
+      {
+        "id": "14",
+        "domId": "node_14",
+        "label": "leaf",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 6,
+        "nodeId": "r2b",
+        "type": 2,
+        "section": 1
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge_0_1",
+        "start": "0",
+        "end": "1",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-1",
+        "depth": 0,
+        "section": 0
+      },
+      {
+        "id": "edge_1_2",
+        "start": "1",
+        "end": "2",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-3",
+        "depth": 2,
+        "section": 0
+      },
+      {
+        "id": "edge_2_3",
+        "start": "2",
+        "end": "3",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-5",
+        "depth": 4,
+        "section": 0
+      },
+      {
+        "id": "edge_2_4",
+        "start": "2",
+        "end": "4",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-5",
+        "depth": 4,
+        "section": 0
+      },
+      {
+        "id": "edge_1_5",
+        "start": "1",
+        "end": "5",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-3",
+        "depth": 2,
+        "section": 0
+      },
+      {
+        "id": "edge_5_6",
+        "start": "5",
+        "end": "6",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-5",
+        "depth": 4,
+        "section": 0
+      },
+      {
+        "id": "edge_5_7",
+        "start": "5",
+        "end": "7",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-5",
+        "depth": 4,
+        "section": 0
+      },
+      {
+        "id": "edge_0_8",
+        "start": "0",
+        "end": "8",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-1",
+        "depth": 0,
+        "section": 1
+      },
+      {
+        "id": "edge_8_9",
+        "start": "8",
+        "end": "9",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-3",
+        "depth": 2,
+        "section": 1
+      },
+      {
+        "id": "edge_9_10",
+        "start": "9",
+        "end": "10",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-5",
+        "depth": 4,
+        "section": 1
+      },
+      {
+        "id": "edge_9_11",
+        "start": "9",
+        "end": "11",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-5",
+        "depth": 4,
+        "section": 1
+      },
+      {
+        "id": "edge_8_12",
+        "start": "8",
+        "end": "12",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-3",
+        "depth": 2,
+        "section": 1
+      },
+      {
+        "id": "edge_12_13",
+        "start": "12",
+        "end": "13",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-5",
+        "depth": 4,
+        "section": 1
+      },
+      {
+        "id": "edge_12_14",
+        "start": "12",
+        "end": "14",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-5",
+        "depth": 4,
+        "section": 1
+      }
+    ],
+    "diagramId": "<dynamic>",
+    "rootNode": {
+      "id": 0,
+      "nodeId": "root",
+      "level": 0,
+      "descr": "Balanced",
+      "type": 3,
+      "children": [
+        {
+          "id": 1,
+          "nodeId": "left",
+          "level": 2,
+          "descr": "L",
+          "type": 3,
+          "children": [
+            {
+              "id": 2,
+              "nodeId": "l1",
+              "level": 4,
+              "descr": "L1",
+              "type": 3,
+              "children": [
+                {
+                  "id": 3,
+                  "nodeId": "l1a",
+                  "level": 6,
+                  "descr": "leaf",
+                  "type": 2,
+                  "children": [],
+                  "width": 200,
+                  "padding": 20,
+                  "section": 0
+                },
+                {
+                  "id": 4,
+                  "nodeId": "l1b",
+                  "level": 6,
+                  "descr": "leaf",
+                  "type": 2,
+                  "children": [],
+                  "width": 200,
+                  "padding": 20,
+                  "section": 0
+                }
+              ],
+              "width": 200,
+              "padding": 10,
+              "section": 0
+            },
+            {
+              "id": 5,
+              "nodeId": "l2",
+              "level": 4,
+              "descr": "L2",
+              "type": 3,
+              "children": [
+                {
+                  "id": 6,
+                  "nodeId": "l2a",
+                  "level": 6,
+                  "descr": "leaf",
+                  "type": 2,
+                  "children": [],
+                  "width": 200,
+                  "padding": 20,
+                  "section": 0
+                },
+                {
+                  "id": 7,
+                  "nodeId": "l2b",
+                  "level": 6,
+                  "descr": "leaf",
+                  "type": 2,
+                  "children": [],
+                  "width": 200,
+                  "padding": 20,
+                  "section": 0
+                }
+              ],
+              "width": 200,
+              "padding": 10,
+              "section": 0
+            }
+          ],
+          "width": 200,
+          "padding": 10,
+          "section": 0
+        },
+        {
+          "id": 8,
+          "nodeId": "right",
+          "level": 2,
+          "descr": "R",
+          "type": 3,
+          "children": [
+            {
+              "id": 9,
+              "nodeId": "r1",
+              "level": 4,
+              "descr": "R1",
+              "type": 3,
+              "children": [
+                {
+                  "id": 10,
+                  "nodeId": "r1a",
+                  "level": 6,
+                  "descr": "leaf",
+                  "type": 2,
+                  "children": [],
+                  "width": 200,
+                  "padding": 20,
+                  "section": 1
+                },
+                {
+                  "id": 11,
+                  "nodeId": "r1b",
+                  "level": 6,
+                  "descr": "leaf",
+                  "type": 2,
+                  "children": [],
+                  "width": 200,
+                  "padding": 20,
+                  "section": 1
+                }
+              ],
+              "width": 200,
+              "padding": 10,
+              "section": 1
+            },
+            {
+              "id": 12,
+              "nodeId": "r2",
+              "level": 4,
+              "descr": "R2",
+              "type": 3,
+              "children": [
+                {
+                  "id": 13,
+                  "nodeId": "r2a",
+                  "level": 6,
+                  "descr": "leaf",
+                  "type": 2,
+                  "children": [],
+                  "width": 200,
+                  "padding": 20,
+                  "section": 1
+                },
+                {
+                  "id": 14,
+                  "nodeId": "r2b",
+                  "level": 6,
+                  "descr": "leaf",
+                  "type": 2,
+                  "children": [],
+                  "width": 200,
+                  "padding": 20,
+                  "section": 1
+                }
+              ],
+              "width": 200,
+              "padding": 10,
+              "section": 1
+            }
+          ],
+          "width": 200,
+          "padding": 10,
+          "section": 1
+        }
+      ],
+      "width": 200,
+      "padding": 10,
+      "isRoot": true
+    },
+    "markers": [
+      "point"
+    ],
+    "direction": "TB",
+    "nodeSpacing": 50,
+    "rankSpacing": 50,
+    "shapes": {
+      "0": {
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "1": {
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "2": {
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "3": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "4": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "5": {
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "6": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "7": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "8": {
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "9": {
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "10": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "11": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "12": {
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "13": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "14": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      }
+    }
+  }
+}

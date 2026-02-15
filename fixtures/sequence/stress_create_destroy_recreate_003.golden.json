@@ -1,0 +1,113 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "A",
+      "B",
+      "C",
+      "C2"
+    ],
+    "actors": {
+      "A": {
+        "name": "A",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "B": {
+        "name": "B",
+        "description": "Bob",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "C": {
+        "name": "C",
+        "description": "C",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "C2": {
+        "name": "C2",
+        "description": "C2",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "A",
+        "to": "B",
+        "message": "start",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "A",
+        "to": "C",
+        "message": "hello C",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "A",
+        "to": "C",
+        "message": "bye C",
+        "wrap": false,
+        "type": 3,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "B",
+        "to": "C2",
+        "message": "welcome back",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "B",
+        "to": "C2",
+        "message": "bye again",
+        "wrap": false,
+        "type": 3,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {
+      "C": 1,
+      "C2": 3
+    },
+    "destroyedActors": {
+      "C": 2,
+      "C2": 4
+    },
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

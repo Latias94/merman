@@ -1,0 +1,14 @@
+sequenceDiagram
+  participant A as Alice
+  participant B as Bob
+  participant C as Carol
+
+  Note left of A: left note
+  Note right of C: right note
+  Note over A,B: span A..B
+  Note over B,C: span B..C
+  A->>B: step 1
+  B->>C: step 2
+  Note over A,C: span all
+  C-->>A: done
+

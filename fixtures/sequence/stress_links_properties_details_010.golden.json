@@ -1,0 +1,73 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "a",
+      "b"
+    ],
+    "actors": {
+      "a": {
+        "name": "a",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {
+          "Repo": "https://repo.contoso.com/",
+          "Dashboard": "https://dashboard.contoso.com/"
+        },
+        "properties": {
+          "role": "admin",
+          "level": 3
+        }
+      },
+      "b": {
+        "name": "b",
+        "description": "Bob",
+        "wrap": false,
+        "type": "participant",
+        "links": {
+          "Profile": "https://bob.example.com/"
+        },
+        "properties": {
+          "role": "user",
+          "level": 1
+        }
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "a",
+        "to": "b",
+        "message": "hello",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "b",
+        "to": "a",
+        "message": "ok",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}
