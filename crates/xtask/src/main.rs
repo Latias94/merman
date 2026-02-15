@@ -7685,8 +7685,16 @@ fn gen_mindmap_text_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     out.push_str("    k as u16\n}\n\n");
 
     out.push_str("static HTML_WIDTH_OVERRIDES_PX: &[(u16, &str, f64)] = &[\n");
+    fn format_f64_literal(v: f64) -> String {
+        let mut s = format!("{v}");
+        if !(s.contains('.') || s.contains('e') || s.contains('E')) {
+            s.push_str(".0");
+        }
+        s
+    }
     for ((fs, text), w) in &entries {
         let esc = text.replace('\\', "\\\\").replace('\"', "\\\"");
+        let w = format_f64_literal(*w);
         out.push_str(&format!("    ({fs}, \"{esc}\", {w}),\n"));
     }
     out.push_str("];\n\n");

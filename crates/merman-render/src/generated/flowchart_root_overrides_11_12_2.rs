@@ -245,6 +245,7 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_html_demos_dataflowchart_borders_example_002" => {
             Some(("0 0 1499.203125 94", "1499.2"))
         }
+        "upstream_singlenode_shapes_spec" => Some(("0 0 1557.2265625 156.3125", "1557.23")),
         _ => None,
     }
 }
