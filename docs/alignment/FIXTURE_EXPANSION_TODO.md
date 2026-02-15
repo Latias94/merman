@@ -97,6 +97,8 @@ Recently imported (keep gates green after each batch):
 - 2026-02-14: Gantt docs fixtures import (10 fixtures from `repo-ref/mermaid/docs/syntax/gantt.md` via fenced code blocks, with upstream SVG baselines). Fixed Gantt strict date defaults for partial formats and topAxis grid label/tick parity to keep `parity-root` green.
 - 2026-02-15: Timeline stress fixtures import (13 fixtures with upstream SVG baselines). Deferred 6 additional Timeline stress fixtures to `fixtures/_deferred/timeline/` pending tighter text-wrapping parity, keeping the global `parity-root` gate green.
 - 2026-02-15: Upstream syntax docs batch import (15 fixtures across Block/ER/GitGraph/Pie/Requirement, with upstream SVG baselines). Deferred the C4 docs batch locally to `fixtures/_deferred/c4/` due to `textLength` / `tspan dy` parity deltas, keeping the global `parity-root` gate green.
+- 2026-02-15: Flowchart Cypress fixtures batch import (12 fixtures across handdrawn + flowchart-v2 rendering specs, with upstream SVG baselines). Added a small Flowchart SVG parity hardening fix (`shape: diam` renders as a diamond) and refreshed Flowchart root viewport overrides as needed to keep the global `parity-root` gate green.
+  - Deferred locally: `upstream_cypress_flowchart_v2_spec_should_be_possible_to_use_syntax_to_add_labels_with_trail_spaces_067` due to deeper SVG DOM structure deltas (node id ordinal mismatch that is not solvable by root viewport overrides).
 
 ## Medium priority (coverage growth)
 
