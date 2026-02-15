@@ -1463,12 +1463,37 @@ fn procrustes_transform_from_pairs(
         return None;
     }
 
-    let svd = na::SVD::new(m, true, true);
-    let (Some(u), Some(vt)) = (svd.u, svd.v_t) else {
+    let a = m[(0, 0)];
+    let b = m[(0, 1)];
+    let c = m[(1, 0)];
+    let d = m[(1, 1)];
+
+    let x1 = a + d;
+    let y1 = c - b;
+    let s1 = x1.hypot(y1);
+
+    let x2 = a - d;
+    let y2 = b + c;
+    let s2 = x2.hypot(y2);
+
+    if !(s1.is_finite() && s2.is_finite()) {
         return None;
-    };
-    let v = vt.transpose();
-    Some(v * u.transpose())
+    }
+    if s1 < 1e-12 && s2 < 1e-12 {
+        return None;
+    }
+
+    if s1 >= s2 {
+        let inv = 1.0 / s1.max(1e-12);
+        let cos = x1 * inv;
+        let sin = y1 * inv;
+        Some(na::Matrix2::new(cos, -sin, sin, cos))
+    } else {
+        let inv = 1.0 / s2.max(1e-12);
+        let cos = x2 * inv;
+        let sin = y2 * inv;
+        Some(na::Matrix2::new(cos, sin, sin, -cos))
+    }
 }
 
 fn apply_reflection_for_relative_placement(x: &mut [f64], y: &mut [f64], rel: &[RelConstraint]) {
