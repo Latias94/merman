@@ -2491,12 +2491,31 @@ fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledText, LexError
             }
         }
         TitleKind::String => {
-            // Jison string state terminates at the first matching quote; nested quotes are invalid.
+            // Mermaid allows escaped quotes inside string labels (e.g. `["He said: \\\"hi\\\""]`).
+            // Reject only unescaped nested quotes.
             if quoted {
                 if let Some(q) = quote_char {
                     let inner = &trimmed[1..trimmed.len().saturating_sub(1)];
                     let q = q as char;
-                    if inner.contains(q) {
+                    let bytes = inner.as_bytes();
+                    let q = q as u8;
+                    let mut has_unescaped = false;
+                    for (i, &b) in bytes.iter().enumerate() {
+                        if b != q {
+                            continue;
+                        }
+                        let mut backslashes = 0usize;
+                        let mut j = i;
+                        while j > 0 && bytes[j - 1] == b'\\' {
+                            backslashes += 1;
+                            j -= 1;
+                        }
+                        if backslashes % 2 == 0 {
+                            has_unescaped = true;
+                            break;
+                        }
+                    }
+                    if has_unescaped {
                         return Err(LexError {
                             message: "Invalid string label: contains nested quotes".to_string(),
                         });
