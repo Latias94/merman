@@ -10146,23 +10146,33 @@ fn render_flowchart_v2_svg_with_config_inner(
         None
     };
 
-    let lca_for_ids = |a: &str, b: &str| -> Option<&str> {
-        let mut ancestors: FxHashSet<&str> = FxHashSet::default();
+    fn lca_for_ids<'a, F>(
+        a: &str,
+        b: &str,
+        effective_parent_for_id: &F,
+        scratch: &mut Vec<&'a str>,
+    ) -> Option<&'a str>
+    where
+        F: Fn(&str) -> Option<&'a str>,
+    {
+        scratch.clear();
         let mut cur = effective_parent_for_id(a);
         while let Some(p) = cur {
-            ancestors.insert(p);
+            scratch.push(p);
             cur = effective_parent_for_id(p);
         }
 
         let mut cur = effective_parent_for_id(b);
         while let Some(p) = cur {
-            if ancestors.contains(p) {
+            if scratch.iter().any(|&v| v == p) {
                 return Some(p);
             }
             cur = effective_parent_for_id(p);
         }
         None
-    };
+    }
+
+    let mut lca_scratch: Vec<&str> = Vec::new();
 
     let y_offset_for_root = |root: Option<&str>| -> f64 {
         if root.is_some() && subgraph_title_y_shift.abs() >= 1e-9 {
@@ -10362,7 +10372,12 @@ fn render_flowchart_v2_svg_with_config_inner(
         }
 
         for e in &layout.edges {
-            let root = lca_for_ids(&e.from, &e.to);
+            let root = lca_for_ids(
+                e.from.as_str(),
+                e.to.as_str(),
+                &effective_parent_for_id,
+                &mut lca_scratch,
+            );
             let y_off = y_offset_for_root(root);
             for lbl in [
                 e.label.as_ref(),
@@ -10483,7 +10498,13 @@ fn render_flowchart_v2_svg_with_config_inner(
             },
         );
         for e in &render_edges {
-            let root_id = lca_for_ids(&e.from, &e.to).unwrap_or("");
+            let root_id = lca_for_ids(
+                e.from.as_str(),
+                e.to.as_str(),
+                &effective_parent_for_id,
+                &mut lca_scratch,
+            )
+            .unwrap_or("");
             let off = *root_offsets.entry(root_id).or_insert_with(|| {
                 flowchart_cluster_root_offsets(&ctx, root_id).unwrap_or(FlowchartRootOffsets {
                     origin_x: 0.0,
