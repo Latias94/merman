@@ -412,6 +412,19 @@ fn render_class_html_label(
     include_p: bool,
     extra_span_class: Option<&str>,
 ) {
+    fn is_simple_plain_label(text: &str) -> bool {
+        // Fast-path for the common case: no Markdown tokens and no hard/soft line breaks.
+        // This avoids pulldown-cmark overhead while producing the same XHTML fragment Mermaid
+        // would emit for plain text labels.
+        let bytes = text.as_bytes();
+        !bytes.iter().any(|&b| {
+            matches!(
+                b,
+                b'\n' | b'\r' | b'*' | b'_' | b'`' | b'~' | b'|' | b'[' | b']'
+            )
+        })
+    }
+
     fn mermaid_markdown_to_xhtml_fragment(text: &str) -> String {
         // Mermaid renders Markdown labels inside a `<foreignObject>` as XHTML-like fragments.
         // For strict SVG DOM comparisons we must keep this fragment *well-formed XML* (e.g.
@@ -471,27 +484,37 @@ fn render_class_html_label(
         out
     }
 
-    let mut class = span_class.to_string();
-    if let Some(extra) = extra_span_class {
-        if !extra.trim().is_empty() {
-            class.push(' ');
-            class.push_str(extra.trim());
-        }
+    out.push_str(r#"<span class=""#);
+    escape_xml_into(out, span_class);
+    if let Some(extra) = extra_span_class.map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        out.push(' ');
+        escape_xml_into(out, extra);
     }
-    if include_p {
-        let html = mermaid_markdown_to_xhtml_fragment(text);
-        let _ = write!(out, r#"<span class="{}">{}"#, escape_xml(&class), html);
+    out.push_str(r#"">"#);
+
+    if is_simple_plain_label(text) {
+        if include_p {
+            out.push_str("<p>");
+            escape_xml_into(out, text);
+            out.push_str("</p>");
+        } else {
+            escape_xml_into(out, text);
+        }
         out.push_str("</span>");
+        return;
+    }
+
+    let html = mermaid_markdown_to_xhtml_fragment(text);
+    if include_p {
+        out.push_str(&html);
     } else {
-        let html = mermaid_markdown_to_xhtml_fragment(text);
-        let html = html
+        let inner = html
             .strip_prefix("<p>")
             .and_then(|s| s.strip_suffix("</p>"))
-            .unwrap_or(html.as_str())
-            .to_string();
-        let _ = write!(out, r#"<span class="{}">{}"#, escape_xml(&class), html);
-        out.push_str("</span>");
+            .unwrap_or(html.as_str());
+        out.push_str(inner);
     }
+    out.push_str("</span>");
 }
 
 fn class_apply_inline_styles(
