@@ -16,19 +16,21 @@ Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is 
 Latest local spotcheck (post-merge local `main`, 2026-02-15):
 
 - Command:
-  - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,class_medium,sequence_medium --sample-size 20 --warm-up 1 --measurement 1`
+  - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,class_medium,sequence_tiny,mindmap_medium,architecture_medium,class_tiny --sample-size 20 --warm-up 2 --measurement 3`
 - Stage gmeans (ratios, `merman / mmdr`):
-  - `parse`: `1.77x`
-  - `layout`: `0.57x` (overall faster; flowchart is the main remaining layout delta)
-  - `render`: `1.88x` (still the largest consistent stage gap)
-  - `end_to_end`: `0.68x` (overall faster on this fixture set)
+  - `parse`: `1.45x`
+  - `layout`: `1.41x`
+  - `render`: `1.76x`
+  - `end_to_end`: `1.38x`
 - Notable outliers (ratios):
-  - `render/flowchart_medium`: `2.22x`
-  - `render/class_medium`: `3.37x`
-  - `parse/sequence_medium`: `2.62x`
-  - `end_to_end/flowchart_medium`: `1.08x` (this is the key medium-fixture canary regression)
-- End-to-end canary (single benchmark report):
-  - `docs/performance/COMPARISON.md` currently shows `end_to_end/flowchart_medium` at `~1.2x`.
+  - `layout/architecture_medium`: `5.42x` (fixed-cost + string-key maps dominate)
+  - `layout/mindmap_medium`: `2.59x` (COSE port still expensive)
+  - `parse/sequence_tiny`: `3.69x` (tiny parse fixed overhead)
+  - `render/class_medium`: `2.38x` and `render/class_tiny`: `2.78x` (SVG emission fixed overhead)
+  - `render/flowchart_medium`: `1.21x` (still behind, but no longer the dominant overall outlier)
+- Notes:
+  - Recent class render win: switch hot-path `escape_attr(...)` / `escape_xml(...)` allocations to
+    `*_display(...)` wrappers.
 
 - Tiny canaries (after Dagre-ish tiny fast-path):
   - `docs/performance/spotcheck_2026-02-15_tiny.md`
@@ -77,15 +79,16 @@ Local re-run notes (same date, after merging local `main` + small renderer refac
 
 Near-term priorities (updated plan):
 
-1. **Flowchart medium canary**: bring `end_to_end/flowchart_medium` to `<= 1.0x` vs mmdr.
-   - Sub-targets: `layout <= 1.0x`, `render <= 1.5x`, `parse <= 1.2x` on the same fixture.
-2. **SVG emission fixed costs** (highest leverage, medium risk): reduce allocation-heavy SVG building
-   and label HTML generation.
-   - Targets: `render/flowchart_medium <= 1.5x`, `render/class_medium <= 2.0x`.
-3. **Sequence parse fixed-cost**: `sequence_*` is still parse-heavy vs mmdr.
-   - Targets: `parse/sequence_medium <= 1.8x`, `parse/sequence_tiny <= 2.0x`.
-4. **Architecture + mindmap layout**: keep pushing typed COSE/Dagre-ish fixed-costs down, but treat
-   these as secondary until flowchart medium is back to parity end-to-end.
+1. **Architecture layout fixed cost**: cut `layout/architecture_*` without changing output.
+   - Target: `layout/architecture_medium <= 3.0x` and `end_to_end <= 2.0x` in spotchecks.
+2. **Mindmap COSE cost reduction**: bring `layout/mindmap_medium` down with deterministic behavior.
+   - Target: `layout/mindmap_medium <= 2.0x` and proportional `end_to_end` improvement.
+3. **Sequence tiny parse**: reduce `parse/sequence_tiny` fixed overhead.
+   - Target: `parse/sequence_tiny <= 2.5x`, `end_to_end/sequence_tiny <= 1.1x`.
+4. **SVG emission fixed costs**: continue reducing class/flowchart render overhead (allocations + fmt).
+   - Target: `render/class_medium <= 2.0x`, `render/class_tiny <= 2.0x`, `render/flowchart_medium <= 1.3x`.
+5. **Flowchart medium canary (guardrail)**: keep `end_to_end/flowchart_medium` at `~parity` while we
+   optimize other diagram types.
 
 Root-cause direction:
 

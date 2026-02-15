@@ -115,7 +115,7 @@ pub(super) fn render_class_diagram_v2_debug_svg(
                     r#"<text class="terminal-label" x="{}" y="{}">{}</text>"#,
                     fmt(lbl.x),
                     fmt(lbl.y),
-                    escape_xml(name)
+                    escape_xml_display(name)
                 );
             }
 
@@ -126,7 +126,7 @@ pub(super) fn render_class_diagram_v2_debug_svg(
                         r#"<text class="node-label" x="{}" y="{}">{}</text>"#,
                         fmt(lbl.x),
                         fmt(lbl.y),
-                        escape_xml(&e.id)
+                        escape_xml_display(&e.id)
                     );
                 }
             }
@@ -1028,7 +1028,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
                 let _ = write!(
                     out,
                     r#"<g class="cluster undefined" id="{}" data-look="classic"><rect x="{}" y="{}" width="{}" height="{}"/><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g></g>"#,
-                    escape_attr(&c.id),
+                    escape_attr_display(&c.id),
                     fmt(left),
                     fmt(top),
                     fmt(w),
@@ -1036,7 +1036,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
                     fmt(label_x),
                     fmt(label_y),
                     fmt(label_w),
-                    escape_xml(&c.title)
+                    escape_xml_display(&c.title)
                 );
             }
             out.push_str("</g>");
@@ -1164,7 +1164,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
                             r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g></g>"#,
                             fmt(lbl.x + content_tx),
                             fmt(lbl.y + content_ty),
-                            escape_xml(start_text.trim())
+                            escape_xml_display(start_text.trim())
                         );
                     }
                 }
@@ -1195,7 +1195,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
                             r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"/><foreignObject style="width: 9px; height: 12px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: 1px; white-space: nowrap;"><span class="edgeLabel">{}</span></div></foreignObject></g>"#,
                             fmt(lbl.x + content_tx),
                             fmt(lbl.y + content_ty),
-                            escape_xml(end_text.trim())
+                            escape_xml_display(end_text.trim())
                         );
                     }
                 }
@@ -1215,7 +1215,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
                     let _ = write!(
                         out,
                         r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-                        escape_attr(&dom_id)
+                        escape_attr_display(&dom_id)
                     );
                 } else if let Some(lbl) = e.label.as_ref() {
                     include_xywh(
@@ -1230,7 +1230,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
                         r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
                         fmt(lbl.x + content_tx),
                         fmt(lbl.y + content_ty),
-                        escape_attr(&dom_id),
+                        escape_attr_display(&dom_id),
                         fmt(-lbl.width / 2.0),
                         fmt(-lbl.height / 2.0),
                         fmt(lbl.width.max(0.0)),
@@ -1242,7 +1242,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
                     let _ = write!(
                         out,
                         r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-                        escape_attr(&dom_id)
+                        escape_attr_display(&dom_id)
                     );
                 }
             }
@@ -1408,7 +1408,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
             let _ = write!(
                 &mut out,
                 r##"<g class="node undefined" id="{}" transform="translate({}, {})"><g class="basic label-container"><path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="#fff5ad" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/><path d="{}" stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="fill:#fff5ad !important;stroke:#aaaa33 !important"/></g><g class="label" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="text-align: center; white-space: nowrap; display: table-cell; line-height: 1.5; max-width: 200px;" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="nodeLabel"><p>"##,
-                escape_attr(&note.id),
+                escape_attr_display(&note.id),
                 fmt(node_tx),
                 fmt(node_ty),
                 fmt(left),
@@ -1419,7 +1419,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
                 fmt(top + h),
                 fmt(left),
                 fmt(top + h),
-                escape_attr(&note_stroke_d),
+                escape_attr_display(&note_stroke_d),
                 fmt(label_x),
                 fmt(label_y),
                 fmt(fo_w),
@@ -1470,7 +1470,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
             let _ = write!(
                 &mut out,
                 r#"<g class="node undefined" id="{}" transform="translate({}, {})"><rect class="basic label-container" style="opacity:0; !important" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>"#,
-                escape_attr(&iface.id),
+                escape_attr_display(&iface.id),
                 fmt(node_tx),
                 fmt(node_ty),
                 fmt(left),
@@ -1527,7 +1527,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
                 &mut out,
                 r#"<a{}{} transform="translate({}, {})">"#,
                 if include_href {
-                    format!(r#" xlink:href="{}""#, escape_attr(link))
+                    format!(r#" xlink:href="{}""#, escape_attr_display(link))
                 } else {
                     String::new()
                 },
@@ -1544,11 +1544,11 @@ pub(super) fn render_class_diagram_v2_svg_model(
         let _ = write!(
             &mut out,
             r#"<g class="{}" id="{}""#,
-            escape_attr(&node_classes),
-            escape_attr(&node.dom_id),
+            escape_attr_display(&node_classes),
+            escape_attr_display(&node.dom_id),
         );
         if has_tooltip {
-            let _ = write!(&mut out, r#" title="{}""#, escape_attr(tooltip));
+            let _ = write!(&mut out, r#" title="{}""#, escape_attr_display(tooltip));
         }
         if link.is_none() {
             let _ = write!(
@@ -1577,7 +1577,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
             fmt(top + h),
             fmt(left),
             fmt(top + h),
-            escape_attr(node_fill)
+            escape_attr_display(node_fill)
         );
         let (stroke_d, stroke_pb) =
             class_rough_rect_stroke_path_and_bounds(left, top, w, h, rough_seed);
@@ -1602,10 +1602,10 @@ pub(super) fn render_class_diagram_v2_svg_model(
         let _ = write!(
             &mut out,
             r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style=""/>"#,
-            escape_attr(&stroke_d),
-            escape_attr(node_stroke),
-            escape_attr(node_stroke_width),
-            escape_attr(node_stroke_dasharray),
+            escape_attr_display(&stroke_d),
+            escape_attr_display(node_stroke),
+            escape_attr_display(node_stroke_width),
+            escape_attr_display(node_stroke_dasharray),
         );
         out.push_str("</g>");
 
@@ -1798,10 +1798,10 @@ pub(super) fn render_class_diagram_v2_svg_model(
                 let _ = write!(
                     &mut out,
                     r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style=""/>"#,
-                    escape_attr(&d),
-                    escape_attr(node_stroke),
-                    escape_attr(node_stroke_width),
-                    escape_attr(node_stroke_dasharray),
+                    escape_attr_display(&d),
+                    escape_attr_display(node_stroke),
+                    escape_attr_display(node_stroke_width),
+                    escape_attr_display(node_stroke_dasharray),
                 );
                 out.push_str("</g>");
             }
@@ -2260,7 +2260,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
             r#"<text text-anchor="middle" x="{}" y="{}" class="classDiagramTitleText">{}</text>"#,
             fmt(title_x),
             fmt(title_y),
-            escape_xml(title)
+            escape_xml_display(title)
         );
     }
 
