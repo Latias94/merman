@@ -4226,7 +4226,7 @@ const browserExe = input.browser_exe || null;
 
 const cliRoot = process.cwd();
 const mermaidHtmlPath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermaid-cli', 'dist', 'index.html');
-const mermaidIifePath = path.join(cliRoot, 'node_modules', 'mermaid', 'dist', 'mermaid.js');
+const mermaidEsmPath = path.join(cliRoot, 'node_modules', 'mermaid', 'dist', 'mermaid.esm.mjs');
 const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermaid-zenuml', 'dist', 'mermaid-zenuml.js');
 
 (async () => {
@@ -14161,16 +14161,26 @@ if (!inputPath || !outputPath || !configPath) {
 
 const cliRoot = process.cwd();
 const mermaidHtmlPath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermaid-cli', 'dist', 'index.html');
-const mermaidIifePath = path.join(cliRoot, 'node_modules', 'mermaid', 'dist', 'mermaid.js');
+const mermaidEsmPath = path.join(cliRoot, 'node_modules', 'mermaid', 'dist', 'mermaid.esm.mjs');
 const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermaid-zenuml', 'dist', 'mermaid-zenuml.js');
 
 (async () => {
   const code = fs.readFileSync(inputPath, 'utf8');
   const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 
-  const launchOpts = { headless: 'shell', args: ['--no-sandbox', '--disable-setuid-sandbox'] };
+  const launchOpts = { headless: 'shell', args: ['--no-sandbox', '--disable-setuid-sandbox', '--allow-file-access-from-files'] };
   const browser = await puppeteer.launch(launchOpts);
   const page = await browser.newPage();
+  if (process.env.MERMAN_SEEDED_UPSTREAM_SVG_DEBUG === '1') {
+    page.on('console', (msg) => {
+      if (msg && typeof msg.type === 'function' && msg.type() === 'error') {
+        console.error(`[browser:console.error] ${msg.text()}`);
+      }
+    });
+    page.on('pageerror', (err) => {
+      console.error(`[browser:pageerror] ${err && err.stack ? err.stack : String(err)}`);
+    });
+  }
 
   await page.evaluateOnNewDocument((seedStr) => {
     const mask64 = (1n << 64n) - 1n;
@@ -14209,14 +14219,13 @@ const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermai
 
   await page.setViewport({ width: Math.max(1, width), height: Math.max(1, height), deviceScaleFactor: 1 });
   await page.goto(url.pathToFileURL(mermaidHtmlPath).href);
-  await Promise.all([
-    page.addScriptTag({ path: mermaidIifePath }),
-    page.addScriptTag({ path: zenumlIifePath }),
-  ]);
+  await page.addScriptTag({ path: zenumlIifePath });
 
-  const svg = await page.evaluate(async ({ code, cfg, theme, svgId, width }) => {
-    const mermaid = globalThis.mermaid;
-    if (!mermaid) throw new Error('mermaid global not found');
+  const mermaidEsmUrl = url.pathToFileURL(mermaidEsmPath).href;
+  const svg = await page.evaluate(async ({ code, cfg, theme, svgId, width, mermaidEsmUrl }) => {
+    const mermaidMod = await import(mermaidEsmUrl);
+    const mermaid = mermaidMod && (mermaidMod.default || mermaidMod);
+    if (!mermaid) throw new Error('mermaid module not found');
 
     if (document.fonts && typeof document.fonts[Symbol.iterator] === 'function') {
       await Promise.all(Array.from(document.fonts, (font) => font.load()));
@@ -14238,9 +14247,38 @@ const zenumlIifePath = path.join(cliRoot, 'node_modules', '@mermaid-js', 'mermai
     container.innerHTML = '';
     container.style.width = `${Math.max(1, Number(width) || 1)}px`;
 
-    const { svg } = await mermaid.render(svgId, code, container);
-    return svg;
-  }, { code, cfg, theme, svgId, width });
+    async function tryRenderViaMermaidRender() {
+      if (typeof mermaid.render !== 'function') return undefined;
+      const rendered = await mermaid.render(svgId, code, container);
+      let svg =
+        typeof rendered === 'string'
+          ? rendered
+          : Array.isArray(rendered)
+            ? rendered[0]
+            : rendered && rendered.svg;
+      if (typeof svg !== 'string' && rendered != null) {
+        const asStr = String(rendered);
+        if (asStr.trim().startsWith('<svg')) {
+          svg = asStr;
+        }
+      }
+      return typeof svg === 'string' ? svg : undefined;
+    }
+
+    async function tryRenderViaMermaidApi() {
+      const api = mermaid.mermaidAPI;
+      if (!api || typeof api.render !== 'function') return undefined;
+      return await new Promise((resolve, reject) => {
+        try {
+          api.render(svgId, code, (svgCode) => resolve(svgCode), container);
+        } catch (err) {
+          reject(err);
+        }
+      });
+    }
+
+    return (await tryRenderViaMermaidRender()) ?? (await tryRenderViaMermaidApi());
+  }, { code, cfg, theme, svgId, width, mermaidEsmUrl });
 
   function ensureSvgBackgroundColor(svgText, bg) {
     if (typeof svgText !== 'string') {

@@ -287,6 +287,7 @@ pub(super) fn render_architecture_diagram_svg(
         .and_then(|v| v.get("useMaxWidth"))
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
+    let sanitize_config = merman_core::MermaidConfig::from_value(effective_config.clone());
 
     let mut node_xy: std::collections::BTreeMap<String, (f64, f64)> =
         std::collections::BTreeMap::new();
@@ -822,6 +823,10 @@ pub(super) fn render_architecture_diagram_svg(
                     "Y" => (start_y - end_y).abs() / 1.5,
                     _ => (start_x - end_x).abs() / 2.0,
                 };
+                // Upstream Mermaid's edge label wrapping is fairly forgiving for short labels, even
+                // on short/diagonal edges. Clamp the wrap width to a reasonable minimum to avoid
+                // over-wrapping single-phrase labels like "to center".
+                let wrap_width = wrap_width.max(icon_size_px * 1.5);
                 let wrap_width = if wrap_width.is_finite() && wrap_width > 0.0 {
                     wrap_width
                 } else {
@@ -1132,7 +1137,10 @@ pub(super) fn render_architecture_diagram_svg(
                         w = fmt(icon_size_px),
                         h = fmt(icon_size_px),
                         clamp = line_clamp,
-                        text = escape_xml(icon_text.trim())
+                        text = merman_core::sanitize::sanitize_text(
+                            icon_text.trim(),
+                            &sanitize_config
+                        )
                     );
                 }
                 (None, None) => {

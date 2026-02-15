@@ -233,7 +233,7 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             false
         }
 
-        fn is_architecture_service_icon_content(n: roxmltree::Node<'_, '_>) -> bool {
+        fn is_architecture_icon_content(n: roxmltree::Node<'_, '_>) -> bool {
             let mut svg_count = 0;
             for a in n.ancestors() {
                 if a.is_element() && a.tag_name().name() == "svg" {
@@ -249,8 +249,13 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
             n.ancestors().any(|a| {
                 a.is_element()
                     && a.tag_name().name() == "g"
-                    && a.attribute("class")
-                        .is_some_and(|c| c.split_whitespace().any(|t| t == "architecture-service"))
+                    && a.attribute("class").is_some_and(|c| {
+                        c.split_whitespace().any(|t| {
+                            t == "architecture-service"
+                                || t == "architecture-groups"
+                                || t == "architecture-group"
+                        })
+                    })
             })
         }
 
@@ -332,7 +337,7 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
                 mode,
                 DomMode::Strict | DomMode::Structure | DomMode::Parity | DomMode::ParityRoot
             ) && key == "id"
-                && is_architecture_service_icon_content(n)
+                && is_architecture_icon_content(n)
                 && (val.starts_with("IconifyId") || val.len() <= 2)
             {
                 val = "<icon-id>".to_string();
@@ -491,17 +496,72 @@ fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDo
 
 pub(crate) fn dom_signature(svg: &str, mode: DomMode, decimals: u32) -> Result<SvgDomNode, String> {
     fn normalize_xml_entities(svg: &str) -> Cow<'_, str> {
-        // Mermaid SVG output (especially `<foreignObject>` XHTML) can contain HTML entity references
-        // like `&nbsp;`, which are not predefined in XML and thus fail strict parsers.
+        // Mermaid SVG output (especially `<foreignObject>` XHTML) can contain HTML-ish constructs
+        // that are valid in a browser DOM, but not valid XML:
         //
-        // Replace the most common cases with a plain space so we can parse and compare DOM trees
-        // deterministically. This only affects DOM comparison; it does not change SVG rendering.
-        if !(svg.contains("&nbsp;") || svg.contains("&#160;") || svg.contains("&#xA0;")) {
+        // - HTML entity references like `&nbsp;` (not predefined in XML), and
+        // - void elements like `<img ...>` without a self-closing slash (`/>`).
+        //
+        // Normalize the most common cases so we can parse and compare DOM trees deterministically.
+        // This only affects DOM comparison; it does not change SVG rendering.
+        if !(svg.contains("&nbsp;")
+            || svg.contains("&#160;")
+            || svg.contains("&#xA0;")
+            || svg.contains("<img"))
+        {
             return Cow::Borrowed(svg);
         }
+
+        fn normalize_unclosed_img_tags(s: &str) -> String {
+            fn re_unquoted_attr_value() -> &'static Regex {
+                static ONCE: OnceLock<Regex> = OnceLock::new();
+                // In HTML it is legal to omit quotes for attribute values (e.g. `src=x`), but
+                // `roxmltree` parses XML and requires quotes. Normalize the common case we see in
+                // Mermaid's `<foreignObject>` XHTML.
+                ONCE.get_or_init(|| Regex::new(r#"(\s[\w:-]+)=([^\s"'<>]+)"#).unwrap())
+            }
+
+            let mut out = String::with_capacity(s.len());
+            let mut idx = 0usize;
+            while let Some(rel) = s[idx..].find("<img") {
+                let start = idx + rel;
+                out.push_str(&s[idx..start]);
+                let Some(gt_rel) = s[start..].find('>') else {
+                    out.push_str(&s[start..]);
+                    return out;
+                };
+                let end = start + gt_rel;
+
+                // Include the closing `>` for easier normalization.
+                let tag_full = &s[start..=end];
+                let mut tag_norm = re_unquoted_attr_value()
+                    .replace_all(tag_full, r#"$1="$2""#)
+                    .to_string();
+
+                // Ensure the void tag is self-closed so the surrounding SVG becomes valid XML.
+                if tag_norm.ends_with('>') {
+                    let inner = tag_norm[..tag_norm.len() - 1].trim_end();
+                    if !inner.ends_with('/') {
+                        tag_norm.pop();
+                        tag_norm.push_str("/>");
+                    }
+                }
+
+                out.push_str(&tag_norm);
+                idx = end + 1;
+            }
+            out.push_str(&s[idx..]);
+            out
+        }
+
         let mut out = svg.to_string();
-        out = out.replace("&nbsp;", " ");
-        out = out.replace("&#160;", " ").replace("&#xA0;", " ");
+        if out.contains("&nbsp;") || out.contains("&#160;") || out.contains("&#xA0;") {
+            out = out.replace("&nbsp;", " ");
+            out = out.replace("&#160;", " ").replace("&#xA0;", " ");
+        }
+        if out.contains("<img") {
+            out = normalize_unclosed_img_tags(&out);
+        }
         Cow::Owned(out)
     }
 
