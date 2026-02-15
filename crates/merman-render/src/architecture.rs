@@ -4,6 +4,7 @@ use crate::text::TextMeasurer;
 use crate::{Error, Result};
 use indexmap::IndexMap;
 use merman_core::diagrams::architecture::ArchitectureDiagramRenderModel;
+use rustc_hash::{FxHashMap, FxHashSet};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -512,13 +513,14 @@ fn layout_architecture_diagram_model(
         // infer it from incident non-junction neighbors:
         // - pick the unique group if there is exactly one
         // - otherwise pick the most frequent group (skip ties)
-        let junction_ids: std::collections::BTreeSet<&str> = model
-            .nodes
-            .iter()
-            .filter(|n| n.node_type == "junction")
-            .map(|n| n.id.as_str())
-            .collect();
-        if !junction_ids.is_empty() {
+        let has_junction = model.nodes.iter().any(|n| n.node_type == "junction");
+        if has_junction {
+            let junction_ids: std::collections::BTreeSet<&str> = model
+                .nodes
+                .iter()
+                .filter(|n| n.node_type == "junction")
+                .map(|n| n.id.as_str())
+                .collect();
             let mut neighbors: std::collections::BTreeMap<&str, Vec<&str>> =
                 std::collections::BTreeMap::new();
             for e in &model.edges {
@@ -578,203 +580,248 @@ fn layout_architecture_diagram_model(
             }
         }
 
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-        enum GroupAlignment {
-            Horizontal,
-            Vertical,
-            Bend,
-        }
-
-        fn dir_alignment(a: Option<&str>, b: Option<&str>) -> GroupAlignment {
-            let (Some(a), Some(b)) = (a.and_then(Dir::parse), b.and_then(Dir::parse)) else {
-                return GroupAlignment::Bend;
-            };
-            if a.is_x() != b.is_x() {
-                GroupAlignment::Bend
-            } else if a.is_x() {
-                GroupAlignment::Horizontal
-            } else {
-                GroupAlignment::Vertical
-            }
-        }
-
-        // Track how groups connect (used when flattening alignment arrays across groups).
-        let mut group_alignments: std::collections::BTreeMap<
-            String,
-            std::collections::BTreeMap<String, GroupAlignment>,
-        > = std::collections::BTreeMap::new();
-        for e in &model.edges {
-            let Some(lhs_group) = node_group.get(e.lhs_id.as_str()).and_then(|v| *v) else {
-                continue;
-            };
-            let Some(rhs_group) = node_group.get(e.rhs_id.as_str()).and_then(|v| *v) else {
-                continue;
-            };
-            if lhs_group == rhs_group {
-                continue;
-            }
-            let alignment = dir_alignment(e.lhs_dir.as_deref(), e.rhs_dir.as_deref());
-            if alignment == GroupAlignment::Bend {
-                continue;
-            }
-            group_alignments
-                .entry(lhs_group.to_string())
-                .or_default()
-                .insert(rhs_group.to_string(), alignment);
-            group_alignments
-                .entry(rhs_group.to_string())
-                .or_default()
-                .insert(lhs_group.to_string(), alignment);
-        }
-
-        fn flatten_alignments(
-            alignment_obj: &std::collections::BTreeMap<
-                i32,
-                std::collections::BTreeMap<String, Vec<String>>,
-            >,
-            alignment_dir: GroupAlignment,
-            group_alignments: &std::collections::BTreeMap<
-                String,
-                std::collections::BTreeMap<String, GroupAlignment>,
-            >,
-        ) -> std::collections::BTreeMap<String, Vec<String>> {
-            let mut prev: std::collections::BTreeMap<String, Vec<String>> =
-                std::collections::BTreeMap::new();
-            for (dir, alignments) in alignment_obj {
-                let mut cnt = 0usize;
-                let mut arr: Vec<(String, Vec<String>)> = alignments
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
-                if arr.len() == 1 {
-                    prev.insert(dir.to_string(), arr.pop().unwrap().1);
-                    continue;
-                }
-                for i in 0..arr.len().saturating_sub(1) {
-                    for j in (i + 1)..arr.len() {
-                        let (a_group_id, a_node_ids) = &arr[i];
-                        let (b_group_id, b_node_ids) = &arr[j];
-                        let alignment = group_alignments
-                            .get(a_group_id)
-                            .and_then(|m| m.get(b_group_id))
-                            .copied();
-
-                        if alignment == Some(alignment_dir)
-                            || a_group_id == "default"
-                            || b_group_id == "default"
-                        {
-                            prev.entry(dir.to_string())
-                                .or_default()
-                                .extend(a_node_ids.iter().cloned());
-                            prev.entry(dir.to_string())
-                                .or_default()
-                                .extend(b_node_ids.iter().cloned());
-                        } else {
-                            let key_a = format!("{dir}-{cnt}");
-                            cnt += 1;
-                            prev.insert(key_a, a_node_ids.clone());
-                            let key_b = format!("{dir}-{cnt}");
-                            cnt += 1;
-                            prev.insert(key_b, b_node_ids.clone());
-                        }
-                    }
-                }
-            }
-            prev
-        }
-
         // Build spatial maps in Mermaid's coordinate space (y-up), keyed by node id.
-        let spatial_maps: Vec<std::collections::BTreeMap<&str, (i32, i32)>> = components.clone();
+        let spatial_maps: &[std::collections::BTreeMap<&str, (i32, i32)>] = &components;
 
         // AlignmentConstraint.
         let mut horizontal_all: Vec<Vec<String>> = Vec::new();
         let mut vertical_all: Vec<Vec<String>> = Vec::new();
-        for spatial_map in &spatial_maps {
-            let mut horizontal_alignments: std::collections::BTreeMap<
-                i32,
-                std::collections::BTreeMap<String, Vec<String>>,
-            > = std::collections::BTreeMap::new();
-            let mut vertical_alignments: std::collections::BTreeMap<
-                i32,
-                std::collections::BTreeMap<String, Vec<String>>,
-            > = std::collections::BTreeMap::new();
 
-            for (id, (x, y)) in spatial_map {
-                let id = *id;
-                let node_group = node_group
-                    .get(id)
-                    .and_then(|v| *v)
-                    .unwrap_or("default")
-                    .to_string();
-
-                horizontal_alignments
-                    .entry(*y)
-                    .or_default()
-                    .entry(node_group.clone())
-                    .or_default()
-                    .push(id.to_string());
-
-                vertical_alignments
-                    .entry(*x)
-                    .or_default()
-                    .entry(node_group)
-                    .or_default()
-                    .push(id.to_string());
-            }
-
-            let horiz_map = flatten_alignments(
-                &horizontal_alignments,
-                GroupAlignment::Horizontal,
-                &group_alignments,
-            );
-            let vert_map = flatten_alignments(
-                &vertical_alignments,
-                GroupAlignment::Vertical,
-                &group_alignments,
-            );
-
-            for v in horiz_map.values() {
-                if v.len() > 1 {
-                    horizontal_all.push(v.clone());
+        let mut shared_group: Option<&str> = None;
+        let mut all_nodes_share_same_group = true;
+        for n in &model.nodes {
+            let g = node_group.get(n.id.as_str()).and_then(|v| *v);
+            match (shared_group, g) {
+                (None, None) => {}
+                (None, Some(x)) => shared_group = Some(x),
+                (Some(x), Some(y)) if x == y => {}
+                _ => {
+                    all_nodes_share_same_group = false;
+                    break;
                 }
             }
-            for v in vert_map.values() {
-                if v.len() > 1 {
-                    vertical_all.push(v.clone());
+        }
+
+        if all_nodes_share_same_group {
+            for spatial_map in spatial_maps {
+                let mut horizontal_alignments: std::collections::BTreeMap<i32, Vec<String>> =
+                    std::collections::BTreeMap::new();
+                let mut vertical_alignments: std::collections::BTreeMap<i32, Vec<String>> =
+                    std::collections::BTreeMap::new();
+
+                for (id, (x, y)) in spatial_map {
+                    horizontal_alignments
+                        .entry(*y)
+                        .or_default()
+                        .push((*id).to_string());
+                    vertical_alignments
+                        .entry(*x)
+                        .or_default()
+                        .push((*id).to_string());
+                }
+
+                for v in horizontal_alignments.values() {
+                    if v.len() > 1 {
+                        horizontal_all.push(v.clone());
+                    }
+                }
+                for v in vertical_alignments.values() {
+                    if v.len() > 1 {
+                        vertical_all.push(v.clone());
+                    }
+                }
+            }
+        } else {
+            #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+            enum GroupAlignment {
+                Horizontal,
+                Vertical,
+                Bend,
+            }
+
+            fn dir_alignment(a: Option<&str>, b: Option<&str>) -> GroupAlignment {
+                let (Some(a), Some(b)) = (a.and_then(Dir::parse), b.and_then(Dir::parse)) else {
+                    return GroupAlignment::Bend;
+                };
+                if a.is_x() != b.is_x() {
+                    GroupAlignment::Bend
+                } else if a.is_x() {
+                    GroupAlignment::Horizontal
+                } else {
+                    GroupAlignment::Vertical
+                }
+            }
+
+            // Track how groups connect (used when flattening alignment arrays across groups).
+            let mut group_alignments: std::collections::BTreeMap<
+                String,
+                std::collections::BTreeMap<String, GroupAlignment>,
+            > = std::collections::BTreeMap::new();
+            for e in &model.edges {
+                let Some(lhs_group) = node_group.get(e.lhs_id.as_str()).and_then(|v| *v) else {
+                    continue;
+                };
+                let Some(rhs_group) = node_group.get(e.rhs_id.as_str()).and_then(|v| *v) else {
+                    continue;
+                };
+                if lhs_group == rhs_group {
+                    continue;
+                }
+                let alignment = dir_alignment(e.lhs_dir.as_deref(), e.rhs_dir.as_deref());
+                if alignment == GroupAlignment::Bend {
+                    continue;
+                }
+                group_alignments
+                    .entry(lhs_group.to_string())
+                    .or_default()
+                    .insert(rhs_group.to_string(), alignment);
+                group_alignments
+                    .entry(rhs_group.to_string())
+                    .or_default()
+                    .insert(lhs_group.to_string(), alignment);
+            }
+
+            fn flatten_alignments(
+                alignment_obj: &std::collections::BTreeMap<
+                    i32,
+                    std::collections::BTreeMap<String, Vec<String>>,
+                >,
+                alignment_dir: GroupAlignment,
+                group_alignments: &std::collections::BTreeMap<
+                    String,
+                    std::collections::BTreeMap<String, GroupAlignment>,
+                >,
+            ) -> std::collections::BTreeMap<String, Vec<String>> {
+                let mut prev: std::collections::BTreeMap<String, Vec<String>> =
+                    std::collections::BTreeMap::new();
+                for (dir, alignments) in alignment_obj {
+                    let mut cnt = 0usize;
+                    let mut arr: Vec<(String, Vec<String>)> = alignments
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect();
+                    if arr.len() == 1 {
+                        prev.insert(dir.to_string(), arr.pop().unwrap().1);
+                        continue;
+                    }
+                    for i in 0..arr.len().saturating_sub(1) {
+                        for j in (i + 1)..arr.len() {
+                            let (a_group_id, a_node_ids) = &arr[i];
+                            let (b_group_id, b_node_ids) = &arr[j];
+                            let alignment = group_alignments
+                                .get(a_group_id)
+                                .and_then(|m| m.get(b_group_id))
+                                .copied();
+
+                            if alignment == Some(alignment_dir)
+                                || a_group_id == "default"
+                                || b_group_id == "default"
+                            {
+                                prev.entry(dir.to_string())
+                                    .or_default()
+                                    .extend(a_node_ids.iter().cloned());
+                                prev.entry(dir.to_string())
+                                    .or_default()
+                                    .extend(b_node_ids.iter().cloned());
+                            } else {
+                                let key_a = format!("{dir}-{cnt}");
+                                cnt += 1;
+                                prev.insert(key_a, a_node_ids.clone());
+                                let key_b = format!("{dir}-{cnt}");
+                                cnt += 1;
+                                prev.insert(key_b, b_node_ids.clone());
+                            }
+                        }
+                    }
+                }
+                prev
+            }
+
+            for spatial_map in spatial_maps {
+                let mut horizontal_alignments: std::collections::BTreeMap<
+                    i32,
+                    std::collections::BTreeMap<String, Vec<String>>,
+                > = std::collections::BTreeMap::new();
+                let mut vertical_alignments: std::collections::BTreeMap<
+                    i32,
+                    std::collections::BTreeMap<String, Vec<String>>,
+                > = std::collections::BTreeMap::new();
+
+                for (id, (x, y)) in spatial_map {
+                    let id = *id;
+                    let node_group = node_group
+                        .get(id)
+                        .and_then(|v| *v)
+                        .unwrap_or("default")
+                        .to_string();
+
+                    horizontal_alignments
+                        .entry(*y)
+                        .or_default()
+                        .entry(node_group.clone())
+                        .or_default()
+                        .push(id.to_string());
+
+                    vertical_alignments
+                        .entry(*x)
+                        .or_default()
+                        .entry(node_group)
+                        .or_default()
+                        .push(id.to_string());
+                }
+
+                let horiz_map = flatten_alignments(
+                    &horizontal_alignments,
+                    GroupAlignment::Horizontal,
+                    &group_alignments,
+                );
+                let vert_map = flatten_alignments(
+                    &vertical_alignments,
+                    GroupAlignment::Vertical,
+                    &group_alignments,
+                );
+
+                for v in horiz_map.values() {
+                    if v.len() > 1 {
+                        horizontal_all.push(v.clone());
+                    }
+                }
+                for v in vert_map.values() {
+                    if v.len() > 1 {
+                        vertical_all.push(v.clone());
+                    }
                 }
             }
         }
 
         // RelativePlacementConstraint (gap between borders).
         let mut relative: Vec<manatee::RelativePlacementConstraint> = Vec::new();
-        for spatial_map in &spatial_maps {
-            let mut inv: std::collections::BTreeMap<(i32, i32), String> =
-                std::collections::BTreeMap::new();
+        for spatial_map in spatial_maps {
+            let mut inv: FxHashMap<(i32, i32), &str> = FxHashMap::default();
+            inv.reserve(spatial_map.len().saturating_mul(2));
             for (id, (x, y)) in spatial_map {
-                inv.insert((*x, *y), (*id).to_string());
+                inv.insert((*x, *y), *id);
             }
 
             let mut queue: std::collections::VecDeque<(i32, i32)> =
                 std::collections::VecDeque::new();
-            let mut visited: std::collections::BTreeSet<(i32, i32)> =
-                std::collections::BTreeSet::new();
+            let mut visited: FxHashSet<(i32, i32)> = FxHashSet::default();
             queue.push_back((0, 0));
 
             let dirs: [(&str, (i32, i32)); 4] =
                 [("L", (-1, 0)), ("R", (1, 0)), ("T", (0, 1)), ("B", (0, -1))];
 
             while let Some(curr) = queue.pop_front() {
-                if visited.contains(&curr) {
+                if !visited.insert(curr) {
                     continue;
                 }
-                visited.insert(curr);
-                let Some(curr_id) = inv.get(&curr).cloned() else {
+                let Some(&curr_id) = inv.get(&curr) else {
                     continue;
                 };
 
                 for (dir, (dx, dy)) in dirs {
                     let np = (curr.0 + dx, curr.1 + dy);
-                    let Some(new_id) = inv.get(&np).cloned() else {
+                    let Some(&new_id) = inv.get(&np) else {
                         continue;
                     };
                     if visited.contains(&np) {
@@ -785,15 +832,15 @@ fn layout_architecture_diagram_model(
                     let gap = 1.5 * icon_size;
                     match dir {
                         "L" => relative.push(manatee::RelativePlacementConstraint {
-                            left: Some(new_id),
-                            right: Some(curr_id.clone()),
+                            left: Some(new_id.to_string()),
+                            right: Some(curr_id.to_string()),
                             top: None,
                             bottom: None,
                             gap,
                         }),
                         "R" => relative.push(manatee::RelativePlacementConstraint {
-                            left: Some(curr_id.clone()),
-                            right: Some(new_id),
+                            left: Some(curr_id.to_string()),
+                            right: Some(new_id.to_string()),
                             top: None,
                             bottom: None,
                             gap,
@@ -801,15 +848,15 @@ fn layout_architecture_diagram_model(
                         "T" => relative.push(manatee::RelativePlacementConstraint {
                             left: None,
                             right: None,
-                            top: Some(new_id),
-                            bottom: Some(curr_id.clone()),
+                            top: Some(new_id.to_string()),
+                            bottom: Some(curr_id.to_string()),
                             gap,
                         }),
                         "B" => relative.push(manatee::RelativePlacementConstraint {
                             left: None,
                             right: None,
-                            top: Some(curr_id.clone()),
-                            bottom: Some(new_id),
+                            top: Some(curr_id.to_string()),
+                            bottom: Some(new_id.to_string()),
                             gap,
                         }),
                         _ => {}
@@ -823,126 +870,135 @@ fn layout_architecture_diagram_model(
         const SIMPLE_NODE_SIZE: f64 = 40.0; // layout-base `LayoutConstants.SIMPLE_NODE_SIZE`
         const NESTING_FACTOR: f64 = 0.1; // cytoscape-fcose default `nestingFactor`
 
-        let mut group_parent_map: std::collections::BTreeMap<&str, &str> =
-            std::collections::BTreeMap::new();
-        for g in &model.groups {
-            if let Some(parent) = g.in_group.as_deref() {
-                group_parent_map.insert(g.id.as_str(), parent);
-            }
-        }
-
-        fn group_chain<'a>(
-            mut g: &'a str,
-            group_parent_map: &std::collections::BTreeMap<&'a str, &'a str>,
-        ) -> Vec<&'a str> {
-            let mut out: Vec<&'a str> = Vec::new();
-            out.push(g);
-            while let Some(p) = group_parent_map.get(g).copied() {
-                g = p;
-                out.push(g);
-            }
-            out.reverse();
-            out
-        }
+        let has_inter_parent_edge = model.edges.iter().any(|e| {
+            let lhs_g = node_group.get(e.lhs_id.as_str()).and_then(|v| *v);
+            let rhs_g = node_group.get(e.rhs_id.as_str()).and_then(|v| *v);
+            lhs_g != rhs_g
+        });
 
         let mut node_chain: std::collections::BTreeMap<&str, Vec<&str>> =
             std::collections::BTreeMap::new();
-        for n in &model.nodes {
-            let chain = node_group
-                .get(n.id.as_str())
-                .copied()
-                .flatten()
-                .map(|g| group_chain(g, &group_parent_map))
-                .unwrap_or_default();
-            node_chain.insert(n.id.as_str(), chain);
-        }
-
-        #[derive(Debug, Clone, Copy)]
-        enum Child<'a> {
-            Node(#[allow(dead_code)] &'a str),
-            Group(&'a str),
-        }
-
-        let mut group_children: std::collections::BTreeMap<&str, Vec<Child<'_>>> =
-            std::collections::BTreeMap::new();
-        for g in &model.groups {
-            group_children.entry(g.id.as_str()).or_default();
-        }
-        for g in &model.groups {
-            if let Some(parent) = g.in_group.as_deref() {
-                group_children
-                    .entry(parent)
-                    .or_default()
-                    .push(Child::Group(g.id.as_str()));
-            }
-        }
-        for n in &model.nodes {
-            if let Some(parent) = node_group.get(n.id.as_str()).copied().flatten() {
-                group_children
-                    .entry(parent)
-                    .or_default()
-                    .push(Child::Node(n.id.as_str()));
-            }
-        }
-
         let mut group_estimated_size: std::collections::BTreeMap<&str, f64> =
             std::collections::BTreeMap::new();
-        fn estimated_size_of_group<'a>(
-            g: &'a str,
-            icon_size: f64,
-            group_children: &std::collections::BTreeMap<&'a str, Vec<Child<'a>>>,
-            memo: &mut std::collections::BTreeMap<&'a str, f64>,
-        ) -> f64 {
-            if let Some(v) = memo.get(g).copied() {
-                return v;
-            }
-            let children = group_children.get(g).map(|v| v.as_slice()).unwrap_or(&[]);
-            if children.is_empty() {
-                // layout-base `LayoutConstants.EMPTY_COMPOUND_NODE_SIZE`
-                memo.insert(g, SIMPLE_NODE_SIZE);
-                return SIMPLE_NODE_SIZE;
+
+        if has_inter_parent_edge {
+            let mut group_parent_map: std::collections::BTreeMap<&str, &str> =
+                std::collections::BTreeMap::new();
+            for g in &model.groups {
+                if let Some(parent) = g.in_group.as_deref() {
+                    group_parent_map.insert(g.id.as_str(), parent);
+                }
             }
 
-            let mut sum = 0.0f64;
-            let mut cnt = 0.0f64;
-            for c in children {
-                let s = match c {
-                    Child::Node(_) => icon_size,
-                    Child::Group(id) => {
-                        estimated_size_of_group(id, icon_size, group_children, memo)
-                    }
+            fn group_chain<'a>(
+                mut g: &'a str,
+                group_parent_map: &std::collections::BTreeMap<&'a str, &'a str>,
+            ) -> Vec<&'a str> {
+                let mut out: Vec<&'a str> = Vec::new();
+                out.push(g);
+                while let Some(p) = group_parent_map.get(g).copied() {
+                    g = p;
+                    out.push(g);
+                }
+                out.reverse();
+                out
+            }
+
+            for n in &model.nodes {
+                let chain = node_group
+                    .get(n.id.as_str())
+                    .copied()
+                    .flatten()
+                    .map(|g| group_chain(g, &group_parent_map))
+                    .unwrap_or_default();
+                node_chain.insert(n.id.as_str(), chain);
+            }
+
+            #[derive(Debug, Clone, Copy)]
+            enum Child<'a> {
+                Node(#[allow(dead_code)] &'a str),
+                Group(&'a str),
+            }
+
+            let mut group_children: std::collections::BTreeMap<&str, Vec<Child<'_>>> =
+                std::collections::BTreeMap::new();
+            for g in &model.groups {
+                group_children.entry(g.id.as_str()).or_default();
+            }
+            for g in &model.groups {
+                if let Some(parent) = g.in_group.as_deref() {
+                    group_children
+                        .entry(parent)
+                        .or_default()
+                        .push(Child::Group(g.id.as_str()));
+                }
+            }
+            for n in &model.nodes {
+                if let Some(parent) = node_group.get(n.id.as_str()).copied().flatten() {
+                    group_children
+                        .entry(parent)
+                        .or_default()
+                        .push(Child::Node(n.id.as_str()));
+                }
+            }
+
+            fn estimated_size_of_group<'a>(
+                g: &'a str,
+                icon_size: f64,
+                group_children: &std::collections::BTreeMap<&'a str, Vec<Child<'a>>>,
+                memo: &mut std::collections::BTreeMap<&'a str, f64>,
+            ) -> f64 {
+                if let Some(v) = memo.get(g).copied() {
+                    return v;
+                }
+                let children = group_children.get(g).map(|v| v.as_slice()).unwrap_or(&[]);
+                if children.is_empty() {
+                    // layout-base `LayoutConstants.EMPTY_COMPOUND_NODE_SIZE`
+                    memo.insert(g, SIMPLE_NODE_SIZE);
+                    return SIMPLE_NODE_SIZE;
+                }
+
+                let mut sum = 0.0f64;
+                let mut cnt = 0.0f64;
+                for c in children {
+                    let s = match c {
+                        Child::Node(_) => icon_size,
+                        Child::Group(id) => {
+                            estimated_size_of_group(id, icon_size, group_children, memo)
+                        }
+                    };
+                    sum += s;
+                    cnt += 1.0;
+                }
+                let out = if cnt > 0.0 {
+                    sum / cnt.sqrt()
+                } else {
+                    SIMPLE_NODE_SIZE
                 };
-                sum += s;
-                cnt += 1.0;
+                memo.insert(g, out);
+                out
             }
-            let out = if cnt > 0.0 {
-                sum / cnt.sqrt()
-            } else {
-                SIMPLE_NODE_SIZE
-            };
-            memo.insert(g, out);
-            out
-        }
-        for g in &model.groups {
-            let _ = estimated_size_of_group(
-                g.id.as_str(),
-                icon_size,
-                &group_children,
-                &mut group_estimated_size,
-            );
+
+            for g in &model.groups {
+                let _ = estimated_size_of_group(
+                    g.id.as_str(),
+                    icon_size,
+                    &group_children,
+                    &mut group_estimated_size,
+                );
+            }
         }
 
-        let mut edge_seen: std::collections::BTreeSet<(String, String)> =
-            std::collections::BTreeSet::new();
+        let mut edge_seen: FxHashSet<(&str, &str)> = FxHashSet::default();
         let mut edges: Vec<manatee::Edge> = Vec::new();
         let mut default_edge_length_sum = 0.0f64;
         let mut default_edge_length_cnt = 0.0f64;
 
         for e in &model.edges {
             let (u, v) = if e.lhs_id <= e.rhs_id {
-                (e.lhs_id.clone(), e.rhs_id.clone())
+                (e.lhs_id.as_str(), e.rhs_id.as_str())
             } else {
-                (e.rhs_id.clone(), e.lhs_id.clone())
+                (e.rhs_id.as_str(), e.lhs_id.as_str())
             };
             if !edge_seen.insert((u, v)) {
                 continue;
@@ -1549,27 +1605,41 @@ fn layout_architecture_diagram_model(
         }
 
         let group_separation_start = timing_enabled.then(std::time::Instant::now);
-        resolve_top_level_group_separation(&mut nodes, &model, icon_size, padding_px, font_size_px);
+        let top_level_groups = model
+            .groups
+            .iter()
+            .filter(|g| g.in_group.as_deref().is_none())
+            .take(2)
+            .count();
+        if top_level_groups >= 2 {
+            resolve_top_level_group_separation(
+                &mut nodes,
+                &model,
+                icon_size,
+                padding_px,
+                font_size_px,
+            );
+        }
         if let Some(s) = group_separation_start {
             timings.group_separation = s.elapsed();
         }
     }
 
     let build_edges_start = timing_enabled.then(std::time::Instant::now);
-    let mut node_by_id: std::collections::BTreeMap<String, LayoutNode> =
-        std::collections::BTreeMap::new();
+    let mut node_by_id: FxHashMap<&str, &LayoutNode> = FxHashMap::default();
+    node_by_id.reserve(nodes.len());
     for n in &nodes {
-        node_by_id.insert(n.id.clone(), n.clone());
+        node_by_id.insert(n.id.as_str(), n);
     }
 
     let mut edges: Vec<LayoutEdge> = Vec::new();
     for (idx, e) in model.edges.iter().enumerate() {
-        let Some(a) = node_by_id.get(&e.lhs_id) else {
+        let Some(&a) = node_by_id.get(e.lhs_id.as_str()) else {
             return Err(Error::InvalidModel {
                 message: format!("edge lhs node not found: {}", e.lhs_id),
             });
         };
-        let Some(b) = node_by_id.get(&e.rhs_id) else {
+        let Some(&b) = node_by_id.get(e.rhs_id.as_str()) else {
             return Err(Error::InvalidModel {
                 message: format!("edge rhs node not found: {}", e.rhs_id),
             });
