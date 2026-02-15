@@ -1,0 +1,98 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "0-<dynamic>",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      },
+      {
+        "id": "1-<dynamic>",
+        "message": "",
+        "seq": 1,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "0-<dynamic>"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "2-<dynamic>",
+        "message": "",
+        "seq": 2,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "1-<dynamic>"
+        ],
+        "branch": "develop"
+      },
+      {
+        "id": "3-<dynamic>",
+        "message": "",
+        "seq": 3,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "2-<dynamic>"
+        ],
+        "branch": "develop"
+      },
+      {
+        "id": "4-<dynamic>",
+        "message": "merged branch develop into main",
+        "seq": 4,
+        "type": 3,
+        "tags": [],
+        "parents": [
+          "1-<dynamic>",
+          "3-<dynamic>"
+        ],
+        "branch": "main",
+        "customId": false
+      },
+      {
+        "id": "5-<dynamic>",
+        "message": "",
+        "seq": 5,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "4-<dynamic>"
+        ],
+        "branch": "main"
+      },
+      {
+        "id": "6-<dynamic>",
+        "message": "",
+        "seq": 6,
+        "type": 0,
+        "tags": [],
+        "parents": [
+          "5-<dynamic>"
+        ],
+        "branch": "main"
+      }
+    ],
+    "branches": [
+      {
+        "name": "main"
+      },
+      {
+        "name": "develop"
+      }
+    ],
+    "currentBranch": "main",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}

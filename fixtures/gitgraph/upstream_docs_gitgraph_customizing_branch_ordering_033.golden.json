@@ -1,0 +1,39 @@
+{
+  "diagramType": "gitGraph",
+  "model": {
+    "type": "gitGraph",
+    "commits": [
+      {
+        "id": "0-<dynamic>",
+        "message": "",
+        "seq": 0,
+        "type": 0,
+        "tags": [],
+        "parents": [],
+        "branch": "main"
+      }
+    ],
+    "branches": [
+      {
+        "name": "test2"
+      },
+      {
+        "name": "test3"
+      },
+      {
+        "name": "test4"
+      },
+      {
+        "name": "main"
+      },
+      {
+        "name": "test1"
+      }
+    ],
+    "currentBranch": "test4",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "warnings": []
+  }
+}
