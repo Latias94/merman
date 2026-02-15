@@ -13,30 +13,30 @@ This report is intended for quick perf triage (stage attribution).
 
 | fixture | stage | merman | mmdr | ratio |
 |---|---|---:|---:|---:|
-| `flowchart_medium` | `parse` | 328.65 µs | 272.10 µs | 1.21x |
-| `flowchart_medium` | `layout` | 6.3124 ms | 5.2699 ms | 1.20x |
-| `flowchart_medium` | `render` | 372.87 µs | 175.50 µs | 2.12x |
-| `flowchart_medium` | `end_to_end` | 6.5480 ms | 6.3492 ms | 1.03x |
-| `class_medium` | `parse` | 158.19 µs | 67.319 µs | 2.35x |
-| `class_medium` | `layout` | 770.99 µs | 2.2277 ms | 0.35x |
-| `class_medium` | `render` | 399.51 µs | 107.69 µs | 3.71x |
-| `class_medium` | `end_to_end` | 1.3940 ms | 3.6113 ms | 0.39x |
-| `sequence_medium` | `parse` | 93.024 µs | 35.011 µs | 2.66x |
-| `sequence_medium` | `layout` | 77.885 µs | 194.91 µs | 0.40x |
-| `sequence_medium` | `render` | 48.339 µs | 61.762 µs | 0.78x |
-| `sequence_medium` | `end_to_end` | 203.39 µs | 295.36 µs | 0.69x |
-| `mindmap_medium` | `parse` | 22.966 µs | 15.483 µs | 1.48x |
-| `mindmap_medium` | `layout` | 163.22 µs | 40.084 µs | 4.07x |
-| `mindmap_medium` | `render` | 76.363 µs | 49.544 µs | 1.54x |
-| `mindmap_medium` | `end_to_end` | 263.38 µs | 114.42 µs | 2.30x |
-| `architecture_medium` | `parse` | 3.9750 µs | 4.9450 µs | 0.80x |
-| `architecture_medium` | `layout` | 44.249 µs | 6.6068 µs | 6.70x |
-| `architecture_medium` | `render` | 34.451 µs | 13.847 µs | 2.49x |
-| `architecture_medium` | `end_to_end` | 93.038 µs | 25.879 µs | 3.60x |
+| `flowchart_medium` | `parse` | 266.76 µs | 252.02 µs | 1.06x |
+| `flowchart_medium` | `layout` | 6.0700 ms | 4.0913 ms | 1.48x |
+| `flowchart_medium` | `render` | 349.85 µs | 180.89 µs | 1.93x |
+| `flowchart_medium` | `end_to_end` | 5.6476 ms | 3.9120 ms | 1.44x |
+| `class_medium` | `parse` | 111.24 µs | 53.778 µs | 2.07x |
+| `class_medium` | `layout` | 683.40 µs | 1.9922 ms | 0.34x |
+| `class_medium` | `render` | 361.91 µs | 101.51 µs | 3.57x |
+| `class_medium` | `end_to_end` | 1.1007 ms | 2.4195 ms | 0.45x |
+| `sequence_medium` | `parse` | 62.671 µs | 25.284 µs | 2.48x |
+| `sequence_medium` | `layout` | 70.034 µs | 134.25 µs | 0.52x |
+| `sequence_medium` | `render` | 32.215 µs | 42.287 µs | 0.76x |
+| `sequence_medium` | `end_to_end` | 153.25 µs | 185.74 µs | 0.83x |
+| `mindmap_medium` | `parse` | 15.743 µs | 11.325 µs | 1.39x |
+| `mindmap_medium` | `layout` | 99.227 µs | 28.741 µs | 3.45x |
+| `mindmap_medium` | `render` | 58.267 µs | 34.461 µs | 1.69x |
+| `mindmap_medium` | `end_to_end` | 164.63 µs | 91.302 µs | 1.80x |
+| `architecture_medium` | `parse` | 2.7213 µs | 3.3602 µs | 0.81x |
+| `architecture_medium` | `layout` | 35.735 µs | 6.0961 µs | 5.86x |
+| `architecture_medium` | `render` | 31.359 µs | 11.471 µs | 2.73x |
+| `architecture_medium` | `end_to_end` | 93.421 µs | 24.810 µs | 3.77x |
 
 ## Summary (geometric mean of ratios)
 
-- `parse`: `1.55x`
-- `layout`: `1.35x`
-- `render`: `1.88x`
-- `end_to_end`: `1.18x`
+- `parse`: `1.44x`
+- `layout`: `1.40x`
+- `render`: `1.89x`
+- `end_to_end`: `1.30x`

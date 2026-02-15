@@ -16,19 +16,19 @@ Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is 
 - Latest combined spotcheck report:
   - `docs/performance/spotcheck_2026-02-15.md` (`tools/bench/stage_spotcheck.py`, 10 samples / 1s warmup / 3s measurement)
   - Canary set (`flowchart_medium,class_medium,sequence_medium,mindmap_medium,architecture_medium`):
-    - `parse` gmean: `1.55x`
-    - `layout` gmean: `1.35x`
-    - `render` gmean: `1.88x`
-    - `end_to_end` gmean: `1.18x`
+    - `parse` gmean: `1.44x`
+    - `layout` gmean: `1.40x`
+    - `render` gmean: `1.89x`
+    - `end_to_end` gmean: `1.30x`
   - Notable outliers:
-    - `architecture_medium`: `layout 6.70x`, `render 2.49x`, `end_to_end 3.60x` (absolute times are small; ratio is large)
-    - `mindmap_medium`: `layout 4.07x`, `end_to_end 2.30x`
-    - `class_medium`: `render 3.71x` (despite `end_to_end 0.39x`)
-    - `flowchart_medium`: `render 2.12x`, `end_to_end 1.03x` (absolute times are ms-scale)
+    - `architecture_medium`: `layout 5.86x`, `render 2.73x`, `end_to_end 3.77x` (absolute times are small; ratio is large)
+    - `mindmap_medium`: `layout 3.45x`, `end_to_end 1.80x`
+    - `class_medium`: `render 3.57x` (despite `end_to_end 0.45x`)
+    - `flowchart_medium`: `render 1.93x`, `end_to_end 1.44x` (absolute times are ms-scale)
 
 Near-term priorities (updated plan):
 
-1. **Flowchart layout+render**: reduce `end_to_end/flowchart_medium` from `~1.03x` to `<= 1.0x` (and keep it there).
+1. **Flowchart layout+render**: reduce `end_to_end/flowchart_medium` from `~1.4x` to `<= 1.0x` (and keep it there).
     This is a top priority because flowcharts tend to dominate absolute runtime (ms-scale).
 2. **Mindmap layout**: reduce `layout/mindmap_medium` from `~4.1x` to `<= 2.0x` (COSE port / bbox).
 3. **Architecture layout+render**: reduce fixed overhead on tiny diagrams and/or add a fast-path for
@@ -88,6 +88,7 @@ Useful debug toggles:
 - `MERMAN_FLOWCHART_LAYOUT_TIMING=1` (flowchart layout stage attribution)
 - `MERMAN_MINDMAP_LAYOUT_TIMING=1` (mindmap layout coarse attribution: measure/manatee/edges/bounds)
 - `MERMAN_ARCHITECTURE_LAYOUT_TIMING=1` (architecture layout coarse attribution: bfs/manatee/edges/bounds)
+- `MANATEE_COSE_TIMING=1` (COSE-Bilkent internal breakdown: from_graph/flat_forest/radial/spring/transform/output)
 - `DUGONG_DAGREISH_TIMING=1` (Dagre-ish pipeline stage attribution; shows `order` as dominant)
 - `DUGONG_ORDER_TIMING=1` (ordering stage breakdown inside Dagre-ish pipeline)
 
