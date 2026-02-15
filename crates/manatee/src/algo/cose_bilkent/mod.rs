@@ -1201,8 +1201,9 @@ impl SimGraph {
         };
 
         let mut stack: Vec<usize> = vec![start];
-        let mut seen: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
-        seen.insert(start);
+        let mut seen: Vec<bool> = vec![false; self.nodes.len()];
+        let mut seen_count: usize = 1;
+        seen[start] = true;
 
         while let Some(u) = stack.pop() {
             for &ei in &self.nodes[u].edges {
@@ -1213,14 +1214,16 @@ impl SimGraph {
                 if !self.nodes[v].active {
                     continue;
                 }
-                if seen.insert(v) {
+                if !seen[v] {
+                    seen[v] = true;
+                    seen_count += 1;
                     stack.push(v);
                 }
             }
         }
 
         let active_count = self.nodes.iter().filter(|n| n.active).count();
-        if seen.len() == active_count {
+        if seen_count == active_count {
             Vec::new()
         } else {
             (0..self.nodes.len())
