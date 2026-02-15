@@ -1,0 +1,36 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Accessibility block + wrapping stress",
+    "accTitle": "Timeline accTitle with ﬂ°hash¶ß and",
+    "accDescr": "This is a multiline accDescr block.\nIt contains #hashtags, ;semicolons, and a markdown link [example](https://example.com).\nIt also contains a forced line break token <br> to exercise wrapping rules.",
+    "sections": [
+      "Section A"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Section A",
+        "type": "Section A",
+        "task": "2001 ",
+        "score": 0,
+        "events": [
+          "Event one ",
+          "Event two"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Section A",
+        "type": "Section A",
+        "task": "2002 ",
+        "score": 0,
+        "events": [
+          "Event three",
+          "Continuation event with <br> line break"
+        ]
+      }
+    ]
+  }
+}

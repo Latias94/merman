@@ -95,6 +95,7 @@ Recently imported (keep gates green after each batch):
 - 2026-02-14: Packet docs fixtures import (1 fixture from `repo-ref/mermaid/docs/syntax/packet.md` via fenced code blocks, with upstream SVG baselines), keeping `parity-root` green. (Skipped the placeholder `start` / `... More Fields ...` syntax blocks because Mermaid CLI renders them as error SVGs.)
 - 2026-02-14: Kanban docs fixtures import (2 fixtures from `repo-ref/mermaid/docs/syntax/kanban.md` via fenced code blocks, with upstream SVG baselines), keeping `parity-root` green.
 - 2026-02-14: Gantt docs fixtures import (10 fixtures from `repo-ref/mermaid/docs/syntax/gantt.md` via fenced code blocks, with upstream SVG baselines). Fixed Gantt strict date defaults for partial formats and topAxis grid label/tick parity to keep `parity-root` green.
+- 2026-02-15: Timeline stress fixtures import (13 fixtures with upstream SVG baselines). Deferred 6 additional Timeline stress fixtures to `fixtures/_deferred/timeline/` pending tighter text-wrapping parity, keeping the global `parity-root` gate green.
 
 ## Medium priority (coverage growth)
 

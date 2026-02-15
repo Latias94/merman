@@ -1,0 +1,61 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Section titles with <br>",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "2026 Q1 <br> Release Personal Tier",
+      "2026 Q2 <br> Release Enterprise Tier"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "2026 Q1 <br> Release Personal Tier",
+        "type": "2026 Q1 <br> Release Personal Tier",
+        "task": "Bullet 1 ",
+        "score": 0,
+        "events": [
+          "sub-point 1a ",
+          "sub-point 1b",
+          "sub-point 1c"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "2026 Q1 <br> Release Personal Tier",
+        "type": "2026 Q1 <br> Release Personal Tier",
+        "task": "Bullet 2 ",
+        "score": 0,
+        "events": [
+          "sub-point 2a ",
+          "sub-point 2b"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "2026 Q2 <br> Release Enterprise Tier",
+        "type": "2026 Q2 <br> Release Enterprise Tier",
+        "task": "Bullet 3 ",
+        "score": 0,
+        "events": [
+          "sub-point <br> 3a ",
+          "sub-point 3b",
+          "sub-point 3c"
+        ]
+      },
+      {
+        "id": 3,
+        "section": "2026 Q2 <br> Release Enterprise Tier",
+        "type": "2026 Q2 <br> Release Enterprise Tier",
+        "task": "Bullet 4 ",
+        "score": 0,
+        "events": [
+          "sub-point 4a ",
+          "sub-point 4b"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Many events for one period",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Busy Day"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Busy Day",
+        "type": "Busy Day",
+        "task": "09-00",
+        "score": 0,
+        "events": [
+          "Start work",
+          "Standup",
+          "Code review",
+          "Implement feature A",
+          "Fix bug B",
+          "Write tests",
+          "Update docs",
+          "Lunch break",
+          "Pair programming",
+          "Refactor module",
+          "Run benchmarks",
+          "Deploy to staging",
+          "Verify metrics",
+          "Prepare release notes",
+          "End of day"
+        ]
+      }
+    ]
+  }
+}

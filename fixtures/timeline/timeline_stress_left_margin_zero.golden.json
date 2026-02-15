@@ -1,0 +1,35 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Left margin = 0",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Tight"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Tight",
+        "type": "Tight",
+        "task": "2020 ",
+        "score": 0,
+        "events": [
+          "Node labels may overflow; viewport should include overhang"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Tight",
+        "type": "Tight",
+        "task": "2021 ",
+        "score": 0,
+        "events": [
+          "Another event with wider text",
+          "WWWWWW iiiiii"
+        ]
+      }
+    ]
+  }
+}

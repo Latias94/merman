@@ -1,0 +1,1005 @@
+{
+  "diagramType": "timeline",
+  "layout": {
+    "TimelineDiagram": {
+      "bounds": {
+        "min_x": 100.0,
+        "min_y": -61.0,
+        "max_x": 5490.0,
+        "max_y": 415.6
+      },
+      "left_margin": 150.0,
+      "base_x": 200.0,
+      "base_y": 50.0,
+      "pre_title_box_width": 4990.0,
+      "sections": [],
+      "orphan_tasks": [
+        {
+          "node": {
+            "x": 200.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "1990 ",
+            "label_lines": [
+              "1990"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 295.0,
+            "y1": 117.8,
+            "x2": 295.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 200.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section--1",
+              "label": "Event 01",
+              "label_lines": [
+                "Event   01"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 400.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-0",
+            "label": "1991 ",
+            "label_lines": [
+              "1991"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 495.0,
+            "y1": 117.8,
+            "x2": 495.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 400.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-0",
+              "label": "Event 02",
+              "label_lines": [
+                "Event   02"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 600.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-1",
+            "label": "1992 ",
+            "label_lines": [
+              "1992"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 695.0,
+            "y1": 117.8,
+            "x2": 695.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 600.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-1",
+              "label": "Event 03",
+              "label_lines": [
+                "Event   03"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 800.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-2",
+            "label": "1993 ",
+            "label_lines": [
+              "1993"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 895.0,
+            "y1": 117.8,
+            "x2": 895.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 800.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-2",
+              "label": "Event 04",
+              "label_lines": [
+                "Event   04"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 1000.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-3",
+            "label": "1994 ",
+            "label_lines": [
+              "1994"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 1095.0,
+            "y1": 117.8,
+            "x2": 1095.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 1000.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-3",
+              "label": "Event 05",
+              "label_lines": [
+                "Event   05"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 1200.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-4",
+            "label": "1995 ",
+            "label_lines": [
+              "1995"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 1295.0,
+            "y1": 117.8,
+            "x2": 1295.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 1200.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-4",
+              "label": "Event 06",
+              "label_lines": [
+                "Event   06"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 1400.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-5",
+            "label": "1996 ",
+            "label_lines": [
+              "1996"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 1495.0,
+            "y1": 117.8,
+            "x2": 1495.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 1400.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-5",
+              "label": "Event 07",
+              "label_lines": [
+                "Event   07"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 1600.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-6",
+            "label": "1997 ",
+            "label_lines": [
+              "1997"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 1695.0,
+            "y1": 117.8,
+            "x2": 1695.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 1600.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-6",
+              "label": "Event 08",
+              "label_lines": [
+                "Event   08"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 1800.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-7",
+            "label": "1998 ",
+            "label_lines": [
+              "1998"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 1895.0,
+            "y1": 117.8,
+            "x2": 1895.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 1800.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-7",
+              "label": "Event 09",
+              "label_lines": [
+                "Event   09"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 2000.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-8",
+            "label": "1999 ",
+            "label_lines": [
+              "1999"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 2095.0,
+            "y1": 117.8,
+            "x2": 2095.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 2000.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-8",
+              "label": "Event 10",
+              "label_lines": [
+                "Event   10"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 2200.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-9",
+            "label": "2000 ",
+            "label_lines": [
+              "2000"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 2295.0,
+            "y1": 117.8,
+            "x2": 2295.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 2200.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-9",
+              "label": "Event 11",
+              "label_lines": [
+                "Event   11"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 2400.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-10",
+            "label": "2001 ",
+            "label_lines": [
+              "2001"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 2495.0,
+            "y1": 117.8,
+            "x2": 2495.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 2400.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-10",
+              "label": "Event 12",
+              "label_lines": [
+                "Event   12"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 2600.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "2002 ",
+            "label_lines": [
+              "2002"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 2695.0,
+            "y1": 117.8,
+            "x2": 2695.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 2600.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section--1",
+              "label": "Event 13",
+              "label_lines": [
+                "Event   13"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 2800.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-0",
+            "label": "2003 ",
+            "label_lines": [
+              "2003"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 2895.0,
+            "y1": 117.8,
+            "x2": 2895.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 2800.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-0",
+              "label": "Event 14",
+              "label_lines": [
+                "Event   14"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 3000.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-1",
+            "label": "2004 ",
+            "label_lines": [
+              "2004"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 3095.0,
+            "y1": 117.8,
+            "x2": 3095.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 3000.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-1",
+              "label": "Event 15",
+              "label_lines": [
+                "Event   15"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 3200.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-2",
+            "label": "2005 ",
+            "label_lines": [
+              "2005"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 3295.0,
+            "y1": 117.8,
+            "x2": 3295.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 3200.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-2",
+              "label": "Event 16",
+              "label_lines": [
+                "Event   16"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 3400.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-3",
+            "label": "2006 ",
+            "label_lines": [
+              "2006"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 3495.0,
+            "y1": 117.8,
+            "x2": 3495.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 3400.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-3",
+              "label": "Event 17",
+              "label_lines": [
+                "Event   17"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 3600.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-4",
+            "label": "2007 ",
+            "label_lines": [
+              "2007"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 3695.0,
+            "y1": 117.8,
+            "x2": 3695.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 3600.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-4",
+              "label": "Event 18",
+              "label_lines": [
+                "Event   18"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 3800.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-5",
+            "label": "2008 ",
+            "label_lines": [
+              "2008"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 3895.0,
+            "y1": 117.8,
+            "x2": 3895.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 3800.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-5",
+              "label": "Event 19",
+              "label_lines": [
+                "Event   19"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 4000.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-6",
+            "label": "2009 ",
+            "label_lines": [
+              "2009"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 4095.0,
+            "y1": 117.8,
+            "x2": 4095.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 4000.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-6",
+              "label": "Event 20",
+              "label_lines": [
+                "Event   20"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 4200.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-7",
+            "label": "2010 ",
+            "label_lines": [
+              "2010"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 4295.0,
+            "y1": 117.8,
+            "x2": 4295.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 4200.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-7",
+              "label": "Event 21",
+              "label_lines": [
+                "Event   21"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 4400.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-8",
+            "label": "2011 ",
+            "label_lines": [
+              "2011"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 4495.0,
+            "y1": 117.8,
+            "x2": 4495.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 4400.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-8",
+              "label": "Event 22",
+              "label_lines": [
+                "Event   22"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 4600.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-9",
+            "label": "2012 ",
+            "label_lines": [
+              "2012"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 4695.0,
+            "y1": 117.8,
+            "x2": 4695.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 4600.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-9",
+              "label": "Event 23",
+              "label_lines": [
+                "Event   23"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 4800.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section-10",
+            "label": "2013 ",
+            "label_lines": [
+              "2013"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 4895.0,
+            "y1": 117.8,
+            "x2": 4895.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 4800.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section-10",
+              "label": "Event 24",
+              "label_lines": [
+                "Event   24"
+              ],
+              "kind": "event"
+            }
+          ]
+        },
+        {
+          "node": {
+            "x": 5000.0,
+            "y": 50.0,
+            "width": 190.0,
+            "height": 67.8,
+            "content_width": 150.0,
+            "padding": 20.0,
+            "section_class": "section--1",
+            "label": "2014 ",
+            "label_lines": [
+              "2014"
+            ],
+            "kind": "task"
+          },
+          "connector": {
+            "kind": "task-events",
+            "x1": 5095.0,
+            "y1": 117.8,
+            "x2": 5095.0,
+            "y2": 365.6
+          },
+          "events": [
+            {
+              "x": 5000.0,
+              "y": 250.0,
+              "width": 190.0,
+              "height": 50.0,
+              "content_width": 150.0,
+              "padding": 20.0,
+              "section_class": "section--1",
+              "label": "Event 25",
+              "label_lines": [
+                "Event   25"
+              ],
+              "kind": "event"
+            }
+          ]
+        }
+      ],
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "y1": 167.8,
+        "x2": 5440.0,
+        "y2": 167.8
+      },
+      "title": "Many periods without sections",
+      "title_x": 2345.0,
+      "title_y": 20.0
+    }
+  }
+}

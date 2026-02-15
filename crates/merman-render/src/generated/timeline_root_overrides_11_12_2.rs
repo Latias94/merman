@@ -10,6 +10,16 @@ pub fn lookup_timeline_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
+        "timeline_stress_accdescr_block_multiline" => Some(("-6 -61 896 687.4000244140625", "896")),
+        "timeline_stress_inline_hashes_and_semicolons" => {
+            Some(("-5 -61 967.921875 740.2000122070312", "967.922"))
+        }
+        "timeline_stress_many_events_single_period" => {
+            Some(("-105 -61 795 1421.199951171875", "795"))
+        }
+        "timeline_stress_very_long_unbroken_word" => {
+            Some(("-107.984375 -61 1516.3203125 594.3999938964844", "1516.32"))
+        }
         "upstream_long_word_wrap" => Some(("9.6796875 0 961.484375 533.3999938964844", "961.484")),
         "upstream_cypress_timeline_spec_11_should_render_timeline_with_many_stacked_events_and_proper_ti_011" => {
             Some(("100 -61 1390 1109.5999755859375", "1390"))

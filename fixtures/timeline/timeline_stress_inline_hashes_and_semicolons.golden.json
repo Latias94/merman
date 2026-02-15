@@ -1,0 +1,35 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Title with ; semicolons; and #hashtags #not-a-comment",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Section 1; (not a comment)"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Section 1; (not a comment)",
+        "type": "Section 1; (not a comment)",
+        "task": "2000 ",
+        "score": 0,
+        "events": [
+          "Event contains #hash and ;semi; and should remain as text"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Section 1; (not a comment)",
+        "type": "Section 1; (not a comment)",
+        "task": "2001 ",
+        "score": 0,
+        "events": [
+          "Another event #with inline hash (not a comment delimiter)",
+          "Continuation ; with punctuation; and multiple # hashes"
+        ]
+      }
+    ]
+  }
+}

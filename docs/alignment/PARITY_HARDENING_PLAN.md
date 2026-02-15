@@ -2,10 +2,10 @@
 
 Baseline version: Mermaid `@11.12.2`.
 
-As of 2026-02-14:
+As of 2026-02-15:
 
 - `parity` full compare: 0 mismatch.
-- `parity-root` full compare: 0 mismatch (1125/1125 upstream SVG baselines).
+- `parity-root` full compare: 0 mismatch (1328/1328 upstream SVG baselines).
 
 This document defines the next hardening phases after reaching baseline 100% parity for the
 current fixture set.
@@ -21,7 +21,7 @@ current fixture set.
 ### Upstream SVG Corpus
 
 - Total diagrams covered: 23
-- Total upstream SVG baselines: 1125
+- Total upstream SVG baselines: 1328
 
 ### Upstream Syntax Docs Inventory (11.12.2)
 
@@ -44,16 +44,16 @@ Largest fixture buckets:
 
 Root viewport overrides:
 
-- `architecture_root_overrides_11_12_2.rs`: 16 entries
-- `flowchart_root_overrides_11_12_2.rs`: 80 entries
-- `class_root_overrides_11_12_2.rs`: 89 entries
-- `mindmap_root_overrides_11_12_2.rs`: 39 entries
-- `gitgraph_root_overrides_11_12_2.rs`: 21 entries
-- `pie_root_overrides_11_12_2.rs`: 10 entries
+- `architecture_root_overrides_11_12_2.rs`: 17 entries
+- `flowchart_root_overrides_11_12_2.rs`: 88 entries
+- `class_root_overrides_11_12_2.rs`: 99 entries
+- `mindmap_root_overrides_11_12_2.rs`: 41 entries
+- `gitgraph_root_overrides_11_12_2.rs`: 54 entries
+- `pie_root_overrides_11_12_2.rs`: 13 entries
 - `sankey_root_overrides_11_12_2.rs`: 5 entries
-- `sequence_root_overrides_11_12_2.rs`: 69 entries
-- `state_root_overrides_11_12_2.rs`: 51 entries
-- `timeline_root_overrides_11_12_2.rs`: 1 entries
+- `sequence_root_overrides_11_12_2.rs`: 72 entries
+- `state_root_overrides_11_12_2.rs`: 57 entries
+- `timeline_root_overrides_11_12_2.rs`: 8 entries
 
 State text/bbox overrides:
 

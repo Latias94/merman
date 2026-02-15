@@ -1,0 +1,45 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "HTML entities in text",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Entities"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Entities",
+        "type": "Entities",
+        "task": "2020 ",
+        "score": 0,
+        "events": [
+          "Use &amp; to represent an ampersand"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Entities",
+        "type": "Entities",
+        "task": "2021 ",
+        "score": 0,
+        "events": [
+          "Use &lt; and &gt; to represent angle brackets"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "Entities",
+        "type": "Entities",
+        "task": "2022 ",
+        "score": 0,
+        "events": [
+          "Mixed",
+          "&amp; &lt;br&gt; should be literal text, not a <br> token"
+        ]
+      }
+    ]
+  }
+}
