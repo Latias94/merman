@@ -83,8 +83,8 @@
           "section": "",
           "task_type": "",
           "order": 0.0,
-          "start_ms": 1771061400000.0,
-          "end_ms": 1771061520000.0,
+          "start_ms": 1771147800000.0,
+          "end_ms": 1771147920000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": true,
@@ -114,8 +114,8 @@
           "section": "",
           "task_type": "",
           "order": 1.0,
-          "start_ms": 1771061520000.0,
-          "end_ms": 1771061700000.0,
+          "start_ms": 1771147920000.0,
+          "end_ms": 1771148100000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -145,8 +145,8 @@
           "section": "",
           "task_type": "",
           "order": 2.0,
-          "start_ms": 1771061700000.0,
-          "end_ms": 1771062180000.0,
+          "start_ms": 1771148100000.0,
+          "end_ms": 1771148580000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": false,
@@ -176,8 +176,8 @@
           "section": "",
           "task_type": "",
           "order": 3.0,
-          "start_ms": 1771063080000.0,
-          "end_ms": 1771063320000.0,
+          "start_ms": 1771149480000.0,
+          "end_ms": 1771149720000.0,
           "render_end_ms": null,
           "milestone": false,
           "vert": true,
@@ -206,37 +206,37 @@
       "has_excludes_layer": false,
       "bottom_ticks": [
         {
-          "time_ms": 1771061400000.0,
+          "time_ms": 1771147800000.0,
           "x": 75.0,
           "label": "17:30"
         },
         {
-          "time_ms": 1771061700000.0,
+          "time_ms": 1771148100000.0,
           "x": 237.0,
           "label": "17:35"
         },
         {
-          "time_ms": 1771062000000.0,
+          "time_ms": 1771148400000.0,
           "x": 398.0,
           "label": "17:40"
         },
         {
-          "time_ms": 1771062300000.0,
+          "time_ms": 1771148700000.0,
           "x": 560.0,
           "label": "17:45"
         },
         {
-          "time_ms": 1771062600000.0,
+          "time_ms": 1771149000000.0,
           "x": 721.0,
           "label": "17:50"
         },
         {
-          "time_ms": 1771062900000.0,
+          "time_ms": 1771149300000.0,
           "x": 883.0,
           "label": "17:55"
         },
         {
-          "time_ms": 1771063200000.0,
+          "time_ms": 1771149600000.0,
           "x": 1044.0,
           "label": "18:00"
         }
