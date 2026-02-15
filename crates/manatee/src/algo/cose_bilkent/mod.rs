@@ -701,7 +701,6 @@ impl SimGraph {
     /// Note: this intentionally preserves the upstream loop's in-place removal behavior.
     fn find_center_of_tree(&self, nodes: &[usize]) -> usize {
         let mut list: Vec<usize> = nodes.to_vec();
-        let mut removed_nodes: Vec<usize> = Vec::new();
         let mut removed: Vec<bool> = vec![false; self.nodes.len()];
         let mut remaining_degrees: Vec<usize> = vec![0; self.nodes.len()];
         let mut found_center = false;
@@ -716,21 +715,31 @@ impl SimGraph {
             let degree = self.active_degree(node);
             remaining_degrees[node] = degree;
             if degree == 1 {
-                removed_nodes.push(node);
                 removed[node] = true;
             }
         }
 
-        let mut temp_list: Vec<usize> = removed_nodes.clone();
+        let mut temp_list: Vec<usize> = Vec::new();
+        for &node in &list {
+            if remaining_degrees[node] == 1 {
+                temp_list.push(node);
+            }
+        }
 
         while !found_center {
             temp_list.clear();
 
             // The upstream implementation mutates `list` while iterating over it. Replicate that.
-            let mut i = 0usize;
-            while i < list.len() {
-                let node = list[i];
-                list.remove(i);
+            //
+            // The specific `remove(i); i += 1` pattern removes the elements at even indices of the
+            // original list and leaves the odd-indexed elements behind. Doing this via repeated
+            // `Vec::remove` is O(n^2). Replicate the same effect in O(n).
+            let mut next_list: Vec<usize> = Vec::with_capacity(list.len() / 2);
+            for (idx, &node) in list.iter().enumerate() {
+                if idx % 2 == 1 {
+                    next_list.push(node);
+                    continue;
+                }
 
                 self.for_each_active_neighbor(node, |neighbour| {
                     if removed[neighbour] {
@@ -743,14 +752,12 @@ impl SimGraph {
                     }
                     remaining_degrees[neighbour] = new_degree;
                 });
-
-                i += 1;
             }
+            list = next_list;
 
             for &v in &temp_list {
                 removed[v] = true;
             }
-            removed_nodes.extend(temp_list.iter().copied());
 
             if list.len() == 1 || list.len() == 2 {
                 found_center = true;
