@@ -3,7 +3,7 @@
 This document tracks the performance plan for `merman` with concrete, measurable milestones.
 It is intentionally fixture-driven and stage-attributed (parse/layout/render/end-to-end).
 
-## Current Status (2026-02-14)
+## Current Status (2026-02-15)
 
 ### Stage Attribution Snapshot (canaries)
 
@@ -14,24 +14,25 @@ Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is 
 - `flowchart_medium` is still slower end-to-end mostly due to `layout` + `render`.
 
 - Latest combined spotcheck report:
-  - `docs/performance/spotcheck_2026-02-14.md` (`tools/bench/stage_spotcheck.py`, 10 samples / 1s warmup / 3s measurement)
+  - `docs/performance/spotcheck_2026-02-15.md` (`tools/bench/stage_spotcheck.py`, 10 samples / 1s warmup / 3s measurement)
   - Canary set (`flowchart_medium,class_medium,sequence_medium,mindmap_medium,architecture_medium`):
-    - `parse` gmean: `1.58x`
-    - `layout` gmean: `1.64x`
-    - `render` gmean: `2.03x`
-    - `end_to_end` gmean: `1.30x`
+    - `parse` gmean: `1.55x`
+    - `layout` gmean: `1.35x`
+    - `render` gmean: `1.88x`
+    - `end_to_end` gmean: `1.18x`
   - Notable outliers:
-    - `mindmap_medium`: `layout 4.80x`, `end_to_end 2.21x`
-    - `architecture_medium`: `layout 6.63x`, `render 3.43x`, `end_to_end 3.34x` (absolute times are small; ratio is large)
-    - `class_medium`: `render 4.51x` (despite `layout 0.48x` and `end_to_end 0.52x`)
+    - `architecture_medium`: `layout 6.70x`, `render 2.49x`, `end_to_end 3.60x` (absolute times are small; ratio is large)
+    - `mindmap_medium`: `layout 4.07x`, `end_to_end 2.30x`
+    - `class_medium`: `render 3.71x` (despite `end_to_end 0.39x`)
+    - `flowchart_medium`: `render 2.12x`, `end_to_end 1.03x` (absolute times are ms-scale)
 
 Near-term priorities (updated plan):
 
-1. **Flowchart layout+render**: reduce `end_to_end/flowchart_medium` from `~1.23x` to `<= 1.0x`.
-   This is a top priority because flowcharts tend to dominate absolute runtime (ms-scale).
-2. **Mindmap layout**: reduce `layout/mindmap_medium` from `~4.8x` to `<= 2.0x` (COSE port / bbox).
+1. **Flowchart layout+render**: reduce `end_to_end/flowchart_medium` from `~1.03x` to `<= 1.0x` (and keep it there).
+    This is a top priority because flowcharts tend to dominate absolute runtime (ms-scale).
+2. **Mindmap layout**: reduce `layout/mindmap_medium` from `~4.1x` to `<= 2.0x` (COSE port / bbox).
 3. **Architecture layout+render**: reduce fixed overhead on tiny diagrams and/or add a fast-path for
-   common topologies to bring `end_to_end/architecture_medium` down from `~3.3x`.
+    common topologies to bring `end_to_end/architecture_medium` down from `~3.6x`.
 
 Root-cause direction:
 
