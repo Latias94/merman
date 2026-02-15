@@ -11,7 +11,7 @@ Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is 
 
 - `render` is still behind on several diagram types (flowchart/class/mindmap/architecture),
 - `layout` is the dominant gap for `mindmap` and `architecture`,
-- `flowchart_medium` is still slower end-to-end mostly due to `layout` + `render`.
+- `sequence_tiny` still pays a large parse fixed-cost.
 
 - Tiny canaries (after Dagre-ish tiny fast-path):
   - `docs/performance/spotcheck_2026-02-15_tiny.md`
@@ -40,6 +40,15 @@ Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is 
     - `docs/performance/spotcheck_2026-02-15_class_medium_after_typed.md`
     - `class_medium` now shows `parse 1.44x`, `render 2.57x`, `end_to_end 0.46x` in that spotcheck.
 
+Local update (same date, after merging local `main` + architecture pipeline refactors):
+
+- `docs/performance/spotcheck_2026-02-15_after_arch_refactors.md`
+- Canary set (`flowchart_medium,class_medium,sequence_tiny,mindmap_medium,architecture_medium,class_tiny`):
+  - `parse` gmean: `1.35x`
+  - `layout` gmean: `1.46x`
+  - `render` gmean: `1.88x`
+  - `end_to_end` gmean: `1.44x`
+
 Local re-run notes (same date, after merging local `main` + small renderer refactors):
 
 - Stage spot-check expanded to include `state_medium`:
@@ -51,24 +60,25 @@ Local re-run notes (same date, after merging local `main` + small renderer refac
 
 Near-term priorities (updated plan):
 
-1. **Tiny overhead (parse+render)**: reduce fixed overhead on `*_tiny` canaries so tiny `end_to_end`
-   moves from `~1.5x` to `<= 1.2x`.
-2. **Flowchart render**: keep `end_to_end/flowchart_medium <= 1.0x` while reducing `render/flowchart_medium` from `~1.8x` to `<= 1.3x`.
-    This is a top priority because flowcharts tend to dominate absolute runtime (ms-scale).
-3. **Mindmap layout**: reduce `layout/mindmap_medium` from `~2.6x` to `<= 2.0x` (COSE port / bbox).
-4. **Architecture layout+render**: reduce fixed overhead on tiny diagrams and/or add a fast-path for
-    common topologies to bring `end_to_end/architecture_medium` down from `~3.6x`.
+1. **Architecture layout fixed-cost (typed path)**: reduce `layout/architecture_medium` materially
+   (currently a large ratio despite small absolute time) by cutting per-call allocation and string-key
+   map overhead. Target: `layout <= 3.0x` and `end_to_end <= 2.0x` on `architecture_medium`, and
+   measurable wins on the architecture stress fixtures.
+2. **Sequence parse fixed-cost**: `sequence_tiny` parse is still the largest tiny outlier.
+   Target: `parse/sequence_tiny <= 2.5x` and `end_to_end/sequence_tiny <= 1.1x`.
+3. **SVG emission (class/flowchart)**: reduce allocation-heavy SVG building and style resolution.
+   Target: `render/class_tiny <= 2.0x`, `render/class_medium <= 2.0x`, and `render/flowchart_medium <= 1.3x`
+   while keeping end-to-end competitive.
+4. **Mindmap layout**: keep pushing COSE costs down for medium+ graphs. Target: `layout/mindmap_medium <= 2.0x`.
 
 Root-cause direction:
 
-- `flowchart_medium` is now primarily a render problem:
-  - flowchart parse now has a typed render-model fast path, and can be close to parity,
-  - render has high fixed overhead from SVG emission (many small writes + style resolution),
-  - layout is in the same ballpark but can still regress on `order` / `position_x`.
-  - Latest canary numbers (spotcheck mid estimate): `parse 1.30x`, `layout 1.57x`, `render 1.90x`,
-    `end_to_end 1.23x`.
-  - After reusing layout-provided label metrics in the flowchart renderer (flowchart-only spotcheck,
-    2026-02-14): `render 1.84x` (10 samples / 1s warmup / 4s measurement; spotcheck variance applies).
+- `sequence_tiny` is still primarily a parse fixed-overhead problem (detection helped, but parsing/lexing
+  overhead dominates at the µs scale).
+- `architecture` remains layout-heavy in ratio terms; the typed pipeline now avoids per-node edge cloning,
+  but the remaining layout fixed-cost is still dominated by string-key maps and conservative BFS/component logic.
+- `class` (and often `flowchart`) remain render-heavy: once layout is “good enough”, SVG emission and style
+  resolution become the dominant opportunities.
 - BK x-positioning (`dugong::position::bk::position_x`) was a measurable secondary hotspot after
   ordering. We now reuse the already-computed `layering` matrix from the Dagre-ish pipeline and use
   `&str`-based temporary maps plus an index-based block-graph pass to reduce hashing + allocation.
@@ -129,6 +139,70 @@ This fixture is useful as a counter-example:
   can attribute class renderer hotspots without a profiler.
 
 ## Milestones
+
+### M4 — Architecture layout: cut typed fixed-cost (Planned)
+
+Goal: reduce `layout/architecture_*` fixed overhead without changing layout output.
+
+Why: architecture is currently a large ratio outlier even though absolute times are small; this is a
+good indicator of avoidable per-call overhead (allocation + hashing + string-key maps).
+
+Work items (ordered by expected ROI):
+
+1. Replace `HashMap<String, ...>` / `HashSet<String>` hot paths with dense indices (`usize`) and a
+   single `id -> idx` map built once per call.
+2. Represent adjacency with dense structures:
+   - `Vec<IndexMap<&'static str, usize>>` (preserve insertion semantics) or
+   - `Vec<[Option<usize>; 12]>` (dense direction-pair slots) if we can prove stable behavior.
+3. Avoid cloning IDs in BFS queues and component maps; keep `usize` in the queue and store positions
+   in `Vec<(i32, i32)>`.
+
+Acceptance criteria:
+
+- Spotcheck: `architecture_medium layout <= 3.0x` and `end_to_end <= 2.0x` (expect variance).
+- Stress fixtures: measurable reduction in layout time and peak allocations (use `--features render`
+  golden tests as correctness gate).
+
+### M5 — Sequence parse: fast path + fallback (Planned)
+
+Goal: reduce `parse/sequence_tiny` fixed overhead while preserving full parser correctness.
+
+Approach:
+
+- Implement a fast parser that covers the common subset (header + actor + message + note), and
+  falls back to the existing parser on any unrecognized syntax.
+
+Acceptance criteria:
+
+- Spotcheck: `parse/sequence_tiny <= 2.5x` and `end_to_end/sequence_tiny <= 1.1x`.
+- Golden fixtures: no SVG/JSON parity regressions.
+
+### M6 — SVG emission: fewer allocations (Planned)
+
+Goal: reduce render fixed overhead across diagrams, especially class/flowchart.
+
+Work items:
+
+- Continue migrating from `format!/String` churn to `write!` into a single output buffer.
+- Reuse scratch `Vec<LayoutPoint>` / small `String` buffers per render call where safe.
+- Cache style compilation / marker strings at the diagram scope.
+
+Acceptance criteria:
+
+- Spotcheck: `render/class_tiny <= 2.0x`, `render/class_medium <= 2.0x`, `render/flowchart_medium <= 1.3x`.
+
+### M7 — Mindmap layout: COSE cost reduction (Planned)
+
+Goal: reduce `layout/mindmap_medium` while keeping deterministic output.
+
+Work items:
+
+- Keep pushing COSE repulsion costs down (grid-based neighbor filtering, stable iteration order).
+- Reduce per-iteration allocations in the spring embedder; reuse scratch buffers.
+
+Acceptance criteria:
+
+- Spotcheck: `layout/mindmap_medium <= 2.0x` and `end_to_end/mindmap_medium` improves proportionally.
 
 ### M0 — Measurement is cheap (Done)
 
