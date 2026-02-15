@@ -209,12 +209,75 @@ struct PrunedNodeData {
     other_idx: usize,
 }
 
+#[derive(Debug, Default, Clone)]
+struct SimGrid {
+    size_x: usize,
+    size_y: usize,
+    cells: Vec<Vec<usize>>,
+}
+
+impl SimGrid {
+    fn is_empty(&self) -> bool {
+        self.size_x == 0 || self.size_y == 0
+    }
+
+    fn size_x(&self) -> usize {
+        self.size_x
+    }
+
+    fn size_y(&self) -> usize {
+        self.size_y
+    }
+
+    fn clear_cells(&mut self) {
+        for cell in &mut self.cells {
+            cell.clear();
+        }
+    }
+
+    fn reset(&mut self, size_x: usize, size_y: usize, _left: f64, _top: f64, _range: f64) {
+        if self.size_x != size_x || self.size_y != size_y {
+            self.size_x = size_x;
+            self.size_y = size_y;
+            self.cells = vec![Vec::new(); size_x.saturating_mul(size_y)];
+        } else {
+            self.clear_cells();
+        }
+    }
+
+    #[inline]
+    fn idx(&self, x: usize, y: usize) -> usize {
+        (x * self.size_y) + y
+    }
+
+    #[inline]
+    fn push(&mut self, x: usize, y: usize, node_idx: usize) {
+        let i = self.idx(x, y);
+        self.cells[i].push(node_idx);
+    }
+
+    #[inline]
+    fn cell(&self, x: usize, y: usize) -> &[usize] {
+        let i = self.idx(x, y);
+        self.cells[i].as_slice()
+    }
+
+    #[inline]
+    fn cell_len(&self, x: usize, y: usize) -> usize {
+        let i = self.idx(x, y);
+        self.cells[i].len()
+    }
+}
+
 #[derive(Debug)]
 struct SimGraph {
     nodes: Vec<SimNode>,
     edges: Vec<SimEdge>,
     pruned_nodes_all: Vec<Vec<PrunedNodeData>>,
-    grid: Vec<Vec<Vec<usize>>>,
+    grid: SimGrid,
+    repulsion_seen: Vec<u32>,
+    repulsion_seen_gen: u32,
+    repulsion_candidates: Vec<usize>,
 }
 
 impl SimGraph {
@@ -295,7 +358,10 @@ impl SimGraph {
             nodes,
             edges,
             pruned_nodes_all: Vec::new(),
-            grid: Vec::new(),
+            grid: SimGrid::default(),
+            repulsion_seen: vec![0u32; graph.nodes.len()],
+            repulsion_seen_gen: 1,
+            repulsion_candidates: Vec::new(),
         }
     }
 
@@ -453,7 +519,7 @@ impl SimGraph {
     }
 
     fn update_grid(&mut self, repulsion_range: f64) {
-        self.grid.clear();
+        self.grid.clear_cells();
         if self.nodes.iter().all(|n| !n.active) {
             return;
         }
@@ -477,7 +543,7 @@ impl SimGraph {
 
         let size_x = ((right - left) / repulsion_range).ceil().max(1.0) as usize;
         let size_y = ((bottom - top) / repulsion_range).ceil().max(1.0) as usize;
-        self.grid = vec![vec![Vec::new(); size_y]; size_x];
+        self.grid.reset(size_x, size_y, left, top, repulsion_range);
 
         let clamp_x = |v: i32| v.clamp(0, (size_x as i32) - 1);
         let clamp_y = |v: i32| v.clamp(0, (size_y as i32) - 1);
@@ -498,7 +564,7 @@ impl SimGraph {
 
             for gx in (n.start_x as usize)..=(n.finish_x as usize) {
                 for gy in (n.start_y as usize)..=(n.finish_y as usize) {
-                    self.grid[gx][gy].push(idx);
+                    self.grid.push(gx, gy, idx);
                 }
             }
         }
@@ -562,7 +628,7 @@ impl SimGraph {
         repulsion_range: f64,
     ) {
         self.update_grid(repulsion_range);
-        if self.grid.is_empty() || self.grid[0].is_empty() {
+        if self.grid.is_empty() {
             return;
         }
 
@@ -577,32 +643,32 @@ impl SimGraph {
             let y0 = (start_grid_y - 1) as usize;
             let y1 = start_grid_y as usize;
             for x in (start_grid_x as usize)..=(finish_grid_x as usize) {
-                control_regions[0] +=
-                    (self.grid[x][y0].len() + self.grid[x][y1].len()).saturating_sub(1) as i32;
+                control_regions[0] += (self.grid.cell_len(x, y0) + self.grid.cell_len(x, y1))
+                    .saturating_sub(1) as i32;
             }
         }
-        if (finish_grid_x as usize) + 1 < self.grid.len() {
+        if (finish_grid_x as usize) + 1 < self.grid.size_x() {
             let x0 = (finish_grid_x + 1) as usize;
             let x1 = finish_grid_x as usize;
             for y in (start_grid_y as usize)..=(finish_grid_y as usize) {
-                control_regions[1] +=
-                    (self.grid[x0][y].len() + self.grid[x1][y].len()).saturating_sub(1) as i32;
+                control_regions[1] += (self.grid.cell_len(x0, y) + self.grid.cell_len(x1, y))
+                    .saturating_sub(1) as i32;
             }
         }
-        if (finish_grid_y as usize) + 1 < self.grid[0].len() {
+        if (finish_grid_y as usize) + 1 < self.grid.size_y() {
             let y0 = (finish_grid_y + 1) as usize;
             let y1 = finish_grid_y as usize;
             for x in (start_grid_x as usize)..=(finish_grid_x as usize) {
-                control_regions[2] +=
-                    (self.grid[x][y0].len() + self.grid[x][y1].len()).saturating_sub(1) as i32;
+                control_regions[2] += (self.grid.cell_len(x, y0) + self.grid.cell_len(x, y1))
+                    .saturating_sub(1) as i32;
             }
         }
         if start_grid_x > 0 {
             let x0 = (start_grid_x - 1) as usize;
             let x1 = start_grid_x as usize;
             for y in (start_grid_y as usize)..=(finish_grid_y as usize) {
-                control_regions[3] +=
-                    (self.grid[x0][y].len() + self.grid[x1][y].len()).saturating_sub(1) as i32;
+                control_regions[3] += (self.grid.cell_len(x0, y) + self.grid.cell_len(x1, y))
+                    .saturating_sub(1) as i32;
             }
         }
 
@@ -1128,42 +1194,127 @@ impl SimGraph {
                 timings.spring_forces += s.elapsed();
             }
 
-            // Repulsion forces (O(n^2); sufficient for current fixture sizes).
+            // Repulsion forces.
+            //
+            // Keep the effective cutoff identical to the previous O(n^2) implementation:
+            // compute repulsion only when two nodes are within `repulsionRange` along both axes.
+            //
+            // For tiny graphs, the simple O(n^2) loop is faster than maintaining a grid + sorting
+            // candidates. For larger graphs, preselect candidates via the FR grid while
+            // preserving deterministic pair order (ascending `j`) so results stay stable.
             let repulsion_start = timing_enabled.then(std::time::Instant::now);
-            for i in 0..self.nodes.len() {
-                if !self.nodes[i].active {
-                    continue;
+            let use_grid_repulsion = self.nodes.len() >= 64;
+
+            if use_grid_repulsion {
+                let update_grid_start = timing_enabled.then(std::time::Instant::now);
+                self.update_grid(repulsion_range);
+                if let Some(s) = update_grid_start {
+                    timings.update_grid += s.elapsed();
                 }
-                for j in (i + 1)..self.nodes.len() {
-                    if !self.nodes[j].active {
+
+                let size_x_i32 = self.grid.size_x().min(i32::MAX as usize) as i32;
+                let size_y_i32 = self.grid.size_y().min(i32::MAX as usize) as i32;
+
+                for i in 0..self.nodes.len() {
+                    if !self.nodes[i].active || self.grid.is_empty() {
                         continue;
-                    }
-                    if timing_enabled {
-                        timings.repulsion_pairs_considered += 1;
-                    }
-                    // Mirror the FR-grid variant's effective cutoff:
-                    // only compute repulsion for pairs that are within `repulsionRange` along both axes.
-                    //
-                    // `distanceX = abs(cxA-cxB) - (wA/2 + wB/2)` (same for Y).
-                    // (See `FDLayout.calculateRepulsionForceOfANode` in `layout-base`.)
-                    let a = &self.nodes[i];
-                    let b = &self.nodes[j];
-                    let dist_x = (a.center_x() - b.center_x()).abs() - (a.half_w() + b.half_w());
-                    let dist_y = (a.center_y() - b.center_y()).abs() - (a.half_h() + b.half_h());
-                    if dist_x > repulsion_range || dist_y > repulsion_range {
-                        continue;
-                    }
-                    if timing_enabled {
-                        timings.repulsion_pairs_in_range += 1;
                     }
 
-                    let (rfx, rfy) = self.calc_repulsion_force(i, j, repulsion_constant);
-                    self.nodes[i].repulsion_fx += rfx;
-                    self.nodes[i].repulsion_fy += rfy;
-                    self.nodes[j].repulsion_fx -= rfx;
-                    self.nodes[j].repulsion_fy -= rfy;
+                    self.repulsion_seen_gen = self.repulsion_seen_gen.wrapping_add(1);
+                    if self.repulsion_seen_gen == 0 {
+                        self.repulsion_seen.fill(0);
+                        self.repulsion_seen_gen = 1;
+                    }
+                    let seen_gen = self.repulsion_seen_gen;
+
+                    self.repulsion_candidates.clear();
+
+                    let ni = &self.nodes[i];
+                    let gx0 = (ni.start_x - 1).max(0) as usize;
+                    let gy0 = (ni.start_y - 1).max(0) as usize;
+                    let gx1 = (ni.finish_x + 1).min(size_x_i32.saturating_sub(1)) as usize;
+                    let gy1 = (ni.finish_y + 1).min(size_y_i32.saturating_sub(1)) as usize;
+
+                    for gx in gx0..=gx1 {
+                        for gy in gy0..=gy1 {
+                            for &j in self.grid.cell(gx, gy) {
+                                if j <= i {
+                                    continue;
+                                }
+                                if !self.nodes[j].active {
+                                    continue;
+                                }
+                                if self.repulsion_seen[j] == seen_gen {
+                                    continue;
+                                }
+                                self.repulsion_seen[j] = seen_gen;
+                                self.repulsion_candidates.push(j);
+                            }
+                        }
+                    }
+
+                    self.repulsion_candidates.sort_unstable();
+
+                    for &j in &self.repulsion_candidates {
+                        if timing_enabled {
+                            timings.repulsion_pairs_considered += 1;
+                        }
+
+                        let a = &self.nodes[i];
+                        let b = &self.nodes[j];
+                        let dist_x =
+                            (a.center_x() - b.center_x()).abs() - (a.half_w() + b.half_w());
+                        let dist_y =
+                            (a.center_y() - b.center_y()).abs() - (a.half_h() + b.half_h());
+                        if dist_x > repulsion_range || dist_y > repulsion_range {
+                            continue;
+                        }
+                        if timing_enabled {
+                            timings.repulsion_pairs_in_range += 1;
+                        }
+
+                        let (rfx, rfy) = self.calc_repulsion_force(i, j, repulsion_constant);
+                        self.nodes[i].repulsion_fx += rfx;
+                        self.nodes[i].repulsion_fy += rfy;
+                        self.nodes[j].repulsion_fx -= rfx;
+                        self.nodes[j].repulsion_fy -= rfy;
+                    }
+                }
+            } else {
+                for i in 0..self.nodes.len() {
+                    if !self.nodes[i].active {
+                        continue;
+                    }
+                    for j in (i + 1)..self.nodes.len() {
+                        if !self.nodes[j].active {
+                            continue;
+                        }
+                        if timing_enabled {
+                            timings.repulsion_pairs_considered += 1;
+                        }
+
+                        let a = &self.nodes[i];
+                        let b = &self.nodes[j];
+                        let dist_x =
+                            (a.center_x() - b.center_x()).abs() - (a.half_w() + b.half_w());
+                        let dist_y =
+                            (a.center_y() - b.center_y()).abs() - (a.half_h() + b.half_h());
+                        if dist_x > repulsion_range || dist_y > repulsion_range {
+                            continue;
+                        }
+                        if timing_enabled {
+                            timings.repulsion_pairs_in_range += 1;
+                        }
+
+                        let (rfx, rfy) = self.calc_repulsion_force(i, j, repulsion_constant);
+                        self.nodes[i].repulsion_fx += rfx;
+                        self.nodes[i].repulsion_fy += rfy;
+                        self.nodes[j].repulsion_fx -= rfx;
+                        self.nodes[j].repulsion_fy -= rfy;
+                    }
                 }
             }
+
             if let Some(s) = repulsion_start {
                 timings.repulsion_forces += s.elapsed();
             }
