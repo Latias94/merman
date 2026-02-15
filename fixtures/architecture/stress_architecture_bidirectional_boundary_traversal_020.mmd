@@ -1,0 +1,12 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): bidirectional group traversal edges with ports and labels.
+
+group left(cloud)[Left]
+group right(cloud)[Right]
+service l(server)[L] in left
+service r(server)[R] in right
+service c(server)[Center]
+
+l{group}:R <--> L:r{group}
+l{group}:B -[x]-> T:c
+c:B -[y]-> T:r{group}

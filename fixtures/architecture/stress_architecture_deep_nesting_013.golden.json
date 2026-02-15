@@ -1,0 +1,547 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [
+      {
+        "id": "platform",
+        "icon": "cloud",
+        "title": "Platform",
+        "in": null
+      },
+      {
+        "id": "edge",
+        "icon": "internet",
+        "title": "Edge",
+        "in": "platform"
+      },
+      {
+        "id": "core",
+        "icon": "server",
+        "title": "Core",
+        "in": "platform"
+      },
+      {
+        "id": "data",
+        "icon": "database",
+        "title": "Data Plane",
+        "in": "core"
+      }
+    ],
+    "nodes": [
+      {
+        "id": "lb",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "ext",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "lb",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "lb",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "api",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "cache",
+            "lhsDir": "T",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "lb",
+            "rhsDir": "B",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "internet",
+        "iconText": null,
+        "title": "LB",
+        "in": "edge"
+      },
+      {
+        "id": "api",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "lb",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "api",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "api",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "reads"
+          },
+          {
+            "lhsId": "api",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "cache",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "API",
+        "in": "core"
+      },
+      {
+        "id": "auth",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "auth",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "writes"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Auth",
+        "in": "core"
+      },
+      {
+        "id": "db",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "api",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "reads"
+          },
+          {
+            "lhsId": "auth",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "writes"
+          },
+          {
+            "lhsId": "ext",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "db",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "database",
+        "iconText": null,
+        "title": "DB",
+        "in": "data"
+      },
+      {
+        "id": "cache",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "api",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "cache",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "cache",
+            "lhsDir": "T",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "lb",
+            "rhsDir": "B",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
+        "title": "Cache",
+        "in": "data"
+      },
+      {
+        "id": "ext",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "ext",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "lb",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "ext",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "db",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "internet",
+        "iconText": null,
+        "title": "External",
+        "in": null
+      }
+    ],
+    "services": [
+      {
+        "id": "lb",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "ext",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "lb",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "lb",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "api",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "cache",
+            "lhsDir": "T",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "lb",
+            "rhsDir": "B",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "internet",
+        "iconText": null,
+        "title": "LB",
+        "in": "edge"
+      },
+      {
+        "id": "api",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "lb",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "api",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "api",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "reads"
+          },
+          {
+            "lhsId": "api",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "cache",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "API",
+        "in": "core"
+      },
+      {
+        "id": "auth",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "auth",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "writes"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Auth",
+        "in": "core"
+      },
+      {
+        "id": "db",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "api",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "reads"
+          },
+          {
+            "lhsId": "auth",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "db",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "writes"
+          },
+          {
+            "lhsId": "ext",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "db",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "database",
+        "iconText": null,
+        "title": "DB",
+        "in": "data"
+      },
+      {
+        "id": "cache",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "api",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "cache",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "cache",
+            "lhsDir": "T",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "lb",
+            "rhsDir": "B",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
+        "title": "Cache",
+        "in": "data"
+      },
+      {
+        "id": "ext",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "ext",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "lb",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "ext",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "db",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": "internet",
+        "iconText": null,
+        "title": "External",
+        "in": null
+      }
+    ],
+    "junctions": [],
+    "edges": [
+      {
+        "lhsId": "ext",
+        "lhsDir": "B",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "lb",
+        "rhsDir": "T",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": null
+      },
+      {
+        "lhsId": "lb",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "api",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": null
+      },
+      {
+        "lhsId": "api",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "db",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": "reads"
+      },
+      {
+        "lhsId": "api",
+        "lhsDir": "B",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "cache",
+        "rhsDir": "T",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": null
+      },
+      {
+        "lhsId": "auth",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "db",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": "writes"
+      },
+      {
+        "lhsId": "ext",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": true,
+        "rhsId": "db",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": true,
+        "title": null
+      },
+      {
+        "lhsId": "cache",
+        "lhsDir": "T",
+        "lhsInto": null,
+        "lhsGroup": true,
+        "rhsId": "lb",
+        "rhsDir": "B",
+        "rhsInto": true,
+        "rhsGroup": true,
+        "title": null
+      }
+    ]
+  }
+}

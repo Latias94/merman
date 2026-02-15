@@ -1,0 +1,14 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): long ids and long titles (word chars only).
+
+group very_long_group_identifier_name_one(cloud)[Very Long Group Name One]
+group very_long_group_identifier_name_two(cloud)[Very Long Group Name Two] in very_long_group_identifier_name_one
+
+service extremely_long_service_identifier_name_alpha(server)[Service Alpha] in very_long_group_identifier_name_two
+service extremely_long_service_identifier_name_beta(database)[Service Beta] in very_long_group_identifier_name_two
+service extremely_long_service_identifier_name_gamma(disk)[Service Gamma]
+
+extremely_long_service_identifier_name_alpha:R --> L:extremely_long_service_identifier_name_beta
+extremely_long_service_identifier_name_beta:B --> T:extremely_long_service_identifier_name_gamma
+extremely_long_service_identifier_name_gamma:L --> R:extremely_long_service_identifier_name_alpha
+

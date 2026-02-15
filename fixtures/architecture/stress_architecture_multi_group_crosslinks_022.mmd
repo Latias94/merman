@@ -1,0 +1,15 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): crosslinks between sibling groups with mixed ports and boundary traversal.
+
+group g1(cloud)[G1]
+group g2(cloud)[G2]
+
+service a(server)[A] in g1
+service b(server)[B] in g1
+service c(server)[C] in g2
+service d(database)[D] in g2
+
+a:R --> L:b
+c:R --> L:d
+b{group}:R --> L:c{group}
+a{group}:B -[x link]-> T:d{group}

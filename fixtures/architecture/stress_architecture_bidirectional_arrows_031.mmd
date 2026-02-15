@@ -1,0 +1,17 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): bidirectional and one-way arrows mix.
+
+group core(cloud)[Core]
+group edge(cloud)[Edge]
+
+service a(server)[A] in core
+service b(server)[B] in core
+service c(server)[C] in edge
+service d(server)[D] in edge
+
+a:R <--> L:c
+b:R --> L:d
+c:B <-- T:d
+
+a{group}:T <--> B:d{group}
+b{group}:B --> T:c{group}

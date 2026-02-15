@@ -1,0 +1,16 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): many titled edges (one word) across directions.
+
+service a(server)[A]
+service b(server)[B]
+service c(server)[C]
+service d(server)[D]
+
+a:R -[t1]-> L:b
+b:B -[t2]-> T:c
+c:L -[t3]-> R:d
+d:T -[t4]-> B:a
+
+a:B -[t5]-> T:c
+b:R -[t6]-> L:d
+

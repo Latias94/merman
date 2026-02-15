@@ -1,0 +1,41 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [
+      {
+        "id": "api",
+        "icon": "cloud",
+        "title": "API",
+        "in": null
+      }
+    ],
+    "nodes": [
+      {
+        "id": "db",
+        "type": "service",
+        "edges": [],
+        "icon": null,
+        "iconText": "<img src=x onerror=\\\"xssAttack()\\\">",
+        "title": "Database",
+        "in": "api"
+      }
+    ],
+    "services": [
+      {
+        "id": "db",
+        "type": "service",
+        "edges": [],
+        "icon": null,
+        "iconText": "<img src=x onerror=\\\"xssAttack()\\\">",
+        "title": "Database",
+        "in": "api"
+      }
+    ],
+    "junctions": [],
+    "edges": []
+  }
+}

@@ -1,0 +1,324 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [
+      {
+        "id": "i",
+        "icon": "internet",
+        "title": "IO Observability",
+        "in": null
+      }
+    ],
+    "nodes": [
+      {
+        "id": "metrics",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "metrics",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "store",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "push pull"
+          },
+          {
+            "lhsId": "metrics",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "logs",
+            "rhsDir": "T",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "alert",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "metrics",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "notify"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Metrics Exporter",
+        "in": "i"
+      },
+      {
+        "id": "logs",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "logs",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "store",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "ship batch"
+          },
+          {
+            "lhsId": "metrics",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "logs",
+            "rhsDir": "T",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Log Collector",
+        "in": "i"
+      },
+      {
+        "id": "store",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "metrics",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "store",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "push pull"
+          },
+          {
+            "lhsId": "logs",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "store",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "ship batch"
+          }
+        ],
+        "icon": "database",
+        "iconText": null,
+        "title": "Store Query",
+        "in": "i"
+      },
+      {
+        "id": "alert",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "alert",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "metrics",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "notify"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Alert Service",
+        "in": "i"
+      }
+    ],
+    "services": [
+      {
+        "id": "metrics",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "metrics",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "store",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "push pull"
+          },
+          {
+            "lhsId": "metrics",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "logs",
+            "rhsDir": "T",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "alert",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "metrics",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "notify"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Metrics Exporter",
+        "in": "i"
+      },
+      {
+        "id": "logs",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "logs",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "store",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "ship batch"
+          },
+          {
+            "lhsId": "metrics",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "logs",
+            "rhsDir": "T",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Log Collector",
+        "in": "i"
+      },
+      {
+        "id": "store",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "metrics",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "store",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "push pull"
+          },
+          {
+            "lhsId": "logs",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "store",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "ship batch"
+          }
+        ],
+        "icon": "database",
+        "iconText": null,
+        "title": "Store Query",
+        "in": "i"
+      },
+      {
+        "id": "alert",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "alert",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "metrics",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "notify"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Alert Service",
+        "in": "i"
+      }
+    ],
+    "junctions": [],
+    "edges": [
+      {
+        "lhsId": "metrics",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "store",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": "push pull"
+      },
+      {
+        "lhsId": "logs",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "store",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": "ship batch"
+      },
+      {
+        "lhsId": "metrics",
+        "lhsDir": "B",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "logs",
+        "rhsDir": "T",
+        "rhsInto": null,
+        "rhsGroup": null,
+        "title": null
+      },
+      {
+        "lhsId": "alert",
+        "lhsDir": "B",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "metrics",
+        "rhsDir": "T",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": "notify"
+      }
+    ]
+  }
+}

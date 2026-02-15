@@ -1,0 +1,14 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): cyclic routing with junctions and labeled edges.
+
+group loop(cloud)[Loop]
+service a(server)[A] in loop
+service b(server)[B] in loop
+service c(server)[C] in loop
+junction j in loop
+
+a:R -- L:j
+j:R -[to b]-> L:b
+b:B -[to c]-> T:c
+c:L -[back]-> R:a
+

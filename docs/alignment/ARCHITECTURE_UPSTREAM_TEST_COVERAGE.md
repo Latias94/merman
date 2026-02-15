@@ -82,6 +82,11 @@ and newer Langium syntax. For end-to-end CLI baselines + DOM parity, we keep the
 - normalized simple junction edges: `fixtures/architecture/upstream_architecture_cypress_simple_junction_edges_normalized.mmd`
 - normalized complex junction edges: `fixtures/architecture/upstream_architecture_cypress_complex_junction_edges_normalized.mmd`
 
+Source: `repo-ref/mermaid/cypress/integration/other/xss.spec.js`
+
+- sanitize icon labels in architecture diagrams:
+  `fixtures/architecture/upstream_cypress_other_xss_spec_icon_labels_architecture_001.mmd`
+
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/architecture/svgDraw.spec.ts`
 
 - SVG id coverage for group/service/edge nodes:
@@ -150,3 +155,27 @@ dense graphs, nested groups, junction routing, and mixed service forms while kee
 - `fixtures/architecture/stress_architecture_multi_level_groups_010.mmd`
 - `fixtures/architecture/stress_architecture_wide_graph_011.mmd`
 - `fixtures/architecture/stress_architecture_edge_label_corner_cases_012.mmd`
+- `fixtures/architecture/stress_architecture_deep_nesting_013.mmd`
+- `fixtures/architecture/stress_architecture_junction_mesh_014.mmd`
+- `fixtures/architecture/stress_architecture_disconnected_components_015.mmd`
+- `fixtures/architecture/stress_architecture_parallel_edges_016.mmd`
+- `fixtures/architecture/stress_architecture_group_port_edges_017.mmd`
+- `fixtures/architecture/stress_architecture_long_group_titles_018.mmd`
+- `fixtures/architecture/stress_architecture_unicode_and_xml_escapes_019.mmd`
+- `fixtures/architecture/stress_architecture_bidirectional_boundary_traversal_020.mmd`
+- `fixtures/architecture/stress_architecture_fan_in_out_021.mmd`
+- `fixtures/architecture/stress_architecture_multi_group_crosslinks_022.mmd`
+- `fixtures/architecture/stress_architecture_nested_junctions_023.mmd`
+- `fixtures/architecture/stress_architecture_cycle_with_junctions_024.mmd`
+- `fixtures/architecture/stress_architecture_many_small_groups_025.mmd`
+- `fixtures/architecture/stress_architecture_junction_fork_join_026.mmd`
+- `fixtures/architecture/stress_architecture_deep_group_chain_027.mmd`
+- `fixtures/architecture/stress_architecture_crossing_edges_ring_028.mmd`
+- `fixtures/architecture/stress_architecture_ports_matrix_029.mmd`
+- `fixtures/architecture/stress_architecture_long_ids_030.mmd`
+- `fixtures/architecture/stress_architecture_bidirectional_arrows_031.mmd`
+- `fixtures/architecture/stress_architecture_disconnected_group_edges_032.mmd`
+- `fixtures/architecture/stress_architecture_mixed_icons_and_text_033.mmd`
+- `fixtures/architecture/stress_architecture_group_to_group_multi_034.mmd`
+- `fixtures/architecture/stress_architecture_dense_junction_grid_035.mmd`
+- `fixtures/architecture/stress_architecture_edge_titles_oneword_036.mmd`

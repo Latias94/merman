@@ -1,0 +1,17 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): multiple disconnected components with groups and edges.
+
+group g1(cloud)[G1]
+service a(server)[A] in g1
+service b(server)[B]
+a{group}:R --> L:b
+
+group g2(cloud)[G2]
+service c(server)[C] in g2
+service d(server)[D] in g2
+c:R -- L:d
+
+service e(server)[E]
+service f(server)[F]
+e:B -- T:f
+
