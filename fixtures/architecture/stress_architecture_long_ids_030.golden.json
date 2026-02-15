@@ -1,0 +1,255 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [
+      {
+        "id": "very_long_group_identifier_name_one",
+        "icon": "cloud",
+        "title": "Very Long Group Name One",
+        "in": null
+      },
+      {
+        "id": "very_long_group_identifier_name_two",
+        "icon": "cloud",
+        "title": "Very Long Group Name Two",
+        "in": "very_long_group_identifier_name_one"
+      }
+    ],
+    "nodes": [
+      {
+        "id": "extremely_long_service_identifier_name_alpha",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "extremely_long_service_identifier_name_alpha",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_beta",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "extremely_long_service_identifier_name_gamma",
+            "lhsDir": "L",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_alpha",
+            "rhsDir": "R",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Service Alpha",
+        "in": "very_long_group_identifier_name_two"
+      },
+      {
+        "id": "extremely_long_service_identifier_name_beta",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "extremely_long_service_identifier_name_alpha",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_beta",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "extremely_long_service_identifier_name_beta",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_gamma",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "database",
+        "iconText": null,
+        "title": "Service Beta",
+        "in": "very_long_group_identifier_name_two"
+      },
+      {
+        "id": "extremely_long_service_identifier_name_gamma",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "extremely_long_service_identifier_name_beta",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_gamma",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "extremely_long_service_identifier_name_gamma",
+            "lhsDir": "L",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_alpha",
+            "rhsDir": "R",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
+        "title": "Service Gamma",
+        "in": null
+      }
+    ],
+    "services": [
+      {
+        "id": "extremely_long_service_identifier_name_alpha",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "extremely_long_service_identifier_name_alpha",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_beta",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "extremely_long_service_identifier_name_gamma",
+            "lhsDir": "L",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_alpha",
+            "rhsDir": "R",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Service Alpha",
+        "in": "very_long_group_identifier_name_two"
+      },
+      {
+        "id": "extremely_long_service_identifier_name_beta",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "extremely_long_service_identifier_name_alpha",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_beta",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "extremely_long_service_identifier_name_beta",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_gamma",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "database",
+        "iconText": null,
+        "title": "Service Beta",
+        "in": "very_long_group_identifier_name_two"
+      },
+      {
+        "id": "extremely_long_service_identifier_name_gamma",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "extremely_long_service_identifier_name_beta",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_gamma",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "extremely_long_service_identifier_name_gamma",
+            "lhsDir": "L",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_alpha",
+            "rhsDir": "R",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
+        "title": "Service Gamma",
+        "in": null
+      }
+    ],
+    "junctions": [],
+    "edges": [
+      {
+        "lhsId": "extremely_long_service_identifier_name_alpha",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "extremely_long_service_identifier_name_beta",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": null
+      },
+      {
+        "lhsId": "extremely_long_service_identifier_name_beta",
+        "lhsDir": "B",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "extremely_long_service_identifier_name_gamma",
+        "rhsDir": "T",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": null
+      },
+      {
+        "lhsId": "extremely_long_service_identifier_name_gamma",
+        "lhsDir": "L",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "extremely_long_service_identifier_name_alpha",
+        "rhsDir": "R",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": null
+      }
+    ]
+  }
+}

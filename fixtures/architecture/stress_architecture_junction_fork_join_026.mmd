@@ -1,0 +1,23 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): fork/join routing through junctions.
+
+group left(cloud)[Left]
+group right(cloud)[Right]
+
+service ingress(internet)[Ingress]
+service auth(server)[Auth] in left
+service api(server)[Api] in left
+service db(database)[Db] in right
+service cache(disk)[Cache] in right
+
+junction fork
+junction join
+
+ingress:R -- L:fork
+fork:R -- L:auth
+fork:B -- T:api
+auth:R -- L:join
+api:R -- L:join
+join:R -- L:db
+join:B -- T:cache
+

@@ -1,0 +1,26 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): ring of services with crossing chords.
+
+service n1(server)[N1]
+service n2(server)[N2]
+service n3(server)[N3]
+service n4(server)[N4]
+service n5(server)[N5]
+service n6(server)[N6]
+service n7(server)[N7]
+service n8(server)[N8]
+
+n1:R -- L:n2
+n2:R -- L:n3
+n3:R -- L:n4
+n4:R -- L:n5
+n5:R -- L:n6
+n6:R -- L:n7
+n7:R -- L:n8
+n8:R -- L:n1
+
+n1:B -- T:n5
+n2:B -- T:n6
+n3:B -- T:n7
+n4:B -- T:n8
+

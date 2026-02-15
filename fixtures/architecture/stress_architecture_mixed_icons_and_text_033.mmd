@@ -1,0 +1,19 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): mix icon services, default services, and iconText services.
+
+group ui(cloud)[Ui]
+group data(cloud)[Data]
+
+service web(server)[Web] in ui
+service api(server)[Api] in ui
+service db(database)[Db] in data
+service disk(disk)[Disk] in data
+service note "OK" [Note] in ui
+service plain [Plain]
+
+web:R -- L:api
+api:R -- L:db
+db:B -- T:disk
+note:R -- L:web
+plain:T -- B:api
+

@@ -1,0 +1,26 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): dense grid of junctions with multiple connections.
+
+service s1(server)[S1]
+service s2(server)[S2]
+service s3(server)[S3]
+service s4(server)[S4]
+
+junction j1
+junction j2
+junction j3
+junction j4
+
+s1:R -- L:j1
+s2:R -- L:j2
+s3:R -- L:j3
+s4:R -- L:j4
+
+j1:B -- T:j3
+j2:B -- T:j4
+j1:R -- L:j2
+j3:R -- L:j4
+
+j2:L -- R:s1
+j3:L -- R:s2
+
