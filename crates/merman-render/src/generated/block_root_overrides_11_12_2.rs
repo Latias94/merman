@@ -13,12 +13,14 @@ pub fn lookup_block_root_viewport_override(
         "upstream_html_demos_block_block_diagram_demos_002" => {
             Some(("-5 -53.203125 1034.375 106.40625", "1034.38"))
         }
-        "upstream_html_demos_block_block_diagram_demos_003" => Some((
-            "-5 -31.419912338256836 866.5 62.83982467651367",
-            "866.5",
-        )),
+        "upstream_html_demos_block_block_diagram_demos_003" => {
+            Some(("-5 -31.419912338256836 866.5 62.83982467651367", "866.5"))
+        }
         "upstream_html_demos_block_block_diagram_demos_010" => {
             Some(("-5 -36 285.078125 72", "285.078"))
+        }
+        "upstream_docs_block_example_system_architecture_051" => {
+            Some(("-5 -95.15616798400879 246.5 190.31233596801758", "246.5"))
         }
         _ => None,
     }

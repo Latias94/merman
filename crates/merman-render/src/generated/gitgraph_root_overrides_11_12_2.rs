@@ -34,6 +34,10 @@ pub fn lookup_gitgraph_root_viewport_override(
             "-117.5078125 -19 475.5078125 174.04257202148438",
             "475.5078125",
         )),
+        "upstream_docs_gitgraph_gitgraph_diagrams_001" => Some((
+            "-117.5078125 -50 475.5078125 205.04257202148438",
+            "475.5078125",
+        )),
         "upstream_docs_gitgraph_merging_two_branches_009" => Some((
             "-192.7578125 -34.70000076293945 700.7578125 251.35699462890625",
             "700.7578125",

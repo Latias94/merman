@@ -40,6 +40,9 @@ pub fn lookup_er_root_viewport_override(diagram_id: &str) -> Option<(&'static st
         "upstream_docs_entityrelationshipdiagram_direction_013" => {
             Some(("0 0 828.75 187", "828.75"))
         }
+        "upstream_docs_entityrelationshipdiagram_attributes_015" => {
+            Some(("0 0 546.203125 372", "546.203"))
+        }
         _ => None,
     }
 }
