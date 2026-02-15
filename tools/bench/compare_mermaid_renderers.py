@@ -176,6 +176,32 @@ def best_effort_cpu_model() -> str:
     return platform.processor() or "unknown"
 
 
+def expand_filter_to_exact_benches(filter_expr: str) -> list[str]:
+    """
+    Expand a limited, common "group/(a|b|c)" filter form into exact benchmark names.
+
+    Criterion <=0.5 treats the positional filter argument as a regex, while Criterion >=0.8 treats
+    it as a substring match. `mermaid-rs-renderer` currently uses Criterion >=0.8, so a regex-style
+    filter like "end_to_end/(a|b)" would match nothing there.
+
+    This helper supports the default filter shape used by this repo and returns a list of exact
+    benchmark names that we can run with `--exact` in both projects.
+    """
+    text = filter_expr.strip()
+    m = re.fullmatch(r"(?P<prefix>[A-Za-z0-9_-]+)/\((?P<body>[^)]+)\)", text)
+    if not m:
+        return [text]
+
+    prefix = m.group("prefix")
+    alts = [p.strip() for p in m.group("body").split("|") if p.strip()]
+    out: list[str] = []
+    for name in alts:
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
+            return [text]
+        out.append(f"{prefix}/{name}")
+    return out or [text]
+
+
 _LINE_NAME_ONLY = re.compile(r"^(?P<prefix>[A-Za-z0-9_\-]+)/(?P<name>[A-Za-z0-9_\-]+)\s*$")
 _LINE_TIME_ONLY = re.compile(r"^\s*time:\s*\[(?P<body>.+?)\]\s*$")
 _LINE_INLINE = re.compile(
@@ -236,6 +262,7 @@ def write_markdown(
     out_path: Path,
     *,
     filter_expr: str,
+    exact_benches: list[str],
     sample_size: int,
     warm_up: int,
     measurement: int,
@@ -280,6 +307,9 @@ def write_markdown(
     lines.append("- `merman`: `cargo bench -p merman --features render --bench pipeline -- ...`")
     lines.append("- `mermaid-rs-renderer` (mmdr): `cargo bench --bench renderer -- ...`")
     lines.append(f"- Filter: \"{filter_expr}\"")
+    if exact_benches:
+        benches_str = ", ".join(f"`{b}`" for b in exact_benches)
+        lines.append(f"- Exact benches: {benches_str}")
     lines.append(
         f"- Sample size: {sample_size}, warm-up: {warm_up}s, measurement: {measurement}s"
     )
@@ -381,51 +411,74 @@ def main(argv: list[str]) -> int:
             "expected a local clone at that path (no submodules)."
         )
 
-    # Run benches.
-    merman_cmd = [
-        "cargo",
-        "bench",
-        "-p",
-        "merman",
-        "--features",
-        "render",
-        "--bench",
-        "pipeline",
-        "--",
-        "--noplot",
-        "--sample-size",
-        str(args.sample_size),
-        "--warm-up-time",
-        str(args.warm_up),
-        "--measurement-time",
-        str(args.measurement),
-        args.filter,
-    ]
-    mmdr_cmd = [
-        "cargo",
-        "bench",
-        "--bench",
-        "renderer",
-        "--",
-        "--noplot",
-        "--sample-size",
-        str(args.sample_size),
-        "--warm-up-time",
-        str(args.warm_up),
-        "--measurement-time",
-        str(args.measurement),
-        args.filter,
-    ]
+    benches = expand_filter_to_exact_benches(args.filter)
 
-    print("[bench] merman:", " ".join(merman_cmd))
-    merman_out = run(merman_cmd, cwd=repo_root)
+    def bench_exact(
+        *,
+        cwd: Path,
+        bench_bin: str,
+        package: str | None,
+        features: str | None,
+        exact: str,
+    ) -> str:
+        cmd: list[str] = ["cargo", "bench"]
+        if package:
+            cmd.extend(["-p", package])
+        if features:
+            cmd.extend(["--features", features])
+        cmd.extend(["--bench", bench_bin, "--"])
+        cmd.extend(
+            [
+                "--noplot",
+                "--sample-size",
+                str(args.sample_size),
+                "--warm-up-time",
+                str(args.warm_up),
+                "--measurement-time",
+                str(args.measurement),
+                "--discard-baseline",
+                "--exact",
+                exact,
+            ]
+        )
+        return run(cmd, cwd=cwd)
 
-    print("[bench] mermaid-rs-renderer:", " ".join(mmdr_cmd))
-    mmdr_out = run(mmdr_cmd, cwd=mmdr_dir)
+    # Run benches (exact) so both Criterion CLI variants behave consistently.
+    merman_times: dict[str, TimeEstimate] = {}
+    mmdr_times: dict[str, TimeEstimate] = {}
+    merman_out_all: list[str] = []
 
-    merman_times = parse_criterion_times(merman_out, prefix="end_to_end")
-    mmdr_times = parse_criterion_times(mmdr_out, prefix="end_to_end")
-    skipped_merman = parse_skip_lines(merman_out)
+    for exact in benches:
+        prefix = exact.split("/", 1)[0]
+
+        print(
+            "[bench] merman:",
+            f"cargo bench -p merman --features render --bench pipeline -- ... --exact {exact}",
+        )
+        out = bench_exact(
+            cwd=repo_root,
+            bench_bin="pipeline",
+            package="merman",
+            features="render",
+            exact=exact,
+        )
+        merman_out_all.append(out)
+        merman_times.update(parse_criterion_times(out, prefix=prefix))
+
+        print(
+            "[bench] mermaid-rs-renderer:",
+            f"cargo bench --bench renderer -- ... --exact {exact}",
+        )
+        out = bench_exact(
+            cwd=mmdr_dir,
+            bench_bin="renderer",
+            package=None,
+            features=None,
+            exact=exact,
+        )
+        mmdr_times.update(parse_criterion_times(out, prefix=prefix))
+
+    skipped_merman = parse_skip_lines("\n".join(merman_out_all))
 
     mermaid_js_results: dict[str, float] = {}
     mermaid_js_rev: str | None = None
@@ -442,16 +495,9 @@ def main(argv: list[str]) -> int:
             for p in fixtures_dir.glob("*.mmd"):
                 fixtures[p.stem] = p.read_text(encoding="utf-8")
 
-        # Keep Mermaid JS benchmarking aligned with the Criterion filter.
-        try:
-            bench_re = re.compile(args.filter)
-            fixtures = {
-                name: text
-                for name, text in fixtures.items()
-                if bench_re.search(f"end_to_end/{name}") is not None
-            }
-        except re.error:
-            pass
+        wanted = {b.split("/", 1)[1] for b in benches if b.startswith("end_to_end/")}
+        if wanted:
+            fixtures = {name: text for name, text in fixtures.items() if name in wanted}
 
         bench_in.write_text(
             json.dumps(
@@ -552,6 +598,7 @@ def main(argv: list[str]) -> int:
     write_markdown(
         out_path,
         filter_expr=args.filter,
+        exact_benches=benches,
         sample_size=args.sample_size,
         warm_up=args.warm_up,
         measurement=args.measurement,
