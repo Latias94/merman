@@ -183,6 +183,25 @@ fn layout_architecture_diagram_model(
     _text_measurer: &dyn TextMeasurer,
     use_manatee_layout: bool,
 ) -> Result<ArchitectureDiagramLayout> {
+    let timing_enabled = std::env::var("MERMAN_ARCHITECTURE_LAYOUT_TIMING")
+        .ok()
+        .as_deref()
+        == Some("1");
+    #[derive(Debug, Default, Clone)]
+    struct ArchitectureLayoutTimings {
+        total: std::time::Duration,
+        build_adjacency_and_components: std::time::Duration,
+        positions_and_centering: std::time::Duration,
+        emit_nodes: std::time::Duration,
+        manatee_prepare: std::time::Duration,
+        manatee_layout: std::time::Duration,
+        group_separation: std::time::Duration,
+        build_edges: std::time::Duration,
+        bounds: std::time::Duration,
+    }
+    let mut timings = ArchitectureLayoutTimings::default();
+    let total_start = timing_enabled.then(std::time::Instant::now);
+
     let icon_size = config_f64(effective_config, &["architecture", "iconSize"]).unwrap_or(80.0);
     let icon_size = icon_size.max(1.0);
     let half_icon = icon_size / 2.0;
@@ -273,6 +292,8 @@ fn layout_architecture_diagram_model(
         }
     }
 
+    let build_adjacency_start = timing_enabled.then(std::time::Instant::now);
+
     let mut nodes: Vec<LayoutNode> = Vec::new();
 
     // Build adjacency list in Mermaid's insertion order:
@@ -352,6 +373,11 @@ fn layout_architecture_diagram_model(
 
         components.push(spatial);
     }
+    if let Some(s) = build_adjacency_start {
+        timings.build_adjacency_and_components = s.elapsed();
+    }
+
+    let positions_start = timing_enabled.then(std::time::Instant::now);
 
     // Grid step heuristic: close to Mermaid@11.12.2 outputs for default config.
     let grid_step = (icon_size + 3.0 * padding_px).max(icon_size);
@@ -415,8 +441,12 @@ fn layout_architecture_diagram_model(
     let target_cy = half_icon + if has_group_header { font_size_px } else { 0.0 };
     let shift_x = target_cx - center_cx;
     let shift_y = target_cy - center_cy;
+    if let Some(s) = positions_start {
+        timings.positions_and_centering = s.elapsed();
+    }
 
     // Emit nodes in Mermaid model order (stable for snapshots and close to upstream).
+    let emit_nodes_start = timing_enabled.then(std::time::Instant::now);
     for n in &model.nodes {
         match n.node_type.as_str() {
             "service" | "junction" => {}
@@ -439,8 +469,13 @@ fn layout_architecture_diagram_model(
             label_height: None,
         });
     }
+    if let Some(s) = emit_nodes_start {
+        timings.emit_nodes = s.elapsed();
+    }
 
     if use_manatee_layout && !nodes.is_empty() {
+        let manatee_prepare_start = timing_enabled.then(std::time::Instant::now);
+
         // Build Mermaid-like FCoSE constraints from the BFS spatial maps.
         //
         // The full Mermaid renderer uses Cytoscape + FCoSE, which internally combines spectral
@@ -1041,11 +1076,19 @@ fn layout_architecture_diagram_model(
             random_seed: 1,
         };
 
+        if let Some(s) = manatee_prepare_start {
+            timings.manatee_prepare = s.elapsed();
+        }
+
+        let manatee_layout_start = timing_enabled.then(std::time::Instant::now);
         let result = manatee::layout(&graph, manatee::Algorithm::Fcose(opts)).map_err(|e| {
             Error::InvalidModel {
                 message: format!("manatee layout failed: {e}"),
             }
         })?;
+        if let Some(s) = manatee_layout_start {
+            timings.manatee_layout = s.elapsed();
+        }
 
         for n in &mut nodes {
             if let Some(p) = result.positions.get(n.id.as_str()) {
@@ -1489,9 +1532,14 @@ fn layout_architecture_diagram_model(
             }
         }
 
+        let group_separation_start = timing_enabled.then(std::time::Instant::now);
         resolve_top_level_group_separation(&mut nodes, &model, icon_size, padding_px, font_size_px);
+        if let Some(s) = group_separation_start {
+            timings.group_separation = s.elapsed();
+        }
     }
 
+    let build_edges_start = timing_enabled.then(std::time::Instant::now);
     let mut node_by_id: std::collections::BTreeMap<String, LayoutNode> =
         std::collections::BTreeMap::new();
     for n in &nodes {
@@ -1554,9 +1602,38 @@ fn layout_architecture_diagram_model(
             stroke_dasharray: None,
         });
     }
+    if let Some(s) = build_edges_start {
+        timings.build_edges = s.elapsed();
+    }
+
+    let bounds_start = timing_enabled.then(std::time::Instant::now);
+    let bounds = compute_bounds(&nodes, &edges);
+    if let Some(s) = bounds_start {
+        timings.bounds = s.elapsed();
+    }
+
+    if let Some(s) = total_start {
+        timings.total = s.elapsed();
+        eprintln!(
+            "[layout-timing] diagram=architecture total={:?} adjacency={:?} positions={:?} emit_nodes={:?} manatee_prepare={:?} manatee_layout={:?} group_separation={:?} build_edges={:?} bounds={:?} nodes={} edges={} groups={} use_manatee_layout={}",
+            timings.total,
+            timings.build_adjacency_and_components,
+            timings.positions_and_centering,
+            timings.emit_nodes,
+            timings.manatee_prepare,
+            timings.manatee_layout,
+            timings.group_separation,
+            timings.build_edges,
+            timings.bounds,
+            nodes.len(),
+            edges.len(),
+            model.groups.len(),
+            use_manatee_layout,
+        );
+    }
 
     Ok(ArchitectureDiagramLayout {
-        bounds: compute_bounds(&nodes, &edges),
+        bounds,
         nodes,
         edges,
     })

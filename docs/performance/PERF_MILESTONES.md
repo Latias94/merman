@@ -86,6 +86,7 @@ Useful debug toggles:
 - `MERMAN_PARSE_TIMING=1` (parse stage attribution: preprocess/detect/parse/sanitize)
 - `MERMAN_FLOWCHART_LAYOUT_TIMING=1` (flowchart layout stage attribution)
 - `MERMAN_MINDMAP_LAYOUT_TIMING=1` (mindmap layout coarse attribution: measure/manatee/edges/bounds)
+- `MERMAN_ARCHITECTURE_LAYOUT_TIMING=1` (architecture layout coarse attribution: bfs/manatee/edges/bounds)
 - `DUGONG_DAGREISH_TIMING=1` (Dagre-ish pipeline stage attribution; shows `order` as dominant)
 - `DUGONG_ORDER_TIMING=1` (ordering stage breakdown inside Dagre-ish pipeline)
 
