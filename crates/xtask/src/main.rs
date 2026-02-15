@@ -484,7 +484,9 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
     fn normalize_diagram_dir(detected: &str) -> Option<String> {
         match detected {
             "flowchart" | "flowchart-v2" | "flowchart-elk" => Some("flowchart".to_string()),
-            "state" | "stateDiagram" => Some("state".to_string()),
+            "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => {
+                Some("state".to_string())
+            }
             "class" | "classDiagram" => Some("class".to_string()),
             "gitGraph" => Some("gitgraph".to_string()),
             "quadrantChart" => Some("quadrantchart".to_string()),
@@ -1333,7 +1335,9 @@ fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> {
     fn normalize_diagram_dir(detected: &str) -> Option<String> {
         match detected {
             "flowchart" | "flowchart-v2" | "flowchart-elk" => Some("flowchart".to_string()),
-            "state" | "stateDiagram" => Some("state".to_string()),
+            "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => {
+                Some("state".to_string())
+            }
             "class" | "classDiagram" => Some("class".to_string()),
             "gitGraph" => Some("gitgraph".to_string()),
             "quadrantChart" => Some("quadrantchart".to_string()),
@@ -2254,7 +2258,9 @@ fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
     fn normalize_diagram_dir(detected: &str) -> Option<String> {
         match detected {
             "flowchart" | "flowchart-v2" | "flowchart-elk" => Some("flowchart".to_string()),
-            "state" | "stateDiagram" => Some("state".to_string()),
+            "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => {
+                Some("state".to_string())
+            }
             "class" | "classDiagram" => Some("class".to_string()),
             "gitGraph" => Some("gitgraph".to_string()),
             "quadrantChart" => Some("quadrantchart".to_string()),
@@ -3288,7 +3294,9 @@ fn import_mmdr_fixtures(args: Vec<String>) -> Result<(), XtaskError> {
     fn normalize_diagram_dir(detected: &str) -> Option<String> {
         match detected {
             "flowchart" | "flowchart-v2" | "flowchart-elk" => Some("flowchart".to_string()),
-            "state" | "stateDiagram" => Some("state".to_string()),
+            "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => {
+                Some("state".to_string())
+            }
             "class" | "classDiagram" => Some("class".to_string()),
             "gitGraph" => Some("gitgraph".to_string()),
             "quadrantChart" => Some("quadrantchart".to_string()),
