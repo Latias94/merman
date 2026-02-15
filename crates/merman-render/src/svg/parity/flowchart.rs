@@ -96,6 +96,10 @@ struct FlowchartEdgeDataPointsScratch {
     b64: String,
     ryu: ryu_js::Buffer,
     local_points: Vec<crate::model::LayoutPoint>,
+    tmp_points_a: Vec<crate::model::LayoutPoint>,
+    tmp_points_b: Vec<crate::model::LayoutPoint>,
+    tmp_points_c: Vec<crate::model::LayoutPoint>,
+    tmp_points_rev: Vec<crate::model::LayoutPoint>,
 }
 
 impl Default for FlowchartEdgeDataPointsScratch {
@@ -105,6 +109,10 @@ impl Default for FlowchartEdgeDataPointsScratch {
             b64: String::new(),
             ryu: ryu_js::Buffer::new(),
             local_points: Vec::new(),
+            tmp_points_a: Vec::new(),
+            tmp_points_b: Vec::new(),
+            tmp_points_c: Vec::new(),
+            tmp_points_rev: Vec::new(),
         }
     }
 }
@@ -1758,14 +1766,17 @@ pub(super) fn flowchart_edge_path_d_for_bbox(
         crate::model::LayoutPoint { x: ix, y: iy }
     }
 
-    fn cut_path_at_intersect(
+    fn cut_path_at_intersect_into(
         input: &[crate::model::LayoutPoint],
         boundary: &BoundaryNode,
-    ) -> Vec<crate::model::LayoutPoint> {
+        out: &mut Vec<crate::model::LayoutPoint>,
+    ) {
+        out.clear();
         if input.is_empty() {
-            return Vec::new();
+            return;
         }
-        let mut out: Vec<crate::model::LayoutPoint> = Vec::new();
+        out.reserve(input.len() + 1);
+
         let mut last_point_outside = input[0].clone();
         let mut is_inside = false;
         const EPS: f64 = 1e-9;
@@ -1783,21 +1794,25 @@ pub(super) fn flowchart_edge_path_d_for_bbox(
             } else {
                 last_point_outside = point.clone();
                 if !is_inside {
-                    out.push(point.clone());
+                    out.push(crate::model::LayoutPoint {
+                        x: point.x,
+                        y: point.y,
+                    });
                 }
             }
         }
-        out
     }
 
-    fn dedup_consecutive_points(
+    fn dedup_consecutive_points_into(
         input: &[crate::model::LayoutPoint],
-    ) -> Vec<crate::model::LayoutPoint> {
-        if input.len() <= 1 {
-            return input.to_vec();
+        out: &mut Vec<crate::model::LayoutPoint>,
+    ) {
+        out.clear();
+        if input.is_empty() {
+            return;
         }
         const EPS: f64 = 1e-9;
-        let mut out: Vec<crate::model::LayoutPoint> = Vec::with_capacity(input.len());
+        out.reserve(input.len());
         for p in input {
             if out
                 .last()
@@ -1805,8 +1820,24 @@ pub(super) fn flowchart_edge_path_d_for_bbox(
             {
                 continue;
             }
-            out.push(p.clone());
+            out.push(crate::model::LayoutPoint { x: p.x, y: p.y });
         }
+    }
+
+    fn cut_path_at_intersect(
+        input: &[crate::model::LayoutPoint],
+        boundary: &BoundaryNode,
+    ) -> Vec<crate::model::LayoutPoint> {
+        let mut out: Vec<crate::model::LayoutPoint> = Vec::new();
+        cut_path_at_intersect_into(input, boundary, &mut out);
+        out
+    }
+
+    fn dedup_consecutive_points(
+        input: &[crate::model::LayoutPoint],
+    ) -> Vec<crate::model::LayoutPoint> {
+        let mut out: Vec<crate::model::LayoutPoint> = Vec::new();
+        dedup_consecutive_points_into(input, &mut out);
         out
     }
 
@@ -1944,11 +1975,11 @@ pub(super) fn flowchart_edge_path_d_for_bbox(
             && count_non_collinear_triples(&points_for_render) <= 1
             && has_short_segment(&points_for_render, 10.0)
         {
-            points_for_render = vec![
-                points_for_render[0].clone(),
-                points_for_render[points_for_render.len() / 2].clone(),
-                points_for_render[points_for_render.len() - 1].clone(),
-            ];
+            let a = points_for_render[0].clone();
+            let mid = points_for_render[points_for_render.len() / 2].clone();
+            let b = points_for_render[points_for_render.len() - 1].clone();
+            points_for_render.clear();
+            points_for_render.extend([a, mid, b]);
         }
     }
 
@@ -2538,14 +2569,17 @@ fn flowchart_compute_edge_path_geom(
         crate::model::LayoutPoint { x: ix, y: iy }
     }
 
-    fn cut_path_at_intersect(
+    fn cut_path_at_intersect_into(
         input: &[crate::model::LayoutPoint],
         boundary: &BoundaryNode,
-    ) -> Vec<crate::model::LayoutPoint> {
+        out: &mut Vec<crate::model::LayoutPoint>,
+    ) {
+        out.clear();
         if input.is_empty() {
-            return Vec::new();
+            return;
         }
-        let mut out: Vec<crate::model::LayoutPoint> = Vec::new();
+        out.reserve(input.len() + 1);
+
         let mut last_point_outside = input[0].clone();
         let mut is_inside = false;
         const EPS: f64 = 1e-9;
@@ -2563,21 +2597,34 @@ fn flowchart_compute_edge_path_geom(
             } else {
                 last_point_outside = point.clone();
                 if !is_inside {
-                    out.push(point.clone());
+                    out.push(crate::model::LayoutPoint {
+                        x: point.x,
+                        y: point.y,
+                    });
                 }
             }
         }
+    }
+
+    fn cut_path_at_intersect(
+        input: &[crate::model::LayoutPoint],
+        boundary: &BoundaryNode,
+    ) -> Vec<crate::model::LayoutPoint> {
+        let mut out = Vec::new();
+        cut_path_at_intersect_into(input, boundary, &mut out);
         out
     }
 
-    fn dedup_consecutive_points(
+    fn dedup_consecutive_points_into(
         input: &[crate::model::LayoutPoint],
-    ) -> Vec<crate::model::LayoutPoint> {
-        if input.len() <= 1 {
-            return input.to_vec();
+        out: &mut Vec<crate::model::LayoutPoint>,
+    ) {
+        out.clear();
+        if input.is_empty() {
+            return;
         }
         const EPS: f64 = 1e-9;
-        let mut out: Vec<crate::model::LayoutPoint> = Vec::with_capacity(input.len());
+        out.reserve(input.len());
         for p in input {
             if out
                 .last()
@@ -2585,8 +2632,15 @@ fn flowchart_compute_edge_path_geom(
             {
                 continue;
             }
-            out.push(p.clone());
+            out.push(crate::model::LayoutPoint { x: p.x, y: p.y });
         }
+    }
+
+    fn dedup_consecutive_points(
+        input: &[crate::model::LayoutPoint],
+    ) -> Vec<crate::model::LayoutPoint> {
+        let mut out = Vec::new();
+        dedup_consecutive_points_into(input, &mut out);
         out
     }
 
@@ -2606,8 +2660,9 @@ fn flowchart_compute_edge_path_geom(
     }
 
     let is_cyclic_special = edge.id.contains("-cyclic-special-");
-    let mut base_points = dedup_consecutive_points(local_points);
-    maybe_normalize_selfedge_loop_points(&mut base_points);
+    dedup_consecutive_points_into(local_points, &mut scratch.tmp_points_a);
+    let base_points: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_a;
+    maybe_normalize_selfedge_loop_points(base_points);
 
     fn is_rounded_intersect_shift_shape(layout_shape: Option<&str>) -> bool {
         matches!(layout_shape, Some("roundedRect" | "rounded"))
@@ -3254,7 +3309,10 @@ fn flowchart_compute_edge_path_geom(
         }
     }
 
-    let mut points_after_intersect = base_points.clone();
+    scratch.tmp_points_b.clear();
+    scratch.tmp_points_b.extend_from_slice(base_points);
+    let points_after_intersect: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_b;
+
     if base_points.len() >= 3 {
         let tail_shape = ctx
             .nodes_by_id
@@ -3274,10 +3332,7 @@ fn flowchart_compute_edge_path_geom(
             ),
             boundary_for_node(ctx, edge.to.as_str(), origin_x, origin_y, is_cyclic_special),
         ) {
-            points_after_intersect = base_points.clone();
-
-            let mut interior: Vec<crate::model::LayoutPoint> =
-                base_points[1..base_points.len() - 1].to_vec();
+            let interior = &base_points[1..base_points.len() - 1];
             if !interior.is_empty() {
                 fn force_intersect(layout_shape: Option<&str>) -> bool {
                     matches!(
@@ -3323,11 +3378,11 @@ fn flowchart_compute_edge_path_geom(
                     }
                 }
 
-                let mut out = Vec::with_capacity(interior.len() + 2);
-                out.push(start);
-                out.append(&mut interior);
-                out.push(end);
-                points_after_intersect = out;
+                points_after_intersect.clear();
+                points_after_intersect.reserve(interior.len() + 2);
+                points_after_intersect.push(start);
+                points_after_intersect.extend(interior.iter().cloned());
+                points_after_intersect.push(end);
             }
         }
     }
@@ -3427,25 +3482,42 @@ fn flowchart_compute_edge_path_geom(
         }
     }
 
-    let mut points_for_render = points_after_intersect.clone();
+    scratch.tmp_points_c.clear();
     if let Some(tc) = le.to_cluster.as_deref() {
         if let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y) {
-            points_for_render = cut_path_at_intersect(&base_points, &boundary);
+            cut_path_at_intersect_into(base_points, &boundary, &mut scratch.tmp_points_c);
+        } else {
+            scratch
+                .tmp_points_c
+                .extend_from_slice(points_after_intersect);
         }
+    } else {
+        scratch
+            .tmp_points_c
+            .extend_from_slice(points_after_intersect);
     }
     if let Some(fc) = le.from_cluster.as_deref() {
         if let Some(boundary) = boundary_for_cluster(ctx, fc, origin_x, origin_y) {
-            let mut rev = points_for_render.clone();
-            rev.reverse();
-            rev = cut_path_at_intersect(&rev, &boundary);
-            rev.reverse();
-            points_for_render = rev;
+            scratch.tmp_points_rev.clear();
+            scratch
+                .tmp_points_rev
+                .extend_from_slice(&scratch.tmp_points_c);
+            scratch.tmp_points_rev.reverse();
+
+            cut_path_at_intersect_into(
+                &scratch.tmp_points_rev,
+                &boundary,
+                &mut scratch.tmp_points_c,
+            );
+            scratch.tmp_points_c.reverse();
         }
     }
+    let points_for_render: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_c;
 
     // Mermaid sets `data-points` as `btoa(JSON.stringify(points))` *before* any cluster clipping
     // (`cutPathAtIntersect`). Keep that exact ordering for strict DOM parity.
-    let mut points_for_data_points = points_after_intersect.clone();
+    let points_after_intersect_for_trace = trace_enabled.then(|| scratch.tmp_points_b.clone());
+    let points_for_data_points: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_b;
 
     #[derive(serde::Serialize)]
     struct TracePoint {
@@ -4090,14 +4162,14 @@ fn flowchart_compute_edge_path_geom(
             edge,
             origin_x,
             origin_y,
-            &mut points_for_data_points,
+            points_for_data_points,
             &mut trace_endpoint,
         );
         if trace_enabled {
             trace_points_after_norm = Some(points_for_data_points.clone());
         }
     }
-    for p in &mut points_for_data_points {
+    for p in points_for_data_points.iter_mut() {
         // Keep truncation scoped to y-coordinates: the observed upstream fixed-point artifacts
         // are for vertical intersections, while x-coordinates can legitimately land on thirds for
         // some polygon shapes (and truncating those breaks strict parity).
@@ -4207,11 +4279,11 @@ fn flowchart_compute_edge_path_geom(
             && count_non_collinear_triples(&points_for_render) <= 1
             && has_short_segment(&points_for_render, 10.0)
         {
-            points_for_render = vec![
-                points_for_render[0].clone(),
-                points_for_render[points_for_render.len() / 2].clone(),
-                points_for_render[points_for_render.len() - 1].clone(),
-            ];
+            let a = points_for_render[0].clone();
+            let mid = points_for_render[points_for_render.len() / 2].clone();
+            let b = points_for_render[points_for_render.len() - 1].clone();
+            points_for_render.clear();
+            points_for_render.extend([a, mid, b]);
         }
     }
 
@@ -4277,15 +4349,16 @@ fn flowchart_compute_edge_path_geom(
         && edge.id.contains("-cyclic-special-mid")
         && points_for_render.len() > 3
     {
-        points_for_render = vec![
-            points_for_render[0].clone(),
-            points_for_render[points_for_render.len() / 2].clone(),
-            points_for_render[points_for_render.len() - 1].clone(),
-        ];
+        let a = points_for_render[0].clone();
+        let mid = points_for_render[points_for_render.len() / 2].clone();
+        let b = points_for_render[points_for_render.len() - 1].clone();
+        points_for_render.clear();
+        points_for_render.extend([a, mid, b]);
     }
     if points_for_render.len() == 1 {
         // Avoid emitting a degenerate `M x,y` path for clipped cluster-adjacent edges.
-        points_for_render = scratch.local_points.clone();
+        points_for_render.clear();
+        points_for_render.extend(scratch.local_points.iter().cloned());
     }
 
     // D3's `curveBasis` emits only a straight `M ... L ...` when there are exactly two points.
@@ -4374,7 +4447,7 @@ fn flowchart_compute_edge_path_geom(
             };
 
             if should_expand {
-                ensure_min_points(&mut points_for_render, 5);
+                ensure_min_points(points_for_render, 5);
             } else if points_for_render.len() == 4 {
                 // For non-expanded cyclic helper edges, Mermaid's command sequence matches the
                 // 3-point `curveBasis` case (`C` count = 2). Avoid emitting the intermediate
@@ -4679,7 +4752,12 @@ fn flowchart_compute_edge_path_geom(
             tx: ctx.tx,
             ty: ctx.ty,
             base_points: base_points.iter().map(tp).collect(),
-            points_after_intersect: points_after_intersect.iter().map(tp).collect(),
+            points_after_intersect: points_after_intersect_for_trace
+                .as_deref()
+                .unwrap_or(points_for_data_points)
+                .iter()
+                .map(tp)
+                .collect(),
             points_for_render: points_for_render.iter().map(tp).collect(),
             points_for_data_points_before_norm: trace_points_before_norm
                 .as_deref()
@@ -4702,7 +4780,11 @@ fn flowchart_compute_edge_path_geom(
     }
 
     scratch.json.clear();
-    json_stringify_points_into(&mut scratch.json, &points_for_data_points, &mut scratch.ryu);
+    json_stringify_points_into(
+        &mut scratch.json,
+        points_for_data_points.as_slice(),
+        &mut scratch.ryu,
+    );
     let mut data_points_b64 = String::new();
     base64::engine::general_purpose::STANDARD
         .encode_string(scratch.json.as_bytes(), &mut data_points_b64);
