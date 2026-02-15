@@ -1,6 +1,7 @@
 use crate::algo::CoseBilkentOptions;
 use crate::error::Result;
 use crate::graph::{Graph, LayoutResult, Point};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 pub fn layout(graph: &Graph, _opts: &CoseBilkentOptions) -> Result<LayoutResult> {
     graph.validate()?;
@@ -208,16 +209,14 @@ impl SimGraph {
             });
         }
 
-        let mut id_to_idx: std::collections::BTreeMap<&str, usize> =
-            std::collections::BTreeMap::new();
+        let mut id_to_idx: HashMap<&str, usize> = HashMap::with_capacity(graph.nodes.len());
         for (idx, n) in graph.nodes.iter().enumerate() {
             id_to_idx.insert(n.id.as_str(), idx);
         }
 
         // Mirror the cytoscape-cose-bilkent behavior: only keep one edge between any two nodes.
-        let mut seen_pairs: std::collections::BTreeSet<(usize, usize)> =
-            std::collections::BTreeSet::new();
-        let mut edges: Vec<SimEdge> = Vec::new();
+        let mut seen_pairs: HashSet<(usize, usize)> = HashSet::with_capacity(graph.edges.len());
+        let mut edges: Vec<SimEdge> = Vec::with_capacity(graph.edges.len());
         for e in &graph.edges {
             let a = *id_to_idx.get(e.source.as_str()).expect("validated");
             let b = *id_to_idx.get(e.target.as_str()).expect("validated");
@@ -293,21 +292,20 @@ impl SimGraph {
         // Graph is always flat in our current model (no compound nodes).
 
         // BFS for each component; reject if any component is not a tree.
-        let mut to_be_visited: std::collections::VecDeque<usize> =
-            std::collections::VecDeque::new();
-        let mut parents: std::collections::BTreeMap<usize, usize> =
-            std::collections::BTreeMap::new();
+        let mut to_be_visited: VecDeque<usize> = VecDeque::new();
+        let mut parents: Vec<Option<usize>> = vec![None; self.nodes.len()];
+        let mut parents_touched: Vec<usize> = Vec::new();
+        let mut visited: Vec<bool> = vec![false; self.nodes.len()];
         let mut unprocessed_nodes: Vec<usize> = all_nodes;
 
         while !unprocessed_nodes.is_empty() && is_forest {
             to_be_visited.push_back(unprocessed_nodes[0]);
 
-            let mut visited_set: std::collections::BTreeSet<usize> =
-                std::collections::BTreeSet::new();
             let mut visited_order: Vec<usize> = Vec::new();
 
             while let Some(current_node) = to_be_visited.pop_front() {
-                if visited_set.insert(current_node) {
+                if !visited[current_node] {
+                    visited[current_node] = true;
                     visited_order.push(current_node);
                 }
 
@@ -322,10 +320,13 @@ impl SimGraph {
                     }
 
                     // If BFS is not growing from this neighbor.
-                    if parents.get(&current_node).copied() != Some(current_neighbor) {
-                        if !visited_set.contains(&current_neighbor) {
+                    if parents[current_node] != Some(current_neighbor) {
+                        if !visited[current_neighbor] {
                             to_be_visited.push_back(current_neighbor);
-                            parents.insert(current_neighbor, current_node);
+                            if parents[current_neighbor].is_none() {
+                                parents_touched.push(current_neighbor);
+                            }
+                            parents[current_neighbor] = Some(current_node);
                         } else {
                             is_forest = false;
                             break;
@@ -344,15 +345,17 @@ impl SimGraph {
                 // JS Set preserves insertion order; `visited_order` mimics `[...visited]`.
                 flat_forest.push(visited_order.clone());
 
-                // Remove all visited nodes from unProcessedNodes using the same splice-by-index logic.
-                for v in visited_order {
-                    if let Some(pos) = unprocessed_nodes.iter().position(|&n| n == v) {
-                        unprocessed_nodes.remove(pos);
-                    }
+                // Remove all visited nodes from unProcessedNodes.
+                unprocessed_nodes.retain(|&n| !visited[n]);
+
+                // Clear per-component state (only touched indices).
+                for &idx in &visited_order {
+                    visited[idx] = false;
+                }
+                for idx in parents_touched.drain(..) {
+                    parents[idx] = None;
                 }
 
-                // Reset per-component state.
-                parents.clear();
                 to_be_visited.clear();
             }
         }
@@ -645,8 +648,8 @@ impl SimGraph {
     fn find_center_of_tree(&self, nodes: &[usize]) -> usize {
         let mut list: Vec<usize> = nodes.to_vec();
         let mut removed_nodes: Vec<usize> = Vec::new();
-        let mut remaining_degrees: std::collections::BTreeMap<usize, usize> =
-            std::collections::BTreeMap::new();
+        let mut removed: Vec<bool> = vec![false; self.nodes.len()];
+        let mut remaining_degrees: Vec<usize> = vec![0; self.nodes.len()];
         let mut found_center = false;
         let mut center_node = list[0];
 
@@ -657,9 +660,10 @@ impl SimGraph {
 
         for &node in &list {
             let degree = self.neighbors_of(node).len();
-            remaining_degrees.insert(node, degree);
+            remaining_degrees[node] = degree;
             if degree == 1 {
                 removed_nodes.push(node);
+                removed[node] = true;
             }
         }
 
@@ -673,24 +677,25 @@ impl SimGraph {
             let mut i = 0usize;
             while i < list.len() {
                 let node = list[i];
-                if let Some(pos) = list.iter().position(|&n| n == node) {
-                    list.remove(pos);
-                }
+                list.remove(i);
 
                 for neighbour in self.neighbors_of(node) {
-                    if !removed_nodes.contains(&neighbour) {
-                        let other_degree = *remaining_degrees.get(&neighbour).unwrap_or(&0);
+                    if !removed[neighbour] {
+                        let other_degree = remaining_degrees[neighbour];
                         let new_degree = other_degree.saturating_sub(1);
                         if new_degree == 1 {
                             temp_list.push(neighbour);
                         }
-                        remaining_degrees.insert(neighbour, new_degree);
+                        remaining_degrees[neighbour] = new_degree;
                     }
                 }
 
                 i += 1;
             }
 
+            for &v in &temp_list {
+                removed[v] = true;
+            }
             removed_nodes.extend(temp_list.iter().copied());
 
             if list.len() == 1 || list.len() == 2 {
