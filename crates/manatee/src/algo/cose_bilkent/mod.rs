@@ -4,6 +4,57 @@ use crate::graph::{Graph, LayoutResult, Point};
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::collections::VecDeque;
 
+#[derive(Debug, Clone, Copy)]
+pub struct IndexedNode {
+    pub width: f64,
+    pub height: f64,
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct IndexedEdge {
+    pub a: usize,
+    pub b: usize,
+}
+
+pub fn layout_indexed(
+    nodes: &[IndexedNode],
+    edges: &[IndexedEdge],
+    _opts: &CoseBilkentOptions,
+) -> Result<Vec<Point>> {
+    if nodes.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    for (idx, e) in edges.iter().enumerate() {
+        if e.a >= nodes.len() || e.b >= nodes.len() {
+            return Err(crate::error::Error::MissingEndpoint {
+                edge_id: format!("#{idx}"),
+            });
+        }
+    }
+
+    let mut sim = SimGraph::from_indexed(nodes, edges);
+
+    let forest = sim.get_flat_forest();
+    if !forest.is_empty() {
+        sim.position_nodes_radially(&forest);
+    }
+
+    sim.run_spring_embedder(false);
+    sim.transform_to_origin();
+
+    let mut out: Vec<Point> = Vec::with_capacity(sim.nodes.len());
+    for n in &sim.nodes {
+        out.push(Point {
+            x: n.center_x(),
+            y: n.center_y(),
+        });
+    }
+    Ok(out)
+}
+
 pub fn layout(graph: &Graph, _opts: &CoseBilkentOptions) -> Result<LayoutResult> {
     graph.validate()?;
 
@@ -303,6 +354,64 @@ impl SimGraph {
     const DEFAULT_REPULSION_STRENGTH: f64 = 4500.0; // nodeRepulsion
     const DEFAULT_GRAVITY_STRENGTH: f64 = 0.25; // gravity
     const DEFAULT_GRAVITY_RANGE_FACTOR: f64 = 3.8; // gravityRange
+
+    fn from_indexed(nodes_in: &[IndexedNode], edges_in: &[IndexedEdge]) -> Self {
+        let mut nodes: Vec<SimNode> = Vec::with_capacity(nodes_in.len());
+        for n in nodes_in {
+            let w = n.width.max(1.0);
+            let h = n.height.max(1.0);
+            nodes.push(SimNode {
+                id: String::new(),
+                width: w,
+                height: h,
+                left: n.x - w / 2.0,
+                top: n.y - h / 2.0,
+                edges: Vec::new(),
+                active: true,
+                start_x: 0,
+                finish_x: 0,
+                start_y: 0,
+                finish_y: 0,
+                spring_fx: 0.0,
+                spring_fy: 0.0,
+                repulsion_fx: 0.0,
+                repulsion_fy: 0.0,
+                gravitation_fx: 0.0,
+                gravitation_fy: 0.0,
+            });
+        }
+
+        let mut seen_pairs: HashSet<(usize, usize)> =
+            HashSet::with_capacity_and_hasher(edges_in.len(), Default::default());
+        let mut edges: Vec<SimEdge> = Vec::with_capacity(edges_in.len());
+        for e in edges_in {
+            let (a, b) = (e.a, e.b);
+            if a == b {
+                continue;
+            }
+            if a >= nodes.len() || b >= nodes.len() {
+                continue;
+            }
+            let (u, v) = if a < b { (a, b) } else { (b, a) };
+            if !seen_pairs.insert((u, v)) {
+                continue;
+            }
+            let ei = edges.len();
+            edges.push(SimEdge { a, b, active: true });
+            nodes[a].edges.push(ei);
+            nodes[b].edges.push(ei);
+        }
+
+        Self {
+            nodes,
+            edges,
+            pruned_nodes_all: Vec::new(),
+            grid: SimGrid::default(),
+            repulsion_seen: vec![0u32; nodes_in.len()],
+            repulsion_seen_gen: 1,
+            repulsion_candidates: Vec::new(),
+        }
+    }
 
     fn from_graph(graph: &Graph) -> Self {
         let mut nodes: Vec<SimNode> = Vec::with_capacity(graph.nodes.len());

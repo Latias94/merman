@@ -255,42 +255,56 @@ fn layout_mindmap_diagram_model(
 
     if use_manatee_layout {
         let manatee_start = timing_enabled.then(std::time::Instant::now);
-        let graph = manatee::Graph {
-            nodes: nodes
-                .iter()
-                .map(|n| manatee::Node {
-                    id: n.id.clone(),
-                    parent: None,
-                    width: n.width,
-                    height: n.height,
-                    x: n.x,
-                    y: n.y,
-                })
-                .collect(),
-            edges: model
-                .edges
-                .iter()
-                .map(|e| manatee::Edge {
-                    id: e.id.clone(),
-                    source: e.start.clone(),
-                    target: e.end.clone(),
-                    source_anchor: None,
-                    target_anchor: None,
-                    ideal_length: 0.0,
-                    elasticity: 0.0,
-                })
-                .collect(),
-            compounds: Vec::new(),
-        };
-        let result = manatee::layout(&graph, manatee::Algorithm::CoseBilkent(Default::default()))
-            .map_err(|e| Error::InvalidModel {
+        let mut id_to_idx: rustc_hash::FxHashMap<&str, usize> =
+            rustc_hash::FxHashMap::with_capacity_and_hasher(nodes.len(), Default::default());
+        for (idx, n) in nodes.iter().enumerate() {
+            id_to_idx.insert(n.id.as_str(), idx);
+        }
+
+        let indexed_nodes: Vec<manatee::algo::cose_bilkent::IndexedNode> = nodes
+            .iter()
+            .map(|n| manatee::algo::cose_bilkent::IndexedNode {
+                width: n.width,
+                height: n.height,
+                x: n.x,
+                y: n.y,
+            })
+            .collect();
+        let mut indexed_edges: Vec<manatee::algo::cose_bilkent::IndexedEdge> =
+            Vec::with_capacity(model.edges.len());
+        for (edge_idx, e) in model.edges.iter().enumerate() {
+            let Some(&a) = id_to_idx.get(e.start.as_str()) else {
+                return Err(Error::InvalidModel {
+                    message: format!("edge start node not found: {}", e.start),
+                });
+            };
+            let Some(&b) = id_to_idx.get(e.end.as_str()) else {
+                return Err(Error::InvalidModel {
+                    message: format!("edge end node not found: {}", e.end),
+                });
+            };
+            if a == b {
+                continue;
+            }
+            indexed_edges.push(manatee::algo::cose_bilkent::IndexedEdge { a, b });
+
+            // Keep `edge_idx` referenced so unused warnings don't obscure failures if we ever
+            // enhance indexed validation error messages.
+            let _ = edge_idx;
+        }
+
+        let positions = manatee::algo::cose_bilkent::layout_indexed(
+            &indexed_nodes,
+            &indexed_edges,
+            &Default::default(),
+        )
+        .map_err(|e| Error::InvalidModel {
             message: format!("manatee layout failed: {e}"),
         })?;
-        for n in &mut nodes {
-            if let Some(p) = result.positions.get(n.id.as_str()) {
-                n.x = p.x;
-                n.y = p.y;
-            }
+
+        for (n, p) in nodes.iter_mut().zip(positions) {
+            n.x = p.x;
+            n.y = p.y;
         }
         if let Some(s) = manatee_start {
             timings.manatee = s.elapsed();
