@@ -934,6 +934,9 @@ pub(super) fn render_class_diagram_v2_svg_model(
             out.push_str(r#"<g class="edgePaths">"#);
             let mut points_json_buf: Vec<u8> = Vec::new();
             let mut points_b64_buf: String = String::new();
+            let mut raw_points: Vec<crate::model::LayoutPoint> = Vec::new();
+            let mut curve_points: Vec<crate::model::LayoutPoint> = Vec::new();
+            let mut class_buf = String::with_capacity(64);
             for e in &layout.edges {
                 if e.points.len() < 2 {
                     continue;
@@ -941,23 +944,24 @@ pub(super) fn render_class_diagram_v2_svg_model(
 
                 let dom_id = class_edge_dom_id(e, &relation_index_by_id);
 
-                let mut raw_points = e.points.clone();
+                raw_points.clone_from(&e.points);
                 for p in &mut raw_points {
                     p.x += content_tx;
                     p.y += content_ty;
                 }
 
-                let mut curve_points = raw_points.clone();
-                if curve_points.len() == 2 {
-                    let a = &curve_points[0];
-                    let b = &curve_points[1];
-                    curve_points.insert(
-                        1,
-                        crate::model::LayoutPoint {
-                            x: (a.x + b.x) / 2.0,
-                            y: (a.y + b.y) / 2.0,
-                        },
-                    );
+                curve_points.clear();
+                if raw_points.len() == 2 {
+                    let a = &raw_points[0];
+                    let b = &raw_points[1];
+                    curve_points.push(a.clone());
+                    curve_points.push(crate::model::LayoutPoint {
+                        x: (a.x + b.x) / 2.0,
+                        y: (a.y + b.y) / 2.0,
+                    });
+                    curve_points.push(b.clone());
+                } else {
+                    curve_points.clone_from(&raw_points);
                 }
                 let (d, d_pb) = super::curve::curve_basis_path_d_and_bounds(&curve_points);
                 let path_bounds_start = timing_enabled.then(std::time::Instant::now);
@@ -978,49 +982,43 @@ pub(super) fn render_class_diagram_v2_svg_model(
                 base64::engine::general_purpose::STANDARD
                     .encode_string(&points_json_buf, &mut points_b64_buf);
 
-                let mut class = String::from("edge-thickness-normal ");
+                class_buf.clear();
+                class_buf.push_str("edge-thickness-normal ");
                 if e.id.starts_with("edgeNote") {
-                    class.push_str(class_note_edge_pattern());
+                    class_buf.push_str(class_note_edge_pattern());
                 } else if let Some(rel) = relations_by_id.get(e.id.as_str()) {
-                    class.push_str(class_edge_pattern(rel.relation.line_type));
+                    class_buf.push_str(class_edge_pattern(rel.relation.line_type));
                 } else {
-                    class.push_str("edge-pattern-solid");
+                    class_buf.push_str("edge-pattern-solid");
                 }
-                class.push_str(" relation");
-
-                let mut marker_start: Option<String> = None;
-                let mut marker_end: Option<String> = None;
-                if !e.id.starts_with("edgeNote") {
-                    if let Some(rel) = relations_by_id.get(e.id.as_str()) {
-                        if let Some(name) = class_marker_name(rel.relation.type1, true) {
-                            marker_start = Some(format!(
-                                "url(#{}_{aria_roledescription}-{name})",
-                                diagram_id
-                            ));
-                        }
-                        if let Some(name) = class_marker_name(rel.relation.type2, false) {
-                            marker_end = Some(format!(
-                                "url(#{}_{aria_roledescription}-{name})",
-                                diagram_id
-                            ));
-                        }
-                    }
-                }
+                class_buf.push_str(" relation");
 
                 let _ = write!(
                     out,
                     r#"<path d="{}" id="{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
-                    escape_attr(&d),
-                    escape_attr(&dom_id),
-                    escape_attr(&class),
-                    escape_attr(&dom_id),
-                    escape_attr(&points_b64_buf),
+                    escape_attr_display(&d),
+                    escape_attr_display(&dom_id),
+                    escape_attr_display(&class_buf),
+                    escape_attr_display(&dom_id),
+                    escape_attr_display(&points_b64_buf),
                 );
-                if let Some(url) = marker_start {
-                    let _ = write!(out, r#" marker-start="{}""#, escape_attr(&url));
-                }
-                if let Some(url) = marker_end {
-                    let _ = write!(out, r#" marker-end="{}""#, escape_attr(&url));
+                if !e.id.starts_with("edgeNote") {
+                    if let Some(rel) = relations_by_id.get(e.id.as_str()) {
+                        if let Some(name) = class_marker_name(rel.relation.type1, true) {
+                            out.push_str(r#" marker-start="url(#"#);
+                            let _ = write!(out, "{}", escape_attr_display(diagram_id));
+                            out.push('_');
+                            let _ = write!(out, "{}", escape_attr_display(aria_roledescription));
+                            let _ = write!(out, "-{name})\"");
+                        }
+                        if let Some(name) = class_marker_name(rel.relation.type2, false) {
+                            out.push_str(r#" marker-end="url(#"#);
+                            let _ = write!(out, "{}", escape_attr_display(diagram_id));
+                            out.push('_');
+                            let _ = write!(out, "{}", escape_attr_display(aria_roledescription));
+                            let _ = write!(out, "-{name})\"");
+                        }
+                    }
                 }
                 out.push_str("/>");
             }
