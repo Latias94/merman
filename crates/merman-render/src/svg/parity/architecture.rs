@@ -85,16 +85,9 @@ fn timing_section<'a>(
     enabled.then(|| super::timing::TimingGuard::new(dst))
 }
 
-pub(super) fn render_architecture_diagram_svg_typed(
-    layout: &ArchitectureDiagramLayout,
+fn build_architecture_model_from_render_model(
     model: &merman_core::diagrams::architecture::ArchitectureDiagramRenderModel,
-    effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let timing_enabled = super::timing::render_timing_enabled();
-    let mut timings = super::timing::RenderTimings::default();
-    let total_start = std::time::Instant::now();
-
+) -> ArchitectureModel {
     let mut services: Vec<ArchitectureService> = Vec::new();
     let mut junctions: Vec<ArchitectureJunction> = Vec::new();
     services.reserve(model.nodes.len());
@@ -152,18 +145,56 @@ pub(super) fn render_architecture_diagram_svg_typed(
         })
         .collect();
 
-    let semantic = ArchitectureModel {
+    ArchitectureModel {
         acc_title: model.acc_title.clone(),
         acc_descr: model.acc_descr.clone(),
         groups,
         services,
         junctions,
         edges,
-    };
+    }
+}
+
+pub(super) fn render_architecture_diagram_svg_typed(
+    layout: &ArchitectureDiagramLayout,
+    model: &merman_core::diagrams::architecture::ArchitectureDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let timing_enabled = super::timing::render_timing_enabled();
+    let mut timings = super::timing::RenderTimings::default();
+    let total_start = std::time::Instant::now();
+
+    let semantic = build_architecture_model_from_render_model(model);
     render_architecture_diagram_svg_with_model(
         layout,
         &semantic,
         effective_config,
+        None,
+        options,
+        timing_enabled,
+        &mut timings,
+        total_start,
+    )
+}
+
+pub(super) fn render_architecture_diagram_svg_typed_with_config(
+    layout: &ArchitectureDiagramLayout,
+    model: &merman_core::diagrams::architecture::ArchitectureDiagramRenderModel,
+    effective_config: &merman_core::MermaidConfig,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    let timing_enabled = super::timing::render_timing_enabled();
+    let mut timings = super::timing::RenderTimings::default();
+    let total_start = std::time::Instant::now();
+
+    let semantic = build_architecture_model_from_render_model(model);
+
+    render_architecture_diagram_svg_with_model(
+        layout,
+        &semantic,
+        effective_config.as_value(),
+        Some(effective_config),
         options,
         timing_enabled,
         &mut timings,
@@ -188,6 +219,7 @@ pub(super) fn render_architecture_diagram_svg(
         layout,
         &model,
         effective_config,
+        None,
         options,
         timing_enabled,
         &mut timings,
@@ -199,6 +231,7 @@ fn render_architecture_diagram_svg_with_model(
     layout: &ArchitectureDiagramLayout,
     model: &ArchitectureModel,
     effective_config: &serde_json::Value,
+    sanitize_config_opt: Option<&merman_core::MermaidConfig>,
     options: &SvgRenderOptions,
     timing_enabled: bool,
     timings: &mut super::timing::RenderTimings,
@@ -411,7 +444,15 @@ fn render_architecture_diagram_svg_with_model(
         .and_then(|v| v.get("useMaxWidth"))
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
-    let sanitize_config = merman_core::MermaidConfig::from_value(effective_config.clone());
+    let sanitize_config_owned: merman_core::MermaidConfig;
+    let sanitize_config = match sanitize_config_opt {
+        Some(cfg) => cfg,
+        None => {
+            sanitize_config_owned =
+                merman_core::MermaidConfig::from_value(effective_config.clone());
+            &sanitize_config_owned
+        }
+    };
 
     let mut node_xy: rustc_hash::FxHashMap<String, (f64, f64)> = rustc_hash::FxHashMap::default();
     for n in &layout.nodes {

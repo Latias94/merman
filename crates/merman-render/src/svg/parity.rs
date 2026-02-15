@@ -436,10 +436,10 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
 
     match (layout, semantic) {
         (LayoutDiagram::ArchitectureDiagram(layout), RenderSemanticModel::Architecture(model)) => {
-            architecture::render_architecture_diagram_svg_typed(
+            architecture::render_architecture_diagram_svg_typed_with_config(
                 layout,
                 model,
-                effective_config.as_value(),
+                effective_config,
                 options,
             )
         }
