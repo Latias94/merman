@@ -1,0 +1,34 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [],
+    "nodes": [
+      {
+        "id": "unknown",
+        "type": "service",
+        "edges": [],
+        "icon": "iconnamedoesntexist",
+        "iconText": null,
+        "title": "Unknown Icon",
+        "in": null
+      }
+    ],
+    "services": [
+      {
+        "id": "unknown",
+        "type": "service",
+        "edges": [],
+        "icon": "iconnamedoesntexist",
+        "iconText": null,
+        "title": "Unknown Icon",
+        "in": null
+      }
+    ],
+    "junctions": [],
+    "edges": []
+  }
+}

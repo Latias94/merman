@@ -32,6 +32,7 @@ TODO:
 
 Recently imported (keep gates green after each batch):
 
+- 2026-02-15: Architecture HTML demo fixtures import (1 fixture from `repo-ref/mermaid/demos/architecture.html` via `<pre class="mermaid">`, with upstream SVG baselines). Added an Architecture root viewport override for the new fixture ID to keep the global `parity-root` gate green.
 - 2026-02-11: Mindmap `mindmap.md` single-node shape snippets (square/rounded/circle/bang/cloud/hexagon/default).
 - 2026-02-11: Architecture `architecture.md` docs examples (`example_002`, `icons_018`).
 - 2026-02-11: Flowchart `flowchart.md` docs examples batch import (20 fixtures, including new shapes, image nodes, animations, and curve-style variants).

@@ -121,6 +121,7 @@ Source: `repo-ref/mermaid/demos/architecture.html` (via `<pre class="mermaid">` 
 
 - `fixtures/architecture/upstream_html_demos_architecture_simple_diagram_with_groups_001.mmd`
 - `fixtures/architecture/upstream_html_demos_architecture_groups_within_groups_002.mmd`
+- `fixtures/architecture/upstream_html_demos_architecture_default_icon_from_unknown_icon_name_003.mmd`
 - `fixtures/architecture/upstream_html_demos_architecture_split_direction_004.mmd`
 - `fixtures/architecture/upstream_html_demos_architecture_arrow_tests_005.mmd`
 - `fixtures/architecture/upstream_html_demos_architecture_arrow_tests_006.mmd`
