@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::*;
+use rustc_hash::FxHashMap;
 
 // Sequence SVG renderer implementation (split from parity.rs).
 
@@ -315,14 +316,14 @@ pub(super) fn render_sequence_diagram_svg(
     let vb_w = ((max_x_f32 - min_x_f32).max(1.0)) as f64;
     let vb_h = ((max_y_f32 - min_y_f32).max(1.0)) as f64;
 
-    let mut nodes_by_id: std::collections::HashMap<&str, &LayoutNode> =
-        std::collections::HashMap::new();
+    let mut nodes_by_id: FxHashMap<&str, &LayoutNode> =
+        FxHashMap::with_capacity_and_hasher(layout.nodes.len(), Default::default());
     for n in &layout.nodes {
         nodes_by_id.insert(n.id.as_str(), n);
     }
 
-    let mut edges_by_id: std::collections::HashMap<&str, &crate::model::LayoutEdge> =
-        std::collections::HashMap::new();
+    let mut edges_by_id: FxHashMap<&str, &crate::model::LayoutEdge> =
+        FxHashMap::with_capacity_and_hasher(layout.edges.len(), Default::default());
     for e in &layout.edges {
         edges_by_id.insert(e.id.as_str(), e);
     }
@@ -1113,16 +1114,13 @@ pub(super) fn render_sequence_diagram_svg(
         start_index: usize,
     }
 
-    fn actor_center_x(
-        nodes_by_id: &std::collections::HashMap<&str, &LayoutNode>,
-        actor_id: &str,
-    ) -> Option<f64> {
+    fn actor_center_x(nodes_by_id: &FxHashMap<&str, &LayoutNode>, actor_id: &str) -> Option<f64> {
         let node_id = format!("actor-top-{actor_id}");
         nodes_by_id.get(node_id.as_str()).copied().map(|n| n.x)
     }
 
     fn lifeline_y(
-        edges_by_id: &std::collections::HashMap<&str, &crate::model::LayoutEdge>,
+        edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
         actor_id: &str,
     ) -> Option<(f64, f64)> {
         let edge_id = format!("lifeline-{actor_id}");
@@ -1163,8 +1161,8 @@ pub(super) fn render_sequence_diagram_svg(
     // Mermaid creates activation placeholders at ACTIVE_START and inserts the `<rect>` once the
     // corresponding ACTIVE_END is encountered. We store the final rect geometry during this
     // first pass and remember which message id should emit which activation group.
-    let mut activation_group_by_start_id: std::collections::HashMap<String, usize> =
-        std::collections::HashMap::new();
+    let mut activation_group_by_start_id: FxHashMap<String, usize> =
+        FxHashMap::with_capacity_and_hasher(model.messages.len(), Default::default());
 
     for msg in &model.messages {
         if let Some(y) = msg_line_y(&edges_by_id, &msg.id) {
@@ -1427,7 +1425,7 @@ pub(super) fn render_sequence_diagram_svg(
 
     fn frame_x_from_actors(
         model: &SequenceSvgModel,
-        nodes_by_id: &std::collections::HashMap<&str, &LayoutNode>,
+        nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     ) -> Option<(f64, f64)> {
         const SIDE_PAD: f64 = 11.0;
         let mut min_x = f64::INFINITY;
@@ -1445,7 +1443,7 @@ pub(super) fn render_sequence_diagram_svg(
     }
 
     fn msg_line_y(
-        edges_by_id: &std::collections::HashMap<&str, &crate::model::LayoutEdge>,
+        edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
         msg_id: &str,
     ) -> Option<f64> {
         let edge_id = format!("msg-{msg_id}");
@@ -1454,8 +1452,8 @@ pub(super) fn render_sequence_diagram_svg(
     }
 
     fn msg_y_range_with_self_extra(
-        edges_by_id: &std::collections::HashMap<&str, &crate::model::LayoutEdge>,
-        msg_endpoints: &std::collections::HashMap<&str, (&str, &str)>,
+        edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
+        msg_endpoints: &FxHashMap<&str, (&str, &str)>,
         msg_id: &str,
         self_extra_y: f64,
     ) -> Option<(f64, f64)> {
@@ -1470,8 +1468,8 @@ pub(super) fn render_sequence_diagram_svg(
     }
 
     fn msg_y_range_for_frame(
-        edges_by_id: &std::collections::HashMap<&str, &crate::model::LayoutEdge>,
-        msg_endpoints: &std::collections::HashMap<&str, (&str, &str)>,
+        edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
+        msg_endpoints: &FxHashMap<&str, (&str, &str)>,
         msg_id: &str,
     ) -> Option<(f64, f64)> {
         // Mermaid's `boundMessage(...)` self-message branch expands the inserted bounds by 60px
@@ -1482,8 +1480,8 @@ pub(super) fn render_sequence_diagram_svg(
     }
 
     fn msg_y_range_for_separators(
-        edges_by_id: &std::collections::HashMap<&str, &crate::model::LayoutEdge>,
-        msg_endpoints: &std::collections::HashMap<&str, (&str, &str)>,
+        edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
+        msg_endpoints: &FxHashMap<&str, (&str, &str)>,
         msg_id: &str,
     ) -> Option<(f64, f64)> {
         // The self-message loop curve itself extends ~30px below the message line.
@@ -1496,8 +1494,8 @@ pub(super) fn render_sequence_diagram_svg(
     // Mermaid renders block frames (`alt`, `loop`, ...) as `<g>` elements before message lines.
     // Use layout-derived message y-coordinates for separator placement to avoid visual artifacts
     // like dashed lines ending in a gap right before the frame border.
-    let mut blocks_by_end_id: std::collections::HashMap<String, Vec<usize>> =
-        std::collections::HashMap::new();
+    let mut blocks_by_end_id: FxHashMap<String, Vec<usize>> =
+        FxHashMap::with_capacity_and_hasher(model.messages.len(), Default::default());
     let mut blocks: Vec<SequenceBlock> = Vec::new();
 
     #[derive(Debug, Clone)]
@@ -1781,8 +1779,8 @@ pub(super) fn render_sequence_diagram_svg(
             }
         }
 
-        let mut actor_nodes_by_id: std::collections::HashMap<&str, &LayoutNode> =
-            std::collections::HashMap::new();
+        let mut actor_nodes_by_id: FxHashMap<&str, &LayoutNode> =
+            FxHashMap::with_capacity_and_hasher(model.actors.len(), Default::default());
         for actor_id in &model.actor_order {
             let node_id = format!("actor-top-{actor_id}");
             let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
@@ -1791,8 +1789,8 @@ pub(super) fn render_sequence_diagram_svg(
             actor_nodes_by_id.insert(actor_id.as_str(), n);
         }
 
-        let mut msg_endpoints: std::collections::HashMap<&str, (&str, &str)> =
-            std::collections::HashMap::new();
+        let mut msg_endpoints: FxHashMap<&str, (&str, &str)> =
+            FxHashMap::with_capacity_and_hasher(model.messages.len(), Default::default());
         for msg in &model.messages {
             let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
                 continue;
@@ -1802,10 +1800,10 @@ pub(super) fn render_sequence_diagram_svg(
 
         fn frame_x_from_message_ids<'a>(
             message_ids: impl IntoIterator<Item = &'a String>,
-            msg_endpoints: &std::collections::HashMap<&str, (&str, &str)>,
-            actor_nodes_by_id: &std::collections::HashMap<&str, &LayoutNode>,
-            edges_by_id: &std::collections::HashMap<&str, &crate::model::LayoutEdge>,
-            nodes_by_id: &std::collections::HashMap<&str, &LayoutNode>,
+            msg_endpoints: &FxHashMap<&str, (&str, &str)>,
+            actor_nodes_by_id: &FxHashMap<&str, &LayoutNode>,
+            edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
+            nodes_by_id: &FxHashMap<&str, &LayoutNode>,
         ) -> Option<(f64, f64, f64)> {
             const SIDE_PAD: f64 = 11.0;
             const GEOM_PAD: f64 = 10.0;
@@ -1865,9 +1863,9 @@ pub(super) fn render_sequence_diagram_svg(
         }
 
         fn item_y_range(
-            edges_by_id: &std::collections::HashMap<&str, &crate::model::LayoutEdge>,
-            nodes_by_id: &std::collections::HashMap<&str, &LayoutNode>,
-            msg_endpoints: &std::collections::HashMap<&str, (&str, &str)>,
+            edges_by_id: &FxHashMap<&str, &crate::model::LayoutEdge>,
+            nodes_by_id: &FxHashMap<&str, &LayoutNode>,
+            msg_endpoints: &FxHashMap<&str, (&str, &str)>,
             item_id: &str,
             is_separator: bool,
         ) -> Option<(f64, f64)> {

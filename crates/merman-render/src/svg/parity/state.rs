@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::*;
+use rustc_hash::FxHashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 // State diagram SVG renderer implementation (split from parity.rs).
@@ -91,18 +92,17 @@ struct StateRoughCacheKey {
     seed: u64,
 }
 
-type StateRoughCircleCache = std::collections::HashMap<StateRoughCacheKey, Arc<String>>;
-type StateRoughPathsCache =
-    std::collections::HashMap<StateRoughCacheKey, (Arc<String>, Arc<String>)>;
+type StateRoughCircleCache = FxHashMap<StateRoughCacheKey, Arc<String>>;
+type StateRoughPathsCache = FxHashMap<StateRoughCacheKey, (Arc<String>, Arc<String>)>;
 
 fn state_global_rough_circle_cache() -> &'static Mutex<StateRoughCircleCache> {
     static CACHE: OnceLock<Mutex<StateRoughCircleCache>> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+    CACHE.get_or_init(|| Mutex::new(FxHashMap::default()))
 }
 
 fn state_global_rough_paths_cache() -> &'static Mutex<StateRoughPathsCache> {
     static CACHE: OnceLock<Mutex<StateRoughPathsCache>> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+    CACHE.get_or_init(|| Mutex::new(FxHashMap::default()))
 }
 
 #[inline]
@@ -182,32 +182,32 @@ pub(super) fn render_state_diagram_v2_svg(
 
     let text_style = crate::state::state_text_style(effective_config);
 
-    let mut nodes_by_id: std::collections::HashMap<&str, &StateSvgNode> =
-        std::collections::HashMap::with_capacity(model.nodes.len());
+    let mut nodes_by_id: FxHashMap<&str, &StateSvgNode> =
+        FxHashMap::with_capacity_and_hasher(model.nodes.len(), Default::default());
     for n in &model.nodes {
         nodes_by_id.insert(n.id.as_str(), n);
     }
 
-    let mut layout_nodes_by_id: std::collections::HashMap<&str, &LayoutNode> =
-        std::collections::HashMap::with_capacity(layout.nodes.len());
+    let mut layout_nodes_by_id: FxHashMap<&str, &LayoutNode> =
+        FxHashMap::with_capacity_and_hasher(layout.nodes.len(), Default::default());
     for n in &layout.nodes {
         layout_nodes_by_id.insert(n.id.as_str(), n);
     }
 
-    let mut layout_edges_by_id: std::collections::HashMap<&str, &crate::model::LayoutEdge> =
-        std::collections::HashMap::with_capacity(layout.edges.len());
+    let mut layout_edges_by_id: FxHashMap<&str, &crate::model::LayoutEdge> =
+        FxHashMap::with_capacity_and_hasher(layout.edges.len(), Default::default());
     for e in &layout.edges {
         layout_edges_by_id.insert(e.id.as_str(), e);
     }
 
-    let mut layout_clusters_by_id: std::collections::HashMap<&str, &LayoutCluster> =
-        std::collections::HashMap::with_capacity(layout.clusters.len());
+    let mut layout_clusters_by_id: FxHashMap<&str, &LayoutCluster> =
+        FxHashMap::with_capacity_and_hasher(layout.clusters.len(), Default::default());
     for c in &layout.clusters {
         layout_clusters_by_id.insert(c.id.as_str(), c);
     }
 
-    let mut parent: std::collections::HashMap<&str, &str> =
-        std::collections::HashMap::with_capacity(model.nodes.len());
+    let mut parent: FxHashMap<&str, &str> =
+        FxHashMap::with_capacity_and_hasher(model.nodes.len(), Default::default());
     for n in &model.nodes {
         if let Some(p) = n.parent_id.as_deref() {
             parent.insert(n.id.as_str(), p);
@@ -246,8 +246,8 @@ pub(super) fn render_state_diagram_v2_svg(
         include_nodes: options.include_nodes,
         measurer,
         text_style,
-        rough_circle_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
-        rough_paths_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
+        rough_circle_cache: std::cell::RefCell::new(FxHashMap::default()),
+        rough_paths_cache: std::cell::RefCell::new(FxHashMap::default()),
     };
 
     fn compute_state_nested_roots(ctx: &StateRenderCtx<'_>) -> std::collections::BTreeSet<String> {
@@ -2265,11 +2265,11 @@ struct StateRenderCtx<'a> {
     hand_drawn_seed: u64,
     state_padding: f64,
     node_order: Vec<&'a str>,
-    nodes_by_id: std::collections::HashMap<&'a str, &'a StateSvgNode>,
-    layout_nodes_by_id: std::collections::HashMap<&'a str, &'a LayoutNode>,
-    layout_edges_by_id: std::collections::HashMap<&'a str, &'a crate::model::LayoutEdge>,
-    layout_clusters_by_id: std::collections::HashMap<&'a str, &'a LayoutCluster>,
-    parent: std::collections::HashMap<&'a str, &'a str>,
+    nodes_by_id: FxHashMap<&'a str, &'a StateSvgNode>,
+    layout_nodes_by_id: FxHashMap<&'a str, &'a LayoutNode>,
+    layout_edges_by_id: FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
+    layout_clusters_by_id: FxHashMap<&'a str, &'a LayoutCluster>,
+    parent: FxHashMap<&'a str, &'a str>,
     nested_roots: std::collections::BTreeSet<String>,
     hidden_prefixes: Vec<String>,
     links: &'a std::collections::HashMap<String, StateSvgLink>,
@@ -2279,11 +2279,9 @@ struct StateRenderCtx<'a> {
     include_nodes: bool,
     measurer: &'a dyn TextMeasurer,
     text_style: crate::text::TextStyle,
-    rough_circle_cache:
-        std::cell::RefCell<std::collections::HashMap<StateRoughCacheKey, Arc<String>>>,
-    rough_paths_cache: std::cell::RefCell<
-        std::collections::HashMap<StateRoughCacheKey, (Arc<String>, Arc<String>)>,
-    >,
+    rough_circle_cache: std::cell::RefCell<FxHashMap<StateRoughCacheKey, Arc<String>>>,
+    rough_paths_cache:
+        std::cell::RefCell<FxHashMap<StateRoughCacheKey, (Arc<String>, Arc<String>)>>,
 }
 
 fn state_markers(out: &mut String, diagram_id: &str) {
