@@ -339,31 +339,33 @@ fn render_architecture_diagram_svg_with_model(
             if idx == 0 {
                 out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em">"#);
             } else {
-                let y_em = if idx == 1 {
-                    "1em".to_string()
+                if idx == 1 {
+                    let _ = write!(
+                        out,
+                        r#"<tspan class="text-outer-tspan" x="0" y="1em" dy="1.1em">"#
+                    );
                 } else {
-                    format!("{:.1}em", 1.0 + (idx as f64 - 1.0) * 1.1)
-                };
-                let _ = write!(
-                    out,
-                    r#"<tspan class="text-outer-tspan" x="0" y="{}" dy="1.1em">"#,
-                    y_em
-                );
+                    let y_em = 1.0 + (idx as f64 - 1.0) * 1.1;
+                    let _ = write!(
+                        out,
+                        r#"<tspan class="text-outer-tspan" x="0" y="{:.1}em" dy="1.1em">"#,
+                        y_em
+                    );
+                }
             }
-            let words: Vec<String> = line
+            for (word_idx, word) in line
                 .split_whitespace()
                 .filter(|s| !s.is_empty())
-                .map(|s| s.to_string())
-                .collect();
-            for (word_idx, word) in words.iter().enumerate() {
+                .enumerate()
+            {
                 out.push_str(
                     r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal">"#,
                 );
                 if word_idx == 0 {
-                    out.push_str(&escape_xml(word));
+                    escape_xml_into(out, word);
                 } else {
                     out.push(' ');
-                    out.push_str(&escape_xml(word));
+                    escape_xml_into(out, word);
                 }
                 out.push_str("</tspan>");
             }
@@ -377,15 +379,10 @@ fn render_architecture_diagram_svg_with_model(
         title: &str,
         icon_size_px: f64,
         title_width_px: f64,
-        font_size_px: f64,
+        measurer: &crate::text::VendoredFontMetricsTextMeasurer,
+        style: &crate::text::TextStyle,
     ) {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
-        let style = crate::text::TextStyle {
-            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-            font_size: font_size_px,
-            font_weight: None,
-        };
-        let lines = wrap_svg_words_to_lines(title, title_width_px, &measurer, &style);
+        let lines = wrap_svg_words_to_lines(title, title_width_px, measurer, style);
 
         let _ = write!(
             out,
@@ -415,11 +412,17 @@ fn render_architecture_diagram_svg_with_model(
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
 
-    let mut node_xy: std::collections::BTreeMap<String, (f64, f64)> =
-        std::collections::BTreeMap::new();
+    let mut node_xy: rustc_hash::FxHashMap<String, (f64, f64)> = rustc_hash::FxHashMap::default();
     for n in &layout.nodes {
         node_xy.insert(n.id.clone(), (n.x, n.y));
     }
+
+    let text_measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+    let text_style = crate::text::TextStyle {
+        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+        font_size: font_size_px,
+        font_weight: None,
+    };
 
     let mut aria_attrs = String::new();
     let mut a11y_nodes = String::new();
@@ -429,17 +432,14 @@ fn render_architecture_diagram_svg_with_model(
         .map(str::trim)
         .filter(|t| !t.is_empty())
     {
-        let title_id = format!("chart-title-{diagram_id}");
-        let _ = write!(
-            &mut aria_attrs,
-            r#" aria-labelledby="{}""#,
-            escape_xml(&title_id)
-        );
+        aria_attrs.push_str(r#" aria-labelledby="chart-title-"#);
+        let _ = write!(&mut aria_attrs, "{}", escape_xml_display(diagram_id));
+        aria_attrs.push('"');
         let _ = write!(
             &mut a11y_nodes,
-            r#"<title id="{}">{}</title>"#,
-            escape_xml(&title_id),
-            escape_xml(t)
+            r#"<title id="chart-title-{}">{}</title>"#,
+            escape_xml_display(diagram_id),
+            escape_xml_display(t)
         );
     }
     if let Some(d) = model
@@ -448,17 +448,14 @@ fn render_architecture_diagram_svg_with_model(
         .map(str::trim)
         .filter(|t| !t.is_empty())
     {
-        let desc_id = format!("chart-desc-{diagram_id}");
-        let _ = write!(
-            &mut aria_attrs,
-            r#" aria-describedby="{}""#,
-            escape_xml(&desc_id)
-        );
+        aria_attrs.push_str(r#" aria-describedby="chart-desc-"#);
+        let _ = write!(&mut aria_attrs, "{}", escape_xml_display(diagram_id));
+        aria_attrs.push('"');
         let _ = write!(
             &mut a11y_nodes,
-            r#"<desc id="{}">{}</desc>"#,
-            escape_xml(&desc_id),
-            escape_xml(d)
+            r#"<desc id="chart-desc-{}">{}</desc>"#,
+            escape_xml_display(diagram_id),
+            escape_xml_display(d)
         );
     }
 
@@ -532,18 +529,10 @@ fn render_architecture_diagram_svg_with_model(
     // computing a conservative bounds over the elements we emit.
     let mut content_bounds: Option<Bounds> = None;
 
-    // Services + junctions.
-    let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
-    let text_style = crate::text::TextStyle {
-        font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-        font_size: font_size_px,
-        font_weight: None,
-    };
-
     let mut service_bounds: std::collections::BTreeMap<String, Bounds> =
         std::collections::BTreeMap::new();
     for svc in &model.services {
-        let (x, y) = node_xy.get(&svc.id).copied().unwrap_or((0.0, 0.0));
+        let (x, y) = node_xy.get(svc.id.as_str()).copied().unwrap_or((0.0, 0.0));
         let mut b = bounds_from_rect(x, y, icon_size_px, icon_size_px);
         if let Some(title) = svc
             .title
@@ -551,11 +540,12 @@ fn render_architecture_diagram_svg_with_model(
             .map(str::trim)
             .filter(|t| !t.is_empty())
         {
-            let lines = wrap_svg_words_to_lines(title, icon_size_px * 1.5, &measurer, &text_style);
+            let lines =
+                wrap_svg_words_to_lines(title, icon_size_px * 1.5, &text_measurer, &text_style);
             let mut bbox_left = 0.0f64;
             let mut bbox_right = 0.0f64;
             for line in &lines {
-                let (l, r) = measurer.measure_svg_text_bbox_x(line, &text_style);
+                let (l, r) = text_measurer.measure_svg_text_bbox_x(line, &text_style);
                 bbox_left = bbox_left.max(l);
                 bbox_right = bbox_right.max(r);
             }
@@ -589,7 +579,10 @@ fn render_architecture_diagram_svg_with_model(
     let mut junction_bounds: std::collections::BTreeMap<String, Bounds> =
         std::collections::BTreeMap::new();
     for junction in &model.junctions {
-        let (x, y) = node_xy.get(&junction.id).copied().unwrap_or((0.0, 0.0));
+        let (x, y) = node_xy
+            .get(junction.id.as_str())
+            .copied()
+            .unwrap_or((0.0, 0.0));
         let b = bounds_from_rect(x, y, icon_size_px, icon_size_px);
         junction_bounds.insert(junction.id.clone(), b.clone());
         extend_bounds(&mut content_bounds, b);
@@ -782,8 +775,14 @@ fn render_architecture_diagram_svg_with_model(
     let is_junction = |id: &str| junction_bounds.contains_key(id);
 
     let edge_points = |edge: &ArchitectureEdge| -> (f64, f64, f64, f64, f64, f64) {
-        let (sx, sy) = node_xy.get(&edge.lhs_id).copied().unwrap_or((0.0, 0.0));
-        let (tx, ty) = node_xy.get(&edge.rhs_id).copied().unwrap_or((0.0, 0.0));
+        let (sx, sy) = node_xy
+            .get(edge.lhs_id.as_str())
+            .copied()
+            .unwrap_or((0.0, 0.0));
+        let (tx, ty) = node_xy
+            .get(edge.rhs_id.as_str())
+            .copied()
+            .unwrap_or((0.0, 0.0));
 
         // Raw endpoints (before group/junction shifts).
         let (raw_start_x, raw_start_y) = match edge.lhs_dir.as_str() {
@@ -954,11 +953,12 @@ fn render_architecture_diagram_svg_with_model(
                 } else {
                     200.0
                 };
-                let lines = wrap_svg_words_to_lines(label, wrap_width, &measurer, &text_style);
+                let lines = wrap_svg_words_to_lines(label, wrap_width, &text_measurer, &text_style);
 
                 let mut bbox_w = 0.0f64;
                 for line in &lines {
-                    let m = measurer.measure_wrapped(line, &text_style, None, WrapMode::SvgLike);
+                    let m =
+                        text_measurer.measure_wrapped(line, &text_style, None, WrapMode::SvgLike);
                     bbox_w = bbox_w.max(m.width);
                 }
                 let bbox_h = (lines.len().max(1) as f64) * font_size_px * 1.1875;
@@ -1211,7 +1211,7 @@ fn render_architecture_diagram_svg_with_model(
     } else {
         out.push_str(r#"<g class="architecture-services">"#);
         for svc in &model.services {
-            let (x, y) = node_xy.get(&svc.id).copied().unwrap_or((0.0, 0.0));
+            let (x, y) = node_xy.get(svc.id.as_str()).copied().unwrap_or((0.0, 0.0));
             let id_esc = escape_xml(&svc.id);
 
             let _ = write!(
@@ -1234,7 +1234,8 @@ fn render_architecture_diagram_svg_with_model(
                     title,
                     icon_size_px,
                     icon_size_px * 1.5,
-                    font_size_px,
+                    &text_measurer,
+                    &text_style,
                 );
             }
 
@@ -1259,7 +1260,7 @@ fn render_architecture_diagram_svg_with_model(
                         w = fmt(icon_size_px),
                         h = fmt(icon_size_px),
                         clamp = line_clamp,
-                        text = escape_xml(icon_text.trim())
+                        text = escape_xml_display(icon_text.trim())
                     );
                 }
                 (None, None) => {
@@ -1277,7 +1278,10 @@ fn render_architecture_diagram_svg_with_model(
         }
 
         for junction in &model.junctions {
-            let (x, y) = node_xy.get(&junction.id).copied().unwrap_or((0.0, 0.0));
+            let (x, y) = node_xy
+                .get(junction.id.as_str())
+                .copied()
+                .unwrap_or((0.0, 0.0));
             let id_esc = escape_xml(&junction.id);
 
             let _ = write!(
