@@ -39,7 +39,7 @@ Local re-run notes (same date, after merging local `main` + small renderer refac
   - Stage gmeans (6 fixtures): `parse ~1.50x`, `layout ~1.12x`, `render ~1.89x`, `end_to_end ~1.06x`.
 - End-to-end canary comparison (8 fixtures: `*_tiny` + `*_medium` for flowchart/class/state/sequence):
   - `target/bench/COMPARISON.latest.after_state_and_sequence_fxhash.md` (10 samples / 1s warmup / 1s measurement; noisier)
-  - Interpretation: **medium fixtures are already competitive** (gmean < `1.0x`), while **tiny fixtures are still dominated by fixed overhead** (gmean ~`2x`).
+  - Interpretation: **medium fixtures are already competitive** (gmean < `1.0x`), while **tiny fixtures still pay fixed overhead** (now ~`1.5x`, mostly parse+render).
 
 Near-term priorities (updated plan):
 
