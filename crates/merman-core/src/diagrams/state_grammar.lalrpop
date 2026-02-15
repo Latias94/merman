@@ -161,18 +161,12 @@ NoteStatement: Stmt = {
     text_styles: Vec::new(),
     start: None,
   }),
-  Note <text:NoteTextTok> "as" <id:Id> => Stmt::State(StateStmt {
-    id,
-    ty: "default".to_string(),
-    description: None,
-    descriptions: Vec::new(),
-    doc: None,
-    note: Some(Note { position: None, text }),
-    classes: Vec::new(),
-    styles: Vec::new(),
-    text_styles: Vec::new(),
-    start: None,
-  }),
+  // Mermaid `@11.12.2` accepts the floating note syntax, but it does not participate in the state
+  // diagram model (see upstream `stateDiagram floating notes` specs). Treat it as a no-op.
+  //
+  // Note: downstream relations can still reference the note id; in that case Mermaid will render a
+  // regular state node for that id (the note text is ignored).
+  Note <_text:NoteTextTok> "as" <_id:Id> => Stmt::Noop,
 };
 
 NotePosition: String = {

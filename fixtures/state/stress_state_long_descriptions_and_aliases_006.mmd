@@ -1,0 +1,15 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): quoted descriptions, aliases, and later references.
+
+[*] --> s0
+
+state "This is a very long state description that should be used as the label" as Long1
+s0 --> Long1: go
+
+Long1: Extra description line
+Long1 --> s2: continue
+
+state "Another long description" as s2
+state "A quoted state id" as Q1
+s2 --> Q1: label
+Q1 --> [*]

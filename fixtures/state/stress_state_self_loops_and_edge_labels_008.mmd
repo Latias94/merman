@@ -1,0 +1,12 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): multiple self-loops and parallel edges with labels.
+
+[*] --> Active
+Active --> Active: heartbeat
+Active --> Active: refresh
+
+Active --> Paused: pause
+Paused --> Active: resume
+Paused --> Paused: wait
+
+Active --> [*]

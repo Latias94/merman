@@ -1,0 +1,275 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "type": "stateDiagram",
+    "nodes": [
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "root_start",
+        "cssClasses": "cold statediagram-state",
+        "cssCompiledStyles": [
+          "fill:#ddeeff",
+          "stroke:#004488",
+          "stroke-width:2px",
+          "color:#001122"
+        ],
+        "cssStyles": [],
+        "id": "root_start",
+        "dir": null,
+        "domId": "state-root_start-0",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "A",
+        "cssClasses": "hot hot statediagram-state",
+        "cssCompiledStyles": [
+          "fill:#ffdddd",
+          "stroke:#cc0000",
+          "stroke-width:2px",
+          "color:#330000",
+          "fill:#ffdddd",
+          "stroke:#cc0000",
+          "stroke-width:2px",
+          "color:#330000"
+        ],
+        "cssStyles": [],
+        "id": "A",
+        "dir": null,
+        "domId": "state-A-1",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "B",
+        "cssClasses": "muted muted statediagram-state",
+        "cssCompiledStyles": [
+          "fill:#f6f6f6",
+          "stroke:#999999",
+          "color:#333333",
+          "fill:#f6f6f6",
+          "stroke:#999999",
+          "color:#333333"
+        ],
+        "cssStyles": [],
+        "id": "B",
+        "dir": null,
+        "domId": "state-B-2",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateEnd",
+        "label": "root_end",
+        "cssClasses": "cold statediagram-state",
+        "cssCompiledStyles": [
+          "fill:#ddeeff",
+          "stroke:#004488",
+          "stroke-width:2px",
+          "color:#001122"
+        ],
+        "cssStyles": [],
+        "id": "root_end",
+        "dir": null,
+        "domId": "state-root_end-2",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge0",
+        "start": "root_start",
+        "end": "A",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge1",
+        "start": "A",
+        "end": "B",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge2",
+        "start": "B",
+        "end": "root_end",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      }
+    ],
+    "other": {},
+    "links": {},
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "states": {
+      "root_start": {
+        "id": "root_start",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [
+          "cold"
+        ],
+        "styles": [],
+        "textStyles": [],
+        "start": true
+      },
+      "A": {
+        "id": "A",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [
+          "hot",
+          "hot"
+        ],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "B": {
+        "id": "B",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [
+          "muted",
+          "muted"
+        ],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "root_end": {
+        "id": "root_end",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [
+          "cold"
+        ],
+        "styles": [],
+        "textStyles": [],
+        "start": false
+      }
+    },
+    "relations": [
+      {
+        "id1": "root_start",
+        "id2": "A",
+        "relationTitle": null
+      },
+      {
+        "id1": "A",
+        "id2": "B",
+        "relationTitle": null
+      },
+      {
+        "id1": "B",
+        "id2": "root_end",
+        "relationTitle": null
+      }
+    ],
+    "styleClasses": {
+      "hot": {
+        "id": "hot",
+        "styles": [
+          "fill:#ffdddd",
+          "stroke:#cc0000",
+          "stroke-width:2px",
+          "color:#330000"
+        ],
+        "textStyles": [
+          "fill:#330000"
+        ]
+      },
+      "cold": {
+        "id": "cold",
+        "styles": [
+          "fill:#ddeeff",
+          "stroke:#004488",
+          "stroke-width:2px",
+          "color:#001122"
+        ],
+        "textStyles": [
+          "fill:#001122"
+        ]
+      },
+      "muted": {
+        "id": "muted",
+        "styles": [
+          "fill:#f6f6f6",
+          "stroke:#999999",
+          "color:#333333"
+        ],
+        "textStyles": [
+          "fill:#333333"
+        ]
+      }
+    }
+  }
+}

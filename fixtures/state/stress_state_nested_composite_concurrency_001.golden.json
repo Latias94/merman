@@ -1,0 +1,736 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "type": "stateDiagram",
+    "nodes": [
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "root_start",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "root_start",
+        "dir": null,
+        "domId": "state-root_start-0",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "roundedWithTitle",
+        "label": "Top",
+        "cssClasses": "statediagram-state statediagram-cluster",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Top",
+        "dir": "TB",
+        "domId": "state-Top-11",
+        "type": "group",
+        "isGroup": true,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "divider",
+        "label": "",
+        "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "divider-id-1",
+        "dir": "TB",
+        "domId": "state-divider-id-1-1",
+        "type": "group",
+        "isGroup": true,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Top",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "divider-id-1_start",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "divider-id-1_start",
+        "dir": null,
+        "domId": "state-divider-id-1_start-1",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "divider-id-1",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Init",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Init",
+        "dir": null,
+        "domId": "state-Init-2",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "divider-id-1",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "roundedWithTitle",
+        "label": "Running",
+        "cssClasses": "statediagram-state statediagram-cluster",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Running",
+        "dir": "TB",
+        "domId": "state-Running-10",
+        "type": "group",
+        "isGroup": true,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "id-38dvt516gkfs-1",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "Running_start",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Running_start",
+        "dir": null,
+        "domId": "state-Running_start-3",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Running",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "A",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "A",
+        "dir": null,
+        "domId": "state-A-4",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Running",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "B",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "B",
+        "dir": null,
+        "domId": "state-B-5",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Running",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateEnd",
+        "label": "Running_end",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Running_end",
+        "dir": null,
+        "domId": "state-Running_end-5",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Running",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "divider",
+        "label": "",
+        "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "id-38dvt516gkfs-1",
+        "dir": "TB",
+        "domId": "state-id-38dvt516gkfs-1-6",
+        "type": "group",
+        "isGroup": true,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Top",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "roundedWithTitle",
+        "label": "Sidecar",
+        "cssClasses": "statediagram-state statediagram-cluster",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Sidecar",
+        "dir": "TB",
+        "domId": "state-Sidecar-10",
+        "type": "group",
+        "isGroup": true,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "id-38dvt516gkfs-1",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "Sidecar_start",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Sidecar_start",
+        "dir": null,
+        "domId": "state-Sidecar_start-6",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Sidecar",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Idle",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Idle",
+        "dir": null,
+        "domId": "state-Idle-8",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Sidecar",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Work",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Work",
+        "dir": null,
+        "domId": "state-Work-8",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Sidecar",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateEnd",
+        "label": "root_end",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "root_end",
+        "dir": null,
+        "domId": "state-root_end-11",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge0",
+        "start": "root_start",
+        "end": "Top",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge1",
+        "start": "divider-id-1_start",
+        "end": "Init",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge2",
+        "start": "Init",
+        "end": "Running",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "start",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge3",
+        "start": "Running_start",
+        "end": "A",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge4",
+        "start": "A",
+        "end": "B",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge5",
+        "start": "B",
+        "end": "Running_end",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge6",
+        "start": "Sidecar_start",
+        "end": "Idle",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge7",
+        "start": "Idle",
+        "end": "Work",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "tick",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge8",
+        "start": "Work",
+        "end": "Idle",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "done",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge9",
+        "start": "Running",
+        "end": "Sidecar",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "spawn",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge10",
+        "start": "Sidecar",
+        "end": "Running",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "join",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge11",
+        "start": "Top",
+        "end": "root_end",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      }
+    ],
+    "other": {},
+    "links": {},
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "states": {
+      "root_start": {
+        "id": "root_start",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": true
+      },
+      "Top": {
+        "id": "Top",
+        "type": "default",
+        "descriptions": [],
+        "doc": [
+          {
+            "stmt": "state",
+            "id": "divider-id-1",
+            "type": "divider",
+            "description": null,
+            "doc": [
+              {
+                "stmt": "relation",
+                "state1": {
+                  "id": "divider-id-1_start",
+                  "type": "default",
+                  "classes": []
+                },
+                "state2": {
+                  "id": "Init",
+                  "type": "default",
+                  "classes": []
+                },
+                "description": null
+              },
+              {
+                "stmt": "relation",
+                "state1": {
+                  "id": "Init",
+                  "type": "default",
+                  "classes": []
+                },
+                "state2": {
+                  "id": "Running",
+                  "type": "default",
+                  "classes": []
+                },
+                "description": "start"
+              },
+              {
+                "stmt": "state",
+                "id": "Running",
+                "type": "default",
+                "description": null,
+                "doc": [
+                  {
+                    "stmt": "relation",
+                    "state1": {
+                      "id": "Running_start",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "state2": {
+                      "id": "A",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "description": null
+                  },
+                  {
+                    "stmt": "relation",
+                    "state1": {
+                      "id": "A",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "state2": {
+                      "id": "B",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "description": null
+                  },
+                  {
+                    "stmt": "relation",
+                    "state1": {
+                      "id": "B",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "state2": {
+                      "id": "Running_end",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "description": null
+                  }
+                ],
+                "classes": []
+              }
+            ],
+            "classes": []
+          },
+          {
+            "stmt": "state",
+            "id": "id-38dvt516gkfs-1",
+            "type": "divider",
+            "description": null,
+            "doc": [
+              {
+                "stmt": "state",
+                "id": "Sidecar",
+                "type": "default",
+                "description": null,
+                "doc": [
+                  {
+                    "stmt": "relation",
+                    "state1": {
+                      "id": "Sidecar_start",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "state2": {
+                      "id": "Idle",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "description": null
+                  },
+                  {
+                    "stmt": "relation",
+                    "state1": {
+                      "id": "Idle",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "state2": {
+                      "id": "Work",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "description": "tick"
+                  },
+                  {
+                    "stmt": "relation",
+                    "state1": {
+                      "id": "Work",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "state2": {
+                      "id": "Idle",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "description": "done"
+                  }
+                ],
+                "classes": []
+              },
+              {
+                "stmt": "relation",
+                "state1": {
+                  "id": "Running",
+                  "type": "default",
+                  "classes": []
+                },
+                "state2": {
+                  "id": "Sidecar",
+                  "type": "default",
+                  "classes": []
+                },
+                "description": "spawn"
+              },
+              {
+                "stmt": "relation",
+                "state1": {
+                  "id": "Sidecar",
+                  "type": "default",
+                  "classes": []
+                },
+                "state2": {
+                  "id": "Running",
+                  "type": "default",
+                  "classes": []
+                },
+                "description": "join"
+              }
+            ],
+            "classes": []
+          }
+        ],
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "root_end": {
+        "id": "root_end",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": false
+      }
+    },
+    "relations": [
+      {
+        "id1": "root_start",
+        "id2": "Top",
+        "relationTitle": null
+      },
+      {
+        "id1": "Top",
+        "id2": "root_end",
+        "relationTitle": null
+      }
+    ],
+    "styleClasses": {}
+  }
+}

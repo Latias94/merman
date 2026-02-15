@@ -1,0 +1,469 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "nodes": [
+        {
+          "id": "After",
+          "x": 404.976,
+          "y": 484.0,
+          "width": 53.125,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Deep",
+          "x": 103.14,
+          "y": 370.0,
+          "width": 46.234,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "InnerA",
+          "x": 155.277,
+          "y": 181.0,
+          "width": 57.922,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "InnerB",
+          "x": 150.785,
+          "y": 390.0,
+          "width": 245.57,
+          "height": 278.0,
+          "is_cluster": true
+        },
+        {
+          "id": "InnerB_end",
+          "x": 78.062,
+          "y": 484.0,
+          "width": 14.013,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "InnerB_start",
+          "x": 155.277,
+          "y": 288.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Outer",
+          "x": 175.707,
+          "y": 313.0,
+          "width": 335.413,
+          "height": 482.0,
+          "is_cluster": true
+        },
+        {
+          "id": "Outer_start",
+          "x": 204.636,
+          "y": 104.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "root_end",
+          "x": 404.976,
+          "y": 611.0,
+          "width": 14.013,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "root_start",
+          "x": 204.636,
+          "y": 15.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge0",
+          "from": "root_start",
+          "to": "Outer",
+          "from_cluster": null,
+          "to_cluster": "state-Outer-5",
+          "points": [
+            {
+              "x": 204.636,
+              "y": 22.0
+            },
+            {
+              "x": 204.636,
+              "y": 47.0
+            },
+            {
+              "x": 204.636,
+              "y": 72.0
+            },
+            {
+              "x": 175.707,
+              "y": 313.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge1",
+          "from": "Outer_start",
+          "to": "InnerA",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 198.762,
+              "y": 107.808
+            },
+            {
+              "x": 155.277,
+              "y": 136.0
+            },
+            {
+              "x": 155.777,
+              "y": 161.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge2",
+          "from": "InnerA",
+          "to": "InnerB",
+          "from_cluster": null,
+          "to_cluster": "state-InnerB-6",
+          "points": [
+            {
+              "x": 155.777,
+              "y": 201.5
+            },
+            {
+              "x": 155.277,
+              "y": 226.0
+            },
+            {
+              "x": 155.277,
+              "y": 251.0
+            },
+            {
+              "x": 150.785,
+              "y": 390.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge3",
+          "from": "InnerB_start",
+          "to": "Deep",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 149.568,
+              "y": 292.051
+            },
+            {
+              "x": 103.14,
+              "y": 325.0
+            },
+            {
+              "x": 103.64,
+              "y": 350.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge4",
+          "from": "Deep",
+          "to": "InnerB_end",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 94.841,
+              "y": 390.5
+            },
+            {
+              "x": 78.062,
+              "y": 427.0
+            },
+            {
+              "x": 78.062,
+              "y": 477.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge5",
+          "from": "Outer",
+          "to": "After",
+          "from_cluster": "state-Outer-5",
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 175.707,
+              "y": 313.0
+            },
+            {
+              "x": 306.132,
+              "y": 136.0
+            },
+            {
+              "x": 306.132,
+              "y": 181.0
+            },
+            {
+              "x": 306.132,
+              "y": 226.0
+            },
+            {
+              "x": 306.132,
+              "y": 251.0
+            },
+            {
+              "x": 306.132,
+              "y": 288.0
+            },
+            {
+              "x": 306.132,
+              "y": 325.0
+            },
+            {
+              "x": 306.132,
+              "y": 370.0
+            },
+            {
+              "x": 306.132,
+              "y": 427.0
+            },
+            {
+              "x": 378.926,
+              "y": 469.19
+            }
+          ],
+          "label": {
+            "x": 306.132,
+            "y": 288.0,
+            "width": 25.125,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge6",
+          "from": "InnerB",
+          "to": "After",
+          "from_cluster": "state-InnerB-6",
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 150.785,
+              "y": 390.0
+            },
+            {
+              "x": 207.413,
+              "y": 325.0
+            },
+            {
+              "x": 207.413,
+              "y": 370.0
+            },
+            {
+              "x": 207.413,
+              "y": 427.0
+            },
+            {
+              "x": 378.913,
+              "y": 476.836
+            }
+          ],
+          "label": {
+            "x": 207.413,
+            "y": 370.0,
+            "width": 92.313,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge7",
+          "from": "Deep",
+          "to": "After",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 113.134,
+              "y": 390.5
+            },
+            {
+              "x": 130.199,
+              "y": 427.0
+            },
+            {
+              "x": 378.913,
+              "y": 478.99
+            }
+          ],
+          "label": {
+            "x": 130.199,
+            "y": 427.0,
+            "width": 60.313,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge8",
+          "from": "After",
+          "to": "root_end",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 405.476,
+              "y": 504.5
+            },
+            {
+              "x": 404.976,
+              "y": 529.0
+            },
+            {
+              "x": 404.976,
+              "y": 554.0
+            },
+            {
+              "x": 404.976,
+              "y": 579.0
+            },
+            {
+              "x": 404.976,
+              "y": 604.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "InnerB",
+          "x": 150.785,
+          "y": 390.0,
+          "width": 245.57,
+          "height": 278.0,
+          "diff": -8.0,
+          "offset_y": 20.0,
+          "title": "InnerB",
+          "title_label": {
+            "x": 150.785,
+            "y": 264.0,
+            "width": 41.922,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "Outer",
+          "x": 175.707,
+          "y": 313.0,
+          "width": 335.413,
+          "height": 482.0,
+          "diff": -8.0,
+          "offset_y": 20.0,
+          "title": "Outer",
+          "title_label": {
+            "x": 175.707,
+            "y": 85.0,
+            "width": 37.125,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 431.538,
+        "max_y": 618.0
+      }
+    }
+  }
+}
