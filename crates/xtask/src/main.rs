@@ -2667,6 +2667,59 @@ fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
                 continue;
             }
 
+            // Keep `--with-baselines` aligned with the current parity hardening scope.
+            //
+            // We explicitly defer/skip cases that:
+            // - require the ELK layout engine (`flowchart-elk`), which is out of scope for the
+            //   headless layout engine in this repo
+            // - exercise browser-only math rendering (`$$...$$`)
+            // - are sourced from the upstream `errorDiagram` spec (these are intentionally-invalid
+            //   inputs that should render as Mermaid "error" diagrams, not as flowcharts)
+            if with_baselines && diagram_dir == "flowchart" {
+                let spec_name = spec_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or_default();
+                if spec_name.contains("flowchart-elk.spec.") {
+                    skipped.push(format!(
+                        "skip (deferred for --with-baselines): {} (flowchart-elk spec)",
+                        spec_path.display()
+                    ));
+                    continue;
+                }
+                if spec_name.contains("katex.spec.") {
+                    skipped.push(format!(
+                        "skip (deferred for --with-baselines): {} (katex spec)",
+                        spec_path.display()
+                    ));
+                    continue;
+                }
+                if spec_name.contains("errorDiagram.spec.") {
+                    skipped.push(format!(
+                        "skip (deferred for --with-baselines): {} (errorDiagram spec)",
+                        spec_path.display()
+                    ));
+                    continue;
+                }
+                if body.contains("$$") {
+                    skipped.push(format!(
+                        "skip (deferred for --with-baselines): {} (flowchart math)",
+                        spec_path.display()
+                    ));
+                    continue;
+                }
+                if body
+                    .lines()
+                    .any(|l| l.trim_start().starts_with("flowchart-elk"))
+                {
+                    skipped.push(format!(
+                        "skip (deferred for --with-baselines): {} (flowchart-elk diagram type)",
+                        spec_path.display()
+                    ));
+                    continue;
+                }
+            }
+
             if diagram_dir == "architecture" {
                 body = canonical_fixture_text(&normalize_architecture_beta_legacy_edges(&body));
             }

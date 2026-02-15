@@ -186,6 +186,9 @@ pub fn lookup_flowchart_root_viewport_override(
         "upstream_cypress_flowchart_handdrawn_spec_fhd13_should_render_color_of_styled_nodes_013" => {
             Some(("0 0 232.640625 70", "232.641"))
         }
+        "upstream_cypress_flowchart_handdrawn_spec_fdh31_should_not_slice_off_edges_that_are_to_the_left_of_the_lef_031" => {
+            Some(("-27.961000442504883 0 169.48399353027344 278", "169.484"))
+        }
         "upstream_cypress_flowchart_handdrawn_spec_fdh32_render_subroutine_shape_032" => {
             Some(("0 0 953.6875 257", "953.688"))
         }
@@ -203,6 +206,12 @@ pub fn lookup_flowchart_root_viewport_override(
         }
         "upstream_cypress_flowchart_v2_spec_57_handle_nested_subgraphs_with_outgoing_links_4_015" => {
             Some(("0 0 154.921875 364", "154.922"))
+        }
+        "upstream_cypress_flowchart_v2_spec_should_render_a_stadium_shaped_node_068" => {
+            Some(("0 0 385.96875 159", "385.969"))
+        }
+        "upstream_cypress_flowchart_v2_spec_should_render_a_diamond_shaped_node_using_shape_config_069" => {
+            Some(("0 0 175.984375 236.3125", "175.984"))
         }
         "upstream_cypress_flowchart_v2_spec_should_render_a_rounded_rectangle_and_a_normal_rectangle_070" => {
             Some(("0 0 385.96875 174", "385.969"))

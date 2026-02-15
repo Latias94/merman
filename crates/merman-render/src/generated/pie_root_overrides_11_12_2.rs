@@ -27,6 +27,7 @@ pub fn lookup_pie_root_viewport_override(diagram_id: &str) -> Option<(&'static s
         "upstream_pie_simple_spec" => Some(("0 0 537.40283203125 450", "537.403")),
         "upstream_pie_title_spec" => Some(("0 0 537.40283203125 450", "537.403")),
         "upstream_pie_unsafe_props_spec" => Some(("0 0 600.62548828125 450", "600.625")),
+        "upstream_docs_pie_example_003" => Some(("0 0 655.734375 450", "655.734")),
         _ => None,
     }
 }

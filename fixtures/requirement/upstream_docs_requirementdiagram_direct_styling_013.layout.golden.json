@@ -1,0 +1,32 @@
+{
+  "diagramType": "requirement",
+  "layout": {
+    "RequirementDiagram": {
+      "nodes": [
+        {
+          "id": "test_req",
+          "x": 8.0,
+          "y": 8.0,
+          "width": 161.92,
+          "height": 184.0,
+          "is_cluster": false
+        },
+        {
+          "id": "test_entity",
+          "x": 219.92,
+          "y": 44.0,
+          "width": 138.094,
+          "height": 112.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 358.014,
+        "max_y": 192.0
+      }
+    }
+  }
+}

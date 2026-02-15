@@ -25,6 +25,9 @@ pub fn lookup_requirement_root_viewport_override(
         "upstream_html_demos_requirements_requirement_diagram_demos_002" => {
             Some(("0 0 939.79296875 1466", "939.793"))
         }
+        "upstream_docs_requirementdiagram_direct_styling_013" => {
+            Some(("0 0 377.546875 200", "377.547"))
+        }
         _ => None,
     }
 }

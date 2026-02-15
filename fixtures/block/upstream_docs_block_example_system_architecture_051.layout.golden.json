@@ -1,0 +1,72 @@
+{
+  "diagramType": "block",
+  "layout": {
+    "BlockDiagram": {
+      "nodes": [
+        {
+          "id": "Frontend",
+          "x": 32.88,
+          "y": -62.4,
+          "width": 65.76,
+          "height": 33.6,
+          "is_cluster": false
+        },
+        {
+          "id": "blockArrowId6",
+          "x": 106.64,
+          "y": -62.4,
+          "width": 65.76,
+          "height": 33.6,
+          "is_cluster": false
+        },
+        {
+          "id": "Backend",
+          "x": 180.4,
+          "y": -62.4,
+          "width": 65.76,
+          "height": 33.6,
+          "is_cluster": false
+        },
+        {
+          "id": "down",
+          "x": 32.88,
+          "y": 20.8,
+          "width": 65.76,
+          "height": 33.6,
+          "is_cluster": false
+        },
+        {
+          "id": "Disk",
+          "x": 106.64,
+          "y": 20.8,
+          "width": 65.76,
+          "height": 33.6,
+          "is_cluster": false
+        },
+        {
+          "id": "left",
+          "x": 180.4,
+          "y": 20.8,
+          "width": 65.76,
+          "height": 33.6,
+          "is_cluster": false
+        },
+        {
+          "id": "Database",
+          "x": 32.88,
+          "y": 62.4,
+          "width": 65.76,
+          "height": 33.6,
+          "is_cluster": false
+        }
+      ],
+      "edges": [],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": -79.2,
+        "max_x": 287.04,
+        "max_y": 79.2
+      }
+    }
+  }
+}

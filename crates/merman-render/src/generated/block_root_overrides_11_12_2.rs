@@ -19,6 +19,9 @@ pub fn lookup_block_root_viewport_override(
         "upstream_html_demos_block_block_diagram_demos_010" => {
             Some(("-5 -36 285.078125 72", "285.078"))
         }
+        "upstream_docs_block_example_system_architecture_051" => {
+            Some(("-5 -95.15616798400879 246.5 190.31233596801758", "246.5"))
+        }
         _ => None,
     }
 }

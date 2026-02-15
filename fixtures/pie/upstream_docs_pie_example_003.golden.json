@@ -1,0 +1,28 @@
+{
+  "diagramType": "pie",
+  "model": {
+    "type": "pie",
+    "showData": true,
+    "title": "Key elements in Product X",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      {
+        "label": "Calcium",
+        "value": 42.96
+      },
+      {
+        "label": "Potassium",
+        "value": 50.05
+      },
+      {
+        "label": "Magnesium",
+        "value": 10.01
+      },
+      {
+        "label": "Iron",
+        "value": 5.0
+      }
+    ]
+  }
+}
