@@ -4,145 +4,171 @@ use super::*;
 
 // Architecture diagram SVG renderer implementation (split from parity.rs).
 
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ArchitectureService {
+    id: String,
+    #[serde(default)]
+    icon: Option<String>,
+    #[serde(default, rename = "iconText")]
+    icon_text: Option<String>,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default, rename = "in")]
+    in_group: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ArchitectureJunction {
+    id: String,
+    #[serde(default, rename = "in")]
+    in_group: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ArchitectureGroup {
+    id: String,
+    #[serde(default)]
+    icon: Option<String>,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default, rename = "in")]
+    in_group: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ArchitectureEdge {
+    #[serde(rename = "lhsId")]
+    lhs_id: String,
+    #[serde(rename = "lhsDir")]
+    lhs_dir: String,
+    #[serde(default, rename = "lhsInto")]
+    lhs_into: Option<bool>,
+    #[serde(default, rename = "lhsGroup")]
+    lhs_group: Option<bool>,
+    #[serde(rename = "rhsId")]
+    rhs_id: String,
+    #[serde(rename = "rhsDir")]
+    rhs_dir: String,
+    #[serde(default, rename = "rhsInto")]
+    rhs_into: Option<bool>,
+    #[serde(default, rename = "rhsGroup")]
+    rhs_group: Option<bool>,
+    #[serde(default)]
+    title: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ArchitectureModel {
+    #[serde(default, rename = "accTitle")]
+    acc_title: Option<String>,
+    #[serde(default, rename = "accDescr")]
+    acc_descr: Option<String>,
+    #[serde(default)]
+    groups: Vec<ArchitectureGroup>,
+    #[serde(default)]
+    services: Vec<ArchitectureService>,
+    #[serde(default)]
+    junctions: Vec<ArchitectureJunction>,
+    #[serde(default)]
+    edges: Vec<ArchitectureEdge>,
+}
+
+fn timing_section<'a>(
+    enabled: bool,
+    dst: &'a mut std::time::Duration,
+) -> Option<super::timing::TimingGuard<'a>> {
+    enabled.then(|| super::timing::TimingGuard::new(dst))
+}
+
 pub(super) fn render_architecture_diagram_svg_typed(
     layout: &ArchitectureDiagramLayout,
     model: &merman_core::diagrams::architecture::ArchitectureDiagramRenderModel,
     effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    #[derive(serde::Serialize)]
-    #[serde(rename_all = "camelCase")]
-    struct ArchitectureService<'a> {
-        id: &'a str,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        icon: Option<&'a str>,
-        #[serde(skip_serializing_if = "Option::is_none", rename = "iconText")]
-        icon_text: Option<&'a str>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        title: Option<&'a str>,
-        #[serde(skip_serializing_if = "Option::is_none", rename = "in")]
-        in_group: Option<&'a str>,
-    }
+    let timing_enabled = super::timing::render_timing_enabled();
+    let mut timings = super::timing::RenderTimings::default();
+    let total_start = std::time::Instant::now();
 
-    #[derive(serde::Serialize)]
-    #[serde(rename_all = "camelCase")]
-    struct ArchitectureJunction<'a> {
-        id: &'a str,
-        #[serde(skip_serializing_if = "Option::is_none", rename = "in")]
-        in_group: Option<&'a str>,
-    }
-
-    #[derive(serde::Serialize)]
-    #[serde(rename_all = "camelCase")]
-    struct ArchitectureGroup<'a> {
-        id: &'a str,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        icon: Option<&'a str>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        title: Option<&'a str>,
-        #[serde(skip_serializing_if = "Option::is_none", rename = "in")]
-        in_group: Option<&'a str>,
-    }
-
-    #[derive(serde::Serialize)]
-    #[serde(rename_all = "camelCase")]
-    struct ArchitectureEdge<'a> {
-        #[serde(rename = "lhsId")]
-        lhs_id: &'a str,
-        #[serde(rename = "lhsDir")]
-        lhs_dir: String,
-        #[serde(skip_serializing_if = "Option::is_none", rename = "lhsInto")]
-        lhs_into: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none", rename = "lhsGroup")]
-        lhs_group: Option<bool>,
-        #[serde(rename = "rhsId")]
-        rhs_id: &'a str,
-        #[serde(rename = "rhsDir")]
-        rhs_dir: String,
-        #[serde(skip_serializing_if = "Option::is_none", rename = "rhsInto")]
-        rhs_into: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none", rename = "rhsGroup")]
-        rhs_group: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        title: Option<&'a str>,
-    }
-
-    #[derive(serde::Serialize)]
-    #[serde(rename_all = "camelCase")]
-    struct ArchitectureModel<'a> {
-        #[serde(skip_serializing_if = "Option::is_none", rename = "accTitle")]
-        acc_title: Option<&'a str>,
-        #[serde(skip_serializing_if = "Option::is_none", rename = "accDescr")]
-        acc_descr: Option<&'a str>,
-        #[serde(default)]
-        groups: Vec<ArchitectureGroup<'a>>,
-        #[serde(default)]
-        services: Vec<ArchitectureService<'a>>,
-        #[serde(default)]
-        junctions: Vec<ArchitectureJunction<'a>>,
-        #[serde(default)]
-        edges: Vec<ArchitectureEdge<'a>>,
-    }
-
-    let mut services: Vec<ArchitectureService<'_>> = Vec::new();
-    let mut junctions: Vec<ArchitectureJunction<'_>> = Vec::new();
+    let mut services: Vec<ArchitectureService> = Vec::new();
+    let mut junctions: Vec<ArchitectureJunction> = Vec::new();
+    services.reserve(model.nodes.len());
+    junctions.reserve(model.nodes.len());
     for n in &model.nodes {
         match n.node_type {
             merman_core::diagrams::architecture::ArchitectureRenderNodeType::Service => {
                 services.push(ArchitectureService {
-                    id: n.id.as_str(),
-                    icon: n.icon.as_deref(),
-                    icon_text: n.icon_text.as_deref(),
-                    title: n.title.as_deref(),
-                    in_group: n.in_group.as_deref(),
+                    id: n.id.clone(),
+                    icon: n.icon.clone(),
+                    icon_text: n.icon_text.clone(),
+                    title: n.title.clone(),
+                    in_group: n.in_group.clone(),
                 });
             }
             merman_core::diagrams::architecture::ArchitectureRenderNodeType::Junction => {
                 junctions.push(ArchitectureJunction {
-                    id: n.id.as_str(),
-                    in_group: n.in_group.as_deref(),
+                    id: n.id.clone(),
+                    in_group: n.in_group.clone(),
                 });
             }
         }
     }
 
-    let groups: Vec<ArchitectureGroup<'_>> = model
+    let groups: Vec<ArchitectureGroup> = model
         .groups
         .iter()
         .map(|g| ArchitectureGroup {
-            id: g.id.as_str(),
-            icon: g.icon.as_deref(),
-            title: g.title.as_deref(),
-            in_group: g.in_group.as_deref(),
+            id: g.id.clone(),
+            icon: g.icon.clone(),
+            title: g.title.clone(),
+            in_group: g.in_group.clone(),
         })
         .collect();
 
-    let edges: Vec<ArchitectureEdge<'_>> = model
+    let edges: Vec<ArchitectureEdge> = model
         .edges
         .iter()
-        .map(|e| ArchitectureEdge {
-            lhs_id: e.lhs_id.as_str(),
-            lhs_dir: e.lhs_dir.to_string(),
-            lhs_into: e.lhs_into,
-            lhs_group: e.lhs_group,
-            rhs_id: e.rhs_id.as_str(),
-            rhs_dir: e.rhs_dir.to_string(),
-            rhs_into: e.rhs_into,
-            rhs_group: e.rhs_group,
-            title: e.title.as_deref(),
+        .map(|e| {
+            let mut lhs_dir = String::with_capacity(1);
+            lhs_dir.push(e.lhs_dir);
+            let mut rhs_dir = String::with_capacity(1);
+            rhs_dir.push(e.rhs_dir);
+            ArchitectureEdge {
+                lhs_id: e.lhs_id.clone(),
+                lhs_dir,
+                lhs_into: e.lhs_into,
+                lhs_group: e.lhs_group,
+                rhs_id: e.rhs_id.clone(),
+                rhs_dir,
+                rhs_into: e.rhs_into,
+                rhs_group: e.rhs_group,
+                title: e.title.clone(),
+            }
         })
         .collect();
 
     let semantic = ArchitectureModel {
-        acc_title: model.acc_title.as_deref(),
-        acc_descr: model.acc_descr.as_deref(),
+        acc_title: model.acc_title.clone(),
+        acc_descr: model.acc_descr.clone(),
         groups,
         services,
         junctions,
         edges,
     };
-    let semantic = serde_json::to_value(semantic).map_err(Error::Json)?;
-    render_architecture_diagram_svg(layout, &semantic, effective_config, options)
+    render_architecture_diagram_svg_with_model(
+        layout,
+        &semantic,
+        effective_config,
+        options,
+        timing_enabled,
+        &mut timings,
+        total_start,
+    )
 }
 
 pub(super) fn render_architecture_diagram_svg(
@@ -154,6 +180,30 @@ pub(super) fn render_architecture_diagram_svg(
     let timing_enabled = super::timing::render_timing_enabled();
     let mut timings = super::timing::RenderTimings::default();
     let total_start = std::time::Instant::now();
+    let model: ArchitectureModel = {
+        let _g = timing_section(timing_enabled, &mut timings.deserialize_model);
+        crate::json::from_value_ref(semantic)?
+    };
+    render_architecture_diagram_svg_with_model(
+        layout,
+        &model,
+        effective_config,
+        options,
+        timing_enabled,
+        &mut timings,
+        total_start,
+    )
+}
+
+fn render_architecture_diagram_svg_with_model(
+    layout: &ArchitectureDiagramLayout,
+    model: &ArchitectureModel,
+    effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+    timing_enabled: bool,
+    timings: &mut super::timing::RenderTimings,
+    total_start: std::time::Instant,
+) -> Result<String> {
     fn section<'a>(
         enabled: bool,
         dst: &'a mut std::time::Duration,
@@ -346,85 +396,6 @@ pub(super) fn render_architecture_diagram_svg(
         write_svg_text_lines(out, &lines);
         out.push_str("</g></g>");
     }
-
-    #[derive(Debug, Clone, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct ArchitectureService {
-        id: String,
-        #[serde(default)]
-        icon: Option<String>,
-        #[serde(default, rename = "iconText")]
-        icon_text: Option<String>,
-        #[serde(default)]
-        title: Option<String>,
-        #[serde(default, rename = "in")]
-        in_group: Option<String>,
-    }
-
-    #[derive(Debug, Clone, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct ArchitectureJunction {
-        id: String,
-        #[serde(default, rename = "in")]
-        in_group: Option<String>,
-    }
-
-    #[derive(Debug, Clone, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct ArchitectureGroup {
-        id: String,
-        #[serde(default)]
-        icon: Option<String>,
-        #[serde(default)]
-        title: Option<String>,
-        #[serde(default, rename = "in")]
-        in_group: Option<String>,
-    }
-
-    #[derive(Debug, Clone, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct ArchitectureEdge {
-        #[serde(rename = "lhsId")]
-        lhs_id: String,
-        #[serde(rename = "lhsDir")]
-        lhs_dir: String,
-        #[serde(default, rename = "lhsInto")]
-        lhs_into: Option<bool>,
-        #[serde(default, rename = "lhsGroup")]
-        lhs_group: Option<bool>,
-        #[serde(rename = "rhsId")]
-        rhs_id: String,
-        #[serde(rename = "rhsDir")]
-        rhs_dir: String,
-        #[serde(default, rename = "rhsInto")]
-        rhs_into: Option<bool>,
-        #[serde(default, rename = "rhsGroup")]
-        rhs_group: Option<bool>,
-        #[serde(default)]
-        title: Option<String>,
-    }
-
-    #[derive(Debug, Clone, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct ArchitectureModel {
-        #[serde(default, rename = "accTitle")]
-        acc_title: Option<String>,
-        #[serde(default, rename = "accDescr")]
-        acc_descr: Option<String>,
-        #[serde(default)]
-        groups: Vec<ArchitectureGroup>,
-        #[serde(default)]
-        services: Vec<ArchitectureService>,
-        #[serde(default)]
-        junctions: Vec<ArchitectureJunction>,
-        #[serde(default)]
-        edges: Vec<ArchitectureEdge>,
-    }
-
-    let model: ArchitectureModel = {
-        let _g = section(timing_enabled, &mut timings.deserialize_model);
-        crate::json::from_value_ref(semantic)?
-    };
 
     let _g_render_svg = section(timing_enabled, &mut timings.render_svg);
 

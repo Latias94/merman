@@ -21,7 +21,9 @@ struct ArchitectureNodeModel {
     #[serde(rename = "type")]
     node_type: String,
     #[serde(default)]
-    edges: Vec<ArchitectureEdgeModel>,
+    edges: Option<Vec<ArchitectureEdgeModel>>,
+    #[serde(default, rename = "edgeIndices")]
+    edge_indices: Vec<usize>,
     #[serde(default)]
     #[allow(dead_code)]
     icon: Option<String>,
@@ -98,26 +100,11 @@ impl ArchitectureModel {
             }
             .to_string();
 
-            let mut node_edges: Vec<ArchitectureEdgeModel> =
-                Vec::with_capacity(n.edge_indices.len());
-            for &idx in &n.edge_indices {
-                let Some(e) = model.edges.get(idx) else {
-                    continue;
-                };
-                node_edges.push(ArchitectureEdgeModel {
-                    lhs_id: e.lhs_id.clone(),
-                    rhs_id: e.rhs_id.clone(),
-                    lhs_dir: dir_to_string(e.lhs_dir),
-                    rhs_dir: dir_to_string(e.rhs_dir),
-                    lhs_group: e.lhs_group,
-                    rhs_group: e.rhs_group,
-                });
-            }
-
             nodes.push(ArchitectureNodeModel {
                 id: n.id.clone(),
                 node_type,
-                edges: node_edges,
+                edges: None,
+                edge_indices: n.edge_indices.clone(),
                 icon: n.icon.clone(),
                 title: n.title.clone(),
                 icon_text: n.icon_text.clone(),
@@ -307,22 +294,46 @@ fn layout_architecture_diagram_model(
 
     for n in &model.nodes {
         let entry = adjacency.entry(n.id.clone()).or_default();
-        for e in &n.edges {
-            let (Some(lhs_dir), Some(rhs_dir)) = (
-                e.lhs_dir.as_deref().and_then(Dir::parse),
-                e.rhs_dir.as_deref().and_then(Dir::parse),
-            ) else {
-                continue;
-            };
+        if !n.edge_indices.is_empty() {
+            for &idx in &n.edge_indices {
+                let Some(e) = model.edges.get(idx) else {
+                    continue;
+                };
 
-            if e.lhs_id == n.id {
-                if let Some(pair) = dir_pair_key(lhs_dir, rhs_dir) {
-                    // Preserve insertion order for the pair key; overwrites keep the original slot.
-                    entry.insert(pair, e.rhs_id.clone());
+                let (Some(lhs_dir), Some(rhs_dir)) = (
+                    e.lhs_dir.as_deref().and_then(Dir::parse),
+                    e.rhs_dir.as_deref().and_then(Dir::parse),
+                ) else {
+                    continue;
+                };
+
+                if e.lhs_id == n.id {
+                    if let Some(pair) = dir_pair_key(lhs_dir, rhs_dir) {
+                        entry.insert(pair, e.rhs_id.clone());
+                    }
+                } else if e.rhs_id == n.id {
+                    if let Some(pair) = dir_pair_key(rhs_dir, lhs_dir) {
+                        entry.insert(pair, e.lhs_id.clone());
+                    }
                 }
-            } else if e.rhs_id == n.id {
-                if let Some(pair) = dir_pair_key(rhs_dir, lhs_dir) {
-                    entry.insert(pair, e.lhs_id.clone());
+            }
+        } else if let Some(node_edges) = n.edges.as_deref() {
+            for e in node_edges {
+                let (Some(lhs_dir), Some(rhs_dir)) = (
+                    e.lhs_dir.as_deref().and_then(Dir::parse),
+                    e.rhs_dir.as_deref().and_then(Dir::parse),
+                ) else {
+                    continue;
+                };
+
+                if e.lhs_id == n.id {
+                    if let Some(pair) = dir_pair_key(lhs_dir, rhs_dir) {
+                        entry.insert(pair, e.rhs_id.clone());
+                    }
+                } else if e.rhs_id == n.id {
+                    if let Some(pair) = dir_pair_key(rhs_dir, lhs_dir) {
+                        entry.insert(pair, e.lhs_id.clone());
+                    }
                 }
             }
         }
