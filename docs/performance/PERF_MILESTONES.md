@@ -14,21 +14,21 @@ Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is 
 - `flowchart_medium` is still slower end-to-end mostly due to `layout` + `render`.
 
 - Latest combined spotcheck report:
-  - `docs/performance/spotcheck_2026-02-15.md` (`tools/bench/stage_spotcheck.py`, 10 samples / 1s warmup / 3s measurement)
+  - `docs/performance/spotcheck_2026-02-15.md` (`tools/bench/stage_spotcheck.py`, 10 samples / 1s warmup / 5s measurement)
   - Canary set (`flowchart_medium,class_medium,sequence_medium,mindmap_medium,architecture_medium`):
-    - `parse` gmean: `1.34x`
-    - `layout` gmean: `1.23x`
-    - `render` gmean: `1.85x`
-    - `end_to_end` gmean: `1.19x`
+    - `parse` gmean: `1.49x`
+    - `layout` gmean: `1.14x`
+    - `render` gmean: `1.77x`
+    - `end_to_end` gmean: `1.26x`
   - Notable outliers:
-    - `architecture_medium`: `layout 6.06x`, `render 3.12x`, `end_to_end 4.24x` (absolute times are small; ratio is large)
-    - `mindmap_medium`: `layout 2.61x`, `end_to_end 1.33x`
-    - `class_medium`: `render 3.36x` (despite `layout 0.36x` and `end_to_end 0.56x`)
-    - `flowchart_medium`: `render 1.99x` (despite `layout 1.17x` and `end_to_end 0.97x`)
+    - `architecture_medium`: `layout 4.26x`, `render 2.51x`, `end_to_end 4.16x` (absolute times are small; ratio is large)
+    - `mindmap_medium`: `layout 2.67x`, `end_to_end 1.93x`
+    - `class_medium`: `render 3.70x` (despite `layout 0.38x` and `end_to_end 0.62x`)
+    - `flowchart_medium`: `render 1.75x` (despite `layout 1.04x` and `end_to_end 0.87x`)
 
 Near-term priorities (updated plan):
 
-1. **Flowchart render**: keep `end_to_end/flowchart_medium <= 1.0x` while reducing `render/flowchart_medium` from `~2.1x` to `<= 1.3x`.
+1. **Flowchart render**: keep `end_to_end/flowchart_medium <= 1.0x` while reducing `render/flowchart_medium` from `~1.8x` to `<= 1.3x`.
     This is a top priority because flowcharts tend to dominate absolute runtime (ms-scale).
 2. **Mindmap layout**: reduce `layout/mindmap_medium` from `~2.6x` to `<= 2.0x` (COSE port / bbox).
 3. **Architecture layout+render**: reduce fixed overhead on tiny diagrams and/or add a fast-path for
