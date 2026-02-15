@@ -2794,6 +2794,41 @@ fn state_edge_context<'a>(ctx: &'a StateRenderCtx<'_>, edge: &StateSvgEdge) -> O
     None
 }
 
+fn state_is_shadowed_self_loop_edge(
+    ctx: &StateRenderCtx<'_>,
+    edge_index: usize,
+    edge: &StateSvgEdge,
+    root: Option<&str>,
+) -> bool {
+    if edge.start != edge.end {
+        return false;
+    }
+    if state_edge_context(ctx, edge) != root {
+        return false;
+    }
+
+    for later in ctx.edges.iter().skip(edge_index + 1) {
+        if later.start != later.end {
+            continue;
+        }
+        if later.start != edge.start || later.end != edge.end {
+            continue;
+        }
+        if state_is_hidden(ctx, later.start.as_str())
+            || state_is_hidden(ctx, later.end.as_str())
+            || state_is_hidden(ctx, later.id.as_str())
+        {
+            continue;
+        }
+        if state_edge_context(ctx, later) != root {
+            continue;
+        }
+        return true;
+    }
+
+    false
+}
+
 fn render_state_root(
     out: &mut String,
     ctx: &StateRenderCtx<'_>,
@@ -2921,7 +2956,7 @@ fn render_state_root(
     // edge paths
     out.push_str(r#"<g class="edgePaths">"#);
     if ctx.include_edges {
-        for edge in ctx.edges {
+        for (edge_index, edge) in ctx.edges.iter().enumerate() {
             if state_is_hidden(ctx, edge.start.as_str())
                 || state_is_hidden(ctx, edge.end.as_str())
                 || state_is_hidden(ctx, edge.id.as_str())
@@ -2929,6 +2964,9 @@ fn render_state_root(
                 continue;
             }
             if state_edge_context(ctx, edge) != root {
+                continue;
+            }
+            if state_is_shadowed_self_loop_edge(ctx, edge_index, edge, root) {
                 continue;
             }
             render_state_edge_path(out, ctx, edge, origin_x, origin_y);
@@ -2939,7 +2977,7 @@ fn render_state_root(
     // edge labels
     out.push_str(r#"<g class="edgeLabels">"#);
     if ctx.include_edges {
-        for edge in ctx.edges {
+        for (edge_index, edge) in ctx.edges.iter().enumerate() {
             if state_is_hidden(ctx, edge.start.as_str())
                 || state_is_hidden(ctx, edge.end.as_str())
                 || state_is_hidden(ctx, edge.id.as_str())
@@ -2947,6 +2985,9 @@ fn render_state_root(
                 continue;
             }
             if state_edge_context(ctx, edge) != root {
+                continue;
+            }
+            if state_is_shadowed_self_loop_edge(ctx, edge_index, edge, root) {
                 continue;
             }
             render_state_edge_label(out, ctx, edge, origin_x, origin_y);
@@ -2997,7 +3038,7 @@ fn render_state_root(
 
     // Mermaid adds extra edgeLabel placeholders for self-loop transitions inside `nodes`.
     if ctx.include_edges {
-        for edge in ctx.edges {
+        for (edge_index, edge) in ctx.edges.iter().enumerate() {
             if state_is_hidden(ctx, edge.start.as_str())
                 || state_is_hidden(ctx, edge.end.as_str())
                 || state_is_hidden(ctx, edge.id.as_str())
@@ -3008,6 +3049,9 @@ fn render_state_root(
                 continue;
             }
             if state_edge_context(ctx, edge) != root {
+                continue;
+            }
+            if state_is_shadowed_self_loop_edge(ctx, edge_index, edge, root) {
                 continue;
             }
 
@@ -3570,6 +3614,14 @@ fn render_state_edge_label(
         let idm = format!("{start}-cyclic-special-mid");
         let id2 = format!("{start}-cyclic-special-2");
 
+        // Mermaid emits self-loop label containers in the order:
+        // `*-cyclic-special-1`, `*-cyclic-special-mid` (visible label), `*-cyclic-special-2`.
+        let _ = write!(
+            out,
+            r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+            escape_attr(&id1)
+        );
+
         // Mermaid ties the visible self-loop label to the `*-mid` segment.
         if !label_text.is_empty() {
             if let Some(le) = ctx.layout_edges_by_id.get(idm.as_str()).copied() {
@@ -3600,13 +3652,11 @@ fn render_state_edge_label(
             );
         }
 
-        for sid in [id1, id2] {
-            let _ = write!(
-                out,
-                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-                escape_attr(&sid)
-            );
-        }
+        let _ = write!(
+            out,
+            r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
+            escape_attr(&id2)
+        );
         return;
     }
 
@@ -4097,14 +4147,19 @@ fn render_state_node_svg(
                 .unwrap_or_else(|| "M0,0".to_string());
             let inner_d = roughjs_circle_path_d(5.0, ctx.hand_drawn_seed)
                 .unwrap_or_else(|| "M0,0".to_string());
+            let shape_style_escaped = escape_attr(&shape_style_attr);
+            let fill_attr = fill_override.unwrap_or("#ECECFF");
             let _ = write!(
                 out,
-                r##"<g class="node default" id="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="#ECECFF" style=""/><path d="{}" stroke="#333333" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/><g><path d="{}" stroke="none" stroke-width="0" fill="#9370DB" style=""/><path d="{}" stroke="#9370DB" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/></g></g></g>"##,
+                r##"<g class="node default" id="{}" transform="translate({}, {})"><g><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="#333333" stroke-width="2" fill="none" stroke-dasharray="0 0" style="{}"/><g><path d="{}" stroke="none" stroke-width="0" fill="#9370DB" style=""/><path d="{}" stroke="#9370DB" stroke-width="2" fill="none" stroke-dasharray="0 0" style=""/></g></g></g>"##,
                 escape_attr(&node.dom_id),
                 fmt(cx),
                 fmt(cy),
                 outer_d,
+                escape_attr(fill_attr),
+                shape_style_escaped,
                 outer_d,
+                shape_style_escaped,
                 inner_d,
                 inner_d
             );

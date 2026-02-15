@@ -1292,12 +1292,28 @@ impl StateDb {
             s2.start,
         );
 
+        let relation_title = title
+            .map(|t| t.trim().to_string())
+            .filter(|s| !s.is_empty());
+
+        // Mermaid `@11.12.2` self-loops are special-cased during rendering/layout (fixed
+        // `*-cyclic-special-*` ids). Multiple self-loop statements on the same node effectively
+        // overwrite; keep the latest label/title.
+        if id1 == id2 {
+            if let Some(existing) = self
+                .relations
+                .iter_mut()
+                .find(|r| r.id1 == id1 && r.id2 == id2)
+            {
+                existing.relation_title = relation_title;
+                return;
+            }
+        }
+
         self.relations.push(RelationEdge {
             id1: id1.to_string(),
             id2: id2.to_string(),
-            relation_title: title
-                .map(|t| t.trim().to_string())
-                .filter(|s| !s.is_empty()),
+            relation_title,
         });
     }
 

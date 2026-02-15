@@ -4649,10 +4649,9 @@ note "This is a floating note" as N1"#,
         ))
         .unwrap()
         .unwrap();
-        assert_eq!(
-            res.model["states"]["N1"]["note"]["text"],
-            json!("This is a floating note")
-        );
+        // Mermaid `@11.12.2` treats floating notes as a no-op in state diagrams.
+        // (See upstream `stateDiagram floating notes` specs.)
+        assert!(res.model["states"].get("N1").is_none());
     }
 
     #[test]
