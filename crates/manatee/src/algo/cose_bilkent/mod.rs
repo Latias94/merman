@@ -49,7 +49,7 @@ pub fn layout(graph: &Graph, _opts: &CoseBilkentOptions) -> Result<LayoutResult>
         // The full port will use `scatter()` / `positionNodesRandomly()` for non-forest graphs.
     }
     let spring_start = timing_enabled.then(std::time::Instant::now);
-    sim.run_spring_embedder();
+    sim.run_spring_embedder(timing_enabled);
     if let Some(s) = spring_start {
         timings.spring = s.elapsed();
     }
@@ -918,15 +918,36 @@ impl SimGraph {
         }
     }
 
-    fn run_spring_embedder(&mut self) {
+    fn run_spring_embedder(&mut self, timing_enabled: bool) {
         if self.nodes.is_empty() {
             return;
         }
 
+        #[derive(Debug, Default, Clone)]
+        struct SpringEmbedderTimings {
+            total: std::time::Duration,
+            nodes_to_apply_gravitation: std::time::Duration,
+            update_grid: std::time::Duration,
+            spring_forces: std::time::Duration,
+            repulsion_forces: std::time::Duration,
+            gravitation_forces: std::time::Duration,
+            move_nodes: std::time::Duration,
+            iterations: usize,
+            active_edges_spring: u64,
+            repulsion_pairs_considered: u64,
+            repulsion_pairs_in_range: u64,
+        }
+        let mut timings = SpringEmbedderTimings::default();
+        let total_start = timing_enabled.then(std::time::Instant::now);
+
         // Mermaid's Cytoscape COSE-Bilkent applies gravitational forces only when the graph is
         // disconnected (`calculateNodesToApplyGravitationTo()` collects nodes from non-connected
         // graphs). For a connected mindmap tree this list is empty, so gravity is a no-op.
+        let nodes_with_gravity_start = timing_enabled.then(std::time::Instant::now);
         let nodes_with_gravity = self.nodes_to_apply_gravitation();
+        if let Some(s) = nodes_with_gravity_start {
+            timings.nodes_to_apply_gravitation = s.elapsed();
+        }
 
         // These are instance fields in upstream `FDLayout`/`CoSELayout`.
         let ideal_edge_length = Self::DEFAULT_EDGE_LENGTH.max(10.0);
@@ -935,7 +956,11 @@ impl SimGraph {
         let gravity_constant = Self::DEFAULT_GRAVITY_STRENGTH;
         let gravity_range_factor = Self::DEFAULT_GRAVITY_RANGE_FACTOR;
         let repulsion_range = 2.0 * ideal_edge_length;
+        let update_grid_start = timing_enabled.then(std::time::Instant::now);
         self.update_grid(repulsion_range);
+        if let Some(s) = update_grid_start {
+            timings.update_grid += s.elapsed();
+        }
 
         let active_n = self.nodes.iter().filter(|n| n.active).count().max(1) as f64;
         let displacement_threshold_per_node = (3.0 * Self::DEFAULT_EDGE_LENGTH) / 100.0;
@@ -963,6 +988,9 @@ impl SimGraph {
 
         loop {
             total_iterations += 1;
+            if timing_enabled {
+                timings.iterations += 1;
+            }
 
             if total_iterations == max_iterations && !is_tree_growing && !is_growth_finished {
                 if !self.pruned_nodes_all.is_empty() {
@@ -1008,9 +1036,17 @@ impl SimGraph {
             if is_tree_growing {
                 if grow_tree_iterations.is_multiple_of(10) {
                     if !self.pruned_nodes_all.is_empty() {
+                        let update_grid_start = timing_enabled.then(std::time::Instant::now);
                         self.update_grid(repulsion_range);
+                        if let Some(s) = update_grid_start {
+                            timings.update_grid += s.elapsed();
+                        }
                         self.grow_tree_one_step(repulsion_range);
+                        let update_grid_start = timing_enabled.then(std::time::Instant::now);
                         self.update_grid(repulsion_range);
+                        if let Some(s) = update_grid_start {
+                            timings.update_grid += s.elapsed();
+                        }
                         cooling_factor = Self::DEFAULT_COOLING_FACTOR_INCREMENTAL;
                     } else {
                         is_tree_growing = false;
@@ -1029,7 +1065,11 @@ impl SimGraph {
                 }
 
                 if after_growth_iterations.is_multiple_of(10) {
+                    let update_grid_start = timing_enabled.then(std::time::Instant::now);
                     self.update_grid(repulsion_range);
+                    if let Some(s) = update_grid_start {
+                        timings.update_grid += s.elapsed();
+                    }
                 }
                 cooling_factor = Self::DEFAULT_COOLING_FACTOR_INCREMENTAL
                     * ((100.0 - (after_growth_iterations as f64)) / 100.0).max(0.0);
@@ -1039,6 +1079,7 @@ impl SimGraph {
             let mut total_displacement = 0.0f64;
 
             // Spring forces
+            let spring_start = timing_enabled.then(std::time::Instant::now);
             for e in &self.edges {
                 if !e.active {
                     continue;
@@ -1046,6 +1087,9 @@ impl SimGraph {
                 let (a, b) = (e.a, e.b);
                 if !(self.nodes[a].active && self.nodes[b].active) {
                     continue;
+                }
+                if timing_enabled {
+                    timings.active_edges_spring += 1;
                 }
 
                 // Upstream `FDLayout.calcSpringForce` uses clipping points on the node rectangles
@@ -1080,8 +1124,12 @@ impl SimGraph {
                 self.nodes[b].spring_fx -= sfx;
                 self.nodes[b].spring_fy -= sfy;
             }
+            if let Some(s) = spring_start {
+                timings.spring_forces += s.elapsed();
+            }
 
             // Repulsion forces (O(n^2); sufficient for current fixture sizes).
+            let repulsion_start = timing_enabled.then(std::time::Instant::now);
             for i in 0..self.nodes.len() {
                 if !self.nodes[i].active {
                     continue;
@@ -1089,6 +1137,9 @@ impl SimGraph {
                 for j in (i + 1)..self.nodes.len() {
                     if !self.nodes[j].active {
                         continue;
+                    }
+                    if timing_enabled {
+                        timings.repulsion_pairs_considered += 1;
                     }
                     // Mirror the FR-grid variant's effective cutoff:
                     // only compute repulsion for pairs that are within `repulsionRange` along both axes.
@@ -1102,6 +1153,9 @@ impl SimGraph {
                     if dist_x > repulsion_range || dist_y > repulsion_range {
                         continue;
                     }
+                    if timing_enabled {
+                        timings.repulsion_pairs_in_range += 1;
+                    }
 
                     let (rfx, rfy) = self.calc_repulsion_force(i, j, repulsion_constant);
                     self.nodes[i].repulsion_fx += rfx;
@@ -1110,8 +1164,12 @@ impl SimGraph {
                     self.nodes[j].repulsion_fy -= rfy;
                 }
             }
+            if let Some(s) = repulsion_start {
+                timings.repulsion_forces += s.elapsed();
+            }
 
             // Gravitation (only for disconnected graphs).
+            let gravitation_start = timing_enabled.then(std::time::Instant::now);
             if !nodes_with_gravity.is_empty() {
                 if let Some((owner_center_x, owner_center_y, estimated_size)) =
                     self.gravitation_context(gravity_range_factor)
@@ -1132,8 +1190,12 @@ impl SimGraph {
                     }
                 }
             }
+            if let Some(s) = gravitation_start {
+                timings.gravitation_forces += s.elapsed();
+            }
 
             // Move nodes
+            let move_start = timing_enabled.then(std::time::Instant::now);
             for n in &mut self.nodes {
                 if !n.active {
                     continue;
@@ -1162,8 +1224,29 @@ impl SimGraph {
                 n.gravitation_fx = 0.0;
                 n.gravitation_fy = 0.0;
             }
+            if let Some(s) = move_start {
+                timings.move_nodes += s.elapsed();
+            }
 
             last_total_displacement = total_displacement;
+        }
+
+        if let Some(s) = total_start {
+            timings.total = s.elapsed();
+            eprintln!(
+                "[manatee-cose-spring] total={:?} iters={} gravity_select={:?} update_grid={:?} spring={:?} repulsion={:?} gravitation={:?} move={:?} spring_edges={} repulsion_pairs={} repulsion_in_range={}",
+                timings.total,
+                timings.iterations,
+                timings.nodes_to_apply_gravitation,
+                timings.update_grid,
+                timings.spring_forces,
+                timings.repulsion_forces,
+                timings.gravitation_forces,
+                timings.move_nodes,
+                timings.active_edges_spring,
+                timings.repulsion_pairs_considered,
+                timings.repulsion_pairs_in_range,
+            );
         }
     }
 
@@ -1352,174 +1435,27 @@ fn rect_intersection_points(a: &SimNode, b: &SimNode) -> (f64, f64, f64, f64, bo
         return (p1x, p1y, p2x, p2y, true);
     }
 
-    let top_left_ax = a.left;
-    let top_left_ay = a.top;
-    let top_right_ax = a.right();
-    let bottom_left_ax = a.left;
-    let bottom_left_ay = a.bottom();
-    let bottom_right_ax = a.right();
-    let half_width_a = a.half_w();
-    let half_height_a = a.half_h();
-
-    let top_left_bx = b.left;
-    let top_left_by = b.top;
-    let top_right_bx = b.right();
-    let bottom_left_bx = b.left;
-    let bottom_left_by = b.bottom();
-    let bottom_right_bx = b.right();
-    let half_width_b = b.half_w();
-    let half_height_b = b.half_h();
-
-    // line is vertical
-    if p1x == p2x {
-        if p1y > p2y {
-            return (p1x, top_left_ay, p2x, bottom_left_by, false);
-        } else if p1y < p2y {
-            return (p1x, bottom_left_ay, p2x, top_left_by, false);
-        }
+    let dx = p2x - p1x;
+    let dy = p2y - p1y;
+    if dx == 0.0 && dy == 0.0 {
         return (p1x, p1y, p2x, p2y, false);
     }
 
-    // line is horizontal
-    if p1y == p2y {
-        if p1x > p2x {
-            return (top_left_ax, p1y, top_right_bx, p2y, false);
-        } else if p1x < p2x {
-            return (top_right_ax, p1y, top_left_bx, p2y, false);
+    #[inline]
+    fn clip_from_center(cx: f64, cy: f64, dx: f64, dy: f64, hw: f64, hh: f64) -> (f64, f64) {
+        if hw == 0.0 || hh == 0.0 {
+            return (cx, cy);
         }
-        return (p1x, p1y, p2x, p2y, false);
+        let denom = (dx.abs() / hw).max(dy.abs() / hh);
+        if denom == 0.0 {
+            return (cx, cy);
+        }
+        let t = 1.0 / denom;
+        (cx + dx * t, cy + dy * t)
     }
 
-    let slope_a = a.height / a.width;
-    let slope_b = b.height / b.width;
-    let slope_prime = (p2y - p1y) / (p2x - p1x);
-
-    let mut ax = 0.0;
-    let mut ay = 0.0;
-    let mut bx = 0.0;
-    let mut by = 0.0;
-    let mut clip_point_a_found = false;
-    let mut clip_point_b_found = false;
-
-    // determine whether clipping point is the corner of nodeA
-    if (-slope_a) == slope_prime {
-        if p1x > p2x {
-            ax = bottom_left_ax;
-            ay = bottom_left_ay;
-            clip_point_a_found = true;
-        } else {
-            ax = top_right_ax;
-            ay = top_left_ay;
-            clip_point_a_found = true;
-        }
-    } else if slope_a == slope_prime {
-        if p1x > p2x {
-            ax = top_left_ax;
-            ay = top_left_ay;
-            clip_point_a_found = true;
-        } else {
-            ax = bottom_right_ax;
-            ay = bottom_left_ay;
-            clip_point_a_found = true;
-        }
-    }
-
-    // determine whether clipping point is the corner of nodeB
-    if (-slope_b) == slope_prime {
-        if p2x > p1x {
-            bx = bottom_left_bx;
-            by = bottom_left_by;
-            clip_point_b_found = true;
-        } else {
-            bx = top_right_bx;
-            by = top_left_by;
-            clip_point_b_found = true;
-        }
-    } else if slope_b == slope_prime {
-        if p2x > p1x {
-            bx = top_left_bx;
-            by = top_left_by;
-            clip_point_b_found = true;
-        } else {
-            bx = bottom_right_bx;
-            by = bottom_left_by;
-            clip_point_b_found = true;
-        }
-    }
-
-    if clip_point_a_found && clip_point_b_found {
-        return (ax, ay, bx, by, false);
-    }
-
-    let get_cardinal_direction = |slope: f64, slope_prime: f64, line: i32| -> i32 {
-        if slope > slope_prime {
-            line
-        } else {
-            1 + (line % 4)
-        }
-    };
-
-    let cardinal_direction_a: i32;
-    let cardinal_direction_b: i32;
-    if p1x > p2x {
-        if p1y > p2y {
-            cardinal_direction_a = get_cardinal_direction(slope_a, slope_prime, 4);
-            cardinal_direction_b = get_cardinal_direction(slope_b, slope_prime, 2);
-        } else {
-            cardinal_direction_a = get_cardinal_direction(-slope_a, slope_prime, 3);
-            cardinal_direction_b = get_cardinal_direction(-slope_b, slope_prime, 1);
-        }
-    } else if p1y > p2y {
-        cardinal_direction_a = get_cardinal_direction(-slope_a, slope_prime, 1);
-        cardinal_direction_b = get_cardinal_direction(-slope_b, slope_prime, 3);
-    } else {
-        cardinal_direction_a = get_cardinal_direction(slope_a, slope_prime, 2);
-        cardinal_direction_b = get_cardinal_direction(slope_b, slope_prime, 4);
-    }
-
-    // calculate clipping Point if it is not found before
-    if !clip_point_a_found {
-        match cardinal_direction_a {
-            1 => {
-                ay = top_left_ay;
-                ax = p1x + (-half_height_a) / slope_prime;
-            }
-            2 => {
-                ax = bottom_right_ax;
-                ay = p1y + half_width_a * slope_prime;
-            }
-            3 => {
-                ay = bottom_left_ay;
-                ax = p1x + half_height_a / slope_prime;
-            }
-            _ => {
-                ax = bottom_left_ax;
-                ay = p1y + (-half_width_a) * slope_prime;
-            }
-        }
-    }
-
-    if !clip_point_b_found {
-        match cardinal_direction_b {
-            1 => {
-                by = top_left_by;
-                bx = p2x + (-half_height_b) / slope_prime;
-            }
-            2 => {
-                bx = bottom_right_bx;
-                by = p2y + half_width_b * slope_prime;
-            }
-            3 => {
-                by = bottom_left_by;
-                bx = p2x + half_height_b / slope_prime;
-            }
-            _ => {
-                bx = bottom_left_bx;
-                by = p2y + (-half_width_b) * slope_prime;
-            }
-        }
-    }
-
+    let (ax, ay) = clip_from_center(p1x, p1y, dx, dy, a.width / 2.0, a.height / 2.0);
+    let (bx, by) = clip_from_center(p2x, p2y, -dx, -dy, b.width / 2.0, b.height / 2.0);
     (ax, ay, bx, by, false)
 }
 
