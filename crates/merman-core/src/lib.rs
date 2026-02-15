@@ -386,6 +386,8 @@ impl Engine {
                 crate::diagrams::flowchart::parse_flowchart_model_for_render(&code, &meta)
                     .map(RenderSemanticModel::Flowchart)
             }
+            "classDiagram" | "class" => crate::diagrams::class::parse_class_typed(&code, &meta)
+                .map(RenderSemanticModel::Class),
             "architecture" => {
                 crate::diagrams::architecture::parse_architecture_model_for_render(&code, &meta)
                     .map(RenderSemanticModel::Architecture)
@@ -446,6 +448,14 @@ impl Engine {
             }
             RenderSemanticModel::Mindmap(_) => {}
             RenderSemanticModel::Flowchart(_) => {}
+            RenderSemanticModel::Class(v) => {
+                if let Some(s) = v.acc_title.as_deref() {
+                    v.acc_title = Some(common_db::sanitize_acc_title(s, &meta.effective_config));
+                }
+                if let Some(s) = v.acc_descr.as_deref() {
+                    v.acc_descr = Some(common_db::sanitize_acc_descr(s, &meta.effective_config));
+                }
+            }
             RenderSemanticModel::Architecture(v) => {
                 if let Some(s) = v.title.as_deref() {
                     v.title = Some(crate::sanitize::sanitize_text(s, &meta.effective_config));
@@ -467,6 +477,7 @@ impl Engine {
                 RenderSemanticModel::Mindmap(_) => "mindmap",
                 RenderSemanticModel::Flowchart(_) => "flowchart",
                 RenderSemanticModel::Architecture(_) => "architecture",
+                RenderSemanticModel::Class(_) => "class",
             };
             eprintln!(
                 "[parse-render-timing] diagram={} model={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",
@@ -525,6 +536,8 @@ impl Engine {
                 crate::diagrams::flowchart::parse_flowchart_model_for_render(&code, &meta)
                     .map(RenderSemanticModel::Flowchart)
             }
+            "classDiagram" | "class" => crate::diagrams::class::parse_class_typed(&code, &meta)
+                .map(RenderSemanticModel::Class),
             "architecture" => {
                 crate::diagrams::architecture::parse_architecture_model_for_render(&code, &meta)
                     .map(RenderSemanticModel::Architecture)
@@ -585,6 +598,14 @@ impl Engine {
             }
             RenderSemanticModel::Mindmap(_) => {}
             RenderSemanticModel::Flowchart(_) => {}
+            RenderSemanticModel::Class(v) => {
+                if let Some(s) = v.acc_title.as_deref() {
+                    v.acc_title = Some(common_db::sanitize_acc_title(s, &meta.effective_config));
+                }
+                if let Some(s) = v.acc_descr.as_deref() {
+                    v.acc_descr = Some(common_db::sanitize_acc_descr(s, &meta.effective_config));
+                }
+            }
             RenderSemanticModel::Architecture(v) => {
                 if let Some(s) = v.title.as_deref() {
                     v.title = Some(crate::sanitize::sanitize_text(s, &meta.effective_config));
@@ -606,6 +627,7 @@ impl Engine {
                 RenderSemanticModel::Mindmap(_) => "mindmap",
                 RenderSemanticModel::Flowchart(_) => "flowchart",
                 RenderSemanticModel::Architecture(_) => "architecture",
+                RenderSemanticModel::Class(_) => "class",
             };
             eprintln!(
                 "[parse-render-timing] diagram={} model={} total={:?} preprocess={:?} parse={:?} sanitize={:?} input_bytes={}",

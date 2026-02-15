@@ -3,7 +3,6 @@
 use super::timing::{RenderTimings, TimingGuard, render_timing_enabled};
 use super::*;
 use crate::entities::decode_entities_minimal;
-use indexmap::IndexMap;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 // Class diagram SVG renderer implementation (split from parity.rs).
@@ -150,100 +149,11 @@ pub(super) fn render_class_diagram_v2_debug_svg(
     out
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct ClassSvgModel {
-    #[serde(rename = "accTitle")]
-    acc_title: Option<String>,
-    #[serde(rename = "accDescr")]
-    acc_descr: Option<String>,
-    #[allow(dead_code)]
-    direction: String,
-    classes: IndexMap<String, ClassSvgNode>,
-    #[serde(default)]
-    relations: Vec<ClassSvgRelation>,
-    #[serde(default)]
-    notes: Vec<ClassSvgNote>,
-    #[serde(default)]
-    interfaces: Vec<ClassSvgInterface>,
-    #[serde(default)]
-    namespaces: IndexMap<String, serde_json::Value>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ClassSvgNode {
-    id: String,
-    #[serde(rename = "domId")]
-    dom_id: String,
-    #[serde(rename = "cssClasses")]
-    css_classes: String,
-    #[allow(dead_code)]
-    label: String,
-    text: String,
-    #[serde(default)]
-    annotations: Vec<String>,
-    #[serde(default)]
-    members: Vec<ClassSvgMember>,
-    #[serde(default)]
-    methods: Vec<ClassSvgMember>,
-    #[serde(default)]
-    styles: Vec<String>,
-    #[serde(default)]
-    link: Option<String>,
-    #[serde(rename = "linkTarget")]
-    #[serde(default)]
-    #[allow(dead_code)]
-    link_target: Option<String>,
-    #[serde(default)]
-    tooltip: Option<String>,
-    #[serde(rename = "haveCallback")]
-    #[serde(default)]
-    have_callback: bool,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ClassSvgMember {
-    #[serde(rename = "displayText")]
-    display_text: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ClassSvgRelation {
-    id: String,
-    id1: String,
-    id2: String,
-    #[serde(rename = "relationTitle1")]
-    relation_title_1: String,
-    #[serde(rename = "relationTitle2")]
-    relation_title_2: String,
-    title: String,
-    relation: ClassSvgRelationShape,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ClassSvgRelationShape {
-    type1: i32,
-    type2: i32,
-    #[serde(rename = "lineType")]
-    line_type: i32,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ClassSvgNote {
-    id: String,
-    text: String,
-    #[serde(rename = "class")]
-    #[allow(dead_code)]
-    class_id: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ClassSvgInterface {
-    id: String,
-    label: String,
-    #[serde(rename = "classId")]
-    #[allow(dead_code)]
-    class_id: String,
-}
+type ClassSvgModel = merman_core::models::class_diagram::ClassDiagram;
+type ClassSvgNode = merman_core::models::class_diagram::ClassNode;
+type ClassSvgRelation = merman_core::models::class_diagram::ClassRelation;
+type ClassSvgNote = merman_core::models::class_diagram::ClassNote;
+type ClassSvgInterface = merman_core::models::class_diagram::ClassInterface;
 
 fn class_marker_name(ty: i32, is_start: bool) -> Option<&'static str> {
     // Mermaid class diagram relationType constants.
@@ -698,6 +608,25 @@ pub(super) fn render_class_diagram_v2_svg(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
+    let model: ClassSvgModel = crate::json::from_value_ref(semantic)?;
+    render_class_diagram_v2_svg_model(
+        layout,
+        &model,
+        effective_config,
+        diagram_title,
+        measurer,
+        options,
+    )
+}
+
+pub(super) fn render_class_diagram_v2_svg_model(
+    layout: &ClassDiagramV2Layout,
+    model: &ClassSvgModel,
+    effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
     let timing_enabled = render_timing_enabled();
     let total_start = timing_enabled.then(std::time::Instant::now);
     let mut timings = RenderTimings::default();
@@ -708,10 +637,6 @@ pub(super) fn render_class_diagram_v2_svg(
         path_bounds_calls: usize,
     }
     let mut detail = ClassRenderDetails::default();
-
-    let deser_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.deserialize_model));
-    let model: ClassSvgModel = crate::json::from_value_ref(semantic)?;
-    drop(deser_guard);
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let aria_roledescription = options.aria_roledescription.as_deref().unwrap_or("class");
@@ -956,9 +881,7 @@ pub(super) fn render_class_diagram_v2_svg(
             .namespaces
             .iter()
             .next()
-            .and_then(|(_, ns)| ns.get("classIds"))
-            .and_then(|v| v.as_array())
-            .is_some_and(|ids| ids.len() == model.classes.len());
+            .is_some_and(|(_, ns)| ns.class_ids.len() == model.classes.len());
     let nodes_root_dx = if wrap_nodes_root {
         -GRAPH_MARGIN_PX
     } else {

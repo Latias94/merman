@@ -299,6 +299,13 @@ pub fn layout_parsed_render_layout_only(
                 options.text_measurer.as_ref(),
             )?),
         ),
+        (RenderSemanticModel::Class(model), "classDiagram" | "class") => Ok(
+            LayoutDiagram::ClassDiagramV2(class::layout_class_diagram_v2_typed(
+                model,
+                effective_config,
+                options.text_measurer.as_ref(),
+            )?),
+        ),
         (RenderSemanticModel::Json(semantic), _) => {
             let layout = match diagram_type {
                 "error" => LayoutDiagram::ErrorDiagram(error::layout_error_diagram(

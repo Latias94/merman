@@ -7,91 +7,11 @@ use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use indexmap::IndexMap;
-use serde::Deserialize;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-#[derive(Debug, Clone, Deserialize)]
-struct ClassDiagramModel {
-    pub direction: String,
-    pub classes: IndexMap<String, ClassNode>,
-    #[serde(default)]
-    pub relations: Vec<ClassRelation>,
-    #[serde(default)]
-    pub notes: Vec<ClassNote>,
-    #[serde(default)]
-    pub interfaces: Vec<ClassInterface>,
-    #[serde(default)]
-    pub namespaces: IndexMap<String, Namespace>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ClassNode {
-    pub id: String,
-    pub text: String,
-    #[serde(default)]
-    pub annotations: Vec<String>,
-    #[serde(default)]
-    pub members: Vec<ClassMember>,
-    #[serde(default)]
-    pub methods: Vec<ClassMember>,
-    #[serde(default)]
-    pub parent: Option<String>,
-    #[serde(default)]
-    pub r#type: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ClassMember {
-    #[serde(rename = "displayText")]
-    pub display_text: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ClassRelation {
-    pub id: String,
-    pub id1: String,
-    pub id2: String,
-    #[serde(rename = "relationTitle1")]
-    pub relation_title_1: String,
-    #[serde(rename = "relationTitle2")]
-    pub relation_title_2: String,
-    pub title: String,
-    pub relation: RelationShape,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct RelationShape {
-    pub type1: i32,
-    pub type2: i32,
-    #[serde(rename = "lineType")]
-    #[allow(dead_code)]
-    pub line_type: i32,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ClassNote {
-    pub id: String,
-    #[serde(rename = "class")]
-    pub class_id: Option<String>,
-    pub text: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ClassInterface {
-    pub id: String,
-    pub label: String,
-    #[serde(rename = "classId")]
-    pub class_id: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct Namespace {
-    #[allow(dead_code)]
-    pub id: String,
-    #[serde(rename = "classIds")]
-    pub class_ids: Vec<String>,
-}
+type ClassDiagramModel = merman_core::models::class_diagram::ClassDiagram;
+type ClassNode = merman_core::models::class_diagram::ClassNode;
 
 fn json_f64(v: &Value) -> Option<f64> {
     v.as_f64()
@@ -754,7 +674,7 @@ fn layout_prepared(prepared: &mut PreparedGraph) -> Result<(LayoutFragments, Rec
         // The extracted subgraph includes its own copy of the cluster root node so bounds match
         // Mermaid's `updateNodeBounds(...)`. Do not merge that node back into the parent layout,
         // otherwise we'd overwrite the placeholder position computed by the parent graph layout.
-        let _ = sub_frag.nodes.remove(&cluster_id);
+        let _ = sub_frag.nodes.swap_remove(&cluster_id);
 
         fragments.nodes.extend(sub_frag.nodes);
         fragments.edges.extend(sub_frag.edges);
@@ -988,7 +908,7 @@ fn class_box_dimensions(
         rect_h -= padding;
     }
 
-    if node.r#type == "group" {
+    if node.type_param == "group" {
         rect_w = rect_w.max(500.0);
     }
 
@@ -1040,7 +960,14 @@ pub fn layout_class_diagram_v2(
     measurer: &dyn TextMeasurer,
 ) -> Result<ClassDiagramV2Layout> {
     let model: ClassDiagramModel = crate::json::from_value_ref(semantic)?;
+    layout_class_diagram_v2_typed(&model, effective_config, measurer)
+}
 
+pub fn layout_class_diagram_v2_typed(
+    model: &ClassDiagramModel,
+    effective_config: &Value,
+    measurer: &dyn TextMeasurer,
+) -> Result<ClassDiagramV2Layout> {
     let diagram_dir = rank_dir_from(&model.direction);
     let conf = effective_config
         .get("flowchart")
