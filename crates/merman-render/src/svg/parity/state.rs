@@ -121,6 +121,25 @@ pub(super) fn render_state_diagram_v2_svg(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
+    let model: StateSvgModel = crate::json::from_value_ref(semantic)?;
+    render_state_diagram_v2_svg_model(
+        layout,
+        &model,
+        effective_config,
+        diagram_title,
+        measurer,
+        options,
+    )
+}
+
+pub(super) fn render_state_diagram_v2_svg_model(
+    layout: &StateDiagramV2Layout,
+    model: &StateSvgModel,
+    effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
     let timing_enabled = super::timing::render_timing_enabled();
     let mut timings = super::timing::RenderTimings::default();
     let total_start = std::time::Instant::now();
@@ -130,11 +149,6 @@ pub(super) fn render_state_diagram_v2_svg(
     ) -> Option<super::timing::TimingGuard<'a>> {
         enabled.then(|| super::timing::TimingGuard::new(dst))
     }
-
-    let model: StateSvgModel = {
-        let _g = section(timing_enabled, &mut timings.deserialize_model);
-        crate::json::from_value_ref(semantic)?
-    };
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
 

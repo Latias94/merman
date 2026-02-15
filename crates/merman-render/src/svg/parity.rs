@@ -395,11 +395,9 @@ pub fn render_layout_svg_parts_for_render_model(
             mindmap::render_mindmap_diagram_svg_model(layout, model, effective_config, options)
         }
         (LayoutDiagram::StateDiagramV2(layout), RenderSemanticModel::State(model)) => {
-            // TODO(perf): avoid `serde_json::Value` materialization by rendering directly from the typed model.
-            let semantic = serde_json::to_value(model).map_err(Error::Json)?;
-            render_state_diagram_v2_svg(
+            state::render_state_diagram_v2_svg_model(
                 layout,
-                &semantic,
+                model,
                 effective_config,
                 title,
                 measurer,
@@ -454,11 +452,9 @@ pub fn render_layout_svg_parts_for_render_model_with_config(
             )
         }
         (LayoutDiagram::StateDiagramV2(layout), RenderSemanticModel::State(model)) => {
-            // TODO(perf): avoid `serde_json::Value` materialization by rendering directly from the typed model.
-            let semantic = serde_json::to_value(model).map_err(Error::Json)?;
-            render_state_diagram_v2_svg(
+            state::render_state_diagram_v2_svg_model(
                 layout,
-                &semantic,
+                model,
                 effective_config.as_value(),
                 title,
                 measurer,
