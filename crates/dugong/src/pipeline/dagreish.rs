@@ -70,8 +70,26 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
         timings.self_edges_remove = s.elapsed();
     }
 
+    let mut has_compound_structure = false;
+    g.for_each_node(|id, _n| {
+        if g.parent(id).is_some() || g.children_iter(id).next().is_some() {
+            has_compound_structure = true;
+        }
+    });
+    let tiny_simple_chain = g.node_count() == 2 && g.edge_count() == 1 && !has_compound_structure;
+    let first_edge_pre = if tiny_simple_chain {
+        g.edges().next().cloned()
+    } else {
+        None
+    };
+
     let acyclic_start = timing_enabled.then(std::time::Instant::now);
-    acyclic::run(g);
+    let ran_acyclic = if tiny_simple_chain || g.edge_count() <= 1 {
+        false
+    } else {
+        acyclic::run(g);
+        true
+    };
     if let Some(s) = acyclic_start {
         timings.acyclic = s.elapsed();
     }
@@ -81,9 +99,16 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     // subgraphs), preventing network-simplex from panicking on disconnected inputs.
     if g.options().compound {
         let nesting_start = timing_enabled.then(std::time::Instant::now);
-        nesting_graph::run(g);
+        let ran_nesting = if tiny_simple_chain {
+            false
+        } else {
+            nesting_graph::run(g);
+            true
+        };
         if let Some(s) = nesting_start {
-            timings.nesting_run = s.elapsed();
+            if ran_nesting {
+                timings.nesting_run = s.elapsed();
+            }
         }
     }
 
@@ -93,22 +118,41 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     // `nesting_graph::run` materializes border nodes and nesting edges; those border nodes are
     // leaf nodes and remain in the non-compound graph, providing the constraints Dagre expects.
     let rank_start = timing_enabled.then(std::time::Instant::now);
-    let mut rank_graph = util::as_non_compound_graph(g);
-    rank::rank(&mut rank_graph);
-    // Mirror Dagre's JS behavior: `rank(asNonCompoundGraph(g))` mutates the same label objects
-    // for leaf nodes, but does not propagate ranks to compound nodes (nodes with children).
-    //
-    // In Rust we don't share label objects between graphs, so we copy ranks explicitly for leaf
-    // nodes only.
-    for v in g.node_ids() {
-        if !g.children(&v).is_empty() {
-            continue;
+    if tiny_simple_chain {
+        // For the smallest flowcharts (e.g. `A --> B`) network-simplex + ordering overhead
+        // dominates total runtime. A deterministic direct rank assignment keeps behavior
+        // identical for these cases while cutting fixed-cost work.
+        g.for_each_node_mut(|_id, n| n.rank = Some(0));
+        if let Some(ek) = first_edge_pre.clone() {
+            let minlen = g
+                .edge_by_key(&ek)
+                .map(|e| e.minlen.max(1) as i32)
+                .unwrap_or(1);
+            if let Some(n) = g.node_mut(&ek.v) {
+                n.rank = Some(0);
+            }
+            if let Some(n) = g.node_mut(&ek.w) {
+                n.rank = Some(minlen);
+            }
         }
-        let Some(rank) = rank_graph.node(&v).and_then(|n| n.rank) else {
-            continue;
-        };
-        if let Some(n) = g.node_mut(&v) {
-            n.rank = Some(rank);
+    } else {
+        let mut rank_graph = util::as_non_compound_graph(g);
+        rank::rank(&mut rank_graph);
+        // Mirror Dagre's JS behavior: `rank(asNonCompoundGraph(g))` mutates the same label objects
+        // for leaf nodes, but does not propagate ranks to compound nodes (nodes with children).
+        //
+        // In Rust we don't share label objects between graphs, so we copy ranks explicitly for leaf
+        // nodes only.
+        for v in g.node_ids() {
+            if g.children_iter(&v).next().is_some() {
+                continue;
+            }
+            let Some(rank) = rank_graph.node(&v).and_then(|n| n.rank) else {
+                continue;
+            };
+            if let Some(n) = g.node_mut(&v) {
+                n.rank = Some(rank);
+            }
         }
     }
     if let Some(s) = rank_start {
@@ -153,7 +197,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     util::remove_empty_ranks(g);
 
     // Match upstream Dagre: `nestingGraph.cleanup` must happen before ordering/positioning.
-    if g.options().compound {
+    if g.options().compound && !tiny_simple_chain {
         nesting_graph::cleanup(g);
     }
 
@@ -208,7 +252,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     // Dagre uses `assignRankMinMax` to annotate compound nodes with their rank span, derived from
     // the `nestingGraph` border top/bottom nodes. This rank span is later used by subgraph
     // ordering and border segment generation.
-    if g.options().compound {
+    if g.options().compound && !tiny_simple_chain {
         let span_start = timing_enabled.then(std::time::Instant::now);
         let node_ids = g.node_ids();
         for v in node_ids {
@@ -239,7 +283,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     if let Some(s) = normalize_run_start {
         timings.normalize_run = s.elapsed();
     }
-    if g.options().compound {
+    if g.options().compound && !tiny_simple_chain {
         let border_start = timing_enabled.then(std::time::Instant::now);
         parent_dummy_chains::parent_dummy_chains(g);
         add_border_segments::add_border_segments(g);
@@ -248,12 +292,31 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
         }
     }
     let order_start = timing_enabled.then(std::time::Instant::now);
-    order::order(
-        g,
-        order::OrderOptions {
-            disable_optimal_order_heuristic: false,
-        },
-    );
+    if tiny_simple_chain {
+        let mut nodes: Vec<(i32, String)> = Vec::with_capacity(g.node_count());
+        g.for_each_node(|id, n| nodes.push((n.rank.unwrap_or(0), id.to_string())));
+        nodes.sort_by(|a, b| (a.0, a.1.as_str()).cmp(&(b.0, b.1.as_str())));
+
+        let mut cur_rank: Option<i32> = None;
+        let mut next_order: usize = 0;
+        for (rank, id) in nodes {
+            if cur_rank != Some(rank) {
+                cur_rank = Some(rank);
+                next_order = 0;
+            }
+            if let Some(n) = g.node_mut(&id) {
+                n.order = Some(next_order);
+            }
+            next_order += 1;
+        }
+    } else {
+        order::order(
+            g,
+            order::OrderOptions {
+                disable_optimal_order_heuristic: false,
+            },
+        );
+    }
     if let Some(s) = order_start {
         timings.order = s.elapsed();
     }
@@ -317,7 +380,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     // Match upstream Dagre: `removeBorderNodes` runs after positioning and before `normalize.undo`.
     // It sets compound-node geometry (x/y/width/height) from border nodes, then removes all
     // border dummy nodes.
-    if g.options().compound {
+    if g.options().compound && !tiny_simple_chain {
         let remove_border_start = timing_enabled.then(std::time::Instant::now);
         super::compound::remove_border_nodes(g);
         if let Some(s) = remove_border_start {
@@ -476,7 +539,9 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     }
 
     let acyclic_undo_start = timing_enabled.then(std::time::Instant::now);
-    acyclic::undo(g);
+    if ran_acyclic {
+        acyclic::undo(g);
+    }
     if let Some(s) = acyclic_undo_start {
         timings.acyclic_undo = s.elapsed();
     }
