@@ -151,8 +151,13 @@ where
     edge_len: usize,
     edge_index: HashMap<EdgeKey, usize>,
 
-    parent: HashMap<String, String>,
-    children: HashMap<String, Vec<String>>,
+    // Compound graph parent/children relationships.
+    //
+    // Dagre-style algorithms touch `parent(...)` and `children_iter(...)` frequently; storing
+    // these relationships by node index avoids repeated string hashing and avoids allocating
+    // duplicate `String`s when setting parent links between already-present nodes.
+    parent_ix: Vec<Option<usize>>,
+    children_ix: Vec<Vec<usize>>,
 
     // Many Dagre algorithms call `predecessors` / `successors` / `in_edges` / `out_edges`
     // repeatedly. Scanning `self.edges` each time is O(E) per query and dominates runtime
@@ -174,9 +179,25 @@ where
     E: Default + 'static,
     G: Default,
 {
+    fn insert_node_entry(&mut self, id: String, label: N) -> usize {
+        self.invalidate_adj();
+        let idx = self.nodes.len();
+        self.nodes.push(Some(NodeEntry {
+            id: id.clone(),
+            label,
+        }));
+        self.node_len += 1;
+        self.node_index.insert(id, idx);
+        self.parent_ix.push(None);
+        self.children_ix.push(Vec::new());
+        idx
+    }
+
     fn trim_trailing_node_tombstones(&mut self) {
         while matches!(self.nodes.last(), Some(None)) {
             self.nodes.pop();
+            self.parent_ix.pop();
+            self.children_ix.pop();
         }
     }
 
@@ -224,12 +245,14 @@ where
             self.edge_index.clear();
             self.edge_len = 0;
 
-            self.parent.clear();
-            self.children.clear();
+            self.parent_ix.clear();
+            self.children_ix.clear();
             return;
         }
 
         let old_nodes = std::mem::take(&mut self.nodes);
+        let old_parent_ix = std::mem::take(&mut self.parent_ix);
+        let old_children_ix = std::mem::take(&mut self.children_ix);
         let mut node_remap: Vec<Option<usize>> = vec![None; old_nodes.len()];
 
         let mut new_nodes: Vec<Option<NodeEntry<N>>> = Vec::with_capacity(self.node_len);
@@ -247,6 +270,54 @@ where
         self.nodes = new_nodes;
         self.node_index = new_node_index;
         self.node_len = self.nodes.len();
+
+        self.parent_ix = vec![None; self.nodes.len()];
+        self.children_ix = vec![Vec::new(); self.nodes.len()];
+        if self.options.compound {
+            for (old_parent, old_children) in old_children_ix.into_iter().enumerate() {
+                let Some(new_parent) = node_remap.get(old_parent).copied().flatten() else {
+                    continue;
+                };
+                let new_children_vec = self
+                    .children_ix
+                    .get_mut(new_parent)
+                    .expect("children_ix resized to node slots");
+                for old_child in old_children {
+                    let Some(new_child) = node_remap.get(old_child).copied().flatten() else {
+                        continue;
+                    };
+                    new_children_vec.push(new_child);
+                    if let Some(slot) = self.parent_ix.get_mut(new_child) {
+                        *slot = Some(new_parent);
+                    }
+                }
+            }
+
+            // If the old representation had stray `parent_ix` links without a corresponding child
+            // entry, keep the best-effort behavior by remapping those as well.
+            for (old_child, old_parent) in old_parent_ix.into_iter().enumerate() {
+                let Some(old_parent) = old_parent else {
+                    continue;
+                };
+                let Some(new_child) = node_remap.get(old_child).copied().flatten() else {
+                    continue;
+                };
+                let Some(new_parent) = node_remap.get(old_parent).copied().flatten() else {
+                    continue;
+                };
+                if self.parent_ix.get(new_child).copied().flatten().is_some() {
+                    continue;
+                }
+                if let Some(slot) = self.parent_ix.get_mut(new_child) {
+                    *slot = Some(new_parent);
+                }
+                if let Some(ch) = self.children_ix.get_mut(new_parent) {
+                    if !ch.iter().any(|&c| c == new_child) {
+                        ch.push(new_child);
+                    }
+                }
+            }
+        }
 
         let old_edges = std::mem::take(&mut self.edges);
         let mut new_edges: Vec<Option<EdgeEntry<E>>> = Vec::with_capacity(self.edge_len);
@@ -464,8 +535,8 @@ where
             edges: Vec::new(),
             edge_len: 0,
             edge_index: HashMap::default(),
-            parent: HashMap::default(),
-            children: HashMap::default(),
+            parent_ix: Vec::new(),
+            children_ix: Vec::new(),
             directed_adj_gen: 0,
             directed_adj_cache: RefCell::new(None),
             undirected_adj_gen: 0,
@@ -483,8 +554,8 @@ where
         g.edges.reserve(edge_capacity);
         g.node_index.reserve(node_capacity);
         g.edge_index.reserve(edge_capacity);
-        g.parent.reserve(node_capacity);
-        g.children.reserve(node_capacity);
+        g.parent_ix.reserve(node_capacity);
+        g.children_ix.reserve(node_capacity);
         g
     }
 
@@ -597,14 +668,7 @@ where
             }
             return self;
         }
-        self.invalidate_adj();
-        let idx = self.nodes.len();
-        self.nodes.push(Some(NodeEntry {
-            id: id.clone(),
-            label,
-        }));
-        self.node_len += 1;
-        self.node_index.insert(id, idx);
+        let _ = self.insert_node_entry(id, label);
         self
     }
 
@@ -615,6 +679,14 @@ where
         }
         let label = (self.default_node_label)();
         self.set_node(id, label)
+    }
+
+    pub fn ensure_node_ref(&mut self, id: &str) -> &mut Self {
+        if self.node_index.contains_key(id) {
+            return self;
+        }
+        let label = (self.default_node_label)();
+        self.set_node(id.to_string(), label)
     }
 
     pub fn node(&self, id: &str) -> Option<&N> {
@@ -921,21 +993,29 @@ where
             }
         }
 
+        if self.options.compound {
+            // Remove parent link.
+            if let Some(prev_parent_ix) = self.parent_ix.get_mut(idx).and_then(|p| p.take()) {
+                if let Some(ch) = self.children_ix.get_mut(prev_parent_ix) {
+                    ch.retain(|&c| c != idx);
+                }
+            }
+
+            // Remove children links.
+            if let Some(ch) = self.children_ix.get_mut(idx) {
+                for &child_ix in ch.iter() {
+                    if let Some(slot) = self.parent_ix.get_mut(child_ix) {
+                        if *slot == Some(idx) {
+                            *slot = None;
+                        }
+                    }
+                }
+                ch.clear();
+            }
+        }
+
         self.trim_trailing_edge_tombstones();
         self.trim_trailing_node_tombstones();
-
-        // Remove parent links.
-        if let Some(parent) = self.parent.remove(id) {
-            if let Some(ch) = self.children.get_mut(&parent) {
-                ch.retain(|c| c != id);
-            }
-        }
-        // Remove children mappings.
-        if let Some(ch) = self.children.remove(id) {
-            for child in ch {
-                self.parent.remove(&child);
-            }
-        }
 
         true
     }
@@ -1373,14 +1453,58 @@ where
         let parent = parent.into();
         self.ensure_node(child.clone());
         self.ensure_node(parent.clone());
-        if let Some(prev) = self.parent.insert(child.clone(), parent.clone()) {
-            if let Some(ch) = self.children.get_mut(&prev) {
-                ch.retain(|c| c != &child);
+        let Some(&child_ix) = self.node_index.get(&child) else {
+            return self;
+        };
+        let Some(&parent_ix) = self.node_index.get(&parent) else {
+            return self;
+        };
+        self.set_parent_ix(child_ix, parent_ix);
+        self
+    }
+
+    pub fn set_parent_ref(&mut self, child: &str, parent: &str) -> &mut Self {
+        if !self.options.compound {
+            return self;
+        }
+        self.ensure_node_ref(child);
+        self.ensure_node_ref(parent);
+        let Some(&child_ix) = self.node_index.get(child) else {
+            return self;
+        };
+        let Some(&parent_ix) = self.node_index.get(parent) else {
+            return self;
+        };
+        self.set_parent_ix(child_ix, parent_ix);
+        self
+    }
+
+    pub fn set_parent_ix(&mut self, child_ix: usize, parent_ix: usize) -> &mut Self {
+        if !self.options.compound {
+            return self;
+        }
+        if child_ix >= self.nodes.len() || parent_ix >= self.nodes.len() {
+            return self;
+        }
+
+        let prev = self.parent_ix.get(child_ix).copied().flatten();
+        if prev == Some(parent_ix) {
+            return self;
+        }
+
+        if let Some(prev_parent_ix) = prev {
+            if let Some(ch) = self.children_ix.get_mut(prev_parent_ix) {
+                ch.retain(|&c| c != child_ix);
             }
         }
-        let entry = self.children.entry(parent).or_default();
-        if !entry.iter().any(|c| c == &child) {
-            entry.push(child);
+
+        if let Some(slot) = self.parent_ix.get_mut(child_ix) {
+            *slot = Some(parent_ix);
+        }
+        if let Some(ch) = self.children_ix.get_mut(parent_ix) {
+            if !ch.iter().any(|&c| c == child_ix) {
+                ch.push(child_ix);
+            }
         }
         self
     }
@@ -1389,42 +1513,71 @@ where
         if !self.options.compound {
             return self;
         }
-        if let Some(prev) = self.parent.remove(child) {
-            if let Some(ch) = self.children.get_mut(&prev) {
-                ch.retain(|c| c != child);
-            }
+        let Some(&child_ix) = self.node_index.get(child) else {
+            return self;
+        };
+        let Some(prev_parent_ix) = self.parent_ix.get(child_ix).copied().flatten() else {
+            return self;
+        };
+        if let Some(slot) = self.parent_ix.get_mut(child_ix) {
+            *slot = None;
+        }
+        if let Some(ch) = self.children_ix.get_mut(prev_parent_ix) {
+            ch.retain(|&c| c != child_ix);
         }
         self
     }
 
     pub fn parent(&self, child: &str) -> Option<&str> {
-        self.parent.get(child).map(|s| s.as_str())
+        if !self.options.compound {
+            return None;
+        }
+        let &child_ix = self.node_index.get(child)?;
+        let parent_ix = self.parent_ix.get(child_ix).copied().flatten()?;
+        self.node_id_by_ix(parent_ix)
     }
 
     pub fn children_iter<'a>(&'a self, parent: &str) -> impl Iterator<Item = &'a str> + 'a {
-        self.children
-            .get(parent)
-            .into_iter()
-            .flat_map(|v| v.iter().map(|s| s.as_str()))
+        let children = if self.options.compound {
+            self.node_index
+                .get(parent)
+                .and_then(|&p_ix| self.children_ix.get(p_ix))
+                .map(|v| v.as_slice())
+                .unwrap_or(&[])
+        } else {
+            &[]
+        };
+        let mut i = 0usize;
+        std::iter::from_fn(move || {
+            while i < children.len() {
+                let child_ix = children[i];
+                i += 1;
+                if let Some(id) = self.node_id_by_ix(child_ix) {
+                    return Some(id);
+                }
+            }
+            None
+        })
     }
 
     pub fn children(&self, parent: &str) -> Vec<&str> {
-        self.children
-            .get(parent)
-            .map(|v| v.iter().map(|s| s.as_str()).collect::<Vec<_>>())
-            .unwrap_or_default()
+        self.children_iter(parent).collect()
     }
 
     pub fn children_root(&self) -> Vec<&str> {
         if !self.options.compound {
             return self.nodes().collect();
         }
-        self.nodes
-            .iter()
-            .filter_map(|n| n.as_ref())
-            .filter(|n| !self.parent.contains_key(&n.id))
-            .map(|n| n.id.as_str())
-            .collect()
+        let mut out: Vec<&str> = Vec::new();
+        for (ix, n) in self.nodes.iter().enumerate() {
+            let Some(n) = n.as_ref() else {
+                continue;
+            };
+            if self.parent_ix.get(ix).copied().flatten().is_none() {
+                out.push(n.id.as_str());
+            }
+        }
+        out
     }
 
     pub fn sources(&self) -> Vec<&str> {
