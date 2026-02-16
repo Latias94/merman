@@ -1,0 +1,17 @@
+sequenceDiagram
+%% Source: repo-ref/mermaid-rs-renderer/docs/comparison_sources/sequence_oauth.mmd
+  participant U as User
+  participant App as Application
+  participant Auth as Auth Server
+  participant API as Resource API
+
+  U->>App: Click Login
+  App->>Auth: Authorization Request
+  Auth->>U: Login Page
+  U->>Auth: Enter Credentials
+  Auth->>App: Authorization Code
+  App->>Auth: Exchange Code for Token
+  Auth->>App: Access Token + Refresh Token
+  App->>API: API Request + Access Token
+  API->>App: Protected Resource
+  App->>U: Display Data

@@ -1,0 +1,125 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Client",
+      "Server",
+      "Database"
+    ],
+    "actors": {
+      "Client": {
+        "name": "Client",
+        "description": "Client",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Server": {
+        "name": "Server",
+        "description": "Server",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Database": {
+        "name": "Database",
+        "description": "Database",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "Client",
+        "to": "Server",
+        "message": "Request",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Server",
+        "to": "Database",
+        "message": "Query",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "Database",
+        "to": "Server",
+        "message": "Results",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "Server",
+        "to": "Client",
+        "message": "Response",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "Client",
+        "to": "Server",
+        "message": "Update",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "Server",
+        "to": "Database",
+        "message": "Write",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "Database",
+        "to": "Server",
+        "message": "Confirm",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "Server",
+        "to": "Client",
+        "message": "Success",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

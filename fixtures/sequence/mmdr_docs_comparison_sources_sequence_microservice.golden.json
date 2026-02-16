@@ -1,0 +1,206 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "GW",
+      "US",
+      "OS",
+      "PS",
+      "NS",
+      "Q"
+    ],
+    "actors": {
+      "GW": {
+        "name": "GW",
+        "description": "API Gateway",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "US": {
+        "name": "US",
+        "description": "User Service",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "OS": {
+        "name": "OS",
+        "description": "Order Service",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "PS": {
+        "name": "PS",
+        "description": "Payment Service",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "NS": {
+        "name": "NS",
+        "description": "Notification Service",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Q": {
+        "name": "Q",
+        "description": "Message Queue",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "GW",
+        "to": "US",
+        "message": "Authenticate",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "US",
+        "to": "GW",
+        "message": "Token Valid",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "GW",
+        "to": "OS",
+        "message": "Create Order",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "OS",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "OS",
+        "to": "PS",
+        "message": "Process Payment",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "PS",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "PS",
+        "to": "OS",
+        "message": "Payment OK",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "PS",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "OS",
+        "to": "Q",
+        "message": "Publish OrderCreated",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": "Q",
+        "to": "NS",
+        "message": "OrderCreated Event",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": "NS",
+        "to": "NS",
+        "message": "Send Email",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "11",
+        "from": "OS",
+        "to": "GW",
+        "message": "Order Confirmed",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "12",
+        "from": "OS",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "13",
+        "from": "GW",
+        "to": "GW",
+        "message": "Return Response",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

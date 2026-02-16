@@ -32,6 +32,8 @@ Source repo: `repo-ref/mermaid-rs-renderer` (see `repo-ref/REPOS.lock.json`).
 
 ### Sequence
 
+- `fixtures/sequence/mmdr_tests_sequence_sequence_basic.mmd`
+  - Source: `repo-ref/mermaid-rs-renderer/tests/fixtures/sequence/basic.mmd`
 - `fixtures/sequence/mmdr_tests_sequence_sequence_frames.mmd`
   - Source: `repo-ref/mermaid-rs-renderer/tests/fixtures/sequence/frames.mmd`
 
@@ -72,3 +74,43 @@ Some fixtures are derived from downstream issue reports and discussions.
 
 - `fixtures/flowchart/mmdr_issue_28_text_rendering.mmd`
 - `fixtures/flowchart/mmdr_issue_29_edge_label_distance.mmd`
+
+## mermaid-rs-renderer docs comparison sources
+
+Source repo: `repo-ref/mermaid-rs-renderer` (see `repo-ref/REPOS.lock.json`).
+
+These fixtures are used by mermaid-rs-renderer's own upstream-vs-downstream comparison docs and
+are parity-gated against Mermaid SVG baselines:
+
+### Sequence
+
+- `fixtures/sequence/mmdr_docs_comparison_sources_sequence_autonumber.mmd`
+  - Source: `repo-ref/mermaid-rs-renderer/docs/comparison_sources/sequence_autonumber.mmd`
+- `fixtures/sequence/mmdr_docs_comparison_sources_sequence_collab.mmd`
+  - Source: `repo-ref/mermaid-rs-renderer/docs/comparison_sources/sequence_collab.mmd`
+- `fixtures/sequence/mmdr_docs_comparison_sources_sequence_loops.mmd`
+  - Source: `repo-ref/mermaid-rs-renderer/docs/comparison_sources/sequence_loops.mmd`
+- `fixtures/sequence/mmdr_docs_comparison_sources_sequence_notes.mmd`
+  - Source: `repo-ref/mermaid-rs-renderer/docs/comparison_sources/sequence_notes.mmd`
+- `fixtures/sequence/mmdr_docs_comparison_sources_sequence_oauth.mmd`
+  - Source: `repo-ref/mermaid-rs-renderer/docs/comparison_sources/sequence_oauth.mmd`
+- `fixtures/sequence/mmdr_docs_comparison_sources_sequence_microservice.mmd`
+  - Source: `repo-ref/mermaid-rs-renderer/docs/comparison_sources/sequence_microservice.mmd`
+
+## mermaid-rs-renderer bench fixtures
+
+Source repo: `repo-ref/mermaid-rs-renderer` (see `repo-ref/REPOS.lock.json`).
+
+These fixtures are sourced from mermaid-rs-renderer's benchmark corpus and are useful for
+layout + rendering regressions at larger sizes.
+
+### Sequence
+
+- `fixtures/sequence/mmdr_benches_fixtures_sequence.mmd`
+  - Source: `repo-ref/mermaid-rs-renderer/benches/fixtures/sequence.mmd`
+- `fixtures/sequence/mmdr_benches_fixtures_sequence_medium.mmd`
+  - Source: `repo-ref/mermaid-rs-renderer/benches/fixtures/sequence_medium.mmd`
+- `fixtures/sequence/mmdr_benches_fixtures_expanded_sequence_long_labels.mmd`
+  - Source: `repo-ref/mermaid-rs-renderer/benches/fixtures/expanded/sequence_long_labels.mmd`
+- `fixtures/sequence/mmdr_benches_fixtures_expanded_sequence_frames_notes.mmd`
+  - Source: `repo-ref/mermaid-rs-renderer/benches/fixtures/expanded/sequence_frames_notes.mmd`

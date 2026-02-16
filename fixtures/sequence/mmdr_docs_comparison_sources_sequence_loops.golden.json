@@ -1,0 +1,188 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "C",
+      "S",
+      "DB"
+    ],
+    "actors": {
+      "C": {
+        "name": "C",
+        "description": "Client",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "S": {
+        "name": "S",
+        "description": "Server",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "DB": {
+        "name": "DB",
+        "description": "DB",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "C",
+        "to": "S",
+        "message": "Connect",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": null,
+        "to": null,
+        "message": "Health Check",
+        "wrap": false,
+        "type": 10,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "S",
+        "to": "DB",
+        "message": "Ping",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "DB",
+        "to": "S",
+        "message": "Pong",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 11,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": null,
+        "to": null,
+        "message": "Has Cache",
+        "wrap": false,
+        "type": 15,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "S",
+        "to": "C",
+        "message": "Cached Response",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 16,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": null,
+        "to": null,
+        "message": "Task A",
+        "wrap": false,
+        "type": 19,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": "S",
+        "to": "DB",
+        "message": "Query A",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": null,
+        "to": null,
+        "message": "Task B",
+        "wrap": false,
+        "type": 20,
+        "activate": false
+      },
+      {
+        "id": "11",
+        "from": "S",
+        "to": "DB",
+        "message": "Query B",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "12",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 21,
+        "activate": false
+      },
+      {
+        "id": "13",
+        "from": "DB",
+        "to": "S",
+        "message": "Results",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "14",
+        "from": "S",
+        "to": "C",
+        "message": "Response",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

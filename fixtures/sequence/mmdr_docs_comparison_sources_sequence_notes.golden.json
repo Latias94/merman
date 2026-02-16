@@ -1,0 +1,154 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "A",
+      "B",
+      "C"
+    ],
+    "actors": {
+      "A": {
+        "name": "A",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "B": {
+        "name": "B",
+        "description": "Bob",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "C": {
+        "name": "C",
+        "description": "Carol",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "A",
+        "to": "A",
+        "message": "Alice starts",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "1",
+        "from": "A",
+        "to": "B",
+        "message": "Hello Bob",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "A",
+        "to": "B",
+        "message": "Handshake",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "3",
+        "from": "B",
+        "to": "C",
+        "message": "Introduce Alice",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "C",
+        "to": "C",
+        "message": "Carol thinks",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 1
+      },
+      {
+        "id": "5",
+        "from": "C",
+        "to": "A",
+        "message": "Nice to meet you",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "A",
+        "to": "C",
+        "message": "All connected",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      }
+    ],
+    "notes": [
+      {
+        "actor": [
+          "A",
+          "A"
+        ],
+        "placement": 2,
+        "message": "Alice starts",
+        "wrap": false
+      },
+      {
+        "actor": [
+          "A",
+          "B"
+        ],
+        "placement": 2,
+        "message": "Handshake",
+        "wrap": false
+      },
+      {
+        "actor": "C",
+        "placement": 1,
+        "message": "Carol thinks",
+        "wrap": false
+      },
+      {
+        "actor": [
+          "A",
+          "C"
+        ],
+        "placement": 2,
+        "message": "All connected",
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

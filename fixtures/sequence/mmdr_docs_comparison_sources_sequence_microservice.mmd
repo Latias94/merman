@@ -1,0 +1,23 @@
+sequenceDiagram
+%% Source: repo-ref/mermaid-rs-renderer/docs/comparison_sources/sequence_microservice.mmd
+  participant GW as API Gateway
+  participant US as User Service
+  participant OS as Order Service
+  participant PS as Payment Service
+  participant NS as Notification Service
+  participant Q as Message Queue
+
+  GW->>US: Authenticate
+  US-->>GW: Token Valid
+  GW->>OS: Create Order
+  activate OS
+  OS->>PS: Process Payment
+  activate PS
+  PS-->>OS: Payment OK
+  deactivate PS
+  OS->>Q: Publish OrderCreated
+  Q-->>NS: OrderCreated Event
+  NS->>NS: Send Email
+  OS-->>GW: Order Confirmed
+  deactivate OS
+  GW-->>GW: Return Response

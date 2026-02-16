@@ -1,0 +1,152 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "U",
+      "App",
+      "Auth",
+      "API"
+    ],
+    "actors": {
+      "U": {
+        "name": "U",
+        "description": "User",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "App": {
+        "name": "App",
+        "description": "Application",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Auth": {
+        "name": "Auth",
+        "description": "Auth Server",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "API": {
+        "name": "API",
+        "description": "Resource API",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "U",
+        "to": "App",
+        "message": "Click Login",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "App",
+        "to": "Auth",
+        "message": "Authorization Request",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "Auth",
+        "to": "U",
+        "message": "Login Page",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "U",
+        "to": "Auth",
+        "message": "Enter Credentials",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "Auth",
+        "to": "App",
+        "message": "Authorization Code",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "App",
+        "to": "Auth",
+        "message": "Exchange Code for Token",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "Auth",
+        "to": "App",
+        "message": "Access Token + Refresh Token",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "App",
+        "to": "API",
+        "message": "API Request + Access Token",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "API",
+        "to": "App",
+        "message": "Protected Resource",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": "App",
+        "to": "U",
+        "message": "Display Data",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

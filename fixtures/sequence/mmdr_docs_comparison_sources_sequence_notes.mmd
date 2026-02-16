@@ -1,0 +1,13 @@
+sequenceDiagram
+%% Source: repo-ref/mermaid-rs-renderer/docs/comparison_sources/sequence_notes.mmd
+  participant A as Alice
+  participant B as Bob
+  participant C as Carol
+
+  Note over A: Alice starts
+  A->>B: Hello Bob
+  Note over A,B: Handshake
+  B->>C: Introduce Alice
+  Note right of C: Carol thinks
+  C-->>A: Nice to meet you
+  Note over A,C: All connected

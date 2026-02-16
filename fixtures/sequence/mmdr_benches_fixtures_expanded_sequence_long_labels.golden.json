@@ -1,0 +1,116 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Client",
+      "Gateway",
+      "Service",
+      "DB"
+    ],
+    "actors": {
+      "Client": {
+        "name": "Client",
+        "description": "Client",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Gateway": {
+        "name": "Gateway",
+        "description": "Gateway",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Service": {
+        "name": "Service",
+        "description": "Service",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "DB": {
+        "name": "DB",
+        "description": "DB",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "Client",
+        "to": "Gateway",
+        "message": "POST /v1/orders with idempotency-key and metadata",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Gateway",
+        "to": "Service",
+        "message": "forward order payload with trace headers",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "Service",
+        "to": "DB",
+        "message": "INSERT order, line items, and audit rows",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "DB",
+        "to": "Service",
+        "message": "commit success",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "Service",
+        "to": "Gateway",
+        "message": "return created response with order summary",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "Gateway",
+        "to": "Client",
+        "message": "201 Created + location header",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      }
+    ],
+    "notes": [],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

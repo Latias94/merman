@@ -1,0 +1,273 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "UI",
+      "API",
+      "Auth",
+      "DB",
+      "Queue",
+      "Worker"
+    ],
+    "actors": {
+      "UI": {
+        "name": "UI",
+        "description": "UI",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "API": {
+        "name": "API",
+        "description": "API",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Auth": {
+        "name": "Auth",
+        "description": "Auth",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "DB": {
+        "name": "DB",
+        "description": "DB",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Queue": {
+        "name": "Queue",
+        "description": "Queue",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "Worker": {
+        "name": "Worker",
+        "description": "Worker",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": null,
+        "to": null,
+        "message": {
+          "visible": true
+        },
+        "wrap": false,
+        "type": 26,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "UI",
+        "to": "API",
+        "message": "user opens dashboard",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "2",
+        "from": "UI",
+        "to": "API",
+        "message": "GET /v1/items",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "API",
+        "to": "Auth",
+        "message": "validate token",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": null,
+        "to": null,
+        "message": "Auth ok",
+        "wrap": false,
+        "type": 12,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "Auth",
+        "to": "API",
+        "message": "ok",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "API",
+        "to": "DB",
+        "message": "SELECT items",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "DB",
+        "to": "API",
+        "message": "rows",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "API",
+        "to": "UI",
+        "message": "200 payload",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": null,
+        "to": null,
+        "message": "Auth fail",
+        "wrap": false,
+        "type": 13,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": "Auth",
+        "to": "API",
+        "message": "denied",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "11",
+        "from": "API",
+        "to": "UI",
+        "message": "401 unauthorized",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "12",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 14,
+        "activate": false
+      },
+      {
+        "id": "13",
+        "from": null,
+        "to": null,
+        "message": "Async write",
+        "wrap": false,
+        "type": 19,
+        "activate": false
+      },
+      {
+        "id": "14",
+        "from": "API",
+        "to": "Queue",
+        "message": "enqueue audit job",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "15",
+        "from": "Worker",
+        "to": "Queue",
+        "message": "dequeue job",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "16",
+        "from": "Worker",
+        "to": "DB",
+        "message": "INSERT audit",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "17",
+        "from": null,
+        "to": null,
+        "message": "Cache",
+        "wrap": false,
+        "type": 20,
+        "activate": false
+      },
+      {
+        "id": "18",
+        "from": "API",
+        "to": "DB",
+        "message": "update cache summary",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "19",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 21,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": [
+          "UI",
+          "API"
+        ],
+        "placement": 2,
+        "message": "user opens dashboard",
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}
