@@ -71,6 +71,13 @@ If you also have the pinned Node toolchain under `tools/mermaid-cli` (used for p
 baselines), the script will additionally benchmark upstream Mermaid JS rendering via a single
 headless Chromium instance (puppeteer) and include it in the report.
 
+To install the local Node toolchain:
+
+```bash
+cd tools/mermaid-cli
+npm ci
+```
+
 ## Recommendations
 
 - Prefer comparing two git revisions on the same machine.
