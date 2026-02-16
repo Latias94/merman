@@ -45,6 +45,10 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
     - Spotcheck (`mindmap_medium`):
       - Report: `target/bench/stage_spotcheck.mindmap_medium.after_edge_build_ix_2026-02-16.md` (local, not committed)
       - Ratio (`merman / mmdr`): `layout 1.66x` (from `2.23x` in the prior rerun)
+  - `refactor(architecture): borrow model view for layout` (`dea7efb`)
+    - Unifies JSON vs typed architecture layout input behind a borrowed view (`&str` ids, `Option<char>` dirs).
+    - This is primarily a prerequisite for the next Architecture fixed-cost reductions (dense indices + fewer
+      string-keyed maps), not a standalone performance win.
 - Latest canary (faster triage parameters):
   - Command:
     - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 20 --warm-up 1 --measurement 2 --out target/bench/stage_spotcheck.canary_after_flowchart_opt_2026-02-16.md`
@@ -62,6 +66,11 @@ Outliers worth optimizing:
 - `mindmap_medium end_to_end`: `1.60x` (`layout 2.02x`, `render 1.25x`)
 - `architecture_medium end_to_end`: `2.01x` (`layout 3.35x`, `render 1.97x`)
 - Render fixed-cost remains a consistent theme (even when end-to-end is competitive on other canaries).
+
+Architecture note (single-fixture rerun, 50 samples / 2s warmup / 3s measurement, 2026-02-16):
+
+- `architecture_medium`: `layout 2.86x`, `render 2.48x`, `end_to_end 2.03x`
+  - Report: `target/bench/stage_spotcheck.architecture_medium.arch_view_2026-02-16.md` (local, not committed)
 
 ## Root Cause Map (what is actually slow)
 
@@ -142,8 +151,8 @@ Work items:
 
 Targets:
 
-- `end_to_end/architecture_medium <= 1.50x` (from `2.01x`)
-- `layout/architecture_medium <= 2.50x` (from `3.35x`)
+- `end_to_end/architecture_medium <= 1.50x` (from `~2.0x`)
+- `layout/architecture_medium <= 2.50x` (from `~2.9–3.35x`)
 
 Work items:
 

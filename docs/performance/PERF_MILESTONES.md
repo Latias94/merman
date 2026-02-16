@@ -27,6 +27,9 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
     - `flowchart_medium end_to_end`: `1.42x` (render-heavy; `render 1.62x`, `layout 1.05x`)
     - `mindmap_medium end_to_end`: `1.60x` (layout-heavy; `layout 2.02x`, `render 1.25x`)
     - `architecture_medium end_to_end`: `2.01x` (layout+render; `layout 3.35x`, `render 1.97x`)
+    - Architecture dedicated rerun (single fixture, 50 samples / 2s warmup / 3s measurement, 2026-02-16):
+      - `architecture_medium`: `layout 2.86x`, `render 2.48x`, `end_to_end 2.03x`
+      - Report: `target/bench/stage_spotcheck.architecture_medium.arch_view_2026-02-16.md` (local, not committed)
     - Render fixed-cost remains a consistent theme:
       - `render/flowchart_medium`: `1.62x`
       - `render/class_medium`: `2.35x`
@@ -61,6 +64,11 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
     a `HashMap<&str, (f64,f64)>` each layout call.
   - Spotcheck (`mindmap_medium`): `target/bench/stage_spotcheck.mindmap_medium.after_edge_build_ix_2026-02-16.md`
     shows `layout` ratio improved to `~1.66x`.
+
+- `dea7efb` — `refactor(architecture): borrow model view for layout`
+  - Unifies JSON vs typed architecture layout input behind a borrowed view (`&str` ids, `Option<char>` dirs).
+  - Primary intent is to enable the next wave of Architecture fixed-cost reductions (dense indices + fewer
+    string-keyed maps), not a standalone performance win.
 
 ### Stage Attribution Snapshot (canaries)
 
