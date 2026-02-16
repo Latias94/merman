@@ -773,12 +773,8 @@ pub(super) fn flowchart_collect_edge_marker_colors(ctx: &FlowchartRenderCtx<'_>)
     let mut out: Vec<String> = Vec::new();
 
     for e in ctx.edges_by_id.values() {
-        let mut styles: Vec<String> = Vec::new();
-        styles.extend(ctx.default_edge_style.iter().cloned());
-        styles.extend(e.style.iter().cloned());
-
         let mut found: Option<String> = None;
-        for raw in &styles {
+        for raw in ctx.default_edge_style.iter().chain(e.style.iter()) {
             // Mirror upstream behavior: `strokeColor` is extracted from `style="...stroke:...;..."`
             // without trimming, and then marker ids use `replace(/[^\dA-Za-z]/g, '_')`.
             //
@@ -799,8 +795,12 @@ pub(super) fn flowchart_collect_edge_marker_colors(ctx: &FlowchartRenderCtx<'_>)
         }
 
         if found.is_none() && !e.classes.is_empty() {
-            let compiled = flowchart_compile_styles(&ctx.class_defs, &e.classes, &styles);
-            if let Some(stroke) = compiled.stroke {
+            if let Some(stroke) = flowchart_resolve_stroke_for_marker(
+                &ctx.class_defs,
+                &e.classes,
+                &ctx.default_edge_style,
+                &e.style,
+            ) {
                 let cid = flowchart_marker_color_id(&stroke);
                 if !cid.is_empty() && seen.insert(cid) {
                     found = Some(stroke);
@@ -1647,6 +1647,42 @@ pub(super) fn flowchart_edge_class_attr(edge: &crate::flowchart::FlowEdge) -> St
         }
         out
     }
+}
+
+fn flowchart_resolve_stroke_for_marker(
+    class_defs: &IndexMap<String, Vec<String>>,
+    classes: &[String],
+    default_edge_style: &[String],
+    edge_style: &[String],
+) -> Option<String> {
+    // Marker ids only depend on the resolved `stroke` value, so avoid allocating the full
+    // `FlowchartCompiledStyles` (ordered map + joined style strings) here.
+    let mut stroke: Option<&str> = None;
+
+    for c in classes {
+        let Some(decls) = class_defs.get(c) else {
+            continue;
+        };
+        for d in decls {
+            let Some((k, v)) = parse_style_decl(d) else {
+                continue;
+            };
+            if k == "stroke" {
+                stroke = Some(v);
+            }
+        }
+    }
+
+    for d in default_edge_style.iter().chain(edge_style.iter()) {
+        let Some((k, v)) = parse_style_decl(d) else {
+            continue;
+        };
+        if k == "stroke" {
+            stroke = Some(v);
+        }
+    }
+
+    stroke.map(|s| s.to_string())
 }
 
 pub(super) fn flowchart_edge_path_d_for_bbox(
@@ -4933,11 +4969,12 @@ fn render_flowchart_edge_path(
     // We approximate this by compiling the edge styles using class defs and reusing the resulting
     // `stroke` value for the marker id suffix.
     let compiled_marker_color = if marker_color.is_none() && !edge.classes.is_empty() {
-        let mut merged_styles: Vec<String> =
-            Vec::with_capacity(ctx.default_edge_style.len() + edge.style.len());
-        merged_styles.extend(ctx.default_edge_style.iter().cloned());
-        merged_styles.extend(edge.style.iter().cloned());
-        flowchart_compile_styles(&ctx.class_defs, &edge.classes, &merged_styles).stroke
+        flowchart_resolve_stroke_for_marker(
+            &ctx.class_defs,
+            &edge.classes,
+            &ctx.default_edge_style,
+            &edge.style,
+        )
     } else {
         None
     };
@@ -5508,12 +5545,10 @@ pub(super) fn render_flowchart_edge_label(
 
     let _ = write!(
         out,
-        r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}></span></div></foreignObject></g></g>"#,
+        r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}{}"><span class="edgeLabel"{}></span></div></foreignObject></g></g>"#,
         escape_xml_display(&edge.id),
-        escape_xml_display(&format!(
-            "{}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;",
-            div_color_prefix
-        )),
+        escape_xml_display(&div_color_prefix),
+        "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;",
         span_style_attr
     );
 }
