@@ -1702,6 +1702,7 @@ dependencies = [
  "ryu-js",
  "serde",
  "serde_json",
+ "svgtypes 0.11.0",
  "thiserror 2.0.18",
  "url",
 ]

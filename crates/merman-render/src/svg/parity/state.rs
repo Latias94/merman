@@ -3,6 +3,7 @@
 use super::*;
 use rustc_hash::FxHashMap;
 use std::sync::{Arc, Mutex, OnceLock};
+use svgtypes::{PathParser, PathSegment};
 
 // State diagram SVG renderer implementation (split from parity.rs).
 
@@ -4490,16 +4491,32 @@ fn roughjs_paths_for_svg_path(
     let fill = roughjs_parse_hex_color_to_srgba(fill)?;
     let stroke = roughjs_parse_hex_color_to_srgba(stroke)?;
 
-    let dash = stroke_dasharray.trim().replace(',', " ");
-    let nums: Vec<f32> = dash
-        .split_whitespace()
-        .filter_map(|t| t.parse::<f32>().ok())
-        .collect();
-    let (dash0, dash1) = match nums.as_slice() {
-        [a] => (*a, *a),
-        [a, b, ..] => (*a, *b),
+    let mut dash0: Option<f32> = None;
+    let mut dash1: Option<f32> = None;
+    for t in stroke_dasharray
+        .trim()
+        .split(|ch: char| ch == ',' || ch.is_whitespace())
+    {
+        if t.is_empty() {
+            continue;
+        }
+        let Ok(v) = t.parse::<f32>() else {
+            continue;
+        };
+        if dash0.is_none() {
+            dash0 = Some(v);
+        } else {
+            dash1 = Some(v);
+            break;
+        }
+    }
+    let (dash0, dash1) = match (dash0, dash1) {
+        (Some(a), Some(b)) => (a, b),
+        (Some(a), None) => (a, a),
         _ => (0.0, 0.0),
     };
+
+    let path_segments: Vec<PathSegment> = PathParser::from(svg_path_data).flatten().collect();
 
     // Use a single mutable `Options` to match Rough.js behavior: the PRNG state (`randomizer`)
     // lives on the options object and advances across drawing phases.
@@ -4521,8 +4538,8 @@ fn roughjs_paths_for_svg_path(
 
     let base_roughness = options.roughness.unwrap_or(1.0);
     let distance = (1.0 + base_roughness as f64) / 2.0;
-    let sets = roughr::points_on_path::points_on_path::<f64>(
-        svg_path_data.to_string(),
+    let sets = roughr::points_on_path::points_on_segments::<f64>(
+        path_segments.clone(),
         Some(1.0),
         Some(distance),
     );
@@ -4537,19 +4554,13 @@ fn roughjs_paths_for_svg_path(
             0.0
         });
 
-        let mut opset = roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut options);
-        opset.ops = opset
-            .ops
-            .iter()
-            .cloned()
-            .enumerate()
-            .filter_map(|(idx, op)| {
-                if idx != 0 && op.op == roughr::core::OpType::Move {
-                    return None;
-                }
-                Some(op)
-            })
-            .collect();
+        let mut opset = roughr::renderer::svg_segments::<f64>(path_segments.clone(), &mut options);
+        let mut idx = 0usize;
+        opset.ops.retain(|op| {
+            let keep = idx == 0 || op.op != roughr::core::OpType::Move;
+            idx += 1;
+            keep
+        });
         opset
     } else {
         options.disable_multi_stroke = Some(true);
@@ -4561,7 +4572,7 @@ fn roughjs_paths_for_svg_path(
     options.disable_multi_stroke = Some(false);
     options.disable_multi_stroke_fill = Some(false);
     options.roughness = Some(base_roughness);
-    let stroke_opset = roughr::renderer::svg_path::<f64>(svg_path_data.to_string(), &mut options);
+    let stroke_opset = roughr::renderer::svg_segments::<f64>(path_segments, &mut options);
 
     Some((
         roughjs_ops_to_svg_path_d(&fill_opset),
