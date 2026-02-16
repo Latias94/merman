@@ -5,6 +5,26 @@ It is intentionally fixture-driven and stage-attributed (parse/layout/render/end
 
 ## Current Status (2026-02-16)
 
+### Baseline (post-merge local `main`)
+
+Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
+
+- Command:
+  - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,class_medium,state_medium,sequence_medium,mindmap_medium,architecture_medium --sample-size 20 --warm-up 1 --measurement 1 --out target/bench/stage_spotcheck.latest.md`
+- Report:
+  - `target/bench/stage_spotcheck.latest.md` (not committed)
+- Stage gmeans (ratios, `merman / mmdr`):
+  - `parse`: `1.38x`
+  - `layout`: `0.88x`
+  - `render`: `1.99x`
+  - `end_to_end`: `0.82x`
+- Interpretation:
+  - **End-to-end is already competitive overall**, but we have **concentrated gaps**:
+    - `flowchart_medium end_to_end`: `1.21x` (render-heavy; `render 1.91x`, `parse 1.40x`)
+    - `mindmap_medium end_to_end`: `1.69x` (layout+render; `layout 2.51x`, `render 2.15x`)
+    - `architecture_medium end_to_end`: `2.24x` (layout+render; `render 3.59x`)
+  - Layout is **not** the main global bottleneck right now; **SVG emission fixed-cost** is.
+
 ### Stage Attribution Snapshot (canaries)
 
 Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is *multi-source*:
