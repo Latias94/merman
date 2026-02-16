@@ -1,0 +1,329 @@
+{
+  "diagramType": "mindmap",
+  "model": {
+    "type": "mindmap",
+    "nodes": [
+      {
+        "id": "0",
+        "domId": "node_0",
+        "label": "mindmap",
+        "isGroup": false,
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-root section--1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 0,
+        "nodeId": "root",
+        "type": 3
+      },
+      {
+        "id": "1",
+        "domId": "node_1",
+        "label": "Square: a/b/c",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 2,
+        "nodeId": "sq1",
+        "type": 2,
+        "section": 0
+      },
+      {
+        "id": "2",
+        "domId": "node_2",
+        "label": "Rounded: \"quotes\" and - dashes -",
+        "isGroup": false,
+        "shape": "rounded",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 2,
+        "nodeId": "rd1",
+        "type": 1,
+        "section": 1
+      },
+      {
+        "id": "3",
+        "domId": "node_3",
+        "label": "Circle: &ﬂ°°9829¶ß &infin;",
+        "isGroup": false,
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-2",
+        "cssStyles": [],
+        "look": "default",
+        "level": 2,
+        "nodeId": "cir1",
+        "type": 3,
+        "section": 2
+      },
+      {
+        "id": "4",
+        "domId": "node_4",
+        "label": "Bang: wow!",
+        "isGroup": false,
+        "shape": "bang",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-3",
+        "cssStyles": [],
+        "look": "default",
+        "level": 2,
+        "nodeId": "bang1",
+        "type": 5,
+        "section": 3
+      },
+      {
+        "id": "5",
+        "domId": "node_5",
+        "label": "Cloud: x,y",
+        "isGroup": false,
+        "shape": "cloud",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-4",
+        "cssStyles": [],
+        "look": "default",
+        "level": 2,
+        "nodeId": "cloud1",
+        "type": 4,
+        "section": 4
+      },
+      {
+        "id": "6",
+        "domId": "node_6",
+        "label": "Hexagon: &ﬂ°°123¶ßbraces&ﬂ°°125¶ß",
+        "isGroup": false,
+        "shape": "hexagon",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-5",
+        "cssStyles": [],
+        "look": "default",
+        "level": 2,
+        "nodeId": "hex1",
+        "type": 6,
+        "section": 5
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge_0_1",
+        "start": "0",
+        "end": "1",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-1",
+        "depth": 0,
+        "section": 0
+      },
+      {
+        "id": "edge_0_2",
+        "start": "0",
+        "end": "2",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-1",
+        "depth": 0,
+        "section": 1
+      },
+      {
+        "id": "edge_0_3",
+        "start": "0",
+        "end": "3",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-2 edge-depth-1",
+        "depth": 0,
+        "section": 2
+      },
+      {
+        "id": "edge_0_4",
+        "start": "0",
+        "end": "4",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-3 edge-depth-1",
+        "depth": 0,
+        "section": 3
+      },
+      {
+        "id": "edge_0_5",
+        "start": "0",
+        "end": "5",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-4 edge-depth-1",
+        "depth": 0,
+        "section": 4
+      },
+      {
+        "id": "edge_0_6",
+        "start": "0",
+        "end": "6",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-5 edge-depth-1",
+        "depth": 0,
+        "section": 5
+      }
+    ],
+    "diagramId": "<dynamic>",
+    "rootNode": {
+      "id": 0,
+      "nodeId": "root",
+      "level": 0,
+      "descr": "mindmap",
+      "type": 3,
+      "children": [
+        {
+          "id": 1,
+          "nodeId": "sq1",
+          "level": 2,
+          "descr": "Square: a/b/c",
+          "type": 2,
+          "children": [],
+          "width": 200,
+          "padding": 20,
+          "section": 0
+        },
+        {
+          "id": 2,
+          "nodeId": "rd1",
+          "level": 2,
+          "descr": "Rounded: \"quotes\" and - dashes -",
+          "type": 1,
+          "children": [],
+          "width": 200,
+          "padding": 20,
+          "section": 1
+        },
+        {
+          "id": 3,
+          "nodeId": "cir1",
+          "level": 2,
+          "descr": "Circle: &ﬂ°°9829¶ß &infin;",
+          "type": 3,
+          "children": [],
+          "width": 200,
+          "padding": 10,
+          "section": 2
+        },
+        {
+          "id": 4,
+          "nodeId": "bang1",
+          "level": 2,
+          "descr": "Bang: wow!",
+          "type": 5,
+          "children": [],
+          "width": 200,
+          "padding": 10,
+          "section": 3
+        },
+        {
+          "id": 5,
+          "nodeId": "cloud1",
+          "level": 2,
+          "descr": "Cloud: x,y",
+          "type": 4,
+          "children": [],
+          "width": 200,
+          "padding": 10,
+          "section": 4
+        },
+        {
+          "id": 6,
+          "nodeId": "hex1",
+          "level": 2,
+          "descr": "Hexagon: &ﬂ°°123¶ßbraces&ﬂ°°125¶ß",
+          "type": 6,
+          "children": [],
+          "width": 200,
+          "padding": 20,
+          "section": 5
+        }
+      ],
+      "width": 200,
+      "padding": 10,
+      "isRoot": true
+    },
+    "markers": [
+      "point"
+    ],
+    "direction": "TB",
+    "nodeSpacing": 50,
+    "rankSpacing": 50,
+    "shapes": {
+      "0": {
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "1": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "2": {
+        "shape": "rounded",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "3": {
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "4": {
+        "shape": "bang",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "5": {
+        "shape": "cloud",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "6": {
+        "shape": "hexagon",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      }
+    }
+  }
+}

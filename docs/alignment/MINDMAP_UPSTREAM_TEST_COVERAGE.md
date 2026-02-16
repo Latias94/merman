@@ -136,3 +136,15 @@ upstream SVG baselines under `fixtures/upstream-svgs/mindmap/`:
 - `fixtures/mindmap/stress_mindmap_proto_like_ids_022.mmd`
 - `fixtures/mindmap/stress_mindmap_icon_class_order_023.mmd`
 - `fixtures/mindmap/stress_mindmap_wide_tree_mixed_labels_024.mmd`
+- `fixtures/mindmap/stress_mindmap_icons_multi_packs_025.mmd`
+- `fixtures/mindmap/stress_mindmap_classes_children_attach_026.mmd`
+- `fixtures/mindmap/stress_mindmap_unclear_indent_with_decorators_027.mmd`
+- `fixtures/mindmap/stress_mindmap_shapes_with_ids_and_labels_028.mmd`
+- `fixtures/mindmap/stress_mindmap_unicode_rtl_mixed_029.mmd`
+- `fixtures/mindmap/stress_mindmap_markdown_vs_verbatim_030.mmd`
+- `fixtures/mindmap/stress_mindmap_br_variants_031.mmd`
+- `fixtures/mindmap/stress_mindmap_trailing_spaces_and_comments_032.mmd`
+- `fixtures/mindmap/stress_mindmap_proto_constructor_ids_033.mmd`
+- `fixtures/mindmap/stress_mindmap_html_sanitization_links_034.mmd`
+- `fixtures/mindmap/stress_mindmap_many_siblings_icons_classes_035.mmd`
+- `fixtures/mindmap/stress_mindmap_deep_chain_long_words_036.mmd`

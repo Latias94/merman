@@ -170,6 +170,40 @@ pub fn lookup_mindmap_root_viewport_override(
             "5 6.599998474121094 710.1619873046875 462.2999572753906",
             "710.162",
         )),
+        "stress_mindmap_icons_multi_packs_025" => {
+            Some(("5 5 362.785400390625 267.94415283203125", "362.785"))
+        }
+        "stress_mindmap_classes_children_attach_026" => {
+            Some(("5 5 291.471923828125 448.67669677734375", "291.472"))
+        }
+        "stress_mindmap_unclear_indent_with_decorators_027" => {
+            Some(("5 5 284.63507080078125 291.4797058105469", "284.635"))
+        }
+        "stress_mindmap_shapes_with_ids_and_labels_028" => {
+            Some(("5 5 563.7918701171875 368.91632080078125", "563.792"))
+        }
+        "stress_mindmap_unicode_rtl_mixed_029" => Some(("5 5 260 582.5546875", "260")),
+        "stress_mindmap_markdown_vs_verbatim_030" => {
+            Some(("5 5 427.04827880859375 264.58648681640625", "427.048"))
+        }
+        "stress_mindmap_br_variants_031" => {
+            Some(("5 5 342.3634948730469 317.0894470214844", "342.363"))
+        }
+        "stress_mindmap_trailing_spaces_and_comments_032" => {
+            Some(("5 5 94.859375 266.7139587402344", "94.8594"))
+        }
+        "stress_mindmap_proto_constructor_ids_033" => {
+            Some(("5 5 146.7076416015625 355.7449035644531", "146.708"))
+        }
+        "stress_mindmap_html_sanitization_links_034" => {
+            Some(("5 5 259.00909423828125 250.58885192871094", "259.009"))
+        }
+        "stress_mindmap_many_siblings_icons_classes_035" => {
+            Some(("5 5 373.0360412597656 290.3151550292969", "373.036"))
+        }
+        "stress_mindmap_deep_chain_long_words_036" => {
+            Some(("5 5 308.09967041015625 678.5985107421875", "308.1"))
+        }
         _ => None,
     }
 }

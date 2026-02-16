@@ -403,7 +403,6 @@ pub fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
     }
 
     let mut handle_line = |line: &str| -> Result<HandleOutcome> {
-        let line = strip_inline_comment(line);
         if line.trim().is_empty() {
             return Ok(HandleOutcome::Done);
         }
@@ -425,7 +424,14 @@ pub fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
         }
 
         if let Some(after) = rest.strip_prefix(":::") {
+            // Mermaid mindmap does not treat `%% ...` as an inline comment inside `:::` class
+            // directives (the entire remainder is interpreted as space-separated class names).
             db.decorate_last(Some(after.trim().to_string()), None, &meta.effective_config);
+            return Ok(HandleOutcome::Done);
+        }
+
+        let rest = strip_inline_comment(rest).trim_end();
+        if rest.is_empty() {
             return Ok(HandleOutcome::Done);
         }
 
