@@ -15311,9 +15311,16 @@ fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
 
     // Pin `handDrawnSeed` so Rough.js-dependent output is deterministic and comparable to
     // `fixtures/upstream-svgs/**` (generated with Mermaid config `handDrawnSeed: 1`).
-    let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
-        serde_json::json!({ "handDrawnSeed": 1 }),
-    ));
+    //
+    // Also pin "today" so time-dependent diagrams (notably Gantt) remain deterministic and the
+    // generated snapshots match the test harness (`crates/merman-core/tests/snapshots.rs`).
+    let engine = merman::Engine::new()
+        .with_site_config(merman::MermaidConfig::from_value(
+            serde_json::json!({ "handDrawnSeed": 1 }),
+        ))
+        .with_fixed_today(Some(
+            chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
+        ));
     let mut failures = Vec::new();
 
     fn ms_to_local_iso(ms: i64) -> Option<String> {

@@ -1,0 +1,168 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1184.0,
+        "max_y": 124.0
+      },
+      "width": 1184.0,
+      "height": 124.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "ss",
+      "axis_format": "%s",
+      "tick_interval": "1second",
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        "Network Request"
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "Network Request",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 62.0,
+          "dy_em": -0.0,
+          "lines": [
+            "Network Request"
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "rtt",
+          "task": "RTT ",
+          "section": "Network Request",
+          "task_type": "Network Request",
+          "order": 0.0,
+          "start_ms": 946656000000.0,
+          "end_ms": 1771084820000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "rtt",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 1034.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "rtt-text",
+            "text": "RTT ",
+            "font_size": 11.0,
+            "width": 19.8,
+            "x": 592.0,
+            "y": 63.5,
+            "class": "taskText taskText0 width-19.799999999999997"
+          }
+        }
+      ],
+      "excludes": [],
+      "has_excludes_layer": false,
+      "bottom_ticks": [
+        {
+          "time_ms": 946656000000.0,
+          "x": 75.0,
+          "label": "946656000"
+        },
+        {
+          "time_ms": 1009814400000.0,
+          "x": 154.0,
+          "label": "1009814400"
+        },
+        {
+          "time_ms": 1072886400000.0,
+          "x": 233.0,
+          "label": "1072886400"
+        },
+        {
+          "time_ms": 1136044800000.0,
+          "x": 313.0,
+          "label": "1136044800"
+        },
+        {
+          "time_ms": 1199116800000.0,
+          "x": 392.0,
+          "label": "1199116800"
+        },
+        {
+          "time_ms": 1262275200000.0,
+          "x": 471.0,
+          "label": "1262275200"
+        },
+        {
+          "time_ms": 1325347200000.0,
+          "x": 550.0,
+          "label": "1325347200"
+        },
+        {
+          "time_ms": 1388505600000.0,
+          "x": 629.0,
+          "label": "1388505600"
+        },
+        {
+          "time_ms": 1451577600000.0,
+          "x": 708.0,
+          "label": "1451577600"
+        },
+        {
+          "time_ms": 1514736000000.0,
+          "x": 787.0,
+          "label": "1514736000"
+        },
+        {
+          "time_ms": 1577808000000.0,
+          "x": 867.0,
+          "label": "1577808000"
+        },
+        {
+          "time_ms": 1640966400000.0,
+          "x": 946.0,
+          "label": "1640966400"
+        },
+        {
+          "time_ms": 1704038400000.0,
+          "x": 1025.0,
+          "label": "1704038400"
+        },
+        {
+          "time_ms": 1767196800000.0,
+          "x": 1104.0,
+          "label": "1767196800"
+        }
+      ],
+      "top_ticks": [],
+      "title": null,
+      "title_x": 592.0,
+      "title_y": 25.0
+    }
+  }
+}

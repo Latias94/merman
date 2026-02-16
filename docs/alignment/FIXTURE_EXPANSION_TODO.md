@@ -32,6 +32,7 @@ TODO:
 
 Recently imported (keep gates green after each batch):
 
+- 2026-02-16: Gantt Cypress rendering fixtures import (12 fixtures from `repo-ref/mermaid/cypress/integration/rendering/gantt.spec.js`, with upstream SVG baselines) via `xtask import-upstream-cypress --diagram gantt --with-baselines --complex --limit 20`. Hardened Gantt exclude-layer `transform-origin` parity for timezone-shifted date-only inputs, keeping the global `parity-root` gate green.
 - 2026-02-16: Packet Cypress rendering fixtures import (5 fixtures from `repo-ref/mermaid/cypress/integration/rendering/packet.spec.ts` via `xtask import-upstream-cypress --diagram packet --with-baselines --complex --limit 30`). Kept the global `parity-root` gate green.
 - 2026-02-16: GitGraph Cypress rendering fixtures import (30 fixtures from `repo-ref/mermaid/cypress/integration/rendering/gitGraph.spec.js` via `xtask import-upstream-cypress --diagram gitgraph --with-baselines --complex --limit 30`). Added fixture-derived GitGraph root viewport overrides (29 entries) to keep the global `parity-root` gate green.
 - 2026-02-16: Journey Cypress rendering fixtures import (9 fixtures from `repo-ref/mermaid/cypress/integration/rendering/journey.spec.js` via `xtask import-upstream-cypress --diagram journey --with-baselines --complex`). One fixture includes an upstream-invalid task score (`size: 2rem`) which Mermaid renders as `NaN`; `merman` preserves this in DOM parity mode via a `scoreIsNaN` semantic marker and Journey root viewport overrides to keep the global `parity-root` gate green.

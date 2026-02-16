@@ -1,0 +1,143 @@
+{
+  "diagramType": "gantt",
+  "layout": {
+    "GanttDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1184.0,
+        "max_y": 124.0
+      },
+      "width": 1184.0,
+      "height": 124.0,
+      "left_padding": 75.0,
+      "right_padding": 75.0,
+      "top_padding": 50.0,
+      "grid_line_start_padding": 35.0,
+      "bar_height": 20.0,
+      "bar_gap": 4.0,
+      "title_top_margin": 25.0,
+      "font_size": 11.0,
+      "section_font_size": 11.0,
+      "number_section_styles": 4.0,
+      "display_mode": "",
+      "date_format": "D",
+      "axis_format": "",
+      "tick_interval": null,
+      "top_axis": false,
+      "today_marker": "",
+      "categories": [
+        ""
+      ],
+      "rows": [
+        {
+          "index": 0.0,
+          "x": 0.0,
+          "y": 48.0,
+          "width": 1146.5,
+          "height": 24.0,
+          "class": "section section0"
+        }
+      ],
+      "section_titles": [
+        {
+          "section": "",
+          "index": 0.0,
+          "x": 10.0,
+          "y": 62.0,
+          "dy_em": -0.0,
+          "lines": [
+            ""
+          ],
+          "class": "sectionTitle sectionTitle0"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "a",
+          "task": "A ",
+          "section": "",
+          "task_type": "",
+          "order": 0.0,
+          "start_ms": 1769875200000.0,
+          "end_ms": 1769961600000.0,
+          "render_end_ms": null,
+          "milestone": false,
+          "vert": false,
+          "bar": {
+            "id": "a",
+            "x": 75.0,
+            "y": 50.0,
+            "width": 1034.0,
+            "height": 20.0,
+            "rx": 3.0,
+            "ry": 3.0,
+            "class": "task task0"
+          },
+          "label": {
+            "id": "a-text",
+            "text": "A ",
+            "font_size": 11.0,
+            "width": 9.0,
+            "x": 592.0,
+            "y": 63.5,
+            "class": "taskText taskText0 width-9"
+          }
+        }
+      ],
+      "excludes": [],
+      "has_excludes_layer": false,
+      "bottom_ticks": [
+        {
+          "time_ms": 1769875200000.0,
+          "x": 75.0,
+          "label": "01"
+        },
+        {
+          "time_ms": 1769886000000.0,
+          "x": 204.0,
+          "label": "01"
+        },
+        {
+          "time_ms": 1769896800000.0,
+          "x": 334.0,
+          "label": "01"
+        },
+        {
+          "time_ms": 1769907600000.0,
+          "x": 463.0,
+          "label": "01"
+        },
+        {
+          "time_ms": 1769918400000.0,
+          "x": 592.0,
+          "label": "01"
+        },
+        {
+          "time_ms": 1769929200000.0,
+          "x": 721.0,
+          "label": "01"
+        },
+        {
+          "time_ms": 1769940000000.0,
+          "x": 851.0,
+          "label": "01"
+        },
+        {
+          "time_ms": 1769950800000.0,
+          "x": 980.0,
+          "label": "01"
+        },
+        {
+          "time_ms": 1769961600000.0,
+          "x": 1109.0,
+          "label": "02"
+        }
+      ],
+      "top_ticks": [],
+      "title": "Test",
+      "title_x": 592.0,
+      "title_y": 25.0
+    }
+  }
+}

@@ -70,3 +70,22 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/gantt/ganttDb.spec.ts`
 - reject ridiculous years: unit test `gantt_rejects_ridiculous_years`
 - seconds-only `dateFormat ss`: unit test `gantt_seconds_only_date_format_is_accepted` (snapshot-unstable; see `docs/alignment/GANTT_MINIMUM.md`)
 - year typo fallback: `fixtures/gantt/js_fallback_year_typo.mmd`
+
+## `cypress/integration/rendering/gantt.spec.js`
+
+Source: `repo-ref/mermaid/cypress/integration/rendering/gantt.spec.js`
+
+Imported fixtures (SVG parity-gated against upstream baselines under `fixtures/upstream-svgs/gantt/*.svg`):
+
+- `fixtures/gantt/upstream_cypress_gantt_spec_multiple_dependencies_syntax_003.mmd`
+- `fixtures/gantt/upstream_cypress_gantt_spec_should_default_to_showing_today_marker_006.mmd`
+- `fixtures/gantt/upstream_cypress_gantt_spec_should_hide_today_marker_007.mmd`
+- `fixtures/gantt/upstream_cypress_gantt_spec_should_render_only_the_day_when_using_dateformat_d_021.mmd`
+- `fixtures/gantt/upstream_cypress_gantt_spec_should_render_a_gantt_diagram_excluding_friday_and_saturday_023.mmd`
+- `fixtures/gantt/upstream_cypress_gantt_spec_should_render_a_gantt_diagram_excluding_saturday_and_sunday_024.mmd`
+- `fixtures/gantt/upstream_cypress_gantt_spec_should_render_a_gantt_diagram_excluding_a_specific_date_in_yyyy_026.mmd`
+- `fixtures/gantt/upstream_cypress_gantt_spec_should_render_a_gantt_diagram_excluding_saturday_and_sunday_in_y_027.mmd`
+- `fixtures/gantt/upstream_cypress_gantt_spec_should_render_a_gantt_diagram_excluding_friday_and_saturday_in_y_028.mmd`
+- `fixtures/gantt/upstream_cypress_gantt_spec_should_handle_numeric_timestamps_with_dateformat_x_035.mmd`
+- `fixtures/gantt/upstream_cypress_gantt_spec_should_handle_numeric_timestamps_with_dateformat_x_036.mmd`
+- `fixtures/gantt/upstream_cypress_gantt_spec_should_handle_seconds_only_format_with_tickinterval_issue_5496_037.mmd`

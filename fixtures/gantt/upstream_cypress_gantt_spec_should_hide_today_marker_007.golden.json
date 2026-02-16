@@ -1,0 +1,85 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": "Hide today marker (vertical line should not be visible)",
+    "accTitle": null,
+    "accDescr": null,
+    "dateFormat": "YYYY-MM-DD",
+    "axisFormat": "%d",
+    "tickInterval": null,
+    "todayMarker": "off",
+    "includes": [],
+    "excludes": [],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
+    "sections": [
+      "Section1"
+    ],
+    "tasks": [
+      {
+        "section": "Section1",
+        "type": "Section1",
+        "task": "Yesterday",
+        "id": "task1",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 1010-10-09, 1d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "1010-10-09"
+          },
+          "endTime": {
+            "data": "1d"
+          }
+        },
+        "startTime": "1010-10-09T00:00:00.000",
+        "endTime": "1010-10-10T00:00:00.000"
+      },
+      {
+        "section": "Section1",
+        "type": "Section1",
+        "task": "Today",
+        "id": "task2",
+        "prevTaskId": "task1",
+        "order": 1,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 1010-10-10, 1d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "1010-10-10"
+          },
+          "endTime": {
+            "data": "1d"
+          }
+        },
+        "startTime": "1010-10-10T00:00:00.000",
+        "endTime": "1010-10-11T00:00:00.000"
+      }
+    ],
+    "links": {},
+    "clickEvents": {}
+  }
+}
