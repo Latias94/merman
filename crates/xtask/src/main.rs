@@ -785,13 +785,6 @@ fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> {
                 if fixture_text.contains("$$") {
                     return Some("sequence math (deferred)");
                 }
-                // Some docs examples rely on wrap/width behavior not yet matched in headless layout.
-                if fixture_text.contains("%%{init:")
-                    && (fixture_text.contains("\"wrap\": true")
-                        || fixture_text.contains("\"width\""))
-                {
-                    return Some("sequence wrap/width directive (deferred)");
-                }
             }
             _ => {}
         }
@@ -2929,12 +2922,6 @@ fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
                 "sequence" => {
                     if fixture_text.contains("$$") {
                         return Some("sequence math (deferred)");
-                    }
-                    if fixture_text.contains("%%{init:")
-                        && (fixture_text.contains("\"wrap\": true")
-                            || fixture_text.contains("\"width\""))
-                    {
-                        return Some("sequence wrap/width directive (deferred)");
                     }
                 }
                 _ => {}
