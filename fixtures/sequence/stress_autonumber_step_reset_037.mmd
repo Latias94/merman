@@ -1,0 +1,15 @@
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): autonumber start+step and reset/off transitions.
+
+  autonumber 1 2
+  participant A as Alice
+  participant B as Bob
+
+  A->>B: one
+  B-->>A: three
+  autonumber 10 5
+  A->>B: ten
+  B-->>A: fifteen
+  autonumber off
+  A->>B: unnumbered
+

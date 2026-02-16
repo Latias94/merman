@@ -31,6 +31,16 @@ are parity-gated against upstream SVG baselines:
 
 Reference: `docs/alignment/EXTERNAL_FIXTURES.md`.
 
+## Authored stress fixtures
+
+These fixtures are authored in this repository (not sourced from Mermaid's own test suite), but are
+parity-gated against upstream SVG baselines to cover high-risk rendering/layout surfaces:
+
+- Batch 2026-02-16 (12 fixtures): `fixtures/sequence/stress_*_028..039.mmd`
+  - Focus: `%%{wrap}%%` + per-message `wrap:`/`nowrap:` prefixes, nested `rect` blocks, high fan-out `par/and`
+    with spanning notes, `critical` options, and create/destroy behavior inside `alt` branches.
+  - Baselines: `fixtures/upstream-svgs/sequence/stress_*_028..039.svg`
+
 ## Cypress rendering fixtures
 
 Source:

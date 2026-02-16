@@ -1,0 +1,24 @@
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): par with many branches and spanning notes inside the block.
+
+  participant A as Alice
+  participant B as Bob
+  participant C as Charlie
+  participant D as Dana
+
+  par branch 1
+    A->>B: b1
+    Note over A,B: note AB
+  and branch 2
+    A->>C: b2
+    Note over A,C: note AC
+  and branch 3
+    A->>D: b3
+    Note over A,D: note AD
+  and branch 4
+    B->>C: b4
+    Note over B,C: note BC
+  end
+
+  D-->>A: done
+

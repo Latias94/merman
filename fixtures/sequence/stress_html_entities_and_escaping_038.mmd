@@ -1,0 +1,9 @@
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): HTML entities, escaped punctuation, and tricky label tokens.
+
+  participant A as Alice
+  participant B as Bob
+
+  A->>B: symbols: #35; #9829; #infin; <tag> #38; "quotes"
+  Note over A,B: label contains tokens: end, else, and, option, rect<br/>should not affect parsing
+  B-->>A: ok

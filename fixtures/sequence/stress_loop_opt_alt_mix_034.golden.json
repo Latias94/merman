@@ -1,0 +1,196 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "U",
+      "A",
+      "DB"
+    ],
+    "actors": {
+      "U": {
+        "name": "U",
+        "description": "User",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "A": {
+        "name": "A",
+        "description": "API",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "DB": {
+        "name": "DB",
+        "description": "Database",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": null,
+        "to": null,
+        "message": "poll every minute",
+        "wrap": false,
+        "type": 10,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "U",
+        "to": "A",
+        "message": "GET /items",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "A",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 17,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": null,
+        "to": null,
+        "message": "cache miss",
+        "wrap": false,
+        "type": 15,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "A",
+        "to": "DB",
+        "message": "query",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "DB",
+        "to": "A",
+        "message": "rows",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 16,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": null,
+        "to": null,
+        "message": "ok",
+        "wrap": false,
+        "type": 12,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "A",
+        "to": "U",
+        "message": "200",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "9",
+        "from": null,
+        "to": null,
+        "message": "error",
+        "wrap": false,
+        "type": 13,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": "A",
+        "to": "U",
+        "message": "500",
+        "wrap": false,
+        "type": 4,
+        "activate": false
+      },
+      {
+        "id": "11",
+        "from": "U",
+        "to": "U",
+        "message": "try later",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 1
+      },
+      {
+        "id": "12",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 14,
+        "activate": false
+      },
+      {
+        "id": "13",
+        "from": "A",
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 18,
+        "activate": false
+      },
+      {
+        "id": "14",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 11,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": "U",
+        "placement": 1,
+        "message": "try later",
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): message texts with many colons and trailing colon.
+
+  participant C as Client
+  participant S as Server
+
+  C->>S: key: value: another: one more:
+  S-->>C: response:
+  C->>S:
+  Note right of S: trailing colon message above should still render a message label like upstream
+

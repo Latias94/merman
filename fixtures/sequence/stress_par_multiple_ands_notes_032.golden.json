@@ -1,0 +1,229 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "actors": {
+      "A": {
+        "name": "A",
+        "description": "Alice",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "B": {
+        "name": "B",
+        "description": "Bob",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "C": {
+        "name": "C",
+        "description": "Charlie",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "D": {
+        "name": "D",
+        "description": "Dana",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": null,
+        "to": null,
+        "message": "branch 1",
+        "wrap": false,
+        "type": 19,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "A",
+        "to": "B",
+        "message": "b1",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "A",
+        "to": "B",
+        "message": "note AB",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "3",
+        "from": null,
+        "to": null,
+        "message": "branch 2",
+        "wrap": false,
+        "type": 20,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "A",
+        "to": "C",
+        "message": "b2",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": "A",
+        "to": "C",
+        "message": "note AC",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "6",
+        "from": null,
+        "to": null,
+        "message": "branch 3",
+        "wrap": false,
+        "type": 20,
+        "activate": false
+      },
+      {
+        "id": "7",
+        "from": "A",
+        "to": "D",
+        "message": "b3",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "8",
+        "from": "A",
+        "to": "D",
+        "message": "note AD",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "9",
+        "from": null,
+        "to": null,
+        "message": "branch 4",
+        "wrap": false,
+        "type": 20,
+        "activate": false
+      },
+      {
+        "id": "10",
+        "from": "B",
+        "to": "C",
+        "message": "b4",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "11",
+        "from": "B",
+        "to": "C",
+        "message": "note BC",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "12",
+        "from": null,
+        "to": null,
+        "message": "",
+        "wrap": false,
+        "type": 21,
+        "activate": false
+      },
+      {
+        "id": "13",
+        "from": "D",
+        "to": "A",
+        "message": "done",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": [
+          "A",
+          "B"
+        ],
+        "placement": 2,
+        "message": "note AB",
+        "wrap": false
+      },
+      {
+        "actor": [
+          "A",
+          "C"
+        ],
+        "placement": 2,
+        "message": "note AC",
+        "wrap": false
+      },
+      {
+        "actor": [
+          "A",
+          "D"
+        ],
+        "placement": 2,
+        "message": "note AD",
+        "wrap": false
+      },
+      {
+        "actor": [
+          "B",
+          "C"
+        ],
+        "placement": 2,
+        "message": "note BC",
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

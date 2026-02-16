@@ -1,0 +1,27 @@
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): nested rect + par/and branches with notes and activations.
+
+  participant U as User
+  participant S as Service
+  participant W as Worker
+
+  rect rgba(240,240,255,0.7)
+    U->>S: Request
+    activate S
+
+    par processing
+      S->>W: enqueue job
+      activate W
+      W-->>S: ready
+      Note over S,W: job metadata<br/>line 2
+      W-->>S: result
+      deactivate W
+    and telemetry
+      S->>S: record metric
+      Note right of S: local note
+    end
+
+    S-->>U: Response
+    deactivate S
+  end
+

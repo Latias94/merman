@@ -1,0 +1,20 @@
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): critical block with multiple options and notes.
+
+  participant C as Client
+  participant S as Server
+
+  C->>S: request
+  critical acquire lock
+    option granted
+      S-->>C: 200 OK
+      Note over C,S: fast path
+    option denied
+      S-->>C: 423 Locked
+      Note right of S: backoff
+    option unknown
+      S-->>C: 500
+  end
+
+  C->>S: next
+
