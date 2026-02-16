@@ -89,6 +89,12 @@ struct FlowchartRenderDetails {
     node_label_html: std::time::Duration,
     node_label_html_calls: u32,
     nested_roots: std::time::Duration,
+    viewbox_edge_curve_lca: std::time::Duration,
+    viewbox_edge_curve_offsets: std::time::Duration,
+    viewbox_edge_curve_geom: std::time::Duration,
+    viewbox_edge_curve_bbox_union: std::time::Duration,
+    viewbox_edge_curve_geom_calls: u32,
+    viewbox_edge_curve_geom_skipped_bounds: u32,
 }
 
 struct FlowchartEdgeDataPointsScratch {
@@ -122,6 +128,7 @@ struct FlowchartEdgePathGeom {
     d: String,
     pb: Option<super::path_bounds::SvgPathBounds>,
     data_points_b64: String,
+    bounds_skipped_for_viewbox: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -2380,8 +2387,10 @@ fn flowchart_compute_edge_path_geom(
     edge: &crate::flowchart::FlowEdge,
     origin_x: f64,
     origin_y: f64,
+    abs_top_transform: f64,
     scratch: &mut FlowchartEdgeDataPointsScratch,
     trace_enabled: bool,
+    viewbox_current_bounds: Option<(f64, f64, f64, f64)>,
 ) -> Option<FlowchartEdgePathGeom> {
     let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()) else {
         return None;
@@ -4694,19 +4703,71 @@ fn flowchart_compute_edge_path_geom(
     };
     let line_data = line_with_offset_points(&line_data, arrow_type_start, arrow_type_end);
 
-    let (mut d, pb) = match interpolate {
-        "linear" => super::curve::curve_linear_path_d_and_bounds(&line_data),
-        "natural" => super::curve::curve_natural_path_d_and_bounds(&line_data),
-        "bumpY" => super::curve::curve_bump_y_path_d_and_bounds(&line_data),
-        "catmullRom" => super::curve::curve_catmull_rom_path_d_and_bounds(&line_data),
-        "step" => super::curve::curve_step_path_d_and_bounds(&line_data),
-        "stepAfter" => super::curve::curve_step_after_path_d_and_bounds(&line_data),
-        "stepBefore" => super::curve::curve_step_before_path_d_and_bounds(&line_data),
-        "cardinal" => super::curve::curve_cardinal_path_d_and_bounds(&line_data, 0.0),
-        "monotoneX" => super::curve::curve_monotone_path_d_and_bounds(&line_data, false),
-        "monotoneY" => super::curve::curve_monotone_path_d_and_bounds(&line_data, true),
-        // Mermaid defaults to `basis` for flowchart edges.
-        _ => super::curve::curve_basis_path_d_and_bounds(&line_data),
+    let curve_is_basis = !matches!(
+        interpolate,
+        "linear"
+            | "natural"
+            | "bumpY"
+            | "catmullRom"
+            | "step"
+            | "stepAfter"
+            | "stepBefore"
+            | "cardinal"
+            | "monotoneX"
+            | "monotoneY"
+    );
+    let mut skipped_bounds_for_viewbox = false;
+    let (mut d, pb) = if curve_is_basis {
+        // For `basis`, D3's curve stays inside the convex hull of the input points, so if the
+        // polyline bbox is already inside the current viewBox bbox we can skip the expensive
+        // cubic extrema solving used for tight bounds.
+        let should_try_skip = viewbox_current_bounds.is_some();
+        if should_try_skip && !line_data.is_empty() {
+            let mut min_x = f64::INFINITY;
+            let mut min_y = f64::INFINITY;
+            let mut max_x = f64::NEG_INFINITY;
+            let mut max_y = f64::NEG_INFINITY;
+            for p in &line_data {
+                min_x = min_x.min(p.x);
+                min_y = min_y.min(p.y);
+                max_x = max_x.max(p.x);
+                max_y = max_y.max(p.y);
+            }
+            let (cur_min_x, cur_min_y, cur_max_x, cur_max_y) =
+                viewbox_current_bounds.expect("checked");
+            let eps = 1e-9;
+            let gx0 = min_x + origin_x;
+            let gy0 = min_y + abs_top_transform;
+            let gx1 = max_x + origin_x;
+            let gy1 = max_y + abs_top_transform;
+            if gx0 >= cur_min_x - eps
+                && gy0 >= cur_min_y - eps
+                && gx1 <= cur_max_x + eps
+                && gy1 <= cur_max_y + eps
+            {
+                skipped_bounds_for_viewbox = true;
+                (super::curve::curve_basis_path_d(&line_data), None)
+            } else {
+                super::curve::curve_basis_path_d_and_bounds(&line_data)
+            }
+        } else {
+            super::curve::curve_basis_path_d_and_bounds(&line_data)
+        }
+    } else {
+        match interpolate {
+            "linear" => super::curve::curve_linear_path_d_and_bounds(&line_data),
+            "natural" => super::curve::curve_natural_path_d_and_bounds(&line_data),
+            "bumpY" => super::curve::curve_bump_y_path_d_and_bounds(&line_data),
+            "catmullRom" => super::curve::curve_catmull_rom_path_d_and_bounds(&line_data),
+            "step" => super::curve::curve_step_path_d_and_bounds(&line_data),
+            "stepAfter" => super::curve::curve_step_after_path_d_and_bounds(&line_data),
+            "stepBefore" => super::curve::curve_step_before_path_d_and_bounds(&line_data),
+            "cardinal" => super::curve::curve_cardinal_path_d_and_bounds(&line_data, 0.0),
+            "monotoneX" => super::curve::curve_monotone_path_d_and_bounds(&line_data, false),
+            "monotoneY" => super::curve::curve_monotone_path_d_and_bounds(&line_data, true),
+            // Mermaid defaults to `basis` for flowchart edges.
+            _ => super::curve::curve_basis_path_d_and_bounds(&line_data),
+        }
     };
     // Mermaid flowchart-v2 can emit a degenerate edge path when linking a subgraph to one of its
     // strict descendants (e.g. `Sub --> In` where `In` is declared inside `subgraph Sub`). Upstream
@@ -4801,6 +4862,7 @@ fn flowchart_compute_edge_path_geom(
         d,
         pb,
         data_points_b64,
+        bounds_skipped_for_viewbox: skipped_bounds_for_viewbox,
     })
 }
 
@@ -4830,7 +4892,16 @@ fn render_flowchart_edge_path(
         .flatten();
 
     let owned_geom = if cached_geom.is_none() {
-        flowchart_compute_edge_path_geom(ctx, edge, origin_x, origin_y, scratch, trace_enabled)
+        flowchart_compute_edge_path_geom(
+            ctx,
+            edge,
+            origin_x,
+            origin_y,
+            0.0,
+            scratch,
+            trace_enabled,
+            None,
+        )
     } else {
         None
     };
@@ -10219,6 +10290,7 @@ fn render_flowchart_v2_svg_with_config_inner(
 
     drop(_g_build_ctx);
 
+    let mut detail = FlowchartRenderDetails::default();
     let mut viewbox_edge_curve_bounds = std::time::Duration::ZERO;
     let _g_viewbox = section(timing_enabled, &mut timings.viewbox);
 
@@ -10591,48 +10663,66 @@ fn render_flowchart_v2_svg_with_config_inner(
             },
         );
         for e in &render_edges {
-            let root_id = lca_for_ids(
-                e.from.as_str(),
-                e.to.as_str(),
-                &effective_parent_for_id,
-                &mut lca_scratch,
-            )
-            .unwrap_or("");
-            let off = *root_offsets.entry(root_id).or_insert_with(|| {
-                flowchart_cluster_root_offsets(&ctx, root_id).unwrap_or(FlowchartRootOffsets {
-                    origin_x: 0.0,
-                    origin_y: 0.0,
-                    abs_top_transform: 0.0,
+            let root_id = {
+                let _g = detail_guard(timing_enabled, &mut detail.viewbox_edge_curve_lca);
+                lca_for_ids(
+                    e.from.as_str(),
+                    e.to.as_str(),
+                    &effective_parent_for_id,
+                    &mut lca_scratch,
+                )
+                .unwrap_or("")
+            };
+            let off = {
+                let _g = detail_guard(timing_enabled, &mut detail.viewbox_edge_curve_offsets);
+                *root_offsets.entry(root_id).or_insert_with(|| {
+                    flowchart_cluster_root_offsets(&ctx, root_id).unwrap_or(FlowchartRootOffsets {
+                        origin_x: 0.0,
+                        origin_y: 0.0,
+                        abs_top_transform: 0.0,
+                    })
                 })
-            });
-
-            let Some(geom) = flowchart_compute_edge_path_geom(
-                &ctx,
-                e,
-                off.origin_x,
-                off.origin_y,
-                &mut scratch,
-                false,
-            ) else {
-                continue;
             };
 
-            if let Some(pb) = geom.pb {
-                bbox_min_x = bbox_min_x.min(pb.min_x + off.origin_x);
-                bbox_min_y = bbox_min_y.min(pb.min_y + off.abs_top_transform);
-                bbox_max_x = bbox_max_x.max(pb.max_x + off.origin_x);
-                bbox_max_y = bbox_max_y.max(pb.max_y + off.abs_top_transform);
+            let Some(geom) = ({
+                detail.viewbox_edge_curve_geom_calls += 1;
+                let _g = detail_guard(timing_enabled, &mut detail.viewbox_edge_curve_geom);
+                flowchart_compute_edge_path_geom(
+                    &ctx,
+                    e,
+                    off.origin_x,
+                    off.origin_y,
+                    off.abs_top_transform,
+                    &mut scratch,
+                    false,
+                    Some((bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y)),
+                )
+            }) else {
+                continue;
+            };
+            if geom.bounds_skipped_for_viewbox {
+                detail.viewbox_edge_curve_geom_skipped_bounds += 1;
             }
 
-            edge_path_cache.insert(
-                e.id.as_str(),
-                FlowchartEdgePathCacheEntry {
-                    origin_x: off.origin_x,
-                    origin_y: off.origin_y,
-                    abs_top_transform: off.abs_top_transform,
-                    geom,
-                },
-            );
+            {
+                let _g = detail_guard(timing_enabled, &mut detail.viewbox_edge_curve_bbox_union);
+                if let Some(pb) = geom.pb {
+                    bbox_min_x = bbox_min_x.min(pb.min_x + off.origin_x);
+                    bbox_min_y = bbox_min_y.min(pb.min_y + off.abs_top_transform);
+                    bbox_max_x = bbox_max_x.max(pb.max_x + off.origin_x);
+                    bbox_max_y = bbox_max_y.max(pb.max_y + off.abs_top_transform);
+                }
+
+                edge_path_cache.insert(
+                    e.id.as_str(),
+                    FlowchartEdgePathCacheEntry {
+                        origin_x: off.origin_x,
+                        origin_y: off.origin_y,
+                        abs_top_transform: off.abs_top_transform,
+                        geom,
+                    },
+                );
+            }
         }
     }
 
@@ -10852,7 +10942,6 @@ fn render_flowchart_v2_svg_with_config_inner(
     flowchart_markers(&mut out, diagram_id);
 
     let extra_marker_colors = flowchart_collect_edge_marker_colors(&ctx);
-    let mut detail = FlowchartRenderDetails::default();
     render_flowchart_root(
         &mut out,
         &ctx,
@@ -10883,12 +10972,18 @@ fn render_flowchart_v2_svg_with_config_inner(
     timings.total = total_start.elapsed();
     if timing_enabled {
         eprintln!(
-            "[render-timing] diagram=flowchart-v2 total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} viewbox_edge_curve_bounds={:?} render_svg={:?} finalize={:?} root_calls={} clusters={:?} edges_select={:?} edge_paths={:?} edge_labels={:?} dom_order={:?} nodes={:?} node_style_compile={:?} node_roughjs={:?} node_roughjs_calls={} node_label_html={:?} node_label_html_calls={} nested_roots={:?}",
+            "[render-timing] diagram=flowchart-v2 total={:?} deserialize={:?} build_ctx={:?} viewbox={:?} viewbox_edge_curve_bounds={:?} viewbox_edge_curve_lca={:?} viewbox_edge_curve_offsets={:?} viewbox_edge_curve_geom={:?} viewbox_edge_curve_bbox_union={:?} viewbox_edge_curve_geom_calls={} viewbox_edge_curve_geom_skipped_bounds={} render_svg={:?} finalize={:?} root_calls={} clusters={:?} edges_select={:?} edge_paths={:?} edge_labels={:?} dom_order={:?} nodes={:?} node_style_compile={:?} node_roughjs={:?} node_roughjs_calls={} node_label_html={:?} node_label_html_calls={} nested_roots={:?}",
             timings.total,
             timings.deserialize_model,
             timings.build_ctx,
             timings.viewbox,
             viewbox_edge_curve_bounds,
+            detail.viewbox_edge_curve_lca,
+            detail.viewbox_edge_curve_offsets,
+            detail.viewbox_edge_curve_geom,
+            detail.viewbox_edge_curve_bbox_union,
+            detail.viewbox_edge_curve_geom_calls,
+            detail.viewbox_edge_curve_geom_skipped_bounds,
             timings.render_svg,
             timings.finalize_svg,
             detail.root_calls,
