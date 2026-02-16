@@ -851,7 +851,6 @@ pub fn layout_er_diagram(
             is_cluster: false,
             label_width: None,
             label_height: None,
-            class_row_metrics: None,
         });
     }
     nodes.sort_by(|a, b| a.id.cmp(&b.id));

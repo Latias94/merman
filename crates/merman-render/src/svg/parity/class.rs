@@ -1632,6 +1632,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
         let members_rows = node.members.len();
         let methods_rows = node.methods.len();
         let half_lh = line_height / 2.0;
+        let class_row_metrics = layout.class_row_metrics_by_id.get(n.id.as_str());
 
         let title_y = top + (ann_rows as f64 + 1.0) * line_height;
         let annotation_group_y = if ann_rows == 0 {
@@ -1732,9 +1733,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
             );
             for (idx, m) in node.members.iter().enumerate() {
                 let t = decode_entities_minimal(m.display_text.trim());
-                let mm = n
-                    .class_row_metrics
-                    .as_ref()
+                let mm = class_row_metrics
                     .and_then(|m| m.members.get(idx).copied())
                     .unwrap_or_else(|| {
                         measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike)
@@ -1776,9 +1775,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
             );
             for (idx, m) in node.methods.iter().enumerate() {
                 let t = decode_entities_minimal(m.display_text.trim());
-                let mm = n
-                    .class_row_metrics
-                    .as_ref()
+                let mm = class_row_metrics
                     .and_then(|m| m.methods.get(idx).copied())
                     .unwrap_or_else(|| {
                         measurer.measure_wrapped(&t, &text_style, None, WrapMode::HtmlLike)

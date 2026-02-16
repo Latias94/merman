@@ -8,6 +8,7 @@ use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use indexmap::IndexMap;
+use rustc_hash::FxHashMap;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
@@ -513,7 +514,6 @@ fn terminal_path_for_edge(
 
 fn layout_prepared(
     prepared: &mut PreparedGraph,
-    class_row_metrics_by_id: &HashMap<String, Arc<ClassNodeRowMetrics>>,
     node_label_metrics_by_id: &HashMap<String, (f64, f64)>,
 ) -> Result<(LayoutFragments, Rect)> {
     let mut fragments = LayoutFragments {
@@ -525,8 +525,7 @@ fn layout_prepared(
     let mut extracted_fragments: BTreeMap<String, (LayoutFragments, Rect)> = BTreeMap::new();
     for id in extracted_ids {
         let sub = prepared.extracted.get_mut(&id).expect("exists");
-        let (sub_frag, sub_bounds) =
-            layout_prepared(sub, class_row_metrics_by_id, node_label_metrics_by_id)?;
+        let (sub_frag, sub_bounds) = layout_prepared(sub, node_label_metrics_by_id)?;
 
         // Mermaid sizes extracted cluster placeholders using the rendered SVG bbox of the
         // recursively rendered cluster (`updateNodeBounds`). That bbox includes Dagre's implicit
@@ -592,7 +591,6 @@ fn layout_prepared(
                 is_cluster,
                 label_width,
                 label_height,
-                class_row_metrics: class_row_metrics_by_id.get(id.as_str()).cloned(),
             },
         );
     }
@@ -1028,7 +1026,8 @@ pub fn layout_class_diagram_v2_typed(
     let text_style = class_text_style(effective_config);
     let capture_row_metrics = matches!(wrap_mode_node, WrapMode::HtmlLike);
     let capture_label_metrics = matches!(wrap_mode_label, WrapMode::HtmlLike);
-    let mut class_row_metrics_by_id: HashMap<String, Arc<ClassNodeRowMetrics>> = HashMap::new();
+    let mut class_row_metrics_by_id: FxHashMap<String, Arc<ClassNodeRowMetrics>> =
+        FxHashMap::default();
     let mut node_label_metrics_by_id: HashMap<String, (f64, f64)> = HashMap::new();
 
     let mut g = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
@@ -1235,11 +1234,7 @@ pub fn layout_class_diagram_v2_typed(
 
     let prefer_dagreish_disconnected = !model.interfaces.is_empty();
     let mut prepared = prepare_graph(g, 0, prefer_dagreish_disconnected)?;
-    let (mut fragments, _bounds) = layout_prepared(
-        &mut prepared,
-        &class_row_metrics_by_id,
-        &node_label_metrics_by_id,
-    )?;
+    let (mut fragments, _bounds) = layout_prepared(&mut prepared, &node_label_metrics_by_id)?;
 
     let mut node_rect_by_id: HashMap<String, Rect> = HashMap::new();
     for n in fragments.nodes.values() {
@@ -1405,6 +1400,7 @@ pub fn layout_class_diagram_v2_typed(
         edges,
         clusters,
         bounds,
+        class_row_metrics_by_id,
     })
 }
 

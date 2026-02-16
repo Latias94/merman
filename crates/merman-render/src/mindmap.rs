@@ -247,7 +247,6 @@ fn layout_mindmap_diagram_model(
             is_cluster: false,
             label_width: None,
             label_height: None,
-            class_row_metrics: None,
         });
     }
     if let Some(s) = measure_nodes_start {
