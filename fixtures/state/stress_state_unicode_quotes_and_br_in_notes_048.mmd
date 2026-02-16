@@ -1,0 +1,14 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): unicode + quoted state names + <br/> in notes.
+
+state "中文-状態" as CN
+
+[*] --> CN
+CN --> AR : العربية
+AR --> EMOJI : 😀😅👍
+EMOJI --> [*] : 끝
+
+note right of CN
+  Mixed scripts: 中文 / 日本語 / العربية<br/>
+  punctuation: ,.;:!? () [] {} / \\ |
+end note

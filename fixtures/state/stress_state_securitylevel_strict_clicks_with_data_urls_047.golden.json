@@ -25,13 +25,13 @@
       {
         "labelStyle": "",
         "shape": "rect",
-        "label": "A",
+        "label": "Safe",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "A",
+        "id": "Safe",
         "dir": null,
-        "domId": "state-A-1",
+        "domId": "state-Safe-1",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -44,13 +44,13 @@
       {
         "labelStyle": "",
         "shape": "rect",
-        "label": "B",
+        "label": "Bad",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "B",
+        "id": "Bad",
         "dir": null,
-        "domId": "state-B-2",
+        "domId": "state-Bad-2",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -84,7 +84,7 @@
       {
         "id": "edge0",
         "start": "root_start",
-        "end": "A",
+        "end": "Safe",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
@@ -99,8 +99,8 @@
       },
       {
         "id": "edge1",
-        "start": "A",
-        "end": "B",
+        "start": "Safe",
+        "end": "Bad",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
@@ -115,7 +115,7 @@
       },
       {
         "id": "edge2",
-        "start": "B",
+        "start": "Bad",
         "end": "root_end",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
@@ -132,13 +132,19 @@
     ],
     "other": {},
     "links": {
-      "A": {
-        "url": "https://mermaid.js.org/",
-        "tooltip": "Tooltip for A"
-      },
-      "B": {
-        "url": "https://mermaid.js.org/",
-        "tooltip": ""
+      "Bad": [
+        {
+          "url": "javascript:alert(1)",
+          "tooltip": "js tooltip"
+        },
+        {
+          "url": "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==;x=y",
+          "tooltip": "data tooltip"
+        }
+      ],
+      "Safe": {
+        "url": "https://example.com/path;params?x=1#frag",
+        "tooltip": "safe tooltip"
       }
     },
     "direction": "TB",
@@ -156,8 +162,8 @@
         "textStyles": [],
         "start": true
       },
-      "A": {
-        "id": "A",
+      "Safe": {
+        "id": "Safe",
         "type": "default",
         "descriptions": [],
         "doc": null,
@@ -167,8 +173,8 @@
         "textStyles": [],
         "start": null
       },
-      "B": {
-        "id": "B",
+      "Bad": {
+        "id": "Bad",
         "type": "default",
         "descriptions": [],
         "doc": null,
@@ -193,16 +199,16 @@
     "relations": [
       {
         "id1": "root_start",
-        "id2": "A",
+        "id2": "Safe",
         "relationTitle": null
       },
       {
-        "id1": "A",
-        "id2": "B",
+        "id1": "Safe",
+        "id2": "Bad",
         "relationTitle": null
       },
       {
-        "id1": "B",
+        "id1": "Bad",
         "id2": "root_end",
         "relationTitle": null
       }

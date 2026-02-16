@@ -37,6 +37,14 @@ but are still parity-gated against upstream SVG baselines to cover high-risk sta
     coverage (href forms to keep upstream CLI baselines reproducible), floating notes/links, and unicode/RTL labels.
   - Baselines: `fixtures/upstream-svgs/state/stress_state_*_025..036.svg`
 
+- Batch 2026-02-16 (12 fixtures): `fixtures/state/stress_state_*_037..048.mmd`
+  - Focus: `scale` + long transition labels (wrapping), accessibility frontmatter (`accTitle`/`accDescr`) including
+    multiline content, quoted state definitions via `state "..." as id` (including punctuation), multiple edges and
+    self-loops, choice/fork/join with external edges, inline `%%` comments on transition lines, class/style and `:::`
+    interactions, strict click directives for tricky URLs (including `;` in quoted strings), and unicode/mixed-script
+    note content with explicit `<br/>` line breaks.
+  - Baselines: `fixtures/upstream-svgs/state/stress_state_*_037..048.svg`
+
 ## `parser/state-parser.spec.js`
 
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/state/parser/state-parser.spec.js`

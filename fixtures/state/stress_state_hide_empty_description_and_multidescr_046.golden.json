@@ -24,14 +24,14 @@
       },
       {
         "labelStyle": "",
-        "shape": "rect",
-        "label": "A",
+        "shape": "rectWithTitle",
+        "label": "line one",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "A",
+        "id": "S",
         "dir": null,
-        "domId": "state-A-1",
+        "domId": "state-S-1",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -39,18 +39,21 @@
         "ry": 10,
         "look": "classic",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "description": [
+          "line two (after blank line)"
+        ]
       },
       {
         "labelStyle": "",
         "shape": "rect",
-        "label": "B",
+        "label": "T",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "B",
+        "id": "T",
         "dir": null,
-        "domId": "state-B-2",
+        "domId": "state-T-2",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -84,7 +87,7 @@
       {
         "id": "edge0",
         "start": "root_start",
-        "end": "A",
+        "end": "S",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
@@ -99,13 +102,13 @@
       },
       {
         "id": "edge1",
-        "start": "A",
-        "end": "B",
+        "start": "S",
+        "end": "T",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "",
+        "label": "edge",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -115,7 +118,7 @@
       },
       {
         "id": "edge2",
-        "start": "B",
+        "start": "T",
         "end": "root_end",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
@@ -131,16 +134,7 @@
       }
     ],
     "other": {},
-    "links": {
-      "A": {
-        "url": "https://mermaid.js.org/",
-        "tooltip": "Tooltip for A"
-      },
-      "B": {
-        "url": "https://mermaid.js.org/",
-        "tooltip": ""
-      }
-    },
+    "links": {},
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
@@ -156,10 +150,13 @@
         "textStyles": [],
         "start": true
       },
-      "A": {
-        "id": "A",
+      "S": {
+        "id": "S",
         "type": "default",
-        "descriptions": [],
+        "descriptions": [
+          "line one",
+          "line two (after blank line)"
+        ],
         "doc": null,
         "note": null,
         "classes": [],
@@ -167,8 +164,8 @@
         "textStyles": [],
         "start": null
       },
-      "B": {
-        "id": "B",
+      "T": {
+        "id": "T",
         "type": "default",
         "descriptions": [],
         "doc": null,
@@ -193,16 +190,16 @@
     "relations": [
       {
         "id1": "root_start",
-        "id2": "A",
+        "id2": "S",
         "relationTitle": null
       },
       {
-        "id1": "A",
-        "id2": "B",
-        "relationTitle": null
+        "id1": "S",
+        "id2": "T",
+        "relationTitle": "edge"
       },
       {
-        "id1": "B",
+        "id1": "T",
         "id2": "root_end",
         "relationTitle": null
       }

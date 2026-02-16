@@ -25,13 +25,13 @@
       {
         "labelStyle": "",
         "shape": "rect",
-        "label": "A",
+        "label": "Start",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "A",
+        "id": "Start",
         "dir": null,
-        "domId": "state-A-1",
+        "domId": "state-Start-1",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -44,13 +44,51 @@
       {
         "labelStyle": "",
         "shape": "rect",
-        "label": "B",
+        "label": "Work",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "B",
+        "id": "Work",
         "dir": null,
-        "domId": "state-B-2",
+        "domId": "state-Work-4",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Review",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Review",
+        "dir": null,
+        "domId": "state-Review-4",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Done",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Done",
+        "dir": null,
+        "domId": "state-Done-5",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -69,7 +107,7 @@
         "cssStyles": [],
         "id": "root_end",
         "dir": null,
-        "domId": "state-root_end-2",
+        "domId": "state-root_end-5",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -84,12 +122,12 @@
       {
         "id": "edge0",
         "start": "root_start",
-        "end": "A",
+        "end": "Start",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "",
+        "label": "begin",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -99,13 +137,13 @@
       },
       {
         "id": "edge1",
-        "start": "A",
-        "end": "B",
+        "start": "Start",
+        "end": "Work",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "",
+        "label": "this is a very long label that should wrap cleanly and keep stable layout (a/b/c, x=y, and \"quotes\")",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -115,13 +153,61 @@
       },
       {
         "id": "edge2",
-        "start": "B",
+        "start": "Work",
+        "end": "Review",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "another-long-label-with-a-veryveryverylongwordthatforceswrapping",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge3",
+        "start": "Review",
+        "end": "Done",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "ok",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge4",
+        "start": "Review",
+        "end": "Work",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "revise",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge5",
+        "start": "Done",
         "end": "root_end",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "",
+        "label": "end",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -131,16 +217,7 @@
       }
     ],
     "other": {},
-    "links": {
-      "A": {
-        "url": "https://mermaid.js.org/",
-        "tooltip": "Tooltip for A"
-      },
-      "B": {
-        "url": "https://mermaid.js.org/",
-        "tooltip": ""
-      }
-    },
+    "links": {},
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
@@ -156,8 +233,8 @@
         "textStyles": [],
         "start": true
       },
-      "A": {
-        "id": "A",
+      "Start": {
+        "id": "Start",
         "type": "default",
         "descriptions": [],
         "doc": null,
@@ -167,8 +244,30 @@
         "textStyles": [],
         "start": null
       },
-      "B": {
-        "id": "B",
+      "Work": {
+        "id": "Work",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "Review": {
+        "id": "Review",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "Done": {
+        "id": "Done",
         "type": "default",
         "descriptions": [],
         "doc": null,
@@ -193,18 +292,33 @@
     "relations": [
       {
         "id1": "root_start",
-        "id2": "A",
-        "relationTitle": null
+        "id2": "Start",
+        "relationTitle": "begin"
       },
       {
-        "id1": "A",
-        "id2": "B",
-        "relationTitle": null
+        "id1": "Start",
+        "id2": "Work",
+        "relationTitle": "this is a very long label that should wrap cleanly and keep stable layout (a/b/c, x=y, and \"quotes\")"
       },
       {
-        "id1": "B",
+        "id1": "Work",
+        "id2": "Review",
+        "relationTitle": "another-long-label-with-a-veryveryverylongwordthatforceswrapping"
+      },
+      {
+        "id1": "Review",
+        "id2": "Done",
+        "relationTitle": "ok"
+      },
+      {
+        "id1": "Review",
+        "id2": "Work",
+        "relationTitle": "revise"
+      },
+      {
+        "id1": "Done",
         "id2": "root_end",
-        "relationTitle": null
+        "relationTitle": "end"
       }
     ],
     "styleClasses": {}

@@ -61,6 +61,26 @@ pub fn lookup_state_root_viewport_override(
         "stress_state_click_matrix_034" => Some(("0 0 41.4375 274", "41.4375")),
         "stress_state_floating_notes_and_links_035" => Some(("0 0 198.078125 300", "198.078")),
         "stress_state_unicode_and_rtl_036" => Some(("0 0 145.125 574", "145.125")),
+        "stress_state_scale_wrapping_long_edge_labels_038" => {
+            Some(("0 0 375.640625 670", "375.641"))
+        }
+        "stress_state_frontmatter_acctitle_accdescr_multiline_039" => {
+            Some(("-143.4609375 -50 338.064453125 372", "338.064"))
+        }
+        "stress_state_state_keyword_quotes_and_aliases_040" => {
+            Some(("0 0 310.5625 356", "310.562"))
+        }
+        "stress_state_multiple_edges_and_self_loops_041" => {
+            Some(("0 0 342.1963195800781 382.25", "342.196"))
+        }
+        "stress_state_choice_fork_join_external_edges_042" => Some(("0 0 216.6875 919", "216.688")),
+        "stress_state_notes_positions_and_multiline_045" => Some(("0 0 593.578125 474", "593.578")),
+        "stress_state_hide_empty_description_and_multidescr_046" => {
+            Some(("0 0 210.828125 313", "210.828"))
+        }
+        "stress_state_unicode_quotes_and_br_in_notes_048" => {
+            Some(("0 0 401.328125 596", "401.328"))
+        }
         "basic" => Some(("0 0 100.125 298", "100.125")),
         "mmdr_tests_state_state_basic" => Some(("0 0 178.203125 234", "178.203")),
         "mmdr_tests_state_state_note" => Some(("0 0 221.4418182373047 364", "221.442")),

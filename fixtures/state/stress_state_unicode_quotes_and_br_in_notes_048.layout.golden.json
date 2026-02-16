@@ -1,0 +1,268 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "nodes": [
+        {
+          "id": "AR",
+          "x": 360.602,
+          "y": 286.0,
+          "width": 35.203,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "CN",
+          "x": 259.301,
+          "y": 92.0,
+          "width": 59.688,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "CN----note-4",
+          "x": 158.0,
+          "y": 286.0,
+          "width": 230.0,
+          "height": 150.0,
+          "is_cluster": false
+        },
+        {
+          "id": "CN----parent",
+          "x": 158.0,
+          "y": 286.0,
+          "width": 300.0,
+          "height": 200.0,
+          "is_cluster": true
+        },
+        {
+          "id": "EMOJI",
+          "x": 360.602,
+          "y": 480.0,
+          "width": 59.203,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "root_end",
+          "x": 360.602,
+          "y": 581.0,
+          "width": 14.013,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "root_start",
+          "x": 259.301,
+          "y": 15.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "CN-CN----note-4",
+          "from": "CN",
+          "to": "CN----note-4",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 230.233,
+              "y": 109.137
+            },
+            {
+              "x": 158.0,
+              "y": 149.0
+            },
+            {
+              "x": 158.0,
+              "y": 186.0
+            },
+            {
+              "x": 158.0,
+              "y": 286.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge0",
+          "from": "root_start",
+          "to": "CN",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 259.301,
+              "y": 22.0
+            },
+            {
+              "x": 259.301,
+              "y": 47.0
+            },
+            {
+              "x": 259.801,
+              "y": 72.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge1",
+          "from": "CN",
+          "to": "AR",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 289.368,
+              "y": 109.137
+            },
+            {
+              "x": 360.602,
+              "y": 149.0
+            },
+            {
+              "x": 360.602,
+              "y": 186.0
+            },
+            {
+              "x": 361.102,
+              "y": 266.5
+            }
+          ],
+          "label": {
+            "x": 360.602,
+            "y": 149.0,
+            "width": 67.203,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge2",
+          "from": "AR",
+          "to": "EMOJI",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 361.102,
+              "y": 306.5
+            },
+            {
+              "x": 360.602,
+              "y": 386.0
+            },
+            {
+              "x": 360.602,
+              "y": 423.0
+            },
+            {
+              "x": 361.102,
+              "y": 460.5
+            }
+          ],
+          "label": {
+            "x": 360.602,
+            "y": 423.0,
+            "width": 28.797,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge3",
+          "from": "EMOJI",
+          "to": "root_end",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 361.102,
+              "y": 500.5
+            },
+            {
+              "x": 360.602,
+              "y": 537.0
+            },
+            {
+              "x": 360.602,
+              "y": 574.0
+            }
+          ],
+          "label": {
+            "x": 360.602,
+            "y": 537.0,
+            "width": 9.594,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "CN----parent",
+          "x": 158.0,
+          "y": 286.0,
+          "width": 300.0,
+          "height": 200.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
+          "title": "Mixed scripts: 中文 / 日本語 / العربية<br/>\npunctuation: ,.;:!? () [] {} / \\\\ |",
+          "title_label": {
+            "x": 158.0,
+            "y": 223.0,
+            "width": 242.406,
+            "height": 72.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 16.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 394.203,
+        "max_y": 588.0
+      }
+    }
+  }
+}

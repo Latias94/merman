@@ -31,7 +31,7 @@
         "cssStyles": [],
         "id": "A",
         "dir": null,
-        "domId": "state-A-1",
+        "domId": "state-A-3",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -50,7 +50,7 @@
         "cssStyles": [],
         "id": "B",
         "dir": null,
-        "domId": "state-B-2",
+        "domId": "state-B-4",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -78,6 +78,68 @@
         "look": "classic",
         "parentId": null,
         "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "noteGroup",
+        "label": "Multi-line note<br/>\nwith an HTML break.",
+        "cssClasses": "statediagram-state",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "A----parent",
+        "domId": "state-A----parent-3",
+        "type": "group",
+        "isGroup": true,
+        "padding": 16,
+        "look": "classic",
+        "position": "right of"
+      },
+      {
+        "labelStyle": "",
+        "shape": "note",
+        "label": "Multi-line note<br/>\nwith an HTML break.",
+        "cssClasses": "statediagram-note",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "A----note-3",
+        "domId": "state-A----note-3",
+        "type": null,
+        "isGroup": false,
+        "padding": 15,
+        "look": "classic",
+        "position": "right of",
+        "parentId": "A----parent"
+      },
+      {
+        "labelStyle": "",
+        "shape": "noteGroup",
+        "label": "Inline note to the left.",
+        "cssClasses": "statediagram-state",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "B----parent",
+        "domId": "state-B----parent-4",
+        "type": "group",
+        "isGroup": true,
+        "padding": 16,
+        "look": "classic",
+        "position": "left of"
+      },
+      {
+        "labelStyle": "",
+        "shape": "note",
+        "label": "Inline note to the left.",
+        "cssClasses": "statediagram-note",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "B----note-4",
+        "domId": "state-B----note-4",
+        "type": null,
+        "isGroup": false,
+        "padding": 15,
+        "look": "classic",
+        "position": "left of",
+        "parentId": "B----parent"
       }
     ],
     "edges": [
@@ -105,7 +167,7 @@
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "",
+        "label": "go",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -128,19 +190,40 @@
         "thickness": "normal",
         "classes": "transition",
         "look": "classic"
+      },
+      {
+        "id": "A-A----note-3",
+        "start": "A",
+        "end": "A----note-3",
+        "arrowhead": "none",
+        "arrowTypeEnd": "",
+        "style": "fill:none",
+        "labelStyle": "",
+        "classes": "transition note-edge",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "look": "classic"
+      },
+      {
+        "id": "B----note-4-B",
+        "start": "B----note-4",
+        "end": "B",
+        "arrowhead": "none",
+        "arrowTypeEnd": "",
+        "style": "fill:none",
+        "labelStyle": "",
+        "classes": "transition note-edge",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "look": "classic"
       }
     ],
     "other": {},
-    "links": {
-      "A": {
-        "url": "https://mermaid.js.org/",
-        "tooltip": "Tooltip for A"
-      },
-      "B": {
-        "url": "https://mermaid.js.org/",
-        "tooltip": ""
-      }
-    },
+    "links": {},
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
@@ -161,7 +244,10 @@
         "type": "default",
         "descriptions": [],
         "doc": null,
-        "note": null,
+        "note": {
+          "position": "right of",
+          "text": "Multi-line note<br/>\nwith an HTML break."
+        },
         "classes": [],
         "styles": [],
         "textStyles": [],
@@ -172,7 +258,10 @@
         "type": "default",
         "descriptions": [],
         "doc": null,
-        "note": null,
+        "note": {
+          "position": "left of",
+          "text": "Inline note to the left."
+        },
         "classes": [],
         "styles": [],
         "textStyles": [],
@@ -199,7 +288,7 @@
       {
         "id1": "A",
         "id2": "B",
-        "relationTitle": null
+        "relationTitle": "go"
       },
       {
         "id1": "B",

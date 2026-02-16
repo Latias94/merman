@@ -1,0 +1,13 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): multiple edges between the same states + self loops.
+
+[*] --> A
+
+A --> B : first
+A --> B : second (same endpoints)
+
+state B
+B --> B : self loop label (contains -- dashes -- and colon)
+B --> A
+
+A --> [*]

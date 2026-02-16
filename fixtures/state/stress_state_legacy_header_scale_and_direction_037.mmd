@@ -1,0 +1,20 @@
+stateDiagram
+%% Authored stress fixture (Mermaid@11.12.2): legacy `stateDiagram` header + scale + direction (including nested direction).
+
+hide empty description
+scale 350 width
+direction LR
+
+[*] --> A
+A --> B
+B --> [*]
+
+state B {
+  direction TB
+  [*] --> b1
+  b1 --> b2 : inner
+  b2 --> [*]
+}
+
+A --> B : to composite
+

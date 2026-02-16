@@ -105,7 +105,7 @@
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "",
+        "label": "go",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -121,7 +121,7 @@
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "",
+        "label": "done",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -131,19 +131,10 @@
       }
     ],
     "other": {},
-    "links": {
-      "A": {
-        "url": "https://mermaid.js.org/",
-        "tooltip": "Tooltip for A"
-      },
-      "B": {
-        "url": "https://mermaid.js.org/",
-        "tooltip": ""
-      }
-    },
+    "links": {},
     "direction": "TB",
-    "accTitle": null,
-    "accDescr": null,
+    "accTitle": "State stress - accessibility",
+    "accDescr": "Multi-line accDescr with entities: &lt;tag&gt; &amp; x &gt; y.\nAlso includes quotes: \"double\" and 'single'.",
     "states": {
       "root_start": {
         "id": "root_start",
@@ -199,12 +190,12 @@
       {
         "id1": "A",
         "id2": "B",
-        "relationTitle": null
+        "relationTitle": "go"
       },
       {
         "id1": "B",
         "id2": "root_end",
-        "relationTitle": null
+        "relationTitle": "done"
       }
     ],
     "styleClasses": {}

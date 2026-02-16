@@ -1016,7 +1016,7 @@ struct StateDb {
     acc_title: Option<String>,
     acc_descr: Option<String>,
     generated_id_cnt: usize,
-    links: HashMap<String, Link>,
+    links: HashMap<String, Vec<Link>>,
 }
 
 impl StateDb {
@@ -1179,13 +1179,13 @@ impl StateDb {
     }
 
     fn add_link(&mut self, state_id: &str, url: &str, tooltip: &str) {
-        self.links.insert(
-            state_id.to_string(),
-            Link {
+        self.links
+            .entry(state_id.to_string())
+            .or_default()
+            .push(Link {
                 url: url.to_string(),
                 tooltip: tooltip.to_string(),
-            },
-        );
+            });
     }
 
     fn ensure_state(&mut self, id: &str) -> &mut StateRecord {
@@ -1443,14 +1443,22 @@ impl StateDb {
         let links_json: serde_json::Map<String, Value> = self
             .links
             .iter()
-            .map(|(k, v)| {
-                (
-                    k.clone(),
-                    json!({
-                        "url": v.url,
-                        "tooltip": v.tooltip,
-                    }),
-                )
+            .map(|(k, links)| {
+                let mut out_links: Vec<Value> = links
+                    .iter()
+                    .map(|l| {
+                        json!({
+                            "url": l.url,
+                            "tooltip": l.tooltip,
+                        })
+                    })
+                    .collect();
+                let v = if out_links.len() == 1 {
+                    out_links.pop().unwrap_or(Value::Null)
+                } else {
+                    Value::Array(out_links)
+                };
+                (k.clone(), v)
             })
             .collect();
 

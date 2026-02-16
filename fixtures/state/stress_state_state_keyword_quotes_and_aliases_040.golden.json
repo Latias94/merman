@@ -25,13 +25,13 @@
       {
         "labelStyle": "",
         "shape": "rect",
-        "label": "A",
+        "label": "s1",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "A",
+        "id": "s1",
         "dir": null,
-        "domId": "state-A-1",
+        "domId": "state-s1-2",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -43,14 +43,14 @@
       },
       {
         "labelStyle": "",
-        "shape": "rect",
-        "label": "B",
+        "shape": "rectWithTitle",
+        "label": "This is a state: with : colons and quotes",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "B",
+        "id": "s2",
         "dir": null,
-        "domId": "state-B-2",
+        "domId": "state-s2-3",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -58,7 +58,11 @@
         "ry": 10,
         "look": "classic",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "description": [
+          "extra description line 1",
+          "extra description line 2"
+        ]
       },
       {
         "labelStyle": "",
@@ -69,7 +73,7 @@
         "cssStyles": [],
         "id": "root_end",
         "dir": null,
-        "domId": "state-root_end-2",
+        "domId": "state-root_end-3",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -84,7 +88,7 @@
       {
         "id": "edge0",
         "start": "root_start",
-        "end": "A",
+        "end": "s1",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
@@ -99,13 +103,13 @@
       },
       {
         "id": "edge1",
-        "start": "A",
-        "end": "B",
+        "start": "s1",
+        "end": "s2",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "",
+        "label": "enter",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -115,13 +119,29 @@
       },
       {
         "id": "edge2",
-        "start": "B",
+        "start": "s2",
+        "end": "s1",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "back",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge3",
+        "start": "s2",
         "end": "root_end",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "",
+        "label": "finish",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -131,16 +151,7 @@
       }
     ],
     "other": {},
-    "links": {
-      "A": {
-        "url": "https://mermaid.js.org/",
-        "tooltip": "Tooltip for A"
-      },
-      "B": {
-        "url": "https://mermaid.js.org/",
-        "tooltip": ""
-      }
-    },
+    "links": {},
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
@@ -156,8 +167,8 @@
         "textStyles": [],
         "start": true
       },
-      "A": {
-        "id": "A",
+      "s1": {
+        "id": "s1",
         "type": "default",
         "descriptions": [],
         "doc": null,
@@ -167,10 +178,14 @@
         "textStyles": [],
         "start": null
       },
-      "B": {
-        "id": "B",
+      "s2": {
+        "id": "s2",
         "type": "default",
-        "descriptions": [],
+        "descriptions": [
+          "This is a state: with : colons and quotes",
+          "extra description line 1",
+          "extra description line 2"
+        ],
         "doc": null,
         "note": null,
         "classes": [],
@@ -193,18 +208,23 @@
     "relations": [
       {
         "id1": "root_start",
-        "id2": "A",
+        "id2": "s1",
         "relationTitle": null
       },
       {
-        "id1": "A",
-        "id2": "B",
-        "relationTitle": null
+        "id1": "s1",
+        "id2": "s2",
+        "relationTitle": "enter"
       },
       {
-        "id1": "B",
+        "id1": "s2",
+        "id2": "s1",
+        "relationTitle": "back"
+      },
+      {
+        "id1": "s2",
         "id2": "root_end",
-        "relationTitle": null
+        "relationTitle": "finish"
       }
     ],
     "styleClasses": {}

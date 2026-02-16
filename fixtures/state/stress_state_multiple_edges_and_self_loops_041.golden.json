@@ -31,7 +31,7 @@
         "cssStyles": [],
         "id": "A",
         "dir": null,
-        "domId": "state-A-1",
+        "domId": "state-A-5",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -50,7 +50,7 @@
         "cssStyles": [],
         "id": "B",
         "dir": null,
-        "domId": "state-B-2",
+        "domId": "state-B-4",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -69,7 +69,7 @@
         "cssStyles": [],
         "id": "root_end",
         "dir": null,
-        "domId": "state-root_end-2",
+        "domId": "state-root_end-5",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -105,7 +105,7 @@
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "",
+        "label": "first",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -115,7 +115,55 @@
       },
       {
         "id": "edge2",
+        "start": "A",
+        "end": "B",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "second (same endpoints)",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge3",
         "start": "B",
+        "end": "B",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "self loop label (contains -- dashes -- and colon)",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge4",
+        "start": "B",
+        "end": "A",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge5",
+        "start": "A",
         "end": "root_end",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
@@ -131,16 +179,7 @@
       }
     ],
     "other": {},
-    "links": {
-      "A": {
-        "url": "https://mermaid.js.org/",
-        "tooltip": "Tooltip for A"
-      },
-      "B": {
-        "url": "https://mermaid.js.org/",
-        "tooltip": ""
-      }
-    },
+    "links": {},
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
@@ -199,10 +238,25 @@
       {
         "id1": "A",
         "id2": "B",
-        "relationTitle": null
+        "relationTitle": "first"
+      },
+      {
+        "id1": "A",
+        "id2": "B",
+        "relationTitle": "second (same endpoints)"
       },
       {
         "id1": "B",
+        "id2": "B",
+        "relationTitle": "self loop label (contains -- dashes -- and colon)"
+      },
+      {
+        "id1": "B",
+        "id2": "A",
+        "relationTitle": null
+      },
+      {
+        "id1": "A",
         "id2": "root_end",
         "relationTitle": null
       }

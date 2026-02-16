@@ -26,8 +26,17 @@
         "labelStyle": "",
         "shape": "rect",
         "label": "A",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
+        "cssClasses": "hot hot statediagram-state",
+        "cssCompiledStyles": [
+          "fill:#ffdddd",
+          "stroke:#cc0000",
+          "stroke-width:2px",
+          "color:#330000",
+          "fill:#ffdddd",
+          "stroke:#cc0000",
+          "stroke-width:2px",
+          "color:#330000"
+        ],
         "cssStyles": [],
         "id": "A",
         "dir": null,
@@ -45,12 +54,45 @@
         "labelStyle": "",
         "shape": "rect",
         "label": "B",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
+        "cssClasses": "cool hot statediagram-state",
+        "cssCompiledStyles": [
+          "fill:#ddeeff",
+          "stroke:#004488",
+          "stroke-width:2px",
+          "color:#001122",
+          "fill:#ffdddd",
+          "stroke:#cc0000",
+          "stroke-width:2px",
+          "color:#330000"
+        ],
         "cssStyles": [],
         "id": "B",
         "dir": null,
         "domId": "state-B-2",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "C",
+        "cssClasses": "cool statediagram-state",
+        "cssCompiledStyles": [
+          "fill:#ddeeff",
+          "stroke:#004488",
+          "stroke-width:2px",
+          "color:#001122"
+        ],
+        "cssStyles": [],
+        "id": "C",
+        "dir": null,
+        "domId": "state-C-3",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -69,7 +111,7 @@
         "cssStyles": [],
         "id": "root_end",
         "dir": null,
-        "domId": "state-root_end-2",
+        "domId": "state-root_end-3",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -105,7 +147,7 @@
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "",
+        "label": "go",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -116,6 +158,22 @@
       {
         "id": "edge2",
         "start": "B",
+        "end": "C",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "next",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge3",
+        "start": "C",
         "end": "root_end",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
@@ -131,16 +189,7 @@
       }
     ],
     "other": {},
-    "links": {
-      "A": {
-        "url": "https://mermaid.js.org/",
-        "tooltip": "Tooltip for A"
-      },
-      "B": {
-        "url": "https://mermaid.js.org/",
-        "tooltip": ""
-      }
-    },
+    "links": {},
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
@@ -162,7 +211,10 @@
         "descriptions": [],
         "doc": null,
         "note": null,
-        "classes": [],
+        "classes": [
+          "hot",
+          "hot"
+        ],
         "styles": [],
         "textStyles": [],
         "start": null
@@ -173,7 +225,23 @@
         "descriptions": [],
         "doc": null,
         "note": null,
-        "classes": [],
+        "classes": [
+          "cool",
+          "hot"
+        ],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "C": {
+        "id": "C",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [
+          "cool"
+        ],
         "styles": [],
         "textStyles": [],
         "start": null
@@ -199,14 +267,44 @@
       {
         "id1": "A",
         "id2": "B",
-        "relationTitle": null
+        "relationTitle": "go"
       },
       {
         "id1": "B",
+        "id2": "C",
+        "relationTitle": "next"
+      },
+      {
+        "id1": "C",
         "id2": "root_end",
         "relationTitle": null
       }
     ],
-    "styleClasses": {}
+    "styleClasses": {
+      "hot": {
+        "id": "hot",
+        "styles": [
+          "fill:#ffdddd",
+          "stroke:#cc0000",
+          "stroke-width:2px",
+          "color:#330000"
+        ],
+        "textStyles": [
+          "fill:#330000"
+        ]
+      },
+      "cool": {
+        "id": "cool",
+        "styles": [
+          "fill:#ddeeff",
+          "stroke:#004488",
+          "stroke-width:2px",
+          "color:#001122"
+        ],
+        "textStyles": [
+          "fill:#001122"
+        ]
+      }
+    }
   }
 }

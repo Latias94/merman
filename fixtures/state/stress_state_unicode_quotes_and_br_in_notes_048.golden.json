@@ -5,6 +5,26 @@
     "nodes": [
       {
         "labelStyle": "",
+        "shape": "rect",
+        "label": "中文-状態",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "CN",
+        "dir": null,
+        "domId": "state-CN-4",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true,
+        "description": []
+      },
+      {
+        "labelStyle": "",
         "shape": "stateStart",
         "label": "root_start",
         "cssClasses": "statediagram-state",
@@ -25,13 +45,13 @@
       {
         "labelStyle": "",
         "shape": "rect",
-        "label": "A",
+        "label": "AR",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "A",
+        "id": "AR",
         "dir": null,
-        "domId": "state-A-1",
+        "domId": "state-AR-2",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -44,13 +64,13 @@
       {
         "labelStyle": "",
         "shape": "rect",
-        "label": "B",
+        "label": "EMOJI",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "B",
+        "id": "EMOJI",
         "dir": null,
-        "domId": "state-B-2",
+        "domId": "state-EMOJI-3",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -69,7 +89,7 @@
         "cssStyles": [],
         "id": "root_end",
         "dir": null,
-        "domId": "state-root_end-2",
+        "domId": "state-root_end-3",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -78,13 +98,44 @@
         "look": "classic",
         "parentId": null,
         "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "noteGroup",
+        "label": "Mixed scripts: 中文 / 日本語 / العربية<br/>\npunctuation: ,.;:!? () [] {} / \\\\ |",
+        "cssClasses": "statediagram-state",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "CN----parent",
+        "domId": "state-CN----parent-4",
+        "type": "group",
+        "isGroup": true,
+        "padding": 16,
+        "look": "classic",
+        "position": "right of"
+      },
+      {
+        "labelStyle": "",
+        "shape": "note",
+        "label": "Mixed scripts: 中文 / 日本語 / العربية<br/>\npunctuation: ,.;:!? () [] {} / \\\\ |",
+        "cssClasses": "statediagram-note",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "CN----note-4",
+        "domId": "state-CN----note-4",
+        "type": null,
+        "isGroup": false,
+        "padding": 15,
+        "look": "classic",
+        "position": "right of",
+        "parentId": "CN----parent"
       }
     ],
     "edges": [
       {
         "id": "edge0",
         "start": "root_start",
-        "end": "A",
+        "end": "CN",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
@@ -99,13 +150,13 @@
       },
       {
         "id": "edge1",
-        "start": "A",
-        "end": "B",
+        "start": "CN",
+        "end": "AR",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "",
+        "label": "العربية",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -115,36 +166,74 @@
       },
       {
         "id": "edge2",
-        "start": "B",
-        "end": "root_end",
+        "start": "AR",
+        "end": "EMOJI",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "",
+        "label": "😀😅👍",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
         "classes": "transition",
         "look": "classic"
+      },
+      {
+        "id": "edge3",
+        "start": "EMOJI",
+        "end": "root_end",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "끝",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "CN-CN----note-4",
+        "start": "CN",
+        "end": "CN----note-4",
+        "arrowhead": "none",
+        "arrowTypeEnd": "",
+        "style": "fill:none",
+        "labelStyle": "",
+        "classes": "transition note-edge",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "look": "classic"
       }
     ],
     "other": {},
-    "links": {
-      "A": {
-        "url": "https://mermaid.js.org/",
-        "tooltip": "Tooltip for A"
-      },
-      "B": {
-        "url": "https://mermaid.js.org/",
-        "tooltip": ""
-      }
-    },
+    "links": {},
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
     "states": {
+      "CN": {
+        "id": "CN",
+        "type": "default",
+        "descriptions": [
+          "中文-状態"
+        ],
+        "doc": null,
+        "note": {
+          "position": "right of",
+          "text": "Mixed scripts: 中文 / 日本語 / العربية<br/>\npunctuation: ,.;:!? () [] {} / \\\\ |"
+        },
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
       "root_start": {
         "id": "root_start",
         "type": "default",
@@ -156,8 +245,8 @@
         "textStyles": [],
         "start": true
       },
-      "A": {
-        "id": "A",
+      "AR": {
+        "id": "AR",
         "type": "default",
         "descriptions": [],
         "doc": null,
@@ -167,8 +256,8 @@
         "textStyles": [],
         "start": null
       },
-      "B": {
-        "id": "B",
+      "EMOJI": {
+        "id": "EMOJI",
         "type": "default",
         "descriptions": [],
         "doc": null,
@@ -193,18 +282,23 @@
     "relations": [
       {
         "id1": "root_start",
-        "id2": "A",
+        "id2": "CN",
         "relationTitle": null
       },
       {
-        "id1": "A",
-        "id2": "B",
-        "relationTitle": null
+        "id1": "CN",
+        "id2": "AR",
+        "relationTitle": "العربية"
       },
       {
-        "id1": "B",
+        "id1": "AR",
+        "id2": "EMOJI",
+        "relationTitle": "😀😅👍"
+      },
+      {
+        "id1": "EMOJI",
         "id2": "root_end",
-        "relationTitle": null
+        "relationTitle": "끝"
       }
     ],
     "styleClasses": {}
