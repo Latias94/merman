@@ -44,6 +44,18 @@ parity-gated against upstream SVG baselines generated via the pinned Mermaid CLI
 - `fixtures/flowchart/stress_flowchart_comments_and_directives_010.mmd`
 - `fixtures/flowchart/stress_flowchart_multi_direction_graph_011.mmd`
 - `fixtures/flowchart/stress_flowchart_escape_sequences_and_quotes_012.mmd`
+- `fixtures/flowchart/stress_flowchart_subgraph_markdown_titles_013.mmd`
+- `fixtures/flowchart/stress_flowchart_subgraph_title_spaces_dashes_014.mmd`
+- `fixtures/flowchart/stress_flowchart_subgraph_title_margin_extremes_015.mmd`
+- `fixtures/flowchart/stress_flowchart_subgraph_dir_inherit_vs_local_016.mmd`
+- `fixtures/flowchart/stress_flowchart_edges_to_from_subgraphs_017.mmd`
+- `fixtures/flowchart/stress_flowchart_edge_label_near_cluster_title_018.mmd`
+- `fixtures/flowchart/stress_flowchart_deeply_nested_clusters_019.mmd`
+- `fixtures/flowchart/stress_flowchart_subgraph_html_titles_020.mmd`
+- `fixtures/flowchart/stress_flowchart_cluster_dense_children_021.mmd`
+- `fixtures/flowchart/stress_flowchart_cluster_title_long_multiline_022.mmd`
+- `fixtures/flowchart/stress_flowchart_nested_clusters_external_edges_023.mmd`
+- `fixtures/flowchart/stress_flowchart_cluster_minimal_title_placeholder_024.mmd`
 
 ## Cypress rendering specs
 

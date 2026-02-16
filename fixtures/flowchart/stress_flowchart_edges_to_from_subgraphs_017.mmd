@@ -1,0 +1,24 @@
+flowchart TB
+%% Authored stress fixture (Mermaid@11.12.2): edges to/from subgraph ids and nested clusters.
+
+accTitle: Flowchart stress - edges to/from subgraphs
+accDescr: Exercises cluster-as-endpoint edges, arrowhead placement, and nesting.
+
+subgraph one["One"]
+  a1[a1] --> a2[a2]
+end
+
+subgraph two["Two"]
+  b1[b1] --> b2[b2]
+end
+
+subgraph three["Three"]
+  c1[c1] --> c2[c2]
+end
+
+outside[outside] --> one
+one --> two
+three --> two
+two --> c2
+two --> outside
+

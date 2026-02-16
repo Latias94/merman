@@ -1,0 +1,16 @@
+%%{init: {"flowchart": {"htmlLabels": false}} }%%
+flowchart LR
+%% Authored stress fixture (Mermaid@11.12.2): markdown strings in subgraph titles and node/edge labels.
+
+accTitle: Flowchart stress - markdown subgraph titles
+accDescr: Exercises markdown strings for subgraph labels (quoted titles), multiline markdown strings, and edge labels.
+
+subgraph "`**Parent** cluster`"
+  a("`The **cat**
+  in the hat`") -- "`edge **label**`" --> b{{"`The **dog** in the hog`"}}
+  subgraph "`_Child_`"
+    c["`**Bold** child node`"]
+  end
+end
+
+b --> c

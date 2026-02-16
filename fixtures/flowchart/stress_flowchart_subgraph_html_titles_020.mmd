@@ -1,0 +1,16 @@
+%%{init: {"flowchart": {"htmlLabels": true}} }%%
+flowchart LR
+%% Authored stress fixture (Mermaid@11.12.2): HTML in subgraph titles with htmlLabels=true.
+
+accTitle: Flowchart stress - HTML subgraph titles
+accDescr: Exercises XHTML/foreignObject rendering for cluster labels and ensures cluster bounds include title placeholders.
+
+subgraph SG["<b>Parent</b><br/>cluster"]
+  a["alpha"] --> b["beta"]
+  subgraph CHILD["<i>Child</i><br/>cluster"]
+    c["gamma"] --> d["delta"]
+  end
+end
+
+b --> c
+

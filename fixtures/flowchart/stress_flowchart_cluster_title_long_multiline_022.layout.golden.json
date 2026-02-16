@@ -1,0 +1,175 @@
+{
+  "diagramType": "flowchart-v2",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "x1",
+          "x": 226.68,
+          "y": 70.0,
+          "width": 75.84,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "x2",
+          "x": 352.52,
+          "y": 70.0,
+          "width": 75.84,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "outside",
+          "x": 60.88,
+          "y": 70.0,
+          "width": 105.76,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "outside2",
+          "x": 522.8,
+          "y": 70.0,
+          "width": 114.72,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "subGraph0",
+          "x": 289.6,
+          "y": 70.0,
+          "width": 251.68,
+          "height": 124.0,
+          "is_cluster": true
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_x1_x2_0",
+          "from": "x1",
+          "to": "x2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 264.6,
+              "y": 70.0
+            },
+            {
+              "x": 289.6,
+              "y": 70.0
+            },
+            {
+              "x": 314.6,
+              "y": 70.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_outside_x1_0",
+          "from": "outside",
+          "to": "x1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 113.76,
+              "y": 70.0
+            },
+            {
+              "x": 138.76,
+              "y": 70.0
+            },
+            {
+              "x": 163.76,
+              "y": 70.0
+            },
+            {
+              "x": 188.76,
+              "y": 70.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_x2_outside2_0",
+          "from": "x2",
+          "to": "outside2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 390.44,
+              "y": 70.0
+            },
+            {
+              "x": 415.44,
+              "y": 70.0
+            },
+            {
+              "x": 440.44,
+              "y": 70.0
+            },
+            {
+              "x": 465.44,
+              "y": 70.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "subGraph0",
+          "x": 289.6,
+          "y": 70.0,
+          "width": 251.68,
+          "height": 124.0,
+          "diff": -4.0,
+          "offset_y": 48.8,
+          "title": "A very long cluster title with punctuation: (a/b/c)",
+          "title_label": {
+            "x": 289.6,
+            "y": 34.4,
+            "width": 125.76,
+            "height": 52.8
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 580.16,
+        "max_y": 132.0
+      }
+    }
+  }
+}

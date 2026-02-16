@@ -1,0 +1,13 @@
+%%{init: {"flowchart": {"htmlLabels": false}} }%%
+flowchart LR
+%% Authored stress fixture (Mermaid@11.12.2): long subgraph titles with htmlLabels=false.
+
+accTitle: Flowchart stress - long cluster title (plain)
+accDescr: Exercises cluster title placeholder width for a long plain-text title when htmlLabels=false.
+
+subgraph "A very long cluster title with punctuation: (a/b/c)"
+  x1["x1"] --> x2["x2"]
+end
+
+outside --> x1
+x2 --> outside2

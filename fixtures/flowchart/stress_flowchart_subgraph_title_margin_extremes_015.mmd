@@ -1,0 +1,22 @@
+%%{init: {"flowchart": {"subGraphTitleMargin": {"top": 30, "bottom": 20}} } }%%
+flowchart LR
+%% Authored stress fixture (Mermaid@11.12.2): large subGraphTitleMargin with nested subgraphs and edge labels.
+
+accTitle: Flowchart stress - subgraph title margin extremes
+accDescr: Exercises cluster title placeholder sizing with large title margins, nested clusters, and edge labels near the top boundary.
+
+subgraph TOP["Top Cluster"]
+  direction TB
+  subgraph B1["B1 Cluster"]
+    direction RL
+    i1[i1] -->|lb1| f1[f1]
+  end
+  subgraph B2["B2 Cluster"]
+    direction BT
+    i2[i2] -->|lb2| f2[f2]
+  end
+end
+
+OUT1["outside 1"] --> TOP --> OUT2["outside 2"]
+B1 -->|between| B2
+

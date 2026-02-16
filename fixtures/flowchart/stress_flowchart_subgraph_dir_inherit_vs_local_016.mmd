@@ -1,0 +1,20 @@
+flowchart LR
+%% Authored stress fixture (Mermaid@11.12.2): subgraph direction inheritance vs external links.
+
+accTitle: Flowchart stress - subgraph direction inherit vs local
+accDescr: Exercises the rule where subgraph direction is ignored when nodes are linked to the outside.
+
+subgraph kept_dir [kept_dir local TB]
+  direction TB
+  t1[top] --> b1[bottom]
+end
+
+subgraph ignored_dir [ignored_dir local TB external link]
+  direction TB
+  t2[top] --> b2[bottom]
+end
+
+outside1 --> kept_dir
+outside2 --> t2
+kept_dir --> outside3
+ignored_dir --> outside4

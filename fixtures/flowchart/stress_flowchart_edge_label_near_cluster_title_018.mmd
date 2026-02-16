@@ -1,0 +1,14 @@
+%%{init: {"flowchart": {"rankSpacing": 20, "nodeSpacing": 20}} }%%
+flowchart TB
+%% Authored stress fixture (Mermaid@11.12.2): edge label positioned near the cluster title region.
+
+accTitle: Flowchart stress - edge label near cluster title
+accDescr: Exercises a small cluster where an internal edge label can drift close to the title placeholder.
+
+subgraph S["Small Cluster"]
+  n1["N1"] -->|"very long edge label"| n2["N2"]
+end
+
+pre[pre] --> n1
+n2 --> post[post]
+
