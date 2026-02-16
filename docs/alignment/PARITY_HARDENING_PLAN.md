@@ -2,10 +2,10 @@
 
 Baseline version: Mermaid `@11.12.2`.
 
-As of 2026-02-15:
+As of 2026-02-16:
 
 - `parity` full compare: 0 mismatch.
-- `parity-root` full compare: 0 mismatch (1450/1450 upstream SVG baselines).
+- `parity-root` full compare: 0 mismatch (1656/1656 upstream SVG baselines).
 
 This document defines the next hardening phases after reaching baseline 100% parity for the
 current fixture set.
@@ -22,7 +22,7 @@ current fixture set.
 ### Upstream SVG Corpus
 
 - Total diagrams covered: 23
-- Total upstream SVG baselines: 1450
+- Total upstream SVG baselines: 1656
 
 ### Upstream Syntax Docs Inventory (11.12.2)
 
@@ -45,20 +45,28 @@ Largest fixture buckets:
 
 Root viewport overrides:
 
-- `architecture_root_overrides_11_12_2.rs`: 30 entries
-- `flowchart_root_overrides_11_12_2.rs`: 104 entries
-- `class_root_overrides_11_12_2.rs`: 124 entries
-- `mindmap_root_overrides_11_12_2.rs`: 53 entries
-- `gitgraph_root_overrides_11_12_2.rs`: 55 entries
-- `pie_root_overrides_11_12_2.rs`: 14 entries
-- `sankey_root_overrides_11_12_2.rs`: 5 entries
-- `sequence_root_overrides_11_12_2.rs`: 78 entries
-- `state_root_overrides_11_12_2.rs`: 57 entries
-- `timeline_root_overrides_11_12_2.rs`: 8 entries
+- `architecture_root_overrides_11_12_2.rs`: 8 entries
+- `block_root_overrides_11_12_2.rs`: 4 entries
+- `class_root_overrides_11_12_2.rs`: 107 entries
+- `er_root_overrides_11_12_2.rs`: 9 entries
+- `flowchart_root_overrides_11_12_2.rs`: 79 entries
+- `gitgraph_root_overrides_11_12_2.rs`: 34 entries
+- `kanban_root_overrides_11_12_2.rs`: 1 entry
+- `mindmap_root_overrides_11_12_2.rs`: 51 entries
+- `pie_root_overrides_11_12_2.rs`: 3 entries
+- `requirement_root_overrides_11_12_2.rs`: 6 entries
+- `sankey_root_overrides_11_12_2.rs`: 3 entries
+- `sequence_root_overrides_11_12_2.rs`: 69 entries
+- `state_root_overrides_11_12_2.rs`: 67 entries
+- `timeline_root_overrides_11_12_2.rs`: 6 entries
 
 State text/bbox overrides:
 
 - `state_text_overrides_11_12_2.rs`: 46 `Some(...)` entries across width/height/bbox helpers
+
+Related planning:
+
+- Prioritized gaps and milestone mapping: `docs/alignment/GAP_BACKLOG.md`
 
 ## Phase Plan
 
