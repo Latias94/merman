@@ -1178,6 +1178,17 @@ impl SimGraph {
             timings.nodes_to_apply_gravitation = s.elapsed();
         }
 
+        fn nodes2_mut(nodes: &mut [SimNode], a: usize, b: usize) -> (&mut SimNode, &mut SimNode) {
+            debug_assert!(a != b);
+            if a < b {
+                let (left, right) = nodes.split_at_mut(b);
+                (&mut left[a], &mut right[0])
+            } else {
+                let (left, right) = nodes.split_at_mut(a);
+                (&mut right[0], &mut left[b])
+            }
+        }
+
         // These are instance fields in upstream `FDLayout`/`CoSELayout`.
         let ideal_edge_length = Self::DEFAULT_EDGE_LENGTH.max(10.0);
         let spring_constant = Self::DEFAULT_SPRING_STRENGTH;
@@ -1348,10 +1359,11 @@ impl SimGraph {
                 let spring_force = spring_constant * (len - ideal_edge_length);
                 let sfx = spring_force * (lx / len);
                 let sfy = spring_force * (ly / len);
-                self.nodes[a].spring_fx += sfx;
-                self.nodes[a].spring_fy += sfy;
-                self.nodes[b].spring_fx -= sfx;
-                self.nodes[b].spring_fy -= sfy;
+                let (na, nb) = nodes2_mut(&mut self.nodes, a, b);
+                na.spring_fx += sfx;
+                na.spring_fy += sfy;
+                nb.spring_fx -= sfx;
+                nb.spring_fy -= sfy;
             }
             if let Some(s) = spring_start {
                 timings.spring_forces += s.elapsed();
@@ -1437,10 +1449,11 @@ impl SimGraph {
                         }
 
                         let (rfx, rfy) = self.calc_repulsion_force(i, j, repulsion_constant);
-                        self.nodes[i].repulsion_fx += rfx;
-                        self.nodes[i].repulsion_fy += rfy;
-                        self.nodes[j].repulsion_fx -= rfx;
-                        self.nodes[j].repulsion_fy -= rfy;
+                        let (ni, nj) = nodes2_mut(&mut self.nodes, i, j);
+                        ni.repulsion_fx += rfx;
+                        ni.repulsion_fy += rfy;
+                        nj.repulsion_fx -= rfx;
+                        nj.repulsion_fy -= rfy;
                     }
                 }
             } else {
@@ -1470,10 +1483,11 @@ impl SimGraph {
                         }
 
                         let (rfx, rfy) = self.calc_repulsion_force(i, j, repulsion_constant);
-                        self.nodes[i].repulsion_fx += rfx;
-                        self.nodes[i].repulsion_fy += rfy;
-                        self.nodes[j].repulsion_fx -= rfx;
-                        self.nodes[j].repulsion_fy -= rfy;
+                        let (ni, nj) = nodes2_mut(&mut self.nodes, i, j);
+                        ni.repulsion_fx += rfx;
+                        ni.repulsion_fy += rfy;
+                        nj.repulsion_fx -= rfx;
+                        nj.repulsion_fy -= rfy;
                     }
                 }
             }
