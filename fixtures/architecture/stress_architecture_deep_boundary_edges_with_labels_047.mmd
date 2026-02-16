@@ -1,0 +1,13 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): deep nesting + labeled boundary edges.
+
+group root(cloud)[Root]
+group p1(cloud)[P1] in root
+group p2(cloud)[P2] in p1
+
+service s1(server)[S1] in p2
+service s2(server)[S2] in p2
+service ext(server)[EXT] in root
+
+ext:B -[in]-> T:s2
+s1{group}:T -[out]-> B:ext{group}

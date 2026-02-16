@@ -1,0 +1,10 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): long edge labels (wrapping/measurement).
+
+service a(server)[A]
+service b(server)[B]
+service c(server)[C]
+
+a:R -[WRAP]-> L:b
+b:B -[TOKEN]-> T:c
+c:L -[OK]-> R:a

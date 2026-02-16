@@ -1,0 +1,249 @@
+{
+  "diagramType": "architecture",
+  "model": {
+    "type": "architecture",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "groups": [
+      {
+        "id": "ui",
+        "icon": "cloud",
+        "title": "UI Edge",
+        "in": null
+      }
+    ],
+    "nodes": [
+      {
+        "id": "web",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "web",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "cdn",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "GET"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Web Front Line 2",
+        "in": "ui"
+      },
+      {
+        "id": "cdn",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "web",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "cdn",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "GET"
+          },
+          {
+            "lhsId": "cdn",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "origin",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "MISS"
+          },
+          {
+            "lhsId": "origin",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "cdn",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "PUSH"
+          }
+        ],
+        "icon": "cloud",
+        "iconText": null,
+        "title": "CDN Cache",
+        "in": "ui"
+      },
+      {
+        "id": "origin",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "cdn",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "origin",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "MISS"
+          },
+          {
+            "lhsId": "origin",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "cdn",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "PUSH"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Origin primary",
+        "in": "ui"
+      }
+    ],
+    "services": [
+      {
+        "id": "web",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "web",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "cdn",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "GET"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Web Front Line 2",
+        "in": "ui"
+      },
+      {
+        "id": "cdn",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "web",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "cdn",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "GET"
+          },
+          {
+            "lhsId": "cdn",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "origin",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "MISS"
+          },
+          {
+            "lhsId": "origin",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "cdn",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "PUSH"
+          }
+        ],
+        "icon": "cloud",
+        "iconText": null,
+        "title": "CDN Cache",
+        "in": "ui"
+      },
+      {
+        "id": "origin",
+        "type": "service",
+        "edges": [
+          {
+            "lhsId": "cdn",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "origin",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "MISS"
+          },
+          {
+            "lhsId": "origin",
+            "lhsDir": "B",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "cdn",
+            "rhsDir": "T",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "PUSH"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
+        "title": "Origin primary",
+        "in": "ui"
+      }
+    ],
+    "junctions": [],
+    "edges": [
+      {
+        "lhsId": "web",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "cdn",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": "GET"
+      },
+      {
+        "lhsId": "cdn",
+        "lhsDir": "R",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "origin",
+        "rhsDir": "L",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": "MISS"
+      },
+      {
+        "lhsId": "origin",
+        "lhsDir": "B",
+        "lhsInto": null,
+        "lhsGroup": null,
+        "rhsId": "cdn",
+        "rhsDir": "T",
+        "rhsInto": true,
+        "rhsGroup": null,
+        "title": "PUSH"
+      }
+    ]
+  }
+}

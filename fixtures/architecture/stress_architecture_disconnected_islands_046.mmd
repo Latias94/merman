@@ -1,0 +1,14 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): disconnected islands (isolated services/groups/junction).
+
+group left(cloud)[Left]
+group right(cloud)[Right]
+
+service a(server)[A] in left
+service b(server)[B] in left
+service c(server)[C] in right
+junction j in right
+service d(server)[D]
+
+a:R -- L:b
+

@@ -1,0 +1,13 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): ids with dashes/underscores + nested groups.
+
+group prod_env(cloud)[Prod Env]
+group private_net(cloud)[Private Net] in prod_env
+
+service api_gw(server)[API GW] in private_net
+service auth_svc(server)[Auth] in private_net
+service orders_db(database)[Orders DB] in private_net
+
+api_gw:R -[JWT]-> L:auth_svc
+auth_svc:B -[RW]-> T:orders_db
+orders_db:R -- L:api_gw

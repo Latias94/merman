@@ -1,0 +1,12 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): titles + punctuation (avoid HTML/entity parsing pitfalls).
+
+group ui(cloud)[UI Edge]
+
+service web(server)[Web Front Line 2] in ui
+service cdn(cloud)[CDN Cache] in ui
+service origin(server)[Origin primary] in ui
+
+web:R -[GET]-> L:cdn
+cdn:R -[MISS]-> L:origin
+origin:B -[PUSH]-> T:cdn

@@ -1,0 +1,16 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): junctions inside groups + boundary traversal.
+
+group core(cloud)[Core]
+group edge(cloud)[Edge]
+
+service api(server)[API] in edge
+service worker(server)[Worker] in core
+junction bus in core
+service db(database)[DB] in core
+
+api:L -[enqueue]-> R:bus
+bus:T -- B:worker
+worker:R -[flush]-> L:db
+db:R -[notify]-> L:api
+

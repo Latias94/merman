@@ -1,0 +1,15 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): iconText services + external icons + fallback icon.
+
+group cloud(cloud)[Cloud]
+group ops(cloud)[Ops]
+
+service s3(logos:aws-s3)[S3] in cloud
+service lambda "logos:aws-lambda" [Lambda] in cloud
+service alarm(fa:bell)[Alarm] in ops
+service unknown(iconpack:does-not-exist)[Unknown] in ops
+
+lambda:R -[stores]-> L:s3
+alarm:L -[notify]-> R:lambda
+unknown:T -[fallback]-> B:alarm
+

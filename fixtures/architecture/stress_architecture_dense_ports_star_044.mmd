@@ -1,0 +1,16 @@
+architecture-beta
+%% Authored stress fixture (Mermaid@11.12.2): dense star fan-in/out with mixed ports and labels.
+
+service hub(server)[Hub]
+service n1(server)[N1]
+service n2(server)[N2]
+service n3(server)[N3]
+service n4(server)[N4]
+service n5(server)[N5]
+
+n1:R -[a]-> L:hub
+n2:B -[b]-> T:hub
+n3:L -[c]-> R:hub
+n4:T -[d]-> B:hub
+hub:R -[e]-> L:n5
+hub:B -[f]-> T:n4

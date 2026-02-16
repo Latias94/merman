@@ -1,0 +1,86 @@
+{
+  "diagramType": "architecture",
+  "layout": {
+    "ArchitectureDiagram": {
+      "nodes": [
+        {
+          "id": "a",
+          "x": -370.0,
+          "y": 16.0,
+          "width": 80.0,
+          "height": 80.0,
+          "is_cluster": false
+        },
+        {
+          "id": "b",
+          "x": -170.0,
+          "y": 16.0,
+          "width": 80.0,
+          "height": 80.0,
+          "is_cluster": false
+        },
+        {
+          "id": "c",
+          "x": 10.0,
+          "y": 16.0,
+          "width": 80.0,
+          "height": 80.0,
+          "is_cluster": false
+        },
+        {
+          "id": "j",
+          "x": 190.0,
+          "y": 16.0,
+          "width": 80.0,
+          "height": 80.0,
+          "is_cluster": false
+        },
+        {
+          "id": "d",
+          "x": 370.0,
+          "y": 16.0,
+          "width": 80.0,
+          "height": 80.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge-0",
+          "from": "a",
+          "to": "b",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": -290.0,
+              "y": 56.0
+            },
+            {
+              "x": -230.0,
+              "y": 56.0
+            },
+            {
+              "x": -170.0,
+              "y": 56.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "bounds": {
+        "min_x": -370.0,
+        "min_y": 16.0,
+        "max_x": 450.0,
+        "max_y": 96.0
+      }
+    }
+  }
+}
