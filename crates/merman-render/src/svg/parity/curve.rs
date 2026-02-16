@@ -61,7 +61,30 @@ impl BoundsBuilder {
 
 #[allow(dead_code)]
 fn emit_cmd_pair(out: &mut String, cmd: char, x: f64, y: f64) {
-    emit_cmd_pair_impl(out, None, cmd, x, y);
+    emit_cmd_pair_no_bounds(out, cmd, x, y);
+}
+
+#[inline]
+fn emit_cmd_pair_no_bounds(out: &mut String, cmd: char, x: f64, y: f64) {
+    out.push(cmd);
+    fmt_path_into(out, x);
+    out.push(',');
+    fmt_path_into(out, y);
+}
+
+#[inline]
+fn emit_cmd_pair_with_bounds(
+    out: &mut String,
+    bounds: &mut BoundsBuilder,
+    cmd: char,
+    x: f64,
+    y: f64,
+) {
+    out.push(cmd);
+    fmt_path_into(out, x);
+    out.push(',');
+    fmt_path_into(out, y);
+    bounds.on_pair(cmd, x, y);
 }
 
 fn emit_cmd_pair_impl(
@@ -71,23 +94,38 @@ fn emit_cmd_pair_impl(
     x: f64,
     y: f64,
 ) {
-    out.push(cmd);
-    fmt_path_into(out, x);
-    out.push(',');
-    fmt_path_into(out, y);
     if let Some(b) = bounds {
-        b.on_pair(cmd, x, y);
+        emit_cmd_pair_with_bounds(out, b, cmd, x, y);
+    } else {
+        emit_cmd_pair_no_bounds(out, cmd, x, y);
     }
 }
 
 #[allow(dead_code)]
 fn emit_cmd_cubic(out: &mut String, x1: f64, y1: f64, x2: f64, y2: f64, x: f64, y: f64) {
-    emit_cmd_cubic_impl(out, None, x1, y1, x2, y2, x, y);
+    emit_cmd_cubic_no_bounds(out, x1, y1, x2, y2, x, y);
 }
 
-fn emit_cmd_cubic_impl(
+#[inline]
+fn emit_cmd_cubic_no_bounds(out: &mut String, x1: f64, y1: f64, x2: f64, y2: f64, x: f64, y: f64) {
+    out.push('C');
+    fmt_path_into(out, x1);
+    out.push(',');
+    fmt_path_into(out, y1);
+    out.push(',');
+    fmt_path_into(out, x2);
+    out.push(',');
+    fmt_path_into(out, y2);
+    out.push(',');
+    fmt_path_into(out, x);
+    out.push(',');
+    fmt_path_into(out, y);
+}
+
+#[inline]
+fn emit_cmd_cubic_with_bounds(
     out: &mut String,
-    bounds: Option<&mut BoundsBuilder>,
+    bounds: &mut BoundsBuilder,
     x1: f64,
     y1: f64,
     x2: f64,
@@ -107,8 +145,23 @@ fn emit_cmd_cubic_impl(
     fmt_path_into(out, x);
     out.push(',');
     fmt_path_into(out, y);
+    bounds.on_cubic(x1, y1, x2, y2, x, y);
+}
+
+fn emit_cmd_cubic_impl(
+    out: &mut String,
+    bounds: Option<&mut BoundsBuilder>,
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+    x: f64,
+    y: f64,
+) {
     if let Some(b) = bounds {
-        b.on_cubic(x1, y1, x2, y2, x, y);
+        emit_cmd_cubic_with_bounds(out, b, x1, y1, x2, y2, x, y);
+    } else {
+        emit_cmd_cubic_no_bounds(out, x1, y1, x2, y2, x, y);
     }
 }
 
@@ -362,27 +415,30 @@ fn curve_basis_path_d_impl(
     points: &[crate::model::LayoutPoint],
     bounds: Option<&mut BoundsBuilder>,
 ) -> String {
-    let mut bounds = bounds;
     let mut out = String::with_capacity(points.len().saturating_mul(64));
     if points.is_empty() {
         return out;
     }
 
-    let mut p = 0u8;
-    let mut x0 = f64::NAN;
-    let mut y0 = f64::NAN;
-    let mut x1 = f64::NAN;
-    let mut y1 = f64::NAN;
+    fn basis_point_no_bounds(out: &mut String, x0: f64, y0: f64, x1: f64, y1: f64, x: f64, y: f64) {
+        let c1x = (2.0 * x0 + x1) / 3.0;
+        let c1y = (2.0 * y0 + y1) / 3.0;
+        let c2x = (x0 + 2.0 * x1) / 3.0;
+        let c2y = (y0 + 2.0 * y1) / 3.0;
+        let ex = (x0 + 4.0 * x1 + x) / 6.0;
+        let ey = (y0 + 4.0 * y1 + y) / 6.0;
+        emit_cmd_cubic_no_bounds(out, c1x, c1y, c2x, c2y, ex, ey);
+    }
 
-    fn basis_point(
+    fn basis_point_with_bounds(
         out: &mut String,
+        bounds: &mut BoundsBuilder,
         x0: f64,
         y0: f64,
         x1: f64,
         y1: f64,
         x: f64,
         y: f64,
-        bounds: Option<&mut BoundsBuilder>,
     ) {
         let c1x = (2.0 * x0 + x1) / 3.0;
         let c1y = (2.0 * y0 + y1) / 3.0;
@@ -390,46 +446,99 @@ fn curve_basis_path_d_impl(
         let c2y = (y0 + 2.0 * y1) / 3.0;
         let ex = (x0 + 4.0 * x1 + x) / 6.0;
         let ey = (y0 + 4.0 * y1 + y) / 6.0;
-        emit_cmd_cubic_impl(out, bounds, c1x, c1y, c2x, c2y, ex, ey);
+        emit_cmd_cubic_with_bounds(out, bounds, c1x, c1y, c2x, c2y, ex, ey);
     }
 
-    for pt in points {
-        let x = pt.x;
-        let y = pt.y;
-        match p {
-            0 => {
-                p = 1;
-                emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'M', x, y);
+    if let Some(bounds) = bounds {
+        let mut p = 0u8;
+        let mut x0 = f64::NAN;
+        let mut y0 = f64::NAN;
+        let mut x1 = f64::NAN;
+        let mut y1 = f64::NAN;
+
+        for pt in points {
+            let x = pt.x;
+            let y = pt.y;
+            match p {
+                0 => {
+                    p = 1;
+                    emit_cmd_pair_with_bounds(&mut out, bounds, 'M', x, y);
+                }
+                1 => {
+                    p = 2;
+                }
+                2 => {
+                    p = 3;
+                    let lx = (5.0 * x0 + x1) / 6.0;
+                    let ly = (5.0 * y0 + y1) / 6.0;
+                    emit_cmd_pair_with_bounds(&mut out, bounds, 'L', lx, ly);
+                    basis_point_with_bounds(&mut out, bounds, x0, y0, x1, y1, x, y);
+                }
+                _ => {
+                    basis_point_with_bounds(&mut out, bounds, x0, y0, x1, y1, x, y);
+                }
             }
-            1 => {
-                p = 2;
+            x0 = x1;
+            x1 = x;
+            y0 = y1;
+            y1 = y;
+        }
+
+        match p {
+            3 => {
+                basis_point_with_bounds(&mut out, bounds, x0, y0, x1, y1, x1, y1);
+                emit_cmd_pair_with_bounds(&mut out, bounds, 'L', x1, y1);
             }
             2 => {
-                p = 3;
-                let lx = (5.0 * x0 + x1) / 6.0;
-                let ly = (5.0 * y0 + y1) / 6.0;
-                emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'L', lx, ly);
-                basis_point(&mut out, x0, y0, x1, y1, x, y, bounds.as_deref_mut());
+                emit_cmd_pair_with_bounds(&mut out, bounds, 'L', x1, y1);
             }
-            _ => {
-                basis_point(&mut out, x0, y0, x1, y1, x, y, bounds.as_deref_mut());
-            }
+            _ => {}
         }
-        x0 = x1;
-        x1 = x;
-        y0 = y1;
-        y1 = y;
-    }
+    } else {
+        let mut p = 0u8;
+        let mut x0 = f64::NAN;
+        let mut y0 = f64::NAN;
+        let mut x1 = f64::NAN;
+        let mut y1 = f64::NAN;
 
-    match p {
-        3 => {
-            basis_point(&mut out, x0, y0, x1, y1, x1, y1, bounds.as_deref_mut());
-            emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'L', x1, y1);
+        for pt in points {
+            let x = pt.x;
+            let y = pt.y;
+            match p {
+                0 => {
+                    p = 1;
+                    emit_cmd_pair_no_bounds(&mut out, 'M', x, y);
+                }
+                1 => {
+                    p = 2;
+                }
+                2 => {
+                    p = 3;
+                    let lx = (5.0 * x0 + x1) / 6.0;
+                    let ly = (5.0 * y0 + y1) / 6.0;
+                    emit_cmd_pair_no_bounds(&mut out, 'L', lx, ly);
+                    basis_point_no_bounds(&mut out, x0, y0, x1, y1, x, y);
+                }
+                _ => {
+                    basis_point_no_bounds(&mut out, x0, y0, x1, y1, x, y);
+                }
+            }
+            x0 = x1;
+            x1 = x;
+            y0 = y1;
+            y1 = y;
         }
-        2 => {
-            emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'L', x1, y1);
+
+        match p {
+            3 => {
+                basis_point_no_bounds(&mut out, x0, y0, x1, y1, x1, y1);
+                emit_cmd_pair_no_bounds(&mut out, 'L', x1, y1);
+            }
+            2 => {
+                emit_cmd_pair_no_bounds(&mut out, 'L', x1, y1);
+            }
+            _ => {}
         }
-        _ => {}
     }
 
     out
@@ -451,14 +560,20 @@ fn curve_linear_path_d_impl(
     points: &[crate::model::LayoutPoint],
     bounds: Option<&mut BoundsBuilder>,
 ) -> String {
-    let mut bounds = bounds;
     let mut out = String::with_capacity(points.len().saturating_mul(32));
     let Some(first) = points.first() else {
         return out;
     };
-    emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'M', first.x, first.y);
-    for p in points.iter().skip(1) {
-        emit_cmd_pair_impl(&mut out, bounds.as_deref_mut(), 'L', p.x, p.y);
+    if let Some(bounds) = bounds {
+        emit_cmd_pair_with_bounds(&mut out, bounds, 'M', first.x, first.y);
+        for p in points.iter().skip(1) {
+            emit_cmd_pair_with_bounds(&mut out, bounds, 'L', p.x, p.y);
+        }
+    } else {
+        emit_cmd_pair_no_bounds(&mut out, 'M', first.x, first.y);
+        for p in points.iter().skip(1) {
+            emit_cmd_pair_no_bounds(&mut out, 'L', p.x, p.y);
+        }
     }
     out
 }
