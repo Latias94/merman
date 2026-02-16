@@ -1,0 +1,14 @@
+classDiagram
+direction LR
+
+class Alpha {
+  +名前 String
+  +مرحبا() void
+  +emoji😀() bool
+}
+class Beta {
+  +値 int
+}
+
+Alpha --> Beta : uses and tests (alpha beta gamma)
+note for Alpha "RTL: مرحبا<br/>CJK: 你好<br/>Emoji: 😀"

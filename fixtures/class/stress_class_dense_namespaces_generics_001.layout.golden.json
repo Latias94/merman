@@ -1,0 +1,323 @@
+{
+  "diagramType": "classDiagram",
+  "layout": {
+    "ClassDiagramV2": {
+      "nodes": [
+        {
+          "id": "API",
+          "x": 608.68,
+          "y": 132.0,
+          "width": 1217.36,
+          "height": 264.0,
+          "is_cluster": true
+        },
+        {
+          "id": "ApiClient",
+          "x": 221.4,
+          "y": 154.0,
+          "width": 392.8,
+          "height": 150.0,
+          "is_cluster": false
+        },
+        {
+          "id": "ApiRequest",
+          "x": 621.96,
+          "y": 77.0,
+          "width": 95.84,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "ApiResponse",
+          "x": 1141.0,
+          "y": 170.0,
+          "width": 102.72,
+          "height": 84.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Core",
+          "x": 757.8,
+          "y": 391.0,
+          "width": 483.68,
+          "height": 214.0,
+          "is_cluster": true
+        },
+        {
+          "id": "CoreError",
+          "x": 891.88,
+          "y": 391.0,
+          "width": 165.52,
+          "height": 144.0,
+          "is_cluster": false
+        },
+        {
+          "id": "CoreResult",
+          "x": 621.96,
+          "y": 391.0,
+          "width": 162.0,
+          "height": 144.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "0",
+          "from": "CoreResult",
+          "to": "CoreError",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 702.96,
+              "y": 391.0
+            },
+            {
+              "x": 756.04,
+              "y": 391.0
+            },
+            {
+              "x": 809.12,
+              "y": 391.0
+            }
+          ],
+          "label": {
+            "x": 756.04,
+            "y": 391.0,
+            "width": 56.16,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "1",
+          "from": "ApiClient",
+          "to": "ApiRequest",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 417.8,
+              "y": 92.395
+            },
+            {
+              "x": 466.88,
+              "y": 77.0
+            },
+            {
+              "x": 515.96,
+              "y": 77.0
+            },
+            {
+              "x": 574.04,
+              "y": 77.0
+            }
+          ],
+          "label": {
+            "x": 466.88,
+            "y": 77.0,
+            "width": 36.48,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "2",
+          "from": "ApiClient",
+          "to": "ApiResponse",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 417.8,
+              "y": 154.0
+            },
+            {
+              "x": 466.88,
+              "y": 154.0
+            },
+            {
+              "x": 515.96,
+              "y": 154.0
+            },
+            {
+              "x": 621.96,
+              "y": 154.0
+            },
+            {
+              "x": 756.04,
+              "y": 154.0
+            },
+            {
+              "x": 891.88,
+              "y": 154.0
+            },
+            {
+              "x": 999.64,
+              "y": 154.0
+            },
+            {
+              "x": 1044.64,
+              "y": 154.0
+            },
+            {
+              "x": 1089.64,
+              "y": 161.472
+            }
+          ],
+          "label": {
+            "x": 756.04,
+            "y": 154.0,
+            "width": 41.28,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "3",
+          "from": "ApiClient",
+          "to": "CoreResult",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 417.8,
+              "y": 198.004
+            },
+            {
+              "x": 466.88,
+              "y": 209.0
+            },
+            {
+              "x": 515.96,
+              "y": 209.0
+            },
+            {
+              "x": 580.026,
+              "y": 319.0
+            }
+          ],
+          "label": {
+            "x": 466.88,
+            "y": 209.0,
+            "width": 48.16,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "4",
+          "from": "CoreError",
+          "to": "ApiResponse",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 974.64,
+              "y": 391.0
+            },
+            {
+              "x": 999.64,
+              "y": 391.0
+            },
+            {
+              "x": 1044.64,
+              "y": 209.0
+            },
+            {
+              "x": 1089.64,
+              "y": 190.787
+            }
+          ],
+          "label": {
+            "x": 1044.64,
+            "y": 209.0,
+            "width": 40.0,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "API",
+          "x": 608.68,
+          "y": 132.0,
+          "width": 1217.36,
+          "height": 264.0,
+          "diff": -15.0,
+          "offset_y": 16.5,
+          "title": "API",
+          "title_label": {
+            "x": 608.68,
+            "y": 12.0,
+            "width": 24.0,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "LR",
+          "padding": 15.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "Core",
+          "x": 757.8,
+          "y": 391.0,
+          "width": 483.68,
+          "height": 214.0,
+          "diff": -15.0,
+          "offset_y": 16.5,
+          "title": "Core",
+          "title_label": {
+            "x": 757.8,
+            "y": 296.0,
+            "width": 30.24,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "LR",
+          "padding": 15.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1217.36,
+        "max_y": 498.0
+      }
+    }
+  }
+}

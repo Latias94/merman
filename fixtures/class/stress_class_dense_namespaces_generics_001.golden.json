@@ -1,0 +1,273 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "CoreResult": {
+        "id": "CoreResult",
+        "type": "T",
+        "label": "CoreResult",
+        "text": "CoreResult&lt;T&gt;",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "isOk",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "bool",
+            "displayText": "+isOk() : bool",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "T value",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+T value",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-CoreResult-0",
+        "parent": "Core",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "CoreError": {
+        "id": "CoreError",
+        "type": "",
+        "label": "CoreError",
+        "text": "CoreError",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "String code",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+String code",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "+",
+            "id": "String message",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "+String message",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-CoreError-1",
+        "parent": "Core",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "ApiClient": {
+        "id": "ApiClient",
+        "type": "",
+        "label": "ApiClient",
+        "text": "ApiClient",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "get",
+            "classifier": "",
+            "parameters": "path: String",
+            "returnType": "ApiResponse",
+            "displayText": "+get(path: String) : ApiResponse",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "post",
+            "classifier": "",
+            "parameters": "path: String, body: ApiRequest",
+            "returnType": "ApiResponse",
+            "displayText": "+post(path: String, body: ApiRequest) : ApiResponse",
+            "cssStyle": ""
+          }
+        ],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-ApiClient-2",
+        "parent": "API",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "ApiRequest": {
+        "id": "ApiRequest",
+        "type": "",
+        "label": "ApiRequest",
+        "text": "ApiRequest",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-ApiRequest-3",
+        "parent": "API",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "ApiResponse": {
+        "id": "ApiResponse",
+        "type": "",
+        "label": "ApiResponse",
+        "text": "ApiResponse",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-ApiResponse-4",
+        "parent": "API",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "CoreResult",
+        "id2": "CoreError",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "may-fail",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 1
+        }
+      },
+      {
+        "id": "1",
+        "id1": "ApiClient",
+        "id2": "ApiRequest",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "builds",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "2",
+        "id1": "ApiClient",
+        "id2": "ApiResponse",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "parses",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "3",
+        "id1": "ApiClient",
+        "id2": "CoreResult",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "returns",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 1
+        }
+      },
+      {
+        "id": "4",
+        "id1": "CoreError",
+        "id2": "ApiResponse",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "wraps",
+        "relation": {
+          "type1": 1,
+          "type2": -1,
+          "lineType": 1
+        }
+      }
+    ],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {
+      "Core": {
+        "id": "Core",
+        "domId": "classId-Core-0",
+        "classIds": [
+          "CoreResult",
+          "CoreError"
+        ]
+      },
+      "API": {
+        "id": "API",
+        "domId": "classId-API-1",
+        "classIds": [
+          "ApiClient",
+          "ApiRequest",
+          "ApiResponse"
+        ]
+      }
+    },
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

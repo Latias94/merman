@@ -1,0 +1,143 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "LR",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "OneA": {
+        "id": "OneA",
+        "type": "",
+        "label": "OneA",
+        "text": "OneA",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-OneA-0",
+        "parent": "One",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "TwoB": {
+        "id": "TwoB",
+        "type": "",
+        "label": "TwoB",
+        "text": "TwoB",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-TwoB-1",
+        "parent": "One.Two",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "TwoC": {
+        "id": "TwoC",
+        "type": "",
+        "label": "TwoC",
+        "text": "TwoC",
+        "cssClasses": "default",
+        "methods": [],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-TwoC-2",
+        "parent": "One.Two",
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "OneA",
+        "id2": "TwoB",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "calls",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      },
+      {
+        "id": "1",
+        "id1": "TwoC",
+        "id2": "OneA",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "depends",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 1
+        }
+      },
+      {
+        "id": "2",
+        "id1": "TwoB",
+        "id2": "TwoC",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "",
+        "relation": {
+          "type1": 1,
+          "type2": -1,
+          "lineType": 0
+        }
+      }
+    ],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {
+      "One": {
+        "id": "One",
+        "domId": "classId-One-0",
+        "classIds": [
+          "OneA"
+        ]
+      },
+      "One.Two": {
+        "id": "One.Two",
+        "domId": "classId-One.Two-1",
+        "classIds": [
+          "TwoB",
+          "TwoC"
+        ]
+      }
+    },
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

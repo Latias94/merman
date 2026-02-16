@@ -1,0 +1,15 @@
+classDiagram
+direction TB
+
+class Server:::critical {
+  +start()
+}
+class Client:::normal {
+  +request()
+}
+
+classDef critical fill:#ffdddd,stroke:#aa0000,stroke-width:2px
+classDef normal fill:#ddffdd,stroke:#00aa00,stroke-width:2px
+
+Client --> Server : connects
+style Server fill:#ffeeee,stroke:#aa0000,stroke-width:2px

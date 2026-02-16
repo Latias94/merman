@@ -1,0 +1,137 @@
+{
+  "diagramType": "classDiagram",
+  "model": {
+    "type": "classDiagram",
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "classes": {
+      "Data": {
+        "id": "Data",
+        "type": "",
+        "label": "Data",
+        "text": "Data",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "fromCode",
+            "classifier": "",
+            "parameters": "int code",
+            "returnType": "Data",
+            "displayText": "+fromCode(int code) : Data",
+            "cssStyle": ""
+          }
+        ],
+        "members": [
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "OK",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "OK",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "",
+            "id": "ERROR",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "ERROR",
+            "cssStyle": ""
+          },
+          {
+            "memberType": "attribute",
+            "visibility": "-",
+            "id": "-",
+            "classifier": "",
+            "parameters": "",
+            "returnType": "",
+            "displayText": "--",
+            "cssStyle": ""
+          }
+        ],
+        "annotations": [
+          "enumeration"
+        ],
+        "styles": [],
+        "domId": "classId-Data-0",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      },
+      "Parser": {
+        "id": "Parser",
+        "type": "",
+        "label": "Parser",
+        "text": "Parser",
+        "cssClasses": "default",
+        "methods": [
+          {
+            "memberType": "method",
+            "visibility": "+",
+            "id": "parse",
+            "classifier": "",
+            "parameters": "String text",
+            "returnType": "Data",
+            "displayText": "+parse(String text) : Data",
+            "cssStyle": ""
+          }
+        ],
+        "members": [],
+        "annotations": [],
+        "styles": [],
+        "domId": "classId-Parser-1",
+        "parent": null,
+        "link": null,
+        "linkTarget": null,
+        "tooltip": null,
+        "haveCallback": false,
+        "callback": null,
+        "callbackEffective": false
+      }
+    },
+    "relations": [
+      {
+        "id": "0",
+        "id1": "Parser",
+        "id2": "Data",
+        "relationTitle1": "none",
+        "relationTitle2": "none",
+        "title": "",
+        "relation": {
+          "type1": -1,
+          "type2": 3,
+          "lineType": 0
+        }
+      }
+    ],
+    "notes": [],
+    "interfaces": [],
+    "namespaces": {},
+    "styleClasses": {},
+    "constants": {
+      "lineType": {
+        "line": 0,
+        "dottedLine": 1
+      },
+      "relationType": {
+        "none": -1,
+        "aggregation": 0,
+        "extension": 1,
+        "composition": 2,
+        "dependency": 3,
+        "lollipop": 4
+      }
+    }
+  }
+}

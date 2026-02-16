@@ -242,3 +242,21 @@ Stage-B SVG DOM comparison (against upstream baselines):
 - Exclusions (see `docs/rendering/UPSTREAM_SVG_BASELINES.md`):
   - `fixtures/class/upstream_text_label_variants_spec.mmd` (upstream CLI failure at 11.12.2)
   - `fixtures/class/upstream_parser_class_spec.mmd` (upstream prototype-key rendering artifacts)
+
+## Authored stress fixtures
+
+These fixtures are authored (not imported) to exercise class diagram layout + renderer parity for
+namespaces, generics, long labels, notes, cardinalities, styling, clicks, and unicode labels while
+keeping the global `parity-root` gate green.
+
+- `fixtures/class/stress_class_dense_namespaces_generics_001.mmd`
+- `fixtures/class/stress_class_long_labels_wrapping_002.mmd`
+- `fixtures/class/stress_class_notes_and_keywords_003.mmd`
+- `fixtures/class/stress_class_parallel_edges_and_cardinality_004.mmd`
+- `fixtures/class/stress_class_comments_and_spacing_005.mmd`
+- `fixtures/class/stress_class_interfaces_and_abstracts_007.mmd`
+- `fixtures/class/stress_class_nested_namespaces_cross_edges_008.mmd`
+- `fixtures/class/stress_class_member_separators_and_annotations_009.mmd`
+- `fixtures/class/stress_class_styles_classdef_and_inline_010.mmd`
+- `fixtures/class/stress_class_click_and_links_011.mmd`
+- `fixtures/class/stress_class_unicode_and_entities_012.mmd`

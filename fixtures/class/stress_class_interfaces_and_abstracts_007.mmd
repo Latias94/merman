@@ -1,0 +1,17 @@
+classDiagram
+direction TB
+
+class IService
+<<interface>> IService
+
+class AbstractBase {
+  <<abstract>>
+  +template()
+}
+
+class Impl {
+  +run()
+}
+
+IService <|.. Impl
+AbstractBase <|-- Impl
