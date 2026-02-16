@@ -1,0 +1,13 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): HTML sanitization in notes (target=_blank noopener + strip unsafe attrs).
+
+[*] --> A
+A --> B : proceed
+
+note right of A
+  <a href='https://mermaid.js.org/' target='_blank'><code>note about mermaid</code></a><br/>
+  <img src=x onerror=alert(1)>
+end note
+
+B --> [*]
+

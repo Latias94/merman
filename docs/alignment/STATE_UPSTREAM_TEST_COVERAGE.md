@@ -30,6 +30,13 @@ but are still parity-gated against upstream SVG baselines to cover high-risk sta
     styles/classes, and comment/whitespace robustness.
   - Baselines: `fixtures/upstream-svgs/state/stress_state_*_013..024.svg`
 
+- Batch 2026-02-16 (12 fixtures): `fixtures/state/stress_state_*_025..036.mmd`
+  - Focus: HTML sanitization around notes, Markdown edge labels (emphasis/strong/inline code), dense labeled graphs,
+    composite states with external edges, 3-way concurrent regions, nested concurrency + choice, comment/whitespace
+    robustness in composite blocks, quoted multiline state names, style/class interactions, click directive matrix
+    coverage (href forms to keep upstream CLI baselines reproducible), floating notes/links, and unicode/RTL labels.
+  - Baselines: `fixtures/upstream-svgs/state/stress_state_*_025..036.svg`
+
 ## `parser/state-parser.spec.js`
 
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/state/parser/state-parser.spec.js`

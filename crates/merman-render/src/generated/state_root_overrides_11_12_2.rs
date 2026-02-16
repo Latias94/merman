@@ -43,6 +43,24 @@ pub fn lookup_state_root_viewport_override(
         }
         "stress_state_dense_graph_023" => Some(("-35 0 229.43125915527344 708", "229.431")),
         "stress_state_choice_notes_classes_024" => Some(("0 0 613.3828125 588", "613.383")),
+        "stress_state_html_sanitization_notes_025" => Some(("0 0 365.3671875 403", "365.367")),
+        "stress_state_markdown_edge_labels_026" => Some(("0 0 110.609375 460", "110.609")),
+        "stress_state_dense_graph_labels_027" => Some(("0 0 568 484", "568")),
+        "stress_state_composite_with_external_edges_028" => {
+            Some(("0 0 381.73828125 714", "381.738"))
+        }
+        "stress_state_concurrency_three_regions_029" => Some(("0 0 525.421875 775", "525.422")),
+        "stress_state_nested_concurrency_and_choice_030" => {
+            Some(("0 0 390.5546875 983", "390.555"))
+        }
+        "stress_state_whitespace_comments_in_composite_031" => {
+            Some(("0 0 118.09375 552", "118.094"))
+        }
+        "stress_state_quoted_multiline_state_names_032" => Some(("0 0 145.59375 346", "145.594")),
+        "stress_state_style_and_inline_classes_033" => Some(("0 0 54.4375 298", "54.4375")),
+        "stress_state_click_matrix_034" => Some(("0 0 41.4375 274", "41.4375")),
+        "stress_state_floating_notes_and_links_035" => Some(("0 0 198.078125 300", "198.078")),
+        "stress_state_unicode_and_rtl_036" => Some(("0 0 145.125 574", "145.125")),
         "basic" => Some(("0 0 100.125 298", "100.125")),
         "mmdr_tests_state_state_basic" => Some(("0 0 178.203125 234", "178.203")),
         "mmdr_tests_state_state_note" => Some(("0 0 221.4418182373047 364", "221.442")),

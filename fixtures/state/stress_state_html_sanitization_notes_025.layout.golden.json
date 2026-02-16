@@ -1,0 +1,221 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "nodes": [
+        {
+          "id": "A",
+          "x": 256.898,
+          "y": 92.0,
+          "width": 25.594,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "A----note-2",
+          "x": 158.0,
+          "y": 310.0,
+          "width": 230.0,
+          "height": 198.0,
+          "is_cluster": false
+        },
+        {
+          "id": "A----parent",
+          "x": 158.0,
+          "y": 310.0,
+          "width": 732.953,
+          "height": 248.0,
+          "is_cluster": true
+        },
+        {
+          "id": "B",
+          "x": 355.797,
+          "y": 310.0,
+          "width": 25.594,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "root_end",
+          "x": 355.797,
+          "y": 491.0,
+          "width": 14.013,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "root_start",
+          "x": 256.898,
+          "y": 15.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "A-A----note-2",
+          "from": "A",
+          "to": "A----note-2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 244.602,
+              "y": 99.875
+            },
+            {
+              "x": 158.0,
+              "y": 149.0
+            },
+            {
+              "x": 158.0,
+              "y": 186.0
+            },
+            {
+              "x": 158.0,
+              "y": 310.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge0",
+          "from": "root_start",
+          "to": "A",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 256.898,
+              "y": 22.0
+            },
+            {
+              "x": 256.898,
+              "y": 47.0
+            },
+            {
+              "x": 257.398,
+              "y": 72.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge1",
+          "from": "A",
+          "to": "B",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 270.195,
+              "y": 99.875
+            },
+            {
+              "x": 355.797,
+              "y": 149.0
+            },
+            {
+              "x": 355.797,
+              "y": 186.0
+            },
+            {
+              "x": 356.297,
+              "y": 290.5
+            }
+          ],
+          "label": {
+            "x": 355.797,
+            "y": 149.0,
+            "width": 48.156,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge3",
+          "from": "B",
+          "to": "root_end",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 356.297,
+              "y": 330.5
+            },
+            {
+              "x": 355.797,
+              "y": 434.0
+            },
+            {
+              "x": 355.797,
+              "y": 459.0
+            },
+            {
+              "x": 355.797,
+              "y": 484.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "A----parent",
+          "x": 158.0,
+          "y": 310.0,
+          "width": 732.953,
+          "height": 248.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
+          "title": "<a href='https://mermaid.js.org/' rel=\"noopener\" target=\"_blank\"><code>note about mermaid</code></a><br/>\n<img src=x>",
+          "title_label": {
+            "x": 158.0,
+            "y": 223.0,
+            "width": 716.953,
+            "height": 72.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 16.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": -208.477,
+        "min_y": 8.0,
+        "max_x": 524.477,
+        "max_y": 498.0
+      }
+    }
+  }
+}

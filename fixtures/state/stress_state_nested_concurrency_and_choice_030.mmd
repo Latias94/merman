@@ -1,0 +1,27 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): nested concurrency + choice node with notes.
+
+[*] --> Entry
+Entry --> Decide
+state Decide <<choice>>
+Decide --> Work : ok
+Decide --> Error : fail
+
+state Work {
+  [*] --> Fork
+  state Fork <<fork>>
+  Fork --> A
+  Fork --> B
+  A --> Join
+  B --> Join
+  state Join <<join>>
+  Join --> [*]
+}
+
+note left of Decide
+  Multi-line note<br/>
+  with HTML break.
+end note
+
+Error --> [*]
+

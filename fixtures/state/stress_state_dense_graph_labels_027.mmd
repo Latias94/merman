@@ -1,0 +1,11 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): dense graph with long labels to stress label measurement and routing.
+
+[*] --> A
+A --> B : long label with punctuation — / - ( ) [ ] and spaces to wrap
+A --> C : another_long_label_with_mixed-separators_and_(parens)_and_[brackets]
+B --> D : B->D
+C --> D : C->D
+D --> A : back edge
+D --> [*] : finish
+
