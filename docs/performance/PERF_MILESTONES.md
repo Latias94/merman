@@ -28,15 +28,15 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
 ### Latest (after syncing local `main`)
 
 - Report:
-  - `target/bench/stage_spotcheck.latest_after_merge.md` (not committed)
+  - `target/bench/stage_spotcheck.latest_after_iconfast.md` (not committed)
 - Stage gmeans (ratios, `merman / mmdr`):
-  - `parse`: `1.57x`
-  - `layout`: `1.02x`
-  - `render`: `1.89x`
-  - `end_to_end`: `0.89x`
+  - `parse`: `1.24x`
+  - `layout`: `1.03x`
+  - `render`: `1.85x`
+  - `end_to_end`: `0.91x`
 - Remaining end-to-end outliers (ratios):
-  - `mindmap_medium end_to_end`: `1.86x` (`layout 2.98x`, `render 1.66x`)
-  - `architecture_medium end_to_end`: `2.33x` (`layout 3.64x`, `render 2.23x`)
+  - `mindmap_medium end_to_end`: `1.78x` (`layout 2.94x`, `render 1.28x`)
+  - `architecture_medium end_to_end`: `2.28x` (`layout 3.76x`, `render 2.45x`)
 
 ### Stage Attribution Snapshot (canaries)
 
@@ -69,8 +69,8 @@ Latest local spotcheck (2026-02-16):
   - Architecture render: we avoid cloning `effective_config` when only the sanitize config is needed.
   - Mindmap render (label emission): we reduced per-label `String` churn and added a conservative
     markdown fast-path for plain-text labels.
-    - Spotcheck: `target/bench/stage_spotcheck.mindmap_after_merge.long.md` (not committed)
-    - Ratios (`mindmap_medium`): `parse 1.33x`, `layout 3.27x`, `render 1.51x`, `end_to_end 1.98x`
+    - Spotcheck: `target/bench/stage_spotcheck.mindmap_after_iconfast.long.md` (not committed)
+    - Ratios (`mindmap_medium`): `parse 1.57x`, `layout 2.49x`, `render 1.31x`, `end_to_end 2.00x`
     - Interpretation: mindmap is still **layout-dominated** (COSE). Render improved materially
       vs the original ~2x gap, but correctness fixes that apply Markdown parsing to more labels
       increased render fixed-cost again.
