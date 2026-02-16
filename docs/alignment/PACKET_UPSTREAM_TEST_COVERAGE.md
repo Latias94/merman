@@ -35,3 +35,15 @@ Upstream SVG baselines:
 Compare report:
 
 - `cargo run -p xtask -- compare-packet-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
+
+## Cypress rendering specs
+
+Source: `repo-ref/mermaid/cypress/integration/rendering/packet.spec.ts`
+
+These fixtures are extracted from Cypress browser rendering specs (`imgSnapshotTest`) and are
+parity-gated against upstream SVG baselines:
+
+- Imported fixtures: `fixtures/packet/upstream_cypress_*.mmd` (5 fixtures)
+- Import tool: `cargo run -p xtask -- import-upstream-cypress --diagram packet --with-baselines --complex --limit 30`
+- Baselines: `fixtures/upstream-svgs/packet/upstream_cypress_*.svg`
+- SVG DOM compare: `cargo run --release -p xtask -- compare-packet-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
