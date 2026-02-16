@@ -25,6 +25,19 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
     - `architecture_medium end_to_end`: `2.24x` (layout+render; `render 3.59x`)
   - Layout is **not** the main global bottleneck right now; **SVG emission fixed-cost** is.
 
+### Latest (after syncing local `main`)
+
+- Report:
+  - `target/bench/stage_spotcheck.latest_after_merge.md` (not committed)
+- Stage gmeans (ratios, `merman / mmdr`):
+  - `parse`: `1.57x`
+  - `layout`: `1.02x`
+  - `render`: `1.89x`
+  - `end_to_end`: `0.89x`
+- Remaining end-to-end outliers (ratios):
+  - `mindmap_medium end_to_end`: `1.86x` (`layout 2.98x`, `render 1.66x`)
+  - `architecture_medium end_to_end`: `2.33x` (`layout 3.64x`, `render 2.23x`)
+
 ### Stage Attribution Snapshot (canaries)
 
 Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is *multi-source*:
@@ -56,9 +69,11 @@ Latest local spotcheck (2026-02-16):
   - Architecture render: we avoid cloning `effective_config` when only the sanitize config is needed.
   - Mindmap render (label emission): we reduced per-label `String` churn and added a conservative
     markdown fast-path for plain-text labels.
-    - Spotcheck: `target/bench/stage_spotcheck.mindmap_after2.long.md` (not committed)
-    - Ratios (`mindmap_medium`): `parse 1.32x`, `layout 2.71x`, `render 1.19x`, `end_to_end 2.46x`
-    - Interpretation: mindmap is now **layout-dominated** (COSE), not render-dominated.
+    - Spotcheck: `target/bench/stage_spotcheck.mindmap_after_merge.long.md` (not committed)
+    - Ratios (`mindmap_medium`): `parse 1.33x`, `layout 3.27x`, `render 1.51x`, `end_to_end 1.98x`
+    - Interpretation: mindmap is still **layout-dominated** (COSE). Render improved materially
+      vs the original ~2x gap, but correctness fixes that apply Markdown parsing to more labels
+      increased render fixed-cost again.
 
 - Tiny canaries (after Dagre-ish tiny fast-path):
   - `docs/performance/spotcheck_2026-02-15_tiny.md`
