@@ -24,6 +24,12 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
     - Avoids per-label lowercase allocation when detecting `<img` in flowchart labels.
     - Adds a fast-path in `maybe_snap_data_point_to_f32` to skip expensive bit-level checks for
       the common case.
+  - `perf(manatee): speed up COSE repulsion` (`cde7ca4`)
+    - Precomputes per-node geometry per spring-iteration to reduce repeated derived math in the
+      repulsion hot loop (keeps deterministic pair order; layout goldens unchanged).
+    - Spotcheck (`mindmap_medium`):
+      - Report: `target/bench/stage_spotcheck.mindmap_medium.after_repulsion_geom_2026-02-16.md` (local, not committed)
+      - Ratios (`merman / mmdr`): `layout 1.49x` (from `2.02x` baseline), `end_to_end 1.50x` (from `1.60x`)
 - Latest canary (faster triage parameters):
   - Command:
     - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 20 --warm-up 1 --measurement 2 --out target/bench/stage_spotcheck.canary_after_flowchart_opt_2026-02-16.md`
