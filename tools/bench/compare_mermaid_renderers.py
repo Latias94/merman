@@ -258,6 +258,33 @@ def _parse_bracket_time(body: str) -> TimeEstimate | None:
         return None
 
 
+_LIST_LINE = re.compile(r"^(?P<bench>[A-Za-z0-9_/-]+):\s*benchmark\s*$")
+
+
+def list_criterion_benches(
+    *,
+    cwd: Path,
+    bench_bin: str,
+    package: str | None,
+    features: str | None,
+) -> set[str]:
+    cmd: list[str] = ["cargo", "bench"]
+    if package:
+        cmd.extend(["-p", package])
+    if features:
+        cmd.extend(["--features", features])
+    cmd.extend(["--bench", bench_bin, "--", "--list"])
+    out = run(cmd, cwd=cwd)
+    benches: set[str] = set()
+    for raw in out.splitlines():
+        line = strip_ansi(raw).strip()
+        m = _LIST_LINE.match(line)
+        if not m:
+            continue
+        benches.add(m.group("bench"))
+    return benches
+
+
 def write_markdown(
     out_path: Path,
     *,
@@ -272,6 +299,8 @@ def write_markdown(
     mmdr_rev: str | None,
     mermaid_js_rev: str | None,
     skipped_merman: dict[str, list[str]] | None,
+    missing_merman: list[str] | None,
+    missing_mmdr: list[str] | None,
 ) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -370,6 +399,26 @@ def write_markdown(
             lines.append(", ".join(f"`{n}`" for n in skipped))
             lines.append("")
 
+    if missing_merman:
+        lines.append("## Missing benches (merman)")
+        lines.append("")
+        lines.append(
+            "These benches were requested by the filter but are not present in `merman`'s Criterion list."
+        )
+        lines.append("")
+        lines.append(", ".join(f"`{n}`" for n in missing_merman))
+        lines.append("")
+
+    if missing_mmdr:
+        lines.append("## Missing benches (mermaid-rs-renderer)")
+        lines.append("")
+        lines.append(
+            "These benches were requested by the filter but are not present in `mermaid-rs-renderer`'s Criterion list."
+        )
+        lines.append("")
+        lines.append(", ".join(f"`{n}`" for n in missing_mmdr))
+        lines.append("")
+
     out_path.write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -411,7 +460,32 @@ def main(argv: list[str]) -> int:
             "expected a local clone at that path (no submodules)."
         )
 
-    benches = expand_filter_to_exact_benches(args.filter)
+    requested = expand_filter_to_exact_benches(args.filter)
+
+    # Keep reports stable when the two repos differ in which benchmarks exist (e.g. one repo may
+    # omit certain fixtures under `end_to_end/*`). We still record what was missing for traceability.
+    merman_benches = list_criterion_benches(
+        cwd=repo_root,
+        bench_bin="pipeline",
+        package="merman",
+        features="render",
+    )
+    mmdr_benches = list_criterion_benches(
+        cwd=mmdr_dir,
+        bench_bin="renderer",
+        package=None,
+        features=None,
+    )
+    missing_merman = sorted(b for b in requested if b not in merman_benches)
+    missing_mmdr = sorted(b for b in requested if b not in mmdr_benches)
+    benches = [b for b in requested if b in merman_benches and b in mmdr_benches]
+    if not benches:
+        raise SystemExit(
+            "filter expanded to no runnable benches after intersecting repo benchmark lists.\n"
+            f"filter: {args.filter!r}\n"
+            f"missing (merman): {missing_merman}\n"
+            f"missing (mmdr): {missing_mmdr}"
+        )
 
     def bench_exact(
         *,
@@ -608,6 +682,8 @@ def main(argv: list[str]) -> int:
         mmdr_rev=git_head(mmdr_dir),
         mermaid_js_rev=mermaid_js_rev,
         skipped_merman=skipped_merman,
+        missing_merman=missing_merman,
+        missing_mmdr=missing_mmdr,
     )
 
     print("Wrote:", out_path)
