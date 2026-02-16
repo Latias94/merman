@@ -27,6 +27,20 @@ pub fn layout_indexed(
         return Ok(Vec::new());
     }
 
+    let timing_enabled = std::env::var("MANATEE_COSE_TIMING").ok().as_deref() == Some("1");
+    #[derive(Debug, Default, Clone)]
+    struct CoseLayoutTimings {
+        total: std::time::Duration,
+        from_indexed: std::time::Duration,
+        flat_forest: std::time::Duration,
+        radial: std::time::Duration,
+        spring: std::time::Duration,
+        transform: std::time::Duration,
+        output: std::time::Duration,
+    }
+    let mut timings = CoseLayoutTimings::default();
+    let total_start = timing_enabled.then(std::time::Instant::now);
+
     for (idx, e) in edges.iter().enumerate() {
         if e.a >= nodes.len() || e.b >= nodes.len() {
             return Err(crate::error::Error::MissingEndpoint {
@@ -35,22 +49,62 @@ pub fn layout_indexed(
         }
     }
 
+    let from_indexed_start = timing_enabled.then(std::time::Instant::now);
     let mut sim = SimGraph::from_indexed(nodes, edges);
-
-    let forest = sim.get_flat_forest();
-    if !forest.is_empty() {
-        sim.position_nodes_radially(&forest);
+    if let Some(s) = from_indexed_start {
+        timings.from_indexed = s.elapsed();
     }
 
-    sim.run_spring_embedder(false);
-    sim.transform_to_origin();
+    let flat_forest_start = timing_enabled.then(std::time::Instant::now);
+    let forest = sim.get_flat_forest();
+    if let Some(s) = flat_forest_start {
+        timings.flat_forest = s.elapsed();
+    }
+    if !forest.is_empty() {
+        let radial_start = timing_enabled.then(std::time::Instant::now);
+        sim.position_nodes_radially(&forest);
+        if let Some(s) = radial_start {
+            timings.radial = s.elapsed();
+        }
+    }
 
+    let spring_start = timing_enabled.then(std::time::Instant::now);
+    sim.run_spring_embedder(timing_enabled);
+    if let Some(s) = spring_start {
+        timings.spring = s.elapsed();
+    }
+    let transform_start = timing_enabled.then(std::time::Instant::now);
+    sim.transform_to_origin();
+    if let Some(s) = transform_start {
+        timings.transform = s.elapsed();
+    }
+
+    let output_start = timing_enabled.then(std::time::Instant::now);
     let mut out: Vec<Point> = Vec::with_capacity(sim.nodes.len());
     for n in &sim.nodes {
         out.push(Point {
             x: n.center_x(),
             y: n.center_y(),
         });
+    }
+    if let Some(s) = output_start {
+        timings.output = s.elapsed();
+    }
+    if let Some(s) = total_start {
+        timings.total = s.elapsed();
+        eprintln!(
+            "[manatee-cose-timing] total={:?} from_indexed={:?} flat_forest={:?} radial={:?} spring={:?} transform={:?} output={:?} nodes={} edges={} components={}",
+            timings.total,
+            timings.from_indexed,
+            timings.flat_forest,
+            timings.radial,
+            timings.spring,
+            timings.transform,
+            timings.output,
+            sim.nodes.len(),
+            sim.edges.len(),
+            forest.len(),
+        );
     }
     Ok(out)
 }
