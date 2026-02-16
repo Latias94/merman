@@ -1463,23 +1463,32 @@ impl SimGraph {
                 }
             } else {
                 for i in 0..self.nodes.len() {
-                    if !self.nodes[i].active {
+                    let a_node = &self.nodes[i];
+                    if !a_node.active {
                         continue;
                     }
+                    let a_cx = a_node.left + a_node.width / 2.0;
+                    let a_cy = a_node.top + a_node.height / 2.0;
+                    let a_hw = a_node.width / 2.0;
+                    let a_hh = a_node.height / 2.0;
                     for j in (i + 1)..self.nodes.len() {
-                        if !self.nodes[j].active {
+                        let b_node = &self.nodes[j];
+                        if !b_node.active {
                             continue;
                         }
                         if timing_enabled {
                             timings.repulsion_pairs_considered += 1;
                         }
 
-                        let a = &self.nodes[i];
-                        let b = &self.nodes[j];
-                        let dist_x =
-                            (a.center_x() - b.center_x()).abs() - (a.half_w() + b.half_w());
-                        let dist_y =
-                            (a.center_y() - b.center_y()).abs() - (a.half_h() + b.half_h());
+                        let b_cx = b_node.left + b_node.width / 2.0;
+                        let b_cy = b_node.top + b_node.height / 2.0;
+                        let b_hw = b_node.width / 2.0;
+                        let b_hh = b_node.height / 2.0;
+
+                        let dx_centers = b_cx - a_cx;
+                        let dy_centers = b_cy - a_cy;
+                        let dist_x = dx_centers.abs() - (a_hw + b_hw);
+                        let dist_y = dy_centers.abs() - (a_hh + b_hh);
                         if dist_x > repulsion_range || dist_y > repulsion_range {
                             continue;
                         }
@@ -1487,7 +1496,63 @@ impl SimGraph {
                             timings.repulsion_pairs_in_range += 1;
                         }
 
-                        let (rfx, rfy) = self.calc_repulsion_force(i, j, repulsion_constant);
+                        // `rects_intersect` expressed in center + half-size space. This matches
+                        // the strict inequalities in the original AABB overlap check.
+                        let overlaps = dist_x < 0.0 && dist_y < 0.0;
+                        let (rfx, rfy) = if overlaps {
+                            // Overlaps are rare in typical Mermaid inputs; reuse the canonical
+                            // implementation to preserve behavior in this edge case.
+                            self.calc_repulsion_force(i, j, repulsion_constant)
+                        } else {
+                            #[inline]
+                            fn clip_from_center(
+                                cx: f64,
+                                cy: f64,
+                                dx: f64,
+                                dy: f64,
+                                hw: f64,
+                                hh: f64,
+                            ) -> (f64, f64) {
+                                if hw == 0.0 || hh == 0.0 {
+                                    return (cx, cy);
+                                }
+                                let denom = (dx.abs() / hw).max(dy.abs() / hh);
+                                if denom == 0.0 {
+                                    return (cx, cy);
+                                }
+                                let t = 1.0 / denom;
+                                (cx + dx * t, cy + dy * t)
+                            }
+
+                            let dx = dx_centers;
+                            let dy = dy_centers;
+                            if dx == 0.0 && dy == 0.0 {
+                                (0.0, 0.0)
+                            } else {
+                                let (ax, ay) = clip_from_center(a_cx, a_cy, dx, dy, a_hw, a_hh);
+                                let (bx, by) = clip_from_center(b_cx, b_cy, -dx, -dy, b_hw, b_hh);
+                                let mut ddx = bx - ax;
+                                let mut ddy = by - ay;
+
+                                if ddx.abs() < Self::MIN_REPULSION_DIST {
+                                    ddx = ddx.signum() * Self::MIN_REPULSION_DIST;
+                                }
+                                if ddy.abs() < Self::MIN_REPULSION_DIST {
+                                    ddy = ddy.signum() * Self::MIN_REPULSION_DIST;
+                                }
+
+                                let dist_sq = ddx * ddx + ddy * ddy;
+                                let dist = dist_sq.sqrt();
+                                if dist_sq == 0.0 || dist == 0.0 {
+                                    (0.0, 0.0)
+                                } else {
+                                    let repulsion_force = repulsion_constant / dist_sq;
+                                    let rfx = repulsion_force * ddx / dist;
+                                    let rfy = repulsion_force * ddy / dist;
+                                    (-rfx, -rfy)
+                                }
+                            }
+                        };
                         let (ni, nj) = nodes2_mut(&mut self.nodes, i, j);
                         ni.repulsion_fx += rfx;
                         ni.repulsion_fy += rfy;
