@@ -10,6 +10,41 @@ fn escape_attr(text: &str) -> super::util::EscapeAttrDisplay<'_> {
     escape_attr_display(text)
 }
 
+#[inline]
+fn contains_ascii_case_insensitive(haystack: &str, needle_lower_ascii: &[u8]) -> bool {
+    let h = haystack.as_bytes();
+    let n = needle_lower_ascii;
+    if n.is_empty() {
+        return true;
+    }
+    if h.len() < n.len() {
+        return false;
+    }
+
+    for i in 0..=h.len() - n.len() {
+        let mut ok = true;
+        for j in 0..n.len() {
+            let mut b = h[i + j];
+            if b'A' <= b && b <= b'Z' {
+                b = b + (b'a' - b'A');
+            }
+            if b != n[j] {
+                ok = false;
+                break;
+            }
+        }
+        if ok {
+            return true;
+        }
+    }
+    false
+}
+
+#[inline]
+fn flowchart_html_contains_img_tag(text: &str) -> bool {
+    contains_ascii_case_insensitive(text, b"<img")
+}
+
 struct OptionalStyleAttr<'a>(&'a str);
 
 impl std::fmt::Display for OptionalStyleAttr<'_> {
@@ -3569,13 +3604,21 @@ fn flowchart_compute_edge_path_geom(
             return v;
         }
 
+        // Common case: we're nowhere near the f32 lattice. Avoid the heavier bit-level checks.
+        let diff = (v - snapped).abs();
+        if diff > 1e-12 {
+            return if v == -0.0 { 0.0 } else { v };
+        }
+
         // Preserve exact 1-ULP offsets around the snapped value. Upstream Mermaid frequently
         // produces values like `761.5937500000001` (next_up of `761.59375`) and
         // `145.49999999999997` (next_down of `145.5`) due to floating-point rounding, and
         // snapping those back to the f32 lattice would *reduce* strict parity.
-        if v.to_bits() == snapped.to_bits()
-            || v.to_bits() == next_up(snapped).to_bits()
-            || v.to_bits() == next_down(snapped).to_bits()
+        let v_bits = v.to_bits();
+        let snapped_bits = snapped.to_bits();
+        if v_bits == snapped_bits
+            || v_bits == next_up(snapped).to_bits()
+            || v_bits == next_down(snapped).to_bits()
         {
             return if v == -0.0 { 0.0 } else { v };
         }
@@ -3583,7 +3626,7 @@ fn flowchart_compute_edge_path_geom(
         // Keep the snapping extremely tight: upstream `data-points` frequently include tiny
         // non-f32 artifacts (several f64 ulps away from the f32-rounded value), and snapping too
         // aggressively erases those strict-parity baselines.
-        if (v - snapped).abs() < 1e-14 {
+        if diff < 1e-14 {
             if snapped == -0.0 { 0.0 } else { snapped }
         } else {
             v
@@ -6812,7 +6855,7 @@ fn render_flowchart_node(
                     &node_text_style,
                 );
             }
-            let label_has_visual_content = label_text.to_ascii_lowercase().contains("<img")
+            let label_has_visual_content = flowchart_html_contains_img_tag(label_text)
                 || (label_type == "markdown" && label_text.contains("!["));
             if label_text_plain.trim().is_empty() && !label_has_visual_content {
                 metrics.width = 0.0;
@@ -6924,7 +6967,7 @@ fn render_flowchart_node(
                     &node_text_style,
                 );
             }
-            let label_has_visual_content = label_text.to_ascii_lowercase().contains("<img")
+            let label_has_visual_content = flowchart_html_contains_img_tag(label_text)
                 || (label_type == "markdown" && label_text.contains("!["));
             if label_text_plain.trim().is_empty() && !label_has_visual_content {
                 metrics.width = 0.0;
@@ -7056,7 +7099,7 @@ fn render_flowchart_node(
                     &node_text_style,
                 );
             }
-            let label_has_visual_content = label_text.to_ascii_lowercase().contains("<img")
+            let label_has_visual_content = flowchart_html_contains_img_tag(label_text)
                 || (label_type == "markdown" && label_text.contains("!["));
             if label_text_plain.trim().is_empty() && !label_has_visual_content {
                 metrics.width = 0.0;
@@ -7130,7 +7173,7 @@ fn render_flowchart_node(
                     &node_text_style,
                 );
             }
-            let label_has_visual_content = label_text.to_ascii_lowercase().contains("<img")
+            let label_has_visual_content = flowchart_html_contains_img_tag(label_text)
                 || (label_type == "markdown" && label_text.contains("!["));
             if label_text_plain.trim().is_empty() && !label_has_visual_content {
                 metrics.width = 0.0;
@@ -7222,7 +7265,7 @@ fn render_flowchart_node(
                     &node_text_style,
                 );
             }
-            let label_has_visual_content = label_text.to_ascii_lowercase().contains("<img")
+            let label_has_visual_content = flowchart_html_contains_img_tag(label_text)
                 || (label_type == "markdown" && label_text.contains("!["));
             if label_text_plain.trim().is_empty() && !label_has_visual_content {
                 metrics.width = 0.0;
@@ -7321,7 +7364,7 @@ fn render_flowchart_node(
                     &node_text_style,
                 );
             }
-            let label_has_visual_content = label_text.to_ascii_lowercase().contains("<img")
+            let label_has_visual_content = flowchart_html_contains_img_tag(label_text)
                 || (label_type == "markdown" && label_text.contains("!["));
             if label_text_plain.trim().is_empty() && !label_has_visual_content {
                 metrics.width = 0.0;
@@ -7412,7 +7455,7 @@ fn render_flowchart_node(
                     &node_text_style,
                 );
             }
-            let label_has_visual_content = label_text.to_ascii_lowercase().contains("<img")
+            let label_has_visual_content = flowchart_html_contains_img_tag(label_text)
                 || (label_type == "markdown" && label_text.contains("!["));
             if label_text_plain.trim().is_empty() && !label_has_visual_content {
                 metrics.width = 0.0;
@@ -7502,7 +7545,7 @@ fn render_flowchart_node(
                     &node_text_style,
                 );
             }
-            let label_has_visual_content = label_text.to_ascii_lowercase().contains("<img")
+            let label_has_visual_content = flowchart_html_contains_img_tag(label_text)
                 || (label_type == "markdown" && label_text.contains("!["));
             if label_text_plain.trim().is_empty() && !label_has_visual_content {
                 metrics.width = 0.0;
@@ -7621,7 +7664,7 @@ fn render_flowchart_node(
                     &node_text_style,
                 );
             }
-            let label_has_visual_content = label_text.to_ascii_lowercase().contains("<img")
+            let label_has_visual_content = flowchart_html_contains_img_tag(label_text)
                 || (label_type == "markdown" && label_text.contains("!["));
             if label_text_plain.trim().is_empty() && !label_has_visual_content {
                 metrics.width = 0.0;
@@ -9205,7 +9248,7 @@ fn render_flowchart_node(
             }
             metrics
         };
-    let label_has_visual_content = label_text.to_ascii_lowercase().contains("<img")
+    let label_has_visual_content = flowchart_html_contains_img_tag(label_text)
         || (label_type == "markdown" && label_text.contains("!["));
     if label_text_plain.trim().is_empty() && !label_has_visual_content {
         metrics.width = 0.0;
