@@ -1,0 +1,163 @@
+{
+  "diagramType": "kanban",
+  "layout": {
+    "KanbanDiagram": {
+      "bounds": {
+        "min_x": 90.0,
+        "min_y": -310.0,
+        "max_x": 925.0,
+        "max_y": -15.0
+      },
+      "section_width": 200.0,
+      "padding": 10.0,
+      "max_label_height": 25.0,
+      "viewbox_padding": 10.0,
+      "sections": [
+        {
+          "id": "id1",
+          "label": "Todo",
+          "index": 1.0,
+          "center_x": 200.0,
+          "center_y": 0.0,
+          "width": 200.0,
+          "rect_y": -300.0,
+          "rect_height": 275.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "label_width": 30.24
+        },
+        {
+          "id": "id7",
+          "label": "In progress",
+          "index": 2.0,
+          "center_x": 405.0,
+          "center_y": 0.0,
+          "width": 200.0,
+          "rect_y": -300.0,
+          "rect_height": 79.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "label_width": 72.0
+        },
+        {
+          "id": "id2",
+          "label": "id2",
+          "index": 3.0,
+          "center_x": 610.0,
+          "center_y": 0.0,
+          "width": 200.0,
+          "rect_y": -300.0,
+          "rect_height": 50.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "label_width": 20.32
+        },
+        {
+          "id": "style n1 stroke:#AA00FF,fill:#E1BEE7",
+          "label": "style n1 stroke:#AA00FF,fill:#E1BEE7",
+          "index": 4.0,
+          "center_x": 815.0,
+          "center_y": 0.0,
+          "width": 200.0,
+          "rect_y": -300.0,
+          "rect_height": 50.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "label_width": 269.12
+        }
+      ],
+      "items": [
+        {
+          "id": "id2",
+          "label": "Create JISON",
+          "parent_id": "id1",
+          "center_x": 200.0,
+          "center_y": -253.0,
+          "width": 185.0,
+          "height": 44.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": null,
+          "assigned": null,
+          "priority": null,
+          "icon": null
+        },
+        {
+          "id": "id3",
+          "label": "Update DB function",
+          "parent_id": "id1",
+          "center_x": 200.0,
+          "center_y": -204.0,
+          "width": 185.0,
+          "height": 44.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": null,
+          "assigned": null,
+          "priority": null,
+          "icon": null
+        },
+        {
+          "id": "id4",
+          "label": "Create parsing tests",
+          "parent_id": "id1",
+          "center_x": 200.0,
+          "center_y": -155.0,
+          "width": 185.0,
+          "height": 44.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": null,
+          "assigned": null,
+          "priority": null,
+          "icon": null
+        },
+        {
+          "id": "id5",
+          "label": "define getData",
+          "parent_id": "id1",
+          "center_x": 200.0,
+          "center_y": -106.0,
+          "width": 185.0,
+          "height": 44.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": null,
+          "assigned": null,
+          "priority": null,
+          "icon": null
+        },
+        {
+          "id": "id6",
+          "label": "Create renderer",
+          "parent_id": "id1",
+          "center_x": 200.0,
+          "center_y": -57.0,
+          "width": 185.0,
+          "height": 44.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": null,
+          "assigned": null,
+          "priority": null,
+          "icon": null
+        },
+        {
+          "id": "id8",
+          "label": "Design grammar",
+          "parent_id": "id7",
+          "center_x": 405.0,
+          "center_y": -253.0,
+          "width": 185.0,
+          "height": 44.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "ticket": null,
+          "assigned": null,
+          "priority": null,
+          "icon": null
+        }
+      ]
+    }
+  }
+}

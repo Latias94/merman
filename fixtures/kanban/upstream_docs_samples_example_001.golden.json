@@ -1,0 +1,63 @@
+{
+  "diagramType": "kanban",
+  "model": {
+    "type": "kanban",
+    "sections": [
+      {
+        "id": "New",
+        "label": "New",
+        "level": 2,
+        "width": 200,
+        "padding": 10,
+        "isGroup": false
+      },
+      {
+        "id": "In progress",
+        "label": "In progress",
+        "level": 2,
+        "width": 200,
+        "padding": 10,
+        "isGroup": false
+      }
+    ],
+    "nodes": [
+      {
+        "id": "New",
+        "label": "New",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      },
+      {
+        "id": "Sometimes wrong Shape type is highlighted",
+        "parentId": "New",
+        "label": "Sometimes wrong Shape type is highlighted",
+        "isGroup": false,
+        "ticket": null,
+        "priority": null,
+        "assigned": null,
+        "icon": null,
+        "shape": "kanbanItem",
+        "level": 4,
+        "rx": 5,
+        "ry": 5,
+        "cssStyles": [
+          "text-align: left"
+        ]
+      },
+      {
+        "id": "In progress",
+        "label": "In progress",
+        "isGroup": true,
+        "ticket": null,
+        "shape": "kanbanSection",
+        "level": 2,
+        "look": "classic"
+      }
+    ],
+    "edges": [],
+    "other": {}
+  }
+}
