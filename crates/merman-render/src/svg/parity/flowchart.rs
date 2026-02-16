@@ -50,6 +50,7 @@ pub(super) struct FlowchartRenderCtx<'a> {
     pub(super) node_fill_color: String,
     pub(super) default_edge_interpolate: String,
     pub(super) default_edge_style: Vec<String>,
+    pub(super) trace_edge_id: Option<String>,
     #[allow(dead_code)]
     pub(super) node_order: Vec<&'a str>,
     pub(super) subgraph_order: Vec<&'a str>,
@@ -740,14 +741,77 @@ pub(super) fn flowchart_marker_color_id(color: &str) -> String {
     out
 }
 
-pub(super) fn flowchart_marker_id(diagram_id: &str, base: &str, color: Option<&str>) -> String {
-    if let Some(c) = color {
-        let cid = flowchart_marker_color_id(c);
-        if !cid.is_empty() {
-            return format!("{diagram_id}_{base}_{cid}");
+#[inline]
+fn write_flowchart_marker_id_xml(
+    out: &mut String,
+    diagram_id: &str,
+    base: &str,
+    color: Option<&str>,
+) {
+    let _ = write!(out, "{}", escape_xml_display(diagram_id));
+    out.push('_');
+    out.push_str(base);
+
+    let Some(color) = color else {
+        return;
+    };
+    let raw = color.trim_end_matches(';');
+    if raw.trim().is_empty() {
+        return;
+    }
+    out.push('_');
+    for ch in raw.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch);
+        } else {
+            out.push('_');
         }
     }
-    format!("{diagram_id}_{base}")
+}
+
+#[inline]
+fn write_flowchart_edge_class_attr(out: &mut String, edge: &crate::flowchart::FlowEdge) {
+    // Mermaid includes a 2-part class tuple (thickness/pattern) for flowchart edge paths. The
+    // second tuple is `edge-thickness-normal edge-pattern-solid` in Mermaid@11.12.2 baselines,
+    // even for dotted/thick strokes.
+    let (thickness_1, pattern_1) = match edge.stroke.as_deref() {
+        Some("thick") => ("edge-thickness-thick", "edge-pattern-solid"),
+        Some("invisible") => ("edge-thickness-invisible", "edge-pattern-solid"),
+        Some("dotted") => ("edge-thickness-normal", "edge-pattern-dotted"),
+        _ => ("edge-thickness-normal", "edge-pattern-solid"),
+    };
+
+    if thickness_1 == "edge-thickness-invisible" {
+        // Mermaid@11.12.2 does *not* include the second tuple nor `flowchart-link` for invisible
+        // edges.
+        out.push_str(thickness_1);
+        out.push(' ');
+        out.push_str(pattern_1);
+        return;
+    }
+
+    out.push_str(thickness_1);
+    out.push(' ');
+    out.push_str(pattern_1);
+    out.push_str(" edge-thickness-normal edge-pattern-solid flowchart-link");
+
+    // Mermaid attaches animation classes directly on the edge path element when enabled via
+    // edge-id `@{ ... }` blocks (e.g. `e1@{ animate: true }` or `e1@{ animation: fast }`).
+    if edge.animate == Some(false) {
+        return;
+    }
+    let animation_class = match edge.animation.as_deref() {
+        Some("slow") => Some("edge-animation-slow"),
+        Some(_) => Some("edge-animation-fast"),
+        None => match edge.animate {
+            Some(true) => Some("edge-animation-fast"),
+            _ => None,
+        },
+    };
+    if let Some(cls) = animation_class {
+        out.push(' ');
+        out.push_str(cls);
+    }
 }
 
 pub(super) fn flowchart_extra_markers(out: &mut String, diagram_id: &str, colors: &[String]) {
@@ -1608,45 +1672,11 @@ pub(super) fn flowchart_edge_marker_start_base(
     }
 }
 
+#[allow(dead_code)]
 pub(super) fn flowchart_edge_class_attr(edge: &crate::flowchart::FlowEdge) -> String {
-    // Mermaid includes a 2-part class tuple (thickness/pattern) for flowchart edge paths. The
-    // second tuple is `edge-thickness-normal edge-pattern-solid` in Mermaid@11.12.2 baselines,
-    // even for dotted/thick strokes.
-    let (thickness_1, pattern_1) = match edge.stroke.as_deref() {
-        Some("thick") => ("edge-thickness-thick", "edge-pattern-solid"),
-        Some("invisible") => ("edge-thickness-invisible", "edge-pattern-solid"),
-        Some("dotted") => ("edge-thickness-normal", "edge-pattern-dotted"),
-        _ => ("edge-thickness-normal", "edge-pattern-solid"),
-    };
-
-    if thickness_1 == "edge-thickness-invisible" {
-        // Mermaid@11.12.2 does *not* include the second tuple nor `flowchart-link` for invisible
-        // edges.
-        format!("{thickness_1} {pattern_1}")
-    } else {
-        let mut out = format!(
-            "{thickness_1} {pattern_1} edge-thickness-normal edge-pattern-solid flowchart-link"
-        );
-
-        // Mermaid attaches animation classes directly on the edge path element when enabled via
-        // edge-id `@{ ... }` blocks (e.g. `e1@{ animate: true }` or `e1@{ animation: fast }`).
-        if edge.animate == Some(false) {
-            return out;
-        }
-        let animation_class = match edge.animation.as_deref() {
-            Some("slow") => Some("edge-animation-slow"),
-            Some(_) => Some("edge-animation-fast"),
-            None => match edge.animate {
-                Some(true) => Some("edge-animation-fast"),
-                _ => None,
-            },
-        };
-        if let Some(cls) = animation_class {
-            out.push(' ');
-            out.push_str(cls);
-        }
-        out
-    }
+    let mut out = String::new();
+    write_flowchart_edge_class_attr(&mut out, edge);
+    out
 }
 
 fn flowchart_resolve_stroke_for_marker(
@@ -4911,8 +4941,8 @@ fn render_flowchart_edge_path(
     scratch: &mut FlowchartEdgeDataPointsScratch,
     edge_cache: Option<&FxHashMap<&str, FlowchartEdgePathCacheEntry>>,
 ) {
-    let trace_edge = std::env::var("MERMAN_TRACE_FLOWCHART_EDGE").ok();
-    let trace_enabled = trace_edge
+    let trace_enabled = ctx
+        .trace_edge_id
         .as_deref()
         .is_some_and(|id| id == edge.id.as_str());
 
@@ -4982,12 +5012,6 @@ fn render_flowchart_edge_path(
         marker_color = compiled_marker_color.as_deref();
     }
 
-    let class_attr = flowchart_edge_class_attr(edge);
-    let marker_start = flowchart_edge_marker_start_base(edge)
-        .map(|base| flowchart_marker_id(&ctx.diagram_id, base, marker_color));
-    let marker_end = flowchart_edge_marker_end_base(edge)
-        .map(|base| flowchart_marker_id(&ctx.diagram_id, base, marker_color));
-
     fn write_style_joined(out: &mut String, a: &[String], b: &[String]) {
         let mut first = true;
         for part in a.iter().chain(b.iter()) {
@@ -5002,11 +5026,12 @@ fn render_flowchart_edge_path(
 
     let _ = write!(
         out,
-        r#"<path d="{}" id="{}" class="{}" style=""#,
+        r#"<path d="{}" id="{}" class=""#,
         d,
         escape_xml_display(&edge.id),
-        escape_xml_display(&class_attr),
     );
+    write_flowchart_edge_class_attr(out, edge);
+    out.push_str(r#"" style=""#);
     if ctx.default_edge_style.is_empty() && edge.style.is_empty() {
         out.push(';');
     } else {
@@ -5026,11 +5051,15 @@ fn render_flowchart_edge_path(
         escape_xml_display(&edge.id),
         data_points_b64,
     );
-    if let Some(m) = marker_start.as_deref() {
-        let _ = write!(out, r#" marker-start="url(#{})""#, escape_xml_display(m));
+    if let Some(base) = flowchart_edge_marker_start_base(edge) {
+        out.push_str(r#" marker-start="url(#"#);
+        write_flowchart_marker_id_xml(out, &ctx.diagram_id, base, marker_color);
+        out.push_str(r#")""#);
     }
-    if let Some(m) = marker_end.as_deref() {
-        let _ = write!(out, r#" marker-end="url(#{})""#, escape_xml_display(m));
+    if let Some(base) = flowchart_edge_marker_end_base(edge) {
+        out.push_str(r#" marker-end="url(#"#);
+        write_flowchart_marker_id_xml(out, &ctx.diagram_id, base, marker_color);
+        out.push_str(r#")""#);
     }
     out.push_str(" />");
 }
@@ -10265,6 +10294,7 @@ fn render_flowchart_v2_svg_with_config_inner(
         node_fill_color,
         default_edge_interpolate,
         default_edge_style,
+        trace_edge_id: std::env::var("MERMAN_TRACE_FLOWCHART_EDGE").ok(),
         node_order,
         subgraph_order,
         edge_order,
