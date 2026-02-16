@@ -30,6 +30,10 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
     - Spotcheck (`mindmap_medium`):
       - Report: `target/bench/stage_spotcheck.mindmap_medium.after_repulsion_inline_2026-02-16.md` (local, not committed)
       - Ratio (`merman / mmdr`): `layout 1.79x` (from `2.02x` baseline)
+  - `perf(curve): specialize path emission` (`fe3aa4b`)
+    - Splits SVG path emission into `no-bounds` vs `with-bounds` fast paths so the hot render-only
+      case (no tight bounds needed) avoids per-command optional bound bookkeeping.
+    - Affects `curveBasis` / `curveLinear` emission used by flowchart/class/ER paths.
 - Latest canary (faster triage parameters):
   - Command:
     - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 20 --warm-up 1 --measurement 2 --out target/bench/stage_spotcheck.canary_after_flowchart_opt_2026-02-16.md`
@@ -53,11 +57,23 @@ Outliers worth optimizing:
 1. **SVG emission fixed-cost**
    - Many hot paths still build intermediate `String`s (`format!`, `to_string`, joins) inside loops.
    - Style compilation and attribute escaping are frequently repeated for identical payloads.
+   - Flowchart/class edges also pay for Mermaid-style metadata (e.g. `data-points` base64 JSON),
+     which is correctness-critical for strict parity but can dominate micro-bench render fixed cost.
+   - ViewBox approximation requires edge geometry/bounds work even before emitting final SVG.
 2. **Mindmap + Architecture layout fixed-cost**
    - COSE/FCoSE are sensitive to representation (dense indices vs string-key maps) and per-iteration allocations.
    - Even when absolute times are small, ratio outliers usually indicate avoidable per-call overhead.
 3. **Parse fixed-cost (mostly tiny/medium canaries)**
    - Some diagrams still pay noticeable preprocessing/scanning overhead even for short inputs.
+
+## Measurement Stack (use the right tool)
+
+- Use `tools/bench/stage_spotcheck.py` for **stage attribution** (parse/layout/render/end-to-end).
+- Use `tools/bench/compare_mermaid_renderers.py` for **end-to-end regression tracking** over a
+  filtered set of fixtures.
+  - These two tools can legitimately disagree on “overall ratio” if the fixture set differs.
+  - Prefer `stage_spotcheck` when deciding *where* to optimize next; prefer `compare_*` when
+    deciding *whether* we materially improved a user-visible pipeline canary.
 
 ## Milestones (ordered by ROI)
 
@@ -71,6 +87,9 @@ Targets (spotcheck ratios):
 Work items:
 
 - Prioritize flowchart SVG emission: remove `format!`/temporary `String`s in node/edge hot loops, reuse per-diagram scratch buffers, and avoid repeated escaping/style compilation.
+- Continue shrinking the viewBox prepass:
+  - avoid recomputing edge geometry when cached results are already available
+  - keep the “tight bounds when needed” path fast (`curve_*_and_bounds`)
 - Re-run the canary after each landed change:
   - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium --sample-size 50 --warm-up 2 --measurement 3`
 

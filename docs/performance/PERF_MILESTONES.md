@@ -46,6 +46,11 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
   - Spotcheck (`mindmap_medium`): `target/bench/stage_spotcheck.mindmap_medium.after_repulsion_inline_2026-02-16.md`
     shows `layout` ratio improved to `~1.79x` (from `2.02x` baseline).
 
+- `fe3aa4b` — `perf(curve): specialize path emission`
+  - Splits SVG path emission into `no-bounds` vs `with-bounds` fast paths so the hot render-only
+    case avoids per-command optional bound bookkeeping.
+  - Targets flowchart/class/ER path emission (`curveBasis` / `curveLinear`).
+
 ### Stage Attribution Snapshot (canaries)
 
 Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is *multi-source*:
