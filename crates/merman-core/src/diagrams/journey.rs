@@ -8,6 +8,7 @@ struct JourneyTask {
     type_: String,
     task: String,
     score: i64,
+    score_is_nan: bool,
     people: Vec<String>,
 }
 
@@ -37,14 +38,21 @@ impl JourneyDb {
         let pieces: Vec<&str> = rest.split(':').collect();
 
         let score_str = pieces.first().copied().unwrap_or("");
-        let score: f64 = score_str.trim().parse().unwrap_or(f64::NAN);
-        if !score.is_finite() {
-            return Err(Error::DiagramParse {
-                diagram_type: "journey".to_string(),
-                message: format!("invalid task score: {score_str}"),
-            });
-        }
-        let score = score as i64;
+        // Mermaid upstream uses JS `Number(...)` for parsing task scores. This means:
+        // - whitespace-only => 0
+        // - invalid strings => NaN (and Mermaid happily renders an SVG containing `NaN`)
+        //
+        // JSON snapshots cannot represent NaN, so we model it as `score=0` + `scoreIsNaN=true`,
+        // and let the SVG renderer re-emit `NaN` for the relevant face/mouth coordinates.
+        let score_trim = score_str.trim();
+        let (score, score_is_nan) = if score_trim.is_empty() {
+            (0_i64, false)
+        } else {
+            match score_trim.parse::<f64>() {
+                Ok(v) if v.is_finite() => (v as i64, false),
+                _ => (0_i64, true),
+            }
+        };
 
         let people = if pieces.len() == 1 {
             Vec::new()
@@ -63,6 +71,7 @@ impl JourneyDb {
             type_: self.current_section.clone(),
             task: descr.to_string(),
             score,
+            score_is_nan,
             people,
         });
         Ok(())
@@ -234,13 +243,16 @@ pub fn parse_journey(code: &str, meta: &ParseMetadata) -> Result<Value> {
         .tasks
         .into_iter()
         .map(|t| {
-            json!({
-                "score": t.score,
-                "people": t.people,
-                "section": t.section,
-                "type": t.type_,
-                "task": t.task,
-            })
+            let mut map = serde_json::Map::new();
+            map.insert("score".to_string(), json!(t.score));
+            if t.score_is_nan {
+                map.insert("scoreIsNaN".to_string(), json!(true));
+            }
+            map.insert("people".to_string(), json!(t.people));
+            map.insert("section".to_string(), json!(t.section));
+            map.insert("type".to_string(), json!(t.type_));
+            map.insert("task".to_string(), json!(t.task));
+            Value::Object(map)
         })
         .collect();
 

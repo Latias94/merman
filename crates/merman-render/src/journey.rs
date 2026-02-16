@@ -31,6 +31,8 @@ struct JourneyTaskModel {
     task_type: String,
     task: String,
     score: i64,
+    #[serde(default, rename = "scoreIsNaN")]
+    score_is_nan: bool,
     #[serde(default)]
     people: Vec<String>,
 }
@@ -312,8 +314,14 @@ pub fn layout_journey_diagram(
 
         let center_x = x + cell_w / 2.0;
         let max_height = FACE_BASE_Y + 5.0 * FACE_SCORE_STEP_Y;
-        let face_cy = FACE_BASE_Y + (5_i64.saturating_sub(task.score) as f64) * FACE_SCORE_STEP_Y;
-        let mouth = if task.score > 3 {
+        let face_cy = if task.score_is_nan {
+            None
+        } else {
+            Some(FACE_BASE_Y + (5_i64.saturating_sub(task.score) as f64) * FACE_SCORE_STEP_Y)
+        };
+        let mouth = if task.score_is_nan {
+            JourneyMouthKind::Ambivalent
+        } else if task.score > 3 {
             JourneyMouthKind::Smile
         } else if task.score < 3 {
             JourneyMouthKind::Sad

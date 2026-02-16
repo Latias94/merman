@@ -30,3 +30,15 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/user-journey/journeyDb.s
 Source: `repo-ref/mermaid/docs/syntax/userJourney.md`
 
 - basic example ("My working day"): `fixtures/journey/upstream_docs_userjourney_user_journey_diagram_002.mmd`
+
+## Cypress rendering specs
+
+Source: `repo-ref/mermaid/cypress/integration/rendering/journey.spec.js`
+
+These fixtures are extracted from Cypress browser rendering specs (`renderGraph`) and are
+parity-gated against upstream SVG baselines:
+
+- Imported fixtures: `fixtures/journey/upstream_cypress_*.mmd` (9 fixtures)
+- Import tool: `cargo run -p xtask -- import-upstream-cypress --diagram journey --with-baselines --complex`
+- Baselines: `fixtures/upstream-svgs/journey/upstream_cypress_*.svg`
+- SVG DOM compare: `cargo run --release -p xtask -- compare-journey-svgs --check-dom --dom-mode parity-root --dom-decimals 3`

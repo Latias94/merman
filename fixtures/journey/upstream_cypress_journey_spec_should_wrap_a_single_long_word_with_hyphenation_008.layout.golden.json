@@ -1,0 +1,107 @@
+{
+  "diagramType": "journey",
+  "layout": {
+    "JourneyDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": -25.0,
+        "max_x": 694.24,
+        "max_y": 515.0
+      },
+      "left_margin": 247.12,
+      "max_actor_label_width": 97.12,
+      "width": 694.24,
+      "height": 470.0,
+      "svg_height": 565.0,
+      "title": "Long Word Test",
+      "title_x": 247.12,
+      "title_y": 25.0,
+      "actor_legend": [
+        {
+          "actor": "Supercalifragilisticexpialidocious",
+          "pos": 0.0,
+          "color": "#8FBC8F",
+          "circle_cx": 20.0,
+          "circle_cy": 60.0,
+          "circle_r": 7.0,
+          "label_lines": [
+            {
+              "text": "Supercalifragi-",
+              "x": 40.0,
+              "y": 67.0,
+              "tspan_x": 50.0,
+              "text_margin": 5.0
+            },
+            {
+              "text": "listicexpialido-",
+              "x": 40.0,
+              "y": 87.0,
+              "tspan_x": 50.0,
+              "text_margin": 5.0
+            },
+            {
+              "text": "cious",
+              "x": 40.0,
+              "y": 107.0,
+              "tspan_x": 50.0,
+              "text_margin": 5.0
+            }
+          ]
+        }
+      ],
+      "sections": [
+        {
+          "section": "Test",
+          "num": 0.0,
+          "x": 247.12,
+          "y": 50.0,
+          "width": 150.0,
+          "height": 50.0,
+          "fill": "#191970",
+          "task_count": 1.0
+        }
+      ],
+      "tasks": [
+        {
+          "index": 0.0,
+          "section": "Test",
+          "task": "    VeryLongWord",
+          "score": 5.0,
+          "x": 247.12,
+          "y": 110.0,
+          "width": 150.0,
+          "height": 50.0,
+          "fill": "#191970",
+          "num": 0.0,
+          "people": [
+            "Supercalifragilisticexpialidocious"
+          ],
+          "actor_circles": [
+            {
+              "actor": "Supercalifragilisticexpialidocious",
+              "pos": 0.0,
+              "color": "#8FBC8F",
+              "cx": 261.12,
+              "cy": 110.0,
+              "r": 7.0
+            }
+          ],
+          "line_id": "task0",
+          "line_x1": 322.12,
+          "line_y1": 110.0,
+          "line_x2": 322.12,
+          "line_y2": 450.0,
+          "face_cx": 322.12,
+          "face_cy": 300.0,
+          "mouth": "Smile"
+        }
+      ],
+      "activity_line": {
+        "x1": 247.12,
+        "y1": 200.0,
+        "x2": 443.12,
+        "y2": 200.0
+      }
+    }
+  }
+}

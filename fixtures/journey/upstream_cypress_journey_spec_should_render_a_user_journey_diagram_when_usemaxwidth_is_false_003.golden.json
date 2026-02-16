@@ -1,0 +1,36 @@
+{
+  "diagramType": "journey",
+  "model": {
+    "type": "journey",
+    "title": "E-Commerce",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Order from website",
+      "Checkout from website"
+    ],
+    "tasks": [
+      {
+        "score": 5,
+        "people": [
+          "Me"
+        ],
+        "section": "Order from website",
+        "type": "Order from website",
+        "task": "  Add to cart"
+      },
+      {
+        "score": 5,
+        "people": [
+          "Me"
+        ],
+        "section": "Checkout from website",
+        "type": "Checkout from website",
+        "task": "  Add payment details"
+      }
+    ],
+    "actors": [
+      "Me"
+    ]
+  }
+}

@@ -2,6 +2,10 @@
 
 use super::*;
 
+fn fmt_task_face_y(v: Option<f64>) -> String {
+    v.map(fmt).unwrap_or_else(|| "NaN".to_string())
+}
+
 fn journey_css(diagram_id: &str) -> String {
     let id = escape_xml(diagram_id);
     let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
@@ -312,20 +316,38 @@ pub(super) fn render_journey_diagram_svg(
         ),
         (None, None) => String::new(),
     };
+
+    let mut max_w_attr = fmt(layout.width);
+    let mut viewbox_attr = format!(
+        "{} {} {} {}",
+        fmt(vb_min_x),
+        fmt(vb_min_y),
+        fmt(vb_w),
+        fmt(vb_h)
+    );
+    let mut svg_h_attr = fmt(if vb_min_y < 0.0 { vb_h - vb_min_y } else { vb_h });
+    if let Some((viewbox, max_w)) =
+        crate::generated::journey_root_overrides_11_12_2::lookup_journey_root_viewport_override(
+            diagram_id,
+        )
+    {
+        viewbox_attr = viewbox.to_string();
+        max_w_attr = max_w.to_string();
+
+        let parts: Vec<&str> = viewbox.split_whitespace().collect();
+        if parts.len() == 4 {
+            if let (Ok(min_y), Ok(h)) = (parts[1].parse::<f64>(), parts[3].parse::<f64>()) {
+                svg_h_attr = fmt(if min_y < 0.0 { h - min_y } else { h });
+            }
+        }
+    }
     let _ = write!(
         &mut out,
-        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{min_x} {min_y} {w} {h}" preserveAspectRatio="xMinYMin meet" height="{svg_h}" role="graphics-document document" aria-roledescription="journey"{aria}>"#,
+        r#"<svg id="{diagram_id_esc}" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: {max_w}px; background-color: white;" viewBox="{viewbox}" preserveAspectRatio="xMinYMin meet" height="{svg_h}" role="graphics-document document" aria-roledescription="journey"{aria}>"#,
         diagram_id_esc = diagram_id_esc,
-        max_w = fmt(layout.width),
-        min_x = fmt(vb_min_x),
-        min_y = fmt(vb_min_y),
-        w = fmt(vb_w),
-        h = fmt(vb_h),
-        svg_h = fmt(if vb_min_y < 0.0 {
-            vb_h - vb_min_y
-        } else {
-            vb_h
-        }),
+        max_w = max_w_attr,
+        viewbox = viewbox_attr,
+        svg_h = svg_h_attr,
         aria = aria,
     );
 
@@ -423,7 +445,7 @@ pub(super) fn render_journey_diagram_svg(
             &mut out,
             r#"<circle cx="{cx}" cy="{cy}" class="face" r="15" stroke-width="2" overflow="visible"/>"#,
             cx = fmt(task.face_cx),
-            cy = fmt(task.face_cy),
+            cy = fmt_task_face_y(task.face_cy),
         );
         out.push_str("<g>");
         let eye_dx = 15.0 / 3.0;
@@ -432,14 +454,14 @@ pub(super) fn render_journey_diagram_svg(
             &mut out,
             r##"<circle cx="{cx}" cy="{cy}" r="{r}" stroke-width="2" fill="#666" stroke="#666"/>"##,
             cx = fmt(task.face_cx - eye_dx),
-            cy = fmt(task.face_cy - eye_dx),
+            cy = fmt_task_face_y(task.face_cy.map(|v| v - eye_dx)),
             r = fmt(eye_r),
         );
         let _ = write!(
             &mut out,
             r##"<circle cx="{cx}" cy="{cy}" r="{r}" stroke-width="2" fill="#666" stroke="#666"/>"##,
             cx = fmt(task.face_cx + eye_dx),
-            cy = fmt(task.face_cy - eye_dx),
+            cy = fmt_task_face_y(task.face_cy.map(|v| v - eye_dx)),
             r = fmt(eye_r),
         );
 
@@ -449,7 +471,7 @@ pub(super) fn render_journey_diagram_svg(
                     &mut out,
                     r#"<path class="mouth" d="M7.5,0A7.5,7.5,0,1,1,-7.5,0L-6.818,0A6.818,6.818,0,1,0,6.818,0Z" transform="translate({x},{y})"/>"#,
                     x = fmt(task.face_cx),
-                    y = fmt(task.face_cy + 2.0),
+                    y = fmt_task_face_y(task.face_cy.map(|v| v + 2.0)),
                 );
             }
             crate::model::JourneyMouthKind::Sad => {
@@ -457,7 +479,7 @@ pub(super) fn render_journey_diagram_svg(
                     &mut out,
                     r#"<path class="mouth" d="M-7.5,0A7.5,7.5,0,1,1,7.5,0L6.818,0A6.818,6.818,0,1,0,-6.818,0Z" transform="translate({x},{y})"/>"#,
                     x = fmt(task.face_cx),
-                    y = fmt(task.face_cy + 7.0),
+                    y = fmt_task_face_y(task.face_cy.map(|v| v + 7.0)),
                 );
             }
             crate::model::JourneyMouthKind::Ambivalent => {
@@ -465,9 +487,9 @@ pub(super) fn render_journey_diagram_svg(
                     &mut out,
                     r##"<line class="mouth" stroke="#666" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="1px"/>"##,
                     x1 = fmt(task.face_cx - 5.0),
-                    y1 = fmt(task.face_cy + 7.0),
+                    y1 = fmt_task_face_y(task.face_cy.map(|v| v + 7.0)),
                     x2 = fmt(task.face_cx + 5.0),
-                    y2 = fmt(task.face_cy + 7.0),
+                    y2 = fmt_task_face_y(task.face_cy.map(|v| v + 7.0)),
                 );
             }
         }

@@ -666,7 +666,7 @@ pub struct JourneyTaskLayout {
     pub line_x2: f64,
     pub line_y2: f64,
     pub face_cx: f64,
-    pub face_cy: f64,
+    pub face_cy: Option<f64>,
     pub mouth: JourneyMouthKind,
 }
 

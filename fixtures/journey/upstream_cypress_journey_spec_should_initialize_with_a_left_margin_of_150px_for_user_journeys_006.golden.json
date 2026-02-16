@@ -1,0 +1,59 @@
+{
+  "diagramType": "journey",
+  "model": {
+    "type": "journey",
+    "title": "User Journey Example",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Onboarding",
+      "Engagement"
+    ],
+    "tasks": [
+      {
+        "score": 5,
+        "people": [
+          ""
+        ],
+        "section": "Onboarding",
+        "type": "Onboarding",
+        "task": "      Sign Up"
+      },
+      {
+        "score": 3,
+        "people": [
+          ""
+        ],
+        "section": "Onboarding",
+        "type": "Onboarding",
+        "task": "      Browse Features"
+      },
+      {
+        "score": 4,
+        "people": [
+          ""
+        ],
+        "section": "Onboarding",
+        "type": "Onboarding",
+        "task": "      Use Core Functionality"
+      },
+      {
+        "score": 3,
+        "people": [],
+        "section": "Engagement",
+        "type": "Engagement",
+        "task": "      Browse Features"
+      },
+      {
+        "score": 4,
+        "people": [],
+        "section": "Engagement",
+        "type": "Engagement",
+        "task": "      Use Core Functionality"
+      }
+    ],
+    "actors": [
+      ""
+    ]
+  }
+}
