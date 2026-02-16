@@ -3,40 +3,33 @@
 This document tracks the performance plan for `merman` with concrete, measurable milestones.
 It is intentionally fixture-driven and stage-attributed (parse/layout/render/end-to-end).
 
+For the current prioritized TODO/milestone plan, see `docs/performance/PERF_PLAN.md`.
+
 ## Current Status (2026-02-16)
 
-### Baseline (post-merge local `main`)
+### Stable Baseline (2026-02-16)
 
 Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
 
 - Command:
-  - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,class_medium,state_medium,sequence_medium,mindmap_medium,architecture_medium --sample-size 20 --warm-up 1 --measurement 1 --out target/bench/stage_spotcheck.latest.md`
+  - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 50 --warm-up 2 --measurement 3 --out target/bench/stage_spotcheck.baseline_2026-02-16.md`
 - Report:
-  - `target/bench/stage_spotcheck.latest.md` (not committed)
+  - `target/bench/stage_spotcheck.baseline_2026-02-16.md` (not committed)
 - Stage gmeans (ratios, `merman / mmdr`):
-  - `parse`: `1.38x`
+  - `parse`: `1.37x`
   - `layout`: `0.88x`
-  - `render`: `1.99x`
-  - `end_to_end`: `0.82x`
+  - `render`: `1.73x`
+  - `end_to_end`: `0.92x`
 - Interpretation:
-  - **End-to-end is already competitive overall**, but we have **concentrated gaps**:
-    - `flowchart_medium end_to_end`: `1.21x` (render-heavy; `render 1.91x`, `parse 1.40x`)
-    - `mindmap_medium end_to_end`: `1.69x` (layout+render; `layout 2.51x`, `render 2.15x`)
-    - `architecture_medium end_to_end`: `2.24x` (layout+render; `render 3.59x`)
-  - Layout is **not** the main global bottleneck right now; **SVG emission fixed-cost** is.
-
-### Latest (after syncing local `main`)
-
-- Report:
-  - `target/bench/stage_spotcheck.latest_after_mindmap_layout_md_fast.md` (not committed)
-- Stage gmeans (ratios, `merman / mmdr`):
-  - `parse`: `1.48x`
-  - `layout`: `1.07x`
-  - `render`: `1.66x`
-  - `end_to_end`: `0.80x`
-- Remaining end-to-end outliers (ratios):
-  - `mindmap_medium end_to_end`: `1.94x` (`layout 2.60x`, `render 1.51x`)
-  - `architecture_medium end_to_end`: `2.47x` (`layout 3.88x`, `render 2.32x`)
+  - **Overall end-to-end is already competitive**, largely because we are faster on several layouts
+    (`class_medium`, `state_medium`, `sequence_medium`).
+  - The remaining performance gap is **concentrated**:
+    - `mindmap_medium end_to_end`: `1.87x` (layout-heavy; `layout 2.65x`, `render 1.35x`)
+    - `architecture_medium end_to_end`: `2.17x` (layout+render; `layout 3.27x`, `render 2.32x`)
+    - Render fixed-cost remains a consistent theme:
+      - `render/flowchart_medium`: `1.70x`
+      - `render/class_medium`: `2.91x`
+      - `render/state_medium`: `2.30x`
 
 ### Stage Attribution Snapshot (canaries)
 
