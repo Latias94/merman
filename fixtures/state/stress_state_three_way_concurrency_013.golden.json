@@ -1,0 +1,924 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "type": "stateDiagram",
+    "nodes": [
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "root_start",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "root_start",
+        "dir": null,
+        "domId": "state-root_start-0",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "roundedWithTitle",
+        "label": "System",
+        "cssClasses": "statediagram-state statediagram-cluster",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "System",
+        "dir": "TB",
+        "domId": "state-System-16",
+        "type": "group",
+        "isGroup": true,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "System_start",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "System_start",
+        "dir": null,
+        "domId": "state-System_start-1",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "System",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Boot",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Boot",
+        "dir": null,
+        "domId": "state-Boot-15",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "System",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "roundedWithTitle",
+        "label": "Running",
+        "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Running",
+        "dir": "TB",
+        "domId": "state-Running-15",
+        "type": "group",
+        "isGroup": true,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "System",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "divider",
+        "label": "",
+        "cssClasses": "statediagram-state statediagram-cluster",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "divider-id-1",
+        "dir": "TB",
+        "domId": "state-divider-id-1-3",
+        "type": "group",
+        "isGroup": true,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Running",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "divider-id-1_start",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "divider-id-1_start",
+        "dir": null,
+        "domId": "state-divider-id-1_start-3",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "divider-id-1",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "AIdle",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "AIdle",
+        "dir": null,
+        "domId": "state-AIdle-14",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "id-38dvt516gkfs-1",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "AWork",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "AWork",
+        "dir": null,
+        "domId": "state-AWork-12",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "id-38dvt516gkfs-1",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "divider",
+        "label": "",
+        "cssClasses": "statediagram-state statediagram-cluster",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "divider-id-2",
+        "dir": "TB",
+        "domId": "state-divider-id-2-6",
+        "type": "group",
+        "isGroup": true,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Running",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "divider-id-2_start",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "divider-id-2_start",
+        "dir": null,
+        "domId": "state-divider-id-2_start-6",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "divider-id-2",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "BIdle",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "BIdle",
+        "dir": null,
+        "domId": "state-BIdle-8",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "divider-id-2",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "BBusy",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "BBusy",
+        "dir": null,
+        "domId": "state-BBusy-13",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "id-38dvt516gkfs-1",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "divider",
+        "label": "",
+        "cssClasses": "statediagram-state statediagram-cluster",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "id-38dvt516gkfs-1",
+        "dir": "TB",
+        "domId": "state-id-38dvt516gkfs-1-9",
+        "type": "group",
+        "isGroup": true,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Running",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "id-38dvt516gkfs-1_start",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "id-38dvt516gkfs-1_start",
+        "dir": null,
+        "domId": "state-id-38dvt516gkfs-1_start-9",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "id-38dvt516gkfs-1",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "CWaiting",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "CWaiting",
+        "dir": null,
+        "domId": "state-CWaiting-11",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "id-38dvt516gkfs-1",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "CActive",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "CActive",
+        "dir": null,
+        "domId": "state-CActive-14",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "id-38dvt516gkfs-1",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateEnd",
+        "label": "root_end",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "root_end",
+        "dir": null,
+        "domId": "state-root_end-16",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge0",
+        "start": "root_start",
+        "end": "System",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge1",
+        "start": "System_start",
+        "end": "Boot",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge2",
+        "start": "Boot",
+        "end": "Running",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "start",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge3",
+        "start": "divider-id-1_start",
+        "end": "AIdle",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge4",
+        "start": "AIdle",
+        "end": "AWork",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "tick",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge5",
+        "start": "AWork",
+        "end": "AIdle",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "done",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge6",
+        "start": "divider-id-2_start",
+        "end": "BIdle",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge7",
+        "start": "BIdle",
+        "end": "BBusy",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "request",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge8",
+        "start": "BBusy",
+        "end": "BIdle",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "response",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge9",
+        "start": "id-38dvt516gkfs-1_start",
+        "end": "CWaiting",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge10",
+        "start": "CWaiting",
+        "end": "CActive",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "signal",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge11",
+        "start": "CActive",
+        "end": "CWaiting",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "reset",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge12",
+        "start": "AWork",
+        "end": "BBusy",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "escalate",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge13",
+        "start": "BBusy",
+        "end": "CActive",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "notify",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge14",
+        "start": "CActive",
+        "end": "AIdle",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "feedback",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge15",
+        "start": "Running",
+        "end": "Boot",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "restart",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge16",
+        "start": "System",
+        "end": "root_end",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      }
+    ],
+    "other": {},
+    "links": {},
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "states": {
+      "root_start": {
+        "id": "root_start",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": true
+      },
+      "System": {
+        "id": "System",
+        "type": "default",
+        "descriptions": [],
+        "doc": [
+          {
+            "stmt": "relation",
+            "state1": {
+              "id": "System_start",
+              "type": "default",
+              "classes": []
+            },
+            "state2": {
+              "id": "Boot",
+              "type": "default",
+              "classes": []
+            },
+            "description": null
+          },
+          {
+            "stmt": "relation",
+            "state1": {
+              "id": "Boot",
+              "type": "default",
+              "classes": []
+            },
+            "state2": {
+              "id": "Running",
+              "type": "default",
+              "classes": []
+            },
+            "description": "start"
+          },
+          {
+            "stmt": "state",
+            "id": "Running",
+            "type": "default",
+            "description": null,
+            "doc": [
+              {
+                "stmt": "state",
+                "id": "divider-id-1",
+                "type": "divider",
+                "description": null,
+                "doc": [
+                  {
+                    "stmt": "relation",
+                    "state1": {
+                      "id": "divider-id-1_start",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "state2": {
+                      "id": "AIdle",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "description": null
+                  },
+                  {
+                    "stmt": "relation",
+                    "state1": {
+                      "id": "AIdle",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "state2": {
+                      "id": "AWork",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "description": "tick"
+                  },
+                  {
+                    "stmt": "relation",
+                    "state1": {
+                      "id": "AWork",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "state2": {
+                      "id": "AIdle",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "description": "done"
+                  }
+                ],
+                "classes": []
+              },
+              {
+                "stmt": "state",
+                "id": "divider-id-2",
+                "type": "divider",
+                "description": null,
+                "doc": [
+                  {
+                    "stmt": "relation",
+                    "state1": {
+                      "id": "divider-id-2_start",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "state2": {
+                      "id": "BIdle",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "description": null
+                  },
+                  {
+                    "stmt": "relation",
+                    "state1": {
+                      "id": "BIdle",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "state2": {
+                      "id": "BBusy",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "description": "request"
+                  },
+                  {
+                    "stmt": "relation",
+                    "state1": {
+                      "id": "BBusy",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "state2": {
+                      "id": "BIdle",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "description": "response"
+                  }
+                ],
+                "classes": []
+              },
+              {
+                "stmt": "state",
+                "id": "id-38dvt516gkfs-1",
+                "type": "divider",
+                "description": null,
+                "doc": [
+                  {
+                    "stmt": "relation",
+                    "state1": {
+                      "id": "id-38dvt516gkfs-1_start",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "state2": {
+                      "id": "CWaiting",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "description": null
+                  },
+                  {
+                    "stmt": "relation",
+                    "state1": {
+                      "id": "CWaiting",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "state2": {
+                      "id": "CActive",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "description": "signal"
+                  },
+                  {
+                    "stmt": "relation",
+                    "state1": {
+                      "id": "CActive",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "state2": {
+                      "id": "CWaiting",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "description": "reset"
+                  },
+                  {
+                    "stmt": "relation",
+                    "state1": {
+                      "id": "AWork",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "state2": {
+                      "id": "BBusy",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "description": "escalate"
+                  },
+                  {
+                    "stmt": "relation",
+                    "state1": {
+                      "id": "BBusy",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "state2": {
+                      "id": "CActive",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "description": "notify"
+                  },
+                  {
+                    "stmt": "relation",
+                    "state1": {
+                      "id": "CActive",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "state2": {
+                      "id": "AIdle",
+                      "type": "default",
+                      "classes": []
+                    },
+                    "description": "feedback"
+                  }
+                ],
+                "classes": []
+              }
+            ],
+            "classes": []
+          },
+          {
+            "stmt": "relation",
+            "state1": {
+              "id": "Running",
+              "type": "default",
+              "classes": []
+            },
+            "state2": {
+              "id": "Boot",
+              "type": "default",
+              "classes": []
+            },
+            "description": "restart"
+          }
+        ],
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "root_end": {
+        "id": "root_end",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": false
+      }
+    },
+    "relations": [
+      {
+        "id1": "root_start",
+        "id2": "System",
+        "relationTitle": null
+      },
+      {
+        "id1": "System",
+        "id2": "root_end",
+        "relationTitle": null
+      }
+    ],
+    "styleClasses": {}
+  }
+}

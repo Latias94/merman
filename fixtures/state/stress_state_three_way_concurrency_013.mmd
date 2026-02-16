@@ -1,0 +1,31 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): composite with 3 concurrent regions + cross-region transitions.
+
+[*] --> System
+
+state System {
+  [*] --> Boot
+  Boot --> Running: start
+
+  state Running {
+    [*] --> AIdle
+    AIdle --> AWork: tick
+    AWork --> AIdle: done
+    --
+    [*] --> BIdle
+    BIdle --> BBusy: request
+    BBusy --> BIdle: response
+    --
+    [*] --> CWaiting
+    CWaiting --> CActive: signal
+    CActive --> CWaiting: reset
+
+    AWork --> BBusy: escalate
+    BBusy --> CActive: notify
+    CActive --> AIdle: feedback
+  }
+
+  Running --> Boot: restart
+}
+
+System --> [*]

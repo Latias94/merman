@@ -19,6 +19,17 @@ are parity-gated against upstream SVG baselines:
 
 Reference: `docs/alignment/EXTERNAL_FIXTURES.md`.
 
+## Authored stress fixtures
+
+These fixtures are authored in this repository (not copied from Mermaid's upstream test suite),
+but are still parity-gated against upstream SVG baselines to cover high-risk state diagram surfaces:
+
+- Batch 2026-02-16 (12 fixtures): `fixtures/state/stress_state_*_013..024.mmd`
+  - Focus: concurrent regions (`--`), nested choice + fork/join, quoted multiline names, strict click directives,
+    dense graphs, unicode/mixed scripts, long edge labels (Markdown emphasis via `_and_`), composite self-links,
+    styles/classes, and comment/whitespace robustness.
+  - Baselines: `fixtures/upstream-svgs/state/stress_state_*_013..024.svg`
+
 ## `parser/state-parser.spec.js`
 
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/state/parser/state-parser.spec.js`

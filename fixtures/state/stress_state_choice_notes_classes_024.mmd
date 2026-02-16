@@ -1,0 +1,24 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): choice node + notes + classes in one diagram.
+
+[*] --> Entry:::entry
+
+state Decide <<choice>>
+Entry --> Decide : "go?"
+Decide --> Happy:::good : yes
+Decide --> Sad:::bad : no
+
+note right of Decide
+  Multi-line note<br/>
+  with HTML line break.
+end note
+
+note left of Sad : "short note"
+
+Happy --> [*]
+Sad --> [*]
+
+classDef entry fill:#eef,stroke:#55a;
+classDef good fill:#e8ffe8,stroke:#2a2,color:#040;
+classDef bad fill:#ffe8e8,stroke:#a22,color:#400;
+

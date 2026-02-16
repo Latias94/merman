@@ -1,0 +1,29 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): comments in composites + inconsistent spacing/tabs.
+
+[*] --> Top
+
+%% top-level comment
+state   Top    {
+  [*] -->   A
+  A  -->B   :label
+
+  %% comment inside composite
+  state  B {
+    [*]-->  Inner
+    Inner --> [*]  : done
+  }
+
+  --  %% divider comment
+
+  state C {
+    [*] --> Idle
+    Idle --> Busy : go
+    Busy --> Idle : back
+  }
+
+  B --> C : cross
+}
+
+Top --> [*]
+

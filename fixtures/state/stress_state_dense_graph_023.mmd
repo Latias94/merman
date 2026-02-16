@@ -1,0 +1,18 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): dense graph with many nodes/edges (layout stress).
+
+[*] --> S0
+S0 --> S1
+S0 --> S2
+S0 --> S3
+S1 --> S4 : a
+S2 --> S4 : b
+S3 --> S4 : c
+S4 --> S5
+S4 --> S6
+S5 --> S7
+S6 --> S7
+S7 --> S8
+S8 --> S2 : loop
+S8 --> [*]
+

@@ -1,0 +1,476 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "type": "stateDiagram",
+    "nodes": [
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "root_start",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "root_start",
+        "dir": null,
+        "domId": "state-root_start-0",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Entry",
+        "cssClasses": "entry statediagram-state",
+        "cssCompiledStyles": [
+          "fill:#eef",
+          "stroke:#55a"
+        ],
+        "cssStyles": [],
+        "id": "Entry",
+        "dir": null,
+        "domId": "state-Entry-1",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "choice",
+        "label": "Decide",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Decide",
+        "dir": null,
+        "domId": "state-Decide-4",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Happy",
+        "cssClasses": "good statediagram-state",
+        "cssCompiledStyles": [
+          "fill:#e8ffe8",
+          "stroke:#2a2",
+          "color:#040"
+        ],
+        "cssStyles": [],
+        "id": "Happy",
+        "dir": null,
+        "domId": "state-Happy-6",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Sad",
+        "cssClasses": "bad statediagram-state",
+        "cssCompiledStyles": [
+          "fill:#ffe8e8",
+          "stroke:#a22",
+          "color:#400"
+        ],
+        "cssStyles": [],
+        "id": "Sad",
+        "dir": null,
+        "domId": "state-Sad-7",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "noteGroup",
+        "label": "Multi-line note<br/>\nwith HTML line break.",
+        "cssClasses": "statediagram-state",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "Decide----parent",
+        "domId": "state-Decide----parent-4",
+        "type": "group",
+        "isGroup": true,
+        "padding": 16,
+        "look": "classic",
+        "position": "right of"
+      },
+      {
+        "labelStyle": "",
+        "shape": "note",
+        "label": "Multi-line note<br/>\nwith HTML line break.",
+        "cssClasses": "statediagram-note",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "Decide----note-4",
+        "domId": "state-Decide----note-4",
+        "type": null,
+        "isGroup": false,
+        "padding": 15,
+        "look": "classic",
+        "position": "right of",
+        "parentId": "Decide----parent"
+      },
+      {
+        "labelStyle": "",
+        "shape": "noteGroup",
+        "label": "\"short note\"",
+        "cssClasses": "bad statediagram-state",
+        "cssStyles": [],
+        "cssCompiledStyles": [
+          "fill:#ffe8e8",
+          "stroke:#a22",
+          "color:#400"
+        ],
+        "id": "Sad----parent",
+        "domId": "state-Sad----parent-5",
+        "type": "group",
+        "isGroup": true,
+        "padding": 16,
+        "look": "classic",
+        "position": "left of"
+      },
+      {
+        "labelStyle": "",
+        "shape": "note",
+        "label": "\"short note\"",
+        "cssClasses": "statediagram-note",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "Sad----note-5",
+        "domId": "state-Sad----note-5",
+        "type": null,
+        "isGroup": false,
+        "padding": 15,
+        "look": "classic",
+        "position": "left of",
+        "parentId": "Sad----parent"
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateEnd",
+        "label": "root_end",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "root_end",
+        "dir": null,
+        "domId": "state-root_end-7",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge0",
+        "start": "root_start",
+        "end": "Entry",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge1",
+        "start": "Entry",
+        "end": "Decide",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "\"go?\"",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge2",
+        "start": "Decide",
+        "end": "Happy",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "yes",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge3",
+        "start": "Decide",
+        "end": "Sad",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "no",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "Decide-Decide----note-4",
+        "start": "Decide",
+        "end": "Decide----note-4",
+        "arrowhead": "none",
+        "arrowTypeEnd": "",
+        "style": "fill:none",
+        "labelStyle": "",
+        "classes": "transition note-edge",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "look": "classic"
+      },
+      {
+        "id": "Sad----note-5-Sad",
+        "start": "Sad----note-5",
+        "end": "Sad",
+        "arrowhead": "none",
+        "arrowTypeEnd": "",
+        "style": "fill:none",
+        "labelStyle": "",
+        "classes": "transition note-edge",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "look": "classic"
+      },
+      {
+        "id": "edge6",
+        "start": "Happy",
+        "end": "root_end",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge7",
+        "start": "Sad",
+        "end": "root_end",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      }
+    ],
+    "other": {},
+    "links": {},
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "states": {
+      "root_start": {
+        "id": "root_start",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": true
+      },
+      "Entry": {
+        "id": "Entry",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [
+          "entry"
+        ],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "Decide": {
+        "id": "Decide",
+        "type": "choice",
+        "descriptions": [],
+        "doc": null,
+        "note": {
+          "position": "right of",
+          "text": "Multi-line note<br/>\nwith HTML line break."
+        },
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "Happy": {
+        "id": "Happy",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [
+          "good"
+        ],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "Sad": {
+        "id": "Sad",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": {
+          "position": "left of",
+          "text": "\"short note\""
+        },
+        "classes": [
+          "bad"
+        ],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "root_end": {
+        "id": "root_end",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": false
+      }
+    },
+    "relations": [
+      {
+        "id1": "root_start",
+        "id2": "Entry",
+        "relationTitle": null
+      },
+      {
+        "id1": "Entry",
+        "id2": "Decide",
+        "relationTitle": "\"go?\""
+      },
+      {
+        "id1": "Decide",
+        "id2": "Happy",
+        "relationTitle": "yes"
+      },
+      {
+        "id1": "Decide",
+        "id2": "Sad",
+        "relationTitle": "no"
+      },
+      {
+        "id1": "Happy",
+        "id2": "root_end",
+        "relationTitle": null
+      },
+      {
+        "id1": "Sad",
+        "id2": "root_end",
+        "relationTitle": null
+      }
+    ],
+    "styleClasses": {
+      "entry": {
+        "id": "entry",
+        "styles": [
+          "fill:#eef",
+          "stroke:#55a"
+        ],
+        "textStyles": []
+      },
+      "good": {
+        "id": "good",
+        "styles": [
+          "fill:#e8ffe8",
+          "stroke:#2a2",
+          "color:#040"
+        ],
+        "textStyles": [
+          "fill:#040"
+        ]
+      },
+      "bad": {
+        "id": "bad",
+        "styles": [
+          "fill:#ffe8e8",
+          "stroke:#a22",
+          "color:#400"
+        ],
+        "textStyles": [
+          "fill:#400"
+        ]
+      }
+    }
+  }
+}
