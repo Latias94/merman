@@ -40,6 +40,12 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
     value is nowhere near the f32 lattice.
   - Local correctness gate: `cargo nextest run -p merman-render` (goldens + parity tests).
 
+- `7e68646` — `perf(manatee): cut small-graph repulsion overhead`
+  - Reduces COSE-Bilkent repulsion fixed-cost by reusing per-pair derived values and inlining the
+    non-overlap force computation in the hot O(n^2) loop.
+  - Spotcheck (`mindmap_medium`): `target/bench/stage_spotcheck.mindmap_medium.after_repulsion_inline_2026-02-16.md`
+    shows `layout` ratio improved to `~1.79x` (from `2.02x` baseline).
+
 ### Stage Attribution Snapshot (canaries)
 
 Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is *multi-source*:
