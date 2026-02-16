@@ -205,6 +205,8 @@ struct SimNode {
     id: String,
     width: f64,
     height: f64,
+    half_width: f64,
+    half_height: f64,
     // Top-left anchored rectangle, matching upstream `layout-base` `LNode.rect`.
     left: f64,
     top: f64,
@@ -229,16 +231,16 @@ struct SimNode {
 
 impl SimNode {
     fn set_center(&mut self, cx: f64, cy: f64) {
-        self.left = cx - self.width / 2.0;
-        self.top = cy - self.height / 2.0;
+        self.left = cx - self.half_width;
+        self.top = cy - self.half_height;
     }
 
     fn center_x(&self) -> f64 {
-        self.left + self.width / 2.0
+        self.left + self.half_width
     }
 
     fn center_y(&self) -> f64 {
-        self.top + self.height / 2.0
+        self.top + self.half_height
     }
 
     fn diagonal(&self) -> f64 {
@@ -251,11 +253,11 @@ impl SimNode {
     }
 
     fn half_w(&self) -> f64 {
-        self.width / 2.0
+        self.half_width
     }
 
     fn half_h(&self) -> f64 {
-        self.height / 2.0
+        self.half_height
     }
 
     fn right(&self) -> f64 {
@@ -414,12 +416,16 @@ impl SimGraph {
         for n in nodes_in {
             let w = n.width.max(1.0);
             let h = n.height.max(1.0);
+            let hw = w * 0.5;
+            let hh = h * 0.5;
             nodes.push(SimNode {
                 id: String::new(),
                 width: w,
                 height: h,
-                left: n.x - w / 2.0,
-                top: n.y - h / 2.0,
+                half_width: hw,
+                half_height: hh,
+                left: n.x - hw,
+                top: n.y - hh,
                 edges: Vec::new(),
                 active: true,
                 start_x: 0,
@@ -470,12 +476,18 @@ impl SimGraph {
     fn from_graph(graph: &Graph) -> Self {
         let mut nodes: Vec<SimNode> = Vec::with_capacity(graph.nodes.len());
         for n in &graph.nodes {
+            let w = n.width.max(1.0);
+            let h = n.height.max(1.0);
+            let hw = w * 0.5;
+            let hh = h * 0.5;
             nodes.push(SimNode {
                 id: n.id.clone(),
-                width: n.width.max(1.0),
-                height: n.height.max(1.0),
-                left: n.x - n.width.max(1.0) / 2.0,
-                top: n.y - n.height.max(1.0) / 2.0,
+                width: w,
+                height: h,
+                half_width: hw,
+                half_height: hh,
+                left: n.x - hw,
+                top: n.y - hh,
                 edges: Vec::new(),
                 active: true,
                 start_x: 0,
@@ -1467,10 +1479,10 @@ impl SimGraph {
                     if !a_node.active {
                         continue;
                     }
-                    let a_cx = a_node.left + a_node.width / 2.0;
-                    let a_cy = a_node.top + a_node.height / 2.0;
-                    let a_hw = a_node.width / 2.0;
-                    let a_hh = a_node.height / 2.0;
+                    let a_hw = a_node.half_width;
+                    let a_hh = a_node.half_height;
+                    let a_cx = a_node.left + a_hw;
+                    let a_cy = a_node.top + a_hh;
                     for j in (i + 1)..self.nodes.len() {
                         let b_node = &self.nodes[j];
                         if !b_node.active {
@@ -1480,15 +1492,17 @@ impl SimGraph {
                             timings.repulsion_pairs_considered += 1;
                         }
 
-                        let b_cx = b_node.left + b_node.width / 2.0;
-                        let b_cy = b_node.top + b_node.height / 2.0;
-                        let b_hw = b_node.width / 2.0;
-                        let b_hh = b_node.height / 2.0;
+                        let b_hw = b_node.half_width;
+                        let b_hh = b_node.half_height;
+                        let b_cx = b_node.left + b_hw;
+                        let b_cy = b_node.top + b_hh;
 
                         let dx_centers = b_cx - a_cx;
                         let dy_centers = b_cy - a_cy;
-                        let dist_x = dx_centers.abs() - (a_hw + b_hw);
-                        let dist_y = dy_centers.abs() - (a_hh + b_hh);
+                        let abs_dx_centers = dx_centers.abs();
+                        let abs_dy_centers = dy_centers.abs();
+                        let dist_x = abs_dx_centers - (a_hw + b_hw);
+                        let dist_y = abs_dy_centers - (a_hh + b_hh);
                         if dist_x > repulsion_range || dist_y > repulsion_range {
                             continue;
                         }
@@ -1504,33 +1518,29 @@ impl SimGraph {
                             // implementation to preserve behavior in this edge case.
                             self.calc_repulsion_force(i, j, repulsion_constant)
                         } else {
-                            #[inline]
-                            fn clip_from_center(
-                                cx: f64,
-                                cy: f64,
-                                dx: f64,
-                                dy: f64,
-                                hw: f64,
-                                hh: f64,
-                            ) -> (f64, f64) {
-                                if hw == 0.0 || hh == 0.0 {
-                                    return (cx, cy);
-                                }
-                                let denom = (dx.abs() / hw).max(dy.abs() / hh);
-                                if denom == 0.0 {
-                                    return (cx, cy);
-                                }
-                                let t = 1.0 / denom;
-                                (cx + dx * t, cy + dy * t)
-                            }
-
                             let dx = dx_centers;
                             let dy = dy_centers;
                             if dx == 0.0 && dy == 0.0 {
                                 (0.0, 0.0)
                             } else {
-                                let (ax, ay) = clip_from_center(a_cx, a_cy, dx, dy, a_hw, a_hh);
-                                let (bx, by) = clip_from_center(b_cx, b_cy, -dx, -dy, b_hw, b_hh);
+                                #[inline]
+                                fn clip_scale(abs_dx: f64, abs_dy: f64, hw: f64, hh: f64) -> f64 {
+                                    if hw == 0.0 || hh == 0.0 {
+                                        return 0.0;
+                                    }
+                                    let denom = (abs_dx / hw).max(abs_dy / hh);
+                                    if denom == 0.0 { 0.0 } else { 1.0 / denom }
+                                }
+
+                                // `clip_from_center(cx,cy,dx,dy,hw,hh)` but specialized:
+                                // - reuses `abs(dx)` / `abs(dy)` across both nodes
+                                // - avoids tuple construction
+                                let ta = clip_scale(abs_dx_centers, abs_dy_centers, a_hw, a_hh);
+                                let tb = clip_scale(abs_dx_centers, abs_dy_centers, b_hw, b_hh);
+                                let ax = a_cx + dx * ta;
+                                let ay = a_cy + dy * ta;
+                                let bx = b_cx - dx * tb;
+                                let by = b_cy - dy * tb;
                                 let mut ddx = bx - ax;
                                 let mut ddy = by - ay;
 
