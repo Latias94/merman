@@ -1,0 +1,56 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "dateFormat": "ss",
+    "axisFormat": "%s",
+    "tickInterval": "1second",
+    "todayMarker": "",
+    "includes": [],
+    "excludes": [],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
+    "sections": [
+      "Network Request"
+    ],
+    "tasks": [
+      {
+        "section": "Network Request",
+        "type": "Network Request",
+        "task": "RTT ",
+        "id": "rtt",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": rtt, 0, 20",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "0"
+          },
+          "endTime": {
+            "data": "20"
+          }
+        },
+        "startTime": "2000-01-01T00:00:00.000",
+        "endTime": "2026-02-15T00:00:20.000"
+      }
+    ],
+    "links": {},
+    "clickEvents": {}
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "diagramType": "timeline",
+  "model": {
+    "type": "timeline",
+    "title": "Non-numeric periods",
+    "accTitle": null,
+    "accDescr": null,
+    "sections": [
+      "Quarters",
+      "Ranges"
+    ],
+    "tasks": [
+      {
+        "id": 0,
+        "section": "Quarters",
+        "type": "Quarters",
+        "task": "2023 Q1 ",
+        "score": 0,
+        "events": [
+          "Ship MVP"
+        ]
+      },
+      {
+        "id": 1,
+        "section": "Quarters",
+        "type": "Quarters",
+        "task": "2023 Q2 ",
+        "score": 0,
+        "events": [
+          "Add integrations"
+        ]
+      },
+      {
+        "id": 2,
+        "section": "Quarters",
+        "type": "Quarters",
+        "task": "2023 Q3 ",
+        "score": 0,
+        "events": [
+          "Improve performance"
+        ]
+      },
+      {
+        "id": 3,
+        "section": "Quarters",
+        "type": "Quarters",
+        "task": "2023 Q4 ",
+        "score": 0,
+        "events": [
+          "Hardening and polish"
+        ]
+      },
+      {
+        "id": 4,
+        "section": "Ranges",
+        "type": "Ranges",
+        "task": "2020-2021 ",
+        "score": 0,
+        "events": [
+          "Multi-year initiative"
+        ]
+      },
+      {
+        "id": 5,
+        "section": "Ranges",
+        "type": "Ranges",
+        "task": "Late 1990s ",
+        "score": 0,
+        "events": [
+          "Legacy system migration"
+        ]
+      }
+    ]
+  }
+}

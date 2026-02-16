@@ -1562,7 +1562,23 @@ impl VendoredFontMetricsTextMeasurer {
                 std::cmp::Ordering::Greater => hi = mid,
             }
         }
-        default_em
+        if ch.is_ascii() {
+            return default_em;
+        }
+
+        // Mermaid's default font stack is `"trebuchet ms", verdana, arial, sans-serif`.
+        // In browser rendering, non-Latin glyphs (CJK/emoji) frequently fall back to a
+        // different font with much wider advances than Trebuchet's ASCII average.
+        //
+        // Our vendored metrics tables are ASCII-heavy. Without a fallback, wide glyphs can be
+        // severely under-measured, changing wrap decisions and causing SVG DOM deltas in
+        // `parity-root` mode. Model this by using a conservative full-em advance for wide
+        // characters, and 0 for combining marks.
+        match unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1) {
+            0 => 0.0,
+            2.. => 1.0,
+            _ => default_em,
+        }
     }
 
     fn lookup_kern_em(kern_pairs: &[(u32, u32, f64)], a: char, b: char) -> f64 {

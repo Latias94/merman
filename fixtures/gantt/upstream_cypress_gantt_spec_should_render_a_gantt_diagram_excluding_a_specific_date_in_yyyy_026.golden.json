@@ -1,0 +1,87 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "dateFormat": " YYYY-MM-DD HH:mm:ss",
+    "axisFormat": "",
+    "tickInterval": null,
+    "todayMarker": "",
+    "includes": [],
+    "excludes": [
+      "2025-07-07"
+    ],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
+    "sections": [
+      "Section"
+    ],
+    "tasks": [
+      {
+        "section": "Section",
+        "type": "Section",
+        "task": "A task      ",
+        "id": "a1",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2025-07-08T10:30:30.000",
+        "raw": {
+          "data": ":a1, 2025-07-04 20:30:30, 2025-07-08 10:30:30",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2025-07-04 20:30:30"
+          },
+          "endTime": {
+            "data": "2025-07-08 10:30:30"
+          }
+        },
+        "startTime": "2025-07-04T20:30:30.000",
+        "endTime": "2025-07-09T10:30:30.000"
+      },
+      {
+        "section": "Section",
+        "type": "Section",
+        "task": "Another task",
+        "id": "task1",
+        "prevTaskId": "a1",
+        "order": 1,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ":after a1, 20h",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "after a1"
+          },
+          "endTime": {
+            "data": "20h"
+          }
+        },
+        "startTime": "2025-07-09T10:30:30.000",
+        "endTime": "2025-07-10T06:30:30.000"
+      }
+    ],
+    "links": {},
+    "clickEvents": {}
+  }
+}

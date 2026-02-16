@@ -1,0 +1,58 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": "A Gantt Diagram",
+    "accTitle": null,
+    "accDescr": null,
+    "dateFormat": " YYYY-MM-DD",
+    "axisFormat": "",
+    "tickInterval": null,
+    "todayMarker": "",
+    "includes": [],
+    "excludes": [
+      "weekends"
+    ],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "friday",
+    "displayMode": "",
+    "sections": [
+      "Section1"
+    ],
+    "tasks": [
+      {
+        "section": "Section1",
+        "type": "Section1",
+        "task": "A task ",
+        "id": "a1",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": "2024-03-13T00:00:00.000",
+        "raw": {
+          "data": ":a1, 2024-02-28, 10d",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "2024-02-28"
+          },
+          "endTime": {
+            "data": "10d"
+          }
+        },
+        "startTime": "2024-02-28T00:00:00.000",
+        "endTime": "2024-03-13T00:00:00.000"
+      }
+    ],
+    "links": {},
+    "clickEvents": {}
+  }
+}

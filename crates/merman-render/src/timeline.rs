@@ -318,9 +318,13 @@ pub fn layout_timeline_diagram(
         .max(0.0);
     let disable_multicolor =
         cfg_bool(effective_config, &["timeline", "disableMulticolor"]).unwrap_or(false);
-    let task_content_width = cfg_f64(effective_config, &["timeline", "width"])
-        .unwrap_or(TASK_CONTENT_WIDTH_DEFAULT)
-        .max(1.0);
+    // Mermaid's Timeline renderer hardcodes the text-wrap width to `150` (see upstream
+    // `drawTasks`/`drawEvents`: node objects use `width: 150` and `wrap(..., node.width)`),
+    // even though the config schema exposes a `timeline.width` field.
+    //
+    // For upstream parity, treat `timeline.width` as a no-op and keep the wrap width constant.
+    let task_content_width = TASK_CONTENT_WIDTH_DEFAULT;
+    let _ = cfg_f64(effective_config, &["timeline", "width"]);
 
     let mut max_section_height: f64 = 0.0;
     for section in &model.sections {

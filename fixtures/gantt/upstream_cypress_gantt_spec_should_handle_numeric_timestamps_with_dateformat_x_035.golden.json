@@ -1,0 +1,56 @@
+{
+  "diagramType": "gantt",
+  "model": {
+    "type": "gantt",
+    "title": "Process time profile (ms)",
+    "accTitle": null,
+    "accDescr": null,
+    "dateFormat": "x",
+    "axisFormat": "%L",
+    "tickInterval": "250millisecond",
+    "todayMarker": "",
+    "includes": [],
+    "excludes": [],
+    "inclusiveEndDates": false,
+    "topAxis": false,
+    "weekday": "sunday",
+    "weekend": "saturday",
+    "displayMode": "",
+    "sections": [
+      "Pipeline"
+    ],
+    "tasks": [
+      {
+        "section": "Pipeline",
+        "type": "Pipeline",
+        "task": "Parse JSON p1",
+        "id": "task1",
+        "prevTaskId": null,
+        "order": 0,
+        "processed": true,
+        "classes": [],
+        "active": false,
+        "done": false,
+        "crit": false,
+        "milestone": false,
+        "vert": false,
+        "manualEndTime": false,
+        "renderEndTime": null,
+        "raw": {
+          "data": ": 000, 120",
+          "startTime": {
+            "type": "getStartDate",
+            "startData": "000"
+          },
+          "endTime": {
+            "data": "120"
+          }
+        },
+        "startTime": 0,
+        "endTime": 120
+      }
+    ],
+    "links": {},
+    "clickEvents": {}
+  }
+}

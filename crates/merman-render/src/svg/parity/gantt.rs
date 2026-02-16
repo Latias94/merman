@@ -241,6 +241,8 @@ pub(super) fn render_gantt_diagram_svg(
     };
     let range = (w - layout.left_padding - layout.right_padding).max(1.0);
     let gap = layout.bar_height + layout.bar_gap;
+    let min_day_start_ms = gantt_start_of_day_ms(min_ms).unwrap_or(min_ms);
+    let min_in_day_offset_ms = (min_ms - min_day_start_ms).max(0);
 
     // Exclude layer (drawn before the grid in Mermaid).
     if layout.has_excludes_layer {
@@ -249,9 +251,21 @@ pub(super) fn render_gantt_diagram_svg(
         } else {
             out.push_str("<g>");
             for (i, r) in layout.excludes.iter().enumerate() {
-                let end_start_ms = gantt_start_of_day_ms(r.end_ms).unwrap_or(r.end_ms);
-                let start_x = gantt_scale_time_round(r.start_ms, min_ms, max_ms, range);
-                let end_x = gantt_scale_time_round(end_start_ms, min_ms, max_ms, range);
+                // Mermaid's gantt exclude rectangles use a slightly unintuitive origin:
+                //
+                // - `x`/`width` are based on `startOf('day')` / `endOf('day')`
+                // - `transform-origin` uses the raw `dayjs(minTime)` time-of-day offset:
+                //   `timeScale(d.start) + sidePad + 0.5*(timeScale(d.end)-timeScale(d.start))`
+                //
+                // This matters when date-only inputs are parsed with a timezone-derived offset
+                // (e.g. `YYYY-MM-DD` treated as UTC midnight and shifted when rendered locally).
+                let start_day_start_ms = gantt_start_of_day_ms(r.start_ms).unwrap_or(r.start_ms);
+                let end_day_start_ms = gantt_start_of_day_ms(r.end_ms).unwrap_or(r.end_ms);
+                let start_raw_ms = start_day_start_ms.saturating_add(min_in_day_offset_ms);
+                let end_raw_ms = end_day_start_ms.saturating_add(min_in_day_offset_ms);
+
+                let start_x = gantt_scale_time_round(start_raw_ms, min_ms, max_ms, range);
+                let end_x = gantt_scale_time_round(end_raw_ms, min_ms, max_ms, range);
                 let cx = start_x + layout.left_padding + 0.5 * (end_x - start_x);
                 let cy = (i as f64) * gap + 0.5 * h;
 
