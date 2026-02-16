@@ -28,15 +28,15 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
 ### Latest (after syncing local `main`)
 
 - Report:
-  - `target/bench/stage_spotcheck.latest_after_iconfast.md` (not committed)
+  - `target/bench/stage_spotcheck.latest_after_mindmap_layout_md_fast.md` (not committed)
 - Stage gmeans (ratios, `merman / mmdr`):
-  - `parse`: `1.24x`
-  - `layout`: `1.03x`
-  - `render`: `1.85x`
-  - `end_to_end`: `0.91x`
+  - `parse`: `1.48x`
+  - `layout`: `1.07x`
+  - `render`: `1.66x`
+  - `end_to_end`: `0.80x`
 - Remaining end-to-end outliers (ratios):
-  - `mindmap_medium end_to_end`: `1.78x` (`layout 2.94x`, `render 1.28x`)
-  - `architecture_medium end_to_end`: `2.28x` (`layout 3.76x`, `render 2.45x`)
+  - `mindmap_medium end_to_end`: `1.94x` (`layout 2.60x`, `render 1.51x`)
+  - `architecture_medium end_to_end`: `2.47x` (`layout 3.88x`, `render 2.32x`)
 
 ### Stage Attribution Snapshot (canaries)
 
@@ -74,6 +74,12 @@ Latest local spotcheck (2026-02-16):
     - Interpretation: mindmap is still **layout-dominated** (COSE). Render improved materially
       vs the original ~2x gap, but correctness fixes that apply Markdown parsing to more labels
       increased render fixed-cost again.
+  - Mindmap layout (label measurement): add a conservative fast-path for "plain text" markdown so
+    layout doesn't pay pulldown-cmark twice per node (wrapped + unwrapped).
+    - Spotcheck: `target/bench/stage_spotcheck.mindmap_after_layout_md_fast.long.md` (not committed)
+    - Ratios (`mindmap_medium`): `parse 1.34x`, `layout 2.27x`, `render 1.09x`, `end_to_end 1.67x`
+    - Interpretation: on the canary fixture, the remaining mindmap gap is now mostly COSE iterations
+      (repulsion-heavy spring), not markdown parsing overhead.
 
 - Tiny canaries (after Dagre-ish tiny fast-path):
   - `docs/performance/spotcheck_2026-02-15_tiny.md`
