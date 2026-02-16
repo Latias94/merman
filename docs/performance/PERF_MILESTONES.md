@@ -137,6 +137,8 @@ Root-cause direction:
   then re-parsing it to approximate `getBBox()`. We now compute cubic bounds during curve emission
   for the viewBox approximation, avoiding `svg_path_bounds_from_d(...)` in the flowchart viewbox
   prepass (still builds the `d`, but no longer parses it).
+- Additional fast path: for default flowchart edge curves (`basis`), if the edge polyline bbox is
+  already fully contained in the current viewBox bbox, skip the expensive cubic-extrema bounds solve.
 - SVG emission still has measurable fixed overhead. Two recent low-risk wins:
   - Skip XML-escape scanning for `data-points` base64 payloads (and other known-safe path payloads).
   - Avoid repeated full-SVG rebuild passes for placeholder replacement:
