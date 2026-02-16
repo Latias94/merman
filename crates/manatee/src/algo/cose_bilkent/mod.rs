@@ -1196,10 +1196,15 @@ impl SimGraph {
         let gravity_constant = Self::DEFAULT_GRAVITY_STRENGTH;
         let gravity_range_factor = Self::DEFAULT_GRAVITY_RANGE_FACTOR;
         let repulsion_range = 2.0 * ideal_edge_length;
-        let update_grid_start = timing_enabled.then(std::time::Instant::now);
-        self.update_grid(repulsion_range);
-        if let Some(s) = update_grid_start {
-            timings.update_grid += s.elapsed();
+        // For small connected graphs with no pruned nodes (common for mindmap trees), the initial
+        // FR-grid build is unused: repulsion runs in the O(n^2) path and tree growth is disabled.
+        // Skip it to avoid a fixed-cost hit in the spring embedder.
+        if !(self.nodes.len() < 64 && self.pruned_nodes_all.is_empty()) {
+            let update_grid_start = timing_enabled.then(std::time::Instant::now);
+            self.update_grid(repulsion_range);
+            if let Some(s) = update_grid_start {
+                timings.update_grid += s.elapsed();
+            }
         }
 
         let active_n = self.nodes.iter().filter(|n| n.active).count().max(1) as f64;
@@ -1590,7 +1595,8 @@ impl SimGraph {
             (-0.5 * repulsion_fx, -0.5 * repulsion_fy)
         } else {
             // Use clipping points (approx) to account for node dimensions.
-            let (ax, ay, bx, by, _overlapped) = rect_intersection_points(na, nb);
+            // Avoid the redundant overlap check inside `rect_intersection_points`.
+            let (ax, ay, bx, by) = rect_intersection_points_no_overlap_check(na, nb);
             let mut dx = bx - ax;
             let mut dy = by - ay;
 
@@ -1785,6 +1791,39 @@ fn rect_intersection_points(a: &SimNode, b: &SimNode) -> (f64, f64, f64, f64, bo
     let (ax, ay) = clip_from_center(p1x, p1y, dx, dy, a.width / 2.0, a.height / 2.0);
     let (bx, by) = clip_from_center(p2x, p2y, -dx, -dy, b.width / 2.0, b.height / 2.0);
     (ax, ay, bx, by, false)
+}
+
+#[inline]
+fn rect_intersection_points_no_overlap_check(a: &SimNode, b: &SimNode) -> (f64, f64, f64, f64) {
+    // Fast path for callers that already know `rects_intersect(a, b) == false`.
+    // This matches the `rect_intersection_points` non-overlap branch.
+    let p1x = a.center_x();
+    let p1y = a.center_y();
+    let p2x = b.center_x();
+    let p2y = b.center_y();
+
+    let dx = p2x - p1x;
+    let dy = p2y - p1y;
+    if dx == 0.0 && dy == 0.0 {
+        return (p1x, p1y, p2x, p2y);
+    }
+
+    #[inline]
+    fn clip_from_center(cx: f64, cy: f64, dx: f64, dy: f64, hw: f64, hh: f64) -> (f64, f64) {
+        if hw == 0.0 || hh == 0.0 {
+            return (cx, cy);
+        }
+        let denom = (dx.abs() / hw).max(dy.abs() / hh);
+        if denom == 0.0 {
+            return (cx, cy);
+        }
+        let t = 1.0 / denom;
+        (cx + dx * t, cy + dy * t)
+    }
+
+    let (ax, ay) = clip_from_center(p1x, p1y, dx, dy, a.width / 2.0, a.height / 2.0);
+    let (bx, by) = clip_from_center(p2x, p2y, -dx, -dy, b.width / 2.0, b.height / 2.0);
+    (ax, ay, bx, by)
 }
 
 fn calc_separation_amount(a: &SimNode, b: &SimNode, separation_buffer: f64) -> (f64, f64) {
