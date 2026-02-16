@@ -1027,6 +1027,27 @@ pub trait TextMeasurer {
         self.measure(text, style)
     }
 
+    /// Measures wrapped text and (optionally) returns the unwrapped width for the same payload.
+    ///
+    /// This exists mainly to avoid redundant measurement passes in diagrams that need both:
+    /// - wrapped metrics (for height/line breaks), and
+    /// - a raw "overflow width" probe (for sizing containers that can visually overflow).
+    ///
+    /// Default implementation returns `None` for `raw_width_px` and callers may fall back to an
+    /// explicit second measurement if needed.
+    fn measure_wrapped_with_raw_width(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> (TextMetrics, Option<f64>) {
+        (
+            self.measure_wrapped(text, style, max_width, wrap_mode),
+            None,
+        )
+    }
+
     /// Measures wrapped text while disabling any implementation-specific HTML overrides.
     ///
     /// This is primarily used for Markdown labels measured via DOM in upstream Mermaid, where we
@@ -2333,11 +2354,11 @@ fn vendored_measure_wrapped_impl(
     max_width: Option<f64>,
     wrap_mode: WrapMode,
     use_html_overrides: bool,
-) -> TextMetrics {
+) -> (TextMetrics, Option<f64>) {
     let Some(table) = measurer.lookup_table(style) else {
         return measurer
             .fallback
-            .measure_wrapped(text, style, max_width, wrap_mode);
+            .measure_wrapped_with_raw_width(text, style, max_width, wrap_mode);
     };
 
     let bold = is_flowchart_default_font(style) && style_requests_bold_font_weight(style);
@@ -2577,11 +2598,17 @@ fn vendored_measure_wrapped_impl(
         }
     };
 
-    TextMetrics {
+    let metrics = TextMetrics {
         width,
         height,
         line_count: lines.len(),
-    }
+    };
+    let raw_width_px = if wrap_mode == WrapMode::HtmlLike {
+        raw_width_unscaled
+    } else {
+        None
+    };
+    (metrics, raw_width_px)
 }
 
 impl TextMeasurer for VendoredFontMetricsTextMeasurer {
@@ -2681,6 +2708,16 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
         max_width: Option<f64>,
         wrap_mode: WrapMode,
     ) -> TextMetrics {
+        vendored_measure_wrapped_impl(self, text, style, max_width, wrap_mode, true).0
+    }
+
+    fn measure_wrapped_with_raw_width(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> (TextMetrics, Option<f64>) {
         vendored_measure_wrapped_impl(self, text, style, max_width, wrap_mode, true)
     }
 
@@ -2691,7 +2728,7 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
         max_width: Option<f64>,
         wrap_mode: WrapMode,
     ) -> TextMetrics {
-        vendored_measure_wrapped_impl(self, text, style, max_width, wrap_mode, false)
+        vendored_measure_wrapped_impl(self, text, style, max_width, wrap_mode, false).0
     }
 }
 
@@ -2707,6 +2744,17 @@ impl TextMeasurer for DeterministicTextMeasurer {
         max_width: Option<f64>,
         wrap_mode: WrapMode,
     ) -> TextMetrics {
+        self.measure_wrapped_impl(text, style, max_width, wrap_mode, true)
+            .0
+    }
+
+    fn measure_wrapped_with_raw_width(
+        &self,
+        text: &str,
+        style: &TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> (TextMetrics, Option<f64>) {
         self.measure_wrapped_impl(text, style, max_width, wrap_mode, true)
     }
 
@@ -2727,7 +2775,7 @@ impl DeterministicTextMeasurer {
         max_width: Option<f64>,
         wrap_mode: WrapMode,
         clamp_html_width: bool,
-    ) -> TextMetrics {
+    ) -> (TextMetrics, Option<f64>) {
         let uses_heuristic_widths = self.char_width_factor == 0.0;
         let char_width_factor = if uses_heuristic_widths {
             match wrap_mode {
@@ -2797,11 +2845,17 @@ impl DeterministicTextMeasurer {
             }
         }
         let height = lines.len() as f64 * font_size * line_height_factor;
-        TextMetrics {
+        let metrics = TextMetrics {
             width,
             height,
             line_count: lines.len(),
-        }
+        };
+        let raw_width_px = if wrap_mode == WrapMode::HtmlLike {
+            Some(raw_width)
+        } else {
+            None
+        };
+        (metrics, raw_width_px)
     }
 }
 

@@ -100,45 +100,49 @@ fn mindmap_label_bbox_px(
     // Mirror that by measuring with an explicit max width in HTML-like mode.
     let max_node_width_px = max_node_width_px.max(1.0);
 
-    let wrapped = if label_type == "markdown" {
-        if is_simple_markdown_label(text) {
-            measurer.measure_wrapped(text, style, Some(max_node_width_px), WrapMode::HtmlLike)
-        } else {
-            crate::text::measure_markdown_with_flowchart_bold_deltas(
-                measurer,
-                text,
-                style,
-                Some(max_node_width_px),
-                WrapMode::HtmlLike,
-            )
-        }
-    } else {
-        measurer.measure_wrapped(text, style, Some(max_node_width_px), WrapMode::HtmlLike)
-    };
+    // Complex Markdown labels require the full DOM-like measurement path (bold/em deltas, inline
+    // HTML, sanitizer edge cases). Keep the existing two-pass approach for those.
+    if label_type == "markdown" && !is_simple_markdown_label(text) {
+        let wrapped = crate::text::measure_markdown_with_flowchart_bold_deltas(
+            measurer,
+            text,
+            style,
+            Some(max_node_width_px),
+            WrapMode::HtmlLike,
+        );
+        let unwrapped = crate::text::measure_markdown_with_flowchart_bold_deltas(
+            measurer,
+            text,
+            style,
+            None,
+            WrapMode::HtmlLike,
+        );
+        return (
+            wrapped.width.max(unwrapped.width).max(0.0),
+            wrapped.height.max(0.0),
+        );
+    }
+
+    let (wrapped, raw_width_px) = measurer.measure_wrapped_with_raw_width(
+        text,
+        style,
+        Some(max_node_width_px),
+        WrapMode::HtmlLike,
+    );
 
     // Mermaid mindmap labels can overflow the configured `maxNodeWidth` when they contain long
     // unbreakable tokens. Upstream measures these via DOM in a way that resembles `scrollWidth`,
     // so keep the larger of:
     // - the wrapped layout width (clamped by `max-width`), and
     // - the unwrapped overflow width (ignores `max-width`).
-    let unwrapped = if label_type == "markdown" {
-        if is_simple_markdown_label(text) {
-            measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike)
-        } else {
-            crate::text::measure_markdown_with_flowchart_bold_deltas(
-                measurer,
-                text,
-                style,
-                None,
-                WrapMode::HtmlLike,
-            )
-        }
-    } else {
-        measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike)
-    };
+    let overflow_width_px = raw_width_px.unwrap_or_else(|| {
+        measurer
+            .measure_wrapped(text, style, None, WrapMode::HtmlLike)
+            .width
+    });
 
     (
-        wrapped.width.max(unwrapped.width).max(0.0),
+        wrapped.width.max(overflow_width_px).max(0.0),
         wrapped.height.max(0.0),
     )
 }
