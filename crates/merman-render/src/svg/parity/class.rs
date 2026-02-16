@@ -372,6 +372,17 @@ fn class_edge_dom_id(
     edge: &crate::model::LayoutEdge,
     relation_index_by_id: &FxHashMap<&str, usize>,
 ) -> String {
+    let mut out = String::new();
+    class_edge_dom_id_into(&mut out, edge, relation_index_by_id);
+    out
+}
+
+fn class_edge_dom_id_into(
+    out: &mut String,
+    edge: &crate::model::LayoutEdge,
+    relation_index_by_id: &FxHashMap<&str, usize>,
+) {
+    out.clear();
     if edge.id.starts_with("edgeNote") {
         // Mermaid numbers note edges as `edgeNote<N>` where `<N>` follows the `note<N-1>` id.
         // (This is independent from the relation edge counter.)
@@ -380,16 +391,23 @@ fn class_edge_dom_id(
             .strip_prefix("note")
             .and_then(|rest| rest.parse::<usize>().ok())
         {
-            return format!("edgeNote{}", note_idx + 1);
+            let _ = write!(out, "edgeNote{}", note_idx + 1);
+            return;
         }
-        return edge.id.clone();
+        out.push_str(edge.id.as_str());
+        return;
     }
     // Mermaid uses `getEdgeId` with prefix `id`.
     let idx = relation_index_by_id
         .get(edge.id.as_str())
         .copied()
         .unwrap_or(1);
-    format!("id_{}_{}_{}", edge.from, edge.to, idx)
+    out.push_str("id_");
+    out.push_str(edge.from.as_str());
+    out.push('_');
+    out.push_str(edge.to.as_str());
+    out.push('_');
+    let _ = write!(out, "{idx}");
 }
 
 fn class_edge_pattern(line_type: i32) -> &'static str {
@@ -1003,6 +1021,22 @@ pub(super) fn render_class_diagram_v2_svg_model(
 
     drop(build_ctx_guard);
 
+    let marker_url_prefix = {
+        let mut out = String::new();
+        let _ = write!(&mut out, "{}", escape_attr_display(diagram_id));
+        out.push('_');
+        let _ = write!(&mut out, "{}", escape_attr_display(aria_roledescription));
+        out.push('-');
+        out
+    };
+
+    let mut edge_points_json_buf: Vec<u8> = Vec::new();
+    let mut edge_points_b64_buf: String = String::new();
+    let mut edge_raw_points: Vec<crate::model::LayoutPoint> = Vec::new();
+    let mut edge_curve_points: Vec<crate::model::LayoutPoint> = Vec::new();
+    let mut edge_class_buf = String::with_capacity(64);
+    let mut edge_dom_id_buf = String::with_capacity(64);
+
     let mut render_clusters_edges_and_labels =
         |out: &mut String, content_bounds: &mut Option<Bounds>, bounds_dx: f64, bounds_dy: f64| {
             // Clusters (namespaces).
@@ -1044,38 +1078,36 @@ pub(super) fn render_class_diagram_v2_svg_model(
 
             // Edge paths.
             out.push_str(r#"<g class="edgePaths">"#);
-            let mut points_json_buf: Vec<u8> = Vec::new();
-            let mut points_b64_buf: String = String::new();
-            let mut raw_points: Vec<crate::model::LayoutPoint> = Vec::new();
-            let mut curve_points: Vec<crate::model::LayoutPoint> = Vec::new();
-            let mut class_buf = String::with_capacity(64);
             for e in &layout.edges {
                 if e.points.len() < 2 {
                     continue;
                 }
 
-                let dom_id = class_edge_dom_id(e, &relation_index_by_id);
+                class_edge_dom_id_into(&mut edge_dom_id_buf, e, &relation_index_by_id);
 
-                raw_points.clone_from(&e.points);
-                for p in &mut raw_points {
-                    p.x += content_tx;
-                    p.y += content_ty;
+                edge_raw_points.clear();
+                edge_raw_points.reserve(e.points.len());
+                for p in &e.points {
+                    edge_raw_points.push(crate::model::LayoutPoint {
+                        x: p.x + content_tx,
+                        y: p.y + content_ty,
+                    });
                 }
 
-                curve_points.clear();
-                if raw_points.len() == 2 {
-                    let a = &raw_points[0];
-                    let b = &raw_points[1];
-                    curve_points.push(a.clone());
-                    curve_points.push(crate::model::LayoutPoint {
+                let (d, d_pb) = if edge_raw_points.len() == 2 {
+                    edge_curve_points.clear();
+                    let a = &edge_raw_points[0];
+                    let b = &edge_raw_points[1];
+                    edge_curve_points.push(a.clone());
+                    edge_curve_points.push(crate::model::LayoutPoint {
                         x: (a.x + b.x) / 2.0,
                         y: (a.y + b.y) / 2.0,
                     });
-                    curve_points.push(b.clone());
+                    edge_curve_points.push(b.clone());
+                    super::curve::curve_basis_path_d_and_bounds(&edge_curve_points)
                 } else {
-                    curve_points.clone_from(&raw_points);
-                }
-                let (d, d_pb) = super::curve::curve_basis_path_d_and_bounds(&curve_points);
+                    super::curve::curve_basis_path_d_and_bounds(&edge_raw_points)
+                };
                 let path_bounds_start = timing_enabled.then(std::time::Instant::now);
                 if let Some(pb) = d_pb.as_ref() {
                     include_path_bounds(content_bounds, pb, bounds_dx, bounds_dy);
@@ -1086,49 +1118,47 @@ pub(super) fn render_class_diagram_v2_svg_model(
                     detail.path_bounds += s.elapsed();
                     detail.path_bounds_calls += 1;
                 }
-                points_json_buf.clear();
-                if serde_json::to_writer(&mut points_json_buf, &raw_points).is_err() {
-                    points_json_buf.clear();
+                edge_points_json_buf.clear();
+                if serde_json::to_writer(&mut edge_points_json_buf, &edge_raw_points).is_err() {
+                    edge_points_json_buf.clear();
                 }
-                points_b64_buf.clear();
+                edge_points_b64_buf.clear();
                 base64::engine::general_purpose::STANDARD
-                    .encode_string(&points_json_buf, &mut points_b64_buf);
+                    .encode_string(&edge_points_json_buf, &mut edge_points_b64_buf);
 
-                class_buf.clear();
-                class_buf.push_str("edge-thickness-normal ");
+                edge_class_buf.clear();
+                edge_class_buf.push_str("edge-thickness-normal ");
                 if e.id.starts_with("edgeNote") {
-                    class_buf.push_str(class_note_edge_pattern());
+                    edge_class_buf.push_str(class_note_edge_pattern());
                 } else if let Some(rel) = relations_by_id.get(e.id.as_str()) {
-                    class_buf.push_str(class_edge_pattern(rel.relation.line_type));
+                    edge_class_buf.push_str(class_edge_pattern(rel.relation.line_type));
                 } else {
-                    class_buf.push_str("edge-pattern-solid");
+                    edge_class_buf.push_str("edge-pattern-solid");
                 }
-                class_buf.push_str(" relation");
+                edge_class_buf.push_str(" relation");
 
                 let _ = write!(
                     out,
                     r#"<path d="{}" id="{}" class="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
                     escape_attr_display(&d),
-                    escape_attr_display(&dom_id),
-                    escape_attr_display(&class_buf),
-                    escape_attr_display(&dom_id),
-                    escape_attr_display(&points_b64_buf),
+                    escape_attr_display(&edge_dom_id_buf),
+                    escape_attr_display(&edge_class_buf),
+                    escape_attr_display(&edge_dom_id_buf),
+                    escape_attr_display(&edge_points_b64_buf),
                 );
                 if !e.id.starts_with("edgeNote") {
                     if let Some(rel) = relations_by_id.get(e.id.as_str()) {
                         if let Some(name) = class_marker_name(rel.relation.type1, true) {
                             out.push_str(r#" marker-start="url(#"#);
-                            let _ = write!(out, "{}", escape_attr_display(diagram_id));
-                            out.push('_');
-                            let _ = write!(out, "{}", escape_attr_display(aria_roledescription));
-                            let _ = write!(out, "-{name})\"");
+                            out.push_str(&marker_url_prefix);
+                            out.push_str(name);
+                            out.push_str(r#")""#);
                         }
                         if let Some(name) = class_marker_name(rel.relation.type2, false) {
                             out.push_str(r#" marker-end="url(#"#);
-                            let _ = write!(out, "{}", escape_attr_display(diagram_id));
-                            out.push('_');
-                            let _ = write!(out, "{}", escape_attr_display(aria_roledescription));
-                            let _ = write!(out, "-{name})\"");
+                            out.push_str(&marker_url_prefix);
+                            out.push_str(name);
+                            out.push_str(r#")""#);
                         }
                     }
                 }
@@ -1202,21 +1232,21 @@ pub(super) fn render_class_diagram_v2_svg_model(
                 }
             }
             for e in &layout.edges {
-                let dom_id = class_edge_dom_id(e, &relation_index_by_id);
+                class_edge_dom_id_into(&mut edge_dom_id_buf, e, &relation_index_by_id);
                 let label_text = if e.id.starts_with("edgeNote") {
-                    String::new()
+                    ""
                 } else {
                     relations_by_id
                         .get(e.id.as_str())
-                        .map(|r| r.title.clone())
-                        .unwrap_or_default()
+                        .map(|r| r.title.as_str())
+                        .unwrap_or("")
                 };
 
                 if label_text.trim().is_empty() {
                     let _ = write!(
                         out,
                         r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-                        escape_attr_display(&dom_id)
+                        escape_attr_display(&edge_dom_id_buf)
                     );
                 } else if let Some(lbl) = e.label.as_ref() {
                     include_xywh(
@@ -1231,7 +1261,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
                         r#"<g class="edgeLabel" transform="translate({}, {})"><g class="label" data-id="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;">"#,
                         fmt(lbl.x + content_tx),
                         fmt(lbl.y + content_ty),
-                        escape_attr_display(&dom_id),
+                        escape_attr_display(&edge_dom_id_buf),
                         fmt(-lbl.width / 2.0),
                         fmt(-lbl.height / 2.0),
                         fmt(lbl.width.max(0.0)),
@@ -1243,7 +1273,7 @@ pub(super) fn render_class_diagram_v2_svg_model(
                     let _ = write!(
                         out,
                         r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
-                        escape_attr_display(&dom_id)
+                        escape_attr_display(&edge_dom_id_buf)
                     );
                 }
             }
