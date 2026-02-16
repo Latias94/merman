@@ -12,7 +12,7 @@
         "cssStyles": [],
         "id": "root_start",
         "dir": null,
-        "domId": "state-root_start-0",
+        "domId": "state-root_start-6",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -25,13 +25,17 @@
       {
         "labelStyle": "",
         "shape": "rect",
-        "label": "Start",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
+        "label": "S",
+        "cssClasses": "hot statediagram-state",
+        "cssCompiledStyles": [
+          "fill:#ffcccc",
+          "stroke:#cc0000",
+          "stroke-width:2px"
+        ],
         "cssStyles": [],
-        "id": "Start",
+        "id": "S",
         "dir": null,
-        "domId": "state-Start-3",
+        "domId": "state-S-5",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -44,51 +48,17 @@
       {
         "labelStyle": "",
         "shape": "rect",
-        "label": "Review",
+        "label": "T",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "Review",
+        "cssStyles": [
+          "fill:#ccffcc",
+          "stroke:#00aa00",
+          "stroke-width:2px"
+        ],
+        "id": "T",
         "dir": null,
-        "domId": "state-Review-3",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "classic",
-        "parentId": null,
-        "centerLabel": true
-      },
-      {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "Done",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "Done",
-        "dir": null,
-        "domId": "state-Done-4",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "classic",
-        "parentId": null,
-        "centerLabel": true
-      },
-      {
-        "labelStyle": "",
-        "shape": "stateEnd",
-        "label": "root_end",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "root_end",
-        "dir": null,
-        "domId": "state-root_end-4",
+        "domId": "state-T-6",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -103,7 +73,7 @@
       {
         "id": "edge0",
         "start": "root_start",
-        "end": "Start",
+        "end": "S",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
@@ -118,13 +88,13 @@
       },
       {
         "id": "edge1",
-        "start": "Start",
-        "end": "Review",
+        "start": "S",
+        "end": "T",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "next",
+        "label": "one",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -134,13 +104,13 @@
       },
       {
         "id": "edge2",
-        "start": "Review",
-        "end": "Done",
+        "start": "S",
+        "end": "T",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "approve",
+        "label": "two",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -150,13 +120,13 @@
       },
       {
         "id": "edge3",
-        "start": "Review",
-        "end": "Start",
+        "start": "S",
+        "end": "T",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "revise",
+        "label": "three",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -166,8 +136,40 @@
       },
       {
         "id": "edge4",
-        "start": "Done",
-        "end": "root_end",
+        "start": "T",
+        "end": "S",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "back",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge5",
+        "start": "S",
+        "end": "S",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "self",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge6",
+        "start": "root_start",
+        "end": "T",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
@@ -182,20 +184,7 @@
       }
     ],
     "other": {},
-    "links": {
-      "Done": {
-        "url": "mailto:test@example.com",
-        "tooltip": ""
-      },
-      "Review": {
-        "url": "/review",
-        "tooltip": "Relative link is allowed"
-      },
-      "Start": {
-        "url": "https://example.com/start",
-        "tooltip": "Start docs"
-      }
-    },
+    "links": {},
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
@@ -211,78 +200,82 @@
         "textStyles": [],
         "start": true
       },
-      "Start": {
-        "id": "Start",
+      "S": {
+        "id": "S",
         "type": "default",
         "descriptions": [],
         "doc": null,
         "note": null,
-        "classes": [],
+        "classes": [
+          "hot"
+        ],
         "styles": [],
         "textStyles": [],
         "start": null
       },
-      "Review": {
-        "id": "Review",
+      "T": {
+        "id": "T",
         "type": "default",
         "descriptions": [],
         "doc": null,
         "note": null,
         "classes": [],
-        "styles": [],
+        "styles": [
+          "fill:#ccffcc",
+          "stroke:#00aa00",
+          "stroke-width:2px"
+        ],
         "textStyles": [],
         "start": null
-      },
-      "Done": {
-        "id": "Done",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "root_end": {
-        "id": "root_end",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": false
       }
     },
     "relations": [
       {
         "id1": "root_start",
-        "id2": "Start",
+        "id2": "S",
         "relationTitle": null
       },
       {
-        "id1": "Start",
-        "id2": "Review",
-        "relationTitle": "next"
+        "id1": "S",
+        "id2": "T",
+        "relationTitle": "one"
       },
       {
-        "id1": "Review",
-        "id2": "Done",
-        "relationTitle": "approve"
+        "id1": "S",
+        "id2": "T",
+        "relationTitle": "two"
       },
       {
-        "id1": "Review",
-        "id2": "Start",
-        "relationTitle": "revise"
+        "id1": "S",
+        "id2": "T",
+        "relationTitle": "three"
       },
       {
-        "id1": "Done",
-        "id2": "root_end",
+        "id1": "T",
+        "id2": "S",
+        "relationTitle": "back"
+      },
+      {
+        "id1": "S",
+        "id2": "S",
+        "relationTitle": "self"
+      },
+      {
+        "id1": "root_start",
+        "id2": "T",
         "relationTitle": null
       }
     ],
-    "styleClasses": {}
+    "styleClasses": {
+      "hot": {
+        "id": "hot",
+        "styles": [
+          "fill:#ffcccc",
+          "stroke:#cc0000",
+          "stroke-width:2px"
+        ],
+        "textStyles": []
+      }
+    }
   }
 }

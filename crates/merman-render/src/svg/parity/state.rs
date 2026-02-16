@@ -254,6 +254,8 @@ pub(super) fn render_state_diagram_v2_svg_model(
         parent,
         nested_roots: std::collections::BTreeSet::new(),
         hidden_prefixes,
+        security_level_loose: config_string(effective_config, &["securityLevel"]).as_deref()
+            == Some("loose"),
         links: &model.links,
         states: &model.states,
         edges: &model.edges,
@@ -2266,11 +2268,101 @@ mod svg_bbox_tests {
     }
 }
 
-type StateSvgModel = merman_core::diagrams::state::StateDiagramRenderModel;
-type StateSvgState = merman_core::diagrams::state::StateDiagramRenderState;
-type StateSvgLink = merman_core::diagrams::state::StateDiagramRenderLink;
-type StateSvgNode = merman_core::diagrams::state::StateDiagramRenderNode;
-type StateSvgEdge = merman_core::diagrams::state::StateDiagramRenderEdge;
+#[derive(Debug, Clone, Deserialize)]
+struct StateSvgModel {
+    #[serde(default, rename = "accTitle")]
+    pub acc_title: Option<String>,
+    #[serde(default, rename = "accDescr")]
+    pub acc_descr: Option<String>,
+    #[serde(default)]
+    pub nodes: Vec<StateSvgNode>,
+    #[serde(default)]
+    pub edges: Vec<StateSvgEdge>,
+    #[serde(default)]
+    pub links: std::collections::HashMap<String, StateSvgLinks>,
+    #[serde(default)]
+    pub states: std::collections::HashMap<String, StateSvgState>,
+    #[serde(default, rename = "styleClasses")]
+    pub style_classes: IndexMap<String, StateSvgStyleClass>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct StateSvgStyleClass {
+    pub id: String,
+    #[serde(default)]
+    pub styles: Vec<String>,
+    #[serde(default, rename = "textStyles")]
+    pub text_styles: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct StateSvgState {
+    #[serde(default)]
+    pub note: Option<StateSvgNote>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct StateSvgNote {
+    #[serde(default)]
+    pub position: Option<String>,
+    #[serde(default)]
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct StateSvgLink {
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub tooltip: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum StateSvgLinks {
+    One(StateSvgLink),
+    Many(Vec<StateSvgLink>),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct StateSvgNode {
+    pub id: String,
+    #[serde(default, rename = "labelStyle")]
+    #[allow(dead_code)]
+    pub label_style: String,
+    #[serde(default)]
+    pub label: Option<serde_json::Value>,
+    #[serde(default)]
+    pub description: Option<Vec<String>>,
+    #[serde(default, rename = "domId")]
+    pub dom_id: String,
+    #[serde(default, rename = "isGroup")]
+    pub is_group: bool,
+    #[serde(default, rename = "parentId")]
+    pub parent_id: Option<String>,
+    #[serde(default, rename = "cssClasses")]
+    pub css_classes: String,
+    #[serde(default, rename = "cssCompiledStyles")]
+    pub css_compiled_styles: Vec<String>,
+    #[serde(default, rename = "cssStyles")]
+    pub css_styles: Vec<String>,
+    pub shape: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct StateSvgEdge {
+    pub id: String,
+    #[serde(rename = "start")]
+    pub start: String,
+    #[serde(rename = "end")]
+    pub end: String,
+    #[serde(default)]
+    pub classes: String,
+    #[serde(default, rename = "arrowTypeEnd")]
+    pub arrow_type_end: String,
+    #[serde(default)]
+    pub label: String,
+}
 
 struct StateRenderCtx<'a> {
     diagram_id: String,
@@ -2287,7 +2379,8 @@ struct StateRenderCtx<'a> {
     parent: FxHashMap<&'a str, &'a str>,
     nested_roots: std::collections::BTreeSet<String>,
     hidden_prefixes: Vec<String>,
-    links: &'a std::collections::HashMap<String, StateSvgLink>,
+    security_level_loose: bool,
+    links: &'a std::collections::HashMap<String, StateSvgLinks>,
     states: &'a std::collections::HashMap<String, StateSvgState>,
     edges: &'a [StateSvgEdge],
     include_edges: bool,
@@ -2297,6 +2390,56 @@ struct StateRenderCtx<'a> {
     rough_circle_cache: std::cell::RefCell<FxHashMap<StateRoughCacheKey, Arc<String>>>,
     rough_paths_cache:
         std::cell::RefCell<FxHashMap<StateRoughCacheKey, (Arc<String>, Arc<String>)>>,
+}
+
+fn state_url_scheme_like(input: &str) -> Option<&str> {
+    let lower = input.to_ascii_lowercase();
+
+    let last_colon = input.rfind(':');
+    let last_entity = lower.rfind("&colon;");
+
+    let mut best_end = None::<usize>;
+
+    if let Some(idx) = last_colon {
+        best_end = Some(idx + 1);
+    }
+
+    if let Some(idx) = last_entity {
+        let end = idx + "&colon;".len();
+        if best_end.is_none_or(|cur| end > cur) {
+            best_end = Some(end);
+        }
+    }
+
+    best_end.map(|end| &input[..end])
+}
+
+fn state_is_invalid_protocol_like(url_scheme: &str) -> bool {
+    let lower = url_scheme.to_ascii_lowercase();
+    let trimmed = lower.trim();
+    let trimmed = trimmed.trim_start_matches(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'));
+
+    trimmed.starts_with("javascript")
+        || trimmed.starts_with("data")
+        || trimmed.starts_with("vbscript")
+}
+
+fn state_link_href_allowed(url: &str) -> bool {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    if matches!(trimmed.as_bytes().first(), Some(b'.' | b'/')) {
+        return true;
+    }
+
+    let trimmed_url = trimmed.trim_start();
+    let Some(url_scheme) = state_url_scheme_like(trimmed_url) else {
+        return true;
+    };
+
+    !state_is_invalid_protocol_like(url_scheme)
 }
 
 fn state_markers(out: &mut String, diagram_id: &str) {
@@ -5211,27 +5354,42 @@ fn render_state_node_svg(
             let lw = metrics.width.max(0.0);
             let lh = metrics.height.max(0.0);
 
-            let link = ctx.links.get(node_id);
-            let link_open = if let Some(link) = link {
-                let url = link.url.trim();
-                if url.is_empty() {
-                    String::new()
-                } else {
-                    let title_attr = if !link.tooltip.trim().is_empty() {
-                        format!(r#" title="{}""#, escape_xml_display(link.tooltip.trim()))
-                    } else {
+            let mut link_open = String::new();
+            let mut link_close = String::new();
+            if let Some(links) = ctx.links.get(node_id) {
+                let mut push_link = |link: &StateSvgLink| {
+                    let url = link.url.trim();
+                    let tooltip = link.tooltip.trim();
+                    let title_attr = if tooltip.is_empty() {
                         String::new()
+                    } else {
+                        format!(r#" title="{}""#, escape_attr(tooltip))
                     };
-                    format!(
-                        r#"<a xlink:href="{}"{}>"#,
-                        escape_xml_display(url),
-                        title_attr
-                    )
+
+                    if !url.is_empty() && (ctx.security_level_loose || state_link_href_allowed(url))
+                    {
+                        link_open.push_str(&format!(
+                            r#"<a xlink:href="{}"{}>"#,
+                            escape_attr(url),
+                            title_attr
+                        ));
+                        link_close.push_str("</a>");
+                        return;
+                    }
+
+                    link_open.push_str(&format!(r#"<a{}>"#, title_attr));
+                    link_close.push_str("</a>");
+                };
+
+                match links {
+                    StateSvgLinks::One(link) => push_link(link),
+                    StateSvgLinks::Many(list) => {
+                        for link in list {
+                            push_link(link);
+                        }
+                    }
                 }
-            } else {
-                String::new()
-            };
-            let link_close = if link_open.is_empty() { "" } else { "</a>" };
+            }
 
             let fill_attr = fill_override.unwrap_or("#ECECFF");
             let stroke_attr = stroke_override.unwrap_or("#9370DB");

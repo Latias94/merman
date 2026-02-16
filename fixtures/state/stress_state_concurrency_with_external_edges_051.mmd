@@ -1,0 +1,16 @@
+%% source: repo-ref/mermaid/packages/mermaid/src/diagrams/state/stateDiagram-v2.spec.js (concurrency) + authored stress
+stateDiagram-v2
+[*] --> Active
+
+state Active {
+  [*] --> A1
+  A1 --> A2 : a
+  --
+  [*] --> B1
+  B1 --> B2 : b
+}
+
+A2 --> End : out-a
+B2 --> End : out-b
+End --> [*]
+

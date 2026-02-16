@@ -18,7 +18,7 @@ goldens/baselines. It is intentionally short and should stay true even as fixtur
 - Upstream SVG baselines (`fixtures/upstream-svgs/**`):
   - Scope: authoritative Mermaid end-to-end SVG output (generated via official CLI).
   - How-to: `docs/rendering/UPSTREAM_SVG_BASELINES.md`.
-- Current corpus (2026-02-16): 1619 baselines across 23 diagrams.
+- Current corpus (2026-02-16): 1641 baselines across 23 diagrams.
 - Raster previews (PNG/JPG/PDF via `merman-cli`):
   - Scope: best-effort output for previews/integrations (not pixel-identical to upstream).
   - Note: upstream uses browser rendering; pure-Rust rasterizers do not fully render SVG `<foreignObject>`.
@@ -94,8 +94,17 @@ hardened Class parity for multiline IDs (attribute `&#10;`), HTML label line bre
 and single-namespace wrapper DOM, keeping `parity-root` green.
 Recent progress (2026-02-13): imported Architecture Cypress rendering fixtures (with upstream SVG baselines) and
 refreshed Architecture root viewport overrides for the new fixture IDs, keeping `parity-root` green.
-As of 2026-02-15, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 0 DOM
-mismatches for the current fixture set (1499/1499 upstream SVG baselines, including root viewport parity).
+As of 2026-02-16, `xtask compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3` reports 0 DOM
+mismatches for the current fixture set (1641/1641 upstream SVG baselines, including root viewport parity).
+
+Recent progress (2026-02-16): imported an additional batch of State stress fixtures (with upstream SVG baselines)
+and hardened State click directive semantics: multiple `click` statements on the same node now match upstream DOM
+(nested `<a>` wrappers) and `securityLevel=strict` correctly strips `javascript:`/`data:` URLs from SVG links,
+keeping the global `parity-root` gate green.
+
+Recent progress (2026-02-16): imported an additional batch of State stress fixtures (with upstream SVG baselines),
+expanding coverage for v1 multiline `accDescr { ... }`, `direction RL` + `scale` long-id layout, deep nesting, and
+note `<br>` normalization, keeping the global `parity-root` gate green.
 
 Recent progress (2026-02-14): imported an additional batch of Gantt Cypress rendering fixtures (with upstream SVG
 baselines) and hardened Gantt parity for d3 axis format directives (`%L`) + exclude-layer edge cases + JS date-only

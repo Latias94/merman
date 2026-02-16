@@ -1,0 +1,541 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "type": "stateDiagram",
+    "nodes": [
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "root_start",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "root_start",
+        "dir": null,
+        "domId": "state-root_start-0",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "roundedWithTitle",
+        "label": "Active",
+        "cssClasses": "statediagram-state statediagram-cluster",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Active",
+        "dir": "TB",
+        "domId": "state-Active-7",
+        "type": "group",
+        "isGroup": true,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "divider",
+        "label": "",
+        "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "divider-id-1",
+        "dir": "TB",
+        "domId": "state-divider-id-1-1",
+        "type": "group",
+        "isGroup": true,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Active",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "divider-id-1_start",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "divider-id-1_start",
+        "dir": null,
+        "domId": "state-divider-id-1_start-1",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "divider-id-1",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "A",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "A",
+        "dir": null,
+        "domId": "state-A-2",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "divider-id-1",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "B",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "B",
+        "dir": null,
+        "domId": "state-B-3",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "divider-id-1",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateEnd",
+        "label": "divider-id-1_end",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "divider-id-1_end",
+        "dir": null,
+        "domId": "state-divider-id-1_end-3",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "divider-id-1",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "divider",
+        "label": "",
+        "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "id-38dvt516gkfs-1",
+        "dir": "TB",
+        "domId": "state-id-38dvt516gkfs-1-4",
+        "type": "group",
+        "isGroup": true,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Active",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "id-38dvt516gkfs-1_start",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "id-38dvt516gkfs-1_start",
+        "dir": null,
+        "domId": "state-id-38dvt516gkfs-1_start-4",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "id-38dvt516gkfs-1",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "C",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "C",
+        "dir": null,
+        "domId": "state-C-5",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "id-38dvt516gkfs-1",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "D",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "D",
+        "dir": null,
+        "domId": "state-D-6",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "id-38dvt516gkfs-1",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateEnd",
+        "label": "id-38dvt516gkfs-1_end",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "id-38dvt516gkfs-1_end",
+        "dir": null,
+        "domId": "state-id-38dvt516gkfs-1_end-6",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "id-38dvt516gkfs-1",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateEnd",
+        "label": "root_end",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "root_end",
+        "dir": null,
+        "domId": "state-root_end-7",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge0",
+        "start": "root_start",
+        "end": "Active",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge1",
+        "start": "divider-id-1_start",
+        "end": "A",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge2",
+        "start": "A",
+        "end": "B",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "first %% inline comment after relation",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge3",
+        "start": "B",
+        "end": "divider-id-1_end",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge4",
+        "start": "id-38dvt516gkfs-1_start",
+        "end": "C",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge5",
+        "start": "C",
+        "end": "D",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "second",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge6",
+        "start": "D",
+        "end": "id-38dvt516gkfs-1_end",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge7",
+        "start": "Active",
+        "end": "root_end",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      }
+    ],
+    "other": {},
+    "links": {},
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "states": {
+      "root_start": {
+        "id": "root_start",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": true
+      },
+      "Active": {
+        "id": "Active",
+        "type": "default",
+        "descriptions": [],
+        "doc": [
+          {
+            "stmt": "state",
+            "id": "divider-id-1",
+            "type": "divider",
+            "description": null,
+            "doc": [
+              {
+                "stmt": "relation",
+                "state1": {
+                  "id": "divider-id-1_start",
+                  "type": "default",
+                  "classes": []
+                },
+                "state2": {
+                  "id": "A",
+                  "type": "default",
+                  "classes": []
+                },
+                "description": null
+              },
+              {
+                "stmt": "relation",
+                "state1": {
+                  "id": "A",
+                  "type": "default",
+                  "classes": []
+                },
+                "state2": {
+                  "id": "B",
+                  "type": "default",
+                  "classes": []
+                },
+                "description": "first %% inline comment after relation"
+              },
+              {
+                "stmt": "relation",
+                "state1": {
+                  "id": "B",
+                  "type": "default",
+                  "classes": []
+                },
+                "state2": {
+                  "id": "divider-id-1_end",
+                  "type": "default",
+                  "classes": []
+                },
+                "description": null
+              }
+            ],
+            "classes": []
+          },
+          {
+            "stmt": "state",
+            "id": "id-38dvt516gkfs-1",
+            "type": "divider",
+            "description": null,
+            "doc": [
+              {
+                "stmt": "relation",
+                "state1": {
+                  "id": "id-38dvt516gkfs-1_start",
+                  "type": "default",
+                  "classes": []
+                },
+                "state2": {
+                  "id": "C",
+                  "type": "default",
+                  "classes": []
+                },
+                "description": null
+              },
+              {
+                "stmt": "relation",
+                "state1": {
+                  "id": "C",
+                  "type": "default",
+                  "classes": []
+                },
+                "state2": {
+                  "id": "D",
+                  "type": "default",
+                  "classes": []
+                },
+                "description": "second"
+              },
+              {
+                "stmt": "relation",
+                "state1": {
+                  "id": "D",
+                  "type": "default",
+                  "classes": []
+                },
+                "state2": {
+                  "id": "id-38dvt516gkfs-1_end",
+                  "type": "default",
+                  "classes": []
+                },
+                "description": null
+              }
+            ],
+            "classes": []
+          }
+        ],
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "root_end": {
+        "id": "root_end",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": false
+      }
+    },
+    "relations": [
+      {
+        "id1": "root_start",
+        "id2": "Active",
+        "relationTitle": null
+      },
+      {
+        "id1": "Active",
+        "id2": "root_end",
+        "relationTitle": null
+      }
+    ],
+    "styleClasses": {}
+  }
+}

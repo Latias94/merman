@@ -25,13 +25,13 @@
       {
         "labelStyle": "",
         "shape": "rect",
-        "label": "Start",
+        "label": "A",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Start",
+        "id": "A",
         "dir": null,
-        "domId": "state-Start-3",
+        "domId": "state-A-6",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -43,35 +43,16 @@
       },
       {
         "labelStyle": "",
-        "shape": "rect",
-        "label": "Review",
-        "cssClasses": "statediagram-state",
+        "shape": "roundedWithTitle",
+        "label": "B",
+        "cssClasses": "statediagram-state statediagram-cluster",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Review",
-        "dir": null,
-        "domId": "state-Review-3",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "classic",
-        "parentId": null,
-        "centerLabel": true
-      },
-      {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "Done",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "Done",
-        "dir": null,
-        "domId": "state-Done-4",
-        "type": null,
-        "isGroup": false,
+        "id": "B",
+        "dir": "TB",
+        "domId": "state-B-6",
+        "type": "group",
+        "isGroup": true,
         "padding": 8,
         "rx": 10,
         "ry": 10,
@@ -88,7 +69,7 @@
         "cssStyles": [],
         "id": "root_end",
         "dir": null,
-        "domId": "state-root_end-4",
+        "domId": "state-root_end-2",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -97,13 +78,89 @@
         "look": "classic",
         "parentId": null,
         "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "B_start",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "B_start",
+        "dir": null,
+        "domId": "state-B_start-3",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "B",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "b1",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "b1",
+        "dir": null,
+        "domId": "state-b1-4",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "B",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "b2",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "b2",
+        "dir": null,
+        "domId": "state-b2-5",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "B",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateEnd",
+        "label": "B_end",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "B_end",
+        "dir": null,
+        "domId": "state-B_end-5",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "B",
+        "centerLabel": true
       }
     ],
     "edges": [
       {
         "id": "edge0",
         "start": "root_start",
-        "end": "Start",
+        "end": "A",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
@@ -118,13 +175,13 @@
       },
       {
         "id": "edge1",
-        "start": "Start",
-        "end": "Review",
+        "start": "A",
+        "end": "B",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "next",
+        "label": "",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -134,39 +191,7 @@
       },
       {
         "id": "edge2",
-        "start": "Review",
-        "end": "Done",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "approve",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
-      },
-      {
-        "id": "edge3",
-        "start": "Review",
-        "end": "Start",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "revise",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
-      },
-      {
-        "id": "edge4",
-        "start": "Done",
+        "start": "B",
         "end": "root_end",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
@@ -179,24 +204,75 @@
         "thickness": "normal",
         "classes": "transition",
         "look": "classic"
+      },
+      {
+        "id": "edge3",
+        "start": "B_start",
+        "end": "b1",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge4",
+        "start": "b1",
+        "end": "b2",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "inner",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge5",
+        "start": "b2",
+        "end": "B_end",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge6",
+        "start": "A",
+        "end": "B",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "to composite",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
       }
     ],
     "other": {},
-    "links": {
-      "Done": {
-        "url": "mailto:test@example.com",
-        "tooltip": ""
-      },
-      "Review": {
-        "url": "/review",
-        "tooltip": "Relative link is allowed"
-      },
-      "Start": {
-        "url": "https://example.com/start",
-        "tooltip": "Start docs"
-      }
-    },
-    "direction": "TB",
+    "links": {},
+    "direction": "LR",
     "accTitle": null,
     "accDescr": null,
     "states": {
@@ -211,8 +287,8 @@
         "textStyles": [],
         "start": true
       },
-      "Start": {
-        "id": "Start",
+      "A": {
+        "id": "A",
         "type": "default",
         "descriptions": [],
         "doc": null,
@@ -222,22 +298,58 @@
         "textStyles": [],
         "start": null
       },
-      "Review": {
-        "id": "Review",
+      "B": {
+        "id": "B",
         "type": "default",
         "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "Done": {
-        "id": "Done",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
+        "doc": [
+          {
+            "stmt": "dir",
+            "value": "TB"
+          },
+          {
+            "stmt": "relation",
+            "state1": {
+              "id": "B_start",
+              "type": "default",
+              "classes": []
+            },
+            "state2": {
+              "id": "b1",
+              "type": "default",
+              "classes": []
+            },
+            "description": null
+          },
+          {
+            "stmt": "relation",
+            "state1": {
+              "id": "b1",
+              "type": "default",
+              "classes": []
+            },
+            "state2": {
+              "id": "b2",
+              "type": "default",
+              "classes": []
+            },
+            "description": "inner"
+          },
+          {
+            "stmt": "relation",
+            "state1": {
+              "id": "b2",
+              "type": "default",
+              "classes": []
+            },
+            "state2": {
+              "id": "B_end",
+              "type": "default",
+              "classes": []
+            },
+            "description": null
+          }
+        ],
         "note": null,
         "classes": [],
         "styles": [],
@@ -259,28 +371,23 @@
     "relations": [
       {
         "id1": "root_start",
-        "id2": "Start",
+        "id2": "A",
         "relationTitle": null
       },
       {
-        "id1": "Start",
-        "id2": "Review",
-        "relationTitle": "next"
+        "id1": "A",
+        "id2": "B",
+        "relationTitle": null
       },
       {
-        "id1": "Review",
-        "id2": "Done",
-        "relationTitle": "approve"
-      },
-      {
-        "id1": "Review",
-        "id2": "Start",
-        "relationTitle": "revise"
-      },
-      {
-        "id1": "Done",
+        "id1": "B",
         "id2": "root_end",
         "relationTitle": null
+      },
+      {
+        "id1": "A",
+        "id2": "B",
+        "relationTitle": "to composite"
       }
     ],
     "styleClasses": {}

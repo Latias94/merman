@@ -1,0 +1,12 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): `state "..." as id` + colon descriptions + alias transitions.
+
+[*] --> s1
+
+state "This is a state: with : colons and quotes" as s2
+s2 : extra description line 1
+s2 : extra description line 2
+
+s1 --> s2 : enter
+s2 --> s1 : back
+s2 --> [*] : finish

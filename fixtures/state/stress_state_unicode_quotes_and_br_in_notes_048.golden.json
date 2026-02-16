@@ -5,6 +5,26 @@
     "nodes": [
       {
         "labelStyle": "",
+        "shape": "rect",
+        "label": "中文-状態",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "CN",
+        "dir": null,
+        "domId": "state-CN-4",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true,
+        "description": []
+      },
+      {
+        "labelStyle": "",
         "shape": "stateStart",
         "label": "root_start",
         "cssClasses": "statediagram-state",
@@ -25,13 +45,13 @@
       {
         "labelStyle": "",
         "shape": "rect",
-        "label": "Start",
+        "label": "AR",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Start",
+        "id": "AR",
         "dir": null,
-        "domId": "state-Start-3",
+        "domId": "state-AR-2",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -44,32 +64,13 @@
       {
         "labelStyle": "",
         "shape": "rect",
-        "label": "Review",
+        "label": "EMOJI",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Review",
+        "id": "EMOJI",
         "dir": null,
-        "domId": "state-Review-3",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "classic",
-        "parentId": null,
-        "centerLabel": true
-      },
-      {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "Done",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "Done",
-        "dir": null,
-        "domId": "state-Done-4",
+        "domId": "state-EMOJI-3",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -88,7 +89,7 @@
         "cssStyles": [],
         "id": "root_end",
         "dir": null,
-        "domId": "state-root_end-4",
+        "domId": "state-root_end-3",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -97,13 +98,44 @@
         "look": "classic",
         "parentId": null,
         "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "noteGroup",
+        "label": "Mixed scripts: 中文 / 日本語 / العربية<br/>\npunctuation: ,.;:!? () [] {} / \\\\ |",
+        "cssClasses": "statediagram-state",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "CN----parent",
+        "domId": "state-CN----parent-4",
+        "type": "group",
+        "isGroup": true,
+        "padding": 16,
+        "look": "classic",
+        "position": "right of"
+      },
+      {
+        "labelStyle": "",
+        "shape": "note",
+        "label": "Mixed scripts: 中文 / 日本語 / العربية<br/>\npunctuation: ,.;:!? () [] {} / \\\\ |",
+        "cssClasses": "statediagram-note",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "CN----note-4",
+        "domId": "state-CN----note-4",
+        "type": null,
+        "isGroup": false,
+        "padding": 15,
+        "look": "classic",
+        "position": "right of",
+        "parentId": "CN----parent"
       }
     ],
     "edges": [
       {
         "id": "edge0",
         "start": "root_start",
-        "end": "Start",
+        "end": "CN",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
@@ -118,13 +150,13 @@
       },
       {
         "id": "edge1",
-        "start": "Start",
-        "end": "Review",
+        "start": "CN",
+        "end": "AR",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "next",
+        "label": "العربية",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -134,13 +166,13 @@
       },
       {
         "id": "edge2",
-        "start": "Review",
-        "end": "Done",
+        "start": "AR",
+        "end": "EMOJI",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "approve",
+        "label": "😀😅👍",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -150,13 +182,13 @@
       },
       {
         "id": "edge3",
-        "start": "Review",
-        "end": "Start",
+        "start": "EMOJI",
+        "end": "root_end",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "revise",
+        "label": "끝",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -165,41 +197,43 @@
         "look": "classic"
       },
       {
-        "id": "edge4",
-        "start": "Done",
-        "end": "root_end",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
+        "id": "CN-CN----note-4",
+        "start": "CN",
+        "end": "CN----note-4",
+        "arrowhead": "none",
+        "arrowTypeEnd": "",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "",
+        "classes": "transition note-edge",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
         "thickness": "normal",
-        "classes": "transition",
         "look": "classic"
       }
     ],
     "other": {},
-    "links": {
-      "Done": {
-        "url": "mailto:test@example.com",
-        "tooltip": ""
-      },
-      "Review": {
-        "url": "/review",
-        "tooltip": "Relative link is allowed"
-      },
-      "Start": {
-        "url": "https://example.com/start",
-        "tooltip": "Start docs"
-      }
-    },
+    "links": {},
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
     "states": {
+      "CN": {
+        "id": "CN",
+        "type": "default",
+        "descriptions": [
+          "中文-状態"
+        ],
+        "doc": null,
+        "note": {
+          "position": "right of",
+          "text": "Mixed scripts: 中文 / 日本語 / العربية<br/>\npunctuation: ,.;:!? () [] {} / \\\\ |"
+        },
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
       "root_start": {
         "id": "root_start",
         "type": "default",
@@ -211,8 +245,8 @@
         "textStyles": [],
         "start": true
       },
-      "Start": {
-        "id": "Start",
+      "AR": {
+        "id": "AR",
         "type": "default",
         "descriptions": [],
         "doc": null,
@@ -222,19 +256,8 @@
         "textStyles": [],
         "start": null
       },
-      "Review": {
-        "id": "Review",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "Done": {
-        "id": "Done",
+      "EMOJI": {
+        "id": "EMOJI",
         "type": "default",
         "descriptions": [],
         "doc": null,
@@ -259,28 +282,23 @@
     "relations": [
       {
         "id1": "root_start",
-        "id2": "Start",
+        "id2": "CN",
         "relationTitle": null
       },
       {
-        "id1": "Start",
-        "id2": "Review",
-        "relationTitle": "next"
+        "id1": "CN",
+        "id2": "AR",
+        "relationTitle": "العربية"
       },
       {
-        "id1": "Review",
-        "id2": "Done",
-        "relationTitle": "approve"
+        "id1": "AR",
+        "id2": "EMOJI",
+        "relationTitle": "😀😅👍"
       },
       {
-        "id1": "Review",
-        "id2": "Start",
-        "relationTitle": "revise"
-      },
-      {
-        "id1": "Done",
+        "id1": "EMOJI",
         "id2": "root_end",
-        "relationTitle": null
+        "relationTitle": "끝"
       }
     ],
     "styleClasses": {}

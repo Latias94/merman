@@ -1,0 +1,15 @@
+%% source: repo-ref/mermaid/packages/mermaid/src/diagrams/state/stateDiagram-v2.spec.js (note normalization) + authored stress
+stateDiagram-v2
+[*] --> A
+A --> B
+
+note "Floating note with <br/> and &amp;" as N1
+
+note left of A : left note
+
+note right of B
+Line1<br>Line2<br/>Line3<br />Line4<br	/>Line5
+end note
+
+B --> [*]
+

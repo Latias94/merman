@@ -1,0 +1,22 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): choice + composite with fork/join + external edges to composite.
+
+[*] --> Decide
+state Decide <<choice>>
+Decide --> Idle : no
+Decide --> Work : yes
+
+state Work {
+  [*] --> Fork
+  state Fork <<fork>>
+  Fork --> W1
+  Fork --> W2
+  W1 --> Join
+  W2 --> Join
+  state Join <<join>>
+  Join --> [*]
+}
+
+Idle --> Work : later
+Work --> [*] : done
+

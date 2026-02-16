@@ -1,0 +1,472 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "type": "stateDiagram",
+    "nodes": [
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "root_start",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "root_start",
+        "dir": null,
+        "domId": "state-root_start-0",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Outside",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Outside",
+        "dir": null,
+        "domId": "state-Outside-1",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Inactive",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Inactive",
+        "dir": null,
+        "domId": "state-Inactive-5",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "roundedWithTitle",
+        "label": "Active State",
+        "cssClasses": "statediagram-state statediagram-cluster",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Active",
+        "dir": "TB",
+        "domId": "state-Active-7",
+        "type": "group",
+        "isGroup": true,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true,
+        "description": []
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Idle mode",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Idle",
+        "dir": null,
+        "domId": "state-Idle-4",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Active",
+        "centerLabel": true,
+        "description": []
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Configuring mode",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Config",
+        "dir": null,
+        "domId": "state-Config-4",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Active",
+        "centerLabel": true,
+        "description": []
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "Active_start",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Active_start",
+        "dir": null,
+        "domId": "state-Active_start-2",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Active",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "noteGroup",
+        "label": "Composite note<br/>line2",
+        "cssClasses": "statediagram-state statediagram-cluster",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "Active----parent",
+        "domId": "state-Active----parent-6",
+        "type": "group",
+        "isGroup": true,
+        "padding": 16,
+        "look": "classic",
+        "position": "right of"
+      },
+      {
+        "labelStyle": "",
+        "shape": "note",
+        "label": "Composite note<br/>line2",
+        "cssClasses": "statediagram-note",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "Active----note-6",
+        "domId": "state-Active----note-6",
+        "type": "group",
+        "isGroup": true,
+        "padding": 15,
+        "look": "classic",
+        "position": "right of",
+        "parentId": "Active----parent"
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateEnd",
+        "label": "root_end",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "root_end",
+        "dir": null,
+        "domId": "state-root_end-7",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge0",
+        "start": "root_start",
+        "end": "Outside",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge1",
+        "start": "Outside",
+        "end": "Inactive",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge2",
+        "start": "Active_start",
+        "end": "Idle",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge3",
+        "start": "Idle",
+        "end": "Config",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "cfg",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge4",
+        "start": "Config",
+        "end": "Idle",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "done",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge5",
+        "start": "Inactive",
+        "end": "Active",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "enter",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "Active-Active----note-6",
+        "start": "Active",
+        "end": "Active----note-6",
+        "arrowhead": "none",
+        "arrowTypeEnd": "",
+        "style": "fill:none",
+        "labelStyle": "",
+        "classes": "transition note-edge",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "look": "classic"
+      },
+      {
+        "id": "edge7",
+        "start": "Active",
+        "end": "root_end",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      }
+    ],
+    "other": {},
+    "links": {},
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "states": {
+      "root_start": {
+        "id": "root_start",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": true
+      },
+      "Outside": {
+        "id": "Outside",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "Inactive": {
+        "id": "Inactive",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "Active": {
+        "id": "Active",
+        "type": "default",
+        "descriptions": [
+          "Active State"
+        ],
+        "doc": [
+          {
+            "stmt": "state",
+            "id": "Idle",
+            "type": "default",
+            "description": "Idle mode",
+            "doc": null,
+            "classes": []
+          },
+          {
+            "stmt": "state",
+            "id": "Config",
+            "type": "default",
+            "description": "Configuring mode",
+            "doc": null,
+            "classes": []
+          },
+          {
+            "stmt": "relation",
+            "state1": {
+              "id": "Active_start",
+              "type": "default",
+              "classes": []
+            },
+            "state2": {
+              "id": "Idle",
+              "type": "default",
+              "classes": []
+            },
+            "description": null
+          },
+          {
+            "stmt": "relation",
+            "state1": {
+              "id": "Idle",
+              "type": "default",
+              "classes": []
+            },
+            "state2": {
+              "id": "Config",
+              "type": "default",
+              "classes": []
+            },
+            "description": "cfg"
+          },
+          {
+            "stmt": "relation",
+            "state1": {
+              "id": "Config",
+              "type": "default",
+              "classes": []
+            },
+            "state2": {
+              "id": "Idle",
+              "type": "default",
+              "classes": []
+            },
+            "description": "done"
+          }
+        ],
+        "note": {
+          "position": "right of",
+          "text": "Composite note<br/>line2"
+        },
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "root_end": {
+        "id": "root_end",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": false
+      }
+    },
+    "relations": [
+      {
+        "id1": "root_start",
+        "id2": "Outside",
+        "relationTitle": null
+      },
+      {
+        "id1": "Outside",
+        "id2": "Inactive",
+        "relationTitle": null
+      },
+      {
+        "id1": "Inactive",
+        "id2": "Active",
+        "relationTitle": "enter"
+      },
+      {
+        "id1": "Active",
+        "id2": "root_end",
+        "relationTitle": null
+      }
+    ],
+    "styleClasses": {}
+  }
+}

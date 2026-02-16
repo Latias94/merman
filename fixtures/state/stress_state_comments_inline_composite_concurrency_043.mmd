@@ -1,0 +1,19 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): comment handling (full-line + inline) inside composite + concurrency.
+
+[*] --> Active
+
+%% full-line comment before composite
+state Active {
+  [*] --> A
+  A --> B : first %% inline comment after relation
+  B --> [*]
+  --
+  [*] --> C
+  C --> D : second
+  D --> [*] %% inline comment after end marker
+}
+
+# hash-style comment line (supported by upstream lexer)
+Active --> [*]
+

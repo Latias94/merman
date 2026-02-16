@@ -25,13 +25,13 @@
       {
         "labelStyle": "",
         "shape": "rect",
-        "label": "Start",
+        "label": "A",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Start",
+        "id": "A",
         "dir": null,
-        "domId": "state-Start-3",
+        "domId": "state-A-3",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -44,32 +44,13 @@
       {
         "labelStyle": "",
         "shape": "rect",
-        "label": "Review",
+        "label": "B",
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Review",
+        "id": "B",
         "dir": null,
-        "domId": "state-Review-3",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "classic",
-        "parentId": null,
-        "centerLabel": true
-      },
-      {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "Done",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "Done",
-        "dir": null,
-        "domId": "state-Done-4",
+        "domId": "state-B-4",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -88,7 +69,7 @@
         "cssStyles": [],
         "id": "root_end",
         "dir": null,
-        "domId": "state-root_end-4",
+        "domId": "state-root_end-2",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -97,13 +78,75 @@
         "look": "classic",
         "parentId": null,
         "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "noteGroup",
+        "label": "Multi-line note<br/>\nwith an HTML break.",
+        "cssClasses": "statediagram-state",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "A----parent",
+        "domId": "state-A----parent-3",
+        "type": "group",
+        "isGroup": true,
+        "padding": 16,
+        "look": "classic",
+        "position": "right of"
+      },
+      {
+        "labelStyle": "",
+        "shape": "note",
+        "label": "Multi-line note<br/>\nwith an HTML break.",
+        "cssClasses": "statediagram-note",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "A----note-3",
+        "domId": "state-A----note-3",
+        "type": null,
+        "isGroup": false,
+        "padding": 15,
+        "look": "classic",
+        "position": "right of",
+        "parentId": "A----parent"
+      },
+      {
+        "labelStyle": "",
+        "shape": "noteGroup",
+        "label": "Inline note to the left.",
+        "cssClasses": "statediagram-state",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "B----parent",
+        "domId": "state-B----parent-4",
+        "type": "group",
+        "isGroup": true,
+        "padding": 16,
+        "look": "classic",
+        "position": "left of"
+      },
+      {
+        "labelStyle": "",
+        "shape": "note",
+        "label": "Inline note to the left.",
+        "cssClasses": "statediagram-note",
+        "cssStyles": [],
+        "cssCompiledStyles": [],
+        "id": "B----note-4",
+        "domId": "state-B----note-4",
+        "type": null,
+        "isGroup": false,
+        "padding": 15,
+        "look": "classic",
+        "position": "left of",
+        "parentId": "B----parent"
       }
     ],
     "edges": [
       {
         "id": "edge0",
         "start": "root_start",
-        "end": "Start",
+        "end": "A",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
@@ -118,13 +161,13 @@
       },
       {
         "id": "edge1",
-        "start": "Start",
-        "end": "Review",
+        "start": "A",
+        "end": "B",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "next",
+        "label": "go",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -134,39 +177,7 @@
       },
       {
         "id": "edge2",
-        "start": "Review",
-        "end": "Done",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "approve",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
-      },
-      {
-        "id": "edge3",
-        "start": "Review",
-        "end": "Start",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "revise",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "classes": "transition",
-        "look": "classic"
-      },
-      {
-        "id": "edge4",
-        "start": "Done",
+        "start": "B",
         "end": "root_end",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
@@ -179,23 +190,40 @@
         "thickness": "normal",
         "classes": "transition",
         "look": "classic"
+      },
+      {
+        "id": "A-A----note-3",
+        "start": "A",
+        "end": "A----note-3",
+        "arrowhead": "none",
+        "arrowTypeEnd": "",
+        "style": "fill:none",
+        "labelStyle": "",
+        "classes": "transition note-edge",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "look": "classic"
+      },
+      {
+        "id": "B----note-4-B",
+        "start": "B----note-4",
+        "end": "B",
+        "arrowhead": "none",
+        "arrowTypeEnd": "",
+        "style": "fill:none",
+        "labelStyle": "",
+        "classes": "transition note-edge",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "look": "classic"
       }
     ],
     "other": {},
-    "links": {
-      "Done": {
-        "url": "mailto:test@example.com",
-        "tooltip": ""
-      },
-      "Review": {
-        "url": "/review",
-        "tooltip": "Relative link is allowed"
-      },
-      "Start": {
-        "url": "https://example.com/start",
-        "tooltip": "Start docs"
-      }
-    },
+    "links": {},
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
@@ -211,34 +239,29 @@
         "textStyles": [],
         "start": true
       },
-      "Start": {
-        "id": "Start",
+      "A": {
+        "id": "A",
         "type": "default",
         "descriptions": [],
         "doc": null,
-        "note": null,
+        "note": {
+          "position": "right of",
+          "text": "Multi-line note<br/>\nwith an HTML break."
+        },
         "classes": [],
         "styles": [],
         "textStyles": [],
         "start": null
       },
-      "Review": {
-        "id": "Review",
+      "B": {
+        "id": "B",
         "type": "default",
         "descriptions": [],
         "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "Done": {
-        "id": "Done",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
+        "note": {
+          "position": "left of",
+          "text": "Inline note to the left."
+        },
         "classes": [],
         "styles": [],
         "textStyles": [],
@@ -259,26 +282,16 @@
     "relations": [
       {
         "id1": "root_start",
-        "id2": "Start",
+        "id2": "A",
         "relationTitle": null
       },
       {
-        "id1": "Start",
-        "id2": "Review",
-        "relationTitle": "next"
+        "id1": "A",
+        "id2": "B",
+        "relationTitle": "go"
       },
       {
-        "id1": "Review",
-        "id2": "Done",
-        "relationTitle": "approve"
-      },
-      {
-        "id1": "Review",
-        "id2": "Start",
-        "relationTitle": "revise"
-      },
-      {
-        "id1": "Done",
+        "id1": "B",
         "id2": "root_end",
         "relationTitle": null
       }

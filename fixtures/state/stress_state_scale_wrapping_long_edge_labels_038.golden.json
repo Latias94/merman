@@ -31,7 +31,26 @@
         "cssStyles": [],
         "id": "Start",
         "dir": null,
-        "domId": "state-Start-3",
+        "domId": "state-Start-1",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Work",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Work",
+        "dir": null,
+        "domId": "state-Work-4",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -50,7 +69,7 @@
         "cssStyles": [],
         "id": "Review",
         "dir": null,
-        "domId": "state-Review-3",
+        "domId": "state-Review-4",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -69,7 +88,7 @@
         "cssStyles": [],
         "id": "Done",
         "dir": null,
-        "domId": "state-Done-4",
+        "domId": "state-Done-5",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -88,7 +107,7 @@
         "cssStyles": [],
         "id": "root_end",
         "dir": null,
-        "domId": "state-root_end-4",
+        "domId": "state-root_end-5",
         "type": null,
         "isGroup": false,
         "padding": 8,
@@ -108,7 +127,7 @@
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "",
+        "label": "begin",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -119,12 +138,12 @@
       {
         "id": "edge1",
         "start": "Start",
-        "end": "Review",
+        "end": "Work",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "next",
+        "label": "this is a very long label that should wrap cleanly and keep stable layout (a/b/c, x=y, and \"quotes\")",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -134,13 +153,13 @@
       },
       {
         "id": "edge2",
-        "start": "Review",
-        "end": "Done",
+        "start": "Work",
+        "end": "Review",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "approve",
+        "label": "another-long-label-with-a-veryveryverylongwordthatforceswrapping",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -151,7 +170,23 @@
       {
         "id": "edge3",
         "start": "Review",
-        "end": "Start",
+        "end": "Done",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "ok",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge4",
+        "start": "Review",
+        "end": "Work",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
@@ -165,14 +200,14 @@
         "look": "classic"
       },
       {
-        "id": "edge4",
+        "id": "edge5",
         "start": "Done",
         "end": "root_end",
         "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "",
+        "label": "end",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",
         "labelType": "text",
@@ -182,20 +217,7 @@
       }
     ],
     "other": {},
-    "links": {
-      "Done": {
-        "url": "mailto:test@example.com",
-        "tooltip": ""
-      },
-      "Review": {
-        "url": "/review",
-        "tooltip": "Relative link is allowed"
-      },
-      "Start": {
-        "url": "https://example.com/start",
-        "tooltip": "Start docs"
-      }
-    },
+    "links": {},
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
@@ -213,6 +235,17 @@
       },
       "Start": {
         "id": "Start",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "Work": {
+        "id": "Work",
         "type": "default",
         "descriptions": [],
         "doc": null,
@@ -260,27 +293,32 @@
       {
         "id1": "root_start",
         "id2": "Start",
-        "relationTitle": null
+        "relationTitle": "begin"
       },
       {
         "id1": "Start",
+        "id2": "Work",
+        "relationTitle": "this is a very long label that should wrap cleanly and keep stable layout (a/b/c, x=y, and \"quotes\")"
+      },
+      {
+        "id1": "Work",
         "id2": "Review",
-        "relationTitle": "next"
+        "relationTitle": "another-long-label-with-a-veryveryverylongwordthatforceswrapping"
       },
       {
         "id1": "Review",
         "id2": "Done",
-        "relationTitle": "approve"
+        "relationTitle": "ok"
       },
       {
         "id1": "Review",
-        "id2": "Start",
+        "id2": "Work",
         "relationTitle": "revise"
       },
       {
         "id1": "Done",
         "id2": "root_end",
-        "relationTitle": null
+        "relationTitle": "end"
       }
     ],
     "styleClasses": {}

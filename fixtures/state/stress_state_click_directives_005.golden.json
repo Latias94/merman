@@ -167,13 +167,13 @@
     ],
     "other": {},
     "links": {
-      "Review": {
-        "url": "https://example.com/review",
-        "tooltip": "Review docs"
-      },
       "Start": {
         "url": "https://example.com/start",
         "tooltip": "Start docs"
+      },
+      "Review": {
+        "url": "https://example.com/review",
+        "tooltip": "Review docs"
       },
       "Done": {
         "url": "https://example.com/done",

@@ -1,0 +1,586 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "type": "stateDiagram",
+    "nodes": [
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "root_start",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "root_start",
+        "dir": null,
+        "domId": "state-root_start-0",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Decide",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Decide",
+        "dir": null,
+        "domId": "state-Decide-2",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Idle",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Idle",
+        "dir": null,
+        "domId": "state-Idle-9",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "roundedWithTitle",
+        "label": "Work",
+        "cssClasses": "statediagram-state statediagram-cluster",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Work",
+        "dir": "TB",
+        "domId": "state-Work-10",
+        "type": "group",
+        "isGroup": true,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "Work_start",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Work_start",
+        "dir": null,
+        "domId": "state-Work_start-3",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Work",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Fork",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Fork",
+        "dir": null,
+        "domId": "state-Fork-5",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Work",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "W1",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "W1",
+        "dir": null,
+        "domId": "state-W1-6",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Work",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "W2",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "W2",
+        "dir": null,
+        "domId": "state-W2-7",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Work",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "Join",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Join",
+        "dir": null,
+        "domId": "state-Join-8",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Work",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateEnd",
+        "label": "Work_end",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "Work_end",
+        "dir": null,
+        "domId": "state-Work_end-8",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": "Work",
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateEnd",
+        "label": "root_end",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "root_end",
+        "dir": null,
+        "domId": "state-root_end-10",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge0",
+        "start": "root_start",
+        "end": "Decide",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge1",
+        "start": "Decide",
+        "end": "Idle",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "no",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge2",
+        "start": "Decide",
+        "end": "Work",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "yes",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge3",
+        "start": "Work_start",
+        "end": "Fork",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge4",
+        "start": "Fork",
+        "end": "W1",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge5",
+        "start": "Fork",
+        "end": "W2",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge6",
+        "start": "W1",
+        "end": "Join",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge7",
+        "start": "W2",
+        "end": "Join",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge8",
+        "start": "Join",
+        "end": "Work_end",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge9",
+        "start": "Idle",
+        "end": "Work",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "later",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge10",
+        "start": "Work",
+        "end": "root_end",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "done",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      }
+    ],
+    "other": {},
+    "links": {},
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "states": {
+      "root_start": {
+        "id": "root_start",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": true
+      },
+      "Decide": {
+        "id": "Decide",
+        "type": "choice",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "Idle": {
+        "id": "Idle",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "Work": {
+        "id": "Work",
+        "type": "default",
+        "descriptions": [],
+        "doc": [
+          {
+            "stmt": "relation",
+            "state1": {
+              "id": "Work_start",
+              "type": "default",
+              "classes": []
+            },
+            "state2": {
+              "id": "Fork",
+              "type": "default",
+              "classes": []
+            },
+            "description": null
+          },
+          {
+            "stmt": "state",
+            "id": "Fork",
+            "type": "fork",
+            "description": null,
+            "doc": null,
+            "classes": []
+          },
+          {
+            "stmt": "relation",
+            "state1": {
+              "id": "Fork",
+              "type": "default",
+              "classes": []
+            },
+            "state2": {
+              "id": "W1",
+              "type": "default",
+              "classes": []
+            },
+            "description": null
+          },
+          {
+            "stmt": "relation",
+            "state1": {
+              "id": "Fork",
+              "type": "default",
+              "classes": []
+            },
+            "state2": {
+              "id": "W2",
+              "type": "default",
+              "classes": []
+            },
+            "description": null
+          },
+          {
+            "stmt": "relation",
+            "state1": {
+              "id": "W1",
+              "type": "default",
+              "classes": []
+            },
+            "state2": {
+              "id": "Join",
+              "type": "default",
+              "classes": []
+            },
+            "description": null
+          },
+          {
+            "stmt": "relation",
+            "state1": {
+              "id": "W2",
+              "type": "default",
+              "classes": []
+            },
+            "state2": {
+              "id": "Join",
+              "type": "default",
+              "classes": []
+            },
+            "description": null
+          },
+          {
+            "stmt": "state",
+            "id": "Join",
+            "type": "join",
+            "description": null,
+            "doc": null,
+            "classes": []
+          },
+          {
+            "stmt": "relation",
+            "state1": {
+              "id": "Join",
+              "type": "default",
+              "classes": []
+            },
+            "state2": {
+              "id": "Work_end",
+              "type": "default",
+              "classes": []
+            },
+            "description": null
+          }
+        ],
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "root_end": {
+        "id": "root_end",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": false
+      }
+    },
+    "relations": [
+      {
+        "id1": "root_start",
+        "id2": "Decide",
+        "relationTitle": null
+      },
+      {
+        "id1": "Decide",
+        "id2": "Idle",
+        "relationTitle": "no"
+      },
+      {
+        "id1": "Decide",
+        "id2": "Work",
+        "relationTitle": "yes"
+      },
+      {
+        "id1": "Idle",
+        "id2": "Work",
+        "relationTitle": "later"
+      },
+      {
+        "id1": "Work",
+        "id2": "root_end",
+        "relationTitle": "done"
+      }
+    ],
+    "styleClasses": {}
+  }
+}

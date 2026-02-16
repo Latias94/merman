@@ -1,0 +1,11 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): scale directive + long edge labels (wrapping + punctuation).
+
+scale 600 width
+
+[*] --> Start : begin
+Start --> Work : this is a very long label that should wrap cleanly and keep stable layout (a/b/c, x=y, and "quotes")
+Work --> Review : another-long-label-with-a-veryveryverylongwordthatforceswrapping
+Review --> Done : ok
+Review --> Work : revise
+Done --> [*] : end

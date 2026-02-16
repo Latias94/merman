@@ -1,0 +1,454 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "nodes": [
+        {
+          "id": "A1",
+          "x": 80.281,
+          "y": 206.0,
+          "width": 34.563,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "A2",
+          "x": 80.281,
+          "y": 320.0,
+          "width": 34.563,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Active",
+          "x": 142.563,
+          "y": 231.0,
+          "width": 269.125,
+          "height": 318.0,
+          "is_cluster": true
+        },
+        {
+          "id": "B1",
+          "x": 204.844,
+          "y": 206.0,
+          "width": 34.563,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "B2",
+          "x": 204.844,
+          "y": 320.0,
+          "width": 34.563,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "End",
+          "x": 142.563,
+          "y": 484.0,
+          "width": 39.359,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "divider-id-1",
+          "x": 80.281,
+          "y": 231.0,
+          "width": 104.563,
+          "height": 268.0,
+          "is_cluster": true
+        },
+        {
+          "id": "divider-id-1_start",
+          "x": 80.281,
+          "y": 129.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "id-38dvt516gkfs-1",
+          "x": 204.844,
+          "y": 231.0,
+          "width": 133.766,
+          "height": 268.0,
+          "is_cluster": true
+        },
+        {
+          "id": "id-38dvt516gkfs-1_start",
+          "x": 204.844,
+          "y": 129.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "root_end",
+          "x": 142.563,
+          "y": 561.0,
+          "width": 14.013,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "root_start",
+          "x": 80.281,
+          "y": 15.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge0",
+          "from": "root_start",
+          "to": "Active",
+          "from_cluster": null,
+          "to_cluster": "state-Active-1",
+          "points": [
+            {
+              "x": 80.281,
+              "y": 22.0
+            },
+            {
+              "x": 80.281,
+              "y": 47.0
+            },
+            {
+              "x": 80.281,
+              "y": 72.0
+            },
+            {
+              "x": 80.281,
+              "y": 97.0
+            },
+            {
+              "x": 142.563,
+              "y": 231.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge1",
+          "from": "divider-id-1_start",
+          "to": "A1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 80.281,
+              "y": 136.0
+            },
+            {
+              "x": 80.281,
+              "y": 161.0
+            },
+            {
+              "x": 80.781,
+              "y": 186.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge2",
+          "from": "A1",
+          "to": "A2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 80.781,
+              "y": 226.5
+            },
+            {
+              "x": 80.281,
+              "y": 263.0
+            },
+            {
+              "x": 80.781,
+              "y": 300.5
+            }
+          ],
+          "label": {
+            "x": 80.281,
+            "y": 263.0,
+            "width": 6.875,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge3",
+          "from": "id-38dvt516gkfs-1_start",
+          "to": "B1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 204.844,
+              "y": 136.0
+            },
+            {
+              "x": 204.844,
+              "y": 161.0
+            },
+            {
+              "x": 205.344,
+              "y": 186.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge4",
+          "from": "B1",
+          "to": "B2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 205.344,
+              "y": 226.5
+            },
+            {
+              "x": 204.844,
+              "y": 263.0
+            },
+            {
+              "x": 205.344,
+              "y": 300.5
+            }
+          ],
+          "label": {
+            "x": 204.844,
+            "y": 263.0,
+            "width": 6.875,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge5",
+          "from": "A2",
+          "to": "End",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 80.781,
+              "y": 340.5
+            },
+            {
+              "x": 80.281,
+              "y": 365.0
+            },
+            {
+              "x": 80.281,
+              "y": 390.0
+            },
+            {
+              "x": 80.281,
+              "y": 427.0
+            },
+            {
+              "x": 124.016,
+              "y": 467.069
+            }
+          ],
+          "label": {
+            "x": 80.281,
+            "y": 427.0,
+            "width": 32.797,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge6",
+          "from": "B2",
+          "to": "End",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 205.344,
+              "y": 340.5
+            },
+            {
+              "x": 204.844,
+              "y": 365.0
+            },
+            {
+              "x": 204.844,
+              "y": 390.0
+            },
+            {
+              "x": 204.844,
+              "y": 427.0
+            },
+            {
+              "x": 162.109,
+              "y": 467.069
+            }
+          ],
+          "label": {
+            "x": 204.844,
+            "y": 427.0,
+            "width": 32.797,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge7",
+          "from": "End",
+          "to": "root_end",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 143.063,
+              "y": 504.5
+            },
+            {
+              "x": 142.563,
+              "y": 529.0
+            },
+            {
+              "x": 142.563,
+              "y": 554.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "Active",
+          "x": 142.563,
+          "y": 231.0,
+          "width": 269.125,
+          "height": 318.0,
+          "diff": -8.0,
+          "offset_y": 20.0,
+          "title": "Active",
+          "title_label": {
+            "x": 142.563,
+            "y": 85.0,
+            "width": 41.594,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "divider-id-1",
+          "x": 80.281,
+          "y": 231.0,
+          "width": 104.563,
+          "height": 268.0,
+          "diff": -8.0,
+          "offset_y": 0.0,
+          "title": "divider-id-1",
+          "title_label": {
+            "x": 80.281,
+            "y": 110.0,
+            "width": 74.234,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "id-38dvt516gkfs-1",
+          "x": 204.844,
+          "y": 231.0,
+          "width": 133.766,
+          "height": 268.0,
+          "diff": -8.0,
+          "offset_y": 0.0,
+          "title": "id-38dvt516gkfs-1",
+          "title_label": {
+            "x": 204.844,
+            "y": 110.0,
+            "width": 125.766,
+            "height": 24.0
+          },
+          "requested_dir": "TB",
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 277.125,
+        "max_y": 568.0
+      }
+    }
+  }
+}

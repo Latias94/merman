@@ -1,0 +1,12 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): securityLevel=strict click directives with tricky URLs (including semicolons).
+
+%%{init: {"securityLevel":"strict"} }%%
+
+[*] --> Safe
+Safe --> Bad
+Bad --> [*]
+
+click Safe "https://example.com/path;params?x=1#frag" "safe tooltip"
+click Bad "javascript:alert(1)" "js tooltip"
+click Bad "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==;x=y" "data tooltip"
