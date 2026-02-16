@@ -1,0 +1,19 @@
+flowchart TB
+%% Authored stress fixture (Mermaid@11.12.2): dense children inside a single cluster.
+
+accTitle: Flowchart stress - dense cluster children
+accDescr: Exercises cluster padding and boundary sizing for a cluster with many nodes and cross edges.
+
+subgraph CL["Dense Cluster"]
+  direction LR
+  a1[a1] --> a2[a2] --> a3[a3] --> a4[a4]
+  b1[b1] --> b2[b2] --> b3[b3] --> b4[b4]
+  c1[c1] --> c2[c2] --> c3[c3] --> c4[c4]
+  a2 --> b3
+  b2 --> c3
+  c2 --> a3
+end
+
+pre[pre] --> a1
+c4 --> post[post]
+

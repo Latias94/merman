@@ -1,0 +1,20 @@
+flowchart TB
+%% Authored stress fixture (Mermaid@11.12.2): subgraph titles with spaces/dashes and explicit ids.
+
+accTitle: Flowchart stress - subgraph title spaces vs dashes
+accDescr: Exercises auto ids, explicit ids, and nested subgraphs whose titles include spaces and dashes.
+
+subgraph parent_space["title with spaces"]
+  subgraph child_dash["title-with-dashes"]
+    A[alpha] --> B[beta]
+  end
+end
+
+subgraph parent_dash["parent-with-dashes"]
+  subgraph child_space["child title with spaces"]
+    C[gamma] --> D[delta]
+  end
+end
+
+parent_space --> parent_dash
+

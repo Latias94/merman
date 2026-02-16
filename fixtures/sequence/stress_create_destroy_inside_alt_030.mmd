@@ -1,0 +1,23 @@
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): create/destroy inside alt branches with activations.
+
+  participant A as Alice
+  participant S as Service
+
+  A->>S: start
+
+  alt spawn worker
+    create participant W as Worker
+    S->>W: spawn
+    activate W
+    W-->>S: ready
+    deactivate W
+    destroy W
+    S-xW: terminate
+  else reuse
+    S->>S: reuse existing worker
+    Note right of S: no new participants
+  end
+
+  S-->>A: done
+

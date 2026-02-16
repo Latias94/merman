@@ -1,0 +1,169 @@
+{
+  "diagramType": "flowchart-v2",
+  "model": {
+    "type": "flowchart-v2",
+    "keyword": "flowchart",
+    "direction": "LR",
+    "accTitle": "Flowchart stress - long cluster title (plain)",
+    "accDescr": "Exercises cluster title placeholder width for a long plain-text title when htmlLabels=false.",
+    "classDefs": {},
+    "tooltips": {},
+    "edgeDefaults": {
+      "style": [],
+      "interpolate": null
+    },
+    "vertexCalls": [
+      "x1",
+      "x2",
+      "outside",
+      "x1",
+      "x2",
+      "outside2"
+    ],
+    "nodes": [
+      {
+        "id": "x1",
+        "label": "x1",
+        "labelType": "string",
+        "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "x2",
+        "label": "x2",
+        "labelType": "string",
+        "shape": "square",
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "outside",
+        "label": "outside",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "outside2",
+        "label": "outside2",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      }
+    ],
+    "edges": [
+      {
+        "from": "x1",
+        "to": "x2",
+        "id": "L_x1_x2_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "outside",
+        "to": "x1",
+        "id": "L_outside_x1_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "x2",
+        "to": "outside2",
+        "id": "L_x2_outside2_0",
+        "isUserDefinedId": false,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [],
+        "classes": [],
+        "interpolate": null,
+        "animate": null,
+        "animation": null
+      }
+    ],
+    "subgraphs": [
+      {
+        "id": "subGraph0",
+        "nodes": [
+          "x2",
+          "x1"
+        ],
+        "title": "A very long cluster title with punctuation: (a/b/c)",
+        "classes": [],
+        "styles": [],
+        "dir": null,
+        "labelType": "text"
+      }
+    ]
+  }
+}

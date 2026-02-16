@@ -38,6 +38,21 @@ pub fn lookup_flowchart_root_viewport_override(
         }
         "stress_flowchart_shape_mix_009" => Some(("0 0 369.66796875 698.21875", "369.668")),
         "stress_flowchart_subgraph_boundary_edges_008" => Some(("0 0 774.21875 221", "774.219")),
+        "stress_flowchart_subgraph_title_margin_extremes_015" => {
+            Some(("0 25 806.421875 796", "806.422"))
+        }
+        "stress_flowchart_subgraph_dir_inherit_vs_local_016" => {
+            Some(("0 0 589.5625 445", "589.562"))
+        }
+        "stress_flowchart_edge_label_near_cluster_title_018" => {
+            Some(("0 0 201.09375 336", "201.094"))
+        }
+        "stress_flowchart_cluster_title_long_multiline_022" => {
+            Some(("0 0 601.921875 140", "601.922"))
+        }
+        "stress_flowchart_nested_clusters_external_edges_023" => {
+            Some(("0 0 534.8125 482", "534.812"))
+        }
         "mmdr_issue_28_text_rendering" => Some(("0 0 792.19873046875 244", "792.199")),
         "mmdr_issue_29_edge_label_distance" => Some((
             "0 0.000003814697265625 1339.015625 794.8007202148438",

@@ -19,6 +19,18 @@ pub fn lookup_sequence_root_viewport_override(
         "stress_semicolons_022" => Some(("-50 -10 523 308", "523")),
         "stress_unicode_longish_messages_027" => Some(("-50 -10 710.5 333", "710.5")),
         "stress_quoted_participants_and_types_023" => Some(("-50 -10 878 484", "878")),
+        "stress_wrap_directive_and_prefixes_028" => Some(("-50 -10 1024 412", "1024")),
+        "stress_nested_rect_par_029" => Some(("-50 -10 650 712", "650")),
+        "stress_create_destroy_inside_alt_030" => Some(("-50 -10 734 679", "734")),
+        "stress_long_participant_labels_br_031" => Some(("-50 -10 756 458", "756")),
+        "stress_par_multiple_ands_notes_032" => Some(("-50 -10 850 777", "850")),
+        "stress_critical_options_notes_033" => Some(("-50 -10 560 679", "560")),
+        "stress_loop_opt_alt_mix_034" => Some(("-50 -10 650 650", "650")),
+        "stress_activation_self_and_create_035" => Some(("-50 -10 725 530", "725")),
+        "stress_rect_blocks_many_levels_036" => Some(("-50 -10 450 486", "450")),
+        "stress_autonumber_step_reset_037" => Some(("-50 -10 450 391", "450")),
+        "stress_html_entities_and_escaping_038" => Some(("-50 -10 730 327", "730")),
+        "stress_message_text_with_colons_039" => Some(("-50 -10 988 318", "988")),
         "mmdr_benches_fixtures_expanded_sequence_frames_notes" => {
             Some(("-50 -10 1250 948", "1250"))
         }

@@ -1,0 +1,286 @@
+{
+  "diagramType": "mindmap",
+  "model": {
+    "type": "mindmap",
+    "nodes": [
+      {
+        "id": "0",
+        "domId": "node_0",
+        "label": "Root",
+        "isGroup": false,
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-root section--1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 0,
+        "nodeId": "root",
+        "type": 3
+      },
+      {
+        "id": "1",
+        "domId": "node_1",
+        "label": "مرحبا بالعالم",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 2,
+        "nodeId": "العربية",
+        "type": 2,
+        "section": 0
+      },
+      {
+        "id": "2",
+        "domId": "node_2",
+        "label": "שלום עולם",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "עברית",
+        "type": 2,
+        "section": 0
+      },
+      {
+        "id": "3",
+        "domId": "node_3",
+        "label": "RTL + LTR: مرحبا hello 123 🤖",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 6,
+        "nodeId": "mixed",
+        "type": 2,
+        "section": 0
+      },
+      {
+        "id": "4",
+        "domId": "node_4",
+        "label": "中文节点",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 2,
+        "nodeId": "中文",
+        "type": 2,
+        "section": 1
+      },
+      {
+        "id": "5",
+        "domId": "node_5",
+        "label": "日本語ノード",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "日本語",
+        "type": 2,
+        "section": 1
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge_0_1",
+        "start": "0",
+        "end": "1",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-1",
+        "depth": 0,
+        "section": 0
+      },
+      {
+        "id": "edge_1_2",
+        "start": "1",
+        "end": "2",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-3",
+        "depth": 2,
+        "section": 0
+      },
+      {
+        "id": "edge_2_3",
+        "start": "2",
+        "end": "3",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-5",
+        "depth": 4,
+        "section": 0
+      },
+      {
+        "id": "edge_0_4",
+        "start": "0",
+        "end": "4",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-1",
+        "depth": 0,
+        "section": 1
+      },
+      {
+        "id": "edge_4_5",
+        "start": "4",
+        "end": "5",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-1 edge-depth-3",
+        "depth": 2,
+        "section": 1
+      }
+    ],
+    "diagramId": "<dynamic>",
+    "rootNode": {
+      "id": 0,
+      "nodeId": "root",
+      "level": 0,
+      "descr": "Root",
+      "type": 3,
+      "children": [
+        {
+          "id": 1,
+          "nodeId": "العربية",
+          "level": 2,
+          "descr": "مرحبا بالعالم",
+          "type": 2,
+          "children": [
+            {
+              "id": 2,
+              "nodeId": "עברית",
+              "level": 4,
+              "descr": "שלום עולם",
+              "type": 2,
+              "children": [
+                {
+                  "id": 3,
+                  "nodeId": "mixed",
+                  "level": 6,
+                  "descr": "RTL + LTR: مرحبا hello 123 🤖",
+                  "type": 2,
+                  "children": [],
+                  "width": 200,
+                  "padding": 20,
+                  "section": 0
+                }
+              ],
+              "width": 200,
+              "padding": 20,
+              "section": 0
+            }
+          ],
+          "width": 200,
+          "padding": 20,
+          "section": 0
+        },
+        {
+          "id": 4,
+          "nodeId": "中文",
+          "level": 2,
+          "descr": "中文节点",
+          "type": 2,
+          "children": [
+            {
+              "id": 5,
+              "nodeId": "日本語",
+              "level": 4,
+              "descr": "日本語ノード",
+              "type": 2,
+              "children": [],
+              "width": 200,
+              "padding": 20,
+              "section": 1
+            }
+          ],
+          "width": 200,
+          "padding": 20,
+          "section": 1
+        }
+      ],
+      "width": 200,
+      "padding": 10,
+      "isRoot": true
+    },
+    "markers": [
+      "point"
+    ],
+    "direction": "TB",
+    "nodeSpacing": 50,
+    "rankSpacing": 50,
+    "shapes": {
+      "0": {
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "1": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "2": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "3": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "4": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "5": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      }
+    }
+  }
+}

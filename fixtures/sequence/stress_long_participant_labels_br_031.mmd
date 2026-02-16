@@ -1,0 +1,12 @@
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): long participant labels with <br> and wrap/nowrap interactions.
+
+  participant 1 as very-long-participant-label<br/>line-2<br/>line-3
+  participant 2 as another-long-participant-label<br>line-2
+  participant 3 as short
+
+  1->>2: wrap: message with <br/> inside<br/>and another line
+  2-->>1: nowrap: message with <br> inside<br>and another line
+  Note over 1,2: wrap: note with multiple lines<br/>line 2<br/>line 3
+  2->>3: ok
+

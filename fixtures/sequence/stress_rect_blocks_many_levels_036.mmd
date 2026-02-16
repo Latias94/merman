@@ -1,0 +1,18 @@
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): multiple nested rect blocks with notes.
+
+  participant A as Alice
+  participant B as Bob
+
+  rect rgb(245,245,245)
+    A->>B: outer
+    rect rgba(220,255,220,0.6)
+      A->>B: inner 1
+      Note over A,B: inner note
+      rect rgba(255,220,220,0.6)
+        A->>B: inner 2
+      end
+    end
+    B-->>A: done
+  end
+

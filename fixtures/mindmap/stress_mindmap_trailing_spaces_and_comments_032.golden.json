@@ -1,0 +1,149 @@
+{
+  "diagramType": "mindmap",
+  "model": {
+    "type": "mindmap",
+    "nodes": [
+      {
+        "id": "0",
+        "domId": "node_0",
+        "label": "Root",
+        "isGroup": false,
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-root section--1",
+        "cssStyles": [],
+        "look": "default",
+        "level": 0,
+        "nodeId": "root",
+        "type": 3
+      },
+      {
+        "id": "1",
+        "domId": "node_1",
+        "label": "A",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-0 urgent  %% class line",
+        "cssStyles": [],
+        "look": "default",
+        "icon": "fa fa-book",
+        "level": 2,
+        "nodeId": "A",
+        "type": 2,
+        "section": 0
+      },
+      {
+        "id": "2",
+        "domId": "node_2",
+        "label": "child",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "child",
+        "type": 2,
+        "section": 0
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge_0_1",
+        "start": "0",
+        "end": "1",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-1",
+        "depth": 0,
+        "section": 0
+      },
+      {
+        "id": "edge_1_2",
+        "start": "1",
+        "end": "2",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-3",
+        "depth": 2,
+        "section": 0
+      }
+    ],
+    "diagramId": "<dynamic>",
+    "rootNode": {
+      "id": 0,
+      "nodeId": "root",
+      "level": 0,
+      "descr": "Root",
+      "type": 3,
+      "children": [
+        {
+          "id": 1,
+          "nodeId": "A",
+          "level": 2,
+          "descr": "A",
+          "type": 2,
+          "children": [
+            {
+              "id": 2,
+              "nodeId": "child",
+              "level": 4,
+              "descr": "child",
+              "type": 2,
+              "children": [],
+              "width": 200,
+              "padding": 20,
+              "section": 0
+            }
+          ],
+          "width": 200,
+          "padding": 20,
+          "section": 0,
+          "class": "urgent  %% class line",
+          "icon": "fa fa-book"
+        }
+      ],
+      "width": 200,
+      "padding": 10,
+      "isRoot": true
+    },
+    "markers": [
+      "point"
+    ],
+    "direction": "TB",
+    "nodeSpacing": 50,
+    "rankSpacing": 50,
+    "shapes": {
+      "0": {
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "1": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "2": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      }
+    }
+  }
+}

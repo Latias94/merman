@@ -1,0 +1,7 @@
+mindmap
+  %% Authored stress fixture (Mermaid@11.12.2): HTML sanitization inside labels (safe + unsafe links/images).
+  root((Root))
+    safe["<a href='https://mermaid.js.org/' target='_blank'>docs</a>"]
+    unsafe1["<a href='javascript:alert(1)'>xss</a>"]
+    unsafe2["<img src=x onerror=alert(1)>"]
+

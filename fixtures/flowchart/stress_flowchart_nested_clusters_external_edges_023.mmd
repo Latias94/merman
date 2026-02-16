@@ -1,0 +1,19 @@
+flowchart LR
+%% Authored stress fixture (Mermaid@11.12.2): nested clusters with external edges that cross boundaries.
+
+accTitle: Flowchart stress - nested clusters with external edges
+accDescr: Exercises parent/child cluster bounds when child nodes have edges to outside nodes.
+
+subgraph P["Parent"]
+  direction TB
+  subgraph C["Child"]
+    direction TB
+    c1[c1] --> c2[c2]
+  end
+  p1[p1] --> c1
+end
+
+outside1[outside1] --> c2
+c1 --> outside2[outside2]
+P --> outside3[outside3]
+

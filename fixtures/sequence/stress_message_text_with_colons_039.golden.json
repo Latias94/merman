@@ -1,0 +1,88 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "C",
+      "S"
+    ],
+    "actors": {
+      "C": {
+        "name": "C",
+        "description": "Client",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "S": {
+        "name": "S",
+        "description": "Server",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "C",
+        "to": "S",
+        "message": "key: value: another: one more:",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "S",
+        "to": "C",
+        "message": "response:",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "C",
+        "to": "S",
+        "message": "",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "3",
+        "from": "S",
+        "to": "S",
+        "message": "trailing colon message above should still render a message label like upstream",
+        "wrap": false,
+        "type": 2,
+        "activate": false,
+        "placement": 1
+      }
+    ],
+    "notes": [
+      {
+        "actor": "S",
+        "placement": 1,
+        "message": "trailing colon message above should still render a message label like upstream",
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): composite state with internal/external edges + note on composite.
+
+[*] --> Big
+Big --> Outside : exit
+Outside --> Big : re-enter
+
+state "Big State" as Big {
+  [*] --> Inner1
+  Inner1 --> Inner2 : step
+  Inner2 --> Inner1 : loop
+  Inner2 --> [*] : done
+}
+
+note right of Big : "note on composite"
+

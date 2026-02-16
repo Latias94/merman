@@ -1,0 +1,10 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): quoted state descriptions with line breaks and punctuation.
+
+state "Alpha<br/>Beta" as AB
+state "Gamma — Delta" as GD
+
+[*] --> AB
+AB --> GD : "go?"
+GD --> [*] : done
+

@@ -1,0 +1,18 @@
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): mixed inline activation, self messages, create/destroy.
+
+  participant A as Alice
+  participant S as Service
+
+  A->>+S: start
+  S->>S: self-call()
+  S-->>-A: ack
+
+  create participant W as Worker
+  A->>W: allocate
+  activate W
+  W-->>A: ready
+  deactivate W
+  destroy W
+  A-xW: release
+

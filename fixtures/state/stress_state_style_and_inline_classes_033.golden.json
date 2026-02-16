@@ -1,0 +1,264 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "type": "stateDiagram",
+    "nodes": [
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "root_start",
+        "cssClasses": "start statediagram-state",
+        "cssCompiledStyles": [
+          "fill:#eef",
+          "stroke:#55a"
+        ],
+        "cssStyles": [],
+        "id": "root_start",
+        "dir": null,
+        "domId": "state-root_start-0",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "A",
+        "cssClasses": "hot statediagram-state",
+        "cssCompiledStyles": [
+          "fill:#ffe8e8",
+          "stroke:#a22",
+          "color:#400"
+        ],
+        "cssStyles": [],
+        "id": "A",
+        "dir": null,
+        "domId": "state-A-1",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "B",
+        "cssClasses": "cold statediagram-state",
+        "cssCompiledStyles": [
+          "fill:#e8f0ff",
+          "stroke:#22a",
+          "color:#004"
+        ],
+        "cssStyles": [],
+        "id": "B",
+        "dir": null,
+        "domId": "state-B-2",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateEnd",
+        "label": "root_end",
+        "cssClasses": "end statediagram-state",
+        "cssCompiledStyles": [
+          "fill:#efe",
+          "stroke:#5a5"
+        ],
+        "cssStyles": [],
+        "id": "root_end",
+        "dir": null,
+        "domId": "state-root_end-2",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge0",
+        "start": "root_start",
+        "end": "A",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge1",
+        "start": "A",
+        "end": "B",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "move",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge2",
+        "start": "B",
+        "end": "root_end",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      }
+    ],
+    "other": {},
+    "links": {},
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "states": {
+      "root_start": {
+        "id": "root_start",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [
+          "start"
+        ],
+        "styles": [],
+        "textStyles": [],
+        "start": true
+      },
+      "A": {
+        "id": "A",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [
+          "hot"
+        ],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "B": {
+        "id": "B",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [
+          "cold"
+        ],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "root_end": {
+        "id": "root_end",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [
+          "end"
+        ],
+        "styles": [],
+        "textStyles": [],
+        "start": false
+      }
+    },
+    "relations": [
+      {
+        "id1": "root_start",
+        "id2": "A",
+        "relationTitle": null
+      },
+      {
+        "id1": "A",
+        "id2": "B",
+        "relationTitle": "move"
+      },
+      {
+        "id1": "B",
+        "id2": "root_end",
+        "relationTitle": null
+      }
+    ],
+    "styleClasses": {
+      "start": {
+        "id": "start",
+        "styles": [
+          "fill:#eef",
+          "stroke:#55a"
+        ],
+        "textStyles": []
+      },
+      "end": {
+        "id": "end",
+        "styles": [
+          "fill:#efe",
+          "stroke:#5a5"
+        ],
+        "textStyles": []
+      },
+      "hot": {
+        "id": "hot",
+        "styles": [
+          "fill:#ffe8e8",
+          "stroke:#a22",
+          "color:#400"
+        ],
+        "textStyles": [
+          "fill:#400"
+        ]
+      },
+      "cold": {
+        "id": "cold",
+        "styles": [
+          "fill:#e8f0ff",
+          "stroke:#22a",
+          "color:#004"
+        ],
+        "textStyles": [
+          "fill:#004"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): loop with nested opt + alt and mixed arrows.
+
+  participant U as User
+  participant A as API
+  participant DB as Database
+
+  loop poll every minute
+    U->>A: GET /items
+    activate A
+    opt cache miss
+      A->>DB: query
+      DB-->>A: rows
+    end
+    alt ok
+      A-->>U: 200
+    else error
+      A--xU: 500
+      Note right of U: try later
+    end
+    deactivate A
+  end
+

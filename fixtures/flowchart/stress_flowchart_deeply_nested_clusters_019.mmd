@@ -1,0 +1,29 @@
+flowchart TD
+%% Authored stress fixture (Mermaid@11.12.2): deeply nested clusters with mixed directions and cross-level links.
+
+accTitle: Flowchart stress - deeply nested clusters
+accDescr: Exercises 4-level nesting, per-subgraph direction, and cross-level edges that affect cluster bounds.
+
+subgraph L1["Level 1"]
+  direction LR
+  l1a[a] --> l1b[b]
+
+  subgraph L2["Level 2"]
+    direction TB
+    l2a[a2] --> l2b[b2]
+
+    subgraph L3["Level 3"]
+      direction RL
+      l3a[a3] --> l3b[b3]
+
+      subgraph L4["Level 4"]
+        direction BT
+        l4a[a4] --> l4b[b4]
+      end
+    end
+  end
+end
+
+outside --> l4a
+l2b --> outside2[outside2]
+

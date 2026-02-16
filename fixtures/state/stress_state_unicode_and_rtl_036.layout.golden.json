@@ -1,0 +1,236 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "nodes": [
+        {
+          "id": "AR",
+          "x": 47.359,
+          "y": 344.0,
+          "width": 35.203,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "CN",
+          "x": 47.359,
+          "y": 116.0,
+          "width": 35.203,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "EMOJI",
+          "x": 47.359,
+          "y": 458.0,
+          "width": 59.203,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "JP",
+          "x": 47.359,
+          "y": 230.0,
+          "width": 35.203,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "root_end",
+          "x": 47.359,
+          "y": 559.0,
+          "width": 14.013,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "root_start",
+          "x": 47.359,
+          "y": 15.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge0",
+          "from": "root_start",
+          "to": "CN",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 47.359,
+              "y": 22.0
+            },
+            {
+              "x": 47.359,
+              "y": 59.0
+            },
+            {
+              "x": 47.859,
+              "y": 96.5
+            }
+          ],
+          "label": {
+            "x": 47.359,
+            "y": 59.0,
+            "width": 19.203,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge1",
+          "from": "CN",
+          "to": "JP",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 47.859,
+              "y": 136.5
+            },
+            {
+              "x": 47.359,
+              "y": 173.0
+            },
+            {
+              "x": 47.859,
+              "y": 210.5
+            }
+          ],
+          "label": {
+            "x": 47.359,
+            "y": 173.0,
+            "width": 28.797,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge2",
+          "from": "JP",
+          "to": "AR",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 47.859,
+              "y": 250.5
+            },
+            {
+              "x": 47.359,
+              "y": 287.0
+            },
+            {
+              "x": 47.859,
+              "y": 324.5
+            }
+          ],
+          "label": {
+            "x": 47.359,
+            "y": 287.0,
+            "width": 67.203,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge3",
+          "from": "AR",
+          "to": "EMOJI",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 47.859,
+              "y": 364.5
+            },
+            {
+              "x": 47.359,
+              "y": 401.0
+            },
+            {
+              "x": 47.859,
+              "y": 438.5
+            }
+          ],
+          "label": {
+            "x": 47.359,
+            "y": 401.0,
+            "width": 78.719,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge4",
+          "from": "EMOJI",
+          "to": "root_end",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 47.859,
+              "y": 478.5
+            },
+            {
+              "x": 47.359,
+              "y": 515.0
+            },
+            {
+              "x": 47.359,
+              "y": 552.0
+            }
+          ],
+          "label": {
+            "x": 47.359,
+            "y": 515.0,
+            "width": 9.594,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 86.719,
+        "max_y": 566.0
+      }
+    }
+  }
+}

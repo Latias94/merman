@@ -1,0 +1,100 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "1",
+      "2",
+      "3"
+    ],
+    "actors": {
+      "1": {
+        "name": "1",
+        "description": "very-long-participant-label<br/>line-2<br/>line-3",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "2": {
+        "name": "2",
+        "description": "another-long-participant-label<br>line-2",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      },
+      "3": {
+        "name": "3",
+        "description": "short",
+        "wrap": false,
+        "type": "participant",
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "1",
+        "to": "2",
+        "message": "message with <br/> inside<br/>and another line",
+        "wrap": true,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "2",
+        "to": "1",
+        "message": "message with <br> inside<br>and another line",
+        "wrap": false,
+        "type": 1,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "1",
+        "to": "2",
+        "message": "note with multiple lines<br/>line 2<br/>line 3",
+        "wrap": true,
+        "type": 2,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "3",
+        "from": "2",
+        "to": "3",
+        "message": "ok",
+        "wrap": false,
+        "type": 0,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": [
+          "1",
+          "2"
+        ],
+        "placement": 2,
+        "message": "note with multiple lines<br/>line 2<br/>line 3",
+        "wrap": true
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

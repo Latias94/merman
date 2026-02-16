@@ -1,0 +1,13 @@
+sequenceDiagram
+  %% Authored stress fixture (Mermaid@11.12.2): wrap directive + per-message wrap/nowrap prefixes.
+
+  %%{wrap}%%
+  participant A as Alice
+  participant B as Bob
+
+  A->>B: wrap: A long message that should wrap when the diagram uses the wrap directive and the label is wide enough
+  Note over A,B: wrap: A long note that should also wrap and expand the root viewBox when needed<br/>second line
+
+  A->>B: nowrap: A long message that should NOT wrap even though the diagram default is wrap
+  Note right of B: nowrap: A long note that should NOT wrap<br/>second line
+

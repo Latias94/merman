@@ -1,0 +1,21 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): concurrent regions with three lanes + labeled edges.
+
+[*] --> Parallel
+
+state Parallel {
+  [*] --> R1A
+  R1A --> R1B : r1
+  R1B --> [*]
+  --
+  [*] --> R2A
+  R2A --> R2B : r2
+  R2B --> [*]
+  --
+  [*] --> R3A
+  R3A --> R3B : r3
+  R3B --> [*]
+}
+
+Parallel --> [*] : join
+
