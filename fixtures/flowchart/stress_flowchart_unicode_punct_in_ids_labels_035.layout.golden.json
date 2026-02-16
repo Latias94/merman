@@ -1,0 +1,105 @@
+{
+  "diagramType": "flowchart-v2",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "id-1",
+          "x": 87.44,
+          "y": 47.0,
+          "width": 158.88,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "id_2",
+          "x": 316.32,
+          "y": 47.0,
+          "width": 198.88,
+          "height": 78.0,
+          "is_cluster": false
+        },
+        {
+          "id": "id3",
+          "x": 643.92,
+          "y": 47.0,
+          "width": 136.16,
+          "height": 54.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_id-1_id_2_0",
+          "from": "id-1",
+          "to": "id_2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 166.88,
+              "y": 47.0
+            },
+            {
+              "x": 191.88,
+              "y": 47.0
+            },
+            {
+              "x": 216.88,
+              "y": 47.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_id_2_id3_0",
+          "from": "id_2",
+          "to": "id3",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 415.76,
+              "y": 47.0
+            },
+            {
+              "x": 495.8,
+              "y": 47.0
+            },
+            {
+              "x": 575.84,
+              "y": 47.0
+            }
+          ],
+          "label": {
+            "x": 495.8,
+            "y": 47.0,
+            "width": 110.08,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 712.0,
+        "max_y": 86.0
+      }
+    }
+  }
+}

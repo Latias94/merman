@@ -1139,6 +1139,32 @@ pub(super) fn render_flowchart_root(
         .get(cluster_id.unwrap_or(""))
         .cloned()
         .unwrap_or_default();
+    if !dom_order.is_empty() {
+        // Some upstream flowchart-v2 configurations can produce a DOM registration order that
+        // only includes non-recursive clusters (clusters with external edges). These clusters do
+        // not emit a node DOM element, so relying on the raw order would produce an empty
+        // `.nodes` group. Fall back to our effective-parent ordering in that case.
+        let mut emits_anything = false;
+        for id in &dom_order {
+            if ctx
+                .subgraphs_by_id
+                .get(id)
+                .is_some_and(|sg| !sg.nodes.is_empty())
+            {
+                if ctx.recursive_clusters.contains(id) {
+                    emits_anything = true;
+                    break;
+                }
+                continue;
+            }
+            emits_anything = true;
+            break;
+        }
+        if !emits_anything {
+            dom_order.clear();
+        }
+    }
+
     if dom_order.is_empty() {
         // Fallback for v1 layouts: approximate by appending extracted cluster roots after
         // regular nodes.

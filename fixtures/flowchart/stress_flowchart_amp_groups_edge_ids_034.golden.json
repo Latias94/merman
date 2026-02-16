@@ -3,33 +3,30 @@
   "model": {
     "type": "flowchart-v2",
     "keyword": "flowchart",
-    "direction": "LR",
-    "accTitle": null,
-    "accDescr": null,
+    "direction": "TB",
+    "accTitle": "Flowchart stress - group edges and ids",
+    "accDescr": "Ensures grouped vertices produce deterministic edge ids and linkStyle indexing remains stable.",
     "classDefs": {},
-    "tooltips": {
-      "cache": "Cache docs",
-      "db": "DB docs",
-      "api": "API docs"
-    },
+    "tooltips": {},
     "edgeDefaults": {
       "style": [],
       "interpolate": null
     },
     "vertexCalls": [
-      "u",
-      "api",
-      "api",
-      "db",
-      "api",
-      "cache"
+      "A",
+      "B",
+      "C",
+      "C",
+      "D",
+      "C",
+      "E"
     ],
     "nodes": [
       {
-        "id": "u",
-        "label": "User",
-        "labelType": "string",
-        "shape": "square",
+        "id": "A",
+        "label": "A",
+        "labelType": "text",
+        "shape": null,
         "layoutShape": "squareRect",
         "icon": null,
         "form": null,
@@ -45,10 +42,10 @@
         "haveCallback": false
       },
       {
-        "id": "api",
-        "label": "API",
-        "labelType": "string",
-        "shape": "square",
+        "id": "B",
+        "label": "B",
+        "labelType": "text",
+        "shape": null,
         "layoutShape": "squareRect",
         "icon": null,
         "form": null,
@@ -58,19 +55,17 @@
         "assetWidth": null,
         "assetHeight": null,
         "styles": [],
-        "classes": [
-          "clickable"
-        ],
-        "link": "https://example.com/api",
+        "classes": [],
+        "link": null,
         "linkTarget": null,
         "haveCallback": false
       },
       {
-        "id": "db",
-        "label": "DB",
+        "id": "C",
+        "label": "C",
         "labelType": "text",
-        "shape": "cylinder",
-        "layoutShape": "cylinder",
+        "shape": null,
+        "layoutShape": "squareRect",
         "icon": null,
         "form": null,
         "pos": null,
@@ -79,19 +74,17 @@
         "assetWidth": null,
         "assetHeight": null,
         "styles": [],
-        "classes": [
-          "clickable"
-        ],
-        "link": "https://example.com/db",
+        "classes": [],
+        "link": null,
         "linkTarget": null,
         "haveCallback": false
       },
       {
-        "id": "cache",
-        "label": "Cache",
+        "id": "D",
+        "label": "D",
         "labelType": "text",
-        "shape": "cylinder",
-        "layoutShape": "cylinder",
+        "shape": null,
+        "layoutShape": "squareRect",
         "icon": null,
         "form": null,
         "pos": null,
@@ -100,19 +93,36 @@
         "assetWidth": null,
         "assetHeight": null,
         "styles": [],
-        "classes": [
-          "clickable"
-        ],
-        "link": "https://example.com/cache",
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "E",
+        "label": "E",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
         "linkTarget": null,
         "haveCallback": false
       }
     ],
     "edges": [
       {
-        "from": "u",
-        "to": "api",
-        "id": "L_u_api_0",
+        "from": "A",
+        "to": "C",
+        "id": "L_A_C_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
@@ -120,16 +130,20 @@
         "length": 1,
         "label": null,
         "labelType": "text",
-        "style": [],
+        "style": [
+          "stroke:#333",
+          "stroke-width:2px",
+          "fill:none"
+        ],
         "classes": [],
         "interpolate": null,
         "animate": null,
         "animation": null
       },
       {
-        "from": "api",
-        "to": "db",
-        "id": "L_api_db_0",
+        "from": "B",
+        "to": "C",
+        "id": "L_B_C_0",
         "isUserDefinedId": false,
         "arrow": "-->",
         "type": "arrow_point",
@@ -137,17 +151,42 @@
         "length": 1,
         "label": null,
         "labelType": "text",
-        "style": [],
+        "style": [
+          "stroke:#0066cc",
+          "stroke-width:2px",
+          "fill:none"
+        ],
         "classes": [],
         "interpolate": null,
         "animate": null,
         "animation": null
       },
       {
-        "from": "api",
-        "to": "cache",
-        "id": "L_api_cache_0",
-        "isUserDefinedId": false,
+        "from": "C",
+        "to": "D",
+        "id": "e1",
+        "isUserDefinedId": true,
+        "arrow": "-->",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1,
+        "label": null,
+        "labelType": "text",
+        "style": [
+          "stroke:#cc3300",
+          "stroke-width:3px",
+          "fill:none"
+        ],
+        "classes": [],
+        "interpolate": "basis",
+        "animate": null,
+        "animation": null
+      },
+      {
+        "from": "C",
+        "to": "E",
+        "id": "e2",
+        "isUserDefinedId": true,
         "arrow": "-->",
         "type": "arrow_point",
         "stroke": "normal",
@@ -156,7 +195,7 @@
         "labelType": "text",
         "style": [],
         "classes": [],
-        "interpolate": null,
+        "interpolate": "cardinal",
         "animate": null,
         "animation": null
       }

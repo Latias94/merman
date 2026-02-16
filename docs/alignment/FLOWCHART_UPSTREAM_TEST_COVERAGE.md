@@ -531,6 +531,48 @@ observed upstream SVG behaviors that are easy to regress when refactoring layout
 - subgraph `direction` ignored when external edges exist: `fixtures/flowchart/upstream_flowchart_v2_stage2_subgraph_dir_ignored_when_has_external_edges_spec.mmd`
 - long-word title wrapping in SVG-like mode: `fixtures/flowchart/upstream_flowchart_v2_stage2_subgraph_title_wraps_long_word_svglike_spec.mmd`
 
+## Authored stress fixtures
+
+These fixtures are authored in-repo to exercise layout/DOM edge cases and are parity-gated against
+upstream SVG baselines under `fixtures/upstream-svgs/flowchart/`:
+
+- `fixtures/flowchart/stress_flowchart_amp_groups_edge_ids_034.mmd`
+- `fixtures/flowchart/stress_flowchart_classdef_and_inline_classes_003.mmd`
+- `fixtures/flowchart/stress_flowchart_click_sanitization_strict_027.mmd`
+- `fixtures/flowchart/stress_flowchart_clicks_and_tooltips_005.mmd`
+- `fixtures/flowchart/stress_flowchart_cluster_dense_children_021.mmd`
+- `fixtures/flowchart/stress_flowchart_cluster_minimal_title_placeholder_024.mmd`
+- `fixtures/flowchart/stress_flowchart_cluster_title_long_multiline_022.mmd`
+- `fixtures/flowchart/stress_flowchart_comments_and_directives_010.mmd`
+- `fixtures/flowchart/stress_flowchart_deeply_nested_clusters_019.mmd`
+- `fixtures/flowchart/stress_flowchart_dense_parallel_edges_002.mmd`
+- `fixtures/flowchart/stress_flowchart_directives_comments_blank_lines_032.mmd`
+- `fixtures/flowchart/stress_flowchart_edge_id_curves_mixed_linkstyle_026.mmd`
+- `fixtures/flowchart/stress_flowchart_edge_label_near_cluster_title_018.mmd`
+- `fixtures/flowchart/stress_flowchart_edge_label_wrapping_007.mmd`
+- `fixtures/flowchart/stress_flowchart_edges_to_from_subgraphs_017.mmd`
+- `fixtures/flowchart/stress_flowchart_escape_sequences_and_quotes_012.mmd`
+- `fixtures/flowchart/stress_flowchart_html_edge_labels_br_033.mmd`
+- `fixtures/flowchart/stress_flowchart_linkstyle_indexing_004.mmd`
+- `fixtures/flowchart/stress_flowchart_long_labels_punctuation_unicode_006.mmd`
+- `fixtures/flowchart/stress_flowchart_multi_direction_graph_011.mmd`
+- `fixtures/flowchart/stress_flowchart_multi_edges_unlabeled_and_labeled_028.mmd`
+- `fixtures/flowchart/stress_flowchart_nested_clusters_external_edges_023.mmd`
+- `fixtures/flowchart/stress_flowchart_nested_subgraphs_titles_001.mmd`
+- `fixtures/flowchart/stress_flowchart_shape_mix_009.mmd`
+- `fixtures/flowchart/stress_flowchart_style_classdef_subgraph_031.mmd`
+- `fixtures/flowchart/stress_flowchart_subgraph_boundary_edges_008.mmd`
+- `fixtures/flowchart/stress_flowchart_subgraph_dir_inherit_vs_local_016.mmd`
+- `fixtures/flowchart/stress_flowchart_subgraph_html_titles_020.mmd`
+- `fixtures/flowchart/stress_flowchart_subgraph_markdown_titles_013.mmd`
+- `fixtures/flowchart/stress_flowchart_subgraph_only_subgraphs_links_out_036.mmd`
+- `fixtures/flowchart/stress_flowchart_subgraph_title_margin_extremes_015.mmd`
+- `fixtures/flowchart/stress_flowchart_subgraph_title_margins_extreme_nested_030.mmd`
+- `fixtures/flowchart/stress_flowchart_subgraph_title_spaces_dashes_014.mmd`
+- `fixtures/flowchart/stress_flowchart_svglike_escaped_tags_025.mmd`
+- `fixtures/flowchart/stress_flowchart_title_padding_subgraph_029.mmd`
+- `fixtures/flowchart/stress_flowchart_unicode_punct_in_ids_labels_035.mmd`
+
 ## SVG DOM parity notes (Flowchart v2)
 
 These are upstream Mermaid `@11.12.2` behaviors worth calling out explicitly because they are

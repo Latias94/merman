@@ -1,0 +1,17 @@
+flowchart TD
+%% Authored stress fixture (Mermaid@11.12.2): ampersand groups + edge ids + linkStyle.
+
+accTitle: Flowchart stress - group edges and ids
+accDescr: Ensures grouped vertices produce deterministic edge ids and linkStyle indexing remains stable.
+
+A & B --> C
+C e1@--> D
+C e2@--> E
+
+e1@{curve: basis}
+e2@{curve: cardinal}
+
+linkStyle 0 stroke:#333,stroke-width:2px
+linkStyle 1 stroke:#0066cc,stroke-width:2px
+linkStyle 2 stroke:#cc3300,stroke-width:3px
+

@@ -441,8 +441,45 @@ impl<'input> Lexer<'input> {
 
     fn capture_to_stmt_end(&mut self) -> (usize, String, usize) {
         let start = self.pos;
+        let mut in_double_quote = false;
+        let mut in_single_quote = false;
+        let mut escaped = false;
         while self.pos < self.input.len() {
             let b = self.input.as_bytes()[self.pos];
+            if in_double_quote {
+                if escaped {
+                    escaped = false;
+                } else if b == b'\\' {
+                    escaped = true;
+                } else if b == b'"' {
+                    in_double_quote = false;
+                }
+                self.pos += 1;
+                continue;
+            }
+            if in_single_quote {
+                if escaped {
+                    escaped = false;
+                } else if b == b'\\' {
+                    escaped = true;
+                } else if b == b'\'' {
+                    in_single_quote = false;
+                }
+                self.pos += 1;
+                continue;
+            }
+
+            if b == b'"' {
+                in_double_quote = true;
+                self.pos += 1;
+                continue;
+            }
+            if b == b'\'' {
+                in_single_quote = true;
+                self.pos += 1;
+                continue;
+            }
+
             if b == b'\n' || b == b';' {
                 break;
             }

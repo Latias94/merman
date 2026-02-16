@@ -1,0 +1,21 @@
+---
+title: Stress flowchart strict click sanitization
+config:
+  securityLevel: strict
+  htmlLabels: true
+  flowchart:
+    htmlLabels: true
+---
+flowchart LR
+%% Authored stress fixture (Mermaid@11.12.2): strict-mode click link sanitization + tooltips.
+
+accTitle: Flowchart stress - strict click sanitization
+accDescr: Ensures javascript/data links are sanitized in strict mode while http(s) links remain intact.
+
+safe["Safe link"] --> bad["Unsafe link"]
+bad --> tail["Tail"]
+
+click safe href "https://example.com/docs?q=1#frag" "safe tooltip"
+click bad href "javascript:alert(1)" "bad tooltip"
+click tail href "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==" "data tooltip"
+

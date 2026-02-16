@@ -1,0 +1,16 @@
+---
+title: Stress flowchart HTML edge labels with br
+config:
+  htmlLabels: true
+  flowchart:
+    htmlLabels: true
+---
+flowchart LR
+%% Authored stress fixture (Mermaid@11.12.2): HTML edge labels that include <br/> and wrapping.
+
+accTitle: Flowchart stress - HTML edge labels with br
+accDescr: Exercises HTML edge label layout when the label contains <br/> and long text.
+
+A[Left] -->|"Line 1<br/>Line 2"| B[Right]
+A -->|"A very long label that should wrap<br/>and keep a stable bbox"| C[Down]
+

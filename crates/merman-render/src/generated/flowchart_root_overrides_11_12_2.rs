@@ -53,6 +53,21 @@ pub fn lookup_flowchart_root_viewport_override(
         "stress_flowchart_nested_clusters_external_edges_023" => {
             Some(("0 0 534.8125 482", "534.812"))
         }
+        "stress_flowchart_svglike_escaped_tags_025" => {
+            Some(("0 -50 1311.5703125 331.6000061035156", "1311.57"))
+        }
+        "stress_flowchart_click_sanitization_strict_027" => {
+            Some(("0 -50 462.203125 120", "462.203"))
+        }
+        "stress_flowchart_title_padding_subgraph_029" => {
+            Some(("-20.5078125 -27 399.765625 263", "399.766"))
+        }
+        "stress_flowchart_subgraph_title_margins_extreme_nested_030" => {
+            Some(("0 -50 487.671875 283", "487.672"))
+        }
+        "stress_flowchart_unicode_punct_in_ids_labels_035" => {
+            Some(("0 0 834.921875 70", "834.922"))
+        }
         "mmdr_issue_28_text_rendering" => Some(("0 0 792.19873046875 244", "792.199")),
         "mmdr_issue_29_edge_label_distance" => Some((
             "0 0.000003814697265625 1339.015625 794.8007202148438",

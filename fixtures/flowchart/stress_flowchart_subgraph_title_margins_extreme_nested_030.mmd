@@ -1,0 +1,25 @@
+---
+title: Stress flowchart extreme subGraphTitleMargin (nested)
+config:
+  flowchart:
+    subGraphTitleMargin:
+      top: 24
+      bottom: 0
+---
+flowchart LR
+%% Authored stress fixture (Mermaid@11.12.2): extreme subGraphTitleMargin with nested subgraphs.
+
+accTitle: Flowchart stress - subGraphTitleMargin extremes
+accDescr: Stresses nested subgraph title placeholders and edges near titles when margins are extreme.
+
+subgraph Outer
+  direction TB
+  subgraph Inner
+    direction LR
+    a[one] --> b[two]
+  end
+  b --> c[three]
+end
+
+c --> Outer
+

@@ -1,0 +1,19 @@
+flowchart TD
+%% Authored stress fixture (Mermaid@11.12.2): edge id curve overrides mixed with linkStyle interpolate.
+
+accTitle: Flowchart stress - edge id curve overrides
+accDescr: Mixes linkStyle interpolate defaults with per-edge curve overrides (basis/cardinal/bumpY/catmullRom).
+
+A e1@--> B
+A e2@--> C
+B e3@--> D
+C e4@--> D
+
+linkStyle default interpolate basis
+linkStyle 0 interpolate cardinal
+
+e1@{curve: bumpY}
+e2@{curve: catmullRom}
+e3@{curve: basis}
+e4@{curve: cardinal}
+

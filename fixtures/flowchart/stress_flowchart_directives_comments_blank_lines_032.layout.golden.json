@@ -1,0 +1,196 @@
+{
+  "diagramType": "flowchart-v2",
+  "layout": {
+    "FlowchartV2": {
+      "nodes": [
+        {
+          "id": "a1",
+          "x": 99.7,
+          "y": 80.0,
+          "width": 83.36,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "a2",
+          "x": 270.86,
+          "y": 80.0,
+          "width": 88.96,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "b1",
+          "x": 99.06,
+          "y": 284.0,
+          "width": 97.12,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "b2",
+          "x": 277.74,
+          "y": 284.0,
+          "width": 90.24,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "ClusterA",
+          "x": 186.68,
+          "y": 80.0,
+          "width": 342.32,
+          "height": 144.0,
+          "is_cluster": true
+        },
+        {
+          "id": "ClusterB",
+          "x": 186.68,
+          "y": 284.0,
+          "width": 357.36,
+          "height": 144.0,
+          "is_cluster": true
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_a1_a2_0",
+          "from": "a1",
+          "to": "a2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 141.38,
+              "y": 80.0
+            },
+            {
+              "x": 183.88,
+              "y": 80.0
+            },
+            {
+              "x": 226.38,
+              "y": 80.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_b1_b2_0",
+          "from": "b1",
+          "to": "b2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 147.62,
+              "y": 284.0
+            },
+            {
+              "x": 190.12,
+              "y": 284.0
+            },
+            {
+              "x": 232.62,
+              "y": 284.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "L_ClusterA_ClusterB_0",
+          "from": "ClusterA",
+          "to": "ClusterB",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 186.68,
+              "y": 152.0
+            },
+            {
+              "x": 186.68,
+              "y": 182.0
+            },
+            {
+              "x": 186.68,
+              "y": 212.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "ClusterA",
+          "x": 186.68,
+          "y": 80.0,
+          "width": 342.32,
+          "height": 144.0,
+          "diff": -4.0,
+          "offset_y": 20.0,
+          "title": "ClusterA",
+          "title_label": {
+            "x": 186.68,
+            "y": 20.0,
+            "width": 58.08,
+            "height": 24.0
+          },
+          "requested_dir": "LR",
+          "effective_dir": "LR",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "ClusterB",
+          "x": 186.68,
+          "y": 284.0,
+          "width": 357.36,
+          "height": 144.0,
+          "diff": -4.0,
+          "offset_y": 20.0,
+          "title": "ClusterB",
+          "title_label": {
+            "x": 186.68,
+            "y": 224.0,
+            "width": 58.08,
+            "height": 24.0
+          },
+          "requested_dir": "LR",
+          "effective_dir": "LR",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 365.36,
+        "max_y": 356.0
+      }
+    }
+  }
+}
