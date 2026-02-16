@@ -397,6 +397,8 @@ Work items (expected ROI order):
   (avoid rescanning `label_style` strings per node/edge label).
 - (Done) Reuse flowchart node label metrics computed during layout (avoid re-measuring HTML/markdown
   labels during render).
+  - includes viewBox approximation for `delay`/`curv-trap` shapes (avoid re-measuring just to
+    recover the "theoretical" label width)
 - (Done) Avoid cloning `effective_config` JSON in hot render paths where the sanitize config is needed
   (pass `MermaidConfig` through the render API so diagram renderers can read config without deep-cloning).
 - (Done) Reduce mindmap label render allocations:
