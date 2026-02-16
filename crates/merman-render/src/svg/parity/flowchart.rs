@@ -1557,7 +1557,7 @@ pub(super) fn render_flowchart_cluster(
         return;
     }
 
-    let compiled_styles = flowchart_compile_styles(&ctx.class_defs, &sg.classes, &sg.styles);
+    let compiled_styles = flowchart_compile_styles(&ctx.class_defs, &sg.classes, &sg.styles, &[]);
     let rect_style = compiled_styles.node_style.trim();
     let label_style = compiled_styles.label_style.trim();
 
@@ -5074,10 +5074,12 @@ pub(super) fn render_flowchart_edge_label(
     let label_text = edge.label.as_deref().unwrap_or_default();
     let label_type = edge.label_type.as_deref().unwrap_or("text");
     let label_text_plain = flowchart_label_plain_text(label_text, label_type, ctx.edge_html_labels);
-    let mut edge_label_styles: Vec<String> = ctx.default_edge_style.clone();
-    edge_label_styles.extend(edge.style.iter().cloned());
-    let compiled_label_styles =
-        flowchart_compile_styles(&ctx.class_defs, &edge.classes, &edge_label_styles);
+    let compiled_label_styles = flowchart_compile_styles(
+        &ctx.class_defs,
+        &edge.classes,
+        &ctx.default_edge_style,
+        &edge.style,
+    );
     let span_style_attr = OptionalStyleXmlAttr(compiled_label_styles.label_style.as_str());
     let div_color_prefix = if let Some(color) = compiled_label_styles.label_color.as_deref() {
         let color = color.trim();
@@ -5620,28 +5622,29 @@ pub(super) struct FlowchartCompiledStyles {
 pub(super) fn flowchart_compile_styles(
     class_defs: &IndexMap<String, Vec<String>>,
     classes: &[String],
-    inline_styles: &[String],
+    inline_styles_a: &[String],
+    inline_styles_b: &[String],
 ) -> FlowchartCompiledStyles {
     // Ported from Mermaid `handDrawnShapeStyles.compileStyles()` / `styles2String()`:
     // - preserve insertion order of the first occurrence of a key
     // - later occurrences override values, without changing order
     #[derive(Default)]
-    struct OrderedMap {
-        order: Vec<(String, String)>,
-        idx: std::collections::HashMap<String, usize>,
+    struct OrderedMap<'a> {
+        order: Vec<(&'a str, &'a str)>,
+        idx: FxHashMap<&'a str, usize>,
     }
-    impl OrderedMap {
-        fn set(&mut self, k: &str, v: &str) {
+    impl<'a> OrderedMap<'a> {
+        fn set(&mut self, k: &'a str, v: &'a str) {
             if let Some(&i) = self.idx.get(k) {
-                self.order[i].1 = v.to_string();
+                self.order[i].1 = v;
                 return;
             }
-            self.idx.insert(k.to_string(), self.order.len());
-            self.order.push((k.to_string(), v.to_string()));
+            self.idx.insert(k, self.order.len());
+            self.order.push((k, v));
         }
     }
 
-    let mut m = OrderedMap::default();
+    let mut m: OrderedMap<'_> = OrderedMap::default();
 
     for c in classes {
         let Some(decls) = class_defs.get(c) else {
@@ -5655,7 +5658,7 @@ pub(super) fn flowchart_compile_styles(
         }
     }
 
-    for d in inline_styles {
+    for d in inline_styles_a.iter().chain(inline_styles_b.iter()) {
         let Some((k, v)) = parse_style_decl(d) else {
             continue;
         };
@@ -5677,17 +5680,19 @@ pub(super) fn flowchart_compile_styles(
     let mut stroke_dasharray: Option<String> = None;
 
     for (k, v) in &m.order {
+        let k = *k;
+        let v = *v;
         if is_text_style_key(k) {
             if !label_style.is_empty() {
                 label_style.push(';');
             }
             let _ = write!(&mut label_style, "{k}:{v} !important");
-            match k.as_str() {
-                "color" => label_color = Some(v.clone()),
-                "font-family" => label_font_family = Some(v.clone()),
-                "font-size" => label_font_size = Some(v.clone()),
-                "font-weight" => label_font_weight = Some(v.clone()),
-                "opacity" => label_opacity = Some(v.clone()),
+            match k {
+                "color" => label_color = Some(v.to_string()),
+                "font-family" => label_font_family = Some(v.to_string()),
+                "font-size" => label_font_size = Some(v.to_string()),
+                "font-weight" => label_font_weight = Some(v.to_string()),
+                "opacity" => label_opacity = Some(v.to_string()),
                 _ => {}
             }
         } else {
@@ -5696,11 +5701,11 @@ pub(super) fn flowchart_compile_styles(
             }
             let _ = write!(&mut node_style, "{k}:{v} !important");
         }
-        match k.as_str() {
-            "fill" => fill = Some(v.clone()),
-            "stroke" => stroke = Some(v.clone()),
-            "stroke-width" => stroke_width = Some(v.clone()),
-            "stroke-dasharray" => stroke_dasharray = Some(v.clone()),
+        match k {
+            "fill" => fill = Some(v.to_string()),
+            "stroke" => stroke = Some(v.to_string()),
+            "stroke-width" => stroke_width = Some(v.to_string()),
+            "stroke-dasharray" => stroke_dasharray = Some(v.to_string()),
             _ => {}
         }
     }
@@ -5947,7 +5952,8 @@ fn render_flowchart_node(
     out.push('>');
 
     let style_start = timing_enabled.then(std::time::Instant::now);
-    let mut compiled_styles = flowchart_compile_styles(&ctx.class_defs, node_classes, node_styles);
+    let mut compiled_styles =
+        flowchart_compile_styles(&ctx.class_defs, node_classes, node_styles, &[]);
     if let Some(s) = style_start {
         details.node_style_compile += s.elapsed();
     }
