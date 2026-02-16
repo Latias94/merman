@@ -54,6 +54,11 @@ Latest local spotcheck (2026-02-16):
 - Notes:
   - Mindmap layout: we now use an indexed COSE entrypoint (avoid building `BTreeMap<String, Point>`).
   - Architecture render: we avoid cloning `effective_config` when only the sanitize config is needed.
+  - Mindmap render (label emission): we reduced per-label `String` churn and added a conservative
+    markdown fast-path for plain-text labels.
+    - Spotcheck: `target/bench/stage_spotcheck.mindmap_after2.long.md` (not committed)
+    - Ratios (`mindmap_medium`): `parse 1.32x`, `layout 2.71x`, `render 1.19x`, `end_to_end 2.46x`
+    - Interpretation: mindmap is now **layout-dominated** (COSE), not render-dominated.
 
 - Tiny canaries (after Dagre-ish tiny fast-path):
   - `docs/performance/spotcheck_2026-02-15_tiny.md`
@@ -373,6 +378,9 @@ Work items (expected ROI order):
   labels during render).
 - (Done) Avoid cloning `effective_config` JSON in hot render paths where the sanitize config is needed
   (pass `MermaidConfig` through the render API so diagram renderers can read config without deep-cloning).
+- (Done) Reduce mindmap label render allocations:
+  - write SVG label markup directly into the output buffer (avoid `format!`/temporary strings)
+  - conservative markdown fast-path for plain-text labels (avoid pulldown + sanitize)
 - (Planned) Cache per-diagram derived values that are reused many times (e.g. sanitized labels /
   class names), scoped to the render call to avoid cross-diagram leaks.
 
