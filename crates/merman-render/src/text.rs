@@ -6,6 +6,10 @@ use std::sync::OnceLock;
 use regex::Regex;
 
 pub fn replace_fontawesome_icons(input: &str) -> String {
+    // Fast path: avoid the regex engine for the common case (no icon markers).
+    if !input.contains(":fa-") {
+        return input.to_string();
+    }
     // Mermaid `rendering-util/createText.ts::replaceIconSubstring()` converts icon notations like:
     //   `fa:fa-user` -> `<i class="fa fa-user"></i>`
     //
