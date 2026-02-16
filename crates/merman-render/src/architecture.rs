@@ -70,55 +70,134 @@ struct ArchitectureModel {
     edges: Vec<ArchitectureEdgeModel>,
 }
 
-impl ArchitectureModel {
-    fn from_typed(model: &ArchitectureDiagramRenderModel) -> Self {
-        fn dir_to_string(d: char) -> Option<String> {
-            Some(d.to_string())
-        }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArchitectureNodeType {
+    Service,
+    Junction,
+    Other,
+}
 
-        let edges: Vec<ArchitectureEdgeModel> = model
+#[derive(Debug, Clone, Copy)]
+struct ArchitectureNodeView<'a> {
+    id: &'a str,
+    node_type: ArchitectureNodeType,
+    title: Option<&'a str>,
+    edges: Option<&'a [ArchitectureEdgeModel]>,
+    edge_indices: &'a [usize],
+    in_group: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ArchitectureGroupView<'a> {
+    id: &'a str,
+    in_group: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ArchitectureEdgeView<'a> {
+    lhs_id: &'a str,
+    rhs_id: &'a str,
+    lhs_dir: Option<char>,
+    rhs_dir: Option<char>,
+    lhs_group: Option<bool>,
+    rhs_group: Option<bool>,
+}
+
+#[derive(Debug, Clone)]
+struct ArchitectureModelView<'a> {
+    nodes: Vec<ArchitectureNodeView<'a>>,
+    groups: Vec<ArchitectureGroupView<'a>>,
+    edges: Vec<ArchitectureEdgeView<'a>>,
+}
+
+impl<'a> ArchitectureModelView<'a> {
+    fn from_json(model: &'a ArchitectureModel) -> Self {
+        let nodes = model
+            .nodes
+            .iter()
+            .map(|n| ArchitectureNodeView {
+                id: n.id.as_str(),
+                node_type: match n.node_type.as_str() {
+                    "service" => ArchitectureNodeType::Service,
+                    "junction" => ArchitectureNodeType::Junction,
+                    _ => ArchitectureNodeType::Other,
+                },
+                title: n.title.as_deref(),
+                edges: n.edges.as_deref(),
+                edge_indices: n.edge_indices.as_slice(),
+                in_group: n.in_group.as_deref(),
+            })
+            .collect();
+
+        let groups = model
+            .groups
+            .iter()
+            .map(|g| ArchitectureGroupView {
+                id: g.id.as_str(),
+                in_group: g.in_group.as_deref(),
+            })
+            .collect();
+
+        let edges = model
             .edges
             .iter()
-            .map(|e| ArchitectureEdgeModel {
-                lhs_id: e.lhs_id.clone(),
-                rhs_id: e.rhs_id.clone(),
-                lhs_dir: dir_to_string(e.lhs_dir),
-                rhs_dir: dir_to_string(e.rhs_dir),
+            .map(|e| ArchitectureEdgeView {
+                lhs_id: e.lhs_id.as_str(),
+                rhs_id: e.rhs_id.as_str(),
+                lhs_dir: e.lhs_dir.as_deref().and_then(|s| s.chars().next()),
+                rhs_dir: e.rhs_dir.as_deref().and_then(|s| s.chars().next()),
                 lhs_group: e.lhs_group,
                 rhs_group: e.rhs_group,
             })
             .collect();
 
-        let mut nodes: Vec<ArchitectureNodeModel> = Vec::with_capacity(model.nodes.len());
-        for n in &model.nodes {
-            let node_type = match n.node_type {
-                merman_core::diagrams::architecture::ArchitectureRenderNodeType::Service => {
-                    "service"
-                }
-                merman_core::diagrams::architecture::ArchitectureRenderNodeType::Junction => {
-                    "junction"
-                }
-            }
-            .to_string();
-
-            nodes.push(ArchitectureNodeModel {
-                id: n.id.clone(),
-                node_type,
-                edges: None,
-                edge_indices: n.edge_indices.clone(),
-                icon: n.icon.clone(),
-                title: n.title.clone(),
-                icon_text: n.icon_text.clone(),
-                in_group: n.in_group.clone(),
-            });
+        Self {
+            nodes,
+            groups,
+            edges,
         }
+    }
 
-        let groups: Vec<ArchitectureGroupModel> = model
+    fn from_typed(model: &'a ArchitectureDiagramRenderModel) -> Self {
+        let nodes = model
+            .nodes
+            .iter()
+            .map(|n| ArchitectureNodeView {
+                id: n.id.as_str(),
+                node_type: match n.node_type {
+                    merman_core::diagrams::architecture::ArchitectureRenderNodeType::Service => {
+                        ArchitectureNodeType::Service
+                    }
+                    merman_core::diagrams::architecture::ArchitectureRenderNodeType::Junction => {
+                        ArchitectureNodeType::Junction
+                    }
+                },
+                title: n.title.as_deref(),
+                edges: None,
+                edge_indices: n.edge_indices.as_slice(),
+                in_group: n.in_group.as_deref(),
+            })
+            .collect();
+
+        let groups = model
             .groups
             .iter()
-            .map(|g| ArchitectureGroupModel {
-                id: g.id.clone(),
-                in_group: g.in_group.clone(),
+            .map(|g| ArchitectureGroupView {
+                id: g.id.as_str(),
+                in_group: g.in_group.as_deref(),
+            })
+            .collect();
+
+        let edges = model
+            .edges
+            .iter()
+            .map(|e| ArchitectureEdgeView {
+                lhs_id: e.lhs_id.as_str(),
+                rhs_id: e.rhs_id.as_str(),
+                lhs_dir: Some(e.lhs_dir),
+                rhs_dir: Some(e.rhs_dir),
+                lhs_group: e.lhs_group,
+                rhs_group: e.rhs_group,
             })
             .collect();
 
@@ -151,8 +230,14 @@ pub fn layout_architecture_diagram(
     _text_measurer: &dyn TextMeasurer,
     use_manatee_layout: bool,
 ) -> Result<ArchitectureDiagramLayout> {
-    let model: ArchitectureModel = from_value_ref(model)?;
-    layout_architecture_diagram_model(&model, effective_config, _text_measurer, use_manatee_layout)
+    let model_json: ArchitectureModel = from_value_ref(model)?;
+    let model_view = ArchitectureModelView::from_json(&model_json);
+    layout_architecture_diagram_model(
+        &model_view,
+        effective_config,
+        _text_measurer,
+        use_manatee_layout,
+    )
 }
 
 pub fn layout_architecture_diagram_typed(
@@ -161,12 +246,12 @@ pub fn layout_architecture_diagram_typed(
     text_measurer: &dyn TextMeasurer,
     use_manatee_layout: bool,
 ) -> Result<ArchitectureDiagramLayout> {
-    let model = ArchitectureModel::from_typed(model);
+    let model = ArchitectureModelView::from_typed(model);
     layout_architecture_diagram_model(&model, effective_config, text_measurer, use_manatee_layout)
 }
 
 fn layout_architecture_diagram_model(
-    model: &ArchitectureModel,
+    model: &ArchitectureModelView<'_>,
     effective_config: &Value,
     _text_measurer: &dyn TextMeasurer,
     use_manatee_layout: bool,
@@ -207,12 +292,12 @@ fn layout_architecture_diagram_model(
     }
 
     impl Dir {
-        fn parse(s: &str) -> Option<Self> {
-            match s.trim() {
-                "L" => Some(Self::L),
-                "R" => Some(Self::R),
-                "T" => Some(Self::T),
-                "B" => Some(Self::B),
+        fn from_char(ch: char) -> Option<Self> {
+            match ch {
+                'L' => Some(Self::L),
+                'R' => Some(Self::R),
+                'T' => Some(Self::T),
+                'B' => Some(Self::B),
                 _ => None,
             }
         }
@@ -290,41 +375,47 @@ fn layout_architecture_diagram_model(
     let mut adjacency: std::collections::HashMap<&str, IndexMap<&'static str, &str>> =
         std::collections::HashMap::with_capacity(model.nodes.len().saturating_mul(2));
     for n in &model.nodes {
-        adjacency.insert(n.id.as_str(), IndexMap::new());
+        adjacency.insert(n.id, IndexMap::new());
     }
 
     for n in &model.nodes {
-        let Some(entry) = adjacency.get_mut(n.id.as_str()) else {
+        let Some(entry) = adjacency.get_mut(n.id) else {
             continue;
         };
         if !n.edge_indices.is_empty() {
-            for &idx in &n.edge_indices {
+            for &idx in n.edge_indices {
                 let Some(e) = model.edges.get(idx) else {
                     continue;
                 };
 
                 let (Some(lhs_dir), Some(rhs_dir)) = (
-                    e.lhs_dir.as_deref().and_then(Dir::parse),
-                    e.rhs_dir.as_deref().and_then(Dir::parse),
+                    e.lhs_dir.and_then(Dir::from_char),
+                    e.rhs_dir.and_then(Dir::from_char),
                 ) else {
                     continue;
                 };
 
                 if e.lhs_id == n.id {
                     if let Some(pair) = dir_pair_key(lhs_dir, rhs_dir) {
-                        entry.insert(pair, e.rhs_id.as_str());
+                        entry.insert(pair, e.rhs_id);
                     }
                 } else if e.rhs_id == n.id {
                     if let Some(pair) = dir_pair_key(rhs_dir, lhs_dir) {
-                        entry.insert(pair, e.lhs_id.as_str());
+                        entry.insert(pair, e.lhs_id);
                     }
                 }
             }
-        } else if let Some(node_edges) = n.edges.as_deref() {
+        } else if let Some(node_edges) = n.edges {
             for e in node_edges {
                 let (Some(lhs_dir), Some(rhs_dir)) = (
-                    e.lhs_dir.as_deref().and_then(Dir::parse),
-                    e.rhs_dir.as_deref().and_then(Dir::parse),
+                    e.lhs_dir
+                        .as_deref()
+                        .and_then(|s| s.chars().next())
+                        .and_then(Dir::from_char),
+                    e.rhs_dir
+                        .as_deref()
+                        .and_then(|s| s.chars().next())
+                        .and_then(Dir::from_char),
                 ) else {
                     continue;
                 };
@@ -352,7 +443,7 @@ fn layout_architecture_diagram_model(
 
     // Deterministic component discovery: mimic Mermaid's `Object.keys(notVisited)[0]` by walking
     // `node_order` and taking the first not-yet-assigned id for each component.
-    let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id.as_str()).collect();
+    let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id).collect();
     let mut assigned: std::collections::HashSet<&str> =
         std::collections::HashSet::with_capacity(model.nodes.len().saturating_mul(2));
     for &start_id in &node_order {
@@ -464,18 +555,18 @@ fn layout_architecture_diagram_model(
     // Emit nodes in Mermaid model order (stable for snapshots and close to upstream).
     let emit_nodes_start = timing_enabled.then(std::time::Instant::now);
     for n in &model.nodes {
-        match n.node_type.as_str() {
-            "service" | "junction" => {}
+        match n.node_type {
+            ArchitectureNodeType::Service | ArchitectureNodeType::Junction => {}
             other => {
                 return Err(Error::InvalidModel {
-                    message: format!("unsupported architecture node type: {other}"),
+                    message: format!("unsupported architecture node type: {other:?}"),
                 });
             }
         }
 
-        let (x, y) = pos_px.get(n.id.as_str()).copied().unwrap_or((0.0, 0.0));
+        let (x, y) = pos_px.get(n.id).copied().unwrap_or((0.0, 0.0));
         nodes.push(LayoutNode {
-            id: n.id.clone(),
+            id: n.id.to_string(),
             x: x + shift_x,
             y: y + shift_y,
             width: icon_size,
@@ -502,7 +593,7 @@ fn layout_architecture_diagram_model(
         let mut node_group: std::collections::BTreeMap<&str, Option<&str>> =
             std::collections::BTreeMap::new();
         for n in &model.nodes {
-            node_group.insert(n.id.as_str(), n.in_group.as_deref());
+            node_group.insert(n.id, n.in_group);
         }
 
         // Mermaid Architecture junction nodes are "invisible" routing helpers. In the upstream
@@ -513,25 +604,22 @@ fn layout_architecture_diagram_model(
         // infer it from incident non-junction neighbors:
         // - pick the unique group if there is exactly one
         // - otherwise pick the most frequent group (skip ties)
-        let has_junction = model.nodes.iter().any(|n| n.node_type == "junction");
+        let has_junction = model
+            .nodes
+            .iter()
+            .any(|n| n.node_type == ArchitectureNodeType::Junction);
         if has_junction {
             let junction_ids: std::collections::BTreeSet<&str> = model
                 .nodes
                 .iter()
-                .filter(|n| n.node_type == "junction")
-                .map(|n| n.id.as_str())
+                .filter(|n| n.node_type == ArchitectureNodeType::Junction)
+                .map(|n| n.id)
                 .collect();
             let mut neighbors: std::collections::BTreeMap<&str, Vec<&str>> =
                 std::collections::BTreeMap::new();
             for e in &model.edges {
-                neighbors
-                    .entry(e.lhs_id.as_str())
-                    .or_default()
-                    .push(e.rhs_id.as_str());
-                neighbors
-                    .entry(e.rhs_id.as_str())
-                    .or_default()
-                    .push(e.lhs_id.as_str());
+                neighbors.entry(e.lhs_id).or_default().push(e.rhs_id);
+                neighbors.entry(e.rhs_id).or_default().push(e.lhs_id);
             }
 
             for j in &junction_ids {
@@ -590,7 +678,7 @@ fn layout_architecture_diagram_model(
         let mut shared_group: Option<&str> = None;
         let mut all_nodes_share_same_group = true;
         for n in &model.nodes {
-            let g = node_group.get(n.id.as_str()).and_then(|v| *v);
+            let g = node_group.get(n.id).and_then(|v| *v);
             match (shared_group, g) {
                 (None, None) => {}
                 (None, Some(x)) => shared_group = Some(x),
@@ -639,8 +727,9 @@ fn layout_architecture_diagram_model(
                 Bend,
             }
 
-            fn dir_alignment(a: Option<&str>, b: Option<&str>) -> GroupAlignment {
-                let (Some(a), Some(b)) = (a.and_then(Dir::parse), b.and_then(Dir::parse)) else {
+            fn dir_alignment(a: Option<char>, b: Option<char>) -> GroupAlignment {
+                let (Some(a), Some(b)) = (a.and_then(Dir::from_char), b.and_then(Dir::from_char))
+                else {
                     return GroupAlignment::Bend;
                 };
                 if a.is_x() != b.is_x() {
@@ -658,16 +747,16 @@ fn layout_architecture_diagram_model(
                 std::collections::BTreeMap<String, GroupAlignment>,
             > = std::collections::BTreeMap::new();
             for e in &model.edges {
-                let Some(lhs_group) = node_group.get(e.lhs_id.as_str()).and_then(|v| *v) else {
+                let Some(lhs_group) = node_group.get(e.lhs_id).and_then(|v| *v) else {
                     continue;
                 };
-                let Some(rhs_group) = node_group.get(e.rhs_id.as_str()).and_then(|v| *v) else {
+                let Some(rhs_group) = node_group.get(e.rhs_id).and_then(|v| *v) else {
                     continue;
                 };
                 if lhs_group == rhs_group {
                     continue;
                 }
-                let alignment = dir_alignment(e.lhs_dir.as_deref(), e.rhs_dir.as_deref());
+                let alignment = dir_alignment(e.lhs_dir, e.rhs_dir);
                 if alignment == GroupAlignment::Bend {
                     continue;
                 }
@@ -871,8 +960,8 @@ fn layout_architecture_diagram_model(
         const NESTING_FACTOR: f64 = 0.1; // cytoscape-fcose default `nestingFactor`
 
         let has_inter_parent_edge = model.edges.iter().any(|e| {
-            let lhs_g = node_group.get(e.lhs_id.as_str()).and_then(|v| *v);
-            let rhs_g = node_group.get(e.rhs_id.as_str()).and_then(|v| *v);
+            let lhs_g = node_group.get(e.lhs_id).and_then(|v| *v);
+            let rhs_g = node_group.get(e.rhs_id).and_then(|v| *v);
             lhs_g != rhs_g
         });
 
@@ -885,8 +974,8 @@ fn layout_architecture_diagram_model(
             let mut group_parent_map: std::collections::BTreeMap<&str, &str> =
                 std::collections::BTreeMap::new();
             for g in &model.groups {
-                if let Some(parent) = g.in_group.as_deref() {
-                    group_parent_map.insert(g.id.as_str(), parent);
+                if let Some(parent) = g.in_group {
+                    group_parent_map.insert(g.id, parent);
                 }
             }
 
@@ -906,12 +995,12 @@ fn layout_architecture_diagram_model(
 
             for n in &model.nodes {
                 let chain = node_group
-                    .get(n.id.as_str())
+                    .get(n.id)
                     .copied()
                     .flatten()
                     .map(|g| group_chain(g, &group_parent_map))
                     .unwrap_or_default();
-                node_chain.insert(n.id.as_str(), chain);
+                node_chain.insert(n.id, chain);
             }
 
             #[derive(Debug, Clone, Copy)]
@@ -923,22 +1012,22 @@ fn layout_architecture_diagram_model(
             let mut group_children: std::collections::BTreeMap<&str, Vec<Child<'_>>> =
                 std::collections::BTreeMap::new();
             for g in &model.groups {
-                group_children.entry(g.id.as_str()).or_default();
+                group_children.entry(g.id).or_default();
             }
             for g in &model.groups {
-                if let Some(parent) = g.in_group.as_deref() {
+                if let Some(parent) = g.in_group {
                     group_children
                         .entry(parent)
                         .or_default()
-                        .push(Child::Group(g.id.as_str()));
+                        .push(Child::Group(g.id));
                 }
             }
             for n in &model.nodes {
-                if let Some(parent) = node_group.get(n.id.as_str()).copied().flatten() {
+                if let Some(parent) = node_group.get(n.id).copied().flatten() {
                     group_children
                         .entry(parent)
                         .or_default()
-                        .push(Child::Node(n.id.as_str()));
+                        .push(Child::Node(n.id));
                 }
             }
 
@@ -981,7 +1070,7 @@ fn layout_architecture_diagram_model(
 
             for g in &model.groups {
                 let _ = estimated_size_of_group(
-                    g.id.as_str(),
+                    g.id,
                     icon_size,
                     &group_children,
                     &mut group_estimated_size,
@@ -996,16 +1085,16 @@ fn layout_architecture_diagram_model(
 
         for e in &model.edges {
             let (u, v) = if e.lhs_id <= e.rhs_id {
-                (e.lhs_id.as_str(), e.rhs_id.as_str())
+                (e.lhs_id, e.rhs_id)
             } else {
-                (e.rhs_id.as_str(), e.lhs_id.as_str())
+                (e.rhs_id, e.lhs_id)
             };
             if !edge_seen.insert((u, v)) {
                 continue;
             }
 
-            let lhs_g = node_group.get(e.lhs_id.as_str()).and_then(|v| *v);
-            let rhs_g = node_group.get(e.rhs_id.as_str()).and_then(|v| *v);
+            let lhs_g = node_group.get(e.lhs_id).and_then(|v| *v);
+            let rhs_g = node_group.get(e.rhs_id).and_then(|v| *v);
             let same_parent = lhs_g == rhs_g;
 
             let base_ideal_length = if same_parent {
@@ -1024,11 +1113,11 @@ fn layout_architecture_diagram_model(
                 base_ideal_length
             } else {
                 let chain_a = node_chain
-                    .get(e.lhs_id.as_str())
+                    .get(e.lhs_id)
                     .map(|v| v.as_slice())
                     .unwrap_or(&[]);
                 let chain_b = node_chain
-                    .get(e.rhs_id.as_str())
+                    .get(e.rhs_id)
                     .map(|v| v.as_slice())
                     .unwrap_or(&[]);
 
@@ -1040,12 +1129,12 @@ fn layout_architecture_diagram_model(
 
                 // `edge.getSourceInLca()` / `edge.getTargetInLca()` equivalents.
                 let source_in_lca = if chain_a.len() == common_len {
-                    e.lhs_id.as_str()
+                    e.lhs_id
                 } else {
                     chain_a[common_len]
                 };
                 let target_in_lca = if chain_b.len() == common_len {
-                    e.rhs_id.as_str()
+                    e.rhs_id
                 } else {
                     chain_b[common_len]
                 };
@@ -1077,13 +1166,13 @@ fn layout_architecture_diagram_model(
 
             let elasticity = if same_parent { 0.45 } else { 0.001 };
 
-            let source_anchor = e.lhs_dir.as_deref().and_then(Dir::parse).map(|d| match d {
+            let source_anchor = e.lhs_dir.and_then(Dir::from_char).map(|d| match d {
                 Dir::L => manatee::Anchor::Left,
                 Dir::R => manatee::Anchor::Right,
                 Dir::T => manatee::Anchor::Top,
                 Dir::B => manatee::Anchor::Bottom,
             });
-            let target_anchor = e.rhs_dir.as_deref().and_then(Dir::parse).map(|d| match d {
+            let target_anchor = e.rhs_dir.and_then(Dir::from_char).map(|d| match d {
                 Dir::L => manatee::Anchor::Left,
                 Dir::R => manatee::Anchor::Right,
                 Dir::T => manatee::Anchor::Top,
@@ -1091,8 +1180,8 @@ fn layout_architecture_diagram_model(
             });
             edges.push(manatee::Edge {
                 id: format!("edge-{}", edges.len()),
-                source: e.lhs_id.clone(),
-                target: e.rhs_id.clone(),
+                source: e.lhs_id.to_string(),
+                target: e.rhs_id.to_string(),
                 source_anchor,
                 target_anchor,
                 ideal_length,
@@ -1127,8 +1216,8 @@ fn layout_architecture_diagram_model(
                 .groups
                 .iter()
                 .map(|g| manatee::Compound {
-                    id: g.id.clone(),
-                    parent: g.in_group.clone(),
+                    id: g.id.to_string(),
+                    parent: g.in_group.map(str::to_string),
                 })
                 .collect(),
         };
@@ -1181,33 +1270,30 @@ fn layout_architecture_diagram_model(
         // group's internal relative placements.
         fn resolve_top_level_group_separation(
             nodes: &mut [LayoutNode],
-            model: &ArchitectureModel,
+            model: &ArchitectureModelView<'_>,
             icon_size: f64,
             padding_px: f64,
             font_size_px: f64,
         ) {
-            let node_type: std::collections::BTreeMap<&str, &str> = model
+            let node_type: FxHashMap<&str, ArchitectureNodeType> =
+                model.nodes.iter().map(|n| (n.id, n.node_type)).collect();
+            let node_title: FxHashMap<&str, &str> = model
                 .nodes
                 .iter()
-                .map(|n| (n.id.as_str(), n.node_type.as_str()))
-                .collect();
-            let node_title: std::collections::BTreeMap<&str, &str> = model
-                .nodes
-                .iter()
-                .filter_map(|n| n.title.as_deref().map(|t| (n.id.as_str(), t)))
+                .filter_map(|n| n.title.map(|t| (n.id, t)))
                 .collect();
 
-            let mut group_parent: std::collections::BTreeMap<&str, &str> =
-                std::collections::BTreeMap::new();
+            let mut group_parent: FxHashMap<&str, &str> = FxHashMap::default();
+            group_parent.reserve(model.groups.len().saturating_mul(2));
             for g in &model.groups {
-                if let Some(parent) = g.in_group.as_deref() {
-                    group_parent.insert(g.id.as_str(), parent);
+                if let Some(parent) = g.in_group {
+                    group_parent.insert(g.id, parent);
                 }
             }
 
             fn root_group<'a>(
                 mut g: &'a str,
-                group_parent: &std::collections::BTreeMap<&'a str, &'a str>,
+                group_parent: &FxHashMap<&'a str, &'a str>,
             ) -> &'a str {
                 while let Some(p) = group_parent.get(g).copied() {
                     g = p;
@@ -1215,12 +1301,12 @@ fn layout_architecture_diagram_model(
                 g
             }
 
-            let mut node_root_group: std::collections::BTreeMap<&str, &str> =
-                std::collections::BTreeMap::new();
+            let mut node_root_group: FxHashMap<&str, &str> = FxHashMap::default();
+            node_root_group.reserve(model.nodes.len());
             for n in &model.nodes {
-                if let Some(g) = n.in_group.as_deref() {
+                if let Some(g) = n.in_group {
                     let root = root_group(g, &group_parent);
-                    node_root_group.insert(n.id.as_str(), root);
+                    node_root_group.insert(n.id, root);
                 }
             }
 
@@ -1245,10 +1331,10 @@ fn layout_architecture_diagram_model(
             let mut rels: Vec<GroupRel> = Vec::new();
             let mut left_of_pairs: Vec<(String, String)> = Vec::new();
             for e in &model.edges {
-                let Some(lhs_g) = node_root_group.get(e.lhs_id.as_str()).copied() else {
+                let Some(lhs_g) = node_root_group.get(e.lhs_id).copied() else {
                     continue;
                 };
-                let Some(rhs_g) = node_root_group.get(e.rhs_id.as_str()).copied() else {
+                let Some(rhs_g) = node_root_group.get(e.rhs_id).copied() else {
                     continue;
                 };
                 if lhs_g == rhs_g {
@@ -1275,9 +1361,9 @@ fn layout_architecture_diagram_model(
                     // true compound support in `manatee`, add an extra padding-derived gap so the
                     // root viewport is closer in `parity-root` mode.
                     let lhs_is_junction =
-                        node_type.get(e.lhs_id.as_str()).copied().unwrap_or("") == "junction";
+                        node_type.get(e.lhs_id).copied() == Some(ArchitectureNodeType::Junction);
                     let rhs_is_junction =
-                        node_type.get(e.rhs_id.as_str()).copied().unwrap_or("") == "junction";
+                        node_type.get(e.rhs_id).copied() == Some(ArchitectureNodeType::Junction);
                     if lhs_is_junction && rhs_is_junction {
                         // Tuned for Mermaid@11.12.2 Architecture fixtures where junction-to-junction
                         // edges with `{group}` endpoints dominate the root viewport (e.g.
@@ -1286,10 +1372,8 @@ fn layout_architecture_diagram_model(
                     }
                 }
 
-                let lhs_dir = e.lhs_dir.as_deref().unwrap_or("");
-                let rhs_dir = e.rhs_dir.as_deref().unwrap_or("");
-                match (lhs_dir, rhs_dir) {
-                    ("R", "L") => {
+                match (e.lhs_dir, e.rhs_dir) {
+                    (Some('R'), Some('L')) => {
                         rels.push(GroupRel::LeftOf {
                             left: lhs_g.to_string(),
                             right: rhs_g.to_string(),
@@ -1297,7 +1381,7 @@ fn layout_architecture_diagram_model(
                         });
                         left_of_pairs.push((lhs_g.to_string(), rhs_g.to_string()));
                     }
-                    ("L", "R") => {
+                    (Some('L'), Some('R')) => {
                         rels.push(GroupRel::LeftOf {
                             left: rhs_g.to_string(),
                             right: lhs_g.to_string(),
@@ -1311,12 +1395,12 @@ fn layout_architecture_diagram_model(
                     //   rhs's bottom), so rhs is above lhs.
                     // - `lhs:B -- rhs:T` means lhs is *above* rhs (lhs connects from its bottom to
                     //   rhs's top), so lhs is above rhs.
-                    ("T", "B") => rels.push(GroupRel::Above {
+                    (Some('T'), Some('B')) => rels.push(GroupRel::Above {
                         top: rhs_g.to_string(),
                         bottom: lhs_g.to_string(),
                         gap: gap + if is_group_edge { 18.0 } else { 0.0 },
                     }),
-                    ("B", "T") => rels.push(GroupRel::Above {
+                    (Some('B'), Some('T')) => rels.push(GroupRel::Above {
                         top: lhs_g.to_string(),
                         bottom: rhs_g.to_string(),
                         gap: gap + if is_group_edge { 18.0 } else { 0.0 },
@@ -1353,6 +1437,13 @@ fn layout_architecture_diagram_model(
             rels.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
             rels.dedup_by(|a, b| format!("{a:?}") == format!("{b:?}"));
 
+            let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+            let text_style = crate::text::TextStyle {
+                font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+                font_size: font_size_px,
+                font_weight: None,
+            };
+
             #[derive(Debug, Clone, Copy)]
             struct BBox {
                 min_x: f64,
@@ -1364,19 +1455,14 @@ fn layout_architecture_diagram_model(
             fn group_bbox(
                 nodes: &[LayoutNode],
                 group: &str,
-                node_root_group: &std::collections::BTreeMap<&str, &str>,
-                node_type: &std::collections::BTreeMap<&str, &str>,
-                node_title: &std::collections::BTreeMap<&str, &str>,
+                node_root_group: &FxHashMap<&str, &str>,
+                node_type: &FxHashMap<&str, ArchitectureNodeType>,
+                node_title: &FxHashMap<&str, &str>,
+                measurer: &dyn crate::text::TextMeasurer,
+                text_style: &crate::text::TextStyle,
                 icon_size: f64,
                 font_size_px: f64,
             ) -> Option<BBox> {
-                let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
-                let text_style = crate::text::TextStyle {
-                    font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
-                    font_size: font_size_px,
-                    font_weight: None,
-                };
-
                 fn wrap_svg_words_to_lines(
                     text: &str,
                     max_width_px: f64,
@@ -1426,8 +1512,8 @@ fn layout_architecture_diagram_model(
                     let mut nx2 = n.x + n.width;
                     let mut ny2 = n.y + n.height;
 
-                    let is_service =
-                        node_type.get(n.id.as_str()).copied().unwrap_or("") == "service";
+                    let is_service = node_type.get(n.id.as_str()).copied()
+                        == Some(ArchitectureNodeType::Service);
                     if is_service {
                         if let Some(title) = node_title
                             .get(n.id.as_str())
@@ -1438,13 +1524,13 @@ fn layout_architecture_diagram_model(
                             let lines = wrap_svg_words_to_lines(
                                 title,
                                 icon_size * 1.5,
-                                &measurer,
-                                &text_style,
+                                measurer,
+                                text_style,
                             );
                             let mut bbox_left = 0.0f64;
                             let mut bbox_right = 0.0f64;
                             for line in &lines {
-                                let (l, r) = measurer.measure_svg_text_bbox_x(line, &text_style);
+                                let (l, r) = measurer.measure_svg_text_bbox_x(line, text_style);
                                 bbox_left = bbox_left.max(l);
                                 bbox_right = bbox_right.max(r);
                             }
@@ -1483,7 +1569,7 @@ fn layout_architecture_diagram_model(
             fn translate_group(
                 nodes: &mut [LayoutNode],
                 group: &str,
-                node_root_group: &std::collections::BTreeMap<&str, &str>,
+                node_root_group: &FxHashMap<&str, &str>,
                 dx: f64,
                 dy: f64,
             ) {
@@ -1513,6 +1599,8 @@ fn layout_architecture_diagram_model(
                                 &node_root_group,
                                 &node_type,
                                 &node_title,
+                                &measurer,
+                                &text_style,
                                 icon_size,
                                 font_size_px,
                             ) else {
@@ -1524,6 +1612,8 @@ fn layout_architecture_diagram_model(
                                 &node_root_group,
                                 &node_type,
                                 &node_title,
+                                &measurer,
+                                &text_style,
                                 icon_size,
                                 font_size_px,
                             ) else {
@@ -1543,6 +1633,8 @@ fn layout_architecture_diagram_model(
                                 &node_root_group,
                                 &node_type,
                                 &node_title,
+                                &measurer,
+                                &text_style,
                                 icon_size,
                                 font_size_px,
                             ) else {
@@ -1554,6 +1646,8 @@ fn layout_architecture_diagram_model(
                                 &node_root_group,
                                 &node_type,
                                 &node_title,
+                                &measurer,
+                                &text_style,
                                 icon_size,
                                 font_size_px,
                             ) else {
@@ -1573,6 +1667,8 @@ fn layout_architecture_diagram_model(
                                 &node_root_group,
                                 &node_type,
                                 &node_title,
+                                &measurer,
+                                &text_style,
                                 icon_size,
                                 font_size_px,
                             ) else {
@@ -1584,6 +1680,8 @@ fn layout_architecture_diagram_model(
                                 &node_root_group,
                                 &node_type,
                                 &node_title,
+                                &measurer,
+                                &text_style,
                                 icon_size,
                                 font_size_px,
                             ) else {
@@ -1608,7 +1706,7 @@ fn layout_architecture_diagram_model(
         let top_level_groups = model
             .groups
             .iter()
-            .filter(|g| g.in_group.as_deref().is_none())
+            .filter(|g| g.in_group.is_none())
             .take(2)
             .count();
         if top_level_groups >= 2 {
@@ -1634,12 +1732,12 @@ fn layout_architecture_diagram_model(
 
     let mut edges: Vec<LayoutEdge> = Vec::new();
     for (idx, e) in model.edges.iter().enumerate() {
-        let Some(&a) = node_by_id.get(e.lhs_id.as_str()) else {
+        let Some(&a) = node_by_id.get(e.lhs_id) else {
             return Err(Error::InvalidModel {
                 message: format!("edge lhs node not found: {}", e.lhs_id),
             });
         };
-        let Some(&b) = node_by_id.get(e.rhs_id.as_str()) else {
+        let Some(&b) = node_by_id.get(e.rhs_id) else {
             return Err(Error::InvalidModel {
                 message: format!("edge rhs node not found: {}", e.rhs_id),
             });
@@ -1648,29 +1746,29 @@ fn layout_architecture_diagram_model(
         fn endpoint(
             x: f64,
             y: f64,
-            dir: Option<&str>,
+            dir: Option<char>,
             icon_size: f64,
             half_icon: f64,
         ) -> (f64, f64) {
-            match dir.unwrap_or("") {
-                "L" => (x, y + half_icon),
-                "R" => (x + icon_size, y + half_icon),
-                "T" => (x + half_icon, y),
-                "B" => (x + half_icon, y + icon_size),
+            match dir {
+                Some('L') => (x, y + half_icon),
+                Some('R') => (x + icon_size, y + half_icon),
+                Some('T') => (x + half_icon, y),
+                Some('B') => (x + half_icon, y + icon_size),
                 _ => (x + half_icon, y + half_icon),
             }
         }
 
-        let (sx, sy) = endpoint(a.x, a.y, e.lhs_dir.as_deref(), icon_size, half_icon);
-        let (tx, ty) = endpoint(b.x, b.y, e.rhs_dir.as_deref(), icon_size, half_icon);
+        let (sx, sy) = endpoint(a.x, a.y, e.lhs_dir, icon_size, half_icon);
+        let (tx, ty) = endpoint(b.x, b.y, e.rhs_dir, icon_size, half_icon);
         let mid = LayoutPoint {
             x: (sx + tx) / 2.0,
             y: (sy + ty) / 2.0,
         };
         edges.push(LayoutEdge {
             id: format!("edge-{idx}"),
-            from: e.lhs_id.clone(),
-            to: e.rhs_id.clone(),
+            from: e.lhs_id.to_string(),
+            to: e.rhs_id.to_string(),
             from_cluster: None,
             to_cluster: None,
             points: vec![
