@@ -380,24 +380,26 @@ fn layout_mindmap_diagram_model(
     }
 
     let build_edges_start = timing_enabled.then(std::time::Instant::now);
-    let mut node_pos: std::collections::HashMap<&str, (f64, f64)> =
-        std::collections::HashMap::with_capacity(nodes.len());
-    for n in &nodes {
-        node_pos.insert(n.id.as_str(), (n.x, n.y));
+    let mut id_to_idx: rustc_hash::FxHashMap<&str, usize> =
+        rustc_hash::FxHashMap::with_capacity_and_hasher(nodes.len(), Default::default());
+    for (idx, n) in nodes.iter().enumerate() {
+        id_to_idx.insert(n.id.as_str(), idx);
     }
 
     let mut edges: Vec<LayoutEdge> = Vec::new();
     for e in &model.edges {
-        let Some((sx, sy)) = node_pos.get(e.start.as_str()).copied() else {
+        let Some(&sidx) = id_to_idx.get(e.start.as_str()) else {
             return Err(Error::InvalidModel {
                 message: format!("edge start node not found: {}", e.start),
             });
         };
-        let Some((tx, ty)) = node_pos.get(e.end.as_str()).copied() else {
+        let Some(&tidx) = id_to_idx.get(e.end.as_str()) else {
             return Err(Error::InvalidModel {
                 message: format!("edge end node not found: {}", e.end),
             });
         };
+        let (sx, sy) = (nodes[sidx].x, nodes[sidx].y);
+        let (tx, ty) = (nodes[tidx].x, nodes[tidx].y);
         let points = vec![LayoutPoint { x: sx, y: sy }, LayoutPoint { x: tx, y: ty }];
         edges.push(LayoutEdge {
             id: e.id.clone(),
