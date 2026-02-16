@@ -1548,7 +1548,6 @@ pub(super) fn render_class_diagram_v2_svg_model(
             .trim();
         let node_stroke_dasharray = style_stroke_dasharray.unwrap_or("0 0");
 
-        let node_classes = format!("node {}", node.css_classes.trim());
         let tooltip = node.tooltip.as_deref().unwrap_or("").trim();
         let has_tooltip = !tooltip.is_empty();
 
@@ -1565,40 +1564,39 @@ pub(super) fn render_class_diagram_v2_svg_model(
         let node_bounds_ty = node_ty + active_nodes_root_dy;
 
         if let Some(link) = link {
-            let _ = write!(
-                &mut out,
-                r#"<a{}{} transform="translate({}, {})">"#,
-                if include_href {
-                    format!(r#" xlink:href="{}""#, escape_attr_display(link))
-                } else {
-                    String::new()
-                },
-                if have_callback {
-                    r#" class="null clickable""#.to_string()
-                } else {
-                    String::new()
-                },
-                fmt(node_tx),
-                fmt(node_ty)
-            );
+            out.push_str("<a");
+            if include_href {
+                out.push_str(r#" xlink:href=""#);
+                super::util::escape_attr_into(&mut out, link);
+                out.push('"');
+            }
+            if have_callback {
+                out.push_str(r#" class="null clickable""#);
+            }
+            out.push_str(r#" transform="translate("#);
+            fmt_into(&mut out, node_tx);
+            out.push_str(", ");
+            fmt_into(&mut out, node_ty);
+            out.push_str(r#")">"#);
         }
 
-        let _ = write!(
-            &mut out,
-            r#"<g class="{}" id="{}""#,
-            escape_attr_display(&node_classes),
-            escape_attr_display(&node.dom_id),
-        );
+        out.push_str(r#"<g class=""#);
+        out.push_str("node ");
+        super::util::escape_attr_into(&mut out, node.css_classes.trim());
+        out.push_str(r#"" id=""#);
+        super::util::escape_attr_into(&mut out, &node.dom_id);
+        out.push('"');
         if has_tooltip {
-            let _ = write!(&mut out, r#" title="{}""#, escape_attr_display(tooltip));
+            out.push_str(r#" title=""#);
+            super::util::escape_attr_into(&mut out, tooltip);
+            out.push('"');
         }
         if link.is_none() {
-            let _ = write!(
-                &mut out,
-                r#" transform="translate({}, {})""#,
-                fmt(node_tx),
-                fmt(node_ty)
-            );
+            out.push_str(r#" transform="translate("#);
+            fmt_into(&mut out, node_tx);
+            out.push_str(", ");
+            fmt_into(&mut out, node_ty);
+            out.push_str(r#")""#);
         }
         out.push('>');
 
