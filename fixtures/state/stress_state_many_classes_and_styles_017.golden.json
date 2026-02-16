@@ -1,0 +1,325 @@
+{
+  "diagramType": "stateDiagram",
+  "model": {
+    "type": "stateDiagram",
+    "nodes": [
+      {
+        "labelStyle": "",
+        "shape": "stateStart",
+        "label": "root_start",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "root_start",
+        "dir": null,
+        "domId": "state-root_start-0",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "S1",
+        "cssClasses": "hot statediagram-state",
+        "cssCompiledStyles": [
+          "fill:#ffdddd",
+          "stroke:#cc0000",
+          "stroke-width:2px",
+          "color:#330000",
+          "font-weight:bold"
+        ],
+        "cssStyles": [
+          "fill:#ffeeee",
+          "stroke:#aa0000",
+          "stroke-width:2px"
+        ],
+        "id": "S1",
+        "dir": null,
+        "domId": "state-S1-1",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "S2",
+        "cssClasses": "cold cold; statediagram-state",
+        "cssCompiledStyles": [
+          "fill:#ddeeff",
+          "stroke:#0033aa",
+          "stroke-width:1.5px",
+          "color:#001133"
+        ],
+        "cssStyles": [
+          "stroke:#0011aa",
+          "stroke-width:2px"
+        ],
+        "id": "S2",
+        "dir": null,
+        "domId": "state-S2-2",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "rect",
+        "label": "S3",
+        "cssClasses": "muted; statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "S3",
+        "dir": null,
+        "domId": "state-S3-3",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      },
+      {
+        "labelStyle": "",
+        "shape": "stateEnd",
+        "label": "root_end",
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "id": "root_end",
+        "dir": null,
+        "domId": "state-root_end-3",
+        "type": null,
+        "isGroup": false,
+        "padding": 8,
+        "rx": 10,
+        "ry": 10,
+        "look": "classic",
+        "parentId": null,
+        "centerLabel": true
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge0",
+        "start": "root_start",
+        "end": "S1",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge1",
+        "start": "S1",
+        "end": "S2",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "edge label",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge2",
+        "start": "S2",
+        "end": "S3",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "unstyled",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      },
+      {
+        "id": "edge3",
+        "start": "S3",
+        "end": "root_end",
+        "arrowhead": "normal",
+        "arrowTypeEnd": "arrow_barb",
+        "style": "fill:none",
+        "labelStyle": "",
+        "label": "",
+        "arrowheadStyle": "fill: #333",
+        "labelpos": "c",
+        "labelType": "text",
+        "thickness": "normal",
+        "classes": "transition",
+        "look": "classic"
+      }
+    ],
+    "other": {},
+    "links": {},
+    "direction": "TB",
+    "accTitle": null,
+    "accDescr": null,
+    "states": {
+      "root_start": {
+        "id": "root_start",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": true
+      },
+      "S1": {
+        "id": "S1",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [
+          "hot"
+        ],
+        "styles": [
+          "fill:#ffeeee",
+          "stroke:#aa0000",
+          "stroke-width:2px"
+        ],
+        "textStyles": [],
+        "start": null
+      },
+      "S2": {
+        "id": "S2",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [
+          "cold",
+          "cold;"
+        ],
+        "styles": [
+          "stroke:#0011aa",
+          "stroke-width:2px"
+        ],
+        "textStyles": [],
+        "start": null
+      },
+      "S3": {
+        "id": "S3",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [
+          "muted;"
+        ],
+        "styles": [],
+        "textStyles": [],
+        "start": null
+      },
+      "root_end": {
+        "id": "root_end",
+        "type": "default",
+        "descriptions": [],
+        "doc": null,
+        "note": null,
+        "classes": [],
+        "styles": [],
+        "textStyles": [],
+        "start": false
+      }
+    },
+    "relations": [
+      {
+        "id1": "root_start",
+        "id2": "S1",
+        "relationTitle": null
+      },
+      {
+        "id1": "S1",
+        "id2": "S2",
+        "relationTitle": "edge label"
+      },
+      {
+        "id1": "S2",
+        "id2": "S3",
+        "relationTitle": "unstyled"
+      },
+      {
+        "id1": "S3",
+        "id2": "root_end",
+        "relationTitle": null
+      }
+    ],
+    "styleClasses": {
+      "hot": {
+        "id": "hot",
+        "styles": [
+          "fill:#ffdddd",
+          "stroke:#cc0000",
+          "stroke-width:2px",
+          "color:#330000",
+          "font-weight:bold"
+        ],
+        "textStyles": [
+          "fill:#330000"
+        ]
+      },
+      "cold": {
+        "id": "cold",
+        "styles": [
+          "fill:#ddeeff",
+          "stroke:#0033aa",
+          "stroke-width:1.5px",
+          "color:#001133"
+        ],
+        "textStyles": [
+          "fill:#001133"
+        ]
+      },
+      "muted": {
+        "id": "muted",
+        "styles": [
+          "fill:#f7f7f7",
+          "stroke:#777",
+          "stroke-width:1px",
+          "color:#333",
+          "stroke-dasharray:3 2"
+        ],
+        "textStyles": [
+          "fill:#333"
+        ]
+      }
+    }
+  }
+}

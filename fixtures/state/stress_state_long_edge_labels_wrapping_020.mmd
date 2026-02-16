@@ -1,0 +1,8 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): very long edge labels + punctuation to stress label measurement/wrapping.
+
+[*] --> A
+A --> B : This label is intentionally long — with punctuation, slashes / and dashes - to force wrapping decisions.
+B --> C : Another_long_label_with_mixed-separators_and_(parens)_and_[brackets]
+C --> A : quoted label with spaces / and parentheses (no quotes)
+C --> [*] : Done / Save Result

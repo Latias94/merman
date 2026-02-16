@@ -1,0 +1,43 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): choice + fork/join inside a composite with labeled transitions.
+
+[*] --> Session
+
+state Session {
+  [*] --> Decide
+  state Decide <<choice>>
+
+  Decide --> Fork: "ok / proceed"
+  Decide --> End: "deny / stop"
+
+  state Fork <<fork>>
+  Fork --> Validate
+  Fork --> Fetch
+  Fork --> Audit
+
+  state Validate {
+    [*] --> V1
+    V1 --> V2: step
+    V2 --> [*]
+  }
+  state Fetch {
+    [*] --> F1
+    F1 --> [*]
+  }
+  state Audit {
+    [*] --> A1
+    A1 --> [*]
+  }
+
+  state Join <<join>>
+  Validate --> Join
+  Fetch --> Join
+  Audit --> Join
+
+  Join --> Decide: loop?
+  Join --> End: finish
+}
+
+state End
+End --> [*]
+

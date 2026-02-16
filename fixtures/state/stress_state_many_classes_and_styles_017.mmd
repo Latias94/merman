@@ -1,0 +1,18 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): many classDef/class/style statements + inline ::: application.
+
+[*] --> S1:::hot
+S1 --> S2:::cold : edge label
+S2 --> S3 : unstyled
+S3 --> [*]
+
+classDef hot fill:#ffdddd,stroke:#cc0000,stroke-width:2px,color:#330000,font-weight:bold;
+classDef cold fill:#ddeeff,stroke:#0033aa,stroke-width:1.5px,color:#001133;
+classDef muted fill:#f7f7f7,stroke:#777,stroke-width:1px,color:#333,stroke-dasharray:3 2;
+
+class S2 cold;
+class S3 muted;
+
+style S1 fill:#ffeeee,stroke:#aa0000,stroke-width:2px
+style S2 stroke:#0011aa,stroke-width:2px
+

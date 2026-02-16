@@ -1,0 +1,18 @@
+stateDiagram-v2
+%% Authored stress fixture (Mermaid@11.12.2): quoted multiline state descriptions + aliases + recursive self-loop labels.
+
+[*] --> Outer
+
+state Outer {
+  state "Accumulate Enough Data
+Long State Name (with dashes - and spaces)" as long1
+  long1 : Just a test
+  [*] --> long1
+
+  long1 --> long1 : New Data / append
+  long1 --> ProcessData : Enough Data
+  ProcessData --> long1 : Retry
+}
+
+Outer --> [*] : Done
+

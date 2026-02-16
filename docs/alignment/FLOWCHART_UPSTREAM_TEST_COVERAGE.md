@@ -181,6 +181,41 @@ Deferred (not parity-gated yet):
 
 - `layout: elk` fixtures (requires ELK layout parity support): `fixtures/_deferred/flowchart/upstream_cypress_flowchart_elk_spec_*.mmd`
 
+## Cypress platform HTML fixtures
+
+Source: `repo-ref/mermaid/cypress/platform/*.html`
+
+These fixtures are imported from Mermaid's Cypress "platform" HTML test pages (code blocks under
+`<pre class="mermaid">`) and are parity-gated against upstream SVG baselines:
+
+- Click security variants (function callback vs. link wrapping + tooltips):
+  - `fixtures/flowchart/upstream_html_demos_click_security_loose_example_001.mmd` (from `click_security_loose.html`)
+  - `fixtures/flowchart/upstream_html_demos_click_security_loose_example_002.mmd` (from `click_security_loose.html`)
+  - `fixtures/flowchart/upstream_html_demos_click_security_loose_example_003.mmd` (from `click_security_loose.html`)
+  - `fixtures/flowchart/upstream_html_demos_click_security_loose_example_004.mmd` (from `click_security_loose.html`)
+  - `fixtures/flowchart/upstream_html_demos_click_security_loose_example_008.mmd` (from `click_security_loose.html`)
+  - `fixtures/flowchart/upstream_html_demos_click_security_loose_example_009.mmd` (from `click_security_loose.html`)
+  - `fixtures/flowchart/upstream_html_demos_click_security_sandbox_example_001.mmd` (from `click_security_sandbox.html`)
+  - `fixtures/flowchart/upstream_html_demos_click_security_sandbox_example_003.mmd` (from `click_security_sandbox.html`)
+  - `fixtures/flowchart/upstream_html_demos_click_security_sandbox_example_004.mmd` (from `click_security_sandbox.html`)
+  - `fixtures/flowchart/upstream_html_demos_click_security_sandbox_example_008.mmd` (from `click_security_sandbox.html`)
+  - `fixtures/flowchart/upstream_html_demos_click_security_sandbox_example_009.mmd` (from `click_security_sandbox.html`)
+- Mixed styling + click directive:
+  - `fixtures/flowchart/upstream_html_demos_flow2_example_001.mmd` (from `flow2.html`)
+  - `fixtures/flowchart/upstream_html_demos_flow2_example_002.mmd` (from `flow2.html`)
+  - `fixtures/flowchart/upstream_html_demos_flow2_example_003.mmd` (from `flow2.html`)
+- XSS / config hardening cases:
+  - `fixtures/flowchart/upstream_html_demos_xss2_example_001.mmd` (from `xss2.html`, `%%{init: ... __proto__ ... }%%`)
+  - `fixtures/flowchart/upstream_html_demos_xss2_example_002.mmd` (from `xss2.html`, repeated `%%{init: ... }%%`)
+  - `fixtures/flowchart/upstream_html_demos_xss3_example_001.mmd` (from `xss3.html`, malicious `fontFamily` injection attempt)
+  - `fixtures/flowchart/upstream_html_demos_xss22_example_001.mmd` (from `xss22.html`, `javascript#9;...` deep-link encoding)
+
+Deferred (not parity-gated yet):
+
+- `fixtures/_deferred/flowchart/upstream_html_demos_flowchart_state_example_002.mmd` (from `flowchart-state.html`):
+  - uses `%%{init: {"look": "handDrawn"} }%%` which emits RoughJS path-based stadium nodes upstream.
+  - our current Flowchart Stage B parity renderer is still in the "classic" look DOM shape set, so this case is tracked as a future parity work item.
+
 ## Docs-derived parser+render fixtures
 
 Source: `repo-ref/mermaid/docs/syntax/flowchart.md`

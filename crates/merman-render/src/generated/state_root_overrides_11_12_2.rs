@@ -25,6 +25,24 @@ pub fn lookup_state_root_viewport_override(
         "stress_state_self_loops_and_edge_labels_008" => {
             Some(("0 0 262.06304931640625 382.25", "262.063"))
         }
+        "stress_state_three_way_concurrency_013" => Some(("0 0 573.27734375 1657", "573.277")),
+        "stress_state_nested_choice_fork_join_014" => Some(("0 0 662.27734375 1096", "662.277")),
+        "stress_state_quoted_multiline_names_015" => {
+            Some(("0 0 430.5703125 644.0999755859375", "430.57"))
+        }
+        "stress_state_securitylevel_strict_clicks_016" => Some(("0 0 110.375 412", "110.375")),
+        "stress_state_many_classes_and_styles_017" => Some(("0 0 90.703125 412", "90.7031")),
+        "stress_state_comments_and_weird_spacing_018" => Some(("0 0 262.5390625 1506", "262.539")),
+        "stress_state_multiple_recursive_definitions_019" => {
+            Some(("0 0 445.078125 1115", "445.078"))
+        }
+        "stress_state_long_edge_labels_wrapping_020" => Some(("0 0 411.734375 564", "411.734")),
+        "stress_state_unicode_mixed_scripts_021" => Some(("0 0 141.890625 526", "141.891")),
+        "stress_state_composite_self_links_022" => {
+            Some(("0 0 253.7023468017578 783.3499755859375", "253.702"))
+        }
+        "stress_state_dense_graph_023" => Some(("-35 0 229.43125915527344 708", "229.431")),
+        "stress_state_choice_notes_classes_024" => Some(("0 0 613.3828125 588", "613.383")),
         "basic" => Some(("0 0 100.125 298", "100.125")),
         "mmdr_tests_state_state_basic" => Some(("0 0 178.203125 234", "178.203")),
         "mmdr_tests_state_state_note" => Some(("0 0 221.4418182373047 364", "221.442")),

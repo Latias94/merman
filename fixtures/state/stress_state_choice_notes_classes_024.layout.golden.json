@@ -1,0 +1,432 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "nodes": [
+        {
+          "id": "Decide",
+          "x": 319.008,
+          "y": 238.0,
+          "width": 28.0,
+          "height": 28.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Decide----note-4",
+          "x": 132.242,
+          "y": 440.0,
+          "width": 178.484,
+          "height": 102.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Decide----parent",
+          "x": 132.242,
+          "y": 440.0,
+          "width": 248.484,
+          "height": 152.0,
+          "is_cluster": true
+        },
+        {
+          "id": "Entry",
+          "x": 319.008,
+          "y": 92.0,
+          "width": 55.047,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Happy",
+          "x": 319.008,
+          "y": 440.0,
+          "width": 55.047,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Sad",
+          "x": 443.293,
+          "y": 440.0,
+          "width": 39.359,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Sad----note-5",
+          "x": 499.895,
+          "y": 238.0,
+          "width": 116.406,
+          "height": 54.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Sad----parent",
+          "x": 499.895,
+          "y": 238.0,
+          "width": 186.406,
+          "height": 104.0,
+          "is_cluster": true
+        },
+        {
+          "id": "root_end",
+          "x": 394.691,
+          "y": 573.0,
+          "width": 14.013,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "root_start",
+          "x": 319.008,
+          "y": 15.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "Decide-Decide----note-4",
+          "from": "Decide",
+          "to": "Decide----note-4",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 308.557,
+              "y": 241.549
+            },
+            {
+              "x": 132.242,
+              "y": 290.0
+            },
+            {
+              "x": 132.242,
+              "y": 327.0
+            },
+            {
+              "x": 132.242,
+              "y": 364.0
+            },
+            {
+              "x": 132.242,
+              "y": 440.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "Sad----note-5-Sad",
+          "from": "Sad----note-5",
+          "to": "Sad",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 499.895,
+              "y": 238.0
+            },
+            {
+              "x": 499.895,
+              "y": 290.0
+            },
+            {
+              "x": 499.895,
+              "y": 327.0
+            },
+            {
+              "x": 499.895,
+              "y": 364.0
+            },
+            {
+              "x": 458.682,
+              "y": 420.509
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge0",
+          "from": "root_start",
+          "to": "Entry",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 319.008,
+              "y": 22.0
+            },
+            {
+              "x": 319.008,
+              "y": 47.0
+            },
+            {
+              "x": 319.508,
+              "y": 72.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge1",
+          "from": "Entry",
+          "to": "Decide",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 319.508,
+              "y": 112.5
+            },
+            {
+              "x": 319.008,
+              "y": 149.0
+            },
+            {
+              "x": 319.008,
+              "y": 186.0
+            },
+            {
+              "x": 319.508,
+              "y": 224.5
+            }
+          ],
+          "label": {
+            "x": 319.008,
+            "y": 149.0,
+            "width": 42.563,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge2",
+          "from": "Decide",
+          "to": "Happy",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 319.508,
+              "y": 252.5
+            },
+            {
+              "x": 319.008,
+              "y": 290.0
+            },
+            {
+              "x": 319.008,
+              "y": 327.0
+            },
+            {
+              "x": 319.008,
+              "y": 364.0
+            },
+            {
+              "x": 319.508,
+              "y": 420.5
+            }
+          ],
+          "label": {
+            "x": 319.008,
+            "y": 327.0,
+            "width": 22.563,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge3",
+          "from": "Decide",
+          "to": "Sad",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 327.425,
+              "y": 244.583
+            },
+            {
+              "x": 386.691,
+              "y": 290.0
+            },
+            {
+              "x": 386.691,
+              "y": 327.0
+            },
+            {
+              "x": 386.691,
+              "y": 364.0
+            },
+            {
+              "x": 428.904,
+              "y": 420.509
+            }
+          ],
+          "label": {
+            "x": 386.691,
+            "y": 327.0,
+            "width": 13.766,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge6",
+          "from": "Happy",
+          "to": "root_end",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 319.508,
+              "y": 460.5
+            },
+            {
+              "x": 319.008,
+              "y": 516.0
+            },
+            {
+              "x": 319.008,
+              "y": 541.0
+            },
+            {
+              "x": 388.244,
+              "y": 570.274
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge7",
+          "from": "Sad",
+          "to": "root_end",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 443.793,
+              "y": 460.5
+            },
+            {
+              "x": 443.293,
+              "y": 516.0
+            },
+            {
+              "x": 443.293,
+              "y": 541.0
+            },
+            {
+              "x": 400.538,
+              "y": 569.151
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "Decide----parent",
+          "x": 132.242,
+          "y": 440.0,
+          "width": 248.484,
+          "height": 152.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
+          "title": "Multi-line note<br/>\nwith HTML line break.",
+          "title_label": {
+            "x": 132.242,
+            "y": 401.0,
+            "width": 148.484,
+            "height": 72.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 16.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        },
+        {
+          "id": "Sad----parent",
+          "x": 499.895,
+          "y": 238.0,
+          "width": 186.406,
+          "height": 104.0,
+          "diff": 0.0,
+          "offset_y": 0.0,
+          "title": "\"short note\"",
+          "title_label": {
+            "x": 499.895,
+            "y": 199.0,
+            "width": 86.406,
+            "height": 24.0
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 16.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 593.098,
+        "max_y": 580.0
+      }
+    }
+  }
+}

@@ -1,0 +1,226 @@
+{
+  "diagramType": "stateDiagram",
+  "layout": {
+    "StateDiagramV2": {
+      "nodes": [
+        {
+          "id": "Processing",
+          "x": 77.844,
+          "y": 206.0,
+          "width": 85.125,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "root_end",
+          "x": 77.844,
+          "y": 511.0,
+          "width": 14.013,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "root_start",
+          "x": 77.844,
+          "y": 15.0,
+          "width": 14.0,
+          "height": 14.0,
+          "is_cluster": false
+        },
+        {
+          "id": "Δέλτα",
+          "x": 77.844,
+          "y": 320.0,
+          "width": 64.0,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "完了",
+          "x": 77.844,
+          "y": 434.0,
+          "width": 35.203,
+          "height": 40.0,
+          "is_cluster": false
+        },
+        {
+          "id": "开始",
+          "x": 77.844,
+          "y": 92.0,
+          "width": 35.203,
+          "height": 40.0,
+          "is_cluster": false
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge0",
+          "from": "root_start",
+          "to": "开始",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 77.844,
+              "y": 22.0
+            },
+            {
+              "x": 77.844,
+              "y": 47.0
+            },
+            {
+              "x": 78.344,
+              "y": 72.5
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge1",
+          "from": "开始",
+          "to": "Processing",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 78.344,
+              "y": 112.5
+            },
+            {
+              "x": 77.844,
+              "y": 149.0
+            },
+            {
+              "x": 78.344,
+              "y": 186.5
+            }
+          ],
+          "label": {
+            "x": 77.844,
+            "y": 149.0,
+            "width": 139.688,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge2",
+          "from": "Processing",
+          "to": "Δέλτα",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 78.344,
+              "y": 226.5
+            },
+            {
+              "x": 77.844,
+              "y": 263.0
+            },
+            {
+              "x": 78.344,
+              "y": 300.5
+            }
+          ],
+          "label": {
+            "x": 77.844,
+            "y": 263.0,
+            "width": 122.234,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge3",
+          "from": "Δέλτα",
+          "to": "完了",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 78.344,
+              "y": 340.5
+            },
+            {
+              "x": 77.844,
+              "y": 377.0
+            },
+            {
+              "x": 78.344,
+              "y": 414.5
+            }
+          ],
+          "label": {
+            "x": 77.844,
+            "y": 377.0,
+            "width": 53.281,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge4",
+          "from": "完了",
+          "to": "root_end",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 78.344,
+              "y": 454.5
+            },
+            {
+              "x": 77.844,
+              "y": 479.0
+            },
+            {
+              "x": 77.844,
+              "y": 504.0
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 147.688,
+        "max_y": 518.0
+      }
+    }
+  }
+}
