@@ -51,6 +51,11 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
     case avoids per-command optional bound bookkeeping.
   - Targets flowchart/class/ER path emission (`curveBasis` / `curveLinear`).
 
+- `e24d9eb` — `perf(manatee): cut COSE repulsion loop overhead`
+  - Caches per-node half sizes and reuses `abs(dx/dy)` inside the spring embedder's O(n^2) repulsion loop.
+  - Local A/B (`layout/mindmap_medium`, `cargo bench` exact, 50 samples / 2s warmup / 3s measurement):
+    - `118.43µs` → `112.76µs` (~`-4.8%`)
+
 ### Stage Attribution Snapshot (canaries)
 
 Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is *multi-source*:

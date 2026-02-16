@@ -34,6 +34,11 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
     - Splits SVG path emission into `no-bounds` vs `with-bounds` fast paths so the hot render-only
       case (no tight bounds needed) avoids per-command optional bound bookkeeping.
     - Affects `curveBasis` / `curveLinear` emission used by flowchart/class/ER paths.
+  - `perf(manatee): cut COSE repulsion loop overhead` (`e24d9eb`)
+    - Caches per-node half sizes and reuses `abs(dx/dy)` inside the spring embedder's O(n^2)
+      repulsion loop.
+    - Local A/B (`layout/mindmap_medium`, `cargo bench` exact, 50 samples / 2s warmup / 3s measurement):
+      - `118.43µs` → `112.76µs` (~`-4.8%`)
 - Latest canary (faster triage parameters):
   - Command:
     - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 20 --warm-up 1 --measurement 2 --out target/bench/stage_spotcheck.canary_after_flowchart_opt_2026-02-16.md`
