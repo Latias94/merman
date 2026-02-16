@@ -78,7 +78,7 @@ pub struct StateDiagramRenderModel {
     #[serde(default)]
     pub edges: Vec<StateDiagramRenderEdge>,
     #[serde(default)]
-    pub links: HashMap<String, StateDiagramRenderLink>,
+    pub links: HashMap<String, StateDiagramRenderLinks>,
     #[serde(default)]
     pub states: HashMap<String, StateDiagramRenderState>,
     #[serde(default, rename = "styleClasses")]
@@ -118,6 +118,13 @@ pub struct StateDiagramRenderLink {
     pub url: String,
     #[serde(default)]
     pub tooltip: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum StateDiagramRenderLinks {
+    One(StateDiagramRenderLink),
+    Many(Vec<StateDiagramRenderLink>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1673,13 +1680,25 @@ impl StateDb {
             .links
             .iter()
             .map(|(k, v)| {
-                (
-                    k.clone(),
+                let link_json = if v.len() == 1 {
+                    let l = &v[0];
                     json!({
-                        "url": v.url,
-                        "tooltip": v.tooltip,
-                    }),
-                )
+                        "url": &l.url,
+                        "tooltip": &l.tooltip,
+                    })
+                } else {
+                    Value::Array(
+                        v.iter()
+                            .map(|l| {
+                                json!({
+                                    "url": &l.url,
+                                    "tooltip": &l.tooltip,
+                                })
+                            })
+                            .collect(),
+                    )
+                };
+                (k.clone(), link_json)
             })
             .collect();
 
@@ -1736,17 +1755,27 @@ impl StateDb {
             })
             .collect();
 
-        let links: HashMap<String, StateDiagramRenderLink> = self
+        let links: HashMap<String, StateDiagramRenderLinks> = self
             .links
             .iter()
             .map(|(k, v)| {
-                (
-                    k.clone(),
-                    StateDiagramRenderLink {
-                        url: v.url.clone(),
-                        tooltip: v.tooltip.clone(),
-                    },
-                )
+                let links = if v.len() == 1 {
+                    let l = &v[0];
+                    StateDiagramRenderLinks::One(StateDiagramRenderLink {
+                        url: l.url.clone(),
+                        tooltip: l.tooltip.clone(),
+                    })
+                } else {
+                    StateDiagramRenderLinks::Many(
+                        v.iter()
+                            .map(|l| StateDiagramRenderLink {
+                                url: l.url.clone(),
+                                tooltip: l.tooltip.clone(),
+                            })
+                            .collect(),
+                    )
+                };
+                (k.clone(), links)
             })
             .collect();
 
