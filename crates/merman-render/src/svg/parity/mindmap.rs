@@ -180,6 +180,87 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
         max_node_width_px: f64,
         config: &merman_core::MermaidConfig,
     ) {
+        fn is_simple_markdown(text: &str) -> bool {
+            // Conservative: only fast-path labels that would render as a plain `<p>text</p>`.
+            if text.contains('\n') || text.contains('\r') {
+                return false;
+            }
+            let trimmed = text.trim_start();
+            let bytes = trimmed.as_bytes();
+            // Line-leading markdown constructs that can change the HTML shape even without newlines.
+            if bytes.first().is_some_and(|b| matches!(b, b'#' | b'>')) {
+                return false;
+            }
+            if bytes.starts_with(b"- ") || bytes.starts_with(b"+ ") || bytes.starts_with(b"---") {
+                return false;
+            }
+            // Ordered list: `1. item` / `1) item`
+            let mut i = 0usize;
+            while i < bytes.len() && bytes[i].is_ascii_digit() {
+                i += 1;
+            }
+            if i > 0
+                && i + 1 < bytes.len()
+                && (bytes[i] == b'.' || bytes[i] == b')')
+                && bytes[i + 1] == b' '
+            {
+                return false;
+            }
+            // Block/inline markdown triggers we don't want to replicate here.
+            if text.contains('*')
+                || text.contains('_')
+                || text.contains('`')
+                || text.contains('~')
+                || text.contains('[')
+                || text.contains(']')
+                || text.contains('!')
+                || text.contains('\\')
+            {
+                return false;
+            }
+            // HTML passthrough / entity patterns: keep the full pulldown + sanitize path.
+            if text.contains('<') || text.contains('>') || text.contains('&') {
+                return false;
+            }
+            true
+        }
+
+        fn push_br_normalized_text_into(out: &mut String, text: &str) {
+            // Mirror the existing `replace("<br>", "<br />").replace("<br/>", "<br />")` behavior,
+            // but avoid allocating intermediate strings for the common case (no `<br>` tokens).
+            let bytes = text.as_bytes();
+            let mut i = 0usize;
+            let mut start = 0usize;
+            while i + 3 < bytes.len() {
+                if bytes[i] == b'<' && bytes[i + 1] == b'b' && bytes[i + 2] == b'r' {
+                    // "<br>"
+                    if bytes[i + 3] == b'>' {
+                        if start < i {
+                            out.push_str(&text[start..i]);
+                        }
+                        out.push_str("<br />");
+                        i += 4;
+                        start = i;
+                        continue;
+                    }
+                    // "<br/>"
+                    if i + 4 < bytes.len() && bytes[i + 3] == b'/' && bytes[i + 4] == b'>' {
+                        if start < i {
+                            out.push_str(&text[start..i]);
+                        }
+                        out.push_str("<br />");
+                        i += 5;
+                        start = i;
+                        continue;
+                    }
+                }
+                i += 1;
+            }
+            if start < text.len() {
+                out.push_str(&text[start..]);
+            }
+        }
+
         let div_class = if label_bkg {
             r#" class="labelBkg""#
         } else {
@@ -193,39 +274,63 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
         };
 
         let wrap_container = (width - max_node_width_px).abs() <= 1e-3;
-        let div_style = if wrap_container {
-            format!(
-                "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
-                mw = fmt(max_node_width_px),
-            )
+        out.push_str(r#"<g class="label" style="" transform="translate("#);
+        fmt_into(out, tx);
+        out.push_str(", ");
+        fmt_into(out, ty);
+        out.push_str(r#")"><rect/><foreignObject width=""#);
+        fmt_into(out, width.max(1.0));
+        out.push_str(r#"" height=""#);
+        fmt_into(out, height.max(1.0));
+        out.push_str(r#""><div xmlns="http://www.w3.org/1999/xhtml""#);
+        out.push_str(div_class);
+        out.push_str(r#" style=""#);
+        if wrap_container {
+            out.push_str(
+                "display: table; white-space: break-spaces; line-height: 1.5; max-width: ",
+            );
+            fmt_into(out, max_node_width_px);
+            out.push_str("px; text-align: center; width: ");
+            fmt_into(out, max_node_width_px);
+            out.push_str("px;");
         } else {
-            format!(
-                "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {mw}px; text-align: center;",
-                mw = fmt(max_node_width_px),
-            )
-        };
+            out.push_str("display: table-cell; white-space: nowrap; line-height: 1.5; max-width: ");
+            fmt_into(out, max_node_width_px);
+            out.push_str("px; text-align: center;");
+        }
+        out.push_str(r#""><span class="nodeLabel">"#);
 
-        let label_body = if label_type == "markdown" {
-            let mut html_out = String::new();
-            let parser = pulldown_cmark::Parser::new_ext(
-                text,
-                pulldown_cmark::Options::ENABLE_TABLES
-                    | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
-                    | pulldown_cmark::Options::ENABLE_TASKLISTS,
-            )
-            .map(|ev| match ev {
-                pulldown_cmark::Event::SoftBreak => pulldown_cmark::Event::HardBreak,
-                other => other,
-            });
-            pulldown_cmark::html::push_html(&mut html_out, parser);
-            let html_out = html_out.trim().to_string();
-            let html_out = crate::text::replace_fontawesome_icons(&html_out);
-            let html_out = merman_core::sanitize::sanitize_text(&html_out, config);
-            html_out
-                .replace("<br>", "<br />")
-                .replace("<br/>", "<br />")
-                .trim()
-                .to_string()
+        if label_type == "markdown" {
+            if is_simple_markdown(text) {
+                let mut html_out = String::with_capacity(text.len() + 7);
+                html_out.push_str("<p>");
+                push_br_normalized_text_into(&mut html_out, text.trim());
+                html_out.push_str("</p>");
+                let html_out = crate::text::replace_fontawesome_icons(&html_out);
+                out.push_str(&html_out);
+            } else {
+                let mut html_out = String::new();
+                let parser = pulldown_cmark::Parser::new_ext(
+                    text,
+                    pulldown_cmark::Options::ENABLE_TABLES
+                        | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
+                        | pulldown_cmark::Options::ENABLE_TASKLISTS,
+                )
+                .map(|ev| match ev {
+                    pulldown_cmark::Event::SoftBreak => pulldown_cmark::Event::HardBreak,
+                    other => other,
+                });
+                pulldown_cmark::html::push_html(&mut html_out, parser);
+                let html_out = html_out.trim().to_string();
+                let html_out = crate::text::replace_fontawesome_icons(&html_out);
+                let html_out = merman_core::sanitize::sanitize_text(&html_out, config);
+                let html_out = html_out
+                    .replace("<br>", "<br />")
+                    .replace("<br/>", "<br />")
+                    .trim()
+                    .to_string();
+                out.push_str(&html_out);
+            }
         } else if text.contains('\n') || text.contains('\r') {
             // Mermaid's Cypress mindmap fixtures include multi-line labels inside node delimiters
             // (e.g. `root((\n  The root\n))`). Upstream preserves the raw whitespace/newlines as
@@ -233,29 +338,19 @@ pub(super) fn render_mindmap_diagram_svg_model_with_config(
             // backtick snippet (which upstream keeps inside a `<p>` node).
             if text.contains('`') {
                 let text = text.replace("<br>", "<br />").replace("<br/>", "<br />");
-                format!("<p>{}</p>", escape_xml(&text))
+                out.push_str("<p>");
+                out.push_str(&escape_xml(&text));
+                out.push_str("</p>");
             } else {
-                escape_xml(text)
+                out.push_str(&escape_xml(text));
             }
         } else {
-            let text = text
-                .replace("<br>", "<br />")
-                .replace("<br/>", "<br />")
-                .trim()
-                .to_string();
-            format!("<p>{text}</p>")
-        };
-        let _ = write!(
-            out,
-            r#"<g class="label" style="" transform="translate({tx}, {ty})"><rect/><foreignObject width="{w}" height="{h}"><div xmlns="http://www.w3.org/1999/xhtml"{div_class} style="{div_style}"><span class="nodeLabel">{label_body}</span></div></foreignObject></g>"#,
-            tx = fmt(tx),
-            ty = fmt(ty),
-            w = fmt(width.max(1.0)),
-            h = fmt(height.max(1.0)),
-            div_class = div_class,
-            div_style = escape_attr(&div_style),
-            label_body = label_body,
-        );
+            out.push_str("<p>");
+            push_br_normalized_text_into(out, text.trim());
+            out.push_str("</p>");
+        }
+
+        out.push_str("</span></div></foreignObject></g>");
     }
 
     fn mk_edge_label(out: &mut String, edge_id: &str) {
