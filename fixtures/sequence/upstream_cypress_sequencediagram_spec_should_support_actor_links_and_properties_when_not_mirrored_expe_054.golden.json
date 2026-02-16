@@ -1,0 +1,92 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "a",
+      "j"
+    ],
+    "actors": {
+      "a": {
+        "name": "a",
+        "description": "Alice",
+        "wrap": true,
+        "type": "participant",
+        "links": {
+          "Repo": "https://www.contoso.com/repo",
+          "Swagger": "https://www.contoso.com/swagger",
+          "Dashboard": "https://www.contoso.com/dashboard",
+          "On-Call": "https://www.contoso.com/oncall"
+        },
+        "properties": {
+          "class": "internal-service-actor",
+          "type": "@clock"
+        }
+      },
+      "j": {
+        "name": "j",
+        "description": "John",
+        "wrap": true,
+        "type": "participant",
+        "links": {
+          "Repo": "https://www.contoso.com/repo"
+        },
+        "properties": {
+          "class": "external-service-actor",
+          "type": "@computer"
+        }
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "a",
+        "to": "a",
+        "message": "Hello world!",
+        "wrap": true,
+        "type": 2,
+        "activate": false,
+        "placement": 1
+      },
+      {
+        "id": "1",
+        "from": "a",
+        "to": "j",
+        "message": "Hello John, how are you?",
+        "wrap": true,
+        "type": 0,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "j",
+        "to": "a",
+        "message": "Great!",
+        "wrap": true,
+        "type": 1,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": "a",
+        "placement": 1,
+        "message": "Hello world!",
+        "wrap": true
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}
