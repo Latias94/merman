@@ -39,6 +39,52 @@ fn mindmap_text_style(effective_config: &Value) -> TextStyle {
     }
 }
 
+fn is_simple_markdown_label(text: &str) -> bool {
+    // Conservative: only fast-path labels that would render as plain text inside a `<p>...</p>`
+    // when passed through Mermaid's Markdown + sanitizer pipeline.
+    if text.contains('\n') || text.contains('\r') {
+        return false;
+    }
+    let trimmed = text.trim_start();
+    let bytes = trimmed.as_bytes();
+    // Line-leading markdown constructs that can change the HTML shape even without newlines.
+    if bytes.first().is_some_and(|b| matches!(b, b'#' | b'>')) {
+        return false;
+    }
+    if bytes.starts_with(b"- ") || bytes.starts_with(b"+ ") || bytes.starts_with(b"---") {
+        return false;
+    }
+    // Ordered list: `1. item` / `1) item`
+    let mut i = 0usize;
+    while i < bytes.len() && bytes[i].is_ascii_digit() {
+        i += 1;
+    }
+    if i > 0
+        && i + 1 < bytes.len()
+        && (bytes[i] == b'.' || bytes[i] == b')')
+        && bytes[i + 1] == b' '
+    {
+        return false;
+    }
+    // Block/inline markdown triggers we don't want to replicate here.
+    if text.contains('*')
+        || text.contains('_')
+        || text.contains('`')
+        || text.contains('~')
+        || text.contains('[')
+        || text.contains(']')
+        || text.contains('!')
+        || text.contains('\\')
+    {
+        return false;
+    }
+    // HTML passthrough / entity patterns: keep the full markdown path.
+    if text.contains('<') || text.contains('>') || text.contains('&') {
+        return false;
+    }
+    true
+}
+
 fn mindmap_label_bbox_px(
     text: &str,
     label_type: &str,
@@ -55,13 +101,17 @@ fn mindmap_label_bbox_px(
     let max_node_width_px = max_node_width_px.max(1.0);
 
     let wrapped = if label_type == "markdown" {
-        crate::text::measure_markdown_with_flowchart_bold_deltas(
-            measurer,
-            text,
-            style,
-            Some(max_node_width_px),
-            WrapMode::HtmlLike,
-        )
+        if is_simple_markdown_label(text) {
+            measurer.measure_wrapped(text, style, Some(max_node_width_px), WrapMode::HtmlLike)
+        } else {
+            crate::text::measure_markdown_with_flowchart_bold_deltas(
+                measurer,
+                text,
+                style,
+                Some(max_node_width_px),
+                WrapMode::HtmlLike,
+            )
+        }
     } else {
         measurer.measure_wrapped(text, style, Some(max_node_width_px), WrapMode::HtmlLike)
     };
@@ -72,13 +122,17 @@ fn mindmap_label_bbox_px(
     // - the wrapped layout width (clamped by `max-width`), and
     // - the unwrapped overflow width (ignores `max-width`).
     let unwrapped = if label_type == "markdown" {
-        crate::text::measure_markdown_with_flowchart_bold_deltas(
-            measurer,
-            text,
-            style,
-            None,
-            WrapMode::HtmlLike,
-        )
+        if is_simple_markdown_label(text) {
+            measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike)
+        } else {
+            crate::text::measure_markdown_with_flowchart_bold_deltas(
+                measurer,
+                text,
+                style,
+                None,
+                WrapMode::HtmlLike,
+            )
+        }
     } else {
         measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike)
     };
