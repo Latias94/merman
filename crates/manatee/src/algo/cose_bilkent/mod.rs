@@ -1152,6 +1152,18 @@ impl SimGraph {
             return;
         }
 
+        #[derive(Debug, Clone, Copy, Default)]
+        struct RepulsionGeom {
+            left: f64,
+            top: f64,
+            right: f64,
+            bottom: f64,
+            cx: f64,
+            cy: f64,
+            hw: f64,
+            hh: f64,
+        }
+
         #[derive(Debug, Default, Clone)]
         struct SpringEmbedderTimings {
             total: std::time::Duration,
@@ -1188,6 +1200,9 @@ impl SimGraph {
                 (&mut right[0], &mut left[b])
             }
         }
+
+        let mut repulsion_geom: Vec<RepulsionGeom> =
+            vec![RepulsionGeom::default(); self.nodes.len()];
 
         // These are instance fields in upstream `FDLayout`/`CoSELayout`.
         let ideal_edge_length = Self::DEFAULT_EDGE_LENGTH.max(10.0);
@@ -1385,6 +1400,29 @@ impl SimGraph {
             let repulsion_start = timing_enabled.then(std::time::Instant::now);
             let use_grid_repulsion = self.nodes.len() >= 64;
 
+            // Precompute per-node geometry for repulsion checks/forces. This reduces repeated
+            // derived computations inside the hot pair loops while preserving numerical behavior.
+            for (idx, n) in self.nodes.iter().enumerate() {
+                if !n.active {
+                    repulsion_geom[idx] = RepulsionGeom::default();
+                    continue;
+                }
+                let hw = n.width / 2.0;
+                let hh = n.height / 2.0;
+                let left = n.left;
+                let top = n.top;
+                repulsion_geom[idx] = RepulsionGeom {
+                    left,
+                    top,
+                    right: left + n.width,
+                    bottom: top + n.height,
+                    cx: left + hw,
+                    cy: top + hh,
+                    hw,
+                    hh,
+                };
+            }
+
             if use_grid_repulsion {
                 let update_grid_start = timing_enabled.then(std::time::Instant::now);
                 self.update_grid(repulsion_range);
@@ -1440,12 +1478,10 @@ impl SimGraph {
                             timings.repulsion_pairs_considered += 1;
                         }
 
-                        let a = &self.nodes[i];
-                        let b = &self.nodes[j];
-                        let dist_x =
-                            (a.center_x() - b.center_x()).abs() - (a.half_w() + b.half_w());
-                        let dist_y =
-                            (a.center_y() - b.center_y()).abs() - (a.half_h() + b.half_h());
+                        let a = &repulsion_geom[i];
+                        let b = &repulsion_geom[j];
+                        let dist_x = (a.cx - b.cx).abs() - (a.hw + b.hw);
+                        let dist_y = (a.cy - b.cy).abs() - (a.hh + b.hh);
                         if dist_x > repulsion_range || dist_y > repulsion_range {
                             continue;
                         }
@@ -1474,12 +1510,10 @@ impl SimGraph {
                             timings.repulsion_pairs_considered += 1;
                         }
 
-                        let a = &self.nodes[i];
-                        let b = &self.nodes[j];
-                        let dist_x =
-                            (a.center_x() - b.center_x()).abs() - (a.half_w() + b.half_w());
-                        let dist_y =
-                            (a.center_y() - b.center_y()).abs() - (a.half_h() + b.half_h());
+                        let a = &repulsion_geom[i];
+                        let b = &repulsion_geom[j];
+                        let dist_x = (a.cx - b.cx).abs() - (a.hw + b.hw);
+                        let dist_y = (a.cy - b.cy).abs() - (a.hh + b.hh);
                         if dist_x > repulsion_range || dist_y > repulsion_range {
                             continue;
                         }
@@ -1487,7 +1521,62 @@ impl SimGraph {
                             timings.repulsion_pairs_in_range += 1;
                         }
 
-                        let (rfx, rfy) = self.calc_repulsion_force(i, j, repulsion_constant);
+                        let intersects = a.left < b.right
+                            && a.right > b.left
+                            && a.top < b.bottom
+                            && a.bottom > b.top;
+                        let (rfx, rfy) = if intersects {
+                            self.calc_repulsion_force(i, j, repulsion_constant)
+                        } else {
+                            let dx = b.cx - a.cx;
+                            let dy = b.cy - a.cy;
+                            if dx == 0.0 && dy == 0.0 {
+                                (0.0, 0.0)
+                            } else {
+                                #[inline]
+                                fn clip_from_center(
+                                    cx: f64,
+                                    cy: f64,
+                                    dx: f64,
+                                    dy: f64,
+                                    hw: f64,
+                                    hh: f64,
+                                ) -> (f64, f64) {
+                                    if hw == 0.0 || hh == 0.0 {
+                                        return (cx, cy);
+                                    }
+                                    let denom = (dx.abs() / hw).max(dy.abs() / hh);
+                                    if denom == 0.0 {
+                                        return (cx, cy);
+                                    }
+                                    let t = 1.0 / denom;
+                                    (cx + dx * t, cy + dy * t)
+                                }
+
+                                let (ax, ay) = clip_from_center(a.cx, a.cy, dx, dy, a.hw, a.hh);
+                                let (bx, by) = clip_from_center(b.cx, b.cy, -dx, -dy, b.hw, b.hh);
+                                let mut ddx = bx - ax;
+                                let mut ddy = by - ay;
+
+                                if ddx.abs() < Self::MIN_REPULSION_DIST {
+                                    ddx = ddx.signum() * Self::MIN_REPULSION_DIST;
+                                }
+                                if ddy.abs() < Self::MIN_REPULSION_DIST {
+                                    ddy = ddy.signum() * Self::MIN_REPULSION_DIST;
+                                }
+
+                                let dist_sq = ddx * ddx + ddy * ddy;
+                                let dist = dist_sq.sqrt();
+                                if dist_sq == 0.0 || dist == 0.0 {
+                                    (0.0, 0.0)
+                                } else {
+                                    let repulsion_force = repulsion_constant / dist_sq;
+                                    let rfx = repulsion_force * ddx / dist;
+                                    let rfy = repulsion_force * ddy / dist;
+                                    (-rfx, -rfy)
+                                }
+                            }
+                        };
                         let (ni, nj) = nodes2_mut(&mut self.nodes, i, j);
                         ni.repulsion_fx += rfx;
                         ni.repulsion_fy += rfy;
