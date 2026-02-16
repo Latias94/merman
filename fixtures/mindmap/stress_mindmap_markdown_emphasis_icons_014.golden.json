@@ -1,0 +1,153 @@
+{
+  "diagramType": "mindmap",
+  "model": {
+    "type": "mindmap",
+    "nodes": [
+      {
+        "id": "0",
+        "domId": "node_0",
+        "label": "**Root** with _emphasis_ and **strong**",
+        "labelType": "markdown",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-root section--1",
+        "cssStyles": [],
+        "look": "default",
+        "icon": "fa fa-star",
+        "level": 0,
+        "nodeId": "id1",
+        "type": 2
+      },
+      {
+        "id": "1",
+        "domId": "node_1",
+        "label": "A second line<br/>with <em>inline</em> HTML",
+        "labelType": "markdown",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "icon": "fa fa-code",
+        "level": 2,
+        "nodeId": "id2",
+        "type": 2,
+        "section": 0
+      },
+      {
+        "id": "2",
+        "domId": "node_2",
+        "label": "Inline code: <code>code</code> and emoji 🤓",
+        "labelType": "markdown",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "look": "default",
+        "level": 4,
+        "nodeId": "id3",
+        "type": 2,
+        "section": 0
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge_0_1",
+        "start": "0",
+        "end": "1",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-1",
+        "depth": 0,
+        "section": 0
+      },
+      {
+        "id": "edge_1_2",
+        "start": "1",
+        "end": "2",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "default",
+        "classes": "edge section-edge-0 edge-depth-3",
+        "depth": 2,
+        "section": 0
+      }
+    ],
+    "diagramId": "<dynamic>",
+    "rootNode": {
+      "id": 0,
+      "nodeId": "id1",
+      "level": 0,
+      "descr": "**Root** with _emphasis_ and **strong**",
+      "type": 2,
+      "children": [
+        {
+          "id": 1,
+          "nodeId": "id2",
+          "level": 2,
+          "descr": "A second line<br/>with <em>inline</em> HTML",
+          "type": 2,
+          "children": [
+            {
+              "id": 2,
+              "nodeId": "id3",
+              "level": 4,
+              "descr": "Inline code: <code>code</code> and emoji 🤓",
+              "type": 2,
+              "children": [],
+              "width": 200,
+              "padding": 20,
+              "section": 0
+            }
+          ],
+          "width": 200,
+          "padding": 20,
+          "section": 0,
+          "icon": "fa fa-code"
+        }
+      ],
+      "width": 200,
+      "padding": 20,
+      "icon": "fa fa-star",
+      "isRoot": true
+    },
+    "markers": [
+      "point"
+    ],
+    "direction": "TB",
+    "nodeSpacing": 50,
+    "rankSpacing": 50,
+    "shapes": {
+      "0": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "1": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "2": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      }
+    }
+  }
+}

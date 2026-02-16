@@ -204,7 +204,7 @@ pub(super) fn render_mindmap_diagram_svg(
             )
         };
 
-        let label_body = if label_type == "markdown" {
+        fn markdown_to_sanitized_xhtml(text: &str, config: &merman_core::MermaidConfig) -> String {
             let mut html_out = String::new();
             let parser = pulldown_cmark::Parser::new_ext(
                 text,
@@ -225,6 +225,40 @@ pub(super) fn render_mindmap_diagram_svg(
                 .replace("<br/>", "<br />")
                 .trim()
                 .to_string()
+        }
+
+        fn is_single_img_fragment(html: &str) -> bool {
+            // Mermaid does not wrap a single <img> label inside a <p> node for mindmap labels.
+            let t = html.trim();
+            let lower = t.to_ascii_lowercase();
+            if lower.starts_with("<p>") && lower.ends_with("</p>") {
+                let inner = t.strip_prefix("<p>").unwrap_or(t);
+                let inner = inner.strip_suffix("</p>").unwrap_or(inner);
+                return is_single_img_fragment(inner);
+            }
+            if !lower.starts_with("<img") {
+                return false;
+            }
+            let Some(end) = t.find('>') else {
+                return false;
+            };
+            t[end + 1..].trim().is_empty()
+        }
+
+        fn unwrap_single_img_p(html: &str) -> String {
+            let t = html.trim();
+            if !t.to_ascii_lowercase().starts_with("<p>")
+                || !t.to_ascii_lowercase().ends_with("</p>")
+            {
+                return t.to_string();
+            }
+            let inner = t.strip_prefix("<p>").unwrap_or(t);
+            let inner = inner.strip_suffix("</p>").unwrap_or(inner);
+            inner.trim().to_string()
+        }
+
+        let label_body = if label_type == "markdown" {
+            markdown_to_sanitized_xhtml(text, config)
         } else if text.contains('\n') || text.contains('\r') {
             // Mermaid's Cypress mindmap fixtures include multi-line labels inside node delimiters
             // (e.g. `root((\n  The root\n))`). Upstream preserves the raw whitespace/newlines as
@@ -237,12 +271,22 @@ pub(super) fn render_mindmap_diagram_svg(
                 escape_xml(text)
             }
         } else {
-            let text = text
-                .replace("<br>", "<br />")
-                .replace("<br/>", "<br />")
-                .trim()
-                .to_string();
-            format!("<p>{text}</p>")
+            // Mermaid applies Markdown parsing semantics even for regular, single-line mindmap
+            // labels. This matters for emphasis markers like `__proto__` (renders as `<strong>`).
+            // Keep output XHTML-compatible and sanitizer-aligned.
+            let text = text.replace("<br>", "<br />").replace("<br/>", "<br />");
+            // Mindmap fixtures use backticks to denote "verbatim" markdown-string labels. Mermaid
+            // keeps the backticks as literal text (no Markdown evaluation) in that mode.
+            if text.contains('`') {
+                format!("<p>{}</p>", escape_xml(&text))
+            } else {
+                let html = markdown_to_sanitized_xhtml(&text, config);
+                if is_single_img_fragment(&html) {
+                    unwrap_single_img_p(&html)
+                } else {
+                    html
+                }
+            }
         };
         let _ = write!(
             out,

@@ -118,3 +118,21 @@ Source: `repo-ref/mermaid/demos/mindmap.html` (via `<pre class="mermaid">` block
 
 - `fixtures/mindmap/upstream_html_demos_mindmap_mindmap_diagram_demo_001.mmd`
 - `fixtures/mindmap/upstream_html_demos_mindmap_mindmap_with_root_wrapping_text_and_a_shape_002.mmd`
+
+## Authored stress fixtures
+
+These fixtures are authored in-repo to exercise layout/label edge cases and are parity-gated against
+upstream SVG baselines under `fixtures/upstream-svgs/mindmap/`:
+
+- `fixtures/mindmap/stress_mindmap_html_sanitization_013.mmd`
+- `fixtures/mindmap/stress_mindmap_markdown_emphasis_icons_014.mmd`
+- `fixtures/mindmap/stress_mindmap_many_siblings_decorators_015.mmd`
+- `fixtures/mindmap/stress_mindmap_long_words_wrapping_016.mmd`
+- `fixtures/mindmap/stress_mindmap_deep_mixed_shapes_017.mmd`
+- `fixtures/mindmap/stress_mindmap_whitespace_comments_indent_018.mmd`
+- `fixtures/mindmap/stress_mindmap_delimiters_and_quotes_019.mmd`
+- `fixtures/mindmap/stress_mindmap_unicode_punct_020.mmd`
+- `fixtures/mindmap/stress_mindmap_multiline_markdown_021.mmd`
+- `fixtures/mindmap/stress_mindmap_proto_like_ids_022.mmd`
+- `fixtures/mindmap/stress_mindmap_icon_class_order_023.mmd`
+- `fixtures/mindmap/stress_mindmap_wide_tree_mixed_labels_024.mmd`
