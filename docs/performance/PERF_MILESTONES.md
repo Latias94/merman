@@ -32,6 +32,14 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
       - `render/class_medium`: `2.35x`
       - `render/state_medium`: `2.64x`
 
+### Recently Landed (2026-02-16)
+
+- `d295a53` — `perf(flowchart): reduce render hot-path overhead`
+  - Avoids per-label lowercase allocation when checking flowchart HTML labels for `<img`.
+  - Adds a fast-path in `maybe_snap_data_point_to_f32` to avoid expensive bit-level work when the
+    value is nowhere near the f32 lattice.
+  - Local correctness gate: `cargo nextest run -p merman-render` (goldens + parity tests).
+
 ### Stage Attribution Snapshot (canaries)
 
 Stage spot-check (vs `repo-ref/mermaid-rs-renderer`) shows the remaining gap is *multi-source*:

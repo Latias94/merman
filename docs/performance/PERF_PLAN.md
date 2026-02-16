@@ -17,6 +17,24 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
   - `render`: `1.61x`
   - `end_to_end`: `0.90x`
 
+## Latest Update (2026-02-16)
+
+- Landed:
+  - `perf(flowchart): reduce render hot-path overhead` (`d295a53`)
+    - Avoids per-label lowercase allocation when detecting `<img` in flowchart labels.
+    - Adds a fast-path in `maybe_snap_data_point_to_f32` to skip expensive bit-level checks for
+      the common case.
+- Latest canary (faster triage parameters):
+  - Command:
+    - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 20 --warm-up 1 --measurement 2 --out target/bench/stage_spotcheck.canary_after_flowchart_opt_2026-02-16.md`
+  - Report:
+    - `target/bench/stage_spotcheck.canary_after_flowchart_opt_2026-02-16.md` (local, not committed)
+  - Stage gmeans (ratios, `merman / mmdr`):
+    - `parse`: `1.56x`
+    - `layout`: `0.93x`
+    - `render`: `1.62x`
+    - `end_to_end`: `0.86x`
+
 Outliers worth optimizing:
 
 - `flowchart_medium end_to_end`: `1.42x` (`render 1.62x`, `layout 1.05x`)
