@@ -1333,7 +1333,27 @@ fn import_upstream_html(args: Vec<String>) -> Result<(), XtaskError> {
 
     fn normalize_html_mermaid_block(raw: &str) -> String {
         let s = dedent(&html_unescape_basic(raw));
-        normalize_yaml_frontmatter_indentation(&s)
+        let s = normalize_yaml_frontmatter_indentation(&s);
+        // Upstream HTML fixtures sometimes include HTML comment markers inside `<pre class="mermaid">`
+        // blocks (e.g. `<!-- prettier-ignore -->`). These are not Mermaid syntax and would prevent
+        // our diagram detector from recognizing the block, so strip comment-only lines.
+        let mut out = String::with_capacity(s.len());
+        let mut wrote_any = false;
+        for line in s.lines() {
+            let is_html_comment_line = {
+                let t = line.trim();
+                t.starts_with("<!--") && t.ends_with("-->")
+            };
+            if is_html_comment_line {
+                continue;
+            }
+            if wrote_any {
+                out.push('\n');
+            }
+            out.push_str(line);
+            wrote_any = true;
+        }
+        out
     }
 
     fn collect_html_files_recursively(
