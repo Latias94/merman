@@ -14,22 +14,23 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
 - Command:
   - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 50 --warm-up 2 --measurement 3 --out target/bench/stage_spotcheck.baseline_2026-02-16.md`
 - Report:
-  - `target/bench/stage_spotcheck.baseline_2026-02-16.md` (not committed)
+  - `target/bench/stage_spotcheck.after_merge_main_2026-02-16.md` (not committed)
 - Stage gmeans (ratios, `merman / mmdr`):
-  - `parse`: `1.37x`
-  - `layout`: `0.88x`
-  - `render`: `1.73x`
-  - `end_to_end`: `0.92x`
+  - `parse`: `1.32x`
+  - `layout`: `0.87x`
+  - `render`: `1.61x`
+  - `end_to_end`: `0.90x`
 - Interpretation:
   - **Overall end-to-end is already competitive**, largely because we are faster on several layouts
     (`class_medium`, `state_medium`, `sequence_medium`).
   - The remaining performance gap is **concentrated**:
-    - `mindmap_medium end_to_end`: `1.87x` (layout-heavy; `layout 2.65x`, `render 1.35x`)
-    - `architecture_medium end_to_end`: `2.17x` (layout+render; `layout 3.27x`, `render 2.32x`)
+    - `flowchart_medium end_to_end`: `1.42x` (render-heavy; `render 1.62x`, `layout 1.05x`)
+    - `mindmap_medium end_to_end`: `1.60x` (layout-heavy; `layout 2.02x`, `render 1.25x`)
+    - `architecture_medium end_to_end`: `2.01x` (layout+render; `layout 3.35x`, `render 1.97x`)
     - Render fixed-cost remains a consistent theme:
-      - `render/flowchart_medium`: `1.70x`
-      - `render/class_medium`: `2.91x`
-      - `render/state_medium`: `2.30x`
+      - `render/flowchart_medium`: `1.62x`
+      - `render/class_medium`: `2.35x`
+      - `render/state_medium`: `2.64x`
 
 ### Stage Attribution Snapshot (canaries)
 

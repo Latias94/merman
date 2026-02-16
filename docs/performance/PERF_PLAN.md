@@ -10,21 +10,19 @@ Stage spot-check vs `repo-ref/mermaid-rs-renderer` (mmdr):
 - Command:
   - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium,mindmap_medium,architecture_medium,class_medium,state_medium,sequence_medium --sample-size 50 --warm-up 2 --measurement 3 --out target/bench/stage_spotcheck.baseline_2026-02-16.md`
 - Report:
-  - `target/bench/stage_spotcheck.baseline_2026-02-16.md` (local, not committed)
+  - `target/bench/stage_spotcheck.after_merge_main_2026-02-16.md` (local, not committed)
 - Stage gmeans (ratios, `merman / mmdr`):
-  - `parse`: `1.37x`
-  - `layout`: `0.88x`
-  - `render`: `1.73x`
-  - `end_to_end`: `0.92x`
+  - `parse`: `1.32x`
+  - `layout`: `0.87x`
+  - `render`: `1.61x`
+  - `end_to_end`: `0.90x`
 
 Outliers worth optimizing:
 
-- `mindmap_medium end_to_end`: `1.87x` (`layout 2.65x`, `render 1.35x`)
-- `architecture_medium end_to_end`: `2.17x` (`layout 3.27x`, `render 2.32x`)
-- Render fixed-cost is consistently behind:
-  - `render/flowchart_medium`: `1.70x`
-  - `render/class_medium`: `2.91x`
-  - `render/state_medium`: `2.30x`
+- `flowchart_medium end_to_end`: `1.42x` (`render 1.62x`, `layout 1.05x`)
+- `mindmap_medium end_to_end`: `1.60x` (`layout 2.02x`, `render 1.25x`)
+- `architecture_medium end_to_end`: `2.01x` (`layout 3.35x`, `render 1.97x`)
+- Render fixed-cost remains a consistent theme (even when end-to-end is competitive on other canaries).
 
 ## Root Cause Map (what is actually slow)
 
@@ -39,14 +37,31 @@ Outliers worth optimizing:
 
 ## Milestones (ordered by ROI)
 
-### P0 — Reduce SVG emission overhead (highest ROI)
+### P0 — Flowchart end-to-end (highest visibility)
 
 Targets (spotcheck ratios):
 
-- `render` gmean: `<= 1.35x` (from `1.73x`)
-- `render/flowchart_medium`: `<= 1.35x` (from `1.70x`)
-- `render/class_medium`: `<= 2.00x` (from `2.91x`)
-- `render/state_medium`: `<= 1.80x` (from `2.30x`)
+- `end_to_end/flowchart_medium`: `<= 1.15x` (from `1.42x`)
+- `render/flowchart_medium`: `<= 1.35x` (from `1.62x`)
+
+Work items:
+
+- Prioritize flowchart SVG emission: remove `format!`/temporary `String`s in node/edge hot loops, reuse per-diagram scratch buffers, and avoid repeated escaping/style compilation.
+- Re-run the canary after each landed change:
+  - `python tools/bench/stage_spotcheck.py --fixtures flowchart_medium --sample-size 50 --warm-up 2 --measurement 3`
+
+Correctness gate:
+
+- `cargo nextest run -p merman-render` (layout + svg parity tests must remain green).
+
+### P1 — Reduce SVG emission overhead (multi-diagram)
+
+Targets:
+
+- `render` gmean: `<= 1.35x` (from `1.61x`)
+- `render/class_medium`: `<= 2.00x` (from `2.35x`)
+- `render/state_medium`: `<= 2.00x` (from `2.64x`)
+- `render/architecture_medium`: `<= 1.60x` (from `1.97x`)
 
 Work items:
 
@@ -55,18 +70,13 @@ Work items:
   - escaped `diagram_id`
   - compiled marker ids
   - class→style compilation results for common class sets
-- Convert “build then escape” patterns into “write escaped pieces” patterns (`write!` + `escape_*_display`).
 
-Correctness gate:
-
-- `cargo nextest run -p merman-render` (layout + svg parity tests must remain green).
-
-### P1 — Mindmap layout (COSE) cost reduction (keep deterministic)
+### P2 — Mindmap layout (COSE) cost reduction (keep deterministic)
 
 Targets:
 
-- `layout/mindmap_medium <= 1.80x` (from `2.65x`)
-- `end_to_end/mindmap_medium <= 1.30x` (from `1.87x`)
+- `layout/mindmap_medium <= 1.60x` (from `2.02x`)
+- `end_to_end/mindmap_medium <= 1.35x` (from `1.60x`)
 
 Work items:
 
@@ -74,25 +84,24 @@ Work items:
 - Keep the public API stable, but move hot loops to dense indices + preallocated scratch buffers.
 - Reduce per-iteration allocations in spring/repulsion updates (reuse `Vec`s, avoid rebuilding maps).
 
-### P2 — Architecture layout + render fixed-cost
+### P3 — Architecture fixed-cost (layout + render)
 
 Targets:
 
-- `end_to_end/architecture_medium <= 1.50x` (from `2.17x`)
-- `layout/architecture_medium <= 2.50x` (from `3.27x`)
-- `render/architecture_medium <= 1.70x` (from `2.32x`)
+- `end_to_end/architecture_medium <= 1.50x` (from `2.01x`)
+- `layout/architecture_medium <= 2.50x` (from `3.35x`)
 
 Work items:
 
 - Convert typed layout passes to index-based queues/adjacency (avoid `HashMap<String, ...>` in hot paths).
-- Apply the same render fixed-cost reductions as P0 (architecture is currently render-heavy in ratio terms).
+- Apply the same render fixed-cost reductions as P1 (architecture is still render-heavy in ratio terms).
 
-### P3 — Parse fixed-cost (targeted, not a blanket rewrite)
+### P4 — Parse fixed-cost (targeted, not a blanket rewrite)
 
 Targets:
 
-- `parse/state_medium <= 1.60x` (from `2.33x`)
-- `parse/sequence_medium <= 1.50x` (from `1.90x`)
+- `parse/state_medium <= 1.80x` (from `2.09x`)
+- `parse/sequence_medium <= 1.40x` (from `1.66x`)
 
 Work items:
 
@@ -118,4 +127,3 @@ We should keep the current public graph surface stable and introduce internal de
 - Always keep a local spotcheck report under `target/bench/` for each milestone landing (do not commit).
 - Prefer fixture-driven changes: pick a canary, change one thing, re-run spotcheck.
 - Sync with local `main` frequently to avoid long-lived divergence.
-
